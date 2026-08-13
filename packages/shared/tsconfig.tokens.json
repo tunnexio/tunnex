@@ -1,0 +1,16 @@
+{
+  // S14.1 — emits the design tokens as plain JS + types so CONFIG FILES can import them.
+  // Config files (vite.config.ts, tailwind.config.ts) load through Node, which cannot read a raw .ts entry;
+  // and importing the .ts by relative path deadlocks TypeScript's project references (the composite config
+  // project must list the file, but listing it makes the main project's ownership conflict — TS6305/TS6307).
+  // One authored form (src/tokens.ts), one emitted form, no hand-maintained second copy.
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "outDir": "dist",
+    "strict": true
+  },
+  "include": ["src/tokens.ts"]
+}

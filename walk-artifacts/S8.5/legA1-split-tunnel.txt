@@ -1,0 +1,19 @@
+S8.5 Deck A — Leg A1 (Pritunl-parity) — PASS
+Device: tunnex-desktop-Pawan-Gupta-MBP.local @ 10.99.0.3 (split-tunnel)
+Client build: Tunnex-0.1.0-universal.pkg sha256 aff7dda2d75d0e1243ac0e9b7c65bdfe327b043e1591350079693e996bbc4219
+Branch: story/S8.7-cidr-conntrack (train tip 2dd852f)
+
+# routes — site subnets pushed into split-tunnel AllowedIPs (S8.5)
+10/16              utun4
+10.99/24           utun4
+172.31             utun4
+
+# reach a host ON the aws-site LAN via the gateway
+ping -c 3 172.31.28.80  -> 3/3 received, avg 310ms (cross-cloud AWS Sydney <-> Azure)
+
+# split-tunnel proof
+route get 8.8.8.8      -> interface en0,   gateway 192.168.1.1   (DIRECT)
+route get 172.31.28.80 -> interface utun4                        (TUNNEL)
+
+VERDICT: split-tunnel device reaches the declared remote LAN via the gateway; all other
+traffic routes direct. Pritunl-parity proven on live cross-cloud iron.

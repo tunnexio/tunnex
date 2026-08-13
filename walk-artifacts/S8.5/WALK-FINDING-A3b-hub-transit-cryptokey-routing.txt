@@ -1,0 +1,47 @@
+EPIC-8 WALK FINDING (A3b, deferred) — device→remote-site-via-hub dies at the site-link WG cryptokey-routing
+This is DISTINCT from S8.6b (the Docker wg0→wg0 FORWARD-DROP fold, which is PROVEN fixed). It is the
+hub-and-spoke TRANSIT ROUTING MODEL — a separate subsystem (S8.2 site-link + WG cryptokey-routing + masq +
+multi-hop grant compilation).
+
+WIRE TRACE (post S8.6b fold deployed, 2026-07-21):
+  aws-gw DOCKER-USER: route rules RELAXED + drift-converged (S8.6b PROVEN):
+      -d 10.0.0.0/16 -o wg0 ...tunnex-site-fwd   (no -i predicate; old ! -i wg0 -o wg0 SWEPT one pass)
+      -s 10.0.0.0/16 -i wg0 ...tunnex-site-fwd
+  aws-gw route:      ip route get 10.0.0.4 -> dev wg0 src 172.31.28.80  (routes to the site-link)
+  aws-gw wg0 tcpdump: 10.99.0.3 > 10.0.0.4 captured TWICE per seq = ingress (from device) + EGRESS (forwarded
+      out wg0 to the azure peer). The fold WORKS: aws-gw now forwards the wg0→wg0 transit.
+  azure-gw wg0 tcpdump: 0 packets. The forwarded packet dies BETWEEN the gateways.
+  aws-gw tunnex grant counter (10.99.0.3->10.0.0.0/16): 0  (matched ct-established/other, not the point)
+
+ROOT: the transit packet keeps src=10.99.0.3 (device pool) — un-NAT'd, because aws-gw's masquerade is
+`ip saddr 10.99.0.0/24 oifname != "wg0" masquerade` (EXCLUDES the wg0→wg0 site-link). aws-gw encrypts it to
+azure-gw. azure-gw's WG does CRYPTOKEY-ROUTING: a decrypted packet's src must be within the SENDING peer's
+allowed-ips. aws-gw's peer on azure-gw = 172.31.0.0/16 (site-subnet-scoped). 10.99.0.3 ∉ 172.31.0.0/16 →
+azure-gw's WG REJECTS the packet before wg0. Secondarily, azure-gw's tunnex chain carries only the
+site-transit grant (172.31.0.0/16->10.0.0.0/16), NOT a device grant for 10.99.0.3.
+
+SCOPE: S8.6b (Docker wg0→wg0 drop) is COMPLETE + PROVEN for its scope. A3b (device→remote-site END-TO-END)
+needs the transit ROUTING model:
+  (i) the hub must present the device transit to the site-link with a src the far gateway's WG will accept —
+      either the site-link peer allowed-ips widens to include the device pool (10.99.0.0/24), OR the hub
+      MASQUERADES device→remote-site to its own site subnet before the wg0→wg0 send (the masq `oifname != wg0`
+      predicate would need a transit exception); AND
+  (ii) the far gateway must carry a grant that permits the (post-routing) device→remote-site flow.
+This is device→REMOTE-site (2-gateway transit). device→the-hub's-OWN-LAN (1 gateway, A1) is PROVEN and needs
+none of this.
+
+Disposition: HELD for founder — own story (hub-transit routing model, candidate S8.6b-follow-up / S8.2-family).
+KEY QUESTION FOR DECK B: does the HA failover proof route device traffic to a REMOTE site via the hub, or to a
+behind-host of the hub's OWN site (A1-covered)? If the latter, A3b does NOT block Deck B.
+
+--- REGISTERED (founder 2026-07-21): named story candidate "device→remote-site hub transit" ---
+Three coordinated layers → decision-first paper, NEVER a walk-window patch. Commit-one fork PRE-NAMED:
+  (a) NAT device traffic onto the site-link at the hub — extend the masquerade to wg0→wg0 for device-pool
+      src → src becomes the hub's site address → existing far AllowedIPs + site-transit grants match.
+      SMALL, but BENDS the un-NAT'd invariant and loses per-device attribution at the far end.
+  (b) Widen site-link AllowedIPs to include the device pool + compile device grants onto far gateways —
+      PRESERVES attribution, touches the compiler's peer model (the S8.2/S8.6 heartland). Larger.
+Both faces argued in its commit-one, not at a walk tail.
+NAMED LIMITATION until it lands: a device reaches the HUB'S OWN site (A1, proven); device→REMOTE-site
+transit through a hub is the registered follow-up. The A3 walk leg CLOSES as: Docker half proven (S8.6b),
+end-to-end deferred to A3b with the characterization committed.

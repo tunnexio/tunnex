@@ -1,0 +1,27 @@
+== Thu Jul 16 14:15:03 UTC 2026 Leg2 after temporary lapse+sweep (delete-on-sweep) ==
+-- Gateway A --
+table ip tunnex {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 10.99.0.0/24 oifname != "wg0" masquerade
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		counter packets 0 bytes 0 comment "tunnex_default_drop"
+	}
+}
+-- Gateway B --
+table ip tunnex {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 10.99.0.0/24 oifname != "wg0" masquerade
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		counter packets 0 bytes 0 comment "tunnex_default_drop"
+	}
+}

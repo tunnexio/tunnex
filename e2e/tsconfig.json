@@ -1,0 +1,32 @@
+{
+  // ⛔ THIS FILE EXISTS BECAUSE A NON-PARSING SPEC REACHED CI.
+  //
+  // `e2e/` had no tsconfig, is not in the pnpm workspace, and `apps/web/tsconfig.json` does not include it.
+  // So NOTHING typechecked or even PARSED these files before CI executed them — and on 2026-08-02 a split
+  // of `visual.spec.ts` left an orphaned `describe`, which reached CI as:
+  //
+  //     SyntaxError: /e2e/visual/visual.spec.ts: Unexpected token (153:0)
+  //
+  // ⚠ AND THE VISUAL JOB IS ADVISORY, so that red would have been shrugged at. A red advisory job now means
+  // one of FOUR things — pixel drift · a geometric regression · THE SPEC DOES NOT COMPILE · the spec has no
+  // subject — and those are indistinguishable at a glance. This removes the third from the set, inside the
+  // BLOCKING gate, with no browser involved.
+  //
+  // IT DOES NOT REOPEN THE FOUNDER'S RULING: it asserts the check COMPILES, never that the pixels match.
+  // A dead advisory check and a quiet one look identical; this is the line that tells them apart.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "test-results", "playwright-report"]
+}

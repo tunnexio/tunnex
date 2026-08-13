@@ -1,0 +1,8 @@
+# e2e overlay: drop the node-agent's published WG port so the test client can
+# reach it directly by container IP on the compose network. Docker's UDP
+# port-publish (docker-proxy) rewrites per-packet source addresses, which breaks
+# WireGuard's session tracking — an artifact of the local test rig, not the
+# product (real external clients reach the gateway's genuinely-public endpoint).
+services:
+  node-agent:
+    ports: !override []

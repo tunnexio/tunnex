@@ -1,0 +1,14 @@
+S8.5 WALK FINDING (UI gap) — no manual group-membership control
+Access page: a group can be CREATED and REFERENCED as a rule source, but there is NO UI
+to add a USER to the group (the addGroupMember API exists — POST /groups/{id}/members —
+but the web exposes it only via IdP/directory sync, S7.5.2). A hand-made group stays
+empty, so a `group -> resource` rule silently grants nothing.
+
+Impact: an operator building a rule around a manually-created group gets a no-op grant
+with no feedback. Not a security hole (fail-CLOSED — grants nothing), but a confusing
+dead-end. Workaround used in the walk: rule source = USER directly (src_kind=user),
+which the rule form supports.
+
+Disposition: register for epic-close fold — either (a) add a group-member picker on the
+Access group row / Users page, or (b) surface "0 members — grants nothing" on an empty
+group referenced by a rule. HELD for founder disposition, not folded mid-walk.

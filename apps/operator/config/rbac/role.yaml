@@ -1,0 +1,28 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tunnex-operator
+rules:
+- apiGroups:
+  - tunnex.io
+  resources:
+  - tunnexclusters
+  - tunnexexposedservices
+  - tunnexgrants
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tunnex.io
+  resources:
+  - tunnexclusters/status
+  - tunnexexposedservices/status
+  - tunnexgrants/status
+  verbs:
+  - get
+  - patch
+  - update

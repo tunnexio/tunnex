@@ -1,0 +1,14 @@
+S8.5 Deck A — Leg A1 (reach a host behind the gateway) — PASS (with WF-4-local caveat)
+Device: 10.99.0.3 (split-tunnel, peers aws-gw hub) · Target: 172.31.17.64 (behind aws-gw)
+Grant: apple -> aws-lan (172.31.0.0/16) · ZT: enforcing
+
+BEFORE the DOCKER-USER fix: 100% loss (WF-4 — Docker FORWARD DROP; see WALK-FINDING-wf4-*)
+AFTER manual DOCKER-USER accept for 172.31.0.0/16:
+  ping 172.31.17.64 -> replies, ttl=63 (ONE hop decrement = forwarded through gateway), 285ms
+  tunnex grant counter incremented (ZT accepted); masq + route correct.
+
+VERDICT: split-tunnel device reaches a host BEHIND the gateway via the forward chain, gated
+by the grant. The only blocker was Docker's FORWARD DROP not whitelisting the gateway's own
+advertised subnet (agent-fix pending, S8.5b/WF-4-local). All Tunnex-owned layers correct.
+Supersedes legA1-split-tunnel.txt (that pinged the gateway's own IP = local INPUT, not a
+behind-host forward).

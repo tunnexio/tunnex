@@ -1,0 +1,18 @@
+-- S15.3 — the MCP marker. **A DESCRIPTION, NOT A DISCRIMINATOR.**
+--
+-- ⛔ `label`, NOT `kind`, AND THE NAME IS THE RULING. `devices.kind` is a STRUCTURAL discriminator: it
+-- carries the per-user cap exemption and the one-agent-per-node uniqueness, and code branches on it. This
+-- column carries NOTHING. Two columns named `kind` with different force is how the next reader gets it
+-- wrong — they would look for the branch this one does not have.
+--
+-- ⛔ AN OPERATOR'S ASSERTION, NEVER AN INFERENCE. The product cannot detect that something speaks MCP, and
+-- a column that implied it could would be the render floor violated in the schema: a field whose existence
+-- claims a capability the system does not have. Free text, because the honest question is "what is this?"
+-- and the honest answer is whatever the operator types.
+--
+-- ⛔ AND IT NEVER REACHES THE COMPILED ARTIFACT. `hashAllow` is {SrcIP, DstCIDR, Protocol, PortLow,
+-- PortHigh}; the compiler reads `cidr`, `protocol` and the port bounds from this table and nothing else.
+-- So this column cannot desync an artifact, cannot bump RequiredVersion, and cannot brick a gateway —
+-- BY CONSTRUCTION RATHER THAN BY DISCIPLINE. The mechanical test: does `make generate` change
+-- CanonicalHash inputs? It does not.
+ALTER TABLE resources ADD COLUMN label text;

@@ -1,0 +1,17 @@
+S8.5 Deck A — Leg A1 RE-VERIFY (WF-4-local fold's live proof) — PASS
+Train rebased: S8.5 fc7c4b8 (fold) / S8.6 157877d / S8.7 4e64b98. Folded agent redeployed
+to aws-gw + azure-gw; manual iptables workaround REMOVED (iptables -D, verified gone).
+
+aws-gw DOCKER-USER after the fold (all agent-marked "tunnex-site-fwd", NO blanket):
+  -d 10.0.0.0/16   ! -i wg0 -o wg0    tunnex-site-fwd   ROUTE forward (iif!=wg0 -> daddr)
+  -s 10.0.0.0/16     -i wg0 ! -o wg0  tunnex-site-fwd   ROUTE return
+  -d 172.31.0.0/16   -i wg0 ! -o wg0  tunnex-site-fwd   LOCAL forward (iif=wg0 -> daddr) MIRRORED
+  -s 172.31.0.0/16 ! -i wg0 -o wg0    tunnex-site-fwd   LOCAL return (iif!=wg0 <- saddr) MIRRORED
+
+A1 re-run, ZERO manual rules, grant apple->aws-lan, ZT enforcing:
+  ping 172.31.17.64 -> 3/3 reply, ttl=63 (forwarded), 186ms
+
+VERDICT: the agent auto-places the DOCKER-USER accept for the gateway's OWN advertised subnet
+in the MIRRORED orientation (device->own-LAN), and the device reaches the LAN behind its gateway
+with no manual intervention. The WF-4-local fold is proven on live iron; the walk fixture that
+found the defect now passes on the fixed agent. Fold re-verify (batch-day rebase rule) BANKED.

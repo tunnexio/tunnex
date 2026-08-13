@@ -1,0 +1,57 @@
+// ⛔ RED PROBE — NOT A COMMITTED TEST. Append to apps/web/test/auditlogwiring.test.tsx when the fix is made.
+//
+// FINDING B (S14.11, found while censusing mocks): the Audit Log DISCARDS EVERY NAMED SYSTEM ACTOR.
+//
+//   AuditLog.tsx:213   {a.actor_id ? actorName(members, a.actor_id) : "system"}
+//
+// `actor_system` is IN THE SPEC, IS SERVED, AND IS READ NOWHERE IN apps/web (grep: zero references).
+//
+// MEASURED on the review stack, GET /organizations/{org}/audit-logs?limit=100 — 78 rows:
+//
+//   34  actor_id populated          -> a human, named correctly
+//   19  actor_system populated      -> device-health ×17, reconciler ×2  ⛔ ALL render as the word "system"
+//   25  NEITHER                     -> hub_set.promotion ×13, failback ×9, membership ×2, node.enrolled ×1
+//
+// Each system row also carries its CAUSE, which the page never shows:
+//   {"actor_system":"device-health","action":"device.health_blocked",
+//    "details":{"cause":"noncompliant_report","failed_checks":[{"kind":"disk_encryption","mode":"require"}]}}
+//
+// ⛔ THIS DEFEATS A STATED ARCHITECTURE INVARIANT (CLAUDE.md): "Audit logs record system actors first-class
+// (`actor_system`) with a cause." S7.5.2's own note: a deprovision is "audited to a first-class NAMED system
+// actor ('idp-sync') — not NULL, not a borrowed admin — with the CAUSE in metadata, SO A COMPLIANCE READER
+// SEES 'revoked by idp-sync because <cause>'." The control plane does exactly that. The screen throws it away.
+//
+// It is the WHO-READS-THIS PROBE failing: a channel field with a producer and no consumer.
+//
+// AND THE 25 WITH NEITHER ARE A SECOND, SMALLER QUESTION: they are genuine automatic events (HA promotion and
+// failback) that record NO actor_system at all, so the invariant is unmet on the WRITE side for those actions.
+// Rendering them as "system" is substantively right; not naming the controller that did it is the gap.
+// Do not fold that into this fix without deciding it — it is a control-plane change, not a render change.
+
+describe("AuditLog — a NAMED system actor is named, not flattened to 'system'", () => {
+  it("⛔ renders `device-health`, not the generic word", async () => {
+    // Add to the mock's rows:
+    //   { id: "s1", action: "device.health_blocked", created_at: "...",
+    //     actor_system: "device-health", details: { cause: "noncompliant_report" },
+    //     target_type: "device", target_id: "d1" }
+    withAuth(<AuditLog />);
+    const table = await waitFor(() => screen.getByRole("table", { name: /audit|activity/i }));
+    const row = await waitFor(() =>
+      within(table).getAllByRole("row").find((r) => r.textContent?.includes("health_blocked"))!,
+    );
+    // The NAME, not the category.
+    expect(row.textContent).toMatch(/device-health/);
+    // And the two must be distinguishable: a named system actor must not read the same as an actor-less row.
+    const anon = within(table).getAllByRole("row").find((r) => r.textContent?.includes("hub_set.promotion"));
+    if (anon) expect(anon.textContent).not.toMatch(/device-health/);
+  });
+
+  it("⛔ a human and a system actor never render alike", async () => {
+    // The failure this whole surface exists to prevent is mis-attributing a human act to the system. The
+    // inverse — flattening a named subsystem into "system" — loses the cause and the accountability trail.
+    withAuth(<AuditLog />);
+    const table = await waitFor(() => screen.getByRole("table", { name: /audit|activity/i }));
+    const human = within(table).getAllByRole("row").find((r) => r.textContent?.includes("Ada Auditor"))!;
+    expect(human.textContent).not.toMatch(/device-health|reconciler/);
+  });
+});

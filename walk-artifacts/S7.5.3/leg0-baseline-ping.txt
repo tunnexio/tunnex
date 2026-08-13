@@ -1,0 +1,3 @@
+== spoke A (10.99.0.2) -> gateway 10.99.0.1 ==  0% packet loss (rtt ~0.34ms)
+== spoke B (10.99.0.3) -> gateway 10.99.0.1 ==  0% packet loss (rtt ~0.47ms)
+health-checks: []   (clean baseline — no posture checks configured)

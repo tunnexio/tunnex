@@ -1,0 +1,58 @@
+EPIC-8 WALK FINDING (S8.6, MERGE-GATING) — automatic failover does NOT fire on primary death
+The headline S8.6 feature (hub HA) does not fail over on live iron. Wire-proven.
+
+SETUP: aws-site hub set v-N = {aws-gw PRIMARY (pin#1), aws-gw-2 STANDBY (pin#2)}, azure-gw leaf. Standby
+provably WARM before the kill (aws-gw-2 <-> azure-gw site-link handshaking, 180 B..1.4 KB, keepalive 25s).
+Continuity ping Mac -> 172.31.17.64 (via the aws hub) replying ttl-63.
+
+KILL: `docker stop tunnex-node` + `ip link del wg0` on aws-gw (real data-plane outage, no instance-stop so the
+public IP survives for fail-back). T0 noted.
+
+RESULT (~5 min post-kill):
+- ping: gapped at seq 196, NEVER recovered.
+- Sites hub-set: STUCK at hub set v4 — aws-gw still PRIMARY (badge "stale", handshake 4m), aws-gw-2 STANDBY
+  (badge "warm", handshake 56s). NO promotion.
+- aws-site card: aws-gw HUB "offline", aws-gw-2 "online". azure-site: azure-gw "site link down" (lost its
+  dead-primary site-link, never repointed to the standby).
+- AUDIT LOG: last hub_set.promotion is 7m ago (BEFORE the kill). ZERO promotion events after the kill.
+  (The pre-kill promotions all had new_primary == old_primary == aws-gw — the controller re-electing the same
+   node — but those were setup-phase; the point is nothing fired post-kill.)
+
+MECHANISM (code): RunFailoverTick every FailoverTickInterval=30s -> failoverOrg. failoverStaleWindow=90s.
+failoverOrg computes freshness[id] = node_peer_status LastHandshakeAt within 90s (ListNodePeerStatusForOrg +
+latestByPubKey), Step() demotes a member with N consecutive stale ticks, deriveActive(configured, demoted)
+moves demoted to the back. deriveActive is CORRECT. The break: the controller's freshness read shows aws-gw
+FRESH (so Step never demotes it) EVEN THOUGH the hub-set VIEW shows it stale (handshake 4m). A source
+disagreement between the failover freshness (node_peer_status/latestByPubKey) and the view — OR the dead
+primary's peer-status LastHandshakeAt is not aging as the controller expects (who reports a dead hub's
+handshake once its peers' own links die?). Net: primary_stale is never detected by the CONTROLLER post-kill,
+so no demotion, no promotion, no recompile, no device re-point, no recovery.
+
+IMPACT: HA's entire promise — automatic promotion of the warm standby when the primary dies — does not work.
+A killed primary strands all its traffic indefinitely; the warm standby sits idle. This is the core of S8.6.
+
+DISPOSITION: HELD for founder — MERGE-GATING candidate for S8.6. Needs a DECISION-FIRST fix (its own commit-one
++ reds), NOT a walk-window patch: the freshness-source-of-truth for hub-member liveness (node_peer_status vs the
+view), who keeps a dead hub's LastHandshakeAt aging, and a red that KILLS a primary in a fake clock and asserts
+the standby is promoted within N ticks. Deck B's failover proof is BLOCKED on this. The kill did its job: it
+proved automatic failover does not happen.
+
+--- DISPOSITION (founder 2026-07-21): MERGE-GATING, decision-first fix in a FRESH session ---
+The batch directive's risk clause paid its bill: the epic's headline promise ("kill the hub, the spare takes
+over") failed on the FIRST real kill it ever faced — before a customer, a demo, a merge — caught by the only
+fixture that could (real iron, a real corpse). S8.6 does NOT merge with its headline non-functional; no
+argument entertained.
+
+FIX COMMIT-ONE (next session, investigation-first):
+LEAD DECIDE-ITEM — the ONE liveness truth for hub members. What does node_peer_status actually hold for a DEAD
+hub? Does LastHandshakeAt AGE, FREEZE, or VANISH when the reporter dies? (S7.4b class: a dead node can't report
+its own death — the controller may be reading a signal only LIVING peers refresh, from the WRONG side of the
+link.) Is latestByPubKey the SAME derivation as GetHubSetView's freshness (one-truth census extended to
+LIVENESS, not just election)? Do Step's staleness expectations match the substrate's actual aging?
+GATING RED — the walk's exact scenario in a FAKE CLOCK: primary killed -> reports cease -> N ticks -> standby
+PROMOTED, generation bumped, audit row. PLUS the inverse: a merely-idle-but-reporting primary NEVER demotes.
+RE-PROOF — Deck B re-run on iron, same kill, timeline clocked.
+SIBLING — finding #4 (standby-warm-flickers-stale) is a PROBABLE same-root sibling (freshness-source confusion
+seen from the badge side); one investigation answers both — fold it into this commit-one.
+CO-FOLD — finding #2 (cannot-bind-2nd-gateway-UI) folds in the SAME session (HA unreachable via UI = the
+operator flow doesn't exist; Sites.tsx:491 single-bind = the CH-probe/list-of-one class in an action path).

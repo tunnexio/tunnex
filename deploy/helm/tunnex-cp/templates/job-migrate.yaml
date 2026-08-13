@@ -1,0 +1,50 @@
+{{- if .Values.migrations.enabled }}
+# Schema migration — a Helm pre-install,pre-upgrade HOOK Job. Runs the cmd/migrate
+# one-shot binary EXACTLY ONCE per release, never concurrently. NOT an init
+# container: an init container runs per-pod, so multiple replicas would race the
+# migrator against the schema — the one component that cannot self-heal. The api
+# pods therefore run with TUNNEX_AUTO_MIGRATE=false.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "tunnex-cp.fullname" . }}-migrate
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "tunnex-cp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: migrate
+          image: {{ include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.migrate) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            # cmd/migrate reads DATABASE_URL (the external store; URL-wins upstream).
+            {{- if .Values.database.urlSecret }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.urlSecret }}
+                  key: TUNNEX_DATABASE_URL
+            {{- else }}
+            - name: DATABASE_URL
+              value: {{ required "database.url or database.urlSecret is required" .Values.database.url | quote }}
+            {{- end }}
+{{- end }}

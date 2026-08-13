@@ -1,0 +1,31 @@
+# Agent mTLS Service (port 8443) — L4 PASSTHROUGH, NEVER TLS-TERMINATED.
+#
+# Gateways dial https://<this>:8443 with a PINNED cert and SNI=tunnex-control; the
+# API terminates that TLS itself. Fronting this with a TLS-terminating Ingress would
+# present the Ingress controller's certificate and BREAK cert pinning — enrollment
+# fails, and it looks like a networking problem. So this is a raw LoadBalancer/
+# NodePort Service. If you must use an Ingress, it MUST be SSL-passthrough. This is
+# the single most likely misconfiguration — see NOTES.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-agent
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  {{- with .Values.agentPort.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.agentPort.type }}
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: api
+  ports:
+    - name: agent-mtls
+      port: {{ .Values.agentPort.port }}
+      targetPort: agent-mtls
+      {{- if and (eq .Values.agentPort.type "NodePort") .Values.agentPort.nodePort }}
+      nodePort: {{ .Values.agentPort.nodePort }}
+      {{- end }}

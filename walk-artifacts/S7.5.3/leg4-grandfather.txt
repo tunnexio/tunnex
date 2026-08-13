@@ -1,0 +1,14 @@
+S7.5.3 Leg 4 — grandfather flip-on (a check flip must not mass-blackhole a fleet, D4)
+
+Setup: DELETE disk_encryption (204). Both spokes report {disk_encrypted:false} — a WOULD-FAIL last
+report — but no check configured yet, so both compliant + connected. pre-flip: peers=2, both health_blocked=false.
+
+FLIP-ON: PUT health-checks/disk_encryption {"mode":"require"}  ->  {would_fail_count:2}
+
+PROOF (0% loss — the config write blocked NOBODY despite would_fail=2):
+  post-flip health_blocked: walk-spoke=false  walk-spoke-b=false
+  post-flip peers in wg0: 2  (0 lost)
+  ping A->gw: 0% loss    ping B->gw: 0% loss
+
+would_fail_count=2 is the HONEST advisory (these 2 would block at their NEXT report); enforcement is
+per-next-report, never retroactive. A fleet on old/non-reporting clients survives a flip-on.

@@ -1,0 +1,51 @@
+// The brand wordmark, embedded for the FIRST-RUN screen.
+//
+// ⛔ A SECOND COPY OF THE ARTWORK, AND IT IS PINNED SO IT CANNOT DRIFT.
+//
+// The setup screen is a `data:` URL built in the main process before any bundle is loaded, so it
+// cannot import from `apps/web/src/assets` the way every other surface does. The choices were: ship
+// the screen with no brand (it did, for months), redraw it by hand (a different logo wearing the
+// same name), or copy it and GUARD the copy. `brandmark.test.ts` compares this string to the asset
+// file — edit the asset and this file goes red, which is the only thing that makes a duplicate
+// acceptable.
+//
+// ⛔ THE WORDMARK, NOT THE MARK. `tunnex-logo.svg` bakes in a `<rect fill="#0A0A0A">` plate and its
+// glyph runs corner to corner, so it renders as a dark tile with no breathing room at any size —
+// which is what the client header was showing. The web shell's own brand block is wordmark +
+// tagline; both surfaces now use it, so the identity looks the same everywhere. The mark comes back
+// the day the asset ships with a margin.
+//
+// ⚠ INLINE <svg> MARKUP, NOT A data: IMAGE. The setup page's CSP is `default-src 'none'`; an
+// `<img src="data:...">` would need `img-src data:` widened for a decoration, and widening a CSP
+// for cosmetics is how CSPs stop meaning anything.
+export const BRAND_WORDMARK_SVG = `<svg width="792" height="120" viewBox="0 0 792 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+<path d="M34.944 116V27.392H1.67638e-08V6.79999H95.16V27.392H60.216V116H34.944ZM178.8 117.872C163.304 117.872 151.188 113.556 142.452 104.924C133.716 96.292 129.348 83.968 129.348 67.952V6.79999H154.62V67.016C154.62 77.416 156.752 84.904 161.016 89.48C165.28 94.056 171.26 96.344 178.956 96.344C186.652 96.344 192.632 94.056 196.896 89.48C201.16 84.904 203.292 77.416 203.292 67.016V6.79999H228.252V67.952C228.252 83.968 223.884 96.292 215.148 104.924C206.412 113.556 194.296 117.872 178.8 117.872ZM276.58 116V6.79999H297.484L361.912 85.424H351.772V6.79999H376.732V116H355.984L291.4 37.376H301.54V116H276.58ZM425.922 116V6.79999H446.826L511.254 85.424H501.114V6.79999H526.074V116H505.326L440.742 37.376H450.882V116H425.922Z" fill="#FFFFFF"></path>
+<g clip-path="url(#clip0_0_1)">
+<path d="M564.547 0H665.749L655.37 28.5443H554.167L564.547 0Z" fill="url(#paint0_linear_0_1)"></path>
+<path d="M561.952 45.4114H657.965L650.18 73.9557H554.167L561.952 45.4114Z" fill="url(#paint1_linear_0_1)"></path>
+<path d="M559.357 90.8228H655.37L644.99 119.367H554.167L559.357 90.8228Z" fill="url(#paint2_linear_0_1)"></path>
+</g>
+<path d="M680.635 116L727.591 51.26V69.668L682.663 6.79999H711.367L742.411 50.636L730.399 50.792L760.975 6.79999H788.431L743.815 68.576V50.48L791.083 116H761.911L729.775 69.668H741.319L709.651 116H680.635Z" fill="url(#nexgrad)"></path>
+<defs>
+<linearGradient id="nexgrad" x1="680" y1="6.8" x2="791" y2="116" gradientUnits="userSpaceOnUse">
+<stop stop-color="#B03A45"></stop>
+<stop offset="1" stop-color="#6E1520"></stop>
+</linearGradient>
+<linearGradient id="paint0_linear_0_1" x1="554.167" y1="0" x2="567.874" y2="53.5821" gradientUnits="userSpaceOnUse">
+<stop stop-color="#B03A45"></stop>
+<stop offset="1" stop-color="#6E1520"></stop>
+</linearGradient>
+<linearGradient id="paint1_linear_0_1" x1="554.167" y1="45.4114" x2="568.763" y2="98.4862" gradientUnits="userSpaceOnUse">
+<stop stop-color="#B03A45"></stop>
+<stop offset="1" stop-color="#6E1520"></stop>
+</linearGradient>
+<linearGradient id="paint2_linear_0_1" x1="554.167" y1="90.8228" x2="569.082" y2="143.704" gradientUnits="userSpaceOnUse">
+<stop stop-color="#B03A45"></stop>
+<stop offset="1" stop-color="#6E1520"></stop>
+</linearGradient>
+<clipPath id="clip0_0_1">
+<rect width="111.582" height="119.367" fill="white" transform="translate(554.167)"></rect>
+</clipPath>
+</defs>
+</svg>`;

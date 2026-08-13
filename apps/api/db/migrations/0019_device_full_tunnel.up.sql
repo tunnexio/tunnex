@@ -1,0 +1,13 @@
+-- 0019 device full_tunnel (S7.2) — persist the device's tunnel mode.
+--
+-- Until now full-tunnel was a config-mint-time choice (AllowedIPs 0.0.0.0/0 in the
+-- generated .conf) and never stored, so the control plane could not answer "which
+-- devices lose internet if this org enables Zero Trust enforcing?" — the mode-enable
+-- API must enumerate affected full-tunnel devices (S7.2 decision 2a).
+--
+-- BACKFILL LIMITATION (accepted): devices minted before this migration default to
+-- false even if their .conf routes 0.0.0.0/0 — the fact was never recorded and cannot
+-- be recovered server-side (the config is one-time, client-held). Pre-0019 full-tunnel
+-- devices therefore under-enumerate in the mode-enable warning. The S6.4 split<->full
+-- toggle re-mints the device, so any toggle after this migration self-corrects.
+ALTER TABLE devices ADD COLUMN full_tunnel boolean NOT NULL DEFAULT false;

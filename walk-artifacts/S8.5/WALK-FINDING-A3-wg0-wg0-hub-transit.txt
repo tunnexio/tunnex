@@ -1,0 +1,32 @@
+EPIC-8 WALK FINDING (A3, deferred) — device→remote-site via hub dropped (wg0→wg0 Docker FORWARD DROP)
+Not S8.5's thesis — this is the S8.2/S8.6 hub-transit subsystem. HELD/deferred.
+
+SCENARIO (Deck A Leg A3, cross-gateway): device 10.99.0.3 (peers aws-gw hub) → 10.0.0.4 (behind
+azure-gw). Grant apple->azure-lan present; site-transit rule aws-site->azure-site restored; both
+gateways run the folded agent.
+
+WIRE TRACE:
+  Mac utun4:        10.99.0.3 > 10.0.0.4 echo-request  EMITTED (device sends)
+  aws-gw wg0:       10.99.0.3 > 10.0.0.4 echo-request  ARRIVES (7 pkts)
+  aws-gw tunnex fwd: ip saddr 10.99.0.3 ip daddr 10.0.0.0/16 counter packets 0   (grant NOT hit)
+  azure-gw wg0:     0 packets  (aws-gw did NOT forward it over the site-link)
+  aws-gw OWN ping -> 10.0.0.4 / 10.0.0.5: WORKS (ttl 63/64) -- site-link + azure fwd are fine
+
+ROOT: the device→remote-site path forwards wg0(device-peer) → wg0(azure-site-link) at aws-gw — a
+wg0→wg0 transit. Docker's `-P FORWARD DROP` swallows it: the DOCKER-USER accepts cover wg0↔eth0
+(WF-4 route: LAN↔remote; WF-4-local fold: device↔own-LAN) but NOT wg0↔wg0. Counter 0 = dropped
+before the ZT chain. This is the THIRD WF-4 variant: HUB-TRANSIT (a device reaching a remote site
+THROUGH the hub gateway on a Docker host).
+
+WHY NOT THIS-STORY-GATING: S8.5's thesis is the LOCAL routed subnet (device→LAN behind its own
+gateway) — proven by A1-refold. A3 is device→REMOTE-site via hub = S8.2 site-link + S8.6 hub
+routing on a Docker host. Distinct subsystem.
+
+FIX DIRECTION (for the owning story, decision-first): reconcileDockerForward would need a wg0→wg0
+accept scoped to the TRANSIT subnets (the remote Routes a device reaches via this hub), carefully
+NOT over-opening spoke↔spoke. Scoping a wg0→wg0 accept is trickier than wg0↔eth0 (both sides are
+the tunnel) — deserves its own paper. Candidate: S8.6b or an S8.2c-follow-up. NAMED LIMITATION
+meanwhile: on a Docker-host hub, a device reaches its hub's LOCAL LAN (works) but not a REMOTE
+site's subnet via the hub (dropped); bare-metal hubs unaffected (no Docker FORWARD DROP).
+
+Disposition: HELD for founder. Deferred — not S8.5-gating.

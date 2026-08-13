@@ -1,0 +1,6 @@
+S8.5 WALK FINDING (low) — resource form has no port field despite the label
+Access → Resources labeled "CIDR : protocol : ports", but the form exposes only CIDR + a
+proto dropdown (any/tcp/udp). No port input → port-level resource scoping is not achievable
+in the UI. Either add the port field or drop "ports" from the label (honesty). Backend
+AllowEntry carries PortLow/PortHigh (the enforcement + flush already port-aware), so this is
+a UI-completeness gap, not a data-model one. Registered — epic-close UI harvest.

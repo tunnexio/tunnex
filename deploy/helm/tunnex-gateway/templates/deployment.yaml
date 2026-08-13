@@ -1,0 +1,148 @@
+{{- include "tunnex-gateway.ackGuard" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tunnex-gateway.fullname" . }}
+  labels:
+    {{- include "tunnex-gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  # Recreate, NOT RollingUpdate: the gateway owns ONE WireGuard identity + the node
+  # netns nftables. Two pods would bind :51820 twice and double-program the DNAT —
+  # terminate the old before the new. (Multi-gateway HA for a cluster is site-HA
+  # territory, S8.6; a K8s cluster is fronted by one gateway.)
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        {{- include "tunnex-gateway.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+    spec:
+      serviceAccountName: {{ include "tunnex-gateway.serviceAccountName" . }}
+      # L10 RE-AMENDED (WF-K5): the gateway now DNATs each VIP straight to a READY pod endpoint (VIP->ClusterIP
+      # can't complete — kube-proxy's second DNAT is a no-op), so it must LEARN ready pod IPs from a read-only
+      # Services + EndpointSlices watch (see rbac.yaml). The SA token is therefore MOUNTED and USED — the
+      # credential for exactly one narrow capability. Posture for the security team: the gateway reads Service
+      # endpoints; it cannot read Secrets, cannot write, cannot escalate.
+      automountServiceAccountToken: true
+      # F4: hostNetwork puts the agent's prerouting DNAT in the NODE netns, ahead of
+      # kube-proxy's ClusterIP→pod DNAT (which also lives there), and gives the real
+      # WG datapath + the node's ip_forward.
+      hostNetwork: true
+      # THE hostNetwork DNS TRAP (the silent-install-killer): a hostNetwork pod otherwise inherits the NODE
+      # resolv.conf, so *.svc.cluster.local never resolves. ClusterFirstWithHostNet restores cluster DNS
+      # (falling back to node upstream for external names). WF-K5 NARROWED why this is needed: the gateway no
+      # longer resolves a Service's ClusterIP via DNS (endpoint DNAT reads ready pods from the K8s API, reached
+      # by the KUBERNETES_SERVICE_HOST ClusterIP env — no DNS — and the DNS-answer half serves from the CP-
+      # supplied map). It IS still load-bearing when controlPlane.apiURL/agentURL are IN-CLUSTER FQDNs
+      # (<svc>.<ns>.svc.cluster.local — the tunnex-cp-in-cluster deploy): the agent must resolve the CP's
+      # address. Harmless (and belt-and-suspenders) when the CP is external. DO NOT REMOVE.
+      dnsPolicy: ClusterFirstWithHostNet
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: {{ include "tunnex-gateway.agentImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            # F4: NET_ADMIN to program WireGuard + nftables; /dev/net/tun for the WG datapath. runAsNonRoot
+            # is FALSE — the agent must write the node netns firewall. The privileged posture is acknowledged
+            # (F7b). M7 — least-privilege on a root+hostNetwork pod: drop the ENTIRE default capability set and
+            # add back ONLY NET_ADMIN ("we added exactly one capability and dropped the rest"), forbid
+            # privilege escalation, and pin the RuntimeDefault seccomp profile. NOT `privileged: true` —
+            # NET_ADMIN is sufficient. readOnlyRootFilesystem is left OFF: the agent writes its enrolled
+            # cert/keys under the mounted state volume, but also touches paths under / at runtime; a
+            # read-only root would need an explicit writable-mount audit — registered, not silently claimed.
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+              # NET_ADMIN: WireGuard + nftables + `ip addr`. NET_BIND_SERVICE: the DNS forwarder binds :53 on
+              # the reserved DNS VIP (and the S8.4 wg0 resolver) — a privileged port. WF-K-CHART-2: dropping
+              # ALL caps removes CAP_NET_BIND_SERVICE even from root (uid 0 alone does NOT grant privileged-port
+              # bind once the cap is dropped), so :53 fails EACCES without this. This is the named coupling's
+              # documented escape hatch (docs/S10.3-decisions.md), proven on the wire on k3s/containerd.
+              add: ["NET_ADMIN", "NET_BIND_SERVICE"]
+          ports:
+            - name: wireguard
+              containerPort: {{ .Values.wireguard.port }}
+              hostPort: {{ .Values.wireguard.port }}
+              protocol: UDP
+          env:
+            - name: TUNNEX_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            {{- if .Values.nodeName }}
+            # WF-K-CHART-1: the CP pins a join token to a NODE NAME; the agent must enroll under EXACTLY that
+            # name or the CP refuses (node_name_mismatch). A hostNetwork pod's hostname() is the NODE's
+            # hostname (e.g. the VM name), which rarely matches the token's pinned name — so the operator MUST
+            # be able to set it. Set nodeName to the name the join token was minted for.
+            - name: TUNNEX_NODE_NAME
+              value: {{ .Values.nodeName | quote }}
+            {{- end }}
+            - name: TUNNEX_API_URL
+              value: {{ required "controlPlane.apiURL is required (the CP the gateway fetches desired state from)" .Values.controlPlane.apiURL | quote }}
+            - name: TUNNEX_AGENT_URL
+              value: {{ required "controlPlane.agentURL is required (the CP agent-mTLS endpoint the gateway enrolls against)" .Values.controlPlane.agentURL | quote }}
+            - name: TUNNEX_AGENT_SERVERNAME
+              value: {{ .Values.controlPlane.serverName | quote }}
+            # F6: the PUBLIC WG endpoint peers dial. The chart cannot synthesize the LB
+            # IP (it may not exist at install), so the operator supplies it — REQUIRED.
+            - name: TUNNEX_NODE_ENDPOINT
+              value: {{ required "endpoint is required (F6): the public host:port peers dial to reach this gateway; reserve a static LB IP and put it here" .Values.endpoint | quote }}
+            # A real WireGuard datapath (kernel via netlink), not the in-memory test backend.
+            - name: TUNNEX_WG_BACKEND
+              value: "wgctrl"
+            - name: TUNNEX_NODE_STATE_DIR
+              value: /var/lib/tunnex-node
+            {{- if or .Values.existingJoinTokenSecret .Values.joinToken }}
+            # F5: the one-time join token (from the existing or chart-minted Secret). Only
+            # needed for the FIRST enroll — once the node cert is on the state PVC, the
+            # agent re-attaches its identity without it.
+            - name: TUNNEX_JOIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "tunnex-gateway.joinTokenSecret" . }}
+                  key: {{ .Values.joinTokenKey }}
+            {{- end }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/tunnex-node
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+        {{- if .Values.persistence.enabled }}
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ include "tunnex-gateway.fullname" . }}-state
+        {{- else }}
+        - name: state
+          emptyDir: {}
+        {{- end }}

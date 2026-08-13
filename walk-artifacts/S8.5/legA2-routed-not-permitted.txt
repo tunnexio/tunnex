@@ -1,0 +1,17 @@
+S8.5 Deck A — Leg A2 (routed != permitted, enforcing red) — PASS
+Device: tunnex-desktop @ 10.99.0.3 (split-tunnel) · ZT mode: ENFORCING · Rules: 0 (all denied)
+
+# ROUTED — the LAN is in the tunnel route table
+netstat -rn: 172.31 -> utun4   (10/16 also present as "10")
+
+# NOT PERMITTED — behind-gateway hosts denied by the forward chain default-deny
+ping 10.0.0.4     (CP, behind azure-gw)      -> 3/3 timeout, 100% loss  DENIED
+ping 172.31.17.64 (inst-2, behind aws-gw)    -> 3/3 timeout, 100% loss  DENIED
+
+# CONTROL — gateway's OWN ip is local INPUT, not forwarded (proves tunnel+WG are UP)
+ping 172.31.28.80 (aws-gw itself)            -> 3/3 reply, avg 295ms    (local, expected)
+
+VERDICT: the subnet is ROUTED into the tunnel but every host BEHIND the gateway is
+DENIED under Enforcing/0-rules. Routing != permission, proven on live cross-cloud iron.
+NOTE: A1's earlier ping hit the gateway's own IP (local INPUT) — A1-real (behind-host
+reachability via a grant) follows next; that supersedes the gateway-IP A1 evidence.

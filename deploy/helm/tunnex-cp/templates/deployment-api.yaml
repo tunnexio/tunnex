@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  # Recreate, NOT RollingUpdate: the CP runs in-process schedulers (failover tick,
+  # CRL rebuild, retention sweep). A rolling update briefly runs two api pods = two
+  # controllers ticking. Recreate terminates the old pod before starting the new, so
+  # only one scheduler set ever exists. (See values.api.replicas for the HA/leader-
+  # election registration.)
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "tunnex-cp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: {{ include "tunnex-cp.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: {{ include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.api) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: agent-mtls
+              containerPort: 8443
+          env:
+            - name: TUNNEX_ENV
+              value: {{ .Values.env | quote }}
+            - name: TUNNEX_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: TUNNEX_API_ADDR
+              value: ":8080"
+            - name: TUNNEX_AGENT_ADDR
+              value: ":8443"
+            # Migrations run via the pre-upgrade hook Job, never on the serving pod.
+            - name: TUNNEX_AUTO_MIGRATE
+              value: "false"
+            - name: TUNNEX_COOKIE_SECURE
+              value: "true"
+            - name: TUNNEX_SECRETS_DIR
+              value: {{ .Values.api.secretsDir | quote }}
+            # Master key as a mounted FILE (Slice 1 posture — never env).
+            - name: TUNNEX_MASTER_KEY_FILE
+              value: {{ printf "%s/master.key" .Values.api.masterKeyPath | quote }}
+            {{- if .Values.sessionSecret.existingSecret }}
+            - name: TUNNEX_SESSION_SECRET_FILE
+              value: {{ printf "%s/session.key" .Values.api.masterKeyPath | quote }}
+            {{- end }}
+            - name: APP_BASE_URL
+              value: {{ required "appBaseURL is required — it builds every email link; a localhost default sends unreachable links" .Values.appBaseURL | quote }}
+            - name: TUNNEX_NODE_AGENT_IMAGE
+              value: {{ .Values.nodeAgentImage | quote }}
+            - name: TUNNEX_CORS_ALLOWED_ORIGINS
+              value: {{ .Values.corsAllowedOrigins | quote }}
+            # External store (URL-wins; API pings both at boot, fails loud if unreachable).
+            {{- if .Values.database.urlSecret }}
+            - name: TUNNEX_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.urlSecret }}
+                  key: TUNNEX_DATABASE_URL
+            {{- else }}
+            - name: TUNNEX_DATABASE_URL
+              value: {{ required "database.url or database.urlSecret is required (external Postgres — this chart runs no bundled DB)" .Values.database.url | quote }}
+            {{- end }}
+            {{- if .Values.redis.urlSecret }}
+            - name: TUNNEX_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.urlSecret }}
+                  key: TUNNEX_REDIS_URL
+            {{- else }}
+            - name: TUNNEX_REDIS_URL
+              value: {{ required "redis.url or redis.urlSecret is required (external Redis — this chart runs no bundled Redis)" .Values.redis.url | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: roots
+              mountPath: {{ .Values.api.masterKeyPath }}
+              readOnly: true
+            - name: secrets
+              mountPath: {{ .Values.api.secretsDir }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          {{- with .Values.api.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        # Roots of trust: a single READ-ONLY projected mount. The master key is
+        # REQUIRED and the chart NEVER generates one — a new key would orphan every
+        # value sealed under the real one (see NOTES / values.yaml). The session
+        # secret is optionally projected alongside it.
+        - name: roots
+          projected:
+            sources:
+              - secret:
+                  name: {{ required "masterKey.existingSecret is REQUIRED — this chart never mints a master key (a generated key orphans all sealed data on upgrade/reinstall). Create + BACK UP a Secret first; see NOTES.txt." .Values.masterKey.existingSecret }}
+                  items:
+                    - key: {{ .Values.masterKey.key }}
+                      path: master.key
+              {{- if .Values.sessionSecret.existingSecret }}
+              - secret:
+                  name: {{ .Values.sessionSecret.existingSecret }}
+                  items:
+                    - key: {{ .Values.sessionSecret.key }}
+                      path: session.key
+              {{- end }}
+        # Writable dir for the session secret ONLY (regenerates on restart when not
+        # externalized — a logout, never data loss). Kept SEPARATE from the read-only
+        # roots mount so read-only never blocks session init.
+        - name: secrets
+          emptyDir: {}

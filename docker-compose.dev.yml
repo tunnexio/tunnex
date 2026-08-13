@@ -1,0 +1,9 @@
+# Local development overrides. Email delivery is deliberately not bundled; configure a real SMTP endpoint
+# in `.env` when exercising invitation, verification, or reset flows.
+
+name: tunnex
+
+services:
+  api:
+    environment:
+      SMTP_FROM: ${SMTP_FROM:-tunnex@localhost}

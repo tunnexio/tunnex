@@ -1,0 +1,5 @@
+# wg show wg0 AFTER spoke A reported non-compliant (require disk_encryption):
+interface: wg0   public key: M4jAJZBLVz1EFBsbTfw98FcOnLmRHpcFW29XarhdJT8=
+peer: dn+34+5GkXjQdMxMvFu7ZmUGlHhEpdFy0RPWUFmZdwA=   # spoke B (control) 10.99.0.3 — PRESENT, handshaking
+  allowed ips: 10.99.0.3/32
+# spoke A (PDlq86dr.../10.99.0.2) is ABSENT — dropped from ListActivePeersForNode by health_blocked

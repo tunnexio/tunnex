@@ -1,0 +1,10 @@
+# oapi-codegen config — generates the Go CLIENT contract from openapi/openapi.yaml.
+# Run via `make generate` (in a golang container). Same spec as the server: the
+# CLI cannot drift from the contract any more than the SPA can.
+package: api
+output: internal/api/api.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: false

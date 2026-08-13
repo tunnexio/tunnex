@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+# HTTP Ingress -> the edge Service. This path MAY TLS-terminate normally (it is the
+# browser/API HTTP path, NOT the agent mTLS port). The agent port (8443) is exposed
+# separately as an L4 Service and must NEVER be routed through this Ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "tunnex-cp.fullname" . }}
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ required "ingress.host is required when ingress.enabled" .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: edge
+                port:
+                  number: 80
+{{- end }}

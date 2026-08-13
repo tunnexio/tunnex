@@ -1,0 +1,19 @@
+# HTTP API Service. Named "api" so the edge (nginx) baked upstream `api:8080`
+# resolves it in-namespace. This assumes ONE tunnex-cp release per namespace (a
+# control plane is a singleton per environment) — see NOTES.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,59 @@
+Tunnex
+Copyright 2026 Tunnex
+
+This product includes software developed by the Tunnex project.
+
+The OPEN edition of this software is licensed under the Apache License,
+Version 2.0 (see the LICENSE file at the repository root).
+
+The ENTERPRISE edition — the contents of apps/api/internal/enterprise/ and
+any features gated behind the `enterprise` build tag — is NOT open source. It
+is licensed separately under a proprietary, source-available license; see
+apps/api/internal/enterprise/LICENSE.
+
+Copyright is currently held under the pre-entity project name "Tunnex". Upon
+formation of the operating legal entity, copyright will be assigned to that
+entity by written assignment from the individual authors and these notices
+reaffirmed.
+
+---
+
+Third-party components (desktop client privilege helper, S6.3):
+
+  wireguard-go            golang.zx2c4.com/wireguard
+  WireGuard-Windows       golang.zx2c4.com/wireguard/windows
+                          (tunnel/firewall — WFP kill-switch; tunnel/winipcfg — routes)
+  Wintun                  golang.zx2c4.com/wintun
+
+Copyright (C) Jason A. Donenfeld <Jason@zx2c4.com> / WireGuard LLC. Licensed
+under the MIT License (compatible with this product's Apache-2.0 open edition).
+
+Wintun additionally carries its own redistribution terms: the bundled wintun.dll
+is redistributed with the desktop client under those terms (prebuilt, unmodified);
+see the Wintun license (https://git.zx2c4.com/wintun/about/) for the redistribution
+conditions the packaged artifacts (S6.5a) inherit.
+
+--------------------------------------------------------------------------------
+Lucide icons
+--------------------------------------------------------------------------------
+apps/web/src/components/Icon.tsx embeds 39 icon path definitions from Lucide
+(https://lucide.dev), used under the ISC License. The paths are vendored rather
+than installed as a dependency; the selection is the design handoff's.
+
+ISC License
+
+Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of
+Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors
+2022.
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.

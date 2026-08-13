@@ -1,0 +1,189 @@
+package tenancy
+
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+)
+
+// ⛔ REACHABILITY PROBE — NOT A COMMITTED TEST. Run manually, on a THROWAWAY database.
+//
+// Proves the last-owner guard is REACHABLE AND PERMISSIVE, not correct-and-unreachable:
+//
+//	CountOwners:            SELECT count(*) FROM memberships WHERE org_id=$1 AND role='owner'
+//	CountOrgsWhereSoleOwner: same shape, correlated
+//
+// NEITHER JOINS `users`, so neither filters `users.status`. A DEACTIVATED owner still counts as an owner,
+// and login refuses a deactivated account outright (403 account_deactivated, auth/service.go:148).
+//
+// The whole chain runs inside ONE transaction that is ROLLED BACK, so it leaves no residue.
+func TestProbeLastOwnerLockoutIsReachable(t *testing.T) {
+	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	org := uuid.New()
+	ownerA, ownerB := uuid.New(), uuid.New()
+	for _, s := range [][]any{
+		{"INSERT INTO organizations (id,name,slug) VALUES ($1,$2,$3)", org, "LockoutProbe", "lp-" + org.String()},
+		{"INSERT INTO users (id,email,name,status) VALUES ($1,$2,$3,'active')", ownerA, "a-" + ownerA.String() + "@t", "A"},
+		{"INSERT INTO users (id,email,name,status) VALUES ($1,$2,$3,'active')", ownerB, "b-" + ownerB.String() + "@t", "B"},
+		{"INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')", org, ownerA},
+		{"INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')", org, ownerB},
+	} {
+		if _, err := tx.Exec(ctx, s[0].(string), s[1:]...); err != nil {
+			t.Fatalf("setup %q: %v", s[0], err)
+		}
+	}
+
+	q := sqlc.New(tx)
+	svc := &MembershipService{q: q} // pool nil -> withTx runs on this tx; nil revoker/pusher are skipped
+	actor := ownerB
+
+	// ── STEP 1: deactivate owner A while B is also an owner ────────────────────────────────────────────
+	if err := svc.DeactivateMember(ctx, actor, org, ownerA); err != nil {
+		t.Fatalf("STEP 1 deactivate owner A: %v  (chain does NOT complete here)", err)
+	}
+	t.Log("STEP 1 OK: owner A deactivated (2 owner ROWS existed, so CountOrgsWhereSoleOwner said 'not sole')")
+
+	var aStatus string
+	if err := tx.QueryRow(ctx, "SELECT status FROM users WHERE id=$1", ownerA).Scan(&aStatus); err != nil {
+		t.Fatal(err)
+	}
+	if aStatus != "deactivated" {
+		t.Fatalf("owner A status is %q, expected deactivated", aStatus)
+	}
+
+	// ── STEP 2: the guard's own input, measured ────────────────────────────────────────────────────────
+	owners, err := q.CountOwners(ctx, org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("STEP 2: CountOwners = %d  (owner ROWS; A is deactivated and STILL COUNTED)", owners)
+
+	// ── STEP 3: demote the only owner who can still log in ─────────────────────────────────────────────
+	if _, err := svc.ChangeMemberRole(ctx, &actor, rbac.RoleOwner, org, ownerB, rbac.RoleAdmin); err != nil {
+		t.Fatalf("STEP 3 demote owner B: REFUSED (%v)\n"+
+			"  -> THE CHAIN DOES NOT COMPLETE. The guard caught it. Report that plainly.", err)
+	}
+	t.Log("STEP 3 OK: owner B demoted to admin — the guard ALLOWED it")
+
+	// ── STEP 4: what is left ───────────────────────────────────────────────────────────────────────────
+	var loggable int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*) FROM memberships m JOIN users u ON u.id = m.user_id
+		WHERE m.org_id=$1 AND m.role='owner' AND u.status='active' AND u.deleted_at IS NULL`,
+		org).Scan(&loggable); err != nil {
+		t.Fatal(err)
+	}
+	var ownerRows int
+	if err := tx.QueryRow(ctx,
+		"SELECT count(*) FROM memberships WHERE org_id=$1 AND role='owner'", org).Scan(&ownerRows); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("STEP 4: owner ROWS = %d, owners who CAN LOG IN = %d", ownerRows, loggable)
+
+	// ── STEP 5: is there a path back? ──────────────────────────────────────────────────────────────────
+	// Reactivating A needs someone with member:manage. B is now admin — does admin hold it?
+	adminCanManage := rbac.Can(rbac.RoleAdmin, rbac.PermMemberManage)
+	adminCanChangeToOwner := rbac.CanManageMembership(rbac.RoleAdmin, rbac.RoleAdmin, rbac.RoleOwner)
+	t.Logf("STEP 5: admin has member:manage = %v; admin may promote TO owner = %v",
+		adminCanManage, adminCanChangeToOwner)
+
+	if loggable == 0 {
+		t.Errorf("⛔ LOCKOUT REACHED: the org has %d owner row(s) and %d owner(s) able to log in.\n"+
+			"   CountOwners returned %d at the moment of the demotion because it counts MEMBERSHIP ROWS\n"+
+			"   with no join to users.status. A count used as a guard must count what it guards against.",
+			ownerRows, loggable, owners)
+	}
+}
+
+// ⛔ BRANCH 2 — THE STRONGER CHAIN. Branch 1 (demote B) leaves B as an ADMIN who still holds member:manage,
+// so B can reactivate A and the org recovers. That is a capability outage, not a lockout.
+//
+// This branch DEACTIVATES both owners instead. If the org holds no other active member with member:manage,
+// nobody can log in and act — and there is no path back THROUGH THE PRODUCT.
+func TestProbeLastOwnerLockoutBranch2DeactivateBoth(t *testing.T) {
+	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	org := uuid.New()
+	ownerA, ownerB := uuid.New(), uuid.New()
+	for _, s := range [][]any{
+		{"INSERT INTO organizations (id,name,slug) VALUES ($1,$2,$3)", org, "LockoutProbe2", "lp2-" + org.String()},
+		{"INSERT INTO users (id,email,name,status) VALUES ($1,$2,$3,'active')", ownerA, "a2-" + ownerA.String() + "@t", "A"},
+		{"INSERT INTO users (id,email,name,status) VALUES ($1,$2,$3,'active')", ownerB, "b2-" + ownerB.String() + "@t", "B"},
+		{"INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')", org, ownerA},
+		{"INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')", org, ownerB},
+	} {
+		if _, err := tx.Exec(ctx, s[0].(string), s[1:]...); err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	svc := &MembershipService{q: sqlc.New(tx)}
+
+	if err := svc.DeactivateMember(ctx, ownerB, org, ownerA); err != nil {
+		t.Fatalf("deactivate A: %v — chain does NOT complete", err)
+	}
+	t.Log("STEP 1 OK: owner A deactivated")
+
+	// B deactivates THEMSELF (or another admin does). CountOrgsWhereSoleOwner(B) sees 2 owner ROWS.
+	if err := svc.DeactivateMember(ctx, ownerB, org, ownerB); err != nil {
+		t.Fatalf("STEP 2 deactivate owner B: REFUSED (%v)\n  -> CHAIN DOES NOT COMPLETE at branch 2.", err)
+	}
+	t.Log("STEP 2 OK: owner B deactivated too — the sole-owner guard ALLOWED it")
+
+	var rows, canAct int
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE org_id=$1 AND role='owner'", org).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	// Anyone at all who can still log in AND holds member:manage (owner or admin).
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*) FROM memberships m JOIN users u ON u.id=m.user_id
+		WHERE m.org_id=$1 AND m.role IN ('owner','admin') AND u.status='active' AND u.deleted_at IS NULL`,
+		org).Scan(&canAct); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("STEP 3: owner ROWS = %d, accounts able to LOG IN AND ADMINISTER = %d", rows, canAct)
+
+	if canAct == 0 {
+		t.Errorf("⛔ TOTAL LOCKOUT, NO PATH BACK: %d owner row(s) satisfy the invariant on paper while %d "+
+			"accounts can log in and act. Recovery requires DIRECT DATABASE ACCESS — there is no product path.",
+			rows, canAct)
+	}
+}

@@ -1,0 +1,7 @@
+EPIC-8 WALK FINDING (S8.6, low UX) — an idle WARM standby flickers "STANDBY stale" between handshakes
+Observed on the hub-set view: aws-gw-2, warm (site-link handshaking, keepalives flowing), briefly rendered
+"STANDBY stale" at the ~2min WG-rekey edge, then flipped back to "warm" once it re-handshook (42s). An operator
+glancing during the window sees a healthy standby as unhealthy.
+DISPOSITION (founder 2026-07-21): REGISTERED, low. PROBABLE SAME-ROOT SIBLING of the failover-does-not-fire
+finding (freshness-source confusion, seen from the badge side). Fold into the failover fix's commit-one — one
+liveness-truth investigation answers both the controller (no promotion) and the badge (false-stale flicker).

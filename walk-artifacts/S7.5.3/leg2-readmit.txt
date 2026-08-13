@@ -1,0 +1,3 @@
+
+DB after re-admit: walk-spoke health_blocked=f | walk-spoke-b health_blocked=f
+Server report: {state:compliant, blocked:false}   Re-admit reconcile: 0.215s (<5s, timed in Leg 1)

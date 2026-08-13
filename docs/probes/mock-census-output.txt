@@ -1,0 +1,65 @@
+SCHEMAS PARSED: 101   TEST FILES SCANNED: 40
+
+====================================================================================================
+DIRECTION 1 — INVENTED: a field the mock has and the schema does NOT. Always a defect.
+====================================================================================================
+  apps/web/test/sitesview.test.ts       :400   Node           `health`
+
+====================================================================================================
+DIRECTION 2 — OMITTED *AND READ BY THE CODE*: the mock never shows the page a field it reads.
+====================================================================================================
+  apps/web/test/accesswiring.test.tsx   :62    Member         `email`  <- read by Access.tsx
+  apps/web/test/accesswiring.test.tsx   :62    Member         `name`  <- read by Access.tsx
+  apps/web/test/accesswiring.test.tsx   :62    Member         `status`  <- read by Access.tsx
+  apps/web/test/deviceswiring.test.tsx  :46    Device         `public_key`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :46    Device         `user_id`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :79    Device         `public_key`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :79    Device         `user_id`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :85    Device         `public_key`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :85    Device         `user_id`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :92    Device         `user_id`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :99    Device         `public_key`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :99    Device         `user_id`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :107   Device         `public_key`  <- read by Devices.tsx
+  apps/web/test/deviceswiring.test.tsx  :107   Device         `user_id`  <- read by Devices.tsx
+  apps/web/test/gatewaysview.test.ts    :12    Node           `id`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :12    Node           `name`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :23    Node           `agent_version`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :23    Node           `status`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :24    Node           `agent_version`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :39    Node           `agent_version`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :39    Node           `status`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :59    Node           `agent_version`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :76    Node           `agent_version`  <- read by gatewaysview.ts
+  apps/web/test/gatewaysview.test.ts    :76    Node           `status`  <- read by gatewaysview.ts
+  apps/web/test/k8sview.test.ts         :12    K8sCluster     `id`  <- read by k8sview.ts
+  apps/web/test/k8sview.test.ts         :12    K8sCluster     `managed_by_operator`  <- read by k8sview.ts
+  apps/web/test/k8sview.test.ts         :12    K8sCluster     `name`  <- read by k8sview.ts
+  apps/web/test/k8sview.test.ts         :27    K8sService     `fqdn`  <- read by k8sview.ts
+  apps/web/test/k8sview.test.ts         :27    K8sService     `id`  <- read by k8sview.ts
+  apps/web/test/k8sview.test.ts         :27    K8sService     `managed_by_operator`  <- read by k8sview.ts
+  apps/web/test/k8sview.test.ts         :27    K8sService     `name`  <- read by k8sview.ts
+  apps/web/test/kuberneteswiring.test.tsx:25    K8sService     `fqdn`  <- read by Kubernetes.tsx
+  apps/web/test/kuberneteswiring.test.tsx:25    K8sService     `protocol`  <- read by Kubernetes.tsx
+  apps/web/test/kuberneteswiring.test.tsx:49    Member         `name`  <- read by Kubernetes.tsx
+  apps/web/test/kuberneteswiring.test.tsx:49    Member         `status`  <- read by Kubernetes.tsx
+  apps/web/test/overviewwiring.test.tsx :75    Node           `status`  <- read by overviewview.ts
+  apps/web/test/policyview.test.ts      :228   PolicyRule     `dst_k8s_service_vanished`  <- read by policyview.ts
+  apps/web/test/policyview.test.ts      :228   PolicyRule     `managed_by_operator`  <- read by policyview.ts
+  apps/web/test/policyview.test.ts      :257   K8sService     `managed_by_operator`  <- read by policyview.ts
+  apps/web/test/policyview.test.ts      :809   PolicyRule     `cidr_outside_org_ranges`  <- read by policyview.ts
+  apps/web/test/policyview.test.ts      :809   PolicyRule     `dst_k8s_service_vanished`  <- read by policyview.ts
+  apps/web/test/policyview.test.ts      :809   PolicyRule     `managed_by_operator`  <- read by policyview.ts
+  apps/web/test/routedrangeswiring.test.tsx:100   SiteSubnet     `cidr`  <- read by RoutedRanges.tsx,routedrangesview.ts
+  apps/web/test/settingswiring.test.tsx :52    Member         `name`  <- read by Settings.tsx
+  apps/web/test/settingswiring.test.tsx :52    Member         `status`  <- read by Settings.tsx
+  apps/web/test/sitesview.test.ts       :166   SiteSubnet     `site_id`  <- read by sitesview.ts
+  apps/web/test/sitesview.test.ts       :356   Node           `agent_version`  <- read by sitesview.ts
+  apps/web/test/sitesview.test.ts       :369   Node           `agent_version`  <- read by sitesview.ts
+  apps/web/test/sitesview.test.ts       :400   Node           `agent_version`  <- read by sitesview.ts
+  apps/web/test/siteswiring.test.tsx    :52    Member         `name`  <- read by Sites.tsx,sitesview.ts
+  apps/web/test/siteswiring.test.tsx    :52    Member         `status`  <- read by Sites.tsx,sitesview.ts
+
+  omitted-but-never-read (benign partial fixtures, not reported): 54
+
+total literals with a mismatch: 37   INVENTED: 1   OMITTED-AND-READ: 51

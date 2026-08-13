@@ -1,0 +1,18 @@
+EPIC-8 WALK FINDING (S8.6, likely merge-relevant) — no UI path to bind a SECOND gateway to a site → HA unreachable
+S8.6 lifted single-node-per-site (D1/Slice-2, so a site can host a PRIMARY + STANDBY hub set). But the Sites UI
+(apps/web/src/pages/Sites.tsx:491) toggles the button on `hasGateway`:
+    hasGateway ? <Unbind gateway> : <Bind gateway disabled={unboundNodes.length===0}>
+So once a site has ONE gateway, the "Bind gateway" control is REPLACED by "Unbind" — there is NO way to add a
+SECOND gateway to an existing site through the UI. Consequence: the operator CANNOT create the two-same-site-
+gateway state the hub-HA feature (S8.6's headline) requires. The HA panel only lists SITE-BOUND gateways as pin
+candidates, so an unbound aws-gw-2 never becomes pinnable → HA is UI-unreachable.
+Backend is fine: POST /sites/{siteId}/bind (bindSiteNode) accepts a node_id for a multi-gateway site.
+Fix: the site card must offer "Bind another gateway" even when hasGateway (show BOTH bind + unbind, or a
+"+ gateway" affordance), gated on unboundNodes. Walk workaround: bind via the API so Deck B proceeds.
+Disposition: HELD — candidate merge-gating for S8.6 (headline feature not operable via UI), founder rules.
+
+--- DISPOSITION (founder 2026-07-21): merge-relevant, folds WITH the failover fix (same session) ---
+HA unreachable through the product's own UI = the operator flow doesn't exist (the walk needed an API
+workaround — Zero-Touch-adjacent gap on the flagship). Sites.tsx:491's hasGateway?unbind:bind single-bind
+assumption is the CH-probe class (list-of-one) surviving in an ACTION path. Small fix, same session as the
+failover commit-one.

@@ -1,0 +1,135 @@
+# Tunnex.io — HOSTED (zero-build) deployment compose (S6.6).
+#
+# Customers do NOT clone the repo or build from source. `install.sh` fetches THIS file next to a
+# generated `.env`, then: `docker compose -f tunnex.yml pull && docker compose -f tunnex.yml up -d`.
+# Every Tunnex service is a PREBUILT image. A normal install first resolves the
+# immutable sha-* tag of the newest fully-published green main workflow, then
+# verifies its signed descriptor and replaces the runtime image references with
+# immutable OCI digests. It records that source as TUNNEX_SOURCE_REF. NEVER edit
+# this file — all configuration is in `.env`.
+
+name: tunnex
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tunnex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set by install.sh}
+      POSTGRES_DB: ${POSTGRES_DB:-tunnex}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tunnex} -d ${POSTGRES_DB:-tunnex}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: ${TUNNEX_API_IMAGE:-ghcr.io/iotunnex/tunnex-api:${TUNNEX_VERSION:-latest}}
+    restart: unless-stopped
+    environment:
+      TUNNEX_ENV: production
+      TUNNEX_LOG_LEVEL: ${TUNNEX_LOG_LEVEL:-info}
+      TUNNEX_API_ADDR: ":8080"
+      TUNNEX_SECRETS_DIR: /var/lib/tunnex/secrets
+      TUNNEX_AUTO_MIGRATE: "true" # the API migrates on boot — no separate migrate step for the customer
+      # The public URL users + email links resolve. install.sh writes it (a reachable address —
+      # never localhost) so verify/reset/invite links work off-box.
+      APP_BASE_URL: ${APP_BASE_URL:?set by install.sh}
+      TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
+      TUNNEX_NODE_AGENT_IMAGE: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/iotunnex/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
+      TUNNEX_IPV6_POOL_CIDR: ${TUNNEX_IPV6_POOL_CIDR:-}
+      DATABASE_URL: ${DATABASE_URL:?set by install.sh}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # SMTP: install.sh sets these when configured; empty = email features disabled (the dashboard
+      # surfaces "SMTP not configured" rather than silently failing).
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # The installer collects this address so first-boot can deliver the one-time admin credential.
+      TUNNEX_ADMIN_EMAIL: ${TUNNEX_ADMIN_EMAIL:-}
+      # A signed descriptor is mounted read-only. The API treats absent or invalid
+      # metadata as no update / blocked update, never as a mutable-tag upgrade.
+      TUNNEX_RELEASE_MANIFEST_PATH: ${TUNNEX_RELEASE_MANIFEST_PATH:-}
+      TUNNEX_RELEASE_PUBLIC_KEY: ${TUNNEX_RELEASE_PUBLIC_KEY:-}
+      TUNNEX_RELEASE_SEQUENCE: ${TUNNEX_RELEASE_SEQUENCE:-0}
+      TUNNEX_RELEASE_VERSION: ${TUNNEX_RELEASE_VERSION:-}
+      TUNNEX_RELEASE_SOURCE_SHA: ${TUNNEX_RELEASE_SOURCE_SHA:-}
+      TUNNEX_RELEASE_CATALOG_URL: ${TUNNEX_RELEASE_CATALOG_URL:-}
+      TUNNEX_RELEASE_UPDATE_CHECK: ${TUNNEX_RELEASE_UPDATE_CHECK:-true}
+    volumes:
+      - tunnex_secrets:/var/lib/tunnex/secrets # master key / JWT / session — auto-generated on first boot (S0.3)
+      - ./release.json:/var/lib/tunnex/release.json:ro
+    ports:
+      - "8443:8443" # mTLS agent control channel (agents dial directly)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: ${TUNNEX_WEB_IMAGE:-ghcr.io/iotunnex/tunnex-web:${TUNNEX_VERSION:-latest}}
+    restart: unless-stopped
+
+  nginx:
+    image: ${TUNNEX_NGINX_IMAGE:-ghcr.io/iotunnex/tunnex-nginx:${TUNNEX_VERSION:-latest}}
+    restart: unless-stopped
+    ports:
+      - "80:8080" # public HTTP (front a TLS terminator / reverse proxy for HTTPS in production)
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  node-agent:
+    image: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/iotunnex/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
+    restart: unless-stopped
+    environment:
+      TUNNEX_API_URL: http://api:8080
+      TUNNEX_AGENT_URL: https://api:8443
+      TUNNEX_AGENT_SERVERNAME: tunnex-control
+      # Set by the dashboard enroll command (item 6): the one-time join token, applied via
+      #   TUNNEX_JOIN_TOKEN=<token> docker compose -f tunnex.yml up -d --force-recreate node-agent
+      TUNNEX_JOIN_TOKEN: ${TUNNEX_JOIN_TOKEN:-}
+      TUNNEX_NODE_NAME: ${TUNNEX_NODE_NAME:-}
+      TUNNEX_NODE_STATE_DIR: /var/lib/tunnex-node
+      TUNNEX_WG_BACKEND: ${TUNNEX_WG_BACKEND:-wgctrl}
+      TUNNEX_WG_INTERFACE: ${TUNNEX_WG_INTERFACE:-wg0}
+      # The public WireGuard endpoint clients dial — install.sh derives it from the public address.
+      TUNNEX_NODE_ENDPOINT: ${TUNNEX_NODE_ENDPOINT:?set by install.sh}
+    volumes:
+      - tunnex_node_state:/var/lib/tunnex-node
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1 # container /proc/sys is read-only; the agent verifies this (S3.7)
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "51820:51820/udp"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  tunnex_secrets:
+  tunnex_node_state:

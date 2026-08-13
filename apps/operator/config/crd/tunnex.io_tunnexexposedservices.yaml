@@ -1,0 +1,169 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.1
+  name: tunnexexposedservices.tunnex.io
+spec:
+  group: tunnex.io
+  names:
+    kind: TunnexExposedService
+    listKind: TunnexExposedServiceList
+    plural: tunnexexposedservices
+    singular: tunnexexposedservice
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.service
+      name: Service
+      type: string
+    - jsonPath: .status.fqdn
+      name: FQDN
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TunnexExposedService is an in-cluster Service exposed on the
+          Tunnex fabric.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              TunnexExposedServiceSpec declares an in-cluster Kubernetes Service exposed on the fabric (mirrors the CP's
+              ExposeService verb). It must name a SINGLE specific port + protocol — the CP refuses all-ports and ranges
+              (M8/M9), so the schema requires them. The org is implicit (the operator's credential); the owning cluster
+              is referenced by its TunnexCluster resource name.
+            properties:
+              cluster:
+                description: Cluster is the name of the TunnexCluster resource that
+                  owns this Service. Required.
+                type: string
+              namespace:
+                description: Namespace is the Kubernetes namespace of the Service.
+                  Required.
+                type: string
+              port:
+                description: |-
+                  Port is the single Service port clients dial at the VIP (1-65535). Required — the CP refuses all-ports
+                  and ranges (the gateway DNATs VIP:port to the pod's target port).
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
+              protocol:
+                description: Protocol is the exposed L4 protocol. Required (the DNAT
+                  needs it; the CP refuses all-ports).
+                enum:
+                - tcp
+                - udp
+                type: string
+              service:
+                description: Service is the Kubernetes Service name. Required.
+                type: string
+            required:
+            - cluster
+            - namespace
+            - port
+            - protocol
+            - service
+            type: object
+          status:
+            description: TunnexExposedServiceStatus reflects the CP's accepted state
+              — DERIVED truth, never spec.
+            properties:
+              conditions:
+                description: Conditions carry Ready + any CP refusal verbatim (e.g.
+                  service_port_required). HONEST status.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              fqdn:
+                description: |-
+                  FQDN is the resolvable in-tunnel hostname clients use — <service>.<namespace>.svc.<cluster>.<zone>.
+                  It is DERIVED (server-built, the S10.3 copy-don't-construct naming ruling), so it lives in STATUS,
+                  never spec — the operator copies it from the CP, never assembles it.
+                type: string
+              serviceId:
+                description: ServiceID is the control-plane id assigned at exposure.
+                type: string
+              vip:
+                description: VIP is the synthetic VIP allocated to this Service (derived).
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,15 @@
+
+S7.5.3 Leg 5 — enterprise->open downgrade releases enforcement (fix [1] wire-proof)
+
+Under ENTERPRISE: spoke A reported non-compliant -> health_blocked=true, peer gone, ping 100% loss.
+DOWNGRADE: `make up` (open build, no enterprise tag) -> rebuilt api open + recreated.
+
+RELEASE ON BOOT (no report, no sweep — pure downgrade release):
+  edition -> open
+  api log: health_blocks_released_on_downgrade count=1 ; health_downgrade_release released=1
+  devices.health_blocked (walk-spoke) -> false
+  wg0: spoke A peer BACK ; ping A->gw 0% loss (restored)
+  audit: device.health_unblocked cause=posture_disabled @10:08:26 (boot)
+
+Without the fix, health_blocked would stay true forever (sweeper enterprise-only, report 403) — the
+device stranded off every gateway with no open-edition remedy. Downgrade RELEASES enforcement.

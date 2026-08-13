@@ -1,0 +1,27 @@
+== Thu Jul 16 14:02:50 UTC 2026 Leg0 baseline (enforcing, no policy rule yet) ==
+-- Gateway A (demo-gw 019f6b37) --
+table ip tunnex {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 10.99.0.0/24 oifname != "wg0" masquerade
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		counter packets 0 bytes 0 comment "tunnex_default_drop"
+	}
+}
+-- Gateway B (gw-b 019f6b32) --
+table ip tunnex {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 10.99.0.0/24 oifname != "wg0" masquerade
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		counter packets 0 bytes 0 comment "tunnex_default_drop"
+	}
+}

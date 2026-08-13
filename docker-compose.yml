@@ -1,0 +1,185 @@
+# Tunnex.io — one-command stack.
+#   make up     -> build + start everything
+#   make down   -> stop
+#   make reset  -> stop + wipe volumes
+#
+# The build context is the repo root for every service so Dockerfiles can reach
+# the whole monorepo (shared package, per-app source).
+
+name: tunnex
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tunnex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tunnex_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-tunnex}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tunnex} -d ${POSTGRES_DB:-tunnex}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+      args:
+        # Open-core edition selector. Empty (default) builds the OPEN image; set
+        # TUNNEX_BUILD_TAGS=enterprise to build the enterprise image reproducibly.
+        TUNNEX_BUILD_TAGS: ${TUNNEX_BUILD_TAGS:-}
+    restart: unless-stopped
+    environment:
+      TUNNEX_ENV: ${TUNNEX_ENV:-development}
+      TUNNEX_LOG_LEVEL: ${TUNNEX_LOG_LEVEL:-info}
+      TUNNEX_API_ADDR: ${TUNNEX_API_ADDR:-:8080}
+      TUNNEX_SECRETS_DIR: /var/lib/tunnex/secrets
+      TUNNEX_AUTO_MIGRATE: ${TUNNEX_AUTO_MIGRATE:-true}
+      # The gateway agent image the dashboard bakes into the emitted enroll command (S8.2c WF-2,
+      # meta.node_agent_image). Set in .env to a DIGEST-pinned ref for single-provenance deploys;
+      # the config default (ghcr :latest) applies when unset. Was never forwarded here — the .env
+      # pin silently no-op'd (smooth-walk pre-flight finding).
+      TUNNEX_NODE_AGENT_IMAGE: ${TUNNEX_NODE_AGENT_IMAGE:-}
+      # Agent certificate lifetime. SHORTENS ONLY — a value above the 48h ceiling is clamped down, because
+      # revocation here is refusal-to-renew and the lifetime IS the window a revoked agent keeps working.
+      # Set it (e.g. 10m) to rehearse the gateway-recovery walk without waiting out a real expiry; a walk run
+      # under a shortened TTL proves the MECHANICS, not the shipped 48h behaviour. Unset = 48h.
+      TUNNEX_AGENT_CERT_TTL: ${TUNNEX_AGENT_CERT_TTL:-}
+      # Public base URL for email links (verify/reset/invite). MUST be reachable by
+      # your users on a remote deploy — the localhost default only works locally, and
+      # the API warns loudly at boot if left at it. Set APP_BASE_URL in .env.
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
+      TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      # ⛔ NO DEFAULT. Empty SMTP configuration disables email explicitly; deployments must configure a
+      # real relay rather than silently discarding invitations and password resets.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@tunnex.local}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # ⛔ OFF UNLESS ASKED FOR (S12.13 D1). The tee logs message BODIES, which are working links; it used
+      # to switch itself on whenever TUNNEX_ENV was not "production", so every dev box, staging box and
+      # founder rig got it silently. It has never suppressed sending — the confusion was the label.
+      MAIL_DEV_LOG: ${MAIL_DEV_LOG:-false}
+    volumes:
+      # Dedicated volume for roots of trust — kept separate from app data so
+      # S11.2's backup story can scope it cleanly.
+      - tunnex_secrets:/var/lib/tunnex/secrets
+    ports:
+      # mTLS agent control channel (agents connect directly, bypassing nginx TLS).
+      # ⛔ HOST side parameterised so a SECOND stack (the open-edition review stack) can run alongside.
+      # Default is unchanged, so the primary stack is byte-identical to before.
+      - "${HOST_API_MTLS_PORT:-8443}:8443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  node-agent:
+    build:
+      context: .
+      dockerfile: deploy/docker/node.Dockerfile
+    restart: unless-stopped
+    environment:
+      TUNNEX_API_URL: ${TUNNEX_API_URL:-http://api:8080}
+      TUNNEX_AGENT_URL: ${TUNNEX_AGENT_URL:-https://api:8443}
+      TUNNEX_AGENT_SERVERNAME: tunnex-control
+      # Empty by default: the agent idles (liveness up, readiness not-ready) until
+      # an operator provides a join token. Set it to auto-enroll.
+      TUNNEX_JOIN_TOKEN: ${TUNNEX_JOIN_TOKEN:-}
+      # Must match the name the join token was pinned to (if it was named in the
+      # dashboard) — the server refuses a pinned token under any other name.
+      # Empty = the agent's hostname.
+      TUNNEX_NODE_NAME: ${TUNNEX_NODE_NAME:-}
+      TUNNEX_NODE_STATE_DIR: /var/lib/tunnex-node
+      # Real WireGuard data plane (S3.2). "mem" for an in-memory dev backend.
+      TUNNEX_WG_BACKEND: ${TUNNEX_WG_BACKEND:-wgctrl}
+      TUNNEX_WG_INTERFACE: ${TUNNEX_WG_INTERFACE:-wg0}
+      # Public WireGuard endpoint (host:port) peer configs dial. MUST be reachable
+      # by clients — set to your gateway's public address in production. The
+      # compose default (service name) works for containers on this network.
+      TUNNEX_NODE_ENDPOINT: ${TUNNEX_NODE_ENDPOINT:-node-agent:51820}
+    volumes:
+      - tunnex_node_state:/var/lib/tunnex-node
+    # NET_ADMIN + /dev/net/tun let the agent create/configure the WG interface
+    # (kernel module if present, else userspace wireguard-go). readiness stays
+    # false + diagnosable if neither is available — no silent success.
+    cap_add:
+      - NET_ADMIN
+    # ip_forward MUST be declared here: a Docker container's /proc/sys is READ-ONLY, so the
+    # agent can't write it from inside — the sysctl sets it at boot and the agent verifies
+    # it (egress_linux.go ensureIPForward). S3.7: the agent OWNS the real thing — the
+    # reconciled nftables `tunnex` egress NAT + forwarding — replacing the throwaway
+    # scripts/poc-gateway-nat.sh (deleted). Only the ip_forward toggle stays declarative.
+    sysctls:
+      - net.ipv4.ip_forward=1
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      # WireGuard data-plane UDP port, published for later stories.
+      - "${HOST_WG_PORT:-51820}:51820/udp"
+    depends_on:
+      - api
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/web.Dockerfile
+      args:
+        # Empty unless the visual job (or `make visual`) sets it. A build-time flag, not a runtime one:
+        # Vite bakes import.meta.env into the bundle, so a container env var arrives after the decision.
+        VITE_VISUAL_GALLERY: ${VITE_VISUAL_GALLERY:-}
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/docker/nginx.Dockerfile
+    restart: unless-stopped
+    ports:
+      # Host :80 -> container :8080 (non-root nginx-unprivileged image).
+      - "${HOST_HTTP_PORT:-80}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  # One-shot migration tool. Not started by `up` (tools profile); invoked via
+  # `make migrate` / `make migrate-down`. The API also auto-migrates on boot.
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/docker/migrate.Dockerfile
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
+volumes:
+  postgres_data:
+  redis_data:
+  tunnex_secrets:
+  tunnex_node_state:

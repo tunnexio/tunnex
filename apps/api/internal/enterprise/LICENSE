@@ -1,0 +1,45 @@
+Tunnex Enterprise Edition License (Proprietary, Source-Available)
+Copyright 2026 Tunnex. All rights reserved.
+
+This LICENSE governs the contents of this directory (apps/api/internal/enterprise/)
+and any code, in this repository or built from it, that is compiled only under the
+`enterprise` build tag (collectively, the "Enterprise Code"). The Enterprise Code
+is NOT covered by the Apache License, Version 2.0 that governs the rest of this
+repository (the "Open Edition"). Where this LICENSE and the root Apache-2.0 LICENSE
+conflict as to the Enterprise Code, this LICENSE controls.
+
+1. Source-available, not open source. The Enterprise Code is made visible for
+   reference, evaluation, security review, and development of the Open Edition. Its
+   visibility does NOT grant any of the permissions an open-source license would.
+
+2. Permitted use.
+   (a) You may READ, and make internal COPIES of, the Enterprise Code for the
+       purpose of understanding, evaluating, testing, and developing Tunnex.
+   (b) You may BUILD and RUN the Enterprise Code for non-production evaluation and
+       development on infrastructure you control.
+
+3. Production use requires an agreement. Any use of the Enterprise Code in
+   production, or to provide a service to third parties, or for any commercial
+   purpose, REQUIRES a separate written commercial agreement with the Licensor.
+   Absent such an agreement, production and commercial use are not licensed.
+
+4. No redistribution. You may NOT redistribute, sublicense, sell, host for others,
+   or otherwise convey the Enterprise Code or Derivative Works of it, in Source or
+   Object form, to any third party, except as expressly permitted by a written
+   commercial agreement with the Licensor.
+
+5. No trademark or patent grant. This LICENSE grants no rights in the Licensor's
+   trademarks and no patent license beyond what is strictly necessary to exercise
+   the permissions in Section 2.
+
+6. Contributions. Contributions to the Enterprise Code are accepted only under a
+   separate contributor agreement; see CONTRIBUTING.md.
+
+7. Termination. Any breach of this LICENSE terminates the permissions in Section 2
+   automatically.
+
+8. AS IS. THE ENTERPRISE CODE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, AND THE LICENSOR SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING
+   FROM ITS USE, TO THE MAXIMUM EXTENT PERMITTED BY LAW.
+
+For a commercial license, contact the Tunnex project.

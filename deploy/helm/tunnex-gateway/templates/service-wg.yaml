@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tunnex-gateway.fullname" . }}-wg
+  labels:
+    {{- include "tunnex-gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if and (eq .Values.service.type "LoadBalancer") .Values.service.loadBalancerIP }}
+  # A reserved static IP lets the operator set `endpoint` BEFORE install (F6).
+  loadBalancerIP: {{ .Values.service.loadBalancerIP | quote }}
+  {{- end }}
+  # externalTrafficPolicy Local preserves the peer's source IP to the gateway (the WG
+  # handshake needs the real client address, not an SNAT'd node IP).
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: wireguard
+      port: {{ .Values.wireguard.port }}
+      targetPort: {{ .Values.wireguard.port }}
+      protocol: UDP
+      {{- if and (eq .Values.service.type "NodePort") (gt (int .Values.service.nodePort) 0) }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}

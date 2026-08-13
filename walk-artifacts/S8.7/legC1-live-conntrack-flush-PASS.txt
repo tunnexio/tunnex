@@ -1,0 +1,22 @@
+S8.7 Deck C — Leg C1 (live expiry/delete conntrack flush) — PASS (THE money leg)
+Device 10.99.0.3 -> 172.31.17.64 (behind aws-gw), grant apple->aws-lan, ZT enforcing.
+
+STEADY FLOW then GRANT REVOKED mid-stream:
+  ping 172.31.17.64:
+    icmp_seq 0..16  -> REPLY, ttl=63, ~186ms   (established flow, flowing)
+    <<< dashboard: delete rule apple -> aws-lan >>>
+    icmp_seq 17..30 -> ALL TIMEOUT              (running flow TORN DOWN)
+
+aws-gw node-agent log AT revocation:
+  {"level":"INFO","msg":"conntrack_flushed","flows":1,"tuples":2}
+  (removed grant compiled to 2 tuples -- both apple devices' /32 -> 172.31.0.0/16;
+   flushTuples matched + killed the 1 LIVE flow 10.99.0.3->172.31.17.64)
+
+ISOLATION: the DOCKER-USER manual accept for 172.31.0.0/16 stayed UP throughout, so Docker
+still permitted the forward -- the ONLY thing that stopped the ping was Tunnex flushing the
+conntrack entry at the ZT layer. Pure S8.7.
+
+VERDICT: a live, established flow is cut mid-stream the instant its grant is revoked, via
+the conntrack flush -- without which `ct established,related accept` would honor the flow
+indefinitely. The S8.7 live-flush arc (4 defect rounds -> escalation -> boot-sweep deferred
+to S8.7b, live flush shipped) is PROVEN on live cross-cloud iron. Clean 16->17 cutover.

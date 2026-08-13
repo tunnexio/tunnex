@@ -1,0 +1,146 @@
+# tunnex-cp — control-plane chart values.
+#
+# Boundary (S10.1): this chart deploys the CONTROL PLANE only (api + web + edge).
+# The in-cluster gateway ships in the separate tunnex-gateway chart (S10.3) — it is
+# privileged (NET_ADMIN/hostNetwork) and consumes a join token; keeping it out of
+# this chart keeps the control plane an ordinary, unprivileged workload.
+
+image:
+  registry: ghcr.io/iotunnex
+  # Open-edition images are on ghcr; an ENTERPRISE deploy builds its own images
+  # (TUNNEX_BUILD_TAGS=enterprise) and pushes them to a private registry, then
+  # overrides registry + repositories below.
+  api: tunnex-api
+  web: tunnex-web
+  edge: tunnex-nginx      # the reverse proxy that routes / -> web and /api -> api
+  migrate: tunnex-migrate # the one-shot schema migrator (cmd/migrate)
+  tag: "0.2.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# ─── EXTERNAL STORE (S10.1 Slice 2 — URL-WINS, validate-never-generate) ──────────
+# A K8s deploy points at a MANAGED Postgres + Redis. These become TUNNEX_DATABASE_URL
+# / TUNNEX_REDIS_URL, which win over any bundled default and flag the store external;
+# the API pings both at boot and FAILS LOUD if unreachable. This chart never runs a
+# bundled Postgres/Redis — provide reachable URLs. Prefer referencing an existing
+# Secret (urlSecret) over inlining the URL (which lands in values/helm history).
+database:
+  url: ""                 # e.g. postgres://user:pass@host:5432/tunnex?sslmode=require
+  urlSecret: ""           # name of a Secret holding key `TUNNEX_DATABASE_URL` (preferred)
+redis:
+  url: ""                 # e.g. redis://:pass@host:6379/0
+  urlSecret: ""           # name of a Secret holding key `TUNNEX_REDIS_URL` (preferred)
+
+# ─── MASTER KEY (S10.1 Slice 1 — REQUIRED, NEVER GENERATED) ──────────────────────
+# The master key seals every secret in the database (device credentials, SSO client
+# secrets, OVPN server keys). It is REQUIRED and this chart will NEVER mint one:
+# a generated key on a `helm upgrade` or re-install would silently orphan every
+# sealed value — an unrecoverable, production-scale data loss. Provide a Secret you
+# created and keep backed up (see NOTES). It is mounted as a projected volume (a
+# FILE, per the Slice-1 posture — never env, never ConfigMap; env leaks via process
+# listing / crash dump / kubectl describe).
+masterKey:
+  existingSecret: ""      # REQUIRED — name of a Secret you created + BACKED UP
+  key: master.key         # the key within that Secret (base64 32 bytes, the LoadOrInit shape)
+# Optional: externalize the SESSION secret too (regenerating it only logs everyone
+# out, not data loss). If unset, the session secret lives in an ephemeral emptyDir
+# and regenerates on pod restart (tolerable at replicas=1).
+sessionSecret:
+  existingSecret: ""
+  key: session.key
+
+# ─── APP ─────────────────────────────────────────────────────────────────────────
+# Public base URL for email links (verify/reset/invite). MUST be the address users
+# reach — a localhost default on a real deploy sends unreachable links.
+appBaseURL: ""            # e.g. https://vpn.acme.com   (REQUIRED for working email)
+env: production
+logLevel: info
+# The gateway agent image the dashboard bakes into its emitted enroll command.
+nodeAgentImage: ghcr.io/iotunnex/tunnex-node-agent:0.2.0
+# Exact-origin CORS allowlist (desktop app). Leave default unless customizing.
+corsAllowedOrigins: "app://tunnex"
+
+api:
+  # HORIZONTAL SCALING IS NOW SUPPORTED (S11 D4). The in-process schedulers — the HA
+  # failover tick, the CRL rebuild, the flow-log retention sweep — are LEADER-GATED by a
+  # Postgres session-scoped advisory lock, so N replicas all SERVE requests while exactly
+  # ONE ticks. The lock is released by Postgres itself when a leader's session ends, so a
+  # crashed or partitioned leader is handed over without a TTL or a clock comparison, and
+  # two simultaneous leaders are impossible by construction.
+  #
+  # Default stays 1 because most self-hosted deployments do not need a second replica and
+  # a single one is simpler to reason about — NOT because more is unsafe. Raise it freely.
+  # HONEST LIMIT: after a leader dies, takeover takes up to ~10s (the campaign retry) plus
+  # however long Postgres takes to notice the dead session — immediate on a clean process
+  # exit, but bounded by TCP keepalive on a hard network partition, which can be minutes.
+  # Nothing ticks during that window; running tunnels are entirely unaffected, because the
+  # schedulers are periodic reconcilers and never sit in the request or data path.
+  replicas: 1
+  # Requests are sized for a small fleet and are deliberately conservative; limits leave
+  # headroom for a compile+push burst. Memory is the meaningful one — the CP holds compiled
+  # policy artifacts per org in flight. No CPU limit: throttling a control plane mid-compile
+  # turns a slow tick into a failed one, and the request already guarantees its share.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # secretsDir is a WRITABLE emptyDir for the session secret ONLY. The master key is
+  # a separate READ-ONLY mount (masterKeyPath) so a read-only Secret mount never
+  # collides with session init.
+  secretsDir: /var/lib/tunnex/secrets
+  masterKeyPath: /etc/tunnex/master
+
+web:
+  # Static SPA assets — stateless, trivially horizontal.
+  replicas: 2
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+edge:
+  # nginx: TLS termination + routing. Sized for connection handling, not computation.
+  replicas: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# ─── AGENT mTLS PORT (S10.1 condition 1 — NEVER TLS-TERMINATED) ───────────────────
+# Gateways dial https://<cp>:8443 with a PINNED cert and SNI=tunnex-control. The API
+# terminates that TLS ITSELF. An Ingress controller that TLS-terminates would present
+# ITS OWN certificate and break pinning — enrollment fails, looking like a network
+# problem. So the agent port is exposed as a raw L4 Service (LoadBalancer/NodePort),
+# NEVER a terminating Ingress (nor an Ingress with TLS re-encrypt). If you must front
+# it with an Ingress, it MUST be SSL-passthrough. This is the single most likely
+# misconfiguration — see NOTES.
+agentPort:
+  type: LoadBalancer      # or NodePort; ClusterIP if the gateway is in-cluster (tunnex-gateway)
+  port: 8443
+  nodePort: ""            # set when type=NodePort
+  annotations: {}         # cloud LB annotations, if any
+
+# ─── HTTP EDGE (terminates TLS normally — this is fine, it is NOT the agent port) ──
+ingress:
+  enabled: false
+  className: ""
+  host: ""                # e.g. vpn.acme.com
+  annotations: {}
+  tls: []                 # [{secretName: tunnex-tls, hosts: [vpn.acme.com]}]
+
+serviceAccount:
+  create: true
+  name: ""
+
+migrations:
+  # Migrations run EXACTLY ONCE via a Helm pre-install,pre-upgrade HOOK Job (not an
+  # init container — an init container runs per-pod, so N replicas would race the
+  # migrator against the one thing that can't self-heal, the schema). The api pods
+  # therefore boot with TUNNEX_AUTO_MIGRATE=false.
+  enabled: true
+  backoffLimit: 3

@@ -1,0 +1,112 @@
+# S6.5a UNSIGNED packaging. No codesign identity, no notarization, no auto-update
+# feed — those are S6.5b (trigger: public beta / first outside-circle distribution).
+# electron-builder still ad-hoc-signs the .app (codesign -s -); the bundled Go helper
+# is ad-hoc-signed separately in scripts/stage-helper.sh (extraResources are not signed
+# by the app's codesign pass).
+appId: io.tunnex.desktop
+productName: Tunnex
+copyright: Tunnex
+
+directories:
+  output: release
+  buildResources: build
+
+# ⛔ THE APP ICON. Without this the packaged app ships ELECTRON'S OWN icon — which is what the Dock
+# was showing, and which is the single most obvious "this is somebody's side project" tell.
+#
+# electron-builder would find build/icon.png via buildResources anyway; naming it is the difference
+# between an icon that is configured and an icon that happens to be found. It generates the .icns
+# and .ico from this single PNG.
+#
+# Regenerate with `pnpm --filter @tunnex/client icon` — scripts/make-icon.mjs renders the brand mark
+# through Chromium (nothing else on the box can rasterise this SVG) onto a rounded plate with 21%
+# padding on each side, because macOS applies NO mask: whatever the file contains is what the Dock
+# shows, and the raw asset is a full-bleed square.
+icon: build/icon.png
+
+# The compiled main/preload (tsc → dist) + the manifest. The SPA bundle and the
+# privilege helper ride along as extraResources (read via process.resourcesPath).
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  # apps/web build → Resources/web (index.ts bundleDir() = resourcesPath/web).
+  #
+  # ⛔ THE DASHBOARD IS NOT SHIPPED (S14.20 step 4). The vite build emits two entries; the client
+  # loads `client.html` and can no longer reach `index.html` at all. Shipping it anyway put the
+  # entire admin dashboard — 352 KB of JS plus its CSS — inside the client bundle as code that
+  # cannot execute but can be read.
+  #
+  # `brand-*` is shared by both entries and STAYS: the client renders the wordmark from it.
+  # Verified against the built HTML rather than guessed — client.html references brand.css,
+  # brand.js and client.js, and nothing else.
+  - from: ../web/dist
+    to: web
+    filter:
+      - "**/*"
+      - "!index.html"
+      - "!assets/index-*"
+  # The staged, ad-hoc-signed helper binary(ies) → Resources/helper.
+  - from: build/helper
+    to: helper
+  # NativeImage decodes these PNGs reliably in the macOS status bar. SVG data URLs
+  # rendered blank in RC20, so tray assets are explicit release inputs, including 2x.
+  - from: build/tray
+    to: tray
+    filter:
+      - "*.png"
+
+mac:
+  # UNIVERSAL .pkg (Apple Silicon + Intel). A .pkg (not .dmg) so the privileged helper
+  # is installed at INSTALL time by the root postinstall — one admin prompt during
+  # install, no first-Connect prompt — and the app lands at the FIXED /Applications path
+  # (pkg-installed files aren't quarantined → no App Translocation → stable path-based
+  # caller-auth). helper is lipo'd universal in stage-helper.sh (Intel Rosetta-validated).
+  target:
+    - target: pkg
+      arch: universal
+  category: public.app-category.utilities
+  # Unsigned: no Developer ID. null = ad-hoc sign only, never attempt a real identity.
+  identity: null
+  # The staged helper is ALREADY a universal (fat) mach-o, byte-identical in both the
+  # x64 and arm64 sub-builds. Tell @electron/universal to take it as-is instead of
+  # trying to lipo two per-arch copies (which don't exist — it's one fat binary).
+  x64ArchFiles: "**/tunnex-helper"
+
+pkg:
+  # Stable filename: the website and the client may link to the current GitHub release
+  # without guessing a versioned electron-builder filename.
+  artifactName: Tunnex-macOS-universal.${ext}
+  # Relative to the build-resources dir (`build`) → build/pkg-scripts. (NOT project-root
+  # relative — `build/pkg-scripts` here would resolve to build/build/pkg-scripts and be
+  # silently dropped.) Contains the root postinstall that installs the LaunchDaemon.
+  scripts: pkg-scripts
+  installLocation: /Applications
+  # Pin the install location: a relocated app would break the postinstall's fixed
+  # TUNNEX_INSTALL_DIR caller-auth trust path.
+  isRelocatable: false
+  isVersionChecked: false
+  # No hardened runtime / notarization (that needs a real signature → S6.5b).
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+  # Unsigned: no certificate. SmartScreen will warn until S6.5b (documented in install.md).
+
+nsis:
+  # Stable filename: release CI owns version provenance; links always resolve through
+  # GitHub's latest-release asset, not an unverified filename convention.
+  artifactName: Tunnex-Windows-x64.${ext}
+  oneClick: false
+  # perMachine so the installer elevates (UAC) — needed to register the SCM service +
+  # wintun at install time.
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  # The service/wintun registration + teardown hooks are included from build/nsis.
+  include: build/nsis/installer.nsh
+
+dmg:
+  # A plain drag-to-Applications layout; a branded background/icon is a nicety, not a
+  # blocker for unsigned S6.5a.
+  title: Tunnex ${version}

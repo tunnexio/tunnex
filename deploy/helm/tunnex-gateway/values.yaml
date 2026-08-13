@@ -1,0 +1,117 @@
+# tunnex-gateway — in-cluster gateway chart values (S10.3).
+#
+# This chart deploys ONE privileged, hostNetwork node-agent that fronts a Kubernetes
+# cluster on the Tunnex fabric. It is DELIBERATELY separate from tunnex-cp: the
+# gateway needs NET_ADMIN + /dev/net/tun + hostNetwork (F4) to place its prerouting
+# DNAT in the node netns ahead of kube-proxy, whereas the control plane is an
+# ordinary unprivileged workload.
+
+image:
+  registry: ghcr.io/iotunnex
+  # The node-agent image. An ENTERPRISE deploy builds its own (TUNNEX_BUILD_TAGS=
+  # enterprise) and overrides registry + repo. The preflight uses a tiny busybox.
+  agent: tunnex-node-agent
+  tag: "0.2.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  # The preflight hook image (needs a shell + nslookup + test — busybox suffices). PINNED to a specific
+  # version (M3): the preflight's DNS gate must not depend on a floating tag whose nslookup applet might
+  # regress to exit-0-on-failure. The gate reads answer CONTENT, not the exit code, but a pinned image keeps
+  # the whole probe reproducible. Override with your own mirror if egress to Docker Hub is blocked.
+  preflight: "busybox:1.37.0"
+
+# ─── CONTROL-PLANE CONNECTION ────────────────────────────────────────────────────
+# Where the agent enrolls + fetches desired state. Point at the tunnex-cp release's
+# agent-mTLS Service (https, port 8443) and its API (http, 8080). Cross-namespace:
+# use the FQDN <svc>.<ns>.svc.cluster.local.
+controlPlane:
+  apiURL: ""              # e.g. http://tunnex-cp-api.tunnex.svc.cluster.local:8080  (REQUIRED)
+  agentURL: ""            # e.g. https://tunnex-cp-api-agent.tunnex.svc.cluster.local:8443  (REQUIRED)
+  serverName: "tunnex-control" # the agent-mTLS server name the CP presents
+
+# ─── JOIN TOKEN (F5 — prefer an existing Secret; a token in helm history leaks) ──
+# The one-time join token the agent enrolls with (mints its node cert, then never
+# needs the token again — state persists on the PVC). Provide EITHER:
+#   existingJoinTokenSecret — a Secret YOU created holding key `TUNNEX_JOIN_TOKEN`
+#                             (PREFERRED — keeps the token out of values/helm history)
+#   joinToken               — the raw token; this chart mints the Secret (convenience,
+#                             but the value lands in `helm get values` / release history)
+existingJoinTokenSecret: ""
+joinTokenKey: TUNNEX_JOIN_TOKEN
+joinToken: ""
+
+# ─── FABRIC ENDPOINT (F6 — REQUIRED; the chart cannot synthesize it) ─────────────
+# The PUBLIC WireGuard endpoint (host:port) peers dial to reach THIS gateway. The
+# LoadBalancer external IP may not exist at install time, so the operator supplies
+# the reserved address (or sets service.loadBalancerIP to a reserved static IP and
+# uses that here). This is a fabric promise the chart can't invent — REQUIRED.
+endpoint: ""             # e.g. 203.0.113.10:51820   (REQUIRED)
+
+# The node name the agent enrolls under. The CP pins each join token to a node name; the agent MUST present
+# exactly that name or enrollment is refused (node_name_mismatch). A hostNetwork pod otherwise defaults to the
+# NODE's hostname (the VM name), which usually differs from the token's pinned name — so set this to whatever
+# name the join token was minted for (shown in the enroll dialog). Empty = fall back to the pod hostname.
+nodeName: ""
+
+# The WireGuard listen port (must match the port in `endpoint`).
+wireguard:
+  port: 51820
+
+# ─── WG-EXPOSURE SERVICE ─────────────────────────────────────────────────────────
+# How the WG :51820 datapath is reached from outside the cluster.
+service:
+  type: LoadBalancer      # LoadBalancer (cloud) or NodePort (bare-metal/on-prem)
+  # Pin a reserved static IP (recommended: it lets you set `endpoint` before install).
+  loadBalancerIP: ""
+  # For type NodePort, the node port (30000–32767); ignored for LoadBalancer.
+  nodePort: 0
+  annotations: {}
+
+# ─── PERSISTENT STATE (the node cert + WG identity — survives restarts) ──────────
+# The agent stores its enrolled cert + keys under TUNNEX_NODE_STATE_DIR. Persisting
+# it means a pod restart re-attaches the SAME node identity (no re-enroll). Losing it
+# forces a wipe-to-re-enroll (see NOTES).
+persistence:
+  enabled: true
+  size: 128Mi
+  storageClass: ""        # "" = the cluster default StorageClass
+  # For ephemeral clusters you can disable persistence (emptyDir); a restart then
+  # re-enrolls (needs a fresh join token) — acceptable only for testing.
+
+# ─── PREFLIGHT (F7 — the guard-before-exec gate) ─────────────────────────────────
+# A pre-install,pre-upgrade hook Job that requests the SAME privileged/hostNetwork/
+# NET_ADMIN//dev/net/tun context and asserts (a) /dev/net/tun is present and (b) the
+# cluster DNS resolves (the hostNetwork DNS trap — without ClusterFirstWithHostNet a
+# hostNetwork pod inherits the NODE resolv.conf and *.svc never resolves). On a
+# cluster whose PodSecurity/admission blocks the context, the Job pod is REJECTED, so
+# `helm install --wait` fails HERE, before the real Deployment ever starts a
+# crash-loop. Keep it enabled unless you have a reason not to.
+preflight:
+  enabled: true
+  # The Service the preflight resolves to prove cluster DNS works from the gateway's
+  # DNS posture. Default = the kube API Service, always present.
+  dnsProbe: "kubernetes.default.svc.cluster.local"
+
+# ─── PRIVILEGE ACKNOWLEDGEMENT (F7b — REQUIRED) ──────────────────────────────────
+# This chart runs a PRIVILEGED, hostNetwork pod with NET_ADMIN and /dev/net/tun. Set
+# this true to acknowledge that posture — a `required` guard so no one installs the
+# gateway without seeing what it asks for.
+acknowledgePrivileged: false
+
+# The pod's node placement (a gateway often pins to a node with a stable external IP).
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+serviceAccount:
+  create: true
+  name: ""
+
+logLevel: info

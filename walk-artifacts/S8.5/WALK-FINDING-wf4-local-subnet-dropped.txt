@@ -1,0 +1,47 @@
+S8.5 WALK FINDING (CORRECTNESS, wire-proven) — device->local-LAN dropped by Docker FORWARD on a Docker gateway
+Severity: HIGH — the core S8.5 use case (a split-tunnel device reaches the LAN BEHIND its
+gateway) FAILS on a Docker-host gateway.
+
+TOPOLOGY: device 10.99.0.3 peers with aws-gw (hub). Target 172.31.17.64 is on aws-gw's
+OWN LAN (172.31.0.0/16, advertised by aws-site). aws-gw runs the node-agent in Docker
+(--network host); dockerd owns iptables `-P FORWARD DROP` + DOCKER-USER.
+
+WIRE EVIDENCE (aws-gw, while device pinged 172.31.17.64):
+  tunnex nft forward:  ip saddr 10.99.0.3 ip daddr 172.31.0.0/16 counter packets 13 accept
+      -> ZT PASSED the traffic (13 pkts hit the grant)
+  masquerade:          ip saddr 10.99.0.0/24 oifname != wg0 masquerade   (reply path OK)
+  iptables FORWARD:    -P FORWARD DROP ; -j DOCKER-USER ; -j DOCKER-FORWARD
+  DOCKER-USER:         ACCEPT only 10.0.0.0/16 (remote route, both dirs)
+                       NO accept for 172.31.0.0/16 (the local LAN)
+  RESULT: ping 172.31.17.64 = 100% loss (Docker FORWARD DROP swallows the wg0->eth0 forward)
+
+ROOT CAUSE: reconcileDockerForward (apps/node/internal/egress/egress_linux.go) scopes the
+DOCKER-USER accept to pol.Routes = REMOTE site subnets reached via site-links. A gateway's
+OWN advertised subnet is directly-connected (not a Route), so it is never whitelisted through
+Docker's FORWARD DROP. Site-to-site (S8.2c) works; device->local-LAN (S8.5) does not, on Docker.
+
+FIX DIRECTION: the agent must also place a DOCKER-USER accept for the gateway's OWN advertised/
+routed local subnets (wg0->eth0, daddr=local-subnet + return), not just remote Routes. On a
+bare-metal (non-Docker) gateway this never bites (no Docker FORWARD DROP) — which is likely why
+prior S8.5 unit/box proofs missed it.
+
+WORKAROUND (walk, to prove the rest of the path is correct): manual DOCKER-USER accept for
+172.31.0.0/16 -> ping should then flow, proving ZT+masq+routing are all correct and ONLY the
+Docker-forward scoping is the gap.
+
+Disposition: HELD for founder disposition (candidate S8.5b / WF-4-local fold). Not folded mid-walk.
+
+--- DISPOSITION (founder) ---
+CONFIRMED merge-gating S8.5 defect. It is WF-4's missing half: S8.2c scoped the DOCKER-USER
+accept to Routes (remote sites' subnets); a gateway's OWN advertised subnet is the local side,
+never in Routes by construction. The demo-era blanket rule masked it; the genuinely-behind-host
+fixture found it once the blanket was gone (fixture-fidelity law, closing its arc on its birthplace).
+FIX (S8.5 branch): reconcileDockerForward accepts widen to Routes UNION LocalSubnets (same
+LocalSubnets the artifact already carries for the src-hint — one truth, union at the rule-render
+site), marked + full-swept per the shared-territory law (identical discipline as the Routes accepts).
+RED: the walk's exact fixture — split-tunnel device -> LAN behind its OWN gateway, NO manual rules;
+forward succeeds under mesh / grant-gated under enforcing; assert BOTH faces (the DOCKER-USER accept
+opens Docker's structural drop, the ZT chain still adjudicates).
+RE-WALK: remove the manual `iptables -I DOCKER-USER ... 172.31.0.0/16` accepts on aws-gw as part of
+the re-walk (blanket bypass, same class as the demo-era one — must not survive into Deck B). A1 re-run
+clean (no manual rule) IS the fold's re-verify. S8.6/S8.7 rebase onto folded S8.5 before their decks.

@@ -1,0 +1,4 @@
+== Thu Jul 16 14:36:45 UTC 2026 Leg4 RE-EARN (post-fix, extend no push) ==
+handles A before/after: handle 720 / handle 720
+handles B before/after: handle 804 / handle 804
+zero-churn: PASS

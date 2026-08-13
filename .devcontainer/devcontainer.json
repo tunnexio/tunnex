@@ -1,0 +1,34 @@
+{
+  "name": "tunnex",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    // Node >=20 + pnpm >=9 — the web gate's engines. The HOST is frequently Node 18 (the standing
+    // web-gate-local-env debt: `pnpm --filter @tunnex/web typecheck` refuses with ERR_PNPM_UNSUPPORTED_ENGINE),
+    // so the container owns the toolchain and the gate becomes runnable locally instead of CI-only.
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.25.12" },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  // node_modules lives in a CONTAINER-LOCAL volume, never the bind-mounted workspace: pnpm's store links
+  // platform-specific binaries (esbuild/rollup/vitest), and sharing them with a macOS host produces the
+  // "cannot execute binary file" / wrong-arch failures this container exists to end.
+  "mounts": [
+    "source=tunnex-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
+    "source=tunnex-web-node-modules,target=${containerWorkspaceFolder}/apps/web/node_modules,type=volume",
+    "source=tunnex-shared-node-modules,target=${containerWorkspaceFolder}/packages/shared/node_modules,type=volume",
+    "source=tunnex-client-node-modules,target=${containerWorkspaceFolder}/apps/client/node_modules,type=volume"
+  ],
+  "remoteEnv": {
+    // The client's unit tests must import NO electron at runtime (CI convention, kept identical here).
+    "ELECTRON_SKIP_BINARY_DOWNLOAD": "1",
+    "GOFLAGS": "-mod=readonly"
+  },
+  "onCreateCommand": "sudo chown -R vscode:vscode node_modules apps/web/node_modules packages/shared/node_modules apps/client/node_modules 2>/dev/null || true",
+  "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile=false",
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "bradlc.vscode-tailwindcss"]
+    }
+  }
+}

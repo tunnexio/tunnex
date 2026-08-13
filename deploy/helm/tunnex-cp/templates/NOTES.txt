@@ -1,0 +1,49 @@
+Tunnex control plane installed: {{ .Release.Name }} (namespace {{ .Release.Namespace }}).
+
+────────────────────────────────────────────────────────────────────────────────
+1. THE AGENT PORT (8443) MUST NEVER BE TLS-TERMINATED  ← most likely misconfig
+────────────────────────────────────────────────────────────────────────────────
+Gateways dial https://<cp>:8443 with a PINNED certificate and SNI=tunnex-control.
+The API terminates that TLS itself. If you put port 8443 behind a TLS-terminating
+Ingress/LoadBalancer, it presents ITS cert and cert-pinning FAILS — enrollment
+breaks in a way that looks like a network problem.
+
+This chart exposes 8443 as a raw L4 Service ("api-agent", type {{ .Values.agentPort.type }}).
+  kubectl -n {{ .Release.Namespace }} get svc api-agent
+Point your gateways' TUNNEX_AGENT_URL at that address:8443. If you MUST front it
+with an Ingress, use SSL-passthrough — never re-encrypt.
+
+The browser/API HTTP path (the "edge" Service / your Ingress) may TLS-terminate
+normally — that is a different port and is fine.
+
+────────────────────────────────────────────────────────────────────────────────
+2. THE MASTER KEY IS YOURS TO KEEP — BACK IT UP
+────────────────────────────────────────────────────────────────────────────────
+This chart NEVER generates a master key (a generated key on upgrade/reinstall would
+silently orphan every sealed value — device credentials, SSO secrets, OVPN keys).
+You supplied Secret "{{ .Values.masterKey.existingSecret }}". Back it up off-cluster.
+Losing it is unrecoverable; changing it orphans all sealed data.
+
+────────────────────────────────────────────────────────────────────────────────
+3. MIGRATIONS
+────────────────────────────────────────────────────────────────────────────────
+Schema migrations ran via a pre-install/pre-upgrade HOOK Job (once, never raced by
+replicas). The api pods run with TUNNEX_AUTO_MIGRATE=false. Check:
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "tunnex-cp.fullname" . }}-migrate
+
+────────────────────────────────────────────────────────────────────────────────
+4. CONTROL PLANE RUNS AT api.replicas=1 (DELIBERATE)
+────────────────────────────────────────────────────────────────────────────────
+The CP runs in-process schedulers (failover tick, CRL rebuild, retention sweep).
+Do NOT raise api.replicas above 1 — N replicas = N controllers (duplicate audit
+rows + sweeps). HA control plane is registered for a future leader-election story.
+
+────────────────────────────────────────────────────────────────────────────────
+5. NEXT: add a gateway
+────────────────────────────────────────────────────────────────────────────────
+Open the dashboard, issue a join token, and deploy a gateway with the SEPARATE
+tunnex-gateway chart (privileged; consumes the join token as a Secret).
+
+NOTE (chart maturity): this chart is validated by `helm lint` + `helm template`
+render only. A real `helm install` against a live cluster is the owed wire proof
+(SUBSTITUTES ≠ SATISFIES) — trigger: the EPIC-10 walk.

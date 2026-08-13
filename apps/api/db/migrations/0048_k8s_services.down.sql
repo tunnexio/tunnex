@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS k8s_services;
+DROP TABLE IF EXISTS k8s_clusters;

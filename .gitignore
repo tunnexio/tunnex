@@ -1,0 +1,101 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+
+# ⛔ `build/` ABOVE IS UNANCHORED, AND IT WAS ALREADY SWALLOWING PACKAGING SOURCE.
+#
+# It matches `apps/client/build/` — the electron-builder buildResources directory, which holds
+# AUTHORED files: the NSIS installer script, the macOS pkg postinstall, the Windows helper
+# install/uninstall scripts and now the app icon. Four of them are in git only because somebody ran
+# `git add -f`; the icon would have been the fifth, and the packaged app would have shipped with
+# ELECTRON'S icon on any fresh clone while looking correct on the machine that generated it.
+#
+# > **THIS REPO HAS ALREADY PAID FOR THIS EXACT PATTERN.** An unanchored `secrets/` kept
+# > `apps/api/internal/secrets` SOURCE out of git — it built locally and broke every fresh clone —
+# > and the fix then was to anchor the patterns. The lesson did not reach this line.
+#
+# Un-ignored explicitly (the directory first: git does not descend into an excluded one), with the
+# genuinely-generated artefact re-excluded after.
+!apps/client/build/
+!apps/client/build/**
+apps/client/build/helper/
+*.tsbuildinfo
+apps/web/dist/
+bin/
+
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# Env & secrets (never commit)
+.env
+.env.local
+*.local
+
+# Box-walk scratch: WireGuard configs carry device PRIVATE KEYS — gitignored AT
+# CREATION so a walk never commits key material (walk EVIDENCE lives in
+# walk-artifacts/ as nft/pcap/json; scratch keys stay local-only).
+*.wgconf
+walk-artifacts/**/scratch/
+walk-artifacts/**/*.conf
+# Runtime secrets material only — ROOT-ANCHORED so it never eats the
+# apps/api/internal/secrets SOURCE package (that unanchored `secrets/` silently
+# kept the S0.3 crypto code out of git and broke every fresh clone / CI build).
+/secrets/
+/data/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Turbo
+.turbo/
+
+# Logs
+*.log
+npm-debug.log*
+
+# tsc -b build artifacts
+*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+
+# Go build outputs accidentally producible at package roots (never commit)
+/apps/api/server
+/apps/api/seed
+/apps/node/agent
+
+# S6.5a packaging build outputs (electron-builder + staged helper)
+apps/client/release/
+apps/client/build/helper/
+S.conf
+
+# stray go-build binary (cmd/walk-bootstrap dev tool)
+/apps/api/walk-bootstrap
+
+# S10.2 GitOps walk scratch (CR manifests + any pasted machine token) — evidence goes in walk-artifacts/
+/walk/
+/walk-leg4/
+
+# S11 walk scratch key material — a deliberately-wrong master key for the negative restore leg.
+# Gitignored AT CREATION, per the walk's own condition: never commit key material, even wrong keys
+# (a committed 'wrong' key teaches the next reader that committing keys is normal).
+wrong-master.key
+*-master.key
+walk-artifacts/**/*.key
+
+# stray `go build ./cmd/...` outputs (S11)
+/apps/api/preflight
+/apps/api/backupctl
+
+# S14.1: emitted design tokens (built from packages/shared/src/tokens.ts by `build:tokens`)
+/packages/shared/dist/

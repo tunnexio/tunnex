@@ -1,0 +1,24 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    # golang-migrate files; sqlc understands up/down pairs and applies only ups.
+    schema: "db/migrations"
+    queries: "db/queries"
+    gen:
+      go:
+        package: "sqlc"
+        out: "db/sqlc"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        overrides:
+          # UUIDv7 PKs map to google/uuid; timestamptz to time.Time.
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          # citext (case-insensitive email) is a plain Go string.
+          - db_type: "citext"
+            go_type: "string"

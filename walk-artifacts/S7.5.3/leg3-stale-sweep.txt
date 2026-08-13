@@ -1,0 +1,12 @@
+
+S7.5.3 Leg 3 — stale sweep (staleness = absence)
+- spoke A re-blocked (noncompliant report) -> health_blocked=t, peer gone
+- device_health.reported_at backdated 31min (A goes SILENT; never re-reports)
+- backdate alone did NOT clear the block (UPDATE 1, health_blocked still t)
+- 5-min stale sweep CLEARED it at 10:00:42 — WITHOUT any compliant report
+- peer BACK in wg0
+AUDIT (newest first): distinct cause proves the stale path, not a fake "compliant":
+  device.health_unblocked  report_stale         10:00:42   <- the stale sweep
+  device.health_blocked    noncompliant_report  09:59:10
+  device.health_unblocked  compliant_report     09:57:24
+  device.health_blocked    noncompliant_report  09:54:24

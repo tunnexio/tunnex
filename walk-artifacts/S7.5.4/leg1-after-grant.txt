@@ -1,0 +1,33 @@
+== Thu Jul 16 14:05:19 UTC 2026 Leg1 after per-user grant 019f6b3f-024c-799e-9d36-9bb514ca495a ==
+-- Gateway A (demo-gw) --
+table ip tunnex {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 10.99.0.0/24 oifname != "wg0" masquerade
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		ip saddr 10.99.0.3 ip daddr 10.80.9.0/24 counter packets 0 bytes 0 accept
+		counter packets 0 bytes 0 comment "tunnex_default_drop"
+	}
+}
+-- Gateway B (gw-b)  --
+table ip tunnex {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 10.99.0.0/24 oifname != "wg0" masquerade
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		ip saddr 10.99.0.2 ip daddr 10.80.9.0/24 counter packets 0 bytes 0 accept
+		counter packets 0 bytes 0 comment "tunnex_default_drop"
+	}
+}
+
+-- Leg1 traffic (flood) --
+PERMIT  dev-A->10.80.9.1 : allow counter climbed 7,53,99,146,192 (granted traffic passes)
+EXCLUDE dev-A->10.99.0.50: default_drop climbed 10,56,102,148,194 (non-granted dropped, grant live)

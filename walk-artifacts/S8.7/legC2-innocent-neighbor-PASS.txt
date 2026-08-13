@@ -1,0 +1,19 @@
+S8.7 Deck C — Leg C2 (innocent neighbor / scoped flush) — PASS
+Two non-overlapping flows to 172.31.17.64, distinguished by PROTOCOL (UI has no port field):
+  VICTIM   = TCP :9999, grant apple->lan-tcp (172.31.17.64/32 : tcp)
+  NEIGHBOR = UDP :9998, grant apple->lan-udp (172.31.17.64/32 : udp)
+Both established (tcp-before / udp-before seeded the conntrack entries). ZT enforcing.
+
+<<< dashboard: delete rule apple -> lan-tcp (the tcp victim) >>>
+
+RESULT:
+  TCP victim: `nc 172.31.17.64 9999` EXITED on send; inst-2 :9999 listener received NOTHING
+              (conntrack flushed -> connection dead -> now default-denied)
+  UDP neighbor: typed udp-after -> inst-2 :9998 listener PRINTED "udp-after"  (SURVIVED, still delivering)
+  aws-gw log: conntrack_flushed flows:1 tuples:2
+              flows:1 = exactly ONE flow flushed (the tcp tuple); the udp entry untouched
+
+VERDICT: revoking one grant flushes ONLY the flow matching its exact tuple (proto tcp);
+a flow differing in one dimension (proto udp) is SPARED and keeps delivering. The
+innocent-neighbor guarantee (matchesTuple scoping) holds on live iron. flows:1 not 2 is
+the wire-level scoping signal.

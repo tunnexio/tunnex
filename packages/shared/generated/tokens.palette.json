@@ -1,0 +1,112 @@
+{
+  "_generated": "from packages/shared/src/tokens.ts — DO NOT EDIT",
+  "colors": {
+    "bg": "var(--tnx-bg)",
+    "surface": {
+      "DEFAULT": "var(--tnx-surface)",
+      "inset": "var(--tnx-surface-inset)",
+      "code": "var(--tnx-code)",
+      "badge": "var(--tnx-badge-bg)"
+    },
+    "line": {
+      "DEFAULT": "var(--tnx-border)",
+      "inset": "var(--tnx-border-inset)",
+      "row": "var(--tnx-divider)",
+      "head": "var(--tnx-divider-head)"
+    },
+    "ok": "var(--tnx-ok)",
+    "warn": "var(--tnx-warn)",
+    "danger": "var(--tnx-danger)",
+    "neutral": "var(--tnx-neutral)",
+    "accent": {
+      "400": "var(--tnx-accent)",
+      "500": "var(--tnx-accent)",
+      "600": "var(--tnx-accent)",
+      "DEFAULT": "var(--tnx-accent)"
+    },
+    "focus": "var(--tnx-focus)",
+    "ink": {
+      "600": "var(--tnx-border)",
+      "700": "var(--tnx-surface-inset)",
+      "800": "var(--tnx-surface)",
+      "900": "var(--tnx-bg)",
+      "950": "var(--tnx-bg)",
+      "heading": "var(--tnx-text-heading)",
+      "primary": "var(--tnx-text-primary)",
+      "emphasis": "var(--tnx-text-emphasis)",
+      "body": "var(--tnx-text-body)",
+      "secondary": "var(--tnx-text-secondary)",
+      "tertiary": "var(--tnx-text-tertiary)",
+      "faint": "var(--tnx-text-faint)",
+      "disabled": "var(--tnx-text-disabled)"
+    }
+  },
+  "fontFamily": {
+    "sans": [
+      "\"Inter Variable\"",
+      "ui-sans-serif",
+      "system-ui",
+      "Segoe UI",
+      "Roboto",
+      "sans-serif"
+    ],
+    "mono": [
+      "\"JetBrains Mono Variable\"",
+      "ui-monospace",
+      "SFMono-Regular",
+      "Menlo",
+      "monospace"
+    ]
+  },
+  "spacing": {
+    "4": "4px",
+    "6": "6px",
+    "7": "7px",
+    "8": "8px",
+    "9": "9px",
+    "10": "10px",
+    "12": "12px",
+    "14": "14px",
+    "16": "16px",
+    "20": "20px",
+    "24": "24px"
+  },
+  "fontSize": {
+    "badge": "8.5px",
+    "micro": "9px",
+    "explainer": "9.5px",
+    "mono": "10px",
+    "cell": "11px",
+    "nav": "12.5px",
+    "title": "13.5px",
+    "stat": "26px"
+  },
+  "borderRadius": {
+    "chip": "6px",
+    "input": "7px",
+    "inset": "8px",
+    "nav": "9px",
+    "bar": "13px",
+    "card": "14px",
+    "pill": "99px"
+  },
+  "boxShadow": {
+    "none": "none",
+    "card": "0 10px 30px rgba(0,0,0,.3)",
+    "bar": "0 20px 50px rgba(0,0,0,.5)",
+    "modal": "0 24px 60px rgba(0,0,0,.45)",
+    "drawer": "-24px 0 60px rgba(0,0,0,.5)",
+    "input-inset": "inset 0 1px 3px rgba(0,0,0,.22)"
+  },
+  "transitionDuration": {
+    "instant": "0ms",
+    "fast": "120ms",
+    "normal": "200ms",
+    "slow": "320ms"
+  },
+  "transitionTimingFunction": {
+    "standard": "cubic-bezier(0.2, 0, 0, 1)",
+    "decelerate": "cubic-bezier(0, 0, 0, 1)",
+    "accelerate": "cubic-bezier(0.3, 0, 1, 1)"
+  }
+}

@@ -1,0 +1,53 @@
+#!/bin/bash
+# S6.5a — .pkg postinstall (runs as ROOT during install). Installs the Tunnex privilege
+# helper as a LaunchDaemon at INSTALL time (one admin prompt, via Installer.app) so the
+# app never has to prompt on first Connect, and pins the caller-auth trust to the fixed
+# /Applications path (a pkg-installed app is NOT quarantined → no App Translocation →
+# stable path-based caller-auth across launches + machines). Mirrors the plist the S6.3
+# dev-install proved live.
+set -e
+
+APP="/Applications/Tunnex.app"
+TRUST="$APP/Contents/MacOS"                       # the Electron main exe's dir (caller-auth)
+HELPER_SRC="$APP/Contents/Resources/helper/tunnex-helper"
+DIR=/usr/local/tunnex
+DEST="$DIR/tunnex-helper"
+PLIST=/Library/LaunchDaemons/io.tunnex.helper.plist
+SOCK=/var/run/tunnex/helper.sock
+
+mkdir -p "$DIR" /var/run/tunnex
+cp "$HELPER_SRC" "$DEST"
+chown root:wheel "$DEST"
+chmod 755 "$DEST"
+# Re-apply an ad-hoc signature in place (a copied mach-o gets Killed:9 on Apple Silicon
+# otherwise). The production Developer ID signature lands at S6.5b.
+codesign --force --sign - "$DEST" || true
+
+# Reference the pf anchor from /etc/pf.conf (backup first) so the kill-switch anchor is
+# evaluated — mirrors the dev-install.
+if ! grep -q 'anchor "tunnex"' /etc/pf.conf; then
+  cp /etc/pf.conf /etc/pf.conf.tunnex-bak
+  printf '%s\n' 'anchor "tunnex"' >> /etc/pf.conf
+  pfctl -f /etc/pf.conf 2>/dev/null || true
+fi
+
+cat > "$PLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>io.tunnex.helper</string>
+  <key>ProgramArguments</key><array><string>$DEST</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>TUNNEX_INSTALL_DIR</key><string>$TRUST</string>
+    <key>TUNNEX_HELPER_SOCKET</key><string>$SOCK</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/var/run/tunnex/helper.log</string>
+</dict></plist>
+PL
+chown root:wheel "$PLIST"
+chmod 644 "$PLIST"
+launchctl bootout system "$PLIST" 2>/dev/null || true
+launchctl bootstrap system "$PLIST"
+exit 0

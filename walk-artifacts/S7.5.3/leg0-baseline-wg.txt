@@ -1,0 +1,11 @@
+interface: wg0
+  public key: M4jAJZBLVz1EFBsbTfw98FcOnLmRHpcFW29XarhdJT8=
+  listening port: 51820
+
+peer: dn+34+5GkXjQdMxMvFu7ZmUGlHhEpdFy0RPWUFmZdwA=   # spoke B = 10.99.0.3 (control)
+  latest handshake: 17 seconds ago
+  allowed ips: 10.99.0.3/32
+peer: PDlq86drGltSFFRDJhN+cYVfxlRHh/OZprTBzbAZ3nc=   # spoke A = 10.99.0.2 (device under test)
+  latest handshake: 17 seconds ago
+  allowed ips: 10.99.0.2/32
+# (P+RJQlcaXIc6.../10.80.0.11 = stale old-subnet peer, no handshake — ignore)

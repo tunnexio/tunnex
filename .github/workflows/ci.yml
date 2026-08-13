@@ -1,0 +1,741 @@
+name: CI
+
+# S6.0b: the verification gates, automated. Red BLOCKS merge on the two gate
+# jobs (gates, client). The e2e job is OPPORTUNISTIC — if it proves flaky or
+# resource-starved it moves to nightly/non-blocking (see PLAN S6.0b ledger).
+#
+# Electron is NEVER launched in CI (the client tests import no electron at
+# runtime; typecheck/build need only its types), so ELECTRON_SKIP_BINARY_DOWNLOAD
+# is set everywhere and no display/xvfb is needed. A launch-based
+# playwright-electron target is deliberately out of scope (ledgered).
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+  # Installer derives sha-<7> from the successful workflow's head_sha. Pin metadata-action's otherwise
+  # implicit abbreviation length so artifact naming and version resolution cannot drift independently.
+  DOCKER_METADATA_SHORT_SHA_LENGTH: "7"
+
+jobs:
+  # Linux: the existing make gates + web typecheck/build. RED BLOCKS MERGE.
+  gates:
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+      go: ${{ steps.scope.outputs.go }}
+      web: ${{ steps.scope.outputs.web }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # observed 9–11m; a hung tool fails red instead of looking alive for hours
+    steps:
+      # fetch-depth: 0 so the classifier below can diff against the PR base. A shallow clone would make the
+      # base unreachable — which the classifier treats as UNKNOWN and therefore runs everything, so a
+      # regression here costs time, never coverage.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Installer version provenance contract
+        run: sh deploy/install-version-provenance_test.sh
+
+      - name: E2E heading locator contract
+        run: node e2e/check-heading-locators.mjs
+
+      # ⛔ THE DIFF CLASSIFIER. MEASURED FINDING (S14.10): `gates` is 8.1 min and is the ENTIRE critical path
+      # of a PR run, and 78% of that is Go steps a web-only diff cannot affect. A UI section pushes 3-6 times,
+      # so the epic was paying 20-40 min per section for work it could not have changed.
+      #
+      # ⛔ IT IS CONDITIONAL STEPS INSIDE THIS JOB, NOT A SECOND JOB, and that is the load-bearing choice:
+      # GitHub's `paths:` filter is workflow-level, so a `gates-web` job would mean a NEW REQUIRED-CHECK NAME,
+      # a companion no-op job so branch protection resolves, and two mechanisms for one problem. Keeping the
+      # job name means branch protection is untouched and `gates` still reports on every PR.
+      #
+      # ⛔ AND IT FAILS CLOSED. `RUN_GO` starts true; ONLY an explicit, successful, non-empty classification
+      # turns it off. Unknown base, shallow clone, non-PR event, or an EMPTY diff all run everything — an
+      # empty result is indistinguishable from a detection that silently returned nothing, and skipping every
+      # Go test on "we found no files" is the worst possible reading of silence.
+      #
+      # Go-relevant is deliberately WIDE: Go sources, module files, Dockerfiles, workflows, THE SPEC
+      # (openapi/ regenerates Go) and MIGRATIONS (apps/api/db/). `packages/shared` is NOT listed because it is
+      # generated and the Codegen drift guard — which always runs — catches a hand-edit there.
+      #
+      # Decision table proven 18/18 including every fail-closed arm (docs/S14.10-handoff.md).
+      #
+      # ── ⛔ AND `\.sql$` IS HERE BECAUSE OF `//go:embed`, WHICH IS THE SEAM THIS LIST CANNOT SEE ───────────
+      #
+      # S14.11 found a FAIL-OPEN in a classifier whose header says it fails closed:
+      # `apps/api/cmd/seed-fixtures/fixtures.sql` is a **compile input** to a Go package (`//go:embed
+      # fixtures.sql` in that package's main.go), and it matched NONE of the patterns. A fixtures-only diff
+      # therefore set `go=false` and SKIPPED `build-editions` — the step that would fail if that embed target
+      # were renamed or deleted, because a missing embed target is a COMPILE ERROR.
+      #
+      #   ⛔ THE CLASSIFIER REASONS ABOUT FILE EXTENSIONS. THE COMPILER REASONS ABOUT COMPILE INPUTS.
+      #   ⛔ `//go:embed` IS THE SEAM WHERE THOSE TWO DISAGREE — it makes a file of ANY extension a build
+      #   ⛔ input to a Go package, and no amount of care with a suffix list can anticipate which extension.
+      #
+      # This is the epic's PROSE-VERSUS-BEHAVIOUR class (docs/CUT-REGISTER.md): the comment above asserted
+      # fail-closed, the behaviour was fail-open, and nothing compared the two.
+      #
+      # CENSUSED, not patched at the one instance — every `//go:embed` in the tree (all modules, `grep -rn
+      # "go:embed" --include="*.go"`), both now covered:
+      #   apps/api/db/embed.go            -> migrations/*.sql   COVERED by `apps/api/db/`
+      #   apps/api/cmd/seed-fixtures/     -> fixtures.sql        COVERED by `\.sql$`   <- was the hole
+      #   apps/api/internal/mail/         -> tunnex-logo.png     COVERED by `apps/api/internal/mail/`
+      # (No cgo C/H/S sources exist — apps/helper's cgo is inline — so embeds are the whole class today.)
+      #
+      # ⭐ THE PNG IS WHY THE CENSUS EARNS ITS KEEP. S12.14 embedded a logo so branded email carries its own
+      # image instead of fetching one, and NO suffix in this pattern covers `.png` — a diff touching only
+      # that file would have set go=false and skipped build-editions, the one step a missing embed target
+      # fails. The guard caught it on the PR that introduced it, which is the whole point of a census that
+      # runs rather than a list that is maintained. The scope is the DIRECTORY, not `\.png$`: every file in
+      # that package is a compile input, and a bare suffix would drag every web asset into the Go legs.
+      #
+      # ⛔ AND A SUFFIX IS STILL A GUESS ABOUT THE FUTURE, so the list alone is not the fix. `TestGoEmbed
+      # TargetsAreGoRelevantToCI` (apps/api/cmd/) re-derives the embed set from source on every run and fails
+      # if any target is not matched by THIS regex — so an embed of a `.json`, `.txt` or `.tmpl` breaks the
+      # build with an instruction rather than silently skipping the Go steps.
+      - name: Classify the diff (fails closed — anything uncertain runs everything)
+        id: scope
+        run: |
+          set -euo pipefail
+          # ⛔ FAIL-CLOSED DEFAULT: everything runs unless a diff is computed AND proves otherwise.
+          RUN_GO=true; RUN_CODEGEN=true; RUN_WEB=true; DOCS_ONLY=false
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              CHANGED=$(git diff --name-only "${BASE}...HEAD" || true)
+              # ⛔ AND SEPARATELY, WHAT WAS *DELETED* — because the exclusion below is safe for a CONTENT
+              # edit and NOT for a removal. `//go:embed` fails to COMPILE when its target is missing, so a
+              # deleted fixtures.sql must still force the Go legs. --diff-filter=D is the only thing that
+              # distinguishes those two, and --name-only alone cannot.
+              DELETED=$(git diff --name-only --diff-filter=D "${BASE}...HEAD" || true)
+              if [ -n "$(printf '%s' "$CHANGED" | tr -d '[:space:]')" ]; then
+                # ── Go relevance ────────────────────────────────────────────────────────────────────────
+                # MEASURED (S14.15): across 18 runs on two PRs, 17 had go=true and **16 of those were
+                # triggered by `apps/api/cmd/seed-fixtures/fixtures.sql` ALONE**. Because the classifier
+                # diffs BASE...HEAD, one fixture edit early in a branch pinned go=true for every later
+                # push — including 10 of 15 commits that were DOCS-ONLY. The classifier was not firing.
+                #
+                # fixtures.sql is a compile input ONLY to `cmd/seed-fixtures`, which `shipcensus_test.go:20`
+                # declares DELIBERATELY NOT SHIPPED ("seeding a production database is not a supported
+                # operation"). Nothing outside that command references it. So its CONTENT cannot break the
+                # api / cli / node / operator / helper builds — only its ABSENCE can, which DELETED covers.
+                GO_RELEVANT=$(printf '%s\n' "$CHANGED" \
+                  | grep -vxF 'apps/api/cmd/seed-fixtures/fixtures.sql' \
+                  | grep -E '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/)' || true)
+                DELETED_GO=$(printf '%s\n' "$DELETED" | grep -E '.' || true)
+                if [ -z "$(printf '%s' "$GO_RELEVANT$DELETED_GO" | tr -d '[:space:]')" ]; then
+                  RUN_GO=false
+                fi
+                # ── Codegen drift ───────────────────────────────────────────────────────────────────────
+                # This step had NO condition at all and cost 59s on every run, including docs-only ones.
+                # It guards OpenAPI -> Go/TS/RBAC/sqlc drift, so it must fire when a SOURCE of generation
+                # changes or when a GENERATED artifact is hand-edited (the drift it exists to catch).
+                if ! printf '%s\n' "$CHANGED" | grep -qE '(openapi/|apps/api/db/|\.go$|go\.(mod|sum)$|\.gen\.|api\.d\.ts$|rbac-policy\.json$|tokens|Makefile|\.github/)'; then
+                  RUN_CODEGEN=false
+                fi
+                # ── Web ─────────────────────────────────────────────────────────────────────────────────
+                if ! printf '%s\n' "$CHANGED" | grep -qE '(apps/web/|apps/client/|packages/|package\.json|pnpm-lock|\.github/)'; then
+                  RUN_WEB=false
+                fi
+                # ── Docs-only ───────────────────────────────────────────────────────────────────────────
+                # 10 of the last 15 commits. Every one ran the full 498s gates plus e2e twice.
+                if [ -z "$(printf '%s\n' "$CHANGED" | grep -vE '(\.md$)' | tr -d '[:space:]')" ]; then
+                  DOCS_ONLY=true; RUN_GO=false; RUN_CODEGEN=false; RUN_WEB=false
+                fi
+              fi
+            fi
+          fi
+          {
+            echo "go=$RUN_GO"
+            echo "codegen=$RUN_CODEGEN"
+            echo "web=$RUN_WEB"
+            echo "docs_only=$DOCS_ONLY"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice title=gates scope::go=$RUN_GO codegen=$RUN_CODEGEN web=$RUN_WEB docs_only=$DOCS_ONLY (false = SKIPPED, not passed)"
+          printf '%s\n' "${CHANGED:-<no diff computed>}" | head -40
+
+      - name: Codegen drift guard
+        if: steps.scope.outputs.codegen == 'true'
+        run: make generate-check
+
+      - name: Both editions — build + test (open + enterprise)
+        if: steps.scope.outputs.go == 'true'
+        run: |
+          cp .env.example .env   # compose + make migrate read DATABASE_URL from here
+          docker compose up -d --wait postgres
+          make migrate
+          make test-editions
+
+      - name: Node agent — data-plane tests (reconcile idempotence)
+        if: steps.scope.outputs.go == 'true'
+        run: make test-node
+
+      - name: GitOps operator — build + no-DB-import census (S10.2)
+        if: steps.scope.outputs.go == 'true'
+        run: make test-operator
+
+      - name: "tunnex CLI — build + vet + test (S11-2: previously covered by NO job)"
+        if: steps.scope.outputs.go == 'true'
+        run: make test-cli
+
+      - name: Privilege-helper core — vet + test (S6.3)
+        if: steps.scope.outputs.go == 'true'
+        run: make test-helper
+
+      - name: Privilege-helper — cross-compile darwin/amd64+arm64 + windows/amd64 (S6.3)
+        if: steps.scope.outputs.go == 'true'
+        run: make helper-crosscompile
+
+      - name: Web — typecheck + unit tests + build
+        if: steps.scope.outputs.web == 'true'
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --filter @tunnex/web typecheck
+          pnpm --filter @tunnex/web test
+          pnpm --filter @tunnex/web build
+
+      # ⛔ THE E2E SPECS COMPILE — INSIDE THE BLOCKING GATE, WITH NO BROWSER.
+      #
+      # `e2e/` had no tsconfig and is not in the pnpm workspace, so NOTHING parsed these files before CI
+      # executed them. On 2026-08-02 a spec split left an orphaned `describe` and reached CI as
+      # `SyntaxError: Unexpected token (153:0)` — and because the visual job is ADVISORY, that red would have
+      # been shrugged at.
+      #
+      # A red advisory job otherwise means one of four indistinguishable things: pixel drift · a geometric
+      # regression · THE SPEC DOES NOT COMPILE · the spec has no subject. This removes the third, here, where
+      # it blocks.
+      #
+      # IT DOES NOT REOPEN THE ADVISORY RULING — it asserts the check COMPILES, never that the pixels match.
+      # PROVEN TO REJECT: reintroducing the orphaned `describe` gives `visual.spec.ts(151,1): error TS1005`.
+      - name: E2E specs — typecheck (compiles, not runs)
+        run: |
+          cd e2e
+          npm install --no-audit --no-fund --silent
+          npx tsc --noEmit -p tsconfig.json
+
+  # macOS + Windows: the desktop client. Display-free (no Electron launch).
+  # RED BLOCKS MERGE — this is the cross-platform surface a human can't cover.
+  client:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20 # observed max ~4m on Windows packaging
+    steps:
+      - uses: actions/checkout@v4
+      # Native Windows build+vet+test of the privilege helper — the WFP backend pulls
+      # wireguard/windows + wintun, which the linux cross-compile can't fully exercise.
+      # RED BLOCKS MERGE. (macOS helper build stays on the cross-compile gate.)
+      - uses: actions/setup-go@v5
+        with:
+          # ⛔ DERIVED, NOT HARDCODED. security.yml already uses go-version-file and therefore cannot drift
+          # from what the module declares; this side asserted '1.25' by hand, so the agreement between the
+          # thing we BUILD and the thing we SCAN held by coincidence. Both now ask the module.
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/helper/go.sum
+      - name: Helper — native Windows build + vet + test (WFP deps)
+        if: matrix.os == 'windows-latest'
+        working-directory: apps/helper
+        env:
+          GOFLAGS: -mod=readonly
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install (electron binary skipped — CI never launches it)
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: Client — typecheck
+        run: pnpm --filter @tunnex/client run typecheck
+      - name: Client — unit tests
+        run: pnpm --filter @tunnex/client test
+      - name: Client — build
+        run: pnpm --filter @tunnex/client build
+
+      # Both platforms publish a downloadable artifact. The app remains intentionally
+      # manual-update-only until code signing and notarization exist; these are the exact
+      # bytes later attached to a signed release tag with a combined SHA256 file.
+      - name: Resolve desktop package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(node -p 'require("./apps/client/package.json").version')"
+          fi
+          echo "DESKTOP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Client — package macOS installer (universal)
+        if: matrix.os == 'macos-latest'
+        env:
+          GOFLAGS: -mod=readonly
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          pnpm --filter @tunnex/web build
+          bash apps/client/scripts/stage-helper.sh mac
+          pnpm --filter @tunnex/client exec electron-builder --mac --universal --config electron-builder.yml --config.extraMetadata.version="$DESKTOP_VERSION"
+          bash apps/client/scripts/sha256sums.sh
+      - name: Upload macOS installer
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnex-macos-installer
+          path: |
+            apps/client/release/Tunnex-macOS-universal.pkg
+            apps/client/release/SHA256SUMS
+          if-no-files-found: error
+
+      # Package the Windows installer NATIVELY on Windows. A macOS-cross-built NSIS
+      # uninstaller fails its integrity check on Windows ("Installer integrity check has
+      # failed") — a Windows-native build fixes it, so Add/Remove Programs → Uninstall
+      # works from the UI. Uploaded as a downloadable artifact (unsigned; S6.5b signs).
+      - name: Client — package Windows installer (native)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        env:
+          GOFLAGS: -mod=readonly
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          pnpm --filter @tunnex/web build
+          bash apps/client/scripts/stage-helper.sh win
+          pnpm --filter @tunnex/client exec electron-builder --win --x64 --config electron-builder.yml --config.extraMetadata.version="$DESKTOP_VERSION"
+          bash apps/client/scripts/sha256sums.sh
+      - name: Upload Windows installer
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnex-windows-installer
+          path: |
+            apps/client/release/Tunnex-Windows-x64.exe
+            apps/client/release/SHA256SUMS
+          if-no-files-found: error
+
+  # Linux CLI: a separate, headless distribution surface. Build both public
+  # architectures on every change; only tag-bound artifacts may be attached to
+  # a public GitHub release.
+  cli-release:
+    name: cli release (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/cli/go.mod
+          cache-dependency-path: apps/cli/go.sum
+      - name: CLI — test and build Linux artifacts
+        working-directory: apps/cli
+        env:
+          GOFLAGS: -mod=readonly
+        run: |
+          set -euo pipefail
+          go test ./...
+          mkdir -p ../../cli-artifacts
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o "../../cli-artifacts/tnx-linux-$arch" ./cmd/tunnex
+          done
+          test -x ../../cli-artifacts/tnx-linux-amd64
+          test -s ../../cli-artifacts/tnx-linux-arm64
+          ../../cli-artifacts/tnx-linux-amd64 help 2>&1 | grep -F 'tunnex login'
+      - name: Upload Linux CLI artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnex-linux-cli
+          path: |
+            cli-artifacts/tnx-linux-amd64
+            cli-artifacts/tnx-linux-arm64
+          if-no-files-found: error
+
+  # Full stack + Playwright. BLOCKING as of EPIC 11 / S11-1 (was opportunistic).
+  #
+  # WHY THE PROMOTION: advisory status did the damage TWICE — it let an S10.2 regression merge (a
+  # machine-credential "Name" field collided with the org "Name" field, ambiguous accessible names →
+  # strict-mode violation), and then supplied the excuse for waving the red job away at merge time. A job
+  # configured not to matter is the debt this slice repays. Sequence honored: fix → green → promote.
+  # If e2e proves genuinely FLAKY under blocking status, that flakiness is its own FINDING with a
+  # disposition — NOT a quiet demotion back to continue-on-error.
+  e2e:
+    needs: gates
+    # ⛔ always() IS LOAD-BEARING. `needs: gates` alone makes a gates FAILURE skip this job — so the
+    # integration signal disappears exactly when something is broken, which is when it is worth most.
+    # The dependency exists only to read `docs_only`, not to gate on success.
+    # Docs-only diffs cannot change API or SPA behaviour. NOT a required check, so a skip here does
+    # not touch branch protection.
+    if: always() && needs.gates.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bring up the stack + seed
+        run: |
+          cp .env.example .env
+          docker compose up -d --build --wait
+          make seed
+      - name: Playwright E2E (SPA → API; normally under 1m after stack startup)
+        run: |
+          docker run --rm --network tunnex_default \
+            -v "$PWD/e2e":/e2e -w /e2e -e E2E_BASE_URL=http://nginx:8080 \
+            mcr.microsoft.com/playwright:v1.48.2-jammy \
+            sh -c "npm ci --no-audit --no-fund && npx playwright test"
+      - name: Capture E2E stack logs on failure
+        if: failure()
+        run: |
+          mkdir -p e2e/test-results
+          docker compose logs --no-color > e2e/test-results/compose.log 2>&1 || true
+      - name: Upload E2E failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-${{ github.run_attempt }}
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ── THE VIEWPORT LEG ────────────────────────────────────────────────────────────────────────────────────
+  # Answers ONE question: did anything move that nobody asked to move? It cannot answer "is this right" —
+  # only the founder's review does that (docs/EPIC-14-ui-redesign.md, the SECTION PROTOCOL).
+  #
+  # ⛔ ITS OWN JOB, NOT FOLDED INTO e2e. On 2026-08-01 `e2e` was RED for four consecutive pushes under a green
+  # local gate; a visual diff buried inside it would inherit that invisibility. It also needs its own
+  # artifacts (expected/actual/diff) and its failures MEAN something different: e2e red = broken behaviour,
+  # visual red = something moved, possibly on purpose.
+  #
+  # ⛔⛔ FOUNDER RULE — THIS ENTIRE JOB IS ADVISORY FOR THE REST OF EPIC 14. NO STEP GATES A MERGE.
+  #
+  # It is NOT in `main`'s required contexts (those are: gates · client (macos-latest) · client (windows-latest))
+  # and it is NOT to be added to them. Both steps are `continue-on-error`. The two-step split is kept because
+  # it is good structure and costs nothing; the artifact and diff keep uploading.
+  #
+  # ⚠ THE ACCEPTED PRICE, RECORDED SO EPIC CLOSE RE-ARMS WITH KNOWLEDGE RATHER THAN REDISCOVERY:
+  # the geometric overflow assertions and the strict-mode locators NEED A REAL BROWSER, so they cannot move
+  # into `make web-gate` — jsdom has no layout engine. With this job advisory, THE CLASS THAT FOUND THE 65px
+  # HEADER OVERFLOW, THE DUPLICATED HEALTH INDICATOR AND THE 500px AreaChart IS ADVISORY TOO. Nothing else
+  # covers it. That is the cost of the ruling, knowingly taken.
+  #
+  # RE-ARM TRIGGER: EPIC 14 CLOSE — a named trigger, not a hope. Delete the two `continue-on-error` lines.
+  visual:
+    name: visual — ADVISORY for all of EPIC 14 (no step gates a merge)
+    needs: gates
+    if: always() && needs.gates.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # observed ~3m; advisory findings remain advisory, broken setup still fails
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bring up the stack + seed, with the gallery route COMPILED IN
+        # VITE_VISUAL_GALLERY must reach the web image's BUILD, not the running container: Vite bakes
+        # `import.meta.env` into the bundle, so a runtime env var arrives after the route has already been
+        # eliminated. The first run of this job failed exactly that way — the gallery specs timed out on an
+        # element that had never been compiled in, while the Overview specs failed correctly with
+        # "snapshot doesn't exist". Two different failures, one expected, one not.
+        run: |
+          cp .env.example .env
+          docker compose up -d --build --wait
+          make seed
+        env:
+          VITE_VISUAL_GALLERY: "1"
+      # ⛔ STEP 1 — BLOCKING. Geometric invariants, the baseline census, and the strict-mode locators.
+      # DETERMINISTIC: no committed image, no harvest, and no data difference can flake them. This is where
+      # the 65px header overflow and the duplicate health indicator were actually found.
+      - name: Geometric invariants + census (advisory)
+        continue-on-error: true
+        run: |
+          docker run --rm --network tunnex_default \
+            -v "$PWD/e2e":/e2e -w /e2e -e E2E_BASE_URL=http://nginx:8080 \
+            mcr.microsoft.com/playwright:v1.48.2-jammy \
+            sh -c "npm ci --no-audit --no-fund && npx playwright test -c playwright.visual.config.ts --grep-invert @pixel"
+
+      # ⛔ STEP 2 — ADVISORY during EPIC 14. The committed-image comparison, which is red BY DESIGN while the
+      # epic deliberately changes the shared surface every slice. The artifact and diff still upload below.
+      # RE-ARM TRIGGER: EPIC 14 close — delete this `continue-on-error`, nothing else.
+      - name: Pixel diff (advisory)
+        continue-on-error: true
+        run: |
+          docker run --rm --network tunnex_default \
+            -v "$PWD/e2e":/e2e -w /e2e -e E2E_BASE_URL=http://nginx:8080 \
+            mcr.microsoft.com/playwright:v1.48.2-jammy \
+            sh -c "npm ci --no-audit --no-fund && npx playwright test -c playwright.visual.config.ts --grep @pixel"
+      - name: Upload the diff images for adjudication
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff
+          path: e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # S7.4c: the ENTERPRISE e2e — brings the stack up as the enterprise edition
+  # (TUNNEX_BUILD_TAGS=enterprise) with seed-enterprise laid on top of seed, then
+  # runs the REAL S4.5/S4.5b assertions (SSO no-secret payload + a live shrink that
+  # strands the seeded device → real 409 orphan render). BLOCKING as of EPIC 11 alongside `e2e` —
+  # an advisory job on the ENTERPRISE path has the same blind spot as one on the open path (S11-1
+  # condition (b)). The SECURITY half of S4.5 also gates in `gates` via TestGetSsoConfigPayloadCarriesNoSecret.
+  e2e-enterprise:
+    needs: gates
+    # ⛔ always() IS LOAD-BEARING. `needs: gates` alone makes a gates FAILURE skip this job — so the
+    # integration signal disappears exactly when something is broken, which is when it is worth most.
+    # The dependency exists only to read `docs_only`, not to gate on success.
+    # Docs-only diffs cannot change API or SPA behaviour. NOT a required check, so a skip here does
+    # not touch branch protection.
+    if: always() && needs.gates.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bring up the ENTERPRISE stack + seed (base + enterprise fixtures)
+        run: |
+          cp .env.example .env
+          TUNNEX_BUILD_TAGS=enterprise docker compose up -d --build --wait
+          make seed
+          make seed-enterprise
+      - name: Playwright enterprise E2E (real S4.5 / S4.5b)
+        run: |
+          docker run --rm --network tunnex_default \
+            -v "$PWD/e2e":/e2e -w /e2e -e E2E_BASE_URL=http://nginx:8080 -e E2E_EDITION=enterprise \
+            mcr.microsoft.com/playwright:v1.48.2-jammy \
+            sh -c "npm ci --no-audit --no-fund && npx playwright test settings.enterprise.spec.ts"
+      - name: Capture enterprise E2E stack logs on failure
+        if: failure()
+        run: |
+          mkdir -p e2e/test-results
+          docker compose logs --no-color > e2e/test-results/compose-enterprise.log 2>&1 || true
+      - name: Upload enterprise E2E failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-enterprise-failure-${{ github.run_attempt }}
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # S6.6 zero-build deploy: publish the prebuilt, MULTI-ARCH (amd64+arm64) service images to ghcr
+  # so a customer never builds from source. Runs ONLY on a push (never PRs) and ONLY after gates,
+  # both clients, and both behavioural E2E jobs pass. A failed build must not keep publishing for minutes
+  # after its failure or move mutable tags to code the product tests rejected. main pushes publish
+  # :latest + :sha (opt-in / main-tracking); a v* release tag
+  # publishes the reproducible :vX.Y.Z that deploy/tunnex.yml pins via ${TUNNEX_VERSION}.
+  publish:
+    name: publish ${{ matrix.image.name }} — amd64 + arm64 (timeout 20m)
+    if: >-
+      vars.TUNNEX_RELEASE_PUBLISH_ENABLED == 'true' &&
+      github.event_name == 'push' &&
+      needs.gates.result == 'success' &&
+      needs.client.result == 'success' &&
+      needs.e2e.result == 'success' &&
+      needs.e2e-enterprise.result == 'success'
+    needs: [gates, client, e2e, e2e-enterprise]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # observed max ~10m (API/QEMU); cache makes the common case shorter
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image:
+          - { name: api, dockerfile: deploy/docker/api.Dockerfile }
+          - { name: web, dockerfile: deploy/docker/web.Dockerfile }
+          - { name: nginx, dockerfile: deploy/docker/nginx.Dockerfile }
+          - { name: node-agent, dockerfile: deploy/docker/node.Dockerfile }
+          - { name: migrate, dockerfile: deploy/docker/migrate.Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3 # arm64 emulation for the multi-arch build
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.image.name }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-,enable={{is_default_branch}}
+            type=ref,event=tag
+      - name: Build + push ${{ matrix.image.name }} for both architectures
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Per-image scopes prevent five concurrent exporters overwriting one shared `buildkit` cache.
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+
+  # Keep the separately hosted installer site aligned with this repository's
+  # successful main or version-tag build. The web repository turns this event
+  # into a normal reviewable PR; it never accepts an arbitrary branch or
+  # mutable latest tag.
+  sync-installer-site:
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.publish.result == 'success'
+    needs: [publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Dispatch exact-source installer sync
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.TUNNEX_WEB_SYNC_TOKEN }}
+          script: |
+            const sha = context.sha;
+            const sourceRef = context.ref.replace('refs/heads/', '').replace('refs/tags/', '');
+            await github.rest.repos.createDispatchEvent({
+              owner: 'tunnexio',
+              repo: 'tunnex-web',
+              event_type: 'tunnex-main-published',
+              client_payload: {
+                source_sha: sha,
+                source_ref: sourceRef,
+                installer_url: `https://raw.githubusercontent.com/tunnexio/tunnex/${sha}/deploy/get.sh`,
+              },
+            });
+
+  # S6.6 pipe-safe install: on a v* release tag, attach install.sh + its SHA256 as release assets so
+  # the docs can offer a download-verify-inspect-run path (the security-conscious default) and the
+  # marketing site can serve the SAME single script — it must never fork or hand-maintain a copy.
+  release-assets:
+    # Main builds are installable by immutable SHA as well as version tags. Publish a
+    # matching build release so get.tunnex.io can fetch the descriptor it names.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    # A release asset that appears before its five image tags finish is a broken release. The matrix result
+    # becomes success only after every architecture of every service has been pushed.
+    needs: [publish, client, cli-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+          cache: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download desktop installers
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tunnex-*-installer
+          path: desktop-artifacts
+          merge-multiple: false
+      - name: Download Linux CLI artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/download-artifact@v4
+        with:
+          name: tunnex-linux-cli
+          path: cli-artifacts
+      - name: Checksum install.sh (bare filename so `sha256sum -c` works in the download dir)
+        working-directory: deploy
+        run: sha256sum install.sh > install.sh.sha256
+      - name: Build and sign the immutable release manifest
+        env:
+          TUNNEX_RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.TUNNEX_RELEASE_SIGNING_PRIVATE_KEY }}
+          TUNNEX_RELEASE_KEY_ID: ${{ secrets.TUNNEX_RELEASE_KEY_ID }}
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          test -n "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY"
+          test -n "$TUNNEX_RELEASE_KEY_ID"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE_VERSION="$GITHUB_REF_NAME"
+            IMAGE_TAG="$GITHUB_REF_NAME"
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            RELEASE_VERSION="sha-${SOURCE_SHA:0:7}"
+            IMAGE_TAG="$RELEASE_VERSION"
+            RELEASE_TAG="tunnex-build-${SOURCE_SHA}"
+          fi
+          digest() {
+            local image="$1" arch="$2"
+            docker buildx imagetools inspect --raw "$image:$IMAGE_TAG" |
+              jq -er --arg arch "$arch" '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest' |
+              head -n1
+          }
+          image_prefix="ghcr.io/${GITHUB_REPOSITORY}"
+          api_amd64=$(digest "${image_prefix}-api" amd64); api_arm64=$(digest "${image_prefix}-api" arm64)
+          web_amd64=$(digest "${image_prefix}-web" amd64); web_arm64=$(digest "${image_prefix}-web" arm64)
+          nginx_amd64=$(digest "${image_prefix}-nginx" amd64); nginx_arm64=$(digest "${image_prefix}-nginx" arm64)
+          node_amd64=$(digest "${image_prefix}-node-agent" amd64); node_arm64=$(digest "${image_prefix}-node-agent" arm64)
+          migrate_amd64=$(digest "${image_prefix}-migrate" amd64); migrate_arm64=$(digest "${image_prefix}-migrate" arm64)
+          jq -n \
+            --argjson sequence "$RUN_NUMBER" --arg version "$RELEASE_VERSION" --arg source_sha "$SOURCE_SHA" \
+            --arg published_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg notes "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}" \
+            --arg api_amd64 "$api_amd64" --arg api_arm64 "$api_arm64" --arg web_amd64 "$web_amd64" --arg web_arm64 "$web_arm64" \
+            --arg nginx_amd64 "$nginx_amd64" --arg nginx_arm64 "$nginx_arm64" --arg node_amd64 "$node_amd64" --arg node_arm64 "$node_arm64" \
+            --arg migrate_amd64 "$migrate_amd64" --arg migrate_arm64 "$migrate_arm64" \
+            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64}}}' > release-unsigned.json
+          (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
+          rm release-unsigned.json
+          sha256sum release.json > release.json.sha256
+      - name: Attach install.sh + checksum to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            RELEASE_TAG="tunnex-build-${GITHUB_SHA}"
+          fi
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes
+          gh release upload "$RELEASE_TAG" deploy/install.sh deploy/install.sh.sha256 release.json release.json.sha256 --clobber
+      - name: Attach desktop installers + combined checksum to tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mac="desktop-artifacts/tunnex-macos-installer/Tunnex-macOS-universal.pkg"
+          win="desktop-artifacts/tunnex-windows-installer/Tunnex-Windows-x64.exe"
+          test -f "$mac"
+          test -f "$win"
+          sha256sum "$mac" "$win" > desktop-artifacts/Tunnex-desktop-SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" "$mac" "$win" desktop-artifacts/Tunnex-desktop-SHA256SUMS --clobber
+      - name: Attach Linux CLI binaries + checksum to tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          amd64="cli-artifacts/tnx-linux-amd64"
+          arm64="cli-artifacts/tnx-linux-arm64"
+          # GitHub Actions artifact extraction does not preserve executable mode.
+          # The release asset is verified by bytes; users explicitly chmod it before use.
+          test -s "$amd64"
+          test -s "$arm64"
+          sha256sum "$amd64" "$arm64" > cli-artifacts/Tunnex-CLI-SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" \
+            "$amd64" "$arm64" cli-artifacts/Tunnex-CLI-SHA256SUMS --clobber

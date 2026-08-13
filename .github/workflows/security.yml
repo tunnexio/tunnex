@@ -1,0 +1,325 @@
+name: Security
+
+# EPIC 11 / D5 — the supply-chain + code-scanning tier. Publishable, cheap, and gated on NOTHING
+# entity-side (no certificates, no legal entity) — it ships before beta and feeds the public trust page.
+#
+# THE RULING: BLOCK on what we can fix; ADVISE on what we inherit.
+#   BLOCKING  — govulncheck (our dependency choices), CodeQL high/critical (our code), SBOM + cosign
+#               publish on release (a release without provenance is a release you can't attest).
+#   ADVISORY  — Trivy image findings (base-image CVEs we don't control), OpenSSF Scorecard.
+# ADVISORY = "its FINDINGS don't block" — NOT "the job needn't run". `continue-on-error` therefore sits on
+# the findings-producing STEP, never on the job, and every advisory job asserts it actually produced results.
+# S11-1/O-1 are the cautionary tales: a job configured not to matter let a regression merge and then excused
+# it, and a bad action pin made a 3-second no-op report the same green as a real scan.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    # Weekly: a dependency becomes vulnerable without our code changing — the scan must run on a clock,
+    # not only on a push, or a quiet repo silently rots.
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ⛔ ONE CLASSIFIER, SHARED. Same measured reason as the `gates` split (S14.10): a UI section touches no Go,
+  # yet CodeQL(go) at 2.8 min and govulncheck x5 ran on every push. This buys RUNNER-MINUTES, not wall clock —
+  # Security is 3.2 min in parallel and never on the critical path, which is exactly why moving it to
+  # `push: main` was REJECTED: it would trade the pre-merge signal for nothing.
+  #
+  # ⛔ FAILS CLOSED, identically to `gates`: unknown base, shallow clone, non-PR event or an EMPTY diff all
+  # run everything. A skipped SECURITY job is a coverage hole, and none of these are required checks, so
+  # nothing else would notice.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.c.outputs.go }}
+      javascript: ${{ steps.c.outputs.javascript }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: c
+        run: |
+          set -euo pipefail
+          RUN_GO=true
+          RUN_JAVASCRIPT=true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              CHANGED=$(git diff --name-only "${BASE}...HEAD" || true)
+              if [ -n "$(printf '%s' "$CHANGED" | tr -d '[:space:]')" ]; then
+                if ! printf '%s\n' "$CHANGED" | grep -qE '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/)'; then
+                  RUN_GO=false
+                fi
+                if ! printf '%s\n' "$CHANGED" | grep -qE '(\.(js|jsx|mjs|cjs|ts|tsx)$|(^|/)(package|pnpm-lock|package-lock)\.json$|(^|/)pnpm-lock\.yaml$|(^|/)(tsconfig|vite\.config|playwright\.config|playwright\.visual\.config)\.|Dockerfile|Makefile|\.github/|openapi/|apps/(web|client)/|packages/shared/|e2e/)'; then
+                  RUN_JAVASCRIPT=false
+                fi
+              fi
+            fi
+          fi
+          echo "go=$RUN_GO" >> "$GITHUB_OUTPUT"
+          echo "javascript=$RUN_JAVASCRIPT" >> "$GITHUB_OUTPUT"
+          echo "::notice title=security scope::go=$RUN_GO javascript=$RUN_JAVASCRIPT"
+
+  # ── BLOCKING: our dependency choices ────────────────────────────────────────────────────────────────
+  govulncheck:
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
+    name: govulncheck (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every independent Go module. A vuln in ANY of them is a vuln we ship.
+        module: [apps/api, apps/node, apps/helper, apps/cli, apps/operator]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Scan ${{ matrix.module }}
+        working-directory: ${{ matrix.module }}
+        # govulncheck reports only vulns REACHABLE from our call graph — so a finding here is one we can
+        # actually fix (bump the dep) or must actually justify, never inherited noise.
+        run: govulncheck ./...
+
+  # ── BLOCKING: our code ─────────────────────────────────────────────────────────────────────────────
+  codeql:
+    needs: scope
+    name: CodeQL (blocking on high/critical)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+      # Each leg is skipped only when the shared classifier positively proves that its language is absent.
+      # Non-PR events, missing bases and empty diffs default to running both legs (fail closed).
+      - name: Skip note (language absent from diff)
+        if: >-
+          (matrix.language == 'go' && needs.scope.outputs.go != 'true') ||
+          (matrix.language == 'javascript-typescript' && needs.scope.outputs.javascript != 'true')
+        run: echo "::notice::CodeQL(${{ matrix.language }}) SKIPPED — the PR diff cannot affect this language."
+      - uses: github/codeql-action/init@v3
+        if: >-
+          (matrix.language == 'go' && needs.scope.outputs.go == 'true') ||
+          (matrix.language == 'javascript-typescript' && needs.scope.outputs.javascript == 'true')
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+      - uses: github/codeql-action/autobuild@v3
+        if: >-
+          (matrix.language == 'go' && needs.scope.outputs.go == 'true') ||
+          (matrix.language == 'javascript-typescript' && needs.scope.outputs.javascript == 'true')
+      - uses: github/codeql-action/analyze@v3
+        if: >-
+          (matrix.language == 'go' && needs.scope.outputs.go == 'true') ||
+          (matrix.language == 'javascript-typescript' && needs.scope.outputs.javascript == 'true')
+        with:
+          category: /language:${{ matrix.language }}
+          output: codeql-results
+      # ⛔ THIS STEP MUST CARRY THE SAME CONDITION AS THE ANALYSIS THAT PRODUCES ITS INPUT.
+      #
+      # It did not, and S14.11's follow-up PR (#59) — THE FIRST DIFF SINCE THE SPLIT WITH NO GO FILES —
+      # failed here with `jq: error: Could not open file codeql-results/*.sarif`. The go leg's init /
+      # autobuild / analyze all skipped correctly, no SARIF was written, and this step read it anyway.
+      #
+      #   A GATE CONDITIONED DIFFERENTLY FROM ITS OWN INPUT IS A GATE THAT FAILS ON ABSENCE RATHER THAN
+      #   ON FINDINGS — and it reported as `CodeQL (blocking on high/critical) (go): failure`, which reads
+      #   exactly like a real security finding. That is the worst possible disguise for a plumbing bug.
+      #
+      # It stayed invisible because every PR between the split and #59 touched Go. The filter was never
+      # exercised on the branch it now takes.
+      - name: Fail on high/critical findings (blocking threshold)
+        if: >-
+          (matrix.language == 'go' && needs.scope.outputs.go == 'true') ||
+          (matrix.language == 'javascript-typescript' && needs.scope.outputs.javascript == 'true')
+        run: |
+          set -euo pipefail
+          # ⛔ AND A GUARD ON THE INPUT ITSELF: if the analysis DID run, a missing SARIF is a real failure
+          # (the scan silently did nothing) and must not be swallowed. Absence is only acceptable when the
+          # step is skipped outright, which the `if:` above now handles.
+          shopt -s nullglob
+          files=(codeql-results/*.sarif)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::CodeQL ran but produced NO SARIF — the scan did not analyse anything"
+            exit 1
+          fi
+          # CodeQL marks high/critical security alerts as SARIF level "error" (medium/low are "warning"/
+          # "note"). Counting error-level results is the documented, stable signal — more robust than
+          # re-deriving security-severity from the rule table, which lives in different SARIF locations
+          # depending on whether a query pack contributed it.
+          total=0
+          for f in "${files[@]}"; do
+            n=$(jq '[.runs[].results[]? | select(.level == "error")] | length' "$f")
+            echo "  $(basename "$f"): $n error-level result(s)"
+            total=$((total + n))
+          done
+          echo "high/critical findings: $total"
+          if [ "$total" -ne 0 ]; then
+            echo "::error::CodeQL reported $total high/critical finding(s) — see the Security tab"
+            exit 1
+          fi
+
+  # ── BLOCKING: formatting / lint parity (the same checks a dev runs locally) ─────────────────────────
+  fmt-lint:
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
+    name: gofmt + vet parity (blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          # The five modules share one toolchain but have independent dependency graphs. Hashing every sum
+          # lets setup-go restore the same module/build cache that the sequential vet commands consume.
+          cache-dependency-path: |
+            apps/api/go.sum
+            apps/node/go.sum
+            apps/helper/go.sum
+            apps/cli/go.sum
+            apps/operator/go.sum
+      - name: gofmt (all Go modules)
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l apps/api apps/node apps/helper apps/cli apps/operator)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would reformat these files:"; echo "$unformatted"; exit 1
+          fi
+      - name: go vet (per module, readonly like every other gate)
+        env: { GOFLAGS: -mod=readonly }
+        run: |
+          set -euo pipefail
+          for m in apps/api apps/node apps/helper apps/cli apps/operator; do
+            echo "── vet $m"; (cd "$m" && go vet ./...)
+          done
+      # actionlint: a malformed workflow does not fail a JOB — it fails the whole RUN before any job
+      # starts, which reads as an infrastructure blip rather than a broken commit. (An unquoted colon in a
+      # step NAME cost a full CI round-trip in this very slice.) Linting the workflows is the gate for the
+      # files that ARE the gates.
+      - name: Go toolchain pin agreement (one pin, every site — S11 Cluster A)
+        run: ./scripts/check-toolchain-pin.sh
+      - name: actionlint (workflow syntax — the gates' own gate)
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color
+
+  # ── ADVISORY: base-image CVEs we don't control ─────────────────────────────────────────────────────
+  # ADVISORY MEANS "FINDINGS DON'T BLOCK", NOT "THE JOB NEEDN'T RUN" (S11 O-1). `continue-on-error` sits on
+  # the FINDINGS step only — never on the job. A job-level flag also swallows setup failures, so an
+  # unresolvable action or a broken build looks identical to a clean pass; this job failed in 3s on a bad
+  # action pin and reported the same green as a real scan. That is the S11-1 class in miniature, found
+  # inside the slice that repaid it. The produced-results assertion below closes the other half: a scan
+  # that emits nothing must not read as a scan that found nothing.
+  trivy:
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
+    name: Trivy image scan (advisory findings, blocking setup)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the API image (the customer-facing artifact)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/api.Dockerfile
+          load: true
+          tags: tunnex-api:scan
+          # Read the publisher's API cache, but export to a separate scope: Security and CI run concurrently
+          # on main, so sharing the writer scope would let two BuildKit exporters overwrite one another.
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=security-api
+      - uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true # ADVISORY: inherited base-image CVEs are not ours to fix
+        with:
+          image-ref: tunnex-api:scan
+          format: sarif
+          output: trivy.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true # a CVE with no upstream fix is not actionable
+      - name: Assert the scan actually produced results (a silent no-op is not a pass)
+        run: test -s trivy.sarif || { echo "::error::trivy produced no SARIF — the scan did not run"; exit 1; }
+      - uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: trivy.sarif, category: trivy }
+
+  # ── ADVISORY: supply-chain posture score ───────────────────────────────────────────────────────────
+  scorecard:
+    name: OpenSSF Scorecard (advisory findings, blocking setup)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: ossf/scorecard-action@v2.4.0
+        continue-on-error: true # ADVISORY: the SCORE doesn't block; the job still has to run (O-1)
+        with: { results_file: scorecard.sarif, results_format: sarif, publish_results: false }
+      - name: Assert the scan actually produced results
+        run: test -s scorecard.sarif || { echo "::error::scorecard produced no SARIF — the scan did not run"; exit 1; }
+      - uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: scorecard.sarif, category: scorecard }
+
+  # ── BLOCKING (on a release tag): provenance ────────────────────────────────────────────────────────
+  # A release without provenance is a release you can't attest. On a v* tag this produces an SBOM per
+  # service image and a keyless cosign signature; both are attached to the tag's artifacts.
+  sbom-sign:
+    name: SBOM + cosign (blocking on release)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+      id-token: write # keyless signing (Fulcio/Rekor) — no key material to guard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: sigstore/cosign-installer@v3
+      - name: Generate SBOMs (SPDX) for the source tree + built images
+        run: |
+          set -euo pipefail
+          mkdir -p sbom
+          syft dir:. -o spdx-json > sbom/tunnex-source.spdx.json
+          for svc in api node; do
+            docker build -f "deploy/docker/$svc.Dockerfile" -t "tunnex-$svc:${GITHUB_REF_NAME}" .
+            syft "tunnex-$svc:${GITHUB_REF_NAME}" -o spdx-json > "sbom/tunnex-$svc.spdx.json"
+          done
+      - name: Sign the SBOMs (keyless)
+        env: { COSIGN_EXPERIMENTAL: "1" }
+        run: |
+          set -euo pipefail
+          for f in sbom/*.spdx.json; do cosign sign-blob --yes --output-signature "$f.sig" \
+            --output-certificate "$f.pem" "$f"; done
+      - uses: actions/upload-artifact@v4
+        with: { name: sbom-and-signatures, path: sbom/, if-no-files-found: error }

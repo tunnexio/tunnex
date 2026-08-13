@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    // vite/client supplies `import.meta.glob`, which the token reservation scan uses to read every .tsx source.
+    "types": ["vite/client"]
+  },
+  // test/ IS IN SCOPE DELIBERATELY. It was `["src"]` until 2026-08-01, which meant `tsc --noEmit` — the gate
+  // behind `pnpm --filter @tunnex/web typecheck` — had NEVER typechecked a single file in the component test
+  // tier. Five slices were written and reported green against a check that never looked at them. Found while
+  // deciding where to put the Loaded<T> contract: placing it in test/ would have made it a check that cannot
+  // fail, inside the artifact written to prevent checks that cannot fail.
+  "include": ["src", "test"], // config files belong to tsconfig.node.json (composite); listing them here too is TS6305
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

@@ -1,0 +1,25 @@
+-- S11 walk WF-S11-8 (a): free a revoked gateway's name, so re-enrolment works as the docs have always claimed.
+--
+-- THE WALL THIS REMOVES. nodes_org_id_name_key was an UNCONDITIONAL unique constraint on (org_id, name), and
+-- the API has no delete — only revoke, which sets status='revoked'. So a revoked row held its name forever and
+-- CreateNode answered 409 node_exists. That made self-host.md's oldest recovery instruction — "a lost gateway:
+-- re-enrol it (one pasted command)" — impossible to follow for a gateway that had ever existed. Not specific to
+-- the expired-cert case that found it: a destroyed VM, a failed disk, an RMA, a deleted state volume all hit the
+-- same 409.
+--
+-- WHY A PARTIAL INDEX IS SAFE HERE — censused before landing, not after (the ruled condition). Duplicate names
+-- become possible among REVOKED rows, so anything resolving a node BY NAME would become ambiguous. The census
+-- found exactly one name-keyed query (GetNodeByOrgName, whose only caller was a test, and which this migration's
+-- companion change constrains to active rows), no SQL join on nodes.name, and no Go-side name map or by-name
+-- resolver. Identity resolution goes through cert_serial, which remains globally unique — so authentication and
+-- authorization never touch the name at all. node_join_tokens.node_name is a PIN compared at enrolment, not a
+-- lookup key, and pinning a token to a name whose only holder is revoked is precisely the case being enabled.
+--
+-- Backward-compatible for the rolling-upgrade contract (D1): a duplicate ACTIVE name still raises a unique
+-- violation, so the previous CP version keeps producing the same 409 for the same real conflict.
+--
+-- This is the NEAR-TERM UNBLOCK, not the fix. It makes a rebuilt gateway a NEW node — new id, orphaned site
+-- binding, a fresh metrics series, every runbook reference silently pointing at a dead row. Replace-in-place
+-- enrolment (the gateway-recovery story) is what actually solves it; see docs/S11-decisions.md.
+ALTER TABLE nodes DROP CONSTRAINT nodes_org_id_name_key;
+CREATE UNIQUE INDEX nodes_org_id_name_active_key ON nodes (org_id, name) WHERE revoked_at IS NULL;

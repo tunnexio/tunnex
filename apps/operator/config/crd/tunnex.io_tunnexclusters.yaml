@@ -1,0 +1,156 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.1
+  name: tunnexclusters.tunnex.io
+spec:
+  group: tunnex.io
+  names:
+    kind: TunnexCluster
+    listKind: TunnexClusterList
+    plural: tunnexclusters
+    singular: tunnexcluster
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.name
+      name: Cluster
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TunnexCluster is a Kubernetes cluster registered on the Tunnex
+          fabric.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              TunnexClusterSpec declares a Kubernetes cluster registered on the Tunnex fabric (mirrors the CP's
+              RegisterCluster verb). The org is IMPLICIT — it is the org of the operator's machine credential (D3),
+              never a spec field. The fronting site is referenced by its name.
+            properties:
+              dnsZone:
+                description: DNSZone is the customer zone suffix of every exposed
+                  Service's FQDN (e.g. k8s.acme.com). Required.
+                type: string
+              name:
+                description: Name is the cluster's name — a DNS label that becomes
+                  part of every exposed Service's FQDN. Required.
+                type: string
+              serviceCIDR:
+                description: ServiceCIDR is the cluster's real Kubernetes Service
+                  CIDR (e.g. 10.96.0.0/12). Required.
+                type: string
+              site:
+                description: Site is the name of the site whose gateway fronts this
+                  cluster. Required.
+                type: string
+              vipRange:
+                description: |-
+                  VIPRange is the cluster's synthetic VIP CIDR (must be disjoint from the device pool, site subnets, and
+                  other clusters' ranges — the CP's Collect/OrgRanges validator enforces it). Required.
+                type: string
+            required:
+            - dnsZone
+            - name
+            - serviceCIDR
+            - site
+            - vipRange
+            type: object
+          status:
+            description: TunnexClusterStatus reflects the control plane's accepted
+              state — DERIVED truth, never spec.
+            properties:
+              clusterId:
+                description: ClusterID is the control-plane id assigned at registration.
+                type: string
+              conditions:
+                description: |-
+                  Conditions carry Ready + any CP refusal verbatim (e.g. a VIP-range overlap). HONEST status: a CR is
+                  Ready ONLY when the CP ACCEPTED it, never merely "applied".
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              dnsVip:
+                description: DNSVIP is the cluster's reserved DNS VIP (derived at
+                  registration).
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

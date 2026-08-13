@@ -1,0 +1,51 @@
+{
+  "admin": [
+    "device:approve",
+    "device:restore",
+    "device:transfer",
+    "device_health:manage",
+    "k8s:manage",
+    "member:invite",
+    "member:list",
+    "member:manage",
+    "mfa:manage",
+    "org:update",
+    "org:view",
+    "policy:manage",
+    "policy:view",
+    "site:manage"
+  ],
+  "agent": [
+    "org:view"
+  ],
+  "member": [
+    "member:list",
+    "org:view"
+  ],
+  "operator": [
+    "k8s:manage",
+    "member:list",
+    "org:view",
+    "policy:manage",
+    "policy:view"
+  ],
+  "owner": [
+    "device:approve",
+    "device:restore",
+    "device:transfer",
+    "device_health:manage",
+    "k8s:manage",
+    "license:manage",
+    "machine:manage",
+    "member:invite",
+    "member:list",
+    "member:manage",
+    "mfa:manage",
+    "org:delete",
+    "org:update",
+    "org:view",
+    "policy:manage",
+    "policy:view",
+    "site:manage"
+  ]
+}

@@ -1,0 +1,60 @@
+# Edge reverse proxy (the tunnex-nginx image) — routes / -> web:8080 and
+# /api,/healthz -> api:8080 (upstreams baked into the image, resolved by the
+# "api"/"web" Service names). This is the HTTP entrypoint the Ingress fronts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+spec:
+  replicas: {{ .Values.edge.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: edge
+  template:
+    metadata:
+      labels:
+        {{- include "tunnex-cp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: edge
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: edge
+          image: {{ include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.edge) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.edge.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: edge
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

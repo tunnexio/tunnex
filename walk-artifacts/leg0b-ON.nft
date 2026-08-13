@@ -1,0 +1,40 @@
+table ip nat {
+	chain DOCKER_OUTPUT {
+		ip daddr 127.0.0.11 tcp dport 53 counter packets 0 bytes 0 xt target "DNAT"
+		ip daddr 127.0.0.11 udp dport 53 counter packets 6 bytes 360 xt target "DNAT"
+	}
+
+	chain OUTPUT {
+		type nat hook output priority dstnat; policy accept;
+		ip daddr 127.0.0.11 counter packets 6 bytes 360 jump DOCKER_OUTPUT
+	}
+
+	chain DOCKER_POSTROUTING {
+		ip saddr 127.0.0.11 tcp sport 33235 counter packets 0 bytes 0 xt target "SNAT"
+		ip saddr 127.0.0.11 udp sport 47400 counter packets 0 bytes 0 xt target "SNAT"
+	}
+
+	chain POSTROUTING {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip daddr 127.0.0.11 counter packets 6 bytes 360 jump DOCKER_POSTROUTING
+	}
+}
+table ip tunnex {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		iifname "wg0" oifname "wg0" counter packets 0 bytes 0 accept
+		iifname "wg0" oifname != "wg0" counter packets 0 bytes 0 accept
+	}
+}
+table ip6 tunnex {
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		iifname "wg0" oifname "wg0" counter packets 0 bytes 0 accept
+	}
+}

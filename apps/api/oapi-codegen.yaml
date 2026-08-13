@@ -1,0 +1,11 @@
+# oapi-codegen config — generates the Go server contract from openapi/openapi.yaml.
+# Run via `make generate` (in a golang container).
+package: api
+output: internal/api/api.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+  embedded-spec: true
+output-options:
+  skip-prune: false

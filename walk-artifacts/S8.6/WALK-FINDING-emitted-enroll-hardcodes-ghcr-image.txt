@@ -1,0 +1,12 @@
+EPIC-8 WALK FINDING (low, branch-walk friction) — dashboard enroll command hardcodes the ghcr image
+The Devices→Enroll gateway command ends with `ghcr.io/iotunnex/tunnex-node-agent:latest`. On a BRANCH walk
+(agent built from source, shipped by docker save/load as `tunnex-node-agent:latest`), pasting verbatim PULLS
+the released ghcr image = STALE code (no S8.6b/WF-4-local, possibly an older ProtocolVersion the S8.1 gate
+rejects). Observed: instance-2 pulled ghcr, ran pre-fold; fixed by rm + re-run with the LOCAL
+`tunnex-node-agent:latest` (reused stored identity from the volume, no re-token). NOT a product defect — for a
+RELEASED deployment the ghcr image is right. Walk-of-unmerged-code friction. Nicety: editable image tag on the
+enroll screen, or pin ${TUNNEX_VERSION}. Disposition: HELD, low — epic-close UI harvest (Deck D).
+
+--- DISPOSITION (founder 2026-07-21): REGISTERED, low — future deploy-surface touch, not this train ---
+Branch-walk friction inherent to walking unmerged code. Eventual fix: the emitted enroll command's image ref
+configurable / meta-derived (pin ${TUNNEX_VERSION}). Rides a future deploy-surface story, not S8.6.

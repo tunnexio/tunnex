@@ -1,0 +1,39 @@
+{{- if .Values.serviceAccount.create }}
+{{- include "tunnex-gateway.ackGuard" . -}}
+# WF-K5: the gateway DNATs each exposed Service's synthetic VIP straight to a READY pod ENDPOINT — a
+# VIP->ClusterIP DNAT can NOT complete (netfilter applies one dst-NAT per prerouting pass, so kube-proxy's
+# ClusterIP->pod DNAT is a silent no-op; proven on the wire, docs/S10.3-decisions.md "WF-K5"). To learn ready
+# pod IPs the agent performs a READ-ONLY watch of Services + EndpointSlices. This is the ENTIRE K8s API
+# surface the gateway has: it CANNOT read Secrets, CANNOT write anything, CANNOT escalate. It is CLUSTER-
+# scoped (not per-namespace) deliberately: exposures are DYNAMIC — an operator exposes Services in namespaces
+# not known at install time — so a per-namespace Role would have to be re-created on every new exposure. The
+# scope is tightened by RESOURCE (only services + endpointslices), which is what keeps the posture honest.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tunnex-gateway.fullname" . }}-endpoint-reader
+  labels:
+    {{- include "tunnex-gateway.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tunnex-gateway.fullname" . }}-endpoint-reader
+  labels:
+    {{- include "tunnex-gateway.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tunnex-gateway.fullname" . }}-endpoint-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "tunnex-gateway.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

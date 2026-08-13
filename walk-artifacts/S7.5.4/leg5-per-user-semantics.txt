@@ -1,0 +1,5 @@
+== Thu Jul 16 14:41:25 UTC 2026 Leg5 per-user ENFORCEMENT SEMANTICS ==
+grant: owner(10.99.0.3) -> walk-dst live; member(10.99.0.4) NOT granted
+A ruleset (subject-only allow):
+		ip saddr 10.99.0.3 ip daddr 10.80.9.0/24 counter packets 0 bytes 0 accept
+		counter packets 0 bytes 0 comment "tunnex_default_drop"

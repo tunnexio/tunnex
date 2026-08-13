@@ -1,0 +1,22 @@
+S7.5.3 Leg 1 — require-mode exclusion (spoke A device-under-test, spoke B control)
+
+PUT health-checks/disk_encryption {"mode":"require"} -> {would_fail_count:0}  (config flip blocks nothing — grandfather)
+spoke B report {disk_encrypted:true}  -> {state:compliant,  blocked:false}   (control stays)
+spoke A report {disk_encrypted:false} -> {state:noncompliant, blocked:true, failed_checks:[disk_encryption/require]}
+
+TIMING (clean, node PID pre-resolved — the first 7.87s read was NFT-helper docker-inspect overhead per poll):
+  BLOCK  (report noncompliant -> peer gone from wg0): 0.069s   (<5s PASS)
+  RE-ADMIT (report compliant  -> peer back in wg0):   0.215s   (<5s PASS)
+
+WIRE:
+  wg show wg0 -> spoke A peer ABSENT, spoke B peer PRESENT
+  ping A->gw 10.99.0.1: 3 tx, 0 rx, 100% packet loss   (blocked)
+  ping B->gw 10.99.0.1: 3 tx, 3 rx, 0% packet loss      (control unaffected)
+
+DB:
+  devices: walk-spoke health_blocked=t | walk-spoke-b health_blocked=f
+  device_health: A noncompliant/disk_encrypted=f | B compliant/disk_encrypted=t
+
+AUDIT (actor_system=device-health, honest system-actor + cause):
+  device.health_blocked   cause=noncompliant_report
+  device.health_unblocked cause=compliant_report   (the re-admit transition — Leg 2 server evidence)

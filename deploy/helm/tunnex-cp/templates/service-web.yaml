@@ -1,0 +1,17 @@
+# SPA Service. Named "web" so the edge baked upstream `web:8080` resolves it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

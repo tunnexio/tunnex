@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tunnex-cp
+description: >-
+  Tunnex control plane (API + web + edge). Deploys the control plane against an
+  EXTERNAL Postgres + Redis, with the master key supplied as a mounted Secret.
+  The in-cluster gateway is a SEPARATE chart (tunnex-gateway, S10.3) — this chart
+  is the control plane only.
+type: application
+# Chart version is the chart's own semver; appVersion tracks the Tunnex release
+# the default image tag points at. Bump appVersion with the image tag.
+version: 0.1.0
+appVersion: "0.2.0"
+kubeVersion: ">=1.24.0-0"
+keywords: [vpn, wireguard, zero-trust, control-plane]
+home: https://github.com/tunnexio/tunnex
+sources: [https://github.com/tunnexio/tunnex]

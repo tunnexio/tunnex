@@ -1,0 +1,63 @@
+Tunnex in-cluster gateway "{{ .Release.Name }}" installed (chart {{ .Chart.Name }}-{{ .Chart.Version }}).
+
+┌─ ALWAYS INSTALL WITH --wait ──────────────────────────────────────────────────┐
+│ helm install {{ .Release.Name }} tunnex/tunnex-gateway --wait ...             │
+│                                                                                │
+│ The preflight hook Job (F7) proves the privileged/hostNetwork context is       │
+│ admitted AND that cluster DNS resolves from the gateway's DNS posture. Without  │
+│ --wait, Helm returns before the hook completes and a blocked context / DNS      │
+│ trap surfaces later as a silent crash-loop instead of a clean install failure.  │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+This gateway is PRIVILEGED: hostNetwork, NET_ADMIN, /dev/net/tun (F4). It DNATs each
+exposed Service's VIP to a READY pod endpoint in the node netns ahead of kube-proxy — it
+cannot be an ordinary pod. You acknowledged this with acknowledgePrivileged=true.
+
+Security posture (for your security team's review):
+  - Capabilities: the pod drops the ENTIRE default set and adds back ONLY NET_ADMIN and
+    NET_BIND_SERVICE (not privileged:true; allowPrivilegeEscalation:false; seccompProfile
+    RuntimeDefault).
+  - Kubernetes API: the gateway reads Service ENDPOINTS to DNAT a VIP to a ready pod. Its
+    ServiceAccount token IS mounted and bound to a READ-ONLY ClusterRole over EXACTLY two
+    resource types — `services` and `discovery.k8s.io/endpointslices` (get/list/watch). It
+    CANNOT read Secrets, CANNOT write anything, CANNOT escalate. It talks to the control
+    plane over mTLS. (A VIP→ClusterIP DNAT cannot complete — kube-proxy will not re-DNAT it
+    — so the gateway resolves ready pod IPs itself; hence the minimal read grant.)
+
+1. FABRIC ENDPOINT (F6). Peers dial `{{ .Values.endpoint }}` to reach this gateway.
+   It must be the PUBLIC address of the WG Service:
+     kubectl get svc {{ include "tunnex-gateway.fullname" . }}-wg
+   {{- if eq .Values.service.type "LoadBalancer" }}
+   Wait for EXTERNAL-IP to be assigned; if it differs from `endpoint`, reserve a
+   static IP, set service.loadBalancerIP + endpoint to it, and `helm upgrade`.
+   {{- end }}
+
+2. JOIN TOKEN (F5).
+   {{- if .Values.existingJoinTokenSecret }}
+   Using your existing Secret "{{ .Values.existingJoinTokenSecret }}" (preferred —
+   the token stays out of Helm history).
+   {{- else if .Values.joinToken }}
+   The chart minted a join Secret from the raw joinToken value. NOTE: that value is
+   now in this release's Helm history (`helm get values`). Prefer existingJoinTokenSecret.
+   {{- else }}
+   No join token supplied. The gateway can only ENROLL with one — mint a join token
+   in the dashboard (or `tunnex nodes join-token`), create a Secret with key
+   `{{ .Values.joinTokenKey }}`, set existingJoinTokenSecret, and `helm upgrade`.
+   (Not needed once enrolled: the node cert persists on the state volume.)
+   {{- end }}
+
+3. REGISTER THE CLUSTER. Once the gateway is enrolled and bound to a site, register
+   the cluster + its synthetic VIP range in the dashboard (Kubernetes → Register
+   cluster) or the API, then expose Services. The gateway DNATs each VIP to a READY
+   pod endpoint and answers the cluster's DNS zone.
+
+   K8s API access (posture): to learn ready pod endpoints the gateway performs a
+   READ-ONLY watch of Services + EndpointSlices (ClusterRole
+   {{ include "tunnex-gateway.fullname" . }}-endpoint-reader). That is its ENTIRE
+   Kubernetes API surface — it cannot read Secrets, cannot write, cannot escalate.
+   If the gateway reports k8s_endpoints_unavailable, check its API reachability and
+   that this ClusterRole/binding is present.
+
+4. WIPE-TO-RE-ENROLL. To rotate identity or recover from a lost/corrupt state volume:
+   delete the PVC ({{ include "tunnex-gateway.fullname" . }}-state) and re-install with
+   a FRESH join token. The old node should be revoked in the dashboard first.
