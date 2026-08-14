@@ -104,6 +104,10 @@ done
 
 grep -Fq 'DOCKER_METADATA_SHORT_SHA_LENGTH: "7"' "$ROOT/.github/workflows/ci.yml" ||
 	fail "CI no longer pins the SHA abbreviation length consumed by installers"
+grep -Fq 'gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --prerelease' "$ROOT/.github/workflows/ci.yml" ||
+	fail "CI main-build releases can replace the public latest release"
+grep -Fq 'gh release edit "$GITHUB_REF_NAME" --latest' "$ROOT/.github/workflows/ci.yml" ||
+	fail "CI does not explicitly mark a completed versioned release as latest"
 grep -Fq 'type=sha,format=short,prefix=sha-,enable={{is_default_branch}}' "$ROOT/.github/workflows/ci.yml" ||
 	fail "CI image tag naming drifted from installer resolution"
 

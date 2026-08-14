@@ -717,12 +717,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             RELEASE_TAG="$GITHUB_REF_NAME"
+            BUILD_RELEASE=false
           else
             RELEASE_TAG="tunnex-build-${GITHUB_SHA}"
+            BUILD_RELEASE=true
           fi
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [[ "$BUILD_RELEASE" == true ]]; then
+              gh release edit "$RELEASE_TAG" --prerelease
+            fi
+          elif [[ "$BUILD_RELEASE" == true ]]; then
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --prerelease
+          else
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes
+          fi
           gh release upload "$RELEASE_TAG" deploy/install.sh deploy/install.sh.sha256 release.json release.json.sha256 --clobber
       - name: Attest installer and release descriptor
         uses: actions/attest@v4
@@ -757,3 +768,8 @@ jobs:
           sha256sum "$amd64" "$arm64" > cli-artifacts/Tunnex-CLI-SHA256SUMS
           gh release upload "$GITHUB_REF_NAME" \
             "$amd64" "$arm64" cli-artifacts/Tunnex-CLI-SHA256SUMS --clobber
+      - name: Mark completed versioned release as latest
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --latest
