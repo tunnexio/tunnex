@@ -13,6 +13,7 @@ name: Security
 # it, and a bad action pin made a 3-second no-op report the same green as a real scan.
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     tags: ["v*"]
