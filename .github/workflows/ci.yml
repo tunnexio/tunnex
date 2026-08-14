@@ -10,6 +10,7 @@ name: CI
 # playwright-electron target is deliberately out of scope (ledgered).
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     tags: ["v*"]
