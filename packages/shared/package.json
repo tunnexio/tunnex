@@ -19,10 +19,10 @@
     "build:tokens": "tsc -p tsconfig.tokens.json"
   },
   "dependencies": {
-    "openapi-fetch": "^0.13.0"
+    "openapi-fetch": "^0.17.0"
   },
   "devDependencies": {
     "openapi-typescript": "^7.4.4",
-    "typescript": "^5.6.3"
+    "typescript": "^7.0.2"
   }
 }
