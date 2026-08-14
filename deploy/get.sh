@@ -26,7 +26,7 @@
 set -eu
 
 # Trusted release verification key. The matching private signing key remains in CI only.
-TRUSTED_RELEASE_PUBLIC_KEY=4086a27d45e1609b41b9d29f397323edc2009414a649aa704b39c34634f75cfb
+TRUSTED_RELEASE_PUBLIC_KEY=b48ff99923c43052ade580cdca63952690f07f08372c35814baa44cb84d674a0
 
 # ── plumbing ────────────────────────────────────────────────────────────────────────────────────
 die() { printf '\n  \033[31m✗\033[0m %s\n\n' "$*" >&2; exit 1; }
@@ -798,7 +798,7 @@ APP_BASE_URL=${BASE_URL}
 # Release upgrades verify this value locally; it is not a telemetry or call-home credential.
 # The installer keeps it in the deployment config so the UI command never exposes it.
 TUNNEX_RELEASE_PUBLIC_KEY=${TUNNEX_RELEASE_PUBLIC_KEY:-$TRUSTED_RELEASE_PUBLIC_KEY}
-TUNNEX_RELEASE_KEY_ID=release-2026
+TUNNEX_RELEASE_KEY_ID=release-2026-08-01
 TUNNEX_RELEASE_MANIFEST_PATH=${RELEASE_MANIFEST_PATH}
 TUNNEX_RELEASE_CATALOG_URL=${TUNNEX_RELEASE_CATALOG_URL:-https://github.com/tunnexio/tunnex/releases/download/tunnex-updates/release.json}
 TUNNEX_RELEASE_UPDATE_CHECK=${TUNNEX_RELEASE_UPDATE_CHECK:-true}

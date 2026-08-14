@@ -27,7 +27,7 @@ RAW="https://raw.githubusercontent.com/${REPO}"
 API="https://api.github.com/repos/${REPO}"
 DIR="${TUNNEX_DIR:-tunnex}"
 # Trusted release verification key. The matching private signing key remains in CI only.
-TRUSTED_RELEASE_PUBLIC_KEY=4086a27d45e1609b41b9d29f397323edc2009414a649aa704b39c34634f75cfb
+TRUSTED_RELEASE_PUBLIC_KEY=b48ff99923c43052ade580cdca63952690f07f08372c35814baa44cb84d674a0
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -260,7 +260,7 @@ TUNNEX_VERSION=${VERSION}
 TUNNEX_SOURCE_REF=${SOURCE_REF}
 TUNNEX_RELEASE_MANIFEST_PATH=${RELEASE_MANIFEST_PATH}
 TUNNEX_RELEASE_PUBLIC_KEY=${TUNNEX_RELEASE_PUBLIC_KEY:-$TRUSTED_RELEASE_PUBLIC_KEY}
-TUNNEX_RELEASE_KEY_ID=release-2026
+TUNNEX_RELEASE_KEY_ID=release-2026-08-01
 TUNNEX_RELEASE_CATALOG_URL=${TUNNEX_RELEASE_CATALOG_URL:-https://github.com/tunnexio/tunnex/releases/download/tunnex-updates/release.json}
 TUNNEX_RELEASE_UPDATE_CHECK=${TUNNEX_RELEASE_UPDATE_CHECK:-true}
 TUNNEX_LOG_LEVEL=info
