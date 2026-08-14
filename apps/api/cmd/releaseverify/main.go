@@ -45,7 +45,7 @@ func main() {
 		if *platform == "arm64" {
 			digest = image.ARM64Digest
 		}
-		fmt.Printf("TUNNEX_%s_IMAGE=ghcr.io/iotunnex/tunnex-%s@%s\n", strings.ToUpper(strings.ReplaceAll(name, "-", "_")), name, digest)
+		fmt.Printf("TUNNEX_%s_IMAGE=ghcr.io/tunnexio/tunnex-%s@%s\n", strings.ToUpper(strings.ReplaceAll(name, "-", "_")), name, digest)
 	}
 	fmt.Printf("TUNNEX_RELEASE_SEQUENCE=%d\n", s.Manifest.Sequence)
 	fmt.Printf("TUNNEX_RELEASE_VERSION=%s\n", s.Manifest.Version)

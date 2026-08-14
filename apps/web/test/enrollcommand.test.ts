@@ -143,7 +143,7 @@ describe("remoteEnrollCommand — the one true zero-touch docker run", () => {
   });
 
   it("WF-2: the command uses the CP-configured (digest-pinnable) image, not a hardcoded :latest", () => {
-    const digest = "ghcr.io/iotunnex/tunnex-node-agent@sha256:abc123";
+    const digest = "ghcr.io/tunnexio/tunnex-node-agent@sha256:abc123";
     const cmd = remoteEnrollCommand({
       token: "T",
       name: null,
@@ -166,7 +166,7 @@ describe("remoteEnrollCommand — the one true zero-touch docker run", () => {
 
 describe("enrollCommand — compose enrollment pins the CP agent image", () => {
   it("passes the exact configured digest to compose instead of using its :latest default", () => {
-    const digest = "ghcr.io/iotunnex/tunnex-node-agent@sha256:abc123";
+    const digest = "ghcr.io/tunnexio/tunnex-node-agent@sha256:abc123";
     const cmd = enrollCommand("TKN", "gw-1", digest);
     expect(cmd).toContain(`TUNNEX_NODE_AGENT_IMAGE="${digest}"`);
     expect(cmd).toContain("docker compose -f tunnex.yml up -d --force-recreate node-agent");

@@ -39,7 +39,7 @@ services:
       retries: 5
 
   api:
-    image: ${TUNNEX_API_IMAGE:-ghcr.io/iotunnex/tunnex-api:${TUNNEX_VERSION:-latest}}
+    image: ${TUNNEX_API_IMAGE:-ghcr.io/tunnexio/tunnex-api:${TUNNEX_VERSION:-latest}}
     restart: unless-stopped
     environment:
       TUNNEX_ENV: production
@@ -51,7 +51,7 @@ services:
       # never localhost) so verify/reset/invite links work off-box.
       APP_BASE_URL: ${APP_BASE_URL:?set by install.sh}
       TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
-      TUNNEX_NODE_AGENT_IMAGE: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/iotunnex/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
+      TUNNEX_NODE_AGENT_IMAGE: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
       TUNNEX_IPV6_POOL_CIDR: ${TUNNEX_IPV6_POOL_CIDR:-}
       DATABASE_URL: ${DATABASE_URL:?set by install.sh}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
@@ -85,11 +85,11 @@ services:
         condition: service_healthy
 
   web:
-    image: ${TUNNEX_WEB_IMAGE:-ghcr.io/iotunnex/tunnex-web:${TUNNEX_VERSION:-latest}}
+    image: ${TUNNEX_WEB_IMAGE:-ghcr.io/tunnexio/tunnex-web:${TUNNEX_VERSION:-latest}}
     restart: unless-stopped
 
   nginx:
-    image: ${TUNNEX_NGINX_IMAGE:-ghcr.io/iotunnex/tunnex-nginx:${TUNNEX_VERSION:-latest}}
+    image: ${TUNNEX_NGINX_IMAGE:-ghcr.io/tunnexio/tunnex-nginx:${TUNNEX_VERSION:-latest}}
     restart: unless-stopped
     ports:
       - "80:8080" # public HTTP (front a TLS terminator / reverse proxy for HTTPS in production)
@@ -100,7 +100,7 @@ services:
         condition: service_healthy
 
   node-agent:
-    image: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/iotunnex/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
+    image: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
     restart: unless-stopped
     environment:
       TUNNEX_API_URL: http://api:8080

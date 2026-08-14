@@ -6,7 +6,7 @@
 # this chart keeps the control plane an ordinary, unprivileged workload.
 
 image:
-  registry: ghcr.io/iotunnex
+  registry: ghcr.io/tunnexio
   # Open-edition images are on ghcr; an ENTERPRISE deploy builds its own images
   # (TUNNEX_BUILD_TAGS=enterprise) and pushes them to a private registry, then
   # overrides registry + repositories below.
@@ -56,7 +56,7 @@ appBaseURL: ""            # e.g. https://vpn.acme.com   (REQUIRED for working em
 env: production
 logLevel: info
 # The gateway agent image the dashboard bakes into its emitted enroll command.
-nodeAgentImage: ghcr.io/iotunnex/tunnex-node-agent:0.2.0
+nodeAgentImage: ghcr.io/tunnexio/tunnex-node-agent:0.2.0
 # Exact-origin CORS allowlist (desktop app). Leave default unless customizing.
 corsAllowedOrigins: "app://tunnex"
 

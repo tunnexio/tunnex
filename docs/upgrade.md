@@ -111,7 +111,7 @@ migrate up
 # 4. Roll the control-plane replicas. Any mix of old and new runs correctly during the roll.
 #    Scheduler leadership moves on its own: the leader releases its lock as it shuts down and a
 #    replica picks it up (see the HA note below).
-kubectl -n tunnex set image deploy/tunnex-api api=ghcr.io/iotunnex/tunnex-api:vX.Y.Z
+kubectl -n tunnex set image deploy/tunnex-api api=ghcr.io/tunnexio/tunnex-api:vX.Y.Z
 kubectl -n tunnex rollout status deploy/tunnex-api
 
 # 5. Gateways reconcile on their own. No action, no re-enrolment.

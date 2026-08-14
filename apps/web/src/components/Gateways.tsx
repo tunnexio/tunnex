@@ -33,7 +33,7 @@ export function enrollCommand(
 }
 
 // The published gateway image (S6.6 zero-build deploy). Pulled by the emitted docker run — nothing builds.
-export const GATEWAY_IMAGE = "ghcr.io/iotunnex/tunnex-node-agent:latest";
+export const GATEWAY_IMAGE = "ghcr.io/tunnexio/tunnex-node-agent:latest";
 
 export interface RemoteEnrollOpts {
   token: string;

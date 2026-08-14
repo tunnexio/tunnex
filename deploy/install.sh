@@ -290,7 +290,7 @@ case "$(docker version --format '{{.Server.Arch}}' 2>/dev/null || true)" in
 esac
 if ! RELEASE_ENV="$(docker run --rm --entrypoint releaseverify \
 	-v "$PWD/release.json:/tmp/release.json:ro" \
-	"ghcr.io/iotunnex/tunnex-api:${VERSION}" \
+	"ghcr.io/tunnexio/tunnex-api:${VERSION}" \
 	-manifest /tmp/release.json -public-key "$TUNNEX_RELEASE_PUBLIC_KEY" \
 	-expected-source-sha "$SOURCE_REF" -platform "$RELEASE_ARCH" -print-env)"; then
 	die "signed release verification failed; refusing to start images from an unverifiable release"

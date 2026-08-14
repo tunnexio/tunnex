@@ -7,7 +7,7 @@
 # ordinary unprivileged workload.
 
 image:
-  registry: ghcr.io/iotunnex
+  registry: ghcr.io/tunnexio
   # The node-agent image. An ENTERPRISE deploy builds its own (TUNNEX_BUILD_TAGS=
   # enterprise) and overrides registry + repo. The preflight uses a tiny busybox.
   agent: tunnex-node-agent

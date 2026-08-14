@@ -8,7 +8,7 @@ must never drift silently.
 
 1. A push to `main` or a version tag publishes all Tunnex images successfully.
 2. The `sync-installer-site` CI job dispatches `tunnex-main-published` to
-   `iotunnex/tunnex-web`, carrying the full source SHA and an immutable raw URL.
+   `tunnexio/tunnex-web`, carrying the full source SHA and an immutable raw URL.
 3. `tunnex-web` fetches `deploy/get.sh` at that exact SHA, runs shell and sync
    checks, and opens a reviewable PR from a clean `main` base.
 4. Merging that PR runs the existing web deploy workflow, updating
@@ -24,7 +24,7 @@ mutable `latest` tag at install time.
 ## Required secret
 
 Add a fine-grained GitHub token as the `tunnex` repository Actions secret
-`TUNNEX_WEB_SYNC_TOKEN`. It needs access only to `iotunnex/tunnex-web` with
+`TUNNEX_WEB_SYNC_TOKEN`. It needs access only to `tunnexio/tunnex-web` with
 Actions: read and write repository dispatch events (or the equivalent contents
 and pull-request permissions used by the receiving workflow). Keep it out of
 the repository, logs, and installer.
