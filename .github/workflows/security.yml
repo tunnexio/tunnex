@@ -45,7 +45,7 @@ jobs:
       go: ${{ steps.c.outputs.go }}
       javascript: ${{ steps.c.outputs.javascript }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: c
@@ -84,8 +84,8 @@ jobs:
         # Every independent Go module. A vuln in ANY of them is a vuln we ship.
         module: [apps/api, apps/node, apps/helper, apps/cli, apps/operator]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: ${{ matrix.module }}/go.mod
           cache-dependency-path: ${{ matrix.module }}/go.sum
@@ -112,7 +112,7 @@ jobs:
       matrix:
         language: [go, javascript-typescript]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Each leg is skipped only when the shared classifier positively proves that its language is absent.
       # Non-PR events, missing bases and empty diffs default to running both legs (fail closed).
       - name: Skip note (language absent from diff)
@@ -189,8 +189,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: apps/api/go.mod
           # The five modules share one toolchain but have independent dependency graphs. Hashing every sum
@@ -243,10 +243,10 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       - name: Build the API image (the customer-facing artifact)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/api.Dockerfile
@@ -280,9 +280,9 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { persist-credentials: false }
-      - uses: ossf/scorecard-action@v2.4.0
+      - uses: ossf/scorecard-action@v2.4.4
         continue-on-error: true # ADVISORY: the SCORE doesn't block; the job still has to run (O-1)
         with: { results_file: scorecard.sarif, results_format: sarif, publish_results: false }
       - name: Assert the scan actually produced results
@@ -304,7 +304,7 @@ jobs:
       id-token: write # keyless signing (Fulcio/Rekor) — no key material to guard
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: anchore/sbom-action/download-syft@v0
       - uses: sigstore/cosign-installer@v3
       - name: Generate SBOMs (SPDX) for the source tree + built images
@@ -326,5 +326,5 @@ jobs:
         uses: actions/attest@v4
         with:
           subject-path: sbom/*.spdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: sbom-and-signatures, path: sbom/, if-no-files-found: error }

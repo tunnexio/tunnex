@@ -38,7 +38,7 @@ jobs:
       # fetch-depth: 0 so the classifier below can diff against the PR base. A shallow clone would make the
       # base unreachable — which the classifier treats as UNKNOWN and therefore runs everything, so a
       # regression here costs time, never coverage.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -232,11 +232,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20 # observed max ~4m on Windows packaging
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Native Windows build+vet+test of the privilege helper — the WFP backend pulls
       # wireguard/windows + wintun, which the linux cross-compile can't fully exercise.
       # RED BLOCKS MERGE. (macOS helper build stays on the cross-compile gate.)
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # ⛔ DERIVED, NOT HARDCODED. security.yml already uses go-version-file and therefore cannot drift
           # from what the module declares; this side asserted '1.25' by hand, so the agreement between the
@@ -252,7 +252,7 @@ jobs:
           go build ./...
           go vet ./...
           go test ./...
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: Install (electron binary skipped — CI never launches it)
@@ -292,7 +292,7 @@ jobs:
           bash apps/client/scripts/sha256sums.sh
       - name: Upload macOS installer
         if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tunnex-macos-installer
           path: |
@@ -317,7 +317,7 @@ jobs:
           bash apps/client/scripts/sha256sums.sh
       - name: Upload Windows installer
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tunnex-windows-installer
           path: |
@@ -333,8 +333,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: apps/cli/go.mod
           cache-dependency-path: apps/cli/go.sum
@@ -356,7 +356,7 @@ jobs:
           ../../cli-artifacts/tnx-linux-amd64 help 2>&1 | grep -F 'tunnex login'
       - name: Upload Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tunnex-linux-cli
           path: |
@@ -383,7 +383,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bring up the stack + seed
         run: |
           cp .env.example .env
@@ -402,7 +402,7 @@ jobs:
           docker compose logs --no-color > e2e/test-results/compose.log 2>&1 || true
       - name: Upload E2E failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-${{ github.run_attempt }}
           path: e2e/test-results/
@@ -438,7 +438,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; advisory findings remain advisory, broken setup still fails
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bring up the stack + seed, with the gallery route COMPILED IN
         # VITE_VISUAL_GALLERY must reach the web image's BUILD, not the running container: Vite bakes
         # `import.meta.env` into the bundle, so a runtime env var arrives after the route has already been
@@ -474,7 +474,7 @@ jobs:
             sh -c "npm ci --no-audit --no-fund && npx playwright test -c playwright.visual.config.ts --grep @pixel"
       - name: Upload the diff images for adjudication
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-diff
           path: e2e/test-results/
@@ -498,7 +498,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # observed ~3m; timeout is fail-closed, never a skip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Bring up the ENTERPRISE stack + seed (base + enterprise fixtures)
         run: |
           cp .env.example .env
@@ -518,7 +518,7 @@ jobs:
           docker compose logs --no-color > e2e/test-results/compose-enterprise.log 2>&1 || true
       - name: Upload enterprise E2E failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-enterprise-failure-${{ github.run_attempt }}
           path: e2e/test-results/
@@ -557,16 +557,16 @@ jobs:
           - { name: node-agent, dockerfile: deploy/docker/node.Dockerfile }
           - { name: migrate, dockerfile: deploy/docker/migrate.Dockerfile }
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3 # arm64 emulation for the multi-arch build
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4 # arm64 emulation for the multi-arch build
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}-${{ matrix.image.name }}
           tags: |
@@ -575,7 +575,7 @@ jobs:
             type=ref,event=tag
       - name: Build + push ${{ matrix.image.name }} for both architectures
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
@@ -608,7 +608,7 @@ jobs:
       contents: read
     steps:
       - name: Dispatch exact-source installer sync
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.TUNNEX_WEB_SYNC_TOKEN }}
           script: |
@@ -643,27 +643,27 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.25.13'
           cache: false
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Download desktop installers
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: tunnex-*-installer
           path: desktop-artifacts
           merge-multiple: false
       - name: Download Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: tunnex-linux-cli
           path: cli-artifacts
