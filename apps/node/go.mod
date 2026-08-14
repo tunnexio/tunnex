@@ -5,13 +5,11 @@ module github.com/tunnexio/tunnex/apps/node
 
 go 1.25.13
 
-toolchain go1.25.11
-
 require (
 	github.com/florianl/go-conntrack v0.7.0
 	github.com/florianl/go-nflog/v2 v2.3.0
-	golang.org/x/net v0.50.0
-	golang.org/x/sys v0.41.0
+	golang.org/x/net v0.57.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
