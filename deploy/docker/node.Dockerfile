@@ -1,7 +1,7 @@
 # tunnex-node data-plane agent — multi-stage Go build.
 # Runs with NET_ADMIN in compose so it can manage WireGuard interfaces (S3.x).
 
-FROM golang:1.25.12-alpine AS build
+FROM golang:1.25.13-alpine AS build
 WORKDIR /src
 COPY apps/node/go.mod apps/node/go.sum* ./
 ENV GOFLAGS=-mod=readonly

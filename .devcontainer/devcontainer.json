@@ -6,7 +6,7 @@
     // web-gate-local-env debt: `pnpm --filter @tunnex/web typecheck` refuses with ERR_PNPM_UNSUPPORTED_ENGINE),
     // so the container owns the toolchain and the gate becomes runnable locally instead of CI-only.
     "ghcr.io/devcontainers/features/node:1": { "version": "20" },
-    "ghcr.io/devcontainers/features/go:1": { "version": "1.25.12" },
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.25.13" },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },

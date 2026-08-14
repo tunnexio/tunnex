@@ -6,7 +6,7 @@
 // no-DB-import census test asserts it structurally.
 module github.com/tunnexio/tunnex/apps/operator
 
-go 1.25.12
+go 1.25.13
 
 require (
 	k8s.io/apimachinery v0.32.1

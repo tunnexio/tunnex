@@ -160,7 +160,7 @@ sqlc: ## Regenerate typed query code from db/queries
 # The module path matches the canonical repository at github.com/tunnexio/tunnex.
 # Keep -mod=readonly so builds remain reproducible and cannot silently rewrite
 # go.mod/go.sum while resolving dependencies.
-GO_IMAGE := golang:1.25.12-alpine
+GO_IMAGE := golang:1.25.13-alpine
 NODE_IMAGE := node:20-alpine
 PW_IMAGE := mcr.microsoft.com/playwright:v1.48.2-jammy
 OAPI_CODEGEN_VERSION := v2.4.1

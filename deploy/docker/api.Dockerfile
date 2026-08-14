@@ -1,7 +1,7 @@
 # Tunnex control-plane API — multi-stage Go build.
 # Build context is the repo root (see docker-compose.yml).
 
-FROM golang:1.25.12-alpine AS build
+FROM golang:1.25.13-alpine AS build
 WORKDIR /src
 
 # Download deps first for layer caching. go.sum is created on first build.

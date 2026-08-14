@@ -1,0 +1,74 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      root-javascript:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    groups:
+      web-javascript:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /apps/client
+    schedule:
+      interval: weekly
+    groups:
+      client-javascript:
+        patterns: ['*']
+
+  - package-ecosystem: gomod
+    directory: /apps/api
+    schedule:
+      interval: weekly
+    groups:
+      api-go:
+        patterns: ['*']
+
+  - package-ecosystem: gomod
+    directory: /apps/node
+    schedule:
+      interval: weekly
+    groups:
+      node-go:
+        patterns: ['*']
+
+  - package-ecosystem: gomod
+    directory: /apps/operator
+    schedule:
+      interval: weekly
+    groups:
+      operator-go:
+        patterns: ['*']
+
+  - package-ecosystem: gomod
+    directory: /apps/cli
+    schedule:
+      interval: weekly
+    groups:
+      cli-go:
+        patterns: ['*']
+
+  - package-ecosystem: gomod
+    directory: /apps/helper
+    schedule:
+      interval: weekly
+    groups:
+      helper-go:
+        patterns: ['*']
+
