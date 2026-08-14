@@ -38,7 +38,7 @@ curl -fsSL https://get.tunnex.io | sh
 
 Either way it collects the deployment address, administrator, address pool, and SMTP choice before
 changing the machine. It generates the DB secret, writes a clean `./tunnex/.env`, and pins the newest
-fully-published green `main` build: the compose manifest and every `ghcr.io/iotunnex/tunnex-*` image
+fully-published green `main` build: the compose manifest and every `ghcr.io/tunnexio/tunnex-*` image
 come from the same CI commit, recorded as `TUNNEX_SOURCE_REF`. No `git clone`, no `--build`, no editing
 compose. Re-running reuses the DB password.
 

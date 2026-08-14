@@ -151,7 +151,7 @@ func Load() Config {
 		AppBaseURL:          getenv("APP_BASE_URL", "http://localhost"),
 		GatewayControlURL:   getenv("TUNNEX_GATEWAY_CONTROL_URL", ""),
 		AdminEmail:          getenv("TUNNEX_ADMIN_EMAIL", ""),
-		NodeAgentImage:      getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/iotunnex/tunnex-node-agent:latest"),
+		NodeAgentImage:      getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
 		ReleaseManifestPath: getenv("TUNNEX_RELEASE_MANIFEST_PATH", ""),
 		ReleasePublicKey:    getenv("TUNNEX_RELEASE_PUBLIC_KEY", ""),
 		ReleaseSequence:     getint64("TUNNEX_RELEASE_SEQUENCE", 0),

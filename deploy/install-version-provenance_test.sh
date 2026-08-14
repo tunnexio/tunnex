@@ -31,7 +31,7 @@ curl() {
 	printf '%s' "${MOCK_RESPONSE:-}"
 }
 
-API="https://api.example.invalid/repos/iotunnex/tunnex"
+API="https://api.example.invalid/repos/tunnexio/tunnex"
 # shellcheck disable=SC1090
 . "$TMP/install.resolver"
 
@@ -110,6 +110,24 @@ grep -Fq 'gh release edit "$GITHUB_REF_NAME" --latest' "$ROOT/.github/workflows/
 	fail "CI does not explicitly mark a completed versioned release as latest"
 grep -Fq 'type=sha,format=short,prefix=sha-,enable={{is_default_branch}}' "$ROOT/.github/workflows/ci.yml" ||
 	fail "CI image tag naming drifted from installer resolution"
+
+# Organization migration contract: every active installation and enrollment surface must pull
+# from the organization-owned GHCR namespace. Historical walk records are intentionally excluded.
+for image_surface in \
+	"$ROOT/deploy/get.sh" \
+	"$ROOT/deploy/install.sh" \
+	"$ROOT/deploy/tunnex.yml" \
+	"$ROOT/deploy/helm/tunnex-cp/values.yaml" \
+	"$ROOT/deploy/helm/tunnex-gateway/values.yaml" \
+	"$ROOT/apps/api/cmd/releaseverify/main.go" \
+	"$ROOT/apps/api/internal/config/config.go" \
+	"$ROOT/apps/web/src/components/Gateways.tsx"; do
+	if grep -Fq 'ghcr.io/iotunnex' "$image_surface"; then
+		fail "$(basename "$image_surface") still points at the retired personal GHCR namespace"
+	fi
+	grep -Fq 'ghcr.io/tunnexio' "$image_surface" ||
+		fail "$(basename "$image_surface") does not point at the organization GHCR namespace"
+done
 
 # Bootstrap inputs are written by both installers and must reach the API container. Keep this as a
 # contract test at the distribution boundary: a value present in .env but absent from compose silently
