@@ -1,0 +1,16 @@
+# Default ownership keeps every change reviewable even when no narrower rule matches.
+* @tunnexio/core-maintainers
+
+# Security-sensitive automation and release surfaces require specialist review.
+/.github/ @tunnexio/security @tunnexio/release-managers
+/deploy/ @tunnexio/core-maintainers @tunnexio/release-managers
+/SECURITY.md @tunnexio/security
+
+# Product ownership boundaries.
+/apps/api/ @tunnexio/core-maintainers
+/apps/node/ @tunnexio/core-maintainers
+/apps/operator/ @tunnexio/core-maintainers
+/apps/cli/ @tunnexio/core-maintainers
+/apps/helper/ @tunnexio/core-maintainers
+/apps/client/ @tunnexio/core-maintainers
+

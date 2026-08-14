@@ -302,6 +302,7 @@ jobs:
       contents: write
       packages: write
       id-token: write # keyless signing (Fulcio/Rekor) — no key material to guard
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: anchore/sbom-action/download-syft@v0
@@ -321,5 +322,9 @@ jobs:
           set -euo pipefail
           for f in sbom/*.spdx.json; do cosign sign-blob --yes --output-signature "$f.sig" \
             --output-certificate "$f.pem" "$f"; done
+      - name: Attest SBOM provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: sbom/*.spdx.json
       - uses: actions/upload-artifact@v4
         with: { name: sbom-and-signatures, path: sbom/, if-no-files-found: error }
