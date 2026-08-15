@@ -21,7 +21,17 @@ ALTER TABLE agent_runtime_credentials
     OR (rotation_requested_at IS NOT NULL AND rotation_deadline IS NOT NULL AND rotation_requested_by IS NOT NULL)
   );
 
+-- Migration 0090's insert/update trigger intentionally rejects credential
+-- writes for a non-active agent. Historical credentials can legitimately
+-- belong to an agent suspended after bootstrap, so this one-time metadata
+-- backfill must not reinterpret their lifecycle or fail the whole upgrade.
+-- ALTER TABLE takes the required lock; the trigger is re-enabled in the same
+-- migration transaction before normal writers can continue.
+ALTER TABLE agent_runtime_credentials
+  DISABLE TRIGGER agent_runtime_credentials_agent_only;
 UPDATE agent_runtime_credentials SET activated_at = created_at;
+ALTER TABLE agent_runtime_credentials
+  ENABLE TRIGGER agent_runtime_credentials_agent_only;
 
 CREATE UNIQUE INDEX agent_runtime_credentials_device_revision_key
   ON agent_runtime_credentials (device_id, revision);

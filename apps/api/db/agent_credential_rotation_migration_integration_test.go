@@ -70,6 +70,32 @@ func TestAgentCredentialRotationMigrationPostgres(t *testing.T) {
 		return device, hash[:]
 	}
 
+	legacyInactiveDSN, legacyInactivePool := newDB("legacy_inactive")
+	if err := db.MigrateTo(legacyInactiveDSN, 93); err != nil {
+		t.Fatal(err)
+	}
+	legacyInactiveDevice, legacyInactiveHash := seedCredential(legacyInactivePool, "legacy-inactive")
+	if _, err := legacyInactivePool.Exec(ctx, `UPDATE devices SET status='suspended' WHERE id=$1`, legacyInactiveDevice); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MigrateTo(legacyInactiveDSN, 94); err != nil {
+		t.Fatalf("0094 must backfill a credential whose agent was suspended after bootstrap: %v", err)
+	}
+	var legacyHash []byte
+	var legacyRevision int64
+	var legacyState string
+	var activationMatches bool
+	if err := legacyInactivePool.QueryRow(ctx, `SELECT token_hash,revision,state,activated_at=created_at FROM agent_runtime_credentials WHERE device_id=$1`, legacyInactiveDevice).Scan(&legacyHash, &legacyRevision, &legacyState, &activationMatches); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(legacyHash, legacyInactiveHash) || legacyRevision != 1 || legacyState != "current" || !activationMatches {
+		t.Fatalf("inactive legacy backfill hash=%x revision=%d state=%s activation_matches=%v", legacyHash, legacyRevision, legacyState, activationMatches)
+	}
+	var triggerEnabled string
+	if err := legacyInactivePool.QueryRow(ctx, `SELECT tgenabled::text FROM pg_trigger WHERE tgname='agent_runtime_credentials_agent_only'`).Scan(&triggerEnabled); err != nil || triggerEnabled != "O" {
+		t.Fatalf("credential ownership trigger enabled=%q err=%v after backfill", triggerEnabled, err)
+	}
+
 	successDSN, successPool := newDB("success")
 	if err := db.MigrateTo(successDSN, 94); err != nil {
 		t.Fatal(err)
