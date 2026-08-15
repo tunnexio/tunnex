@@ -1,0 +1,13 @@
+F04 FRESH RUNTIME READY (REDACTED)
+agent_name=f04-live-bb7a406-20260815T1525
+device_id=01a004e3-6688-70ba-878b-86bdd46164e1
+gateway_id=019febb8-7dfc-745e-ac4d-cac3c7f6ae7c
+owner_approval_http=204
+initial_state=active desired=1 applied=1 attempted=1 error=none
+change_state=active desired=2 applied=2 attempted=2 error=none
+service=active enabled
+wireguard_interface=runtime
+wireguard_peer=present
+real_handshake=present
+secret_file_modes=0600 root:root
+released_owner_ui=connected ready fresh-report

@@ -223,3 +223,42 @@ process restart, and revoke-triggered disable all passed. The final old-bearer
 poll returned the uniform HTTP 401 refusal, the runtime process exited, and the
 interface was absent. Redacted evidence is
 `walk-artifacts/F04/20260815T051740Z/live-dev-cp.md`.
+
+## Final exact-source closure walk — 2026-08-15
+
+**SATISFIES.** The final walk used the reviewed `bb7a406` API/web deployment
+and the source-bound signed runtime from `09d9848`, whose only product delta is
+the terminal-offboard revision reset discovered by this walk. The final
+runtime asset and unchanged service unit verified against the immutable signed
+descriptor before installation.
+
+The fresh disposable agent proved owner approval, real WireGuard apply and
+handshake, two 30-second unchanged polls returning 204/zero bytes, and a
+scoped desired-revision bump waking the held poll with revision 2. Owner status
+returned 2/2/2, connected/ready/fresh. A plain member received 403 and no
+runtime-status fields; the released owner route rendered the same ready facts.
+Forced report aging rendered disconnected, last-good and stale in both the API
+and released UI, then returned to ready/fresh after recovery. A 35-second
+agent-VM-only control-plane outage preserved the last-good configuration,
+applied revision, running service and real peer.
+
+The first exact opt-out/re-enable attempt correctly exposed a real defect and
+was not accepted: offboard removed the interface but left applied revision 2,
+so restart did not reapply it. Commit `09d9848` records applied revision zero
+only after a successful terminal offboard. The source-bound signed fixed
+runtime then proved the complete ceremony: released-UI opt-out persisted and
+audited, the machine channel returned uniform 401, the service exited cleanly,
+the interface disappeared and durable applied revision became zero; released-
+UI re-enable persisted and audited, restart reapplied revision 2, recreated
+the interface, handshaked, and returned owner status to connected/ready/fresh.
+
+Both disposable agents were canonically revoked and removed. The dedicated
+VM service, interface and five managed-runtime paths were removed; `/dev/net/tun`
+and the base release verifier were preserved. The organization's original ON
+opt-in was restored. Redacted evidence is in
+`walk-artifacts/F04/20260815T103303Z/`.
+
+The exact local gate matrix recorded for this story remains green. The final
+fold changed only the runtime offboard state plus focused regressions and was
+re-proved on the live wire. F04 has no remaining P0/P1 finding or substituted
+live gate and is review-pass eligible.

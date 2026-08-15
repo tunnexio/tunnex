@@ -1,0 +1,17 @@
+F04 FINAL DEV WALK PROVENANCE (REDACTED)
+run=20260815T103303Z
+control_plane=AWS development only
+schema=93 clean
+edition=enterprise
+licence_tier=scale
+api_web_source=bb7a40621444f2e8569a07a0b73deda59aeb0811
+api_image_sha256=a0149b3dc87a2392181518711475170c309a3c2bec2c6f4e190c85e7119bd727
+web_image=tunnex-web:f04-bb7a406-amd64
+web_revision=bb7a40621444f2e8569a07a0b73deda59aeb0811
+web_image_id=sha256:b3e5401ebd6a2c2a5abe159683087acdd4794c48eb862c09950c5e382558d231
+final_runtime_source=09d9848ea5121ca08b3348fc29ef2a4ce2949326
+release_key_id=f04-dev-cp-test
+runtime_amd64_sha256=5e9382415afa53462d7465b17c7197d579485485890fbd70db29a007000f53bd
+runtime_unit_sha256=29dd5518d31f60a2ddca9b116113a32054335fbddf2996da8131a29cfae093a6
+signed_descriptor_source_bound=true
+note=09d9848 changes only the managed-runtime offboard state and its tests; API and web bytes remain the reviewed bb7a406 deployment.

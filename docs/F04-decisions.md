@@ -200,6 +200,17 @@ unrelated permission.
    restart recovery, concurrent reports, and wire-level secret absence, with
    committed in-session artifacts. Unit tests remain substitutes.
 
+## Final live disposition — 2026-08-15
+
+**SATISFIES.** The exact DEV walk in
+`walk-artifacts/F04/20260815T103303Z/` proves D1-D8 on a real systemd host with
+`/dev/net/tun` and a real WireGuard peer. It includes bounded no-change and
+change-wake polls, owner/member information hiding, forced stale/last-good
+projection, transient-outage preservation, terminal opt-out, persisted
+revision-zero offboard, re-enable/restart reapply, signed runtime provenance,
+and scoped cleanup. The walk-found re-enable defect was fixed in `09d9848`,
+signed, deployed, and re-proved before this disposition was recorded.
+
 ## Measurement slice — options for held decisions
 
 The following are evidence-backed options, not dispositions. The **recommended**

@@ -1,0 +1,13 @@
+F04 SCOPED CLEANUP
+fresh_agent=canonical revoke then remove, released UI refetch absent
+earlier_agent=canonical revoke then remove, released UI refetch absent
+live_non_deleted_f04_devices=0
+runtime_service=inactive and unit removed
+runtime_interface=absent
+managed_runtime_paths_remaining=0
+base_dev_net_tun=preserved
+base_release_verifier=preserved
+organization_runtime_opt_in=restored true
+local_bootstrap_scratch=absent
+remote_bootstrap_scratch=absent
+unrelated_control_plane_resources=preserved
