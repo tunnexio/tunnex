@@ -1,6 +1,6 @@
 # F01 boxwalk draft
 
-Status: Evidence captured; root review and current-head full-gate disposition pending. Unit and static tests below are **SUBSTITUTES**, never SATISFIES. Do not mark F01 complete from this file.
+Status: **SATISFIES.** Named live artifacts prove the released route, current rollback, and connected suspend/resume behavior; the final root disposition is in `docs/F01-decisions.md`.
 
 ## Preconditions
 
@@ -216,7 +216,7 @@ Authenticated UI/list wire evidence is live-satisfied by the named browser artif
 
 ## Current audit note (held)
 
-The current route clears `gateways`, selected gateway, `notEntitled`, `rows`, `profiles`, `runtimeStatus`, and role immediately on organization change (`apps/web/src/pages/Agents.tsx`). The affected-path walk confirmed no stale old-org gateway/options/facts during the in-flight request. Earlier `walk-artifacts/F01/20260814T164824Z/browser-walk.md` is superseded. F01 remains In Progress pending independent review; no named live gate remains open in this ledger.
+The current route clears `gateways`, selected gateway, `notEntitled`, `rows`, `profiles`, `runtimeStatus`, and role immediately on organization change (`apps/web/src/pages/Agents.tsx`). The affected-path walk confirmed no stale old-org gateway/options/facts during the in-flight request. Earlier `walk-artifacts/F01/20260814T164824Z/browser-walk.md` is superseded. Independent review is complete and no named live gate remains open.
 
 ### 2026-08-15 runtime harness diagnosis
 

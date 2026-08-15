@@ -1,6 +1,6 @@
 # F01 decisions
 
-Status: In Progress. This paper records only behavior measured in the current F01-owned code and schema. It is not a completion claim.
+Status: **SATISFIES / Done.** The historical in-progress ledgers below are retained as the measured path to closure; the final disposition is recorded at the end of this paper.
 
 ## Locked decisions
 
@@ -22,7 +22,7 @@ Status: In Progress. This paper records only behavior measured in the current F0
 
 These are intentionally not resolved in F01 without root/F03 disposition.
 
-1. **Independent review:** the authenticated released-route, rollback, and connected-agent evidence are captured, but F01 remains In Progress pending the required independent story-end review and root disposition.
+1. **Independent review — resolved:** the authenticated released-route, rollback, and connected-agent evidence were independently reviewed with no remaining F01 P0/P1 finding.
 2. **Resolved live gate:** authenticated UI/list wire evidence, the disposable migration rollback walk, and the connected-agent data-plane proof are satisfied by their named redacted artifacts. Unit/PG lifecycle and data-plane tests remain SUBSTITUTES for the live proofs.
 
 ## Isolated PostgreSQL proof ledger — 2026-08-14
@@ -88,7 +88,17 @@ The released `/agents` route now has production call sites for both F01 profile 
 - `pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build` — PASS: 75 test files, 1,044 tests; typecheck and Vite build passed.
 - `git diff --check` — PASS.
 
-The full story gate set is therefore not green on this current shared head. F01 remains In Progress; no plan status change is made here.
+This was an intermediate shared-state result. It is superseded by the fresh isolated current-tree gate matrix recorded in the final disposition below.
+
+## Final disposition — 2026-08-15
+
+F01 **SATISFIES**. The authenticated released route, permission-gated DOM
+absence, mutation refetch, current 0088 rollback/preservation, and real
+suspend→peer absence→resume handshake walks all pass in the named redacted
+artifacts. The later fresh isolated current-tree matrix passed generation,
+migration, both editions, both builds, node/helper/crosscompile, full web, and
+diff checks. The subsequent F04 offboard-only CLI change does not touch the F01
+API, schema, UI, lifecycle, or evidence boundary. No F01 gate remains open.
 
 ### Independent gate diagnosis — 2026-08-15
 
