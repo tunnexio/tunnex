@@ -13,6 +13,17 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
+func (s apiServer) PrepareAgentRuntimeCredential(ctx context.Context, req api.PrepareAgentRuntimeCredentialRequestObject) (api.PrepareAgentRuntimeCredentialResponseObject, error) {
+	id, ok := agentruntime.IdentityFromContext(ctx)
+	if !ok || req.Body == nil {
+		return nil, runtimeUnauthorized()
+	}
+	if err := s.agentRuntime.PrepareCredentialCandidate(ctx, id, req.Body.Revision, req.Body.TokenHash); err != nil {
+		return nil, runtimeMachineError(err)
+	}
+	return api.PrepareAgentRuntimeCredential204Response{Headers: api.PrepareAgentRuntimeCredential204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
 func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntimeRequestObject) (api.PollAgentRuntimeResponseObject, error) {
 	id, ok := agentruntime.IdentityFromContext(ctx)
 	if !ok {
@@ -32,7 +43,8 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 	return api.PollAgentRuntime200JSONResponse{
 		Body: api.ManagedAgentConfig{Revision: cfg.Revision, DeviceId: cfg.DeviceID, OrgId: cfg.OrgID,
 			Address: cfg.Address, GatewayEndpoint: cfg.GatewayEndpoint, GatewayPublicKey: cfg.GatewayPublicKey,
-			AllowedIps: cfg.AllowedIPs, Dns: cfg.DNS, PersistentKeepalive: cfg.PersistentKeepalive},
+			AllowedIps: cfg.AllowedIPs, Dns: cfg.DNS, PersistentKeepalive: cfg.PersistentKeepalive,
+			CredentialRotationRevision: cfg.CredentialRotationRevision},
 		Headers: api.PollAgentRuntime200ResponseHeaders{XRequestId: reqID(ctx)},
 	}, nil
 }
@@ -106,7 +118,13 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 				return
 			}
 			raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			id, err := svc.Authenticate(r.Context(), strings.TrimSpace(raw))
+			var id agentruntime.Identity
+			var err error
+			if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" {
+				id, err = svc.AuthenticateCurrent(r.Context(), strings.TrimSpace(raw))
+			} else {
+				id, err = svc.Authenticate(r.Context(), strings.TrimSpace(raw))
+			}
 			if err != nil {
 				apierr.Write(w, r, runtimeUnauthorized())
 				return
@@ -117,5 +135,5 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 }
 
 func isRuntimeChannelPath(path string) bool {
-	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report"
+	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate"
 }

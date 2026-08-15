@@ -81,6 +81,71 @@ type Service struct {
 	approvalEnforced bool
 }
 
+type AgentCredentialRotationStatus struct {
+	DeviceID          uuid.UUID
+	CurrentRevision   int64
+	State             string
+	RequestedRevision *int64
+	Deadline          *time.Time
+}
+
+func credentialRotationStatus(row sqlc.GetAgentRuntimeCredentialRotationRow) AgentCredentialRotationStatus {
+	state := "current"
+	var requested *int64
+	var deadline *time.Time
+	if row.RotationRequestedAt.Valid && row.RotationDeadline.Valid && row.RotationDeadline.Time.After(time.Now()) {
+		next := row.Revision + 1
+		requested = &next
+		d := row.RotationDeadline.Time
+		deadline = &d
+		state = "requested"
+		if row.CandidatePending {
+			state = "candidate"
+		}
+	}
+	return AgentCredentialRotationStatus{DeviceID: row.DeviceID, CurrentRevision: row.Revision, State: state, RequestedRevision: requested, Deadline: deadline}
+}
+
+func (s *Service) GetAgentCredentialRotation(ctx context.Context, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
+	row, err := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentCredentialRotationStatus{}, apierr.NotFound("agent_not_found", "agent not found")
+	}
+	if err != nil {
+		return AgentCredentialRotationStatus{}, err
+	}
+	return credentialRotationStatus(row), nil
+}
+
+func (s *Service) RequestAgentCredentialRotation(ctx context.Context, actorID, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
+	var result AgentCredentialRotationStatus
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.ExpireAgentRuntimeCredentialRotation(ctx, sqlc.ExpireAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
+			return err
+		}
+		row, err := q.RequestAgentRuntimeCredentialRotation(ctx, sqlc.RequestAgentRuntimeCredentialRotationParams{
+			OrgID: orgID, DeviceID: deviceID,
+			RotationDeadline:    pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+			RotationRequestedBy: pgtype.UUID{Bytes: actorID, Valid: true},
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.Conflict("agent_credential_rotation_unavailable", "credential rotation requires one active agent with no pending candidate")
+		}
+		if err != nil {
+			return err
+		}
+		result = AgentCredentialRotationStatus{DeviceID: row.DeviceID, CurrentRevision: row.Revision, State: "requested"}
+		next := row.Revision + 1
+		result.RequestedRevision = &next
+		if row.RotationDeadline.Valid {
+			d := row.RotationDeadline.Time
+			result.Deadline = &d
+		}
+		return audit(ctx, q, orgID, &actorID, "agent.credential_rotation_requested", "device", deviceID.String(), map[string]any{"revision": next})
+	})
+	return result, err
+}
+
 // SetApprovalEnforced wires the edition's device-approval enforcement (WF-OVPN-6). Called from the server
 // wiring with apphttp.NewDeviceApprovalEdition() — true only on the enterprise build. Default false (open).
 func (s *Service) SetApprovalEnforced(v bool) { s.approvalEnforced = v }

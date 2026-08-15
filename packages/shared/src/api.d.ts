@@ -664,6 +664,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/runtime/credential-candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare a locally generated runtime credential successor
+         * @description Machine-only endpoint authenticated by the current runtime bearer. It accepts only the requested revision and a 32-byte SHA-256 hash; plaintext credentials are never accepted or returned. Repeating the same revision and hash is idempotent.
+         */
+        post: operations["prepareAgentRuntimeCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agents/{deviceId}": {
         parameters: {
             query?: never;
@@ -702,6 +722,27 @@ export interface paths {
         get: operations["getAgentRuntimeStatus"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /** Get secret-free runtime credential rotation status */
+        get: operations["getAgentCredentialRotation"];
+        put?: never;
+        /** Request runtime credential rotation for one active managed agent */
+        post: operations["requestAgentCredentialRotation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3318,6 +3359,29 @@ export interface components {
             allowed_ips: string[];
             dns: string[];
             persistent_keepalive: number;
+            /**
+             * Format: int64
+             * @description Non-secret requested successor revision; omitted when no request is pending.
+             */
+            credential_rotation_revision?: number | null;
+        };
+        AgentCredentialCandidate: {
+            /** Format: int64 */
+            revision: number;
+            /** @description Lowercase hexadecimal SHA-256 of a bearer generated only on the agent host. */
+            token_hash: string;
+        };
+        AgentCredentialRotationStatus: {
+            /** Format: uuid */
+            device_id: string;
+            /** Format: int64 */
+            current_revision: number;
+            /** @enum {string} */
+            state: "current" | "requested" | "candidate";
+            /** Format: int64 */
+            requested_revision?: number | null;
+            /** Format: date-time */
+            deadline?: string | null;
         };
         AgentRuntimeSetting: {
             /** @description Explicit organization opt-in for F04 managed runtime synchronization. */
@@ -4730,6 +4794,31 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    prepareAgentRuntimeCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCredentialCandidate"];
+            };
+        };
+        responses: {
+            /** @description Candidate hash prepared. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
     getAgentProfile: {
         parameters: {
             query?: never;
@@ -4804,6 +4893,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRuntimeStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentCredentialRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current revision and pending deadline; no credential or hash. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCredentialRotationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    requestAgentCredentialRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Persisted request status; no credential or hash. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentCredentialRotationStatus"];
                 };
             };
             default: components["responses"]["Error"];

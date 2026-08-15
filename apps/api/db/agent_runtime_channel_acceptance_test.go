@@ -30,7 +30,7 @@ func TestF04RuntimeChannelAcceptanceSpec(t *testing.T) {
 	}
 	s := source.String()
 	handlerRequired := []string{
-		"GetAgentRuntimeCredential",
+		"AuthenticateAgentRuntimeCredential",
 		"sha256.Sum256",
 		"device_id",
 		"dev.Kind != \"agent\"",

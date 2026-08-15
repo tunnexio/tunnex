@@ -161,6 +161,59 @@ afterEach(() => {
 });
 
 describe("released Agents route — F04 runtime facts", () => {
+  it("requests credential rotation and renders only the refetched secret-free status", async () => {
+    let status: { device_id: string; current_revision: number; state: string; requested_revision: number | null; deadline: string | null } = {
+      device_id: "device-a", current_revision: 1, state: "current", requested_revision: null, deadline: null,
+    };
+    get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/nodes")) return { data: [{ id: "node-a", name: "gateway-a", status: "active", endpoint: "gw.example:51820" }] };
+      if (path.endsWith("/agents")) return { data: [agent], response: { status: 200 } };
+      if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role: "owner" }], response: { status: 200 } };
+      if (path.endsWith("/agents/{deviceId}")) return { data: profile, response: { status: 200 } };
+      if (path.endsWith("/runtime-status")) return { data: runtime, response: { status: 200 } };
+      if (path.endsWith("/credential-rotation")) return { data: status, response: { status: 200 } };
+      return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
+    });
+    post.mockImplementation(async (path: string) => {
+      if (path.endsWith("/credential-rotation")) {
+        status = { device_id: "device-a", current_revision: 1, state: "requested", requested_revision: 2, deadline: "2026-08-15T12:00:00Z" };
+        return { data: status, response: { status: 200 } };
+      }
+      return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
+    });
+    const { default: Agents } = await import("../src/pages/Agents");
+    render(createElement(Agents));
+    fireEvent.click(await screen.findByRole("button", { name: "Open builder-a" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Rotate credential" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
+      { params: { path: { orgId: "org-a", deviceId: "device-a" } } },
+    ));
+    await waitFor(() => expect(screen.getByText("Revision 1 · requested")).toBeTruthy());
+    const rotationGets = get.mock.calls.filter(([path]) => String(path).endsWith("/credential-rotation"));
+    expect(rotationGets.length).toBeGreaterThanOrEqual(2);
+    expect(document.body.textContent).not.toMatch(/tnx_runtime_|token_hash|[0-9a-f]{64}/i);
+  });
+
+  it("keeps credential rotation telemetry and calls absent for a plain member", async () => {
+    viewerId = "member-b";
+    get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/nodes")) return { data: [], response: { status: 200 } };
+      if (path.endsWith("/agents")) return { data: [agent], response: { status: 200 } };
+      if (path.endsWith("/members")) return { data: [{ user_id: "member-b", role: "member" }], response: { status: 200 } };
+      if (path.endsWith("/agents/{deviceId}")) return { data: { ...profile, owner_id: "member-b", owner_email: "member@example.com" }, response: { status: 200 } };
+      if (path.endsWith("/runtime-status")) return { data: runtime, response: { status: 200 } };
+      return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
+    });
+    const { default: Agents } = await import("../src/pages/Agents");
+    render(createElement(Agents));
+    fireEvent.click(await screen.findByRole("button", { name: "Open builder-a" }));
+    await waitFor(() => expect(screen.queryByTestId("agent-profile")).not.toBeNull());
+    expect(screen.queryByTestId("agent-credential-rotation")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Rotate credential" })).toBeNull();
+    expect(get.mock.calls.some(([path]) => String(path).endsWith("/credential-rotation"))).toBe(false);
+  });
+
   it("passes the server-owned immutable release DTO into the real enrollment command", async () => {
     seedListResponses();
     const release = {

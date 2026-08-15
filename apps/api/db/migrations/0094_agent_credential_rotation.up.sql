@@ -1,0 +1,89 @@
+-- F05.1: one recoverable runtime-bearer rotation at a time. Existing
+-- credentials remain revision 1/current; the control plane stores hashes only.
+DROP INDEX agent_runtime_credentials_device_key;
+
+ALTER TABLE agent_runtime_credentials
+  ADD COLUMN revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+  ADD COLUMN state text NOT NULL DEFAULT 'current'
+    CHECK (state IN ('current', 'candidate', 'superseded', 'revoked')),
+  ADD COLUMN candidate_expires_at timestamptz,
+  ADD COLUMN activated_at timestamptz,
+  ADD COLUMN terminal_at timestamptz,
+  ADD COLUMN rotation_requested_at timestamptz,
+  ADD COLUMN rotation_deadline timestamptz,
+  ADD COLUMN rotation_requested_by uuid REFERENCES users (id) ON DELETE SET NULL,
+  ADD CONSTRAINT agent_runtime_credentials_candidate_expiry_ck CHECK (
+    (state = 'candidate' AND candidate_expires_at IS NOT NULL)
+    OR (state <> 'candidate' AND candidate_expires_at IS NULL)
+  ),
+  ADD CONSTRAINT agent_runtime_credentials_request_ck CHECK (
+    (rotation_requested_at IS NULL AND rotation_deadline IS NULL AND rotation_requested_by IS NULL)
+    OR (rotation_requested_at IS NOT NULL AND rotation_deadline IS NOT NULL AND rotation_requested_by IS NOT NULL)
+  );
+
+UPDATE agent_runtime_credentials SET activated_at = created_at;
+
+CREATE UNIQUE INDEX agent_runtime_credentials_device_revision_key
+  ON agent_runtime_credentials (device_id, revision);
+CREATE UNIQUE INDEX agent_runtime_credentials_one_current_key
+  ON agent_runtime_credentials (device_id) WHERE state = 'current';
+CREATE UNIQUE INDEX agent_runtime_credentials_one_candidate_key
+  ON agent_runtime_credentials (device_id) WHERE state = 'candidate';
+
+-- Keep only the ten newest terminal credential rows per agent. This is the
+-- complete bounded history for F05.1, not a generic history subsystem.
+CREATE FUNCTION f05_bound_runtime_credential_history() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.state IN ('superseded', 'revoked') THEN
+    DELETE FROM agent_runtime_credentials doomed
+    USING (
+      SELECT id FROM (
+        SELECT id, row_number() OVER (
+          PARTITION BY device_id ORDER BY terminal_at DESC NULLS LAST, created_at DESC, id DESC
+        ) AS position
+        FROM agent_runtime_credentials
+        WHERE device_id = NEW.device_id AND state IN ('superseded', 'revoked')
+      ) ranked WHERE position > 10
+    ) retired_ids
+    WHERE doomed.id = retired_ids.id;
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER agent_runtime_credentials_f05_bounded_history
+AFTER INSERT OR UPDATE OF state ON agent_runtime_credentials
+FOR EACH ROW EXECUTE FUNCTION f05_bound_runtime_credential_history();
+
+-- Every lifecycle writer gets the same cancellation semantics. Suspension
+-- preserves the proven current bearer for resume but cancels pending work;
+-- revoke/delete invalidates current and candidate credentials atomically with
+-- the device transition.
+CREATE FUNCTION f05_runtime_credential_lifecycle() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status = 'revoked' OR NEW.deleted_at IS NOT NULL THEN
+    UPDATE agent_runtime_credentials
+    SET state = 'revoked', revoked_at = COALESCE(revoked_at, now()),
+        terminal_at = COALESCE(terminal_at, now()), candidate_expires_at = NULL,
+        rotation_requested_at = NULL, rotation_deadline = NULL,
+        rotation_requested_by = NULL
+    WHERE device_id = NEW.id AND state IN ('current', 'candidate');
+  ELSIF NEW.status <> 'active' THEN
+    UPDATE agent_runtime_credentials
+    SET state = 'revoked', revoked_at = COALESCE(revoked_at, now()),
+        terminal_at = COALESCE(terminal_at, now()), candidate_expires_at = NULL
+    WHERE device_id = NEW.id AND state = 'candidate';
+    UPDATE agent_runtime_credentials
+    SET rotation_requested_at = NULL, rotation_deadline = NULL,
+        rotation_requested_by = NULL
+    WHERE device_id = NEW.id AND state = 'current';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER devices_f05_runtime_credential_lifecycle
+AFTER UPDATE OF status, deleted_at ON devices
+FOR EACH ROW
+WHEN (OLD.status IS DISTINCT FROM NEW.status OR OLD.deleted_at IS DISTINCT FROM NEW.deleted_at)
+EXECUTE FUNCTION f05_runtime_credential_lifecycle();

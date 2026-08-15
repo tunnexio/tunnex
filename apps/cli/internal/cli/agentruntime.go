@@ -16,15 +16,16 @@ import (
 // intentionally absent: neither is configuration data, and neither may be
 // returned by the steady-state poll.
 type ManagedAgentConfig struct {
-	Revision            int64
-	DeviceID            string
-	OrgID               string
-	Address             string
-	GatewayEndpoint     string
-	GatewayPublicKey    string
-	AllowedIPs          []string
-	DNS                 []string
-	PersistentKeepalive int
+	Revision                   int64
+	DeviceID                   string
+	OrgID                      string
+	Address                    string
+	GatewayEndpoint            string
+	GatewayPublicKey           string
+	AllowedIPs                 []string
+	DNS                        []string
+	PersistentKeepalive        int
+	CredentialRotationRevision *int64
 }
 
 // AgentRuntimeReport contains bounded facts only. ErrorCode is a stable code,

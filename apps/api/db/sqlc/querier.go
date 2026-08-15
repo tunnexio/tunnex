@@ -44,6 +44,8 @@ type Querier interface {
 	// machine principal to someone who cannot see it. The EXISTS is org-scoped both ways — credential and user —
 	// so a mismatched pair updates zero rows rather than succeeding quietly.
 	AssignMachineCredentialOwner(ctx context.Context, arg AssignMachineCredentialOwnerParams) (int64, error)
+	// lint:cross-org — the bearer hash is the credential; its row supplies org/device binding.
+	AuthenticateAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AuthenticateAgentRuntimeCredentialRow, error)
 	// Flip an EXISTING manual group to idp_sync. The WHERE origin='manual' clause makes a re-bind of
 	// an already-synced group a no-row (the app layer maps that + the not-empty check to a 409). The
 	// disjointness (D1) and the not-empty rule are enforced above this; this only flips a clean group.
@@ -423,6 +425,7 @@ type Querier interface {
 	// The org join is the tenant boundary; device ids are globally unique, but a
 	// runtime bootstrap must never turn knowledge of another org's UUID into state.
 	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (AgentRuntimeState, error)
+	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
 	// S7.5.4: move a temporary grant's window IN PLACE (never delete+recreate — that would
 	// churn the /32 out+back and cause a spurious push). The `expires_at > now()` predicate
 	// is the LAPSE GUARD: a grant that has already expired matches 0 rows, so extend and the
@@ -440,6 +443,7 @@ type Querier interface {
 	GetAgentProfileForOrg(ctx context.Context, arg GetAgentProfileForOrgParams) (GetAgentProfileForOrgRow, error)
 	// lint:cross-org — F04's bearer hash is the credential; the returned row supplies its org/device binding.
 	GetAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AgentRuntimeCredential, error)
+	GetAgentRuntimeCredentialRotation(ctx context.Context, arg GetAgentRuntimeCredentialRotationParams) (GetAgentRuntimeCredentialRotationRow, error)
 	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
 	// credential_expired UX line).
@@ -1061,6 +1065,7 @@ type Querier interface {
 	// ⚠ THIS DOES NOT WEAKEN SINGLE-USE. ConsumeJoinToken still performs the atomic claim; this only lets the
 	// pre-flight checks run first, and both happen inside one transaction.
 	PeekJoinToken(ctx context.Context, tokenHash []byte) (NodeJoinToken, error)
+	PrepareAgentRuntimeCredentialCandidate(ctx context.Context, arg PrepareAgentRuntimeCredentialCandidateParams) (PrepareAgentRuntimeCredentialCandidateRow, error)
 	// One stamp for all three poll outcomes (the two-tier health, D2):
 	//   success  → ok=true,  advance_clock=true  (last_sync_at = now; error cleared)
 	//   transient→ ok=false, advance_clock=false (last_sync_at FROZEN at the last good sync — the
@@ -1117,6 +1122,7 @@ type Querier interface {
 	// rolling back success, and an error at or below an already-applied revision is
 	// cleared rather than resurrected.
 	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (AgentRuntimeState, error)
+	RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set
 	// from ListCascadeRevokedDevicesForNode.
 	// Restores ONE cascade-revoked device (S13.1 D5), to the address the caller resolved.

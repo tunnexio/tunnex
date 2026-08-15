@@ -57,12 +57,20 @@ type AgentProfile struct {
 }
 
 type AgentRuntimeCredential struct {
-	ID        uuid.UUID          `json:"id"`
-	OrgID     uuid.UUID          `json:"org_id"`
-	DeviceID  uuid.UUID          `json:"device_id"`
-	TokenHash []byte             `json:"token_hash"`
-	CreatedAt time.Time          `json:"created_at"`
-	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	TokenHash           []byte             `json:"token_hash"`
+	CreatedAt           time.Time          `json:"created_at"`
+	RevokedAt           pgtype.Timestamptz `json:"revoked_at"`
+	Revision            int64              `json:"revision"`
+	State               string             `json:"state"`
+	CandidateExpiresAt  pgtype.Timestamptz `json:"candidate_expires_at"`
+	ActivatedAt         pgtype.Timestamptz `json:"activated_at"`
+	TerminalAt          pgtype.Timestamptz `json:"terminal_at"`
+	RotationRequestedAt pgtype.Timestamptz `json:"rotation_requested_at"`
+	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
+	RotationRequestedBy pgtype.UUID        `json:"rotation_requested_by"`
 }
 
 // F04 managed-agent desired/applied revision and bounded runtime health; never credential or private-key material.

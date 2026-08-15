@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -24,8 +25,10 @@ var (
 )
 
 type Identity struct {
-	OrgID    uuid.UUID
-	DeviceID uuid.UUID
+	OrgID              uuid.UUID
+	DeviceID           uuid.UUID
+	CredentialRevision int64
+	CredentialState    string
 }
 
 type identityContextKey struct{}
@@ -84,15 +87,36 @@ func (s *Service) Authenticate(ctx context.Context, raw string) (Identity, error
 		return Identity{}, ErrUnauthorized
 	}
 	h := sha256.Sum256([]byte(raw))
+	cred, err := s.q.AuthenticateAgentRuntimeCredential(ctx, h[:])
+	if err != nil || cred.RevokedAt.Valid || cred.State != "current" || cred.DeviceID == uuid.Nil || cred.OrgID == uuid.Nil {
+		return Identity{}, ErrUnauthorized
+	}
+	return s.validateCredentialIdentity(ctx, cred.OrgID, cred.DeviceID, cred.Revision, cred.State, cred.RevokedAt.Valid)
+}
+
+// AuthenticateCurrent is used only by prepare: a candidate may promote on its
+// first poll/report, never by calling the preparation endpoint itself.
+func (s *Service) AuthenticateCurrent(ctx context.Context, raw string) (Identity, error) {
+	if s == nil || s.q == nil || !strings.HasPrefix(raw, RuntimeCredentialPrefix) {
+		return Identity{}, ErrUnauthorized
+	}
+	h := sha256.Sum256([]byte(raw))
 	cred, err := s.q.GetAgentRuntimeCredential(ctx, h[:])
-	if err != nil || cred.RevokedAt.Valid || cred.DeviceID == uuid.Nil || cred.OrgID == uuid.Nil {
+	if err != nil || cred.State != "current" {
 		return Identity{}, ErrUnauthorized
 	}
-	dev, err := s.q.GetDevice(ctx, sqlc.GetDeviceParams{ID: cred.DeviceID, OrgID: cred.OrgID})
-	if err != nil || dev.OrgID != cred.OrgID || dev.ID != cred.DeviceID || dev.Kind != "agent" || dev.DeletedAt.Valid || (dev.Status != "active" && dev.Status != "pending") {
+	return s.validateCredentialIdentity(ctx, cred.OrgID, cred.DeviceID, cred.Revision, cred.State, cred.RevokedAt.Valid)
+}
+
+func (s *Service) validateCredentialIdentity(ctx context.Context, orgID, deviceID uuid.UUID, revision int64, state string, revoked bool) (Identity, error) {
+	if revoked || orgID == uuid.Nil || deviceID == uuid.Nil {
 		return Identity{}, ErrUnauthorized
 	}
-	return Identity{OrgID: cred.OrgID, DeviceID: cred.DeviceID}, nil
+	dev, err := s.q.GetDevice(ctx, sqlc.GetDeviceParams{ID: deviceID, OrgID: orgID})
+	if err != nil || dev.OrgID != orgID || dev.ID != deviceID || dev.Kind != "agent" || dev.DeletedAt.Valid || (dev.Status != "active" && dev.Status != "pending") {
+		return Identity{}, ErrUnauthorized
+	}
+	return Identity{OrgID: orgID, DeviceID: deviceID, CredentialRevision: revision, CredentialState: state}, nil
 }
 
 func (s *Service) requireOptIn(ctx context.Context, orgID uuid.UUID) error {
@@ -114,15 +138,35 @@ func (s *Service) requireOptIn(ctx context.Context, orgID uuid.UUID) error {
 }
 
 type Config struct {
-	Revision            int64
-	DeviceID            uuid.UUID
-	OrgID               uuid.UUID
-	Address             string
-	GatewayEndpoint     string
-	GatewayPublicKey    string
-	AllowedIPs          []string
-	DNS                 []string
-	PersistentKeepalive int
+	Revision                   int64
+	DeviceID                   uuid.UUID
+	OrgID                      uuid.UUID
+	Address                    string
+	GatewayEndpoint            string
+	GatewayPublicKey           string
+	AllowedIPs                 []string
+	DNS                        []string
+	PersistentKeepalive        int
+	CredentialRotationRevision *int64
+}
+
+// PrepareCredentialCandidate stores only a locally generated successor hash.
+// Repeating the same requested revision/hash is idempotent in PostgreSQL.
+func (s *Service) PrepareCredentialCandidate(ctx context.Context, id Identity, revision int64, hashHex string) error {
+	if s == nil || s.q == nil || id.CredentialState != "current" || revision != id.CredentialRevision+1 {
+		return ErrUnauthorized
+	}
+	hash, err := hex.DecodeString(hashHex)
+	if err != nil || len(hash) != sha256.Size {
+		return ErrInvalidReport
+	}
+	prepared, err := s.q.PrepareAgentRuntimeCredentialCandidate(ctx, sqlc.PrepareAgentRuntimeCredentialCandidateParams{
+		OrgID: id.OrgID, DeviceID: id.DeviceID, TokenHash: hash, Revision: revision,
+	})
+	if err != nil || prepared.Revision != revision || prepared.State != "candidate" {
+		return ErrRuntimeStateMissing
+	}
+	return nil
 }
 
 func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision int64, clientVersion string) (Config, bool, error) {
@@ -153,7 +197,13 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision int64, 
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	if state.DesiredRevision <= appliedRevision {
+	var rotationRevision *int64
+	credential, rotationErr := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: id.OrgID, DeviceID: id.DeviceID})
+	if rotationErr == nil && credential.RotationRequestedAt.Valid && credential.RotationDeadline.Valid && credential.RotationDeadline.Time.After(s.now()) {
+		next := credential.Revision + 1
+		rotationRevision = &next
+	}
+	if state.DesiredRevision <= appliedRevision && rotationRevision == nil {
 		return Config{}, true, nil
 	}
 	node, err := s.q.GetOrgNode(ctx, sqlc.GetOrgNodeParams{ID: dev.NodeID, OrgID: id.OrgID})
@@ -174,7 +224,7 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision int64, 
 		Revision: state.DesiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
 		Address: *dev.AssignedIp + "/32", GatewayEndpoint: node.Endpoint,
 		GatewayPublicKey: node.WgPublicKey, AllowedIPs: allowed, DNS: dns,
-		PersistentKeepalive: 25,
+		PersistentKeepalive: 25, CredentialRotationRevision: rotationRevision,
 	}, false, nil
 }
 

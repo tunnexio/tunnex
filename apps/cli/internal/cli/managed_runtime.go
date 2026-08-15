@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -127,7 +129,7 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	if err != nil {
 		return err
 	}
-	source, err := newManagedRuntimeSource(state.Server, credential, opts.PollWait)
+	source, err := newManagedRuntimeSource(state.Server, credential, opts.CredentialPath, opts.PollWait)
 	if err != nil {
 		return err
 	}
@@ -191,27 +193,68 @@ func boundedRuntimeJitter(delay time.Duration) time.Duration {
 }
 
 type managedRuntimeSource struct {
-	client *api.ClientWithResponses
-	wait   int
+	client         *api.ClientWithResponses
+	server         string
+	credential     string
+	credentialPath string
+	wait           int
 }
 
-func newManagedRuntimeSource(server, credential string, wait int) (*managedRuntimeSource, error) {
-	client, err := api.NewClientWithResponses(strings.TrimRight(server, "/"), api.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+func newManagedRuntimeSource(server, credential, credentialPath string, wait int) (*managedRuntimeSource, error) {
+	s := &managedRuntimeSource{server: strings.TrimRight(server, "/"), credentialPath: credentialPath, wait: wait}
+	if err := s.setCredential(credential); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *managedRuntimeSource) setCredential(credential string) error {
+	client, err := api.NewClientWithResponses(s.server, api.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 		req.Header.Set("Authorization", "Bearer "+credential)
 		return nil
 	}))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &managedRuntimeSource{client: client, wait: wait}, nil
+	s.client = client
+	s.credential = credential
+	return nil
 }
 
 func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version string) (ManagedAgentConfig, error) {
-	resp, err := s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait})
+	resp, err := s.poll(ctx, applied, version)
 	if err != nil {
 		return ManagedAgentConfig{}, err
 	}
+	previousPath := s.credentialPath + ".previous"
+	if previous, readErr := loadRuntimeCredential(previousPath); readErr == nil {
+		if resp.StatusCode() == http.StatusUnauthorized {
+			if err := WriteFileAtomic0600(s.credentialPath, []byte(previous+"\n")); err != nil {
+				return ManagedAgentConfig{}, err
+			}
+			if err := s.setCredential(previous); err != nil {
+				return ManagedAgentConfig{}, err
+			}
+			_ = os.Remove(previousPath)
+			_ = os.Remove(s.credentialPath + ".candidate")
+			return ManagedAgentConfig{}, ErrRuntimeUnauthorized
+		}
+		// Any non-401 proves the candidate authenticated; promotion happens in
+		// the auth transaction even if a later edition/handler gate refuses.
+		_ = os.Remove(previousPath)
+		_ = os.Remove(s.credentialPath + ".candidate")
+	}
+	if resp.JSON200 != nil && resp.JSON200.CredentialRotationRevision != nil {
+		resp, err = s.rotateCredential(ctx, applied, version, *resp.JSON200.CredentialRotationRevision)
+		if err != nil {
+			return ManagedAgentConfig{}, err
+		}
+	}
 	if resp.StatusCode() == http.StatusUnauthorized {
+		// Suspension/revocation invalidates any uncommitted successor. Discard it
+		// so a later resume/request cannot retry a hash now retained as terminal
+		// history by the control plane.
+		_ = os.Remove(s.credentialPath + ".candidate")
 		return ManagedAgentConfig{}, ErrRuntimeUnauthorized
 	}
 	if resp.StatusCode() == http.StatusNoContent {
@@ -221,7 +264,73 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 		return ManagedAgentConfig{}, fmt.Errorf("runtime poll failed with HTTP %d", resp.StatusCode())
 	}
 	c := resp.JSON200
-	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive}, nil
+	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive, CredentialRotationRevision: c.CredentialRotationRevision}, nil
+}
+
+func (s *managedRuntimeSource) poll(ctx context.Context, applied int64, version string) (*api.PollAgentRuntimeResponse, error) {
+	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait})
+}
+
+func (s *managedRuntimeSource) rotateCredential(ctx context.Context, applied int64, version string, revision int64) (*api.PollAgentRuntimeResponse, error) {
+	candidatePath := s.credentialPath + ".candidate"
+	previousPath := s.credentialPath + ".previous"
+	candidate, err := loadRuntimeCredential(candidatePath)
+	if errors.Is(err, os.ErrNotExist) {
+		raw := make([]byte, 32)
+		if _, err := rand.Read(raw); err != nil {
+			return nil, err
+		}
+		candidate = "tnx_runtime_" + base64.RawURLEncoding.EncodeToString(raw)
+		if err := WriteFileAtomic0600(candidatePath, []byte(candidate+"\n")); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	}
+	hash := sha256.Sum256([]byte(candidate))
+	prepared, err := s.client.PrepareAgentRuntimeCredentialWithResponse(ctx, api.AgentCredentialCandidate{Revision: revision, TokenHash: hex.EncodeToString(hash[:])})
+	if err != nil {
+		return nil, err // candidate file makes the same hash retryable
+	}
+	if prepared.StatusCode() == http.StatusUnauthorized {
+		return nil, ErrRuntimeUnauthorized
+	}
+	if prepared.StatusCode() != http.StatusNoContent {
+		return nil, fmt.Errorf("runtime credential prepare failed with HTTP %d", prepared.StatusCode())
+	}
+	old := s.credential
+	if err := WriteFileAtomic0600(previousPath, []byte(old+"\n")); err != nil {
+		return nil, err
+	}
+	if err := WriteFileAtomic0600(s.credentialPath, []byte(candidate+"\n")); err != nil {
+		_ = os.Remove(previousPath)
+		return nil, err
+	}
+	if err := s.setCredential(candidate); err != nil {
+		_ = WriteFileAtomic0600(s.credentialPath, []byte(old+"\n"))
+		_ = os.Remove(previousPath)
+		return nil, err
+	}
+	resp, err := s.poll(ctx, applied, version)
+	if err != nil {
+		// Unknown outcome: keep candidate active plus the 0600 previous file.
+		// Restart retries candidate authentication without touching the tunnel.
+		return nil, err
+	}
+	if resp.StatusCode() == http.StatusUnauthorized {
+		if restoreErr := WriteFileAtomic0600(s.credentialPath, []byte(old+"\n")); restoreErr != nil {
+			return nil, restoreErr
+		}
+		if restoreErr := s.setCredential(old); restoreErr != nil {
+			return nil, restoreErr
+		}
+		_ = os.Remove(previousPath)
+		_ = os.Remove(candidatePath)
+		return nil, ErrRuntimeUnauthorized
+	}
+	_ = os.Remove(previousPath)
+	_ = os.Remove(candidatePath)
+	return resp, nil
 }
 
 func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeReport) error {

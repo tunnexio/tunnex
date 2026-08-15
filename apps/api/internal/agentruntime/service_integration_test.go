@@ -3,12 +3,14 @@ package agentruntime
 import (
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
@@ -146,5 +148,68 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	state, err = q.GetAgentRuntimeState(ctx, sqlc.GetAgentRuntimeStateParams{DeviceID: agent, OrgID: org})
 	if err != nil || state.AppliedRevision != 4 || state.LastErrorCode != nil {
 		t.Fatalf("last-good cleared state = %#v, err=%v", state, err)
+	}
+
+	requested, err := q.RequestAgentRuntimeCredentialRotation(ctx, sqlc.RequestAgentRuntimeCredentialRotationParams{
+		OrgID: org, DeviceID: agent,
+		RotationDeadline:    pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+		RotationRequestedBy: pgtype.UUID{Bytes: owner, Valid: true},
+	})
+	if err != nil || !requested.RotationRequestedAt.Valid {
+		t.Fatalf("request rotation = %#v, %v", requested, err)
+	}
+	oldIdentity, err := svc.Authenticate(ctx, valid)
+	if err != nil || oldIdentity.CredentialRevision != 1 {
+		t.Fatalf("old identity = %#v, %v", oldIdentity, err)
+	}
+	if cfg, unchanged, err := svc.Poll(ctx, oldIdentity, 4, "v-f05"); err != nil || unchanged || cfg.CredentialRotationRevision == nil || *cfg.CredentialRotationRevision != 2 {
+		t.Fatalf("rotation poll = %#v, unchanged=%v, err=%v", cfg, unchanged, err)
+	}
+	candidate := "tnx_runtime_candidate_" + agent.String()
+	candidateHash := sha256.Sum256([]byte(candidate))
+	hashHex := fmt.Sprintf("%x", candidateHash[:])
+	if err := svc.PrepareCredentialCandidate(ctx, oldIdentity, 2, hashHex); err != nil {
+		t.Fatalf("prepare candidate: %v", err)
+	}
+	if err := svc.PrepareCredentialCandidate(ctx, oldIdentity, 2, hashHex); err != nil {
+		t.Fatalf("idempotent prepare retry: %v", err)
+	}
+	if _, err := svc.AuthenticateCurrent(ctx, candidate); err != ErrUnauthorized {
+		t.Fatalf("candidate must not promote on prepare authentication: %v", err)
+	}
+	if _, err := svc.Authenticate(ctx, valid); err != nil {
+		t.Fatalf("old bearer before successor proof: %v", err)
+	}
+	candidateIdentity, err := svc.Authenticate(ctx, candidate)
+	if err != nil || candidateIdentity.CredentialRevision != 2 {
+		t.Fatalf("candidate promotion = %#v, %v", candidateIdentity, err)
+	}
+	if _, err := svc.Authenticate(ctx, valid); err != ErrUnauthorized {
+		t.Fatalf("old bearer after promotion = %v, want uniform unauthorized", err)
+	}
+
+	if _, err := q.RequestAgentRuntimeCredentialRotation(ctx, sqlc.RequestAgentRuntimeCredentialRotationParams{
+		OrgID: org, DeviceID: agent,
+		RotationDeadline:    pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+		RotationRequestedBy: pgtype.UUID{Bytes: owner, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	next := "tnx_runtime_cancelled_" + agent.String()
+	nextHash := sha256.Sum256([]byte(next))
+	if err := svc.PrepareCredentialCandidate(ctx, candidateIdentity, 3, fmt.Sprintf("%x", nextHash[:])); err != nil {
+		t.Fatal(err)
+	}
+	seed(`UPDATE devices SET status='suspended' WHERE id=$1`, agent)
+	if _, err := svc.Authenticate(ctx, next); err != ErrUnauthorized {
+		t.Fatalf("suspended candidate = %v, want unauthorized", err)
+	}
+	seed(`UPDATE devices SET status='active' WHERE id=$1`, agent)
+	if _, err := svc.Authenticate(ctx, candidate); err != nil {
+		t.Fatalf("current bearer after resume: %v", err)
+	}
+	seed(`UPDATE devices SET status='revoked' WHERE id=$1`, agent)
+	if _, err := svc.Authenticate(ctx, candidate); err != ErrUnauthorized {
+		t.Fatalf("revoked current bearer = %v, want unauthorized", err)
 	}
 }

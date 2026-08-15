@@ -38,6 +38,13 @@ const (
 	TunnexAgentRuntime AgentBootstrapRuntimeReleaseBinary = "tunnex-agent-runtime"
 )
 
+// Defines values for AgentCredentialRotationStatusState.
+const (
+	AgentCredentialRotationStatusStateCandidate AgentCredentialRotationStatusState = "candidate"
+	AgentCredentialRotationStatusStateCurrent   AgentCredentialRotationStatusState = "current"
+	AgentCredentialRotationStatusStateRequested AgentCredentialRotationStatusState = "requested"
+)
+
 // Defines values for AgentProfileStatus.
 const (
 	AgentProfileStatusActive    AgentProfileStatus = "active"
@@ -316,20 +323,20 @@ const (
 
 // Defines values for NodePolicyDegradedKind.
 const (
-	NodePolicyDegradedKindApplyFailing                NodePolicyDegradedKind = "apply_failing"
-	NodePolicyDegradedKindCertExpiredCannotReconnect  NodePolicyDegradedKind = "cert_expired_cannot_reconnect"
-	NodePolicyDegradedKindConntrackFlushUnavailable   NodePolicyDegradedKind = "conntrack_flush_unavailable"
-	NodePolicyDegradedKindConverging                  NodePolicyDegradedKind = "converging"
-	NodePolicyDegradedKindDesyncUnknown               NodePolicyDegradedKind = "desync_unknown"
-	NodePolicyDegradedKindHealthy                     NodePolicyDegradedKind = "healthy"
-	NodePolicyDegradedKindHubForwardingNotReconciling NodePolicyDegradedKind = "hub_forwarding_not_reconciling"
-	NodePolicyDegradedKindK8sEndpointsUnavailable     NodePolicyDegradedKind = "k8s_endpoints_unavailable"
-	NodePolicyDegradedKindSilentDesync                NodePolicyDegradedKind = "silent_desync"
-	NodePolicyDegradedKindSiteHubDown                 NodePolicyDegradedKind = "site_hub_down"
-	NodePolicyDegradedKindSiteLinkDown                NodePolicyDegradedKind = "site_link_down"
-	NodePolicyDegradedKindSiteSubnetUnreachable       NodePolicyDegradedKind = "site_subnet_unreachable"
-	NodePolicyDegradedKindStuckEnforcing              NodePolicyDegradedKind = "stuck_enforcing"
-	NodePolicyDegradedKindUnsupportedPolicyVersion    NodePolicyDegradedKind = "unsupported_policy_version"
+	ApplyFailing                NodePolicyDegradedKind = "apply_failing"
+	CertExpiredCannotReconnect  NodePolicyDegradedKind = "cert_expired_cannot_reconnect"
+	ConntrackFlushUnavailable   NodePolicyDegradedKind = "conntrack_flush_unavailable"
+	Converging                  NodePolicyDegradedKind = "converging"
+	DesyncUnknown               NodePolicyDegradedKind = "desync_unknown"
+	Healthy                     NodePolicyDegradedKind = "healthy"
+	HubForwardingNotReconciling NodePolicyDegradedKind = "hub_forwarding_not_reconciling"
+	K8sEndpointsUnavailable     NodePolicyDegradedKind = "k8s_endpoints_unavailable"
+	SilentDesync                NodePolicyDegradedKind = "silent_desync"
+	SiteHubDown                 NodePolicyDegradedKind = "site_hub_down"
+	SiteLinkDown                NodePolicyDegradedKind = "site_link_down"
+	SiteSubnetUnreachable       NodePolicyDegradedKind = "site_subnet_unreachable"
+	StuckEnforcing              NodePolicyDegradedKind = "stuck_enforcing"
+	UnsupportedPolicyVersion    NodePolicyDegradedKind = "unsupported_policy_version"
 )
 
 // Defines values for NodeStatus.
@@ -649,6 +656,26 @@ type AgentBootstrapTokenResponse struct {
 	// Release Server-verified immutable runtime release metadata. Contains no secret or signing private key.
 	Release AgentBootstrapRelease `json:"release"`
 }
+
+// AgentCredentialCandidate defines model for AgentCredentialCandidate.
+type AgentCredentialCandidate struct {
+	Revision int64 `json:"revision"`
+
+	// TokenHash Lowercase hexadecimal SHA-256 of a bearer generated only on the agent host.
+	TokenHash string `json:"token_hash"`
+}
+
+// AgentCredentialRotationStatus defines model for AgentCredentialRotationStatus.
+type AgentCredentialRotationStatus struct {
+	CurrentRevision   int64                              `json:"current_revision"`
+	Deadline          *time.Time                         `json:"deadline"`
+	DeviceId          openapi_types.UUID                 `json:"device_id"`
+	RequestedRevision *int64                             `json:"requested_revision"`
+	State             AgentCredentialRotationStatusState `json:"state"`
+}
+
+// AgentCredentialRotationStatusState defines model for AgentCredentialRotationStatus.State.
+type AgentCredentialRotationStatusState string
 
 // AgentProfile defines model for AgentProfile.
 type AgentProfile struct {
@@ -1481,10 +1508,13 @@ type MachineCredential struct {
 // ManagedAgentConfig Secret-free server-owned configuration for one managed agent. Runtime credentials, bootstrap tokens, token hashes, and private keys are never configuration fields.
 type ManagedAgentConfig struct {
 	// Address The managed agent tunnel address/prefix.
-	Address    string             `json:"address"`
-	AllowedIps []string           `json:"allowed_ips"`
-	DeviceId   openapi_types.UUID `json:"device_id"`
-	Dns        []string           `json:"dns"`
+	Address    string   `json:"address"`
+	AllowedIps []string `json:"allowed_ips"`
+
+	// CredentialRotationRevision Non-secret requested successor revision; omitted when no request is pending.
+	CredentialRotationRevision *int64             `json:"credential_rotation_revision"`
+	DeviceId                   openapi_types.UUID `json:"device_id"`
+	Dns                        []string           `json:"dns"`
 
 	// GatewayEndpoint The gateway endpoint in host:port form.
 	GatewayEndpoint string `json:"gateway_endpoint"`
@@ -2248,6 +2278,9 @@ type RekeyAgentJSONRequestBody = RekeyRequest
 // RekeyChallengeJSONRequestBody defines body for RekeyChallenge for application/json ContentType.
 type RekeyChallengeJSONRequestBody = RekeyChallengeRequest
 
+// PrepareAgentRuntimeCredentialJSONRequestBody defines body for PrepareAgentRuntimeCredential for application/json ContentType.
+type PrepareAgentRuntimeCredentialJSONRequestBody = AgentCredentialCandidate
+
 // ReportAgentRuntimeJSONRequestBody defines body for ReportAgentRuntime for application/json ContentType.
 type ReportAgentRuntimeJSONRequestBody = AgentRuntimeReport
 
@@ -2542,6 +2575,11 @@ type ClientInterface interface {
 
 	RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PrepareAgentRuntimeCredentialWithBody request with any body
+	PrepareAgentRuntimeCredentialWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PrepareAgentRuntimeCredential(ctx context.Context, body PrepareAgentRuntimeCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PollAgentRuntime request
 	PollAgentRuntime(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2706,6 +2744,12 @@ type ClientInterface interface {
 	UpdateAgentProfileWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentCredentialRotation request
+	GetAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RequestAgentCredentialRotation request
+	RequestAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentRuntimeStatus request
 	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3249,6 +3293,30 @@ func (c *Client) RekeyChallengeWithBody(ctx context.Context, contentType string,
 
 func (c *Client) RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRekeyChallengeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PrepareAgentRuntimeCredentialWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareAgentRuntimeCredentialRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PrepareAgentRuntimeCredential(ctx context.Context, body PrepareAgentRuntimeCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareAgentRuntimeCredentialRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3993,6 +4061,30 @@ func (c *Client) UpdateAgentProfileWithBody(ctx context.Context, orgId openapi_t
 
 func (c *Client) UpdateAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateAgentProfileRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentCredentialRotationRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestAgentCredentialRotationRequest(c.Server, orgId, deviceId)
 	if err != nil {
 		return nil, err
 	}
@@ -5975,6 +6067,46 @@ func NewRekeyChallengeRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewPrepareAgentRuntimeCredentialRequest calls the generic PrepareAgentRuntimeCredential builder with application/json body
+func NewPrepareAgentRuntimeCredentialRequest(server string, body PrepareAgentRuntimeCredentialJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPrepareAgentRuntimeCredentialRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPrepareAgentRuntimeCredentialRequestWithBody generates requests for PrepareAgentRuntimeCredential with any type of body
+func NewPrepareAgentRuntimeCredentialRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/credential-candidate")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewPollAgentRuntimeRequest generates requests for PollAgentRuntime
 func NewPollAgentRuntimeRequest(server string, params *PollAgentRuntimeParams) (*http.Request, error) {
 	var err error
@@ -7627,6 +7759,88 @@ func NewUpdateAgentProfileRequestWithBody(server string, orgId openapi_types.UUI
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAgentCredentialRotationRequest generates requests for GetAgentCredentialRotation
+func NewGetAgentCredentialRotationRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/credential-rotation", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRequestAgentCredentialRotationRequest generates requests for RequestAgentCredentialRotation
+func NewRequestAgentCredentialRotationRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/credential-rotation", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -12098,6 +12312,11 @@ type ClientWithResponsesInterface interface {
 
 	RekeyChallengeWithResponse(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*RekeyChallengeResponse, error)
 
+	// PrepareAgentRuntimeCredentialWithBodyWithResponse request with any body
+	PrepareAgentRuntimeCredentialWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeCredentialResponse, error)
+
+	PrepareAgentRuntimeCredentialWithResponse(ctx context.Context, body PrepareAgentRuntimeCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeCredentialResponse, error)
+
 	// PollAgentRuntimeWithResponse request
 	PollAgentRuntimeWithResponse(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*PollAgentRuntimeResponse, error)
 
@@ -12262,6 +12481,12 @@ type ClientWithResponsesInterface interface {
 	UpdateAgentProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error)
 
 	UpdateAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error)
+
+	// GetAgentCredentialRotationWithResponse request
+	GetAgentCredentialRotationWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentCredentialRotationResponse, error)
+
+	// RequestAgentCredentialRotationWithResponse request
+	RequestAgentCredentialRotationWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RequestAgentCredentialRotationResponse, error)
 
 	// GetAgentRuntimeStatusWithResponse request
 	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
@@ -12811,6 +13036,29 @@ func (r RekeyChallengeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RekeyChallengeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PrepareAgentRuntimeCredentialResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *RuntimeUnauthorized
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PrepareAgentRuntimeCredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PrepareAgentRuntimeCredentialResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -13750,6 +13998,52 @@ func (r UpdateAgentProfileResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpdateAgentProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentCredentialRotationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentCredentialRotationStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentCredentialRotationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentCredentialRotationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RequestAgentCredentialRotationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentCredentialRotationStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RequestAgentCredentialRotationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RequestAgentCredentialRotationResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -16085,6 +16379,23 @@ func (c *ClientWithResponses) RekeyChallengeWithResponse(ctx context.Context, bo
 	return ParseRekeyChallengeResponse(rsp)
 }
 
+// PrepareAgentRuntimeCredentialWithBodyWithResponse request with arbitrary body returning *PrepareAgentRuntimeCredentialResponse
+func (c *ClientWithResponses) PrepareAgentRuntimeCredentialWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeCredentialResponse, error) {
+	rsp, err := c.PrepareAgentRuntimeCredentialWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareAgentRuntimeCredentialResponse(rsp)
+}
+
+func (c *ClientWithResponses) PrepareAgentRuntimeCredentialWithResponse(ctx context.Context, body PrepareAgentRuntimeCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeCredentialResponse, error) {
+	rsp, err := c.PrepareAgentRuntimeCredential(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareAgentRuntimeCredentialResponse(rsp)
+}
+
 // PollAgentRuntimeWithResponse request returning *PollAgentRuntimeResponse
 func (c *ClientWithResponses) PollAgentRuntimeWithResponse(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*PollAgentRuntimeResponse, error) {
 	rsp, err := c.PollAgentRuntime(ctx, params, reqEditors...)
@@ -16620,6 +16931,24 @@ func (c *ClientWithResponses) UpdateAgentProfileWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseUpdateAgentProfileResponse(rsp)
+}
+
+// GetAgentCredentialRotationWithResponse request returning *GetAgentCredentialRotationResponse
+func (c *ClientWithResponses) GetAgentCredentialRotationWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentCredentialRotationResponse, error) {
+	rsp, err := c.GetAgentCredentialRotation(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentCredentialRotationResponse(rsp)
+}
+
+// RequestAgentCredentialRotationWithResponse request returning *RequestAgentCredentialRotationResponse
+func (c *ClientWithResponses) RequestAgentCredentialRotationWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RequestAgentCredentialRotationResponse, error) {
+	rsp, err := c.RequestAgentCredentialRotation(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestAgentCredentialRotationResponse(rsp)
 }
 
 // GetAgentRuntimeStatusWithResponse request returning *GetAgentRuntimeStatusResponse
@@ -18065,6 +18394,39 @@ func ParseRekeyChallengeResponse(rsp *http.Response) (*RekeyChallengeResponse, e
 	return response, nil
 }
 
+// ParsePrepareAgentRuntimeCredentialResponse parses an HTTP response from a PrepareAgentRuntimeCredentialWithResponse call
+func ParsePrepareAgentRuntimeCredentialResponse(rsp *http.Response) (*PrepareAgentRuntimeCredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PrepareAgentRuntimeCredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParsePollAgentRuntimeResponse parses an HTTP response from a PollAgentRuntimeWithResponse call
 func ParsePollAgentRuntimeResponse(rsp *http.Response) (*PollAgentRuntimeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -19373,6 +19735,72 @@ func ParseUpdateAgentProfileResponse(rsp *http.Response) (*UpdateAgentProfileRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentCredentialRotationResponse parses an HTTP response from a GetAgentCredentialRotationWithResponse call
+func ParseGetAgentCredentialRotationResponse(rsp *http.Response) (*GetAgentCredentialRotationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentCredentialRotationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentCredentialRotationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRequestAgentCredentialRotationResponse parses an HTTP response from a RequestAgentCredentialRotationWithResponse call
+func ParseRequestAgentCredentialRotationResponse(rsp *http.Response) (*RequestAgentCredentialRotationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RequestAgentCredentialRotationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentCredentialRotationStatus
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

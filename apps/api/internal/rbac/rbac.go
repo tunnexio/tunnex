@@ -94,6 +94,10 @@ const (
 	// organization metadata: enabling it opens an unattended configuration
 	// channel to every eligible managed agent in the organization.
 	PermAgentRuntimeManage Permission = "agent_runtime:manage"
+	// PermAgentCredentialRotate authorizes the one human checkpoint that asks
+	// an active managed agent to replace its machine bearer. It is deliberately
+	// narrower than runtime opt-in, device lifecycle, and future F06 delegation.
+	PermAgentCredentialRotate Permission = "agent_credential:rotate"
 )
 
 // Roles.
@@ -136,41 +140,43 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList: true,
 	},
 	RoleAdmin: {
-		PermOrgView:            true,
-		PermMemberList:         true,
-		PermOrgUpdate:          true,
-		PermMemberInvite:       true,
-		PermMemberManage:       true,
-		PermPolicyView:         true,
-		PermPolicyManage:       true,
-		PermDeviceApprove:      true,
-		PermDeviceRestore:      true,
-		PermDeviceTransfer:     true,
-		PermDeviceHealthManage: true,
-		PermMfaManage:          true,
-		PermSiteManage:         true,
-		PermK8sManage:          true,
-		PermAgentRuntimeManage: true,
+		PermOrgView:               true,
+		PermMemberList:            true,
+		PermOrgUpdate:             true,
+		PermMemberInvite:          true,
+		PermMemberManage:          true,
+		PermPolicyView:            true,
+		PermPolicyManage:          true,
+		PermDeviceApprove:         true,
+		PermDeviceRestore:         true,
+		PermDeviceTransfer:        true,
+		PermDeviceHealthManage:    true,
+		PermMfaManage:             true,
+		PermSiteManage:            true,
+		PermK8sManage:             true,
+		PermAgentRuntimeManage:    true,
+		PermAgentCredentialRotate: true,
 	},
 	RoleOwner: {
-		PermOrgView:            true,
-		PermMemberList:         true,
-		PermOrgUpdate:          true,
-		PermOrgDelete:          true,
-		PermMemberInvite:       true,
-		PermMemberManage:       true,
-		PermPolicyView:         true,
-		PermPolicyManage:       true,
-		PermDeviceApprove:      true,
-		PermDeviceRestore:      true,
-		PermDeviceTransfer:     true,
-		PermDeviceHealthManage: true,
-		PermMfaManage:          true,
-		PermSiteManage:         true,
-		PermK8sManage:          true,
-		PermLicenseManage:      true,
-		PermMachineManage:      true, // owner-only: minting a non-human org principal is org-delete-grade
-		PermAgentRuntimeManage: true,
+		PermOrgView:               true,
+		PermMemberList:            true,
+		PermOrgUpdate:             true,
+		PermOrgDelete:             true,
+		PermMemberInvite:          true,
+		PermMemberManage:          true,
+		PermPolicyView:            true,
+		PermPolicyManage:          true,
+		PermDeviceApprove:         true,
+		PermDeviceRestore:         true,
+		PermDeviceTransfer:        true,
+		PermDeviceHealthManage:    true,
+		PermMfaManage:             true,
+		PermSiteManage:            true,
+		PermK8sManage:             true,
+		PermLicenseManage:         true,
+		PermMachineManage:         true, // owner-only: minting a non-human org principal is org-delete-grade
+		PermAgentRuntimeManage:    true,
+		PermAgentCredentialRotate: true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org
