@@ -21,6 +21,10 @@ type Credential struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
+// ManagedAgentState is the local handoff from one-time F03 bootstrap to the
+// steady-state F04 runtime. The credential is a secret and the file is always
+// written 0600; the applied revision is only a restart optimization.
+
 // StateDir resolves the CLI state directory (~/.config/tunnex, XDG-aware).
 func StateDir() (string, error) {
 	if v := os.Getenv("TUNNEX_STATE_DIR"); v != "" {
@@ -54,6 +58,7 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "device.conf"), nil
 }
 
+
 // WriteFileAtomic0600 writes data to path with 0600 permissions via a same-dir
 // temp file + rename: the file is never observable partially written or with
 // looser permissions (the browser's ~/Downloads drop is the anti-pattern).
@@ -85,6 +90,7 @@ func WriteFileAtomic0600(path string, data []byte) error {
 	}
 	return os.Rename(tmpName, path)
 }
+
 
 // SaveCredential persists the credential (atomic, 0600).
 func SaveCredential(c Credential) error {

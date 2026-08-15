@@ -89,6 +89,11 @@ const (
 	// a non-human caller that can register clusters, expose Services, and (enterprise) create grants, so
 	// creating one is org-delete-grade privilege. Named per feature; never a member/policy reuse.
 	PermMachineManage Permission = "machine:manage"
+	// PermAgentRuntimeManage governs the F04 organization opt-in. This is a
+	// separate security decision from enrolling an agent or editing ordinary
+	// organization metadata: enabling it opens an unattended configuration
+	// channel to every eligible managed agent in the organization.
+	PermAgentRuntimeManage Permission = "agent_runtime:manage"
 )
 
 // Roles.
@@ -145,6 +150,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMfaManage:          true,
 		PermSiteManage:         true,
 		PermK8sManage:          true,
+		PermAgentRuntimeManage: true,
 	},
 	RoleOwner: {
 		PermOrgView:            true,
@@ -164,6 +170,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sManage:          true,
 		PermLicenseManage:      true,
 		PermMachineManage:      true, // owner-only: minting a non-human org principal is org-delete-grade
+		PermAgentRuntimeManage: true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org

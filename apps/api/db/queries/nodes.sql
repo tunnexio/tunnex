@@ -398,6 +398,7 @@ RETURNING *;
 -- push has mentioned it yet has no `device_status` row at all.
 SELECT d.id AS device_id, d.name, d.assigned_ip AS address, d.status,
        d.public_key,
+       d.user_id AS owner_user_id,
        u.email AS owner_email,
        n.id AS node_id, n.name AS gateway_name,
        ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes, ds.updated_at AS status_reported_at,

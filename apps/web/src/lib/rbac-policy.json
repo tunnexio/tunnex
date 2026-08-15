@@ -1,5 +1,6 @@
 {
   "admin": [
+    "agent_runtime:manage",
     "device:approve",
     "device:restore",
     "device:transfer",
@@ -30,6 +31,7 @@
     "policy:view"
   ],
   "owner": [
+    "agent_runtime:manage",
     "device:approve",
     "device:restore",
     "device:transfer",

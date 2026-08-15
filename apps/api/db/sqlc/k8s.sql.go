@@ -44,7 +44,7 @@ const createK8sCluster = `-- name: CreateK8sCluster :one
 
 INSERT INTO k8s_clusters (org_id, site_id, connector_node_id, name, vip_range, service_cidr, dns_zone, dns_vip, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id
+RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
 `
 
 type CreateK8sClusterParams struct {
@@ -86,6 +86,7 @@ func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterPara
 		&i.DnsVip,
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
 	)
 	return i, err
 }
@@ -93,7 +94,7 @@ func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterPara
 const createK8sService = `-- name: CreateK8sService :one
 INSERT INTO k8s_services (org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine
+RETURNING id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine, identity_id
 `
 
 type CreateK8sServiceParams struct {
@@ -135,6 +136,7 @@ func (q *Queries) CreateK8sService(ctx context.Context, arg CreateK8sServicePara
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ManagedByMachine,
+		&i.IdentityID,
 	)
 	return i, err
 }
@@ -154,7 +156,7 @@ func (q *Queries) DeleteK8sCluster(ctx context.Context, arg DeleteK8sClusterPara
 }
 
 const getK8sCluster = `-- name: GetK8sCluster :one
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id FROM k8s_clusters WHERE org_id = $1 AND id = $2
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id FROM k8s_clusters WHERE org_id = $1 AND id = $2
 `
 
 type GetK8sClusterParams struct {
@@ -178,12 +180,13 @@ func (q *Queries) GetK8sCluster(ctx context.Context, arg GetK8sClusterParams) (K
 		&i.DnsVip,
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
 	)
 	return i, err
 }
 
 const getK8sService = `-- name: GetK8sService :one
-SELECT id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine FROM k8s_services WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL
+SELECT id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine, identity_id FROM k8s_services WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
 type GetK8sServiceParams struct {
@@ -208,6 +211,7 @@ func (q *Queries) GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ManagedByMachine,
+		&i.IdentityID,
 	)
 	return i, err
 }
@@ -313,7 +317,7 @@ func (q *Queries) ListK8sClusterZonesForOrg(ctx context.Context, orgID uuid.UUID
 }
 
 const listK8sClustersForOrg = `-- name: ListK8sClustersForOrg :many
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id FROM k8s_clusters WHERE org_id = $1 ORDER BY name
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id FROM k8s_clusters WHERE org_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([]K8sCluster, error) {
@@ -338,6 +342,7 @@ func (q *Queries) ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([
 			&i.DnsVip,
 			&i.ManagedByMachine,
 			&i.ConnectorNodeID,
+			&i.ConnectorPoolID,
 		); err != nil {
 			return nil, err
 		}

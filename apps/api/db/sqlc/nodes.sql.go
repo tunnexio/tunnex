@@ -730,6 +730,7 @@ func (q *Queries) ListActiveNodeIDsForOrg(ctx context.Context, orgID uuid.UUID) 
 const listAgentsForOrg = `-- name: ListAgentsForOrg :many
 SELECT d.id AS device_id, d.name, d.assigned_ip AS address, d.status,
        d.public_key,
+       d.user_id AS owner_user_id,
        u.email AS owner_email,
        n.id AS node_id, n.name AS gateway_name,
        ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes, ds.updated_at AS status_reported_at,
@@ -748,6 +749,7 @@ type ListAgentsForOrgRow struct {
 	Address           *string            `json:"address"`
 	Status            string             `json:"status"`
 	PublicKey         string             `json:"public_key"`
+	OwnerUserID       uuid.UUID          `json:"owner_user_id"`
 	OwnerEmail        *string            `json:"owner_email"`
 	NodeID            uuid.UUID          `json:"node_id"`
 	GatewayName       string             `json:"gateway_name"`
@@ -796,6 +798,7 @@ func (q *Queries) ListAgentsForOrg(ctx context.Context, orgID uuid.UUID) ([]List
 			&i.Address,
 			&i.Status,
 			&i.PublicKey,
+			&i.OwnerUserID,
 			&i.OwnerEmail,
 			&i.NodeID,
 			&i.GatewayName,

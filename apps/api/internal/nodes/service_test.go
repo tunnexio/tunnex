@@ -75,6 +75,11 @@ func TestNodeEnrollmentLifecycle(t *testing.T) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	q := sqlc.New(tx)
+	// The CA is deployment-global. Keep this fixture transaction-scoped so a
+	// ciphertext sealed with its throwaway key cannot poison later tests.
+	if _, err := tx.Exec(ctx, "DELETE FROM platform_secrets WHERE name = 'agent_ca'"); err != nil {
+		t.Fatalf("clear test CA: %v", err)
+	}
 
 	org, actor := uuid.New(), uuid.New()
 	if _, err := tx.Exec(ctx, "INSERT INTO organizations (id,name,slug) VALUES ($1,$2,$3)", org, "O", "n-"+org.String()); err != nil {

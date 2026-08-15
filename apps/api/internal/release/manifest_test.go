@@ -19,13 +19,18 @@ func signedFixture(t *testing.T) (SignedManifest, ed25519.PublicKey) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := Manifest{SchemaVersion: SchemaVersion, Sequence: 7, Version: "0.4.0", SourceSHA: strings.Repeat("a", 40),
+	sourceSHA := strings.Repeat("a", 40)
+	m := Manifest{SchemaVersion: SchemaVersion, Sequence: 7, Version: "v0.4.0", SourceSHA: sourceSHA,
 		PublishedAt: time.Unix(1_700_000_000, 0).UTC(), MinProtocol: 3, Compatibility: "N and N-1 agents",
 		Downtime: "rolling; brief API restart", ReleaseNotesURL: "https://tunnex.io/releases/0.4.0",
 		Images: map[string]Images{}}
 	for _, name := range []string{"api", "web", "nginx", "node-agent", "migrate"} {
 		m.Images[name] = Images{AMD64Digest: "sha256:" + strings.Repeat("1", 64), ARM64Digest: "sha256:" + strings.Repeat("2", 64)}
 	}
+	m.ManagedAgentRuntime = ManagedAgentRuntime{Binary: "tunnex-agent-runtime", Version: m.Version,
+		Unit:       RuntimeAsset{Name: "tunnex-agent-runtime.service", SHA256: strings.Repeat("5", 64), SourceSHA: sourceSHA},
+		LinuxAMD64: RuntimeAsset{Name: "tunnex-agent-runtime-linux-amd64", SHA256: strings.Repeat("3", 64), SourceSHA: sourceSHA},
+		LinuxARM64: RuntimeAsset{Name: "tunnex-agent-runtime-linux-arm64", SHA256: strings.Repeat("4", 64), SourceSHA: sourceSHA}}
 	b, err := json.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +55,56 @@ func TestVerifyRejectsTamperingAndMissingArchitecture(t *testing.T) {
 	delete(s.Manifest.Images, "web")
 	if err := Verify(s, pub); err == nil || !strings.Contains(err.Error(), `image "web"`) {
 		t.Fatalf("missing image must fail closed, got %v", err)
+	}
+}
+
+func TestVerifyRejectsIncompleteManagedAgentRuntime(t *testing.T) {
+	s, pub := signedFixture(t)
+	s.Manifest.ManagedAgentRuntime.LinuxARM64.SHA256 = ""
+	if err := Verify(s, pub); err == nil || !strings.Contains(err.Error(), "runtime asset") {
+		t.Fatalf("missing runtime architecture must fail closed, got %v", err)
+	}
+	s, pub = signedFixture(t)
+	s.Manifest.ManagedAgentRuntime.LinuxAMD64.SHA256 = strings.ToUpper(strings.Repeat("a", 64))
+	if err := Verify(s, pub); err == nil || !strings.Contains(err.Error(), "invalid SHA-256") {
+		t.Fatalf("uppercase runtime digest must fail closed, got %v", err)
+	}
+	s, pub = signedFixture(t)
+	s.Manifest.ManagedAgentRuntime.LinuxAMD64.SourceSHA = strings.Repeat("b", 40)
+	if err := Verify(s, pub); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("wrong runtime source must fail closed, got %v", err)
+	}
+	s, pub = signedFixture(t)
+	s.Manifest.ManagedAgentRuntime.Unit.SHA256 = ""
+	if err := Verify(s, pub); err == nil || !strings.Contains(err.Error(), `runtime asset "unit"`) {
+		t.Fatalf("missing signed service unit must fail closed, got %v", err)
+	}
+	s, pub = signedFixture(t)
+	s.Manifest.ManagedAgentRuntime.Unit.Name = "unsigned.service"
+	if err := Verify(s, pub); err == nil || !strings.Contains(err.Error(), `runtime asset "unit"`) {
+		t.Fatalf("wrong service unit name must fail closed, got %v", err)
+	}
+}
+
+func TestParseRejectsUnknownManagedAgentRuntimeArchitecture(t *testing.T) {
+	signed, pub := signedFixture(t)
+	raw, err := json.Marshal(signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	manifest := document["manifest"].(map[string]any)
+	runtime := manifest["managed_agent_runtime"].(map[string]any)
+	runtime["linux_s390x"] = map[string]any{"name": "unexpected"}
+	raw, err = json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(raw, hexKey(pub)); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown runtime architecture must fail closed, got %v", err)
 	}
 }
 

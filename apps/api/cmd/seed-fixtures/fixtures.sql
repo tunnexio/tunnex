@@ -819,6 +819,15 @@ VALUES
    'pending-agent-01900000-0000-7000-8000-00000000a002', NULL, 'active', 'agent', 'wireguard')
 ON CONFLICT (id) DO NOTHING;
 
+-- F01 metadata rows are separate from the canonical device identity. The fixture devices are inserted after
+-- migration 0088, so migration backfill cannot create these rows; seed them explicitly with default metadata
+-- to keep the real profile GET/PATCH route exercisable without duplicating owner, status, or telemetry.
+INSERT INTO agent_profiles (device_id, environment, runtime, labels)
+VALUES
+  ('01900000-0000-7000-8000-00000000d001', '', '', '{}'::jsonb),
+  ('01900000-0000-7000-8000-00000000d002', '', '', '{}'::jsonb)
+ON CONFLICT (device_id) DO NOTHING;
+
 -- ⛔ STATE 4 — A LABELLED DESTINATION, AND STATE 5 — AN UNLABELLED ONE.
 -- The label is an OPERATOR'S ASSERTION, never an inference: the product cannot detect that something speaks
 -- MCP. Seeding one labelled and one bare is what makes that visible — a screen where every resource carried

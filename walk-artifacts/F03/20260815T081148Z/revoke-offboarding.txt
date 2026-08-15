@@ -1,0 +1,8 @@
+canonical_revoke_http=204
+runtime_service_after_revoke=inactive
+runtime_unit_after_revoke=enabled
+runtime_service_result=success
+runtime_exec_main_status=0
+runtime_nrestarts=0
+runtime_interface_after_revoke=absent
+revoked_runtime_credential_poll_http=401

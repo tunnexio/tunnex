@@ -117,6 +117,13 @@ func TestServerGeneratedKeyNeverStored(t *testing.T) {
 	}
 }
 
+func TestCreateOrdinaryFlowRequiresName(t *testing.T) {
+	_, err := (&Service{}).Create(context.Background(), CreateInput{})
+	if code(err) != "name_required" {
+		t.Fatalf("empty ordinary create error code = %q, want name_required", code(err))
+	}
+}
+
 // TestClientGeneratedKeyAccepted: a client-supplied public key is stored and no
 // private key is ever returned.
 func TestClientGeneratedKeyAccepted(t *testing.T) {

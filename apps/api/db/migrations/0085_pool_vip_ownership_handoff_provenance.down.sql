@@ -1,0 +1,45 @@
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pool_vip_ownership_handoff_provenance)
+       OR EXISTS (SELECT 1 FROM pool_vip_ownership_handoff_provenance_capabilities)
+       OR EXISTS (SELECT 1 FROM pool_vip_ownership_handoff_provenance_service_uids)
+       OR EXISTS (SELECT 1 FROM k8s_pool_ownership_v2_capabilities)
+       OR EXISTS (SELECT 1 FROM k8s_pool_service_uid_provenance) THEN
+        RAISE EXCEPTION 'cannot roll back pool VIP ownership handoff provenance with durable rows';
+    END IF;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_immutable_before_update ON pool_vip_ownership_handoff_provenance;
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_provenance_immutable();
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_prevent_direct_delete_before_delete ON pool_vip_ownership_handoff_provenance;
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_provenance_prevent_direct_delete();
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_require_artifact_contract_before_write ON pool_vip_ownership_handoff_provenance;
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_provenance_require_artifact_contract();
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_require_snapshot_before_write ON pool_vip_ownership_handoff_provenance;
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_provenance_require_snapshot();
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_capabilities_immutable_before_update ON pool_vip_ownership_handoff_provenance_capabilities;
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_service_uids_immutable_before_update ON pool_vip_ownership_handoff_provenance_service_uids;
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_capabilities_require_scope_before_write ON pool_vip_ownership_handoff_provenance_capabilities;
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_service_uids_require_scope_before_write ON pool_vip_ownership_handoff_provenance_service_uids;
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_provenance_require_child_scope();
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_capabilities_prevent_direct_delete_before_delete ON pool_vip_ownership_handoff_provenance_capabilities;
+DROP TRIGGER IF EXISTS pool_vip_ownership_handoff_provenance_service_uids_prevent_direct_delete_before_delete ON pool_vip_ownership_handoff_provenance_service_uids;
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_provenance_child_prevent_direct_delete();
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_provenance_child_immutable();
+DROP TABLE IF EXISTS pool_vip_ownership_handoff_provenance_service_uids;
+DROP TABLE IF EXISTS pool_vip_ownership_handoff_provenance_capabilities;
+DROP TABLE IF EXISTS pool_vip_ownership_handoff_provenance;
+
+DROP TRIGGER IF EXISTS k8s_pool_service_uid_provenance_require_current_before_write ON k8s_pool_service_uid_provenance;
+DROP FUNCTION IF EXISTS k8s_pool_service_uid_provenance_require_current();
+DROP TRIGGER IF EXISTS set_updated_at ON k8s_pool_service_uid_provenance;
+DROP TRIGGER IF EXISTS k8s_pool_service_uid_provenance_prevent_direct_delete_before_delete ON k8s_pool_service_uid_provenance;
+DROP TABLE IF EXISTS k8s_pool_service_uid_provenance;
+
+DROP TRIGGER IF EXISTS k8s_pool_ownership_v2_capability_require_member_before_write ON k8s_pool_ownership_v2_capabilities;
+DROP FUNCTION IF EXISTS k8s_pool_ownership_v2_capability_require_member();
+DROP TRIGGER IF EXISTS set_updated_at ON k8s_pool_ownership_v2_capabilities;
+DROP TRIGGER IF EXISTS k8s_pool_ownership_v2_capabilities_prevent_direct_delete_before_delete ON k8s_pool_ownership_v2_capabilities;
+DROP FUNCTION IF EXISTS pool_vip_ownership_handoff_cache_prevent_direct_delete();
+DROP TABLE IF EXISTS k8s_pool_ownership_v2_capabilities;

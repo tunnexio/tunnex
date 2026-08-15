@@ -1,0 +1,6 @@
+replay_client_key=freshly generated; value not recorded
+consumed_token_replay_status=401
+device_row_count_before=1
+device_row_count_after=1
+device_and_runtime_state_unchanged=true
+secret_recorded=false

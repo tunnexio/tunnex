@@ -1,0 +1,40 @@
+F03 current migration 0090 isolated PostgreSQL rollback proof
+run_id=20260815T081827Z
+source_sha=bd8efbcaccdba8b299e91be127fa2d5380f223a1
+database=PostgreSQL 16.15, dedicated disposable Colima profile/container
+scope=two isolated synthetic databases; no control-plane or product state used
+
+Common setup
+- Current embedded migrations applied from empty database to 93|dirty=false.
+- Each F03 database was rolled down through 0093..0091 to 90|dirty=false.
+
+Case 1: empty credential tables rollback and up-again
+down result:
+  exit=0
+  migrate_down_complete version=89 dirty=false
+  agent_bootstrap_tokens table absent=true
+  agent_runtime_credentials table absent=true
+
+up-again result:
+  exit=0
+  migrate_up_complete version=93 dirty=false
+  agent_bootstrap_tokens table present=true
+  agent_runtime_credentials table present=true
+
+Case 2: non-empty credential tables refusal and preservation
+synthetic rows before down:
+  agent_bootstrap_tokens rows=1 token_hash_length=32
+  agent_runtime_credentials rows=1 token_hash_length=32
+result:
+  exit=1
+  error=refusing to roll back 0090 while bootstrap credentials exist
+  schema_migrations=89|dirty=true
+rows after refusal:
+  agent_bootstrap_tokens rows=1 token_hash_length=32 gateway_binding_unchanged=true
+  agent_runtime_credentials rows=1 token_hash_length=32 device_binding_unchanged=true
+
+Verdict=PASS
+- Current 0090 empty rollback is reversible and up-again compatible.
+- Non-empty rollback refuses before table, row, hash, or binding loss.
+- A refused golang-migrate down records version 89 dirty=true by runner design;
+  both guarded 0090 tables and rows remain present.

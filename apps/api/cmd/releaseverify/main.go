@@ -15,6 +15,7 @@ func main() {
 	manifest := flag.String("manifest", "", "signed release manifest path")
 	key := flag.String("public-key", os.Getenv("TUNNEX_RELEASE_PUBLIC_KEY"), "trusted Ed25519 key")
 	expectedSource := flag.String("expected-source-sha", "", "require this full source SHA")
+	expectedKeyID := flag.String("expected-key-id", "", "require this signed verifier key ID")
 	printEnv := flag.Bool("print-env", false, "print safe image-pin environment assignments after verification")
 	platform := flag.String("platform", runtime.GOARCH, "target image architecture: amd64 or arm64")
 	flag.Parse()
@@ -29,6 +30,10 @@ func main() {
 	}
 	if *expectedSource != "" && !strings.EqualFold(*expectedSource, s.Manifest.SourceSHA) {
 		fmt.Fprintln(os.Stderr, "release manifest rejected: source SHA does not match this installation")
+		os.Exit(1)
+	}
+	if *expectedKeyID != "" && *expectedKeyID != s.KeyID {
+		fmt.Fprintln(os.Stderr, "release manifest rejected: verifier key ID does not match")
 		os.Exit(1)
 	}
 	if !*printEnv {
@@ -47,6 +52,11 @@ func main() {
 		}
 		fmt.Printf("TUNNEX_%s_IMAGE=ghcr.io/tunnexio/tunnex-%s@%s\n", strings.ToUpper(strings.ReplaceAll(name, "-", "_")), name, digest)
 	}
+	runtime := s.Manifest.ManagedAgentRuntime
+	fmt.Printf("TUNNEX_AGENT_RUNTIME_BINARY=%s\nTUNNEX_AGENT_RUNTIME_VERSION=%s\n", runtime.Binary, runtime.Version)
+	fmt.Printf("TUNNEX_AGENT_RUNTIME_AMD64_NAME=%s\nTUNNEX_AGENT_RUNTIME_AMD64_SHA256=%s\n", runtime.LinuxAMD64.Name, runtime.LinuxAMD64.SHA256)
+	fmt.Printf("TUNNEX_AGENT_RUNTIME_ARM64_NAME=%s\nTUNNEX_AGENT_RUNTIME_ARM64_SHA256=%s\n", runtime.LinuxARM64.Name, runtime.LinuxARM64.SHA256)
+	fmt.Printf("TUNNEX_AGENT_RUNTIME_UNIT_NAME=%s\nTUNNEX_AGENT_RUNTIME_UNIT_SHA256=%s\nTUNNEX_AGENT_RUNTIME_UNIT_SOURCE_SHA=%s\n", runtime.Unit.Name, runtime.Unit.SHA256, runtime.Unit.SourceSHA)
 	fmt.Printf("TUNNEX_RELEASE_SEQUENCE=%d\n", s.Manifest.Sequence)
 	fmt.Printf("TUNNEX_RELEASE_VERSION=%s\n", s.Manifest.Version)
 	fmt.Printf("TUNNEX_RELEASE_SOURCE_SHA=%s\n", s.Manifest.SourceSHA)

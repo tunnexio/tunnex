@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
-import { api, loadOne, type Loaded } from "../lib/api";
+import { api, loadOne, type Loaded, type Role } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { can } from "../lib/rbac";
 import {
-  agentConnectCommand,
+  agentBootstrapCommand,
   AGENT_PREREQ,
   attributionNote,
   NO_AGENTS,
@@ -23,7 +25,11 @@ import {
   Select,
   StatusDot,
 } from "../components/ui";
+import { AgentProfileEditor, type AgentProfileEditorValue, type AgentProfileStatus } from "../components/AgentProfileEditor";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
+import type { components } from "@tunnex/shared";
+
+type AgentProfile = components["schemas"]["AgentProfile"];
 
 type Node = {
   id: string;
@@ -32,6 +38,216 @@ type Node = {
   endpoint?: string | null;
   last_seen_at?: string;
 };
+
+type AgentRuntimeStatus = components["schemas"]["AgentRuntimeStatus"];
+
+function AgentRuntimePanel({ status }: { status: AgentRuntimeStatus }) {
+  const healthLabel = status.health === "last_good"
+    ? "Last-good configuration"
+    : status.health === "ready"
+      ? "Ready"
+      : "Inconclusive";
+  return (
+    <div data-testid="agent-runtime-status" className="grid gap-2 text-xs text-slate-300 sm:grid-cols-3">
+      <div>
+        <span className="text-slate-500">Desired revision</span>
+        <div className="font-mono">{status.desired_revision}</div>
+      </div>
+      <div>
+        <span className="text-slate-500">Applied revision</span>
+        <div className="font-mono">{status.applied_revision}</div>
+      </div>
+      <div>
+        <span className="text-slate-500">Last attempted revision</span>
+        <div className="font-mono">{status.last_attempted_revision}</div>
+      </div>
+      <div>
+        <span className="text-slate-500">Connectivity</span>
+        <div>{status.connectivity}</div>
+      </div>
+      <div>
+        <span className="text-slate-500">Last seen</span>
+        <div>{status.last_seen_at ?? "never reported"}</div>
+      </div>
+      <div>
+        <span className="text-slate-500">Runtime health</span>
+        <div>{healthLabel}</div>
+      </div>
+      <div>
+        <span className="text-slate-500">Report freshness</span>
+        <div>{status.stale ? "Stale report" : "Fresh report"}</div>
+      </div>
+      {status.last_error_code && (
+        <div>
+          <span className="text-slate-500">Last error</span>
+          <div>{status.last_error_code}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentQuotaCard({
+  orgId,
+  value,
+  canEdit,
+}: {
+  orgId: string;
+  value: number | null;
+  canEdit: boolean;
+}) {
+  const [input, setInput] = useState(value == null ? "" : String(value));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setInput(value == null ? "" : String(value));
+  }, [orgId, value]);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    const parsed = input.trim() === "" ? null : Number(input);
+    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 0)) {
+      setBusy(false);
+      setError("Enter a non-negative whole number, or leave blank for unlimited.");
+      return;
+    }
+    const result = await api.PUT("/api/v1/organizations/{orgId}/agent-quota", {
+      params: { path: { orgId } },
+      body: { max_agent_identities: parsed },
+    });
+    setBusy(false);
+    if (result.error || !result.data) {
+      setError("Could not save the agent quota.");
+      return;
+    }
+    // The successful scoped mutation response is the server-owned truth. Do not refetch the
+    // organization collection here: organization selection belongs exclusively to useOrg.
+    const serverValue = result.data.max_agent_identities;
+    setInput(serverValue == null ? "" : String(serverValue));
+    setSaved(true);
+  }
+
+  if (!canEdit) return null;
+  return (
+    <Card data-testid="agent-quota-card">
+      <h2 className="text-sm font-semibold text-ink-heading">Managed-agent quota</h2>
+      <p className="mt-1 text-xs text-ink-secondary">
+        Maximum organization-wide agent identities. Pending, active, and suspended agents count; revoked and deleted agents do not. Leave blank for unlimited.
+      </p>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <Field label="Maximum identities">
+          <Input
+            inputMode="numeric"
+            value={input}
+            onChange={(e) => { setInput(e.target.value); setSaved(false); }}
+            placeholder="Unlimited"
+            disabled={busy}
+            aria-label="Maximum agent identities"
+          />
+        </Field>
+        <Button onClick={() => void save()} disabled={busy}>
+          {busy ? "Saving…" : "Save quota"}
+        </Button>
+      </div>
+      {saved && <p className="mt-2 text-xs text-accent-400">Quota saved from server response.</p>}
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
+    </Card>
+  );
+}
+
+function AgentRuntimeSettingCard({
+  orgId,
+  value,
+  canEdit,
+  onSaved,
+}: {
+  orgId: string;
+  value: boolean;
+  canEdit: boolean;
+  onSaved: (enabled: boolean) => void;
+}) {
+  const [enabled, setEnabled] = useState(value);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setEnabled(value), [orgId, value]);
+
+  async function toggle() {
+    const next = !enabled;
+    setBusy(true);
+    setError(null);
+    const result = await api.PUT(
+      "/api/v1/organizations/{orgId}/agent-runtime-settings",
+      { params: { path: { orgId } }, body: { enabled: next } },
+    );
+    setBusy(false);
+    if (result.error || !result.data) {
+      setError("Could not update managed runtime synchronization.");
+      return;
+    }
+    setEnabled(result.data.enabled);
+    onSaved(result.data.enabled);
+  }
+
+  // Permission-gated controls are absent from the DOM, not merely disabled.
+  if (!canEdit) return null;
+  return (
+    <Card data-testid="agent-runtime-setting-card">
+      <h2 className="text-sm font-semibold text-ink-heading">Runtime synchronization</h2>
+      <p className="mt-1 text-xs text-ink-secondary">
+        Off by default. Enable the managed runtime channel only when this organization is ready for server-owned configuration updates.
+      </p>
+      <div className="mt-3">
+        <Button onClick={() => void toggle()} disabled={busy}>
+          {busy ? "Saving…" : enabled ? "Disable runtime synchronization" : "Enable runtime synchronization"}
+        </Button>
+      </div>
+      {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
+    </Card>
+  );
+}
+
+function AgentProfilePanel({
+  profile,
+  runtime,
+  editorVersion,
+  canManageLifecycle,
+  onSaveMetadata,
+  onLifecycleChange,
+  disabled,
+}: {
+  profile: AgentProfile;
+  runtime: AgentRuntimeStatus | null;
+  editorVersion: number;
+  canManageLifecycle: boolean;
+  onSaveMetadata: (value: AgentProfileEditorValue) => void;
+  onLifecycleChange: (status: "active" | "suspended") => void;
+  disabled: boolean;
+}) {
+  return (
+    <div data-testid="agent-profile" className="grid gap-3 text-xs text-slate-300">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div><span className="text-slate-500">Owner</span><div>{profile.owner_email}</div></div>
+        <div><span className="text-slate-500">Telemetry</span><div>{profile.last_handshake_at ?? "never reported"}</div></div>
+        {profile.rx_bytes != null && <div><span className="text-slate-500">Received</span><div className="font-mono">{profile.rx_bytes}</div></div>}
+        {profile.tx_bytes != null && <div><span className="text-slate-500">Sent</span><div className="font-mono">{profile.tx_bytes}</div></div>}
+      </div>
+      <AgentProfileEditor
+        key={`${profile.device_id}:${editorVersion}:${profile.status}:${profile.environment}:${profile.runtime}:${JSON.stringify(profile.labels)}`}
+        value={{ environment: profile.environment, runtime: profile.runtime, labels: profile.labels, status: profile.status as AgentProfileStatus }}
+        canManageLifecycle={canManageLifecycle}
+        onSaveMetadata={onSaveMetadata}
+        onLifecycleChange={onLifecycleChange}
+        disabled={disabled}
+      />
+      {runtime && <AgentRuntimePanel status={runtime} />}
+    </div>
+  );
+}
 
 /**
  * AI agents — S15.3. A top-level destination in NETWORK, beside Kubernetes.
@@ -49,10 +265,16 @@ type Node = {
 export default function Agents() {
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5).
   const { org: currentOrg } = useOrg();
+  const { state: authState } = useAuth();
+  const currentUserId = authState.status === "authed" ? authState.user.id : null;
   const [orgId, setOrgId] = useState<string | null>(null);
   const [rows, setRows] = useState<Loaded<AgentRow[]> | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<Record<string, AgentRuntimeStatus | null>>({});
+  const [profiles, setProfiles] = useState<Record<string, AgentProfile | null>>({});
+  const [myRole, setMyRole] = useState<Role>();
   const [gateways, setGateways] = useState<Node[]>([]);
   const [notEntitled, setNotEntitled] = useState(false);
+  const [runtimeEnabled, setRuntimeEnabled] = useState(false);
 
   const [name, setName] = useState("");
   const [gw, setGw] = useState("");
@@ -62,6 +284,14 @@ export default function Agents() {
   const [reload, setReload] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState<AgentRow | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [profileBusy, setProfileBusy] = useState<string | null>(null);
+  const [profileEditorVersion, setProfileEditorVersion] = useState(0);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [confirmLifecycle, setConfirmLifecycle] = useState<{ agent: AgentRow; status: "active" | "suspended" } | null>(null);
+
+  useEffect(() => {
+    setRuntimeEnabled(currentOrg?.managed_agent_runtime_enabled === true);
+  }, [currentOrg?.id, currentOrg?.managed_agent_runtime_enabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +300,13 @@ export default function Agents() {
       if (cancelled || !currentOrg) return;
       const id = currentOrg.id;
       setOrgId(id);
+      setRows(null);
+      setGateways([]);
+      setGw("");
+      setNotEntitled(false);
+      setRuntimeStatus({});
+      setProfiles({});
+      setMyRole(undefined);
 
       const n = await loadOne<Node[]>(() =>
         api.GET("/api/v1/organizations/{orgId}/nodes", {
@@ -93,10 +330,11 @@ export default function Agents() {
         { params: { path: { orgId: id } } },
       );
       if (cancelled) return;
-      // ⛔ 403 IS NOT A FAILURE — it is the server correctly stating an edition boundary. Any OTHER error is
-      // a real failure and must not render as "no agents": a failed load shown as emptiness is a zero
+      // ⛔ 403 IS NOT A FAILURE — it is the server correctly stating an edition boundary. A 401 is likewise
+      // an auth-router refusal: unauthenticated users must not receive an error-shaped Agents surface or facts.
+      // Any OTHER error is real and must not render as "no agents": a failed load shown as emptiness is a zero
       // nobody measured.
-      if (response?.status === 403) {
+      if (response?.status === 401 || response?.status === 403) {
         setNotEntitled(true);
         return;
       }
@@ -105,30 +343,87 @@ export default function Agents() {
         return;
       }
       setRows({ ok: true, data: data as AgentRow[] });
+
+      if (currentUserId) {
+        const members = await api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: id } } });
+        if (!cancelled && members.data) {
+          const member = members.data.find((candidate) => candidate.user_id === currentUserId);
+          setMyRole(member?.role as Role | undefined);
+        }
+      }
+
+      for (const agent of data as AgentRow[]) {
+        void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+          params: { path: { orgId: id, deviceId: agent.device_id } },
+        }).then((profileResult) => {
+          if (cancelled || profileResult.error || !profileResult.data) return;
+          const profile = profileResult.data as AgentProfile;
+          setProfiles((previous) => ({ ...previous, [agent.device_id]: profile }));
+          return api.GET(
+            "/api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status",
+            { params: { path: { orgId: id, deviceId: agent.device_id } } },
+          ).then((runtimeResult) => {
+            if (cancelled || runtimeResult.error || !runtimeResult.data) return;
+            setRuntimeStatus((previous) => ({ ...previous, [agent.device_id]: runtimeResult.data as AgentRuntimeStatus }));
+          });
+        });
+      }
     })();
     return () => {
       cancelled = true;
     };
     // ⚠ currentOrg IS A DEPENDENCY — without it the switcher moves and the page keeps showing the org it
     // mounted with.
-  }, [reload, currentOrg]);
+  }, [reload, currentOrg, currentUserId]);
+
+  async function saveProfileMetadata(agent: AgentRow, value: AgentProfileEditorValue) {
+    if (!orgId) return;
+    setProfileBusy(agent.device_id);
+    setProfileError(null);
+    const result = await api.PATCH("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+      params: { path: { orgId, deviceId: agent.device_id } },
+      body: value,
+    });
+    setProfileBusy(null);
+    if (result.error || !result.data) {
+      setProfileError("Could not save agent metadata.");
+      setProfileEditorVersion((version) => version + 1);
+      return;
+    }
+    setReload((n) => n + 1);
+  }
+
+  async function applyLifecycle(agent: AgentRow, status: "active" | "suspended") {
+    if (!orgId) return;
+    setConfirmLifecycle(null);
+    setProfileBusy(agent.device_id);
+    setProfileError(null);
+    const result = await api.PATCH("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+      params: { path: { orgId, deviceId: agent.device_id } },
+      body: { status },
+    });
+    setProfileBusy(null);
+    if (result.error || !result.data) {
+      setProfileError("Could not change the agent lifecycle.");
+      setProfileEditorVersion((version) => version + 1);
+      return;
+    }
+    setReload((n) => n + 1);
+  }
 
   async function enrol() {
     if (!orgId || !gw) return;
     setBusy(true);
     setErr(null);
-    // ⛔ THE DEVICE PATH, WITH kind: "agent". Same enrolment a laptop uses — the server generates the
-    // keypair and returns the config ONCE. What makes it an agent is the kind, which carries the cap
-    // exemption and makes it nameable as a policy source.
+    // Managed bootstrap: the browser issues a one-time org+gateway token. The agent host generates its
+    // private key locally and redeems the token with only its public key.
     const { data, error } = await api.POST(
-      "/api/v1/organizations/{orgId}/devices",
+      "/api/v1/organizations/{orgId}/agents/bootstrap-token",
       {
         params: { path: { orgId } },
         body: {
           name: name.trim(),
-          node_id: gw,
-          kind: "agent",
-          platform: "agent",
+          gateway_id: gw,
         },
       },
     );
@@ -137,19 +432,8 @@ export default function Agents() {
       setErr("Could not enrol the agent.");
       return;
     }
-    const cfg = (data as { config?: string }).config;
-    if (!cfg) {
-      // ⚠ LOUD, NOT SILENT. Without the config the operator has an agent that can never connect, and a
-      // quiet success would leave them looking for a command that was never shown.
-      setErr(
-        "The agent was created but no configuration was returned — it cannot connect. Remove it and retry.",
-      );
-      setReload((n) => n + 1);
-      return;
-    }
-    setConf(cfg);
+    setConf(agentBootstrapCommand(data.bootstrap_token, data.release));
     setName("");
-    setReload((n) => n + 1);
   }
 
   // Agent lifecycle uses the device safety contract: revoke first so its key is
@@ -195,6 +479,22 @@ export default function Agents() {
           it is granted.
         </p>
       </div>
+
+      {orgId && (
+        <>
+          <AgentRuntimeSettingCard
+            orgId={orgId}
+            value={runtimeEnabled}
+            canEdit={can(myRole, "agent_runtime:manage")}
+            onSaved={(enabled) => { setRuntimeEnabled(enabled); setReload((n) => n + 1); }}
+          />
+          <AgentQuotaCard
+            orgId={orgId}
+            value={currentOrg?.max_agent_identities ?? null}
+            canEdit={can(myRole, "org:update")}
+          />
+        </>
+      )}
 
       {/* ⛔ THE CREATION PATH. Pick the gateway the agent connects through, name it, and get the command to
           run on the agent's own host. */}
@@ -281,15 +581,40 @@ export default function Agents() {
               })}
               failed={false}
               empty={NO_AGENTS}
+              expandable={(agent) => {
+                const profile = profiles[agent.device_id];
+                if (!profile) return null;
+                const status = runtimeStatus[agent.device_id];
+                return (
+                  <>
+                    <AgentProfilePanel
+                      profile={profile}
+                      runtime={status ?? null}
+                      editorVersion={profileEditorVersion}
+                      canManageLifecycle={can(myRole, "member:manage")}
+                      onSaveMetadata={(value) => void saveProfileMetadata(agent, value)}
+                      onLifecycleChange={(next) => setConfirmLifecycle({ agent, status: next })}
+                      disabled={profileBusy === agent.device_id}
+                    />
+                    {profileError && profileBusy === null && <p role="alert" className="text-xs text-danger">{profileError}</p>}
+                  </>
+                );
+              }}
               columns={[
                 {
                   key: "name",
                   header: "Agent",
                   sortValue: (a) => a.name,
-                  cell: (a) => {
+                  cell: (a, ctx) => {
                     const live = livenessLabel(a);
                     return (
-                      <span className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 text-left"
+                        aria-label={`Open ${a.name}`}
+                        aria-expanded={ctx.expanded}
+                        onClick={ctx.toggle}
+                      >
                         {/* ⛔ THE DOT IS NEVER GREEN ON AN INFERENCE WE DO NOT HAVE. `unknown` and `never`
                             are muted/amber, not a red that claims a fault we cannot attribute. */}
                         <StatusDot
@@ -302,7 +627,7 @@ export default function Agents() {
                           }
                         />
                         <span className="text-white">{a.name}</span>
-                      </span>
+                      </button>
                     );
                   },
                 },
@@ -328,15 +653,15 @@ export default function Agents() {
                     </span>
                   ),
                 },
-                {
+                ...(can(myRole, "member:manage") ? [{
                   key: "owner",
                   header: "Authorised by",
                   // ⚠ THE UNATTRIBUTABLE STATE IS SEARCHABLE BY THE WORD THE BADGE USES, not only by an
                   // email that does not exist — otherwise the one row an operator most needs to find is the
                   // one row no search term reaches.
-                  sortValue: (a) =>
+                  sortValue: (a: AgentRow) =>
                     a.owner_email ?? "unattributable no owner recorded",
-                  cell: (a) => {
+                  cell: (a: AgentRow) => {
                     const note = attributionNote(a);
                     return a.owner_email ? (
                       <span className="text-xs text-slate-400">
@@ -348,7 +673,7 @@ export default function Agents() {
                       </span>
                     ) : null;
                   },
-                },
+                }] : []),
                 {
                   key: "status",
                   header: "Status",
@@ -379,15 +704,15 @@ export default function Agents() {
                     </span>
                   ),
                 },
-                {
+                ...(can(myRole, "member:manage") ? [{
                   key: "actions",
                   header: "Actions",
-                  cell: (a) => (
+                  cell: (a: AgentRow) => (
                     <Button variant="ghost" onClick={() => setConfirmRemove(a)}>
                       Remove
                     </Button>
                   ),
-                },
+                }] : []),
               ]}
             />
           </div>
@@ -411,18 +736,39 @@ export default function Agents() {
         </div>
       )}
 
+      {confirmLifecycle && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" role="alertdialog" aria-modal="true" aria-labelledby="agent-lifecycle-title">
+          <Card>
+            <h2 id="agent-lifecycle-title" className="text-sm font-semibold text-ink-heading">
+              {confirmLifecycle.status === "suspended" ? "Suspend" : "Resume"} {confirmLifecycle.agent.name}?
+            </h2>
+            <p className="mt-2 max-w-md text-xs text-ink-secondary">
+              This sends the lifecycle request to the control plane. The roster will refresh only after the server confirms it.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setConfirmLifecycle(null)}>Cancel</Button>
+              <Button onClick={() => void applyLifecycle(confirmLifecycle.agent, confirmLifecycle.status)}>
+                Confirm {confirmLifecycle.status === "suspended" ? "suspension" : "resume"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {conf && (
         <OneTimeSecretModal
           title="Connect your agent: run this on the agent's host"
           caption={
             <>
-              Run this on the machine that runs your AI agent. It writes the
-              tunnel config and brings the interface up. Shown{" "}
+              Run this on the machine that runs your AI agent. It generates the
+              private key locally, bootstraps the managed tunnel, and brings the
+              interface up. Shown{" "}
               <span className="font-semibold">exactly once</span> — it contains
-              the agent's private key. {AGENT_PREREQ}
+              a single-use bootstrap token; the private key never leaves the
+              agent host. {AGENT_PREREQ} Also requires curl and jq.
             </>
           }
-          secret={agentConnectCommand(conf)}
+          secret={conf}
           copyLabel="Copy command"
           downloadFilename="tunnex-agent.sh"
           onDismiss={() => setConf(null)}

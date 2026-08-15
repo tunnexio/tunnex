@@ -71,3 +71,15 @@ export function stripXmlComments(src: string): string {
 export function stripYamlComments(src: string): string {
   return src.replace(/^\s*#.*$/gm, " ");
 }
+import { readFileSync } from "node:fs";
+import { resolve, sep } from "node:path";
+
+/** Read generated/runtime fixture bytes, never application source for a census. */
+export function readGeneratedFile(path: string, fixtureRoot: string): string {
+  const root = resolve(fixtureRoot);
+  const target = resolve(path);
+  if (target !== root && !target.startsWith(`${root}${sep}`)) {
+    throw new Error("generated fixture read escaped its explicit test-owned root");
+  }
+  return readFileSync(target, "utf8");
+}

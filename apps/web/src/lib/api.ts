@@ -13,6 +13,7 @@ export type Node = components["schemas"]["Node"];
 export type HubSet = components["schemas"]["HubSet"];
 export type HubMember = components["schemas"]["HubMember"];
 export type Device = components["schemas"]["Device"];
+export type BootstrapRelease = components["schemas"]["AgentBootstrapRelease"];
 export type OrgOverview = components["schemas"]["OrgOverview"];
 export type Member = components["schemas"]["Member"];
 export type MachineCredential = components["schemas"]["MachineCredential"];

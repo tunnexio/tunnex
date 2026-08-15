@@ -57,6 +57,23 @@ func (q *Queries) CountActiveDevicesForOrg(ctx context.Context, orgID uuid.UUID)
 	return count, err
 }
 
+const countAgentIdentitiesForQuota = `-- name: CountAgentIdentitiesForQuota :one
+SELECT count(*)::bigint FROM devices
+WHERE org_id = $1
+  AND kind = 'agent'
+  AND status IN ('pending', 'active', 'suspended')
+  AND deleted_at IS NULL
+`
+
+// F02 H2: pending, active, and suspended reserve org-wide agent identity
+// capacity; revoked and deleted identities do not count.
+func (q *Queries) CountAgentIdentitiesForQuota(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAgentIdentitiesForQuota, orgID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countDevicesForUserCap = `-- name: CountDevicesForUserCap :one
 SELECT count(*) FROM devices
 WHERE org_id = $1 AND user_id = $2 AND status IN ('active', 'pending') AND deleted_at IS NULL
@@ -88,7 +105,7 @@ func (q *Queries) CountDevicesForUserCap(ctx context.Context, arg CountDevicesFo
 
 const countLiveDevicesForNode = `-- name: CountLiveDevicesForNode :one
 SELECT count(*) FROM devices
-WHERE node_id = $1 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE node_id = $1 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 `
 
 // lint:cross-org — keyed by node_id, which the caller resolved from an org-scoped node row.
@@ -189,6 +206,72 @@ DELETE FROM device_status WHERE device_id = $1
 func (q *Queries) DeleteDeviceStatus(ctx context.Context, deviceID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteDeviceStatus, deviceID)
 	return err
+}
+
+const ensureAgentProfile = `-- name: EnsureAgentProfile :exec
+INSERT INTO agent_profiles (device_id)
+SELECT $1
+WHERE EXISTS (SELECT 1 FROM devices WHERE id = $1 AND kind = 'agent')
+ON CONFLICT (device_id) DO NOTHING
+`
+
+// lint:cross-org — the device was just inserted in this same org-scoped transaction;
+// the device ID is not an authorization input and this existence check does not
+// expose or mutate a device outside the caller's already-authorized create.
+// lint:allow-deleted — this guard only admits the row created immediately above;
+// a soft-deleted device cannot be the newly inserted row being profiled.
+func (q *Queries) EnsureAgentProfile(ctx context.Context, deviceID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, ensureAgentProfile, deviceID)
+	return err
+}
+
+const getAgentProfileForOrg = `-- name: GetAgentProfileForOrg :one
+SELECT ap.device_id, d.name, ap.environment, ap.runtime, ap.labels,
+       d.user_id, u.email AS owner_email, d.status,
+       ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+JOIN users u ON u.id = d.user_id
+LEFT JOIN device_status ds ON ds.device_id = d.id
+WHERE ap.device_id = $1 AND d.org_id = $2 AND d.kind = 'agent' AND d.deleted_at IS NULL
+`
+
+type GetAgentProfileForOrgParams struct {
+	DeviceID uuid.UUID `json:"device_id"`
+	OrgID    uuid.UUID `json:"org_id"`
+}
+
+type GetAgentProfileForOrgRow struct {
+	DeviceID        uuid.UUID          `json:"device_id"`
+	Name            string             `json:"name"`
+	Environment     string             `json:"environment"`
+	Runtime         string             `json:"runtime"`
+	Labels          []byte             `json:"labels"`
+	UserID          uuid.UUID          `json:"user_id"`
+	OwnerEmail      string             `json:"owner_email"`
+	Status          string             `json:"status"`
+	LastHandshakeAt pgtype.Timestamptz `json:"last_handshake_at"`
+	RxBytes         *int64             `json:"rx_bytes"`
+	TxBytes         *int64             `json:"tx_bytes"`
+}
+
+func (q *Queries) GetAgentProfileForOrg(ctx context.Context, arg GetAgentProfileForOrgParams) (GetAgentProfileForOrgRow, error) {
+	row := q.db.QueryRow(ctx, getAgentProfileForOrg, arg.DeviceID, arg.OrgID)
+	var i GetAgentProfileForOrgRow
+	err := row.Scan(
+		&i.DeviceID,
+		&i.Name,
+		&i.Environment,
+		&i.Runtime,
+		&i.Labels,
+		&i.UserID,
+		&i.OwnerEmail,
+		&i.Status,
+		&i.LastHandshakeAt,
+		&i.RxBytes,
+		&i.TxBytes,
+	)
+	return i, err
 }
 
 const getDevice = `-- name: GetDevice :one
@@ -783,7 +866,7 @@ func (q *Queries) ListDevicesByUser(ctx context.Context, arg ListDevicesByUserPa
 const listLiveDevicesForNode = `-- name: ListLiveDevicesForNode :many
 SELECT id, name, user_id, assigned_ip, transport, status, provisioning_mode
 FROM devices
-WHERE node_id = $1 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE node_id = $1 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 ORDER BY id
 `
 
@@ -1158,7 +1241,7 @@ func (q *Queries) RestoreCascadeRevokedDevice(ctx context.Context, arg RestoreCa
 const revokeDevice = `-- name: RevokeDevice :one
 UPDATE devices
 SET status = 'revoked', revoked_at = now(), revoked_cause = 'deliberate' 
-WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 RETURNING node_id
 `
 
@@ -1190,7 +1273,7 @@ const revokeDevicesForNode = `-- name: RevokeDevicesForNode :execrows
 UPDATE devices
 SET status = 'revoked', revoked_at = now(), revoked_cause = 'cascade',
     revoked_prev_status = status
-WHERE node_id = $1 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE node_id = $1 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 `
 
 // lint:cross-org — keyed by node_id; when a node is revoked its peers can no longer reach a
@@ -1251,7 +1334,7 @@ func (q *Queries) SetDeviceProvisioning(ctx context.Context, arg SetDeviceProvis
 const setOrgDeviceApproval = `-- name: SetOrgDeviceApproval :one
 UPDATE organizations SET device_approval = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled
 `
 
 type SetOrgDeviceApprovalParams struct {
@@ -1277,6 +1360,8 @@ func (q *Queries) SetOrgDeviceApproval(ctx context.Context, arg SetOrgDeviceAppr
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
 	)
 	return i, err
 }
@@ -1319,7 +1404,7 @@ func (q *Queries) SoftDeleteRevokedDevice(ctx context.Context, arg SoftDeleteRev
 const transferDeviceToNode = `-- name: TransferDeviceToNode :one
 UPDATE devices
 SET node_id = $3, updated_at = now()
-WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 RETURNING id, org_id, user_id, node_id, name, platform, public_key, assigned_ip, status, created_at, updated_at, revoked_at, deleted_at, full_tunnel, approved_by, health_blocked, transport, provisioning_mode, provisioned_ranges, revoked_cause, provisioned_ip, revoked_prev_status, provisioned_node_id, kind
 `
 
@@ -1373,6 +1458,93 @@ func (q *Queries) TransferDeviceToNode(ctx context.Context, arg TransferDeviceTo
 		&i.RevokedPrevStatus,
 		&i.ProvisionedNodeID,
 		&i.Kind,
+	)
+	return i, err
+}
+
+const updateAgentLifecycle = `-- name: UpdateAgentLifecycle :one
+UPDATE devices
+SET status = $3, updated_at = now()
+WHERE id = $1 AND org_id = $2 AND kind = 'agent' AND deleted_at IS NULL AND status = $4
+RETURNING id, org_id, user_id, node_id, name, platform, public_key, assigned_ip, status, created_at, updated_at, revoked_at, deleted_at, full_tunnel, approved_by, health_blocked, transport, provisioning_mode, provisioned_ranges, revoked_cause, provisioned_ip, revoked_prev_status, provisioned_node_id, kind
+`
+
+type UpdateAgentLifecycleParams struct {
+	ID       uuid.UUID `json:"id"`
+	OrgID    uuid.UUID `json:"org_id"`
+	Status   string    `json:"status"`
+	Status_2 string    `json:"status_2"`
+}
+
+func (q *Queries) UpdateAgentLifecycle(ctx context.Context, arg UpdateAgentLifecycleParams) (Device, error) {
+	row := q.db.QueryRow(ctx, updateAgentLifecycle,
+		arg.ID,
+		arg.OrgID,
+		arg.Status,
+		arg.Status_2,
+	)
+	var i Device
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.UserID,
+		&i.NodeID,
+		&i.Name,
+		&i.Platform,
+		&i.PublicKey,
+		&i.AssignedIp,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RevokedAt,
+		&i.DeletedAt,
+		&i.FullTunnel,
+		&i.ApprovedBy,
+		&i.HealthBlocked,
+		&i.Transport,
+		&i.ProvisioningMode,
+		&i.ProvisionedRanges,
+		&i.RevokedCause,
+		&i.ProvisionedIp,
+		&i.RevokedPrevStatus,
+		&i.ProvisionedNodeID,
+		&i.Kind,
+	)
+	return i, err
+}
+
+const updateAgentProfile = `-- name: UpdateAgentProfile :one
+UPDATE agent_profiles ap
+SET environment = $2, runtime = $3, labels = $4, updated_at = now()
+FROM devices d
+WHERE ap.device_id = $1 AND d.id = ap.device_id AND d.org_id = $5 AND d.kind = 'agent' AND d.deleted_at IS NULL
+RETURNING ap.device_id, ap.environment, ap.runtime, ap.labels, ap.created_at, ap.updated_at
+`
+
+type UpdateAgentProfileParams struct {
+	DeviceID    uuid.UUID `json:"device_id"`
+	Environment string    `json:"environment"`
+	Runtime     string    `json:"runtime"`
+	Labels      []byte    `json:"labels"`
+	OrgID       uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) UpdateAgentProfile(ctx context.Context, arg UpdateAgentProfileParams) (AgentProfile, error) {
+	row := q.db.QueryRow(ctx, updateAgentProfile,
+		arg.DeviceID,
+		arg.Environment,
+		arg.Runtime,
+		arg.Labels,
+		arg.OrgID,
+	)
+	var i AgentProfile
+	err := row.Scan(
+		&i.DeviceID,
+		&i.Environment,
+		&i.Runtime,
+		&i.Labels,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

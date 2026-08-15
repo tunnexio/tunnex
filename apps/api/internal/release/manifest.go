@@ -4,6 +4,7 @@
 package release
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
@@ -27,21 +28,39 @@ const SchemaVersion = 1
 const DefaultCatalogURL = "https://github.com/tunnexio/tunnex/releases/download/tunnex-updates/release.json"
 
 type Manifest struct {
-	SchemaVersion   int               `json:"schema_version"`
-	Sequence        int64             `json:"sequence"`
-	Version         string            `json:"version"`
-	SourceSHA       string            `json:"source_sha"`
-	PublishedAt     time.Time         `json:"published_at"`
-	MinProtocol     int               `json:"min_protocol"`
-	Compatibility   string            `json:"compatibility"`
-	Downtime        string            `json:"downtime"`
-	ReleaseNotesURL string            `json:"release_notes_url"`
-	Images          map[string]Images `json:"images"`
+	SchemaVersion       int                 `json:"schema_version"`
+	Sequence            int64               `json:"sequence"`
+	Version             string              `json:"version"`
+	SourceSHA           string              `json:"source_sha"`
+	PublishedAt         time.Time           `json:"published_at"`
+	MinProtocol         int                 `json:"min_protocol"`
+	Compatibility       string              `json:"compatibility"`
+	Downtime            string              `json:"downtime"`
+	ReleaseNotesURL     string              `json:"release_notes_url"`
+	Images              map[string]Images   `json:"images"`
+	ManagedAgentRuntime ManagedAgentRuntime `json:"managed_agent_runtime"`
 }
 
 type Images struct {
 	AMD64Digest string `json:"linux_amd64_digest"`
 	ARM64Digest string `json:"linux_arm64_digest"`
+}
+
+// ManagedAgentRuntime binds the managed-agent binaries and service unit to
+// this signed release. Every asset is mandatory: an incomplete descriptor is
+// not installable.
+type ManagedAgentRuntime struct {
+	Binary     string       `json:"binary"`
+	Version    string       `json:"version"`
+	Unit       RuntimeAsset `json:"unit"`
+	LinuxAMD64 RuntimeAsset `json:"linux_amd64"`
+	LinuxARM64 RuntimeAsset `json:"linux_arm64"`
+}
+
+type RuntimeAsset struct {
+	Name      string `json:"name"`
+	SHA256    string `json:"sha256"`
+	SourceSHA string `json:"source_sha"`
 }
 
 type SignedManifest struct {
@@ -95,6 +114,9 @@ func Verify(s SignedManifest, publicKey ed25519.PublicKey) error {
 			return fmt.Errorf("release manifest image %q is missing a valid amd64/arm64 digest", name)
 		}
 	}
+	if err := VerifyManagedAgentRuntime(s.Manifest.ManagedAgentRuntime, s.Manifest.Version, s.Manifest.SourceSHA); err != nil {
+		return err
+	}
 	canonical, err := json.Marshal(s.Manifest)
 	if err != nil {
 		return fmt.Errorf("marshal release manifest: %w", err)
@@ -102,6 +124,37 @@ func Verify(s SignedManifest, publicKey ed25519.PublicKey) error {
 	sig, err := base64.RawURLEncoding.DecodeString(s.Signature)
 	if err != nil || len(sig) != ed25519.SignatureSize || !ed25519.Verify(publicKey, canonical, sig) {
 		return errors.New("release manifest signature is invalid")
+	}
+	return nil
+}
+
+func VerifyManagedAgentRuntime(runtime ManagedAgentRuntime, version, sourceSHA string) error {
+	if runtime.Binary != "tunnex-agent-runtime" || runtime.Version != version {
+		return errors.New("managed_agent_runtime identity does not match the release")
+	}
+	if err := verifyRuntimeAsset("unit", runtime.Unit, "tunnex-agent-runtime.service", sourceSHA); err != nil {
+		return err
+	}
+	for arch, asset := range map[string]RuntimeAsset{"amd64": runtime.LinuxAMD64, "arm64": runtime.LinuxARM64} {
+		if err := verifyRuntimeAsset(arch, asset, "tunnex-agent-runtime-linux-"+arch, sourceSHA); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyRuntimeAsset(kind string, asset RuntimeAsset, wantName, sourceSHA string) error {
+	if asset.Name != wantName {
+		return fmt.Errorf("runtime asset %q has name %q, want %q", kind, asset.Name, wantName)
+	}
+	if len(asset.SHA256) != 64 || strings.ToLower(asset.SHA256) != asset.SHA256 {
+		return fmt.Errorf("runtime asset %q has invalid SHA-256", kind)
+	}
+	if _, err := hex.DecodeString(asset.SHA256); err != nil {
+		return fmt.Errorf("runtime asset %q has non-hex SHA-256", kind)
+	}
+	if asset.SourceSHA != sourceSHA {
+		return fmt.Errorf("runtime asset %q is not bound to source %q", kind, sourceSHA)
 	}
 	return nil
 }
@@ -123,7 +176,9 @@ func Load(path, encodedPublicKey string) (SignedManifest, error) {
 // catalog. The signature check is deliberately identical for both paths.
 func Parse(b []byte, encodedPublicKey string) (SignedManifest, error) {
 	var s SignedManifest
-	if err := json.Unmarshal(b, &s); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&s); err != nil {
 		return s, fmt.Errorf("decode release manifest: %w", err)
 	}
 	key, err := decodeKey(encodedPublicKey)

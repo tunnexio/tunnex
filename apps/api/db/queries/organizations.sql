@@ -35,6 +35,23 @@ SET name = $2
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING *;
 
+-- name: UpdateOrganizationAgentQuota :one
+-- NULL is explicit unlimited. The dedicated endpoint avoids conflating an
+-- omitted field in the legacy name PATCH with clearing the quota.
+UPDATE organizations
+SET max_agent_identities = $2
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: SetOrganizationAgentRuntimeEnabled :one
+-- F04 unlock-then-opt-in: the paid licence only unlocks this setting. The
+-- organization must explicitly enable runtime synchronization, and disabling
+-- it immediately withdraws the poll/report/status surface.
+UPDATE organizations
+SET managed_agent_runtime_enabled = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
 -- name: SoftDeleteOrganization :execrows
 UPDATE organizations
 SET deleted_at = now()

@@ -662,6 +662,187 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/Agent" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/bootstrap-token:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: issueAgentBootstrapToken
+      summary: Issue a single-use managed agent bootstrap token
+      tags: [agents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentBootstrapTokenRequest" }
+      responses:
+        "201":
+          description: The bootstrap token, shown once.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentBootstrapTokenResponse" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/agent/bootstrap:
+    post:
+      operationId: bootstrapAgent
+      summary: Redeem a managed agent bootstrap token
+      security: []
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentBootstrapRequest" }
+      responses:
+        "200":
+          description: Bootstrap material. The runtime credential is shown exactly once.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentBootstrapResponse" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/agent/runtime/poll:
+    get:
+      operationId: pollAgentRuntime
+      summary: Poll managed agent configuration
+      description: >-
+        Machine-only managed-runtime channel. Authenticates with the exact agent runtime bearer and returns
+        a configuration only when the desired revision is newer than `applied_revision`; an unchanged
+        revision returns 204 with no body. The optional wait is a bounded long poll. Explicit organization
+        opt-out is a terminal uniform 401 so the runtime offboards; edition unavailability remains a
+        non-terminal 403. No bearer, bootstrap token, private key, token hash, or raw error is ever returned.
+      security:
+        - runtimeBearer: []
+      tags: [agents]
+      parameters:
+        - name: applied_revision
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: client_version
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: wait_seconds
+          in: query
+          required: false
+          description: Bounded long-poll wait requested by the runtime; the server may return sooner.
+          schema: { type: integer, minimum: 0, maximum: 60, default: 0 }
+      responses:
+        "200":
+          description: Strictly newer managed configuration.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ManagedAgentConfig" }
+        "204":
+          description: Desired revision is unchanged; no configuration body is returned.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
+        "403": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/agent/runtime/report:
+    post:
+      operationId: reportAgentRuntime
+      summary: Report managed agent runtime state
+      description: >-
+        Machine-only managed-runtime channel. Reports bounded revision and health facts for the exact agent
+        runtime bearer. The server rejects backwards or ahead-of-desired revisions and stores only the stable
+        error enum, never raw runtime output. No credential, bootstrap token, private key, token hash, or raw
+        error is accepted or returned.
+      security:
+        - runtimeBearer: []
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentRuntimeReport" }
+      responses:
+        "204":
+          description: Report accepted.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAgentProfile
+      summary: Get an agent profile and canonical lifecycle/telemetry
+      tags: [agents]
+      responses:
+        "200":
+          description: The agent profile.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentProfile" }
+        default: { $ref: "#/components/responses/Error" }
+
+    patch:
+      operationId: updateAgentProfile
+      summary: Update agent metadata or request an explicit lifecycle transition
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAgentProfileRequest" }
+      responses:
+        "200":
+          description: Updated agent profile.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentProfile" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAgentRuntimeStatus
+      summary: Get managed agent runtime status
+      description: >-
+        Organization/admin read-only projection for one agent. Uses human/session authorization, never the
+        machine runtime bearer. The projection contains desired/applied facts, connectivity/last-seen state,
+        and bounded stale/error facts only; it never returns credentials, private keys, token hashes, or raw
+        runtime errors.
+      tags: [agents]
+      responses:
+        "200":
+          description: Runtime status projection.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRuntimeStatus" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/nodes/join-token:
     parameters:
       - name: orgId
@@ -2399,6 +2580,39 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /api/v1/organizations/{orgId}/agent-quota:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setOrganizationAgentQuota
+      summary: Set the organization managed-agent identity quota
+      description: >-
+        Enterprise organization setting. Requires org:update. `max_agent_identities: null` means
+        unlimited. The server counts pending, active, and suspended agent identities organization-wide;
+        revoked and deleted identities do not count. No remaining count is returned or inferred.
+      tags: [organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetOrganizationAgentQuotaRequest"
+      responses:
+        "200":
+          description: Updated organization quota.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        default:
+          $ref: "#/components/responses/Error"
+
   /api/v1/organizations/{orgId}/deletion-preflight:
     parameters:
       - name: orgId
@@ -2469,6 +2683,7 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Site" } } } }
         default: { $ref: "#/components/responses/Error" }
+
     post:
       operationId: registerSite
       summary: Register a site gateway (S8.1; site:manage)
@@ -2481,6 +2696,35 @@ paths:
           description: Created.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
           content: { application/json: { schema: { $ref: "#/components/schemas/Site" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-runtime-settings:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setOrganizationAgentRuntimeEnabled
+      summary: Enable or disable managed-agent runtime synchronization for an organization
+      description: >-
+        Enterprise-only explicit opt-in. Requires agent_runtime:manage. A paid licence unlocks
+        this capability but never enables it implicitly; the default is disabled. Disabling an active
+        organization makes the next runtime poll/report a terminal uniform refusal so managed tunnels
+        offboard instead of preserving synchronization indefinitely.
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentRuntimeSetting" }
+      responses:
+        "200":
+          description: Persisted managed-agent runtime setting.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRuntimeSetting" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/routed-ranges:
@@ -2863,6 +3107,10 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    runtimeBearer:
+      type: http
+      scheme: bearer
+      description: Machine-only hash-backed managed-agent runtime credential; never a user/session bearer.
 
   headers:
     RequestId:
@@ -2891,7 +3139,7 @@ components:
 
     Organization:
       type: object
-      required: [id, name, slug, pool_cidr, created_at, updated_at]
+      required: [id, name, slug, pool_cidr, max_agent_identities, managed_agent_runtime_enabled, created_at, updated_at]
       additionalProperties: false
       properties:
         id:
@@ -2907,6 +3155,15 @@ components:
         ovpn_enabled:
           type: boolean
           description: "S9.1 D-S9.5-OPTIN: whether this org has opted into OpenVPN. Default false. When false the OpenVPN device type is not offered and the export endpoint refuses (opt_in_required)."
+        max_agent_identities:
+          type: integer
+          format: int32
+          minimum: 0
+          nullable: true
+          description: "F02: organization-wide managed-agent identity quota. null means unlimited; no remaining count is exposed."
+        managed_agent_runtime_enabled:
+          type: boolean
+          description: "F04: explicit organization opt-in for managed runtime synchronization. Default false; a paid licence does not enable it implicitly."
         created_at:
           type: string
           format: date-time
@@ -3516,6 +3773,18 @@ components:
           minLength: 1
           maxLength: 200
 
+    SetOrganizationAgentQuotaRequest:
+      type: object
+      required: [max_agent_identities]
+      additionalProperties: false
+      description: "F02 H1-H3. Null explicitly clears the quota and means unlimited."
+      properties:
+        max_agent_identities:
+          type: integer
+          format: int32
+          minimum: 0
+          nullable: true
+
     GatewayEndpoint:
       type: object
       required: [url, configured]
@@ -3866,6 +4135,7 @@ components:
         owner_email:
           type: string
           nullable: true
+          x-omitempty: true
           description: The human who enrolled this agent. Resolved from `users`, so it survives them leaving the org.
         address:
           type: string
@@ -4117,7 +4387,7 @@ components:
         needs_reexport:
           type: boolean
           description: "True when the config this device was ISSUED no longer matches reality, so the user must re-import it. Three causes: (1) its baked site ROUTES no longer match the org's current routed ranges — STATIC exports only, since a managed device polls routes; (2) its baked tunnel ADDRESS is not the device's current address — EVERY mode, including managed, because every issued config embeds an interface address; (3) its baked GATEWAY is not the device's current gateway — STATIC exports only, because a static export is a file that never polls and cannot be re-pointed, whereas a managed device re-homes itself through the dial channel (residual: only when its node is a hub-set member). Reported for all provisioning modes; false when nothing was recorded at issuance (rows predating the address snapshot), because unknown must not be reported as stale. Advisory, never enforcement."
-        status: { type: string, enum: [active, revoked, pending] }
+        status: { type: string, enum: [active, revoked, pending, suspended] }
         approved_by:
           type: string
           format: uuid
@@ -4185,6 +4455,180 @@ components:
             the policy chain therefore sees it. Default 'human'.
         # S9.1 Part-2: "static" for a file/QR export (bakes approved ranges + DNS since the client cannot poll); default "managed" (a polling Tunnex client).
         provisioning: { type: string, enum: [managed, static] }
+
+    AgentProfile:
+      type: object
+      required: [device_id, name, environment, runtime, labels, owner_id, owner_email, status]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        name: { type: string }
+        environment: { type: string }
+        runtime: { type: string }
+        labels:
+          type: object
+          additionalProperties: { type: string }
+        owner_id: { type: string, format: uuid }
+        owner_email: { type: string, format: email }
+        status: { type: string, enum: [pending, active, suspended, revoked] }
+        last_handshake_at: { type: string, format: date-time, nullable: true }
+        rx_bytes: { type: integer, format: int64, nullable: true }
+        tx_bytes: { type: integer, format: int64, nullable: true }
+
+    ManagedAgentConfig:
+      type: object
+      description: >-
+        Secret-free server-owned configuration for one managed agent. Runtime credentials, bootstrap tokens,
+        token hashes, and private keys are never configuration fields.
+      required: [revision, device_id, org_id, address, gateway_endpoint, gateway_public_key, allowed_ips, dns, persistent_keepalive]
+      additionalProperties: false
+      properties:
+        revision: { type: integer, format: int64, minimum: 1 }
+        device_id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        address: { type: string, description: The managed agent tunnel address/prefix. }
+        gateway_endpoint: { type: string, description: The gateway endpoint in host:port form. }
+        gateway_public_key: { type: string, description: The gateway WireGuard public key. }
+        allowed_ips:
+          type: array
+          items: { type: string }
+        dns:
+          type: array
+          items: { type: string }
+        persistent_keepalive: { type: integer, minimum: 0, maximum: 65535 }
+
+    AgentRuntimeSetting:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Explicit organization opt-in for F04 managed runtime synchronization.
+
+    AgentRuntimeReport:
+      type: object
+      description: Bounded, secret-free facts reported by one managed agent runtime.
+      required: [applied_revision, attempted_revision, client_version, error_code]
+      additionalProperties: false
+      properties:
+        applied_revision: { type: integer, format: int64, minimum: 0 }
+        attempted_revision: { type: integer, format: int64, minimum: 0 }
+        client_version: { type: string, minLength: 1, maxLength: 128 }
+        error_code:
+          type: string
+          enum: ["", invalid_config, apply_failed]
+          description: Empty means no error; otherwise a bounded stable code, never raw runtime output.
+
+    AgentRuntimeStatus:
+      type: object
+      description: Secret-free organization/admin projection of one managed agent runtime.
+      required: [device_id, desired_revision, applied_revision, last_attempted_revision, client_version, connectivity, health, stale]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        desired_revision: { type: integer, format: int64, minimum: 1 }
+        applied_revision: { type: integer, format: int64, minimum: 0 }
+        last_attempted_revision: { type: integer, format: int64, minimum: 0 }
+        client_version: { type: string, maxLength: 128 }
+        connectivity:
+          type: string
+          enum: [unknown, connected, disconnected]
+          description: Server-derived connectivity fact; unknown means the control plane cannot establish it.
+        health:
+          type: string
+          enum: [ready, last_good, inconclusive]
+          description: >-
+            ready means a fresh report applied the current desired revision without a bounded error;
+            last_good means a prior applied revision is retained while freshness, revision, or apply state
+            is not current; inconclusive means no applied configuration is established.
+        stale:
+          type: boolean
+          description: Whether the last runtime report is absent or outside the server's three-minute freshness window.
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        last_error_code:
+          type: string
+          nullable: true
+          enum: [invalid_config, apply_failed]
+          description: Last bounded stable runtime error, never raw runtime output.
+        last_error_revision: { type: integer, format: int64, minimum: 1, nullable: true }
+
+    AgentBootstrapTokenRequest:
+      type: object
+      required: [name, gateway_id]
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 100 }
+        gateway_id: { type: string, format: uuid }
+
+    AgentBootstrapTokenResponse:
+      type: object
+      required: [bootstrap_token, release]
+      additionalProperties: false
+      properties:
+        bootstrap_token: { type: string, description: Shown once and stored only as a hash. }
+        release: { $ref: "#/components/schemas/AgentBootstrapRelease" }
+
+    AgentBootstrapRelease:
+      type: object
+      description: Server-verified immutable runtime release metadata. Contains no secret or signing private key.
+      required: [tag, source_sha, manifest_url, verifier_key_id, runtime]
+      additionalProperties: false
+      properties:
+        tag: { type: string, minLength: 1, maxLength: 128, description: Immutable v* or tunnex-build-* release tag. }
+        source_sha: { type: string, pattern: '^[0-9a-f]{40}$', description: Full source commit SHA bound by the signed descriptor. }
+        manifest_url: { type: string, format: uri, description: Immutable release.json URL for the exact tag. }
+        verifier_key_id: { type: string, minLength: 1, maxLength: 128, description: Public verifier key identifier only; no key material. }
+        runtime: { $ref: "#/components/schemas/AgentBootstrapRuntimeRelease" }
+
+    AgentBootstrapRuntimeRelease:
+      type: object
+      required: [binary, version, linux_amd64, linux_arm64, unit]
+      additionalProperties: false
+      properties:
+        binary: { type: string, enum: [tunnex-agent-runtime] }
+        version: { type: string, minLength: 1, maxLength: 128 }
+        linux_amd64: { $ref: "#/components/schemas/AgentBootstrapRuntimeAsset" }
+        linux_arm64: { $ref: "#/components/schemas/AgentBootstrapRuntimeAsset" }
+        unit: { $ref: "#/components/schemas/AgentBootstrapRuntimeAsset" }
+
+    AgentBootstrapRuntimeAsset:
+      type: object
+      required: [name, sha256, source_sha]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 256 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        source_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+
+    AgentBootstrapRequest:
+      type: object
+      required: [bootstrap_token, public_key]
+      additionalProperties: false
+      properties:
+        bootstrap_token: { type: string }
+        public_key: { type: string, description: Client-generated WireGuard public key. }
+
+    AgentBootstrapResponse:
+      type: object
+      required: [device, config, runtime_credential]
+      additionalProperties: false
+      properties:
+        device: { $ref: "#/components/schemas/Device" }
+        config: { type: string, description: WireGuard config template with a client-private-key placeholder. }
+        runtime_credential: { type: string, description: Shown once, stored only as a hash, and scoped to this agent device. }
+
+    UpdateAgentProfileRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        environment: { type: string, maxLength: 100 }
+        runtime: { type: string, maxLength: 100 }
+        labels:
+          type: object
+          maxProperties: 32
+          additionalProperties: { type: string, maxLength: 100 }
+        status: { type: string, enum: [active, suspended] }
 
     UpdateDeviceModeRequest:
       type: object
@@ -4782,6 +5226,17 @@ components:
   responses:
     Error:
       description: Error response.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RuntimeUnauthorized:
+      description: >-
+        Uniform machine-channel authentication refusal. The response must not reveal whether the bearer,
+        organization, device, agent kind, or revocation state exists.
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"

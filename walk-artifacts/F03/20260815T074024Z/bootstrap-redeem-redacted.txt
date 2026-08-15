@@ -1,0 +1,9 @@
+released_command_shape=stdin heredoc; bootstrap token absent from child argv
+released_command_exit=0
+agent_initial_status=pending
+operator_approval_status=204
+agent_final_status=active
+runtime_service=active,enabled
+runtime_interface=present
+gateway_reporter=real current-head node agent; no fabricated database status
+private_key_or_runtime_credential_recorded=false

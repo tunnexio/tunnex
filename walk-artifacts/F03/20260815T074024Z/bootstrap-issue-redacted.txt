@@ -1,0 +1,7 @@
+gateway_name=f03-reporter-gw-20260815T073529Z
+agent_name=f03-connected-agent-20260815T074024Z
+gateway_join_token_issue_status=201
+gateway_enrollment_status=200
+managed_bootstrap_token_issue_status=201
+device_approval_mode=on
+token_or_secret_recorded=false

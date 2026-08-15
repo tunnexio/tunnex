@@ -1,0 +1,14 @@
+gateway_name=f03-reporter-gw-20260815T073529Z
+agent_name=f03-connected-agent-20260815T074024Z
+gateway_reporting=true
+online=true
+last_handshake_at=non-null and fresh
+runtime_connectivity=connected
+runtime_stale=false
+desired_revision=1
+last_attempted_revision=1
+applied_revision=1
+last_error_code=null
+wireguard_handshake=real and equal on both peers
+runtime_peer_count=1
+gateway_peer_count=1

@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	BearerAuthScopes = "bearerAuth.Scopes"
-	CookieAuthScopes = "cookieAuth.Scopes"
+	BearerAuthScopes    = "bearerAuth.Scopes"
+	CookieAuthScopes    = "cookieAuth.Scopes"
+	RuntimeBearerScopes = "runtimeBearer.Scopes"
 )
 
 // Defines values for AccessEventDecision.
@@ -30,6 +31,46 @@ const (
 	DenyAggregate AccessEventDecision = "deny_aggregate"
 	Gap           AccessEventDecision = "gap"
 	Terminated    AccessEventDecision = "terminated"
+)
+
+// Defines values for AgentBootstrapRuntimeReleaseBinary.
+const (
+	TunnexAgentRuntime AgentBootstrapRuntimeReleaseBinary = "tunnex-agent-runtime"
+)
+
+// Defines values for AgentProfileStatus.
+const (
+	AgentProfileStatusActive    AgentProfileStatus = "active"
+	AgentProfileStatusPending   AgentProfileStatus = "pending"
+	AgentProfileStatusRevoked   AgentProfileStatus = "revoked"
+	AgentProfileStatusSuspended AgentProfileStatus = "suspended"
+)
+
+// Defines values for AgentRuntimeReportErrorCode.
+const (
+	AgentRuntimeReportErrorCodeApplyFailed   AgentRuntimeReportErrorCode = "apply_failed"
+	AgentRuntimeReportErrorCodeEmpty         AgentRuntimeReportErrorCode = ""
+	AgentRuntimeReportErrorCodeInvalidConfig AgentRuntimeReportErrorCode = "invalid_config"
+)
+
+// Defines values for AgentRuntimeStatusConnectivity.
+const (
+	AgentRuntimeStatusConnectivityConnected    AgentRuntimeStatusConnectivity = "connected"
+	AgentRuntimeStatusConnectivityDisconnected AgentRuntimeStatusConnectivity = "disconnected"
+	AgentRuntimeStatusConnectivityUnknown      AgentRuntimeStatusConnectivity = "unknown"
+)
+
+// Defines values for AgentRuntimeStatusHealth.
+const (
+	Inconclusive AgentRuntimeStatusHealth = "inconclusive"
+	LastGood     AgentRuntimeStatusHealth = "last_good"
+	Ready        AgentRuntimeStatusHealth = "ready"
+)
+
+// Defines values for AgentRuntimeStatusLastErrorCode.
+const (
+	AgentRuntimeStatusLastErrorCodeApplyFailed   AgentRuntimeStatusLastErrorCode = "apply_failed"
+	AgentRuntimeStatusLastErrorCodeInvalidConfig AgentRuntimeStatusLastErrorCode = "invalid_config"
 )
 
 // Defines values for ChangeRoleRequestRole.
@@ -95,9 +136,10 @@ const (
 
 // Defines values for DeviceStatus.
 const (
-	DeviceStatusActive  DeviceStatus = "active"
-	DeviceStatusPending DeviceStatus = "pending"
-	DeviceStatusRevoked DeviceStatus = "revoked"
+	DeviceStatusActive    DeviceStatus = "active"
+	DeviceStatusPending   DeviceStatus = "pending"
+	DeviceStatusRevoked   DeviceStatus = "revoked"
+	DeviceStatusSuspended DeviceStatus = "suspended"
 )
 
 // Defines values for DeviceApprovalMode.
@@ -128,8 +170,8 @@ const (
 
 // Defines values for DeviceHealthResultState.
 const (
-	DeviceHealthResultStateCompliant    DeviceHealthResultState = "compliant"
-	DeviceHealthResultStateNoncompliant DeviceHealthResultState = "noncompliant"
+	Compliant    DeviceHealthResultState = "compliant"
+	Noncompliant DeviceHealthResultState = "noncompliant"
 )
 
 // Defines values for ExposeK8sServiceRequestProtocol.
@@ -292,8 +334,8 @@ const (
 
 // Defines values for NodeStatus.
 const (
-	Active  NodeStatus = "active"
-	Revoked NodeStatus = "revoked"
+	NodeStatusActive  NodeStatus = "active"
+	NodeStatusRevoked NodeStatus = "revoked"
 )
 
 // Defines values for OrphanReason.
@@ -355,6 +397,12 @@ const (
 	DestinationNotHubSetMember   TransferNodeDevicesResponseDevicesReissueCause = "destination_not_hub_set_member"
 	DestinationSelfHomingUnknown TransferNodeDevicesResponseDevicesReissueCause = "destination_self_homing_unknown"
 	StaticExport                 TransferNodeDevicesResponseDevicesReissueCause = "static_export"
+)
+
+// Defines values for UpdateAgentProfileRequestStatus.
+const (
+	Active    UpdateAgentProfileRequestStatus = "active"
+	Suspended UpdateAgentProfileRequestStatus = "suspended"
 )
 
 // Defines values for UpgradeStatusApprovalMode.
@@ -525,7 +573,7 @@ type Agent struct {
 	Online *bool `json:"online,omitempty"`
 
 	// OwnerEmail The human who enrolled this agent. Resolved from `users`, so it survives them leaving the org.
-	OwnerEmail *string `json:"owner_email"`
+	OwnerEmail *string `json:"owner_email,omitempty"`
 	RxBytes    *int64  `json:"rx_bytes"`
 	Status     string  `json:"status"`
 	TxBytes    *int64  `json:"tx_bytes"`
@@ -533,6 +581,143 @@ type Agent struct {
 	// Unattributable No owner is recorded, so activity cannot be tied to a person. ⛔ A statement about the AUDIT TRAIL, never about permission — an unattributable agent is not less authorized.
 	Unattributable bool `json:"unattributable"`
 }
+
+// AgentBootstrapRelease Server-verified immutable runtime release metadata. Contains no secret or signing private key.
+type AgentBootstrapRelease struct {
+	// ManifestUrl Immutable release.json URL for the exact tag.
+	ManifestUrl string                       `json:"manifest_url"`
+	Runtime     AgentBootstrapRuntimeRelease `json:"runtime"`
+
+	// SourceSha Full source commit SHA bound by the signed descriptor.
+	SourceSha string `json:"source_sha"`
+
+	// Tag Immutable v* or tunnex-build-* release tag.
+	Tag string `json:"tag"`
+
+	// VerifierKeyId Public verifier key identifier only; no key material.
+	VerifierKeyId string `json:"verifier_key_id"`
+}
+
+// AgentBootstrapRequest defines model for AgentBootstrapRequest.
+type AgentBootstrapRequest struct {
+	BootstrapToken string `json:"bootstrap_token"`
+
+	// PublicKey Client-generated WireGuard public key.
+	PublicKey string `json:"public_key"`
+}
+
+// AgentBootstrapResponse defines model for AgentBootstrapResponse.
+type AgentBootstrapResponse struct {
+	// Config WireGuard config template with a client-private-key placeholder.
+	Config string `json:"config"`
+	Device Device `json:"device"`
+
+	// RuntimeCredential Shown once
+	RuntimeCredential string `json:"runtime_credential"`
+}
+
+// AgentBootstrapRuntimeAsset defines model for AgentBootstrapRuntimeAsset.
+type AgentBootstrapRuntimeAsset struct {
+	Name      string `json:"name"`
+	Sha256    string `json:"sha256"`
+	SourceSha string `json:"source_sha"`
+}
+
+// AgentBootstrapRuntimeRelease defines model for AgentBootstrapRuntimeRelease.
+type AgentBootstrapRuntimeRelease struct {
+	Binary     AgentBootstrapRuntimeReleaseBinary `json:"binary"`
+	LinuxAmd64 AgentBootstrapRuntimeAsset         `json:"linux_amd64"`
+	LinuxArm64 AgentBootstrapRuntimeAsset         `json:"linux_arm64"`
+	Unit       AgentBootstrapRuntimeAsset         `json:"unit"`
+	Version    string                             `json:"version"`
+}
+
+// AgentBootstrapRuntimeReleaseBinary defines model for AgentBootstrapRuntimeRelease.Binary.
+type AgentBootstrapRuntimeReleaseBinary string
+
+// AgentBootstrapTokenRequest defines model for AgentBootstrapTokenRequest.
+type AgentBootstrapTokenRequest struct {
+	GatewayId openapi_types.UUID `json:"gateway_id"`
+	Name      string             `json:"name"`
+}
+
+// AgentBootstrapTokenResponse defines model for AgentBootstrapTokenResponse.
+type AgentBootstrapTokenResponse struct {
+	// BootstrapToken Shown once and stored only as a hash.
+	BootstrapToken string `json:"bootstrap_token"`
+
+	// Release Server-verified immutable runtime release metadata. Contains no secret or signing private key.
+	Release AgentBootstrapRelease `json:"release"`
+}
+
+// AgentProfile defines model for AgentProfile.
+type AgentProfile struct {
+	DeviceId        openapi_types.UUID  `json:"device_id"`
+	Environment     string              `json:"environment"`
+	Labels          map[string]string   `json:"labels"`
+	LastHandshakeAt *time.Time          `json:"last_handshake_at"`
+	Name            string              `json:"name"`
+	OwnerEmail      openapi_types.Email `json:"owner_email"`
+	OwnerId         openapi_types.UUID  `json:"owner_id"`
+	Runtime         string              `json:"runtime"`
+	RxBytes         *int64              `json:"rx_bytes"`
+	Status          AgentProfileStatus  `json:"status"`
+	TxBytes         *int64              `json:"tx_bytes"`
+}
+
+// AgentProfileStatus defines model for AgentProfile.Status.
+type AgentProfileStatus string
+
+// AgentRuntimeReport Bounded, secret-free facts reported by one managed agent runtime.
+type AgentRuntimeReport struct {
+	AppliedRevision   int64  `json:"applied_revision"`
+	AttemptedRevision int64  `json:"attempted_revision"`
+	ClientVersion     string `json:"client_version"`
+
+	// ErrorCode Empty means no error; otherwise a bounded stable code, never raw runtime output.
+	ErrorCode AgentRuntimeReportErrorCode `json:"error_code"`
+}
+
+// AgentRuntimeReportErrorCode Empty means no error; otherwise a bounded stable code, never raw runtime output.
+type AgentRuntimeReportErrorCode string
+
+// AgentRuntimeSetting defines model for AgentRuntimeSetting.
+type AgentRuntimeSetting struct {
+	// Enabled Explicit organization opt-in for F04 managed runtime synchronization.
+	Enabled bool `json:"enabled"`
+}
+
+// AgentRuntimeStatus Secret-free organization/admin projection of one managed agent runtime.
+type AgentRuntimeStatus struct {
+	AppliedRevision int64  `json:"applied_revision"`
+	ClientVersion   string `json:"client_version"`
+
+	// Connectivity Server-derived connectivity fact; unknown means the control plane cannot establish it.
+	Connectivity    AgentRuntimeStatusConnectivity `json:"connectivity"`
+	DesiredRevision int64                          `json:"desired_revision"`
+	DeviceId        openapi_types.UUID             `json:"device_id"`
+
+	// Health ready means a fresh report applied the current desired revision without a bounded error; last_good means a prior applied revision is retained while freshness, revision, or apply state is not current; inconclusive means no applied configuration is established.
+	Health                AgentRuntimeStatusHealth `json:"health"`
+	LastAttemptedRevision int64                    `json:"last_attempted_revision"`
+
+	// LastErrorCode Last bounded stable runtime error, never raw runtime output.
+	LastErrorCode     *AgentRuntimeStatusLastErrorCode `json:"last_error_code"`
+	LastErrorRevision *int64                           `json:"last_error_revision"`
+	LastSeenAt        *time.Time                       `json:"last_seen_at"`
+
+	// Stale Whether the last runtime report is absent or outside the server's three-minute freshness window.
+	Stale bool `json:"stale"`
+}
+
+// AgentRuntimeStatusConnectivity Server-derived connectivity fact; unknown means the control plane cannot establish it.
+type AgentRuntimeStatusConnectivity string
+
+// AgentRuntimeStatusHealth ready means a fresh report applied the current desired revision without a bounded error; last_good means a prior applied revision is retained while freshness, revision, or apply state is not current; inconclusive means no applied configuration is established.
+type AgentRuntimeStatusHealth string
+
+// AgentRuntimeStatusLastErrorCode Last bounded stable runtime error, never raw runtime output.
+type AgentRuntimeStatusLastErrorCode string
 
 // AssignMachineCredentialOwnerRequest defines model for AssignMachineCredentialOwnerRequest.
 type AssignMachineCredentialOwnerRequest struct {
@@ -1293,6 +1478,24 @@ type MachineCredential struct {
 	OwnerUserId *openapi_types.UUID `json:"owner_user_id"`
 }
 
+// ManagedAgentConfig Secret-free server-owned configuration for one managed agent. Runtime credentials, bootstrap tokens, token hashes, and private keys are never configuration fields.
+type ManagedAgentConfig struct {
+	// Address The managed agent tunnel address/prefix.
+	Address    string             `json:"address"`
+	AllowedIps []string           `json:"allowed_ips"`
+	DeviceId   openapi_types.UUID `json:"device_id"`
+	Dns        []string           `json:"dns"`
+
+	// GatewayEndpoint The gateway endpoint in host:port form.
+	GatewayEndpoint string `json:"gateway_endpoint"`
+
+	// GatewayPublicKey The gateway WireGuard public key.
+	GatewayPublicKey    string             `json:"gateway_public_key"`
+	OrgId               openapi_types.UUID `json:"org_id"`
+	PersistentKeepalive int                `json:"persistent_keepalive"`
+	Revision            int64              `json:"revision"`
+}
+
 // Member defines model for Member.
 type Member struct {
 	Email         openapi_types.Email `json:"email"`
@@ -1483,7 +1686,13 @@ type OrgOverview struct {
 type Organization struct {
 	CreatedAt time.Time          `json:"created_at"`
 	Id        openapi_types.UUID `json:"id"`
-	Name      string             `json:"name"`
+
+	// ManagedAgentRuntimeEnabled F04: explicit organization opt-in for managed runtime synchronization. Default false; a paid licence does not enable it implicitly.
+	ManagedAgentRuntimeEnabled bool `json:"managed_agent_runtime_enabled"`
+
+	// MaxAgentIdentities F02: organization-wide managed-agent identity quota. null means unlimited; no remaining count is exposed.
+	MaxAgentIdentities *int32 `json:"max_agent_identities"`
+	Name               string `json:"name"`
 
 	// OvpnEnabled S9.1 D-S9.5-OPTIN: whether this org has opted into OpenVPN. Default false. When false the OpenVPN device type is not offered and the export endpoint refuses (opt_in_required).
 	OvpnEnabled *bool `json:"ovpn_enabled,omitempty"`
@@ -1715,6 +1924,11 @@ type RoutedRanges struct {
 	Ranges []string `json:"ranges"`
 }
 
+// SetOrganizationAgentQuotaRequest F02 H1-H3. Null explicitly clears the quota and means unlimited.
+type SetOrganizationAgentQuotaRequest struct {
+	MaxAgentIdentities *int32 `json:"max_agent_identities"`
+}
+
 // SetPolicyRuleEnabledRequest defines model for SetPolicyRuleEnabledRequest.
 type SetPolicyRuleEnabledRequest struct {
 	// Enabled F3: true = the rule contributes its allow; false = disabled (permission withdrawn, as-if-absent under default-deny).
@@ -1830,6 +2044,17 @@ type UnbindSiteNodeRequest struct {
 	NodeId *openapi_types.UUID `json:"node_id,omitempty"`
 }
 
+// UpdateAgentProfileRequest defines model for UpdateAgentProfileRequest.
+type UpdateAgentProfileRequest struct {
+	Environment *string                          `json:"environment,omitempty"`
+	Labels      *map[string]string               `json:"labels,omitempty"`
+	Runtime     *string                          `json:"runtime,omitempty"`
+	Status      *UpdateAgentProfileRequestStatus `json:"status,omitempty"`
+}
+
+// UpdateAgentProfileRequestStatus defines model for UpdateAgentProfileRequest.Status.
+type UpdateAgentProfileRequestStatus string
+
 // UpdateDeviceModeResult defines model for UpdateDeviceModeResponse.
 type UpdateDeviceModeResult struct {
 	Config struct {
@@ -1928,6 +2153,20 @@ type ZeroTrustMode struct {
 // ZeroTrustModeMode off = legacy blanket mesh; enforcing = default-deny + compiled allows.
 type ZeroTrustModeMode string
 
+// RuntimeUnauthorized Standard error envelope for every non-2xx response. Chosen over bare
+// RFC 7807 so the correlation `request_id` is a first-class field the SPA
+// and CLI can surface directly; `code` is stable for programmatic handling.
+type RuntimeUnauthorized = Error
+
+// PollAgentRuntimeParams defines parameters for PollAgentRuntime.
+type PollAgentRuntimeParams struct {
+	AppliedRevision int64  `form:"applied_revision" json:"applied_revision"`
+	ClientVersion   string `form:"client_version" json:"client_version"`
+
+	// WaitSeconds Bounded long-poll wait requested by the runtime; the server may return sooner.
+	WaitSeconds *int `form:"wait_seconds,omitempty" json:"wait_seconds,omitempty"`
+}
+
 // ChangePasswordJSONBody defines parameters for ChangePassword.
 type ChangePasswordJSONBody struct {
 	CurrentPassword string `json:"current_password"`
@@ -1997,6 +2236,9 @@ type AdminSetOrgRoleJSONRequestBody = ChangeRoleRequest
 // AdminSetCpAdminJSONRequestBody defines body for AdminSetCpAdmin for application/json ContentType.
 type AdminSetCpAdminJSONRequestBody = CpAdminRequest
 
+// BootstrapAgentJSONRequestBody defines body for BootstrapAgent for application/json ContentType.
+type BootstrapAgentJSONRequestBody = AgentBootstrapRequest
+
 // EnrollAgentJSONRequestBody defines body for EnrollAgent for application/json ContentType.
 type EnrollAgentJSONRequestBody = EnrollRequest
 
@@ -2005,6 +2247,9 @@ type RekeyAgentJSONRequestBody = RekeyRequest
 
 // RekeyChallengeJSONRequestBody defines body for RekeyChallenge for application/json ContentType.
 type RekeyChallengeJSONRequestBody = RekeyChallengeRequest
+
+// ReportAgentRuntimeJSONRequestBody defines body for ReportAgentRuntime for application/json ContentType.
+type ReportAgentRuntimeJSONRequestBody = AgentRuntimeReport
 
 // CliAuthorizeJSONRequestBody defines body for CliAuthorize for application/json ContentType.
 type CliAuthorizeJSONRequestBody = CliAuthorizeRequest
@@ -2053,6 +2298,18 @@ type CreateOrganizationJSONRequestBody = CreateOrganizationRequest
 
 // UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
 type UpdateOrganizationJSONRequestBody = UpdateOrganizationRequest
+
+// SetOrganizationAgentQuotaJSONRequestBody defines body for SetOrganizationAgentQuota for application/json ContentType.
+type SetOrganizationAgentQuotaJSONRequestBody = SetOrganizationAgentQuotaRequest
+
+// SetOrganizationAgentRuntimeEnabledJSONRequestBody defines body for SetOrganizationAgentRuntimeEnabled for application/json ContentType.
+type SetOrganizationAgentRuntimeEnabledJSONRequestBody = AgentRuntimeSetting
+
+// IssueAgentBootstrapTokenJSONRequestBody defines body for IssueAgentBootstrapToken for application/json ContentType.
+type IssueAgentBootstrapTokenJSONRequestBody = AgentBootstrapTokenRequest
+
+// UpdateAgentProfileJSONRequestBody defines body for UpdateAgentProfile for application/json ContentType.
+type UpdateAgentProfileJSONRequestBody = UpdateAgentProfileRequest
 
 // SetDeviceApprovalJSONRequestBody defines body for SetDeviceApproval for application/json ContentType.
 type SetDeviceApprovalJSONRequestBody = DeviceApproval
@@ -2265,6 +2522,11 @@ type ClientInterface interface {
 
 	AdminSetCpAdmin(ctx context.Context, userId openapi_types.UUID, body AdminSetCpAdminJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// BootstrapAgentWithBody request with any body
+	BootstrapAgentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	BootstrapAgent(ctx context.Context, body BootstrapAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// EnrollAgentWithBody request with any body
 	EnrollAgentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2279,6 +2541,14 @@ type ClientInterface interface {
 	RekeyChallengeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PollAgentRuntime request
+	PollAgentRuntime(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReportAgentRuntimeWithBody request with any body
+	ReportAgentRuntimeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReportAgentRuntime(ctx context.Context, body ReportAgentRuntimeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CliAuthorizeWithBody request with any body
 	CliAuthorizeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2411,8 +2681,34 @@ type ClientInterface interface {
 	// GetAccessLogHealth request
 	GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// SetOrganizationAgentQuotaWithBody request with any body
+	SetOrganizationAgentQuotaWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetOrganizationAgentQuota(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentQuotaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetOrganizationAgentRuntimeEnabledWithBody request with any body
+	SetOrganizationAgentRuntimeEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetOrganizationAgentRuntimeEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentRuntimeEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgents request
 	ListAgents(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueAgentBootstrapTokenWithBody request with any body
+	IssueAgentBootstrapTokenWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	IssueAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentProfile request
+	GetAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentProfileWithBody request with any body
+	UpdateAgentProfileWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentRuntimeStatus request
+	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAuditLogs request
 	ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2867,6 +3163,30 @@ func (c *Client) AdminSetCpAdmin(ctx context.Context, userId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) BootstrapAgentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBootstrapAgentRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BootstrapAgent(ctx context.Context, body BootstrapAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBootstrapAgentRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) EnrollAgentWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewEnrollAgentRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -2929,6 +3249,42 @@ func (c *Client) RekeyChallengeWithBody(ctx context.Context, contentType string,
 
 func (c *Client) RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRekeyChallengeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PollAgentRuntime(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPollAgentRuntimeRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReportAgentRuntimeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReportAgentRuntimeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReportAgentRuntime(ctx context.Context, body ReportAgentRuntimeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReportAgentRuntimeRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3527,8 +3883,128 @@ func (c *Client) GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUI
 	return c.Client.Do(req)
 }
 
+func (c *Client) SetOrganizationAgentQuotaWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentQuotaRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAgentQuota(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentQuotaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentQuotaRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAgentRuntimeEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentRuntimeEnabledRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAgentRuntimeEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentRuntimeEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentRuntimeEnabledRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAgents(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) IssueAgentBootstrapTokenWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueAgentBootstrapTokenRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) IssueAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueAgentBootstrapTokenRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentProfileRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAgentProfileWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentProfileRequestWithBody(c.Server, orgId, deviceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentProfileRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentRuntimeStatusRequest(c.Server, orgId, deviceId)
 	if err != nil {
 		return nil, err
 	}
@@ -5339,6 +5815,46 @@ func NewAdminSetCpAdminRequestWithBody(server string, userId openapi_types.UUID,
 	return req, nil
 }
 
+// NewBootstrapAgentRequest calls the generic BootstrapAgent builder with application/json body
+func NewBootstrapAgentRequest(server string, body BootstrapAgentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBootstrapAgentRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBootstrapAgentRequestWithBody generates requests for BootstrapAgent with any type of body
+func NewBootstrapAgentRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/bootstrap")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewEnrollAgentRequest calls the generic EnrollAgent builder with application/json body
 func NewEnrollAgentRequest(server string, body EnrollAgentJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -5440,6 +5956,119 @@ func NewRekeyChallengeRequestWithBody(server string, contentType string, body io
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/agent/rekey/challenge")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPollAgentRuntimeRequest generates requests for PollAgentRuntime
+func NewPollAgentRuntimeRequest(server string, params *PollAgentRuntimeParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/poll")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "applied_revision", runtime.ParamLocationQuery, params.AppliedRevision); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "client_version", runtime.ParamLocationQuery, params.ClientVersion); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.WaitSeconds != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "wait_seconds", runtime.ParamLocationQuery, *params.WaitSeconds); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReportAgentRuntimeRequest calls the generic ReportAgentRuntime builder with application/json body
+func NewReportAgentRuntimeRequest(server string, body ReportAgentRuntimeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReportAgentRuntimeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewReportAgentRuntimeRequestWithBody generates requests for ReportAgentRuntime with any type of body
+func NewReportAgentRuntimeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/report")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -6732,6 +7361,100 @@ func NewGetAccessLogHealthRequest(server string, orgId openapi_types.UUID) (*htt
 	return req, nil
 }
 
+// NewSetOrganizationAgentQuotaRequest calls the generic SetOrganizationAgentQuota builder with application/json body
+func NewSetOrganizationAgentQuotaRequest(server string, orgId openapi_types.UUID, body SetOrganizationAgentQuotaJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetOrganizationAgentQuotaRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetOrganizationAgentQuotaRequestWithBody generates requests for SetOrganizationAgentQuota with any type of body
+func NewSetOrganizationAgentQuotaRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-quota", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetOrganizationAgentRuntimeEnabledRequest calls the generic SetOrganizationAgentRuntimeEnabled builder with application/json body
+func NewSetOrganizationAgentRuntimeEnabledRequest(server string, orgId openapi_types.UUID, body SetOrganizationAgentRuntimeEnabledJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetOrganizationAgentRuntimeEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetOrganizationAgentRuntimeEnabledRequestWithBody generates requests for SetOrganizationAgentRuntimeEnabled with any type of body
+func NewSetOrganizationAgentRuntimeEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-runtime-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListAgentsRequest generates requests for ListAgents
 func NewListAgentsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -6749,6 +7472,189 @@ func NewListAgentsRequest(server string, orgId openapi_types.UUID) (*http.Reques
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewIssueAgentBootstrapTokenRequest calls the generic IssueAgentBootstrapToken builder with application/json body
+func NewIssueAgentBootstrapTokenRequest(server string, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewIssueAgentBootstrapTokenRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewIssueAgentBootstrapTokenRequestWithBody generates requests for IssueAgentBootstrapToken with any type of body
+func NewIssueAgentBootstrapTokenRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/bootstrap-token", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAgentProfileRequest generates requests for GetAgentProfile
+func NewGetAgentProfileRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAgentProfileRequest calls the generic UpdateAgentProfile builder with application/json body
+func NewUpdateAgentProfileRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAgentProfileRequestWithBody(server, orgId, deviceId, "application/json", bodyReader)
+}
+
+// NewUpdateAgentProfileRequestWithBody generates requests for UpdateAgentProfile with any type of body
+func NewUpdateAgentProfileRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAgentRuntimeStatusRequest generates requests for GetAgentRuntimeStatus
+func NewGetAgentRuntimeStatusRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/runtime-status", pathParam0, pathParam1)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -11172,6 +12078,11 @@ type ClientWithResponsesInterface interface {
 
 	AdminSetCpAdminWithResponse(ctx context.Context, userId openapi_types.UUID, body AdminSetCpAdminJSONRequestBody, reqEditors ...RequestEditorFn) (*AdminSetCpAdminResponse, error)
 
+	// BootstrapAgentWithBodyWithResponse request with any body
+	BootstrapAgentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapAgentResponse, error)
+
+	BootstrapAgentWithResponse(ctx context.Context, body BootstrapAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*BootstrapAgentResponse, error)
+
 	// EnrollAgentWithBodyWithResponse request with any body
 	EnrollAgentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnrollAgentResponse, error)
 
@@ -11186,6 +12097,14 @@ type ClientWithResponsesInterface interface {
 	RekeyChallengeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RekeyChallengeResponse, error)
 
 	RekeyChallengeWithResponse(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*RekeyChallengeResponse, error)
+
+	// PollAgentRuntimeWithResponse request
+	PollAgentRuntimeWithResponse(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*PollAgentRuntimeResponse, error)
+
+	// ReportAgentRuntimeWithBodyWithResponse request with any body
+	ReportAgentRuntimeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportAgentRuntimeResponse, error)
+
+	ReportAgentRuntimeWithResponse(ctx context.Context, body ReportAgentRuntimeJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportAgentRuntimeResponse, error)
 
 	// CliAuthorizeWithBodyWithResponse request with any body
 	CliAuthorizeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CliAuthorizeResponse, error)
@@ -11318,8 +12237,34 @@ type ClientWithResponsesInterface interface {
 	// GetAccessLogHealthWithResponse request
 	GetAccessLogHealthWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAccessLogHealthResponse, error)
 
+	// SetOrganizationAgentQuotaWithBodyWithResponse request with any body
+	SetOrganizationAgentQuotaWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentQuotaResponse, error)
+
+	SetOrganizationAgentQuotaWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentQuotaJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentQuotaResponse, error)
+
+	// SetOrganizationAgentRuntimeEnabledWithBodyWithResponse request with any body
+	SetOrganizationAgentRuntimeEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentRuntimeEnabledResponse, error)
+
+	SetOrganizationAgentRuntimeEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentRuntimeEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentRuntimeEnabledResponse, error)
+
 	// ListAgentsWithResponse request
 	ListAgentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error)
+
+	// IssueAgentBootstrapTokenWithBodyWithResponse request with any body
+	IssueAgentBootstrapTokenWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueAgentBootstrapTokenResponse, error)
+
+	IssueAgentBootstrapTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueAgentBootstrapTokenResponse, error)
+
+	// GetAgentProfileWithResponse request
+	GetAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentProfileResponse, error)
+
+	// UpdateAgentProfileWithBodyWithResponse request with any body
+	UpdateAgentProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error)
+
+	UpdateAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error)
+
+	// GetAgentRuntimeStatusWithResponse request
+	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
 
 	// ListAuditLogsWithResponse request
 	ListAuditLogsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error)
@@ -11780,6 +12725,29 @@ func (r AdminSetCpAdminResponse) StatusCode() int {
 	return 0
 }
 
+type BootstrapAgentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentBootstrapResponse
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r BootstrapAgentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BootstrapAgentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type EnrollAgentResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11843,6 +12811,54 @@ func (r RekeyChallengeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RekeyChallengeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PollAgentRuntimeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ManagedAgentConfig
+	JSON401      *RuntimeUnauthorized
+	JSON403      *Error
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PollAgentRuntimeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PollAgentRuntimeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReportAgentRuntimeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *RuntimeUnauthorized
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReportAgentRuntimeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReportAgentRuntimeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -12602,6 +13618,52 @@ func (r GetAccessLogHealthResponse) StatusCode() int {
 	return 0
 }
 
+type SetOrganizationAgentQuotaResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Organization
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetOrganizationAgentQuotaResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetOrganizationAgentQuotaResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetOrganizationAgentRuntimeEnabledResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentRuntimeSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetOrganizationAgentRuntimeEnabledResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetOrganizationAgentRuntimeEnabledResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAgentsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12619,6 +13681,98 @@ func (r ListAgentsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListAgentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type IssueAgentBootstrapTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentBootstrapTokenResponse
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r IssueAgentBootstrapTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r IssueAgentBootstrapTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAgentProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAgentProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAgentProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentRuntimeStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentRuntimeStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentRuntimeStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentRuntimeStatusResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -14863,6 +16017,23 @@ func (c *ClientWithResponses) AdminSetCpAdminWithResponse(ctx context.Context, u
 	return ParseAdminSetCpAdminResponse(rsp)
 }
 
+// BootstrapAgentWithBodyWithResponse request with arbitrary body returning *BootstrapAgentResponse
+func (c *ClientWithResponses) BootstrapAgentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BootstrapAgentResponse, error) {
+	rsp, err := c.BootstrapAgentWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBootstrapAgentResponse(rsp)
+}
+
+func (c *ClientWithResponses) BootstrapAgentWithResponse(ctx context.Context, body BootstrapAgentJSONRequestBody, reqEditors ...RequestEditorFn) (*BootstrapAgentResponse, error) {
+	rsp, err := c.BootstrapAgent(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBootstrapAgentResponse(rsp)
+}
+
 // EnrollAgentWithBodyWithResponse request with arbitrary body returning *EnrollAgentResponse
 func (c *ClientWithResponses) EnrollAgentWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*EnrollAgentResponse, error) {
 	rsp, err := c.EnrollAgentWithBody(ctx, contentType, body, reqEditors...)
@@ -14912,6 +16083,32 @@ func (c *ClientWithResponses) RekeyChallengeWithResponse(ctx context.Context, bo
 		return nil, err
 	}
 	return ParseRekeyChallengeResponse(rsp)
+}
+
+// PollAgentRuntimeWithResponse request returning *PollAgentRuntimeResponse
+func (c *ClientWithResponses) PollAgentRuntimeWithResponse(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*PollAgentRuntimeResponse, error) {
+	rsp, err := c.PollAgentRuntime(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePollAgentRuntimeResponse(rsp)
+}
+
+// ReportAgentRuntimeWithBodyWithResponse request with arbitrary body returning *ReportAgentRuntimeResponse
+func (c *ClientWithResponses) ReportAgentRuntimeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportAgentRuntimeResponse, error) {
+	rsp, err := c.ReportAgentRuntimeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReportAgentRuntimeResponse(rsp)
+}
+
+func (c *ClientWithResponses) ReportAgentRuntimeWithResponse(ctx context.Context, body ReportAgentRuntimeJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportAgentRuntimeResponse, error) {
+	rsp, err := c.ReportAgentRuntime(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReportAgentRuntimeResponse(rsp)
 }
 
 // CliAuthorizeWithBodyWithResponse request with arbitrary body returning *CliAuthorizeResponse
@@ -15339,6 +16536,40 @@ func (c *ClientWithResponses) GetAccessLogHealthWithResponse(ctx context.Context
 	return ParseGetAccessLogHealthResponse(rsp)
 }
 
+// SetOrganizationAgentQuotaWithBodyWithResponse request with arbitrary body returning *SetOrganizationAgentQuotaResponse
+func (c *ClientWithResponses) SetOrganizationAgentQuotaWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentQuotaResponse, error) {
+	rsp, err := c.SetOrganizationAgentQuotaWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentQuotaResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetOrganizationAgentQuotaWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentQuotaJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentQuotaResponse, error) {
+	rsp, err := c.SetOrganizationAgentQuota(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentQuotaResponse(rsp)
+}
+
+// SetOrganizationAgentRuntimeEnabledWithBodyWithResponse request with arbitrary body returning *SetOrganizationAgentRuntimeEnabledResponse
+func (c *ClientWithResponses) SetOrganizationAgentRuntimeEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentRuntimeEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAgentRuntimeEnabledWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentRuntimeEnabledResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetOrganizationAgentRuntimeEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentRuntimeEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentRuntimeEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAgentRuntimeEnabled(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentRuntimeEnabledResponse(rsp)
+}
+
 // ListAgentsWithResponse request returning *ListAgentsResponse
 func (c *ClientWithResponses) ListAgentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error) {
 	rsp, err := c.ListAgents(ctx, orgId, reqEditors...)
@@ -15346,6 +16577,58 @@ func (c *ClientWithResponses) ListAgentsWithResponse(ctx context.Context, orgId 
 		return nil, err
 	}
 	return ParseListAgentsResponse(rsp)
+}
+
+// IssueAgentBootstrapTokenWithBodyWithResponse request with arbitrary body returning *IssueAgentBootstrapTokenResponse
+func (c *ClientWithResponses) IssueAgentBootstrapTokenWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueAgentBootstrapTokenResponse, error) {
+	rsp, err := c.IssueAgentBootstrapTokenWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueAgentBootstrapTokenResponse(rsp)
+}
+
+func (c *ClientWithResponses) IssueAgentBootstrapTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueAgentBootstrapTokenResponse, error) {
+	rsp, err := c.IssueAgentBootstrapToken(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueAgentBootstrapTokenResponse(rsp)
+}
+
+// GetAgentProfileWithResponse request returning *GetAgentProfileResponse
+func (c *ClientWithResponses) GetAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentProfileResponse, error) {
+	rsp, err := c.GetAgentProfile(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentProfileResponse(rsp)
+}
+
+// UpdateAgentProfileWithBodyWithResponse request with arbitrary body returning *UpdateAgentProfileResponse
+func (c *ClientWithResponses) UpdateAgentProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error) {
+	rsp, err := c.UpdateAgentProfileWithBody(ctx, orgId, deviceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentProfileResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error) {
+	rsp, err := c.UpdateAgentProfile(ctx, orgId, deviceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentProfileResponse(rsp)
+}
+
+// GetAgentRuntimeStatusWithResponse request returning *GetAgentRuntimeStatusResponse
+func (c *ClientWithResponses) GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error) {
+	rsp, err := c.GetAgentRuntimeStatus(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentRuntimeStatusResponse(rsp)
 }
 
 // ListAuditLogsWithResponse request returning *ListAuditLogsResponse
@@ -16650,6 +17933,39 @@ func ParseAdminSetCpAdminResponse(rsp *http.Response) (*AdminSetCpAdminResponse,
 	return response, nil
 }
 
+// ParseBootstrapAgentResponse parses an HTTP response from a BootstrapAgentWithResponse call
+func ParseBootstrapAgentResponse(rsp *http.Response) (*BootstrapAgentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BootstrapAgentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentBootstrapResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseEnrollAgentResponse parses an HTTP response from a EnrollAgentWithResponse call
 func ParseEnrollAgentResponse(rsp *http.Response) (*EnrollAgentResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16736,6 +18052,86 @@ func ParseRekeyChallengeResponse(rsp *http.Response) (*RekeyChallengeResponse, e
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePollAgentRuntimeResponse parses an HTTP response from a PollAgentRuntimeWithResponse call
+func ParsePollAgentRuntimeResponse(rsp *http.Response) (*PollAgentRuntimeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PollAgentRuntimeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ManagedAgentConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReportAgentRuntimeResponse parses an HTTP response from a ReportAgentRuntimeWithResponse call
+func ParseReportAgentRuntimeResponse(rsp *http.Response) (*ReportAgentRuntimeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReportAgentRuntimeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -17796,6 +19192,72 @@ func ParseGetAccessLogHealthResponse(rsp *http.Response) (*GetAccessLogHealthRes
 	return response, nil
 }
 
+// ParseSetOrganizationAgentQuotaResponse parses an HTTP response from a SetOrganizationAgentQuotaWithResponse call
+func ParseSetOrganizationAgentQuotaResponse(rsp *http.Response) (*SetOrganizationAgentQuotaResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetOrganizationAgentQuotaResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Organization
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetOrganizationAgentRuntimeEnabledResponse parses an HTTP response from a SetOrganizationAgentRuntimeEnabledWithResponse call
+func ParseSetOrganizationAgentRuntimeEnabledResponse(rsp *http.Response) (*SetOrganizationAgentRuntimeEnabledResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetOrganizationAgentRuntimeEnabledResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentRuntimeSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAgentsResponse parses an HTTP response from a ListAgentsWithResponse call
 func ParseListAgentsResponse(rsp *http.Response) (*ListAgentsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -17812,6 +19274,138 @@ func ParseListAgentsResponse(rsp *http.Response) (*ListAgentsResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []Agent
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseIssueAgentBootstrapTokenResponse parses an HTTP response from a IssueAgentBootstrapTokenWithResponse call
+func ParseIssueAgentBootstrapTokenResponse(rsp *http.Response) (*IssueAgentBootstrapTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &IssueAgentBootstrapTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentBootstrapTokenResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentProfileResponse parses an HTTP response from a GetAgentProfileWithResponse call
+func ParseGetAgentProfileResponse(rsp *http.Response) (*GetAgentProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAgentProfileResponse parses an HTTP response from a UpdateAgentProfileWithResponse call
+func ParseUpdateAgentProfileResponse(rsp *http.Response) (*UpdateAgentProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAgentProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentRuntimeStatusResponse parses an HTTP response from a GetAgentRuntimeStatusWithResponse call
+func ParseGetAgentRuntimeStatusResponse(rsp *http.Response) (*GetAgentRuntimeStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentRuntimeStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentRuntimeStatus
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -18,6 +18,7 @@ import (
 	oapimw "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
@@ -44,18 +45,19 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
-	System  *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
-	Orgs    *tenancy.Service
-	CliAuth *cliauth.Service
-	Auth    *auth.Service
-	Members *tenancy.MembershipService
-	Invites *invites.Service
-	Nodes   *nodes.Service
-	Devices *devices.Service
-	Ovpn    *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export. CA loads lazily (D-S9.5-OPTIN a)
-	Sites   *sites.Service
-	K8s     *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity
-	Machine *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
+	System            *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
+	Orgs              *tenancy.Service
+	CliAuth           *cliauth.Service
+	Auth              *auth.Service
+	Members           *tenancy.MembershipService
+	Invites           *invites.Service
+	Nodes             *nodes.Service
+	AgentRuntimeOptIn agentruntime.OptInFunc
+	Devices           *devices.Service
+	Ovpn              *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export. CA loads lazily (D-S9.5-OPTIN a)
+	Sites             *sites.Service
+	K8s               *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity
+	Machine           *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
 	// Licence is the entitlement source. ⚠ Never nil in production; a nil manager would mean Community,
 	// which is the fail-open default rather than a failure.
 	Licence   *licence.Manager
@@ -79,6 +81,7 @@ type Deps struct {
 	GatewayControlURL string
 	NodeAgentImage    string
 	ReleaseStatus     *release.Status
+	ReleaseBootstrap  *release.BootstrapRelease
 	// ReleaseStatusProvider supplies an atomically refreshed, verified online
 	// release status. It is read-only; the API never upgrades the host.
 	ReleaseStatusProvider func() *release.Status
@@ -132,7 +135,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	}
 	r.Use(applog.Requests(logger))
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(requestTimeout(30*time.Second, 65*time.Second))
 	// API responses are never cacheable: some carry one-time secrets (a device's
 	// server-generated private key / .conf), and none should be stored by an
 	// intermediary proxy or the browser.
@@ -216,6 +219,16 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		})
 	})
 
+	// Runtime authentication must run before OpenAPI validation. Otherwise a
+	// sessionless runtime request with a missing required query/body is answered
+	// 400 by the validator before the machine bearer can be refused uniformly.
+	// The same early boundary is needed for the human quota mutation; valid
+	// sessions still proceed to strict validation and receive 400 for malformed
+	// bodies.
+	agentRuntime := agentruntime.New(d.System, d.AgentRuntimeOptIn)
+	r.Use(runtimeAuthMiddleware(agentRuntime))
+	r.Use(authBeforeAgentValidation)
+
 	// Validate every request against the spec; render failures as the envelope.
 	swagger, err := api.GetSwagger()
 	if err != nil {
@@ -233,7 +246,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		},
 	}))
 
-	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, sso: d.SSO, policy: d.Policy, accessLog: d.AccessLog, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider}
+	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, sso: d.SSO, policy: d.Policy, accessLog: d.AccessLog, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap}
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
 	// wraps every operation (self-arming — a new endpoint is gated by construction).
@@ -253,6 +266,28 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	return r, nil
 }
 
+// requestTimeout preserves the API-wide deadline while leaving the managed
+// runtime poll to its own OpenAPI-bounded wait_seconds timer. The poll contract
+// permits a 60-second hold (the shipped client uses 30 seconds), so wrapping it
+// in the generic 30-second deadline creates a race at the default and makes the
+// upper half of the documented range impossible. Client cancellation and
+// server shutdown still cancel the request context. A separate 65-second route
+// deadline bounds the complete handler, including database reads around the
+// maximum 60-second hold, while skipping only the shorter generic deadline.
+func requestTimeout(timeout, runtimePollTimeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		timed := middleware.Timeout(timeout)(next)
+		pollTimed := middleware.Timeout(runtimePollTimeout)(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/agent/runtime/poll" {
+				pollTimed.ServeHTTP(w, r)
+				return
+			}
+			timed.ServeHTTP(w, r)
+		})
+	}
+}
+
 // validationErrorHandler renders spec-validation failures as the error envelope.
 // The middleware callback lacks the request, so request_id is omitted here.
 func validationErrorHandler(w http.ResponseWriter, message string, statusCode int) {
@@ -263,6 +298,19 @@ func validationErrorHandler(w http.ResponseWriter, message string, statusCode in
 			"code":    "validation_failed",
 			"message": message,
 		},
+	})
+}
+
+func authBeforeAgentValidation(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPut && strings.HasPrefix(req.URL.Path, "/api/v1/organizations/") &&
+			(strings.HasSuffix(req.URL.Path, "/agent-quota") || strings.HasSuffix(req.URL.Path, "/agent-runtime-settings")) {
+			if _, ok := authctx.PrincipalFrom(req.Context()); !ok {
+				apierr.Write(w, req, apierr.New(http.StatusUnauthorized, "unauthenticated", "authentication required"))
+				return
+			}
+		}
+		next.ServeHTTP(w, req)
 	})
 }
 

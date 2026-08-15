@@ -1,0 +1,4 @@
+control_plane_edition=enterprise
+database_schema_version=93
+device_approval=on
+managed_runtime_opt_in=enabled

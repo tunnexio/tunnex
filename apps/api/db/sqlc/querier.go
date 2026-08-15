@@ -56,6 +56,7 @@ type Querier interface {
 	// write itself enforces the re-home refusal the read alone could only race on. The caller re-reads on 0
 	// rows to emit the right typed error (same-site no-op / already-bound-elsewhere / node-or-site-not-found).
 	BindNodeToSite(ctx context.Context, arg BindNodeToSiteParams) (int64, error)
+	BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDesiredRevisionParams) (AgentRuntimeState, error)
 	// Atomically ALLOCATE the next monotonic per-org CRL number (D-S9.5-1: per-org, never a global counter).
 	// Concurrent rebuilds get DISTINCT numbers; the crl_pem is set immediately after by SetOVPNCRL for THIS
 	// number, so the highest-numbered (latest) CRL wins. On first revocation the placeholder crl_pem is empty
@@ -88,6 +89,8 @@ type Querier interface {
 	// Arm enrollment: only an UNCONFIRMED row flips to confirmed, stamping the confirming code's
 	// timestep as the replay clock so the very first login can't replay the confirmation code.
 	ConfirmTOTP(ctx context.Context, arg ConfirmTOTPParams) (int64, error)
+	// lint:cross-org — the token hash is the public endpoint's credential and the row is locked before creation.
+	ConsumeAgentBootstrapToken(ctx context.Context, arg ConsumeAgentBootstrapTokenParams) (AgentBootstrapToken, error)
 	// Single-use + purpose-bound: only matches an unconsumed, unexpired token of the
 	// given purpose. A reset token therefore cannot be consumed as a verification
 	// token and vice-versa.
@@ -130,6 +133,9 @@ type Querier interface {
 	// S7.3 D4 — existing active devices stay active, not retro-pended).
 	CountActiveDevicesForOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountActiveNodesByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
+	// F02 H2: pending, active, and suspended reserve org-wide agent identity
+	// capacity; revoked and deleted identities do not count.
+	CountAgentIdentitiesForQuota(ctx context.Context, orgID uuid.UUID) (int64, error)
 	// ⛔ THE LAST-HOLDER GUARD READS THIS, so it counts only accounts that can actually SIGN IN and use the
 	// capability: soft-deleted rows are excluded (a deleted holder recovers nothing) and so are deactivated
 	// ones (SessionAuth 401s them, so they cannot exercise it either). Counting either would let the deployment
@@ -239,6 +245,8 @@ type Querier interface {
 	// "does it have one now" — otherwise deleting every account reopens admin minting, which is the same
 	// re-open CountOrganizationsEver exists to prevent.
 	CountUsers(ctx context.Context) (int64, error)
+	CreateAgentBootstrapToken(ctx context.Context, arg CreateAgentBootstrapTokenParams) (AgentBootstrapToken, error)
+	CreateAgentRuntimeCredential(ctx context.Context, arg CreateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
 	CreateAuthToken(ctx context.Context, arg CreateAuthTokenParams) (AuthToken, error)
 	CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapAdminParams) (User, error)
 	CreateCliAuthCode(ctx context.Context, arg CreateCliAuthCodeParams) (CliAuthCode, error)
@@ -406,6 +414,15 @@ type Querier interface {
 	// access_events scale makes the 10-min scan measurable, add a supporting index / cheaper
 	// enumeration (trigger, not a silent now-do-it).
 	DistinctAccessEventOrgs(ctx context.Context) ([]uuid.UUID, error)
+	// lint:cross-org — the device was just inserted in this same org-scoped transaction;
+	// the device ID is not an authorization input and this existence check does not
+	// expose or mutate a device outside the caller's already-authorized create.
+	// lint:allow-deleted — this guard only admits the row created immediately above;
+	// a soft-deleted device cannot be the newly inserted row being profiled.
+	EnsureAgentProfile(ctx context.Context, deviceID uuid.UUID) error
+	// The org join is the tenant boundary; device ids are globally unique, but a
+	// runtime bootstrap must never turn knowledge of another org's UUID into state.
+	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (AgentRuntimeState, error)
 	// S7.5.4: move a temporary grant's window IN PLACE (never delete+recreate — that would
 	// churn the /32 out+back and cause a spurious push). The `expires_at > now()` predicate
 	// is the LAPSE GUARD: a grant that has already expired matches 0 rows, so extend and the
@@ -418,6 +435,12 @@ type Querier interface {
 	GenerateID(ctx context.Context) (uuid.UUID, error)
 	// Active = not revoked and not expired. Expired/revoked rows fail auth closed.
 	GetActiveCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
+	// lint:cross-org — the public redemption credential is an unguessable hash; org is learned from the token row.
+	GetAgentBootstrapToken(ctx context.Context, tokenHash []byte) (AgentBootstrapToken, error)
+	GetAgentProfileForOrg(ctx context.Context, arg GetAgentProfileForOrgParams) (GetAgentProfileForOrgRow, error)
+	// lint:cross-org — F04's bearer hash is the credential; the returned row supplies its org/device binding.
+	GetAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AgentRuntimeCredential, error)
+	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
 	// credential_expired UX line).
 	GetCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
@@ -1084,6 +1107,16 @@ type Querier interface {
 	// lint:cross-org — keyed by node id after the caller authorized via the current
 	// cert; renewal rotates the serial and stamps activity/version.
 	RenewNodeCert(ctx context.Context, arg RenewNodeCertParams) error
+	// Inputs:
+	//   $3 applied_revision       last revision installed successfully
+	//   $4 attempted_revision     revision this report concerns
+	//   $5 client_version         bounded by the table constraint
+	//   $6 error_code             empty means the attempted revision succeeded
+	//
+	// Reports may arrive out of order. Monotonic maxima prevent a stale poll from
+	// rolling back success, and an error at or below an already-applied revision is
+	// cleared rather than resurrected.
+	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (AgentRuntimeState, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set
 	// from ListCascadeRevokedDevicesForNode.
 	// Restores ONE cascade-revoked device (S13.1 D5), to the address the caller resolved.
@@ -1255,6 +1288,10 @@ type Querier interface {
 	SetOrgOVPNEnabled(ctx context.Context, arg SetOrgOVPNEnabledParams) (Organization, error)
 	// ── org enforcement mode ────────────────────────────────────────────────────────
 	SetOrgZeroTrustMode(ctx context.Context, arg SetOrgZeroTrustModeParams) (Organization, error)
+	// F04 unlock-then-opt-in: the paid licence only unlocks this setting. The
+	// organization must explicitly enable runtime synchronization, and disabling
+	// it immediately withdraws the poll/report/status surface.
+	SetOrganizationAgentRuntimeEnabled(ctx context.Context, arg SetOrganizationAgentRuntimeEnabledParams) (Organization, error)
 	// F3: toggle a rule's disabled flag. RETURNING * so the API echoes the new state; the caller (mutate)
 	// recompiles + pushes — disabling changes the compiled artifact's CONTENT (in-hash, ordinary push).
 	SetPolicyRuleEnabled(ctx context.Context, arg SetPolicyRuleEnabledParams) (PolicyRule, error)
@@ -1333,6 +1370,8 @@ type Querier interface {
 	// lift a site may hold several gateways — the caller names which; no arbitrary GetSiteNode :one pick). 0 rows
 	// = the node is not bound to that site in this org (a deterministic 404, never a wrong-gateway unbind).
 	UnbindNodeFromSite(ctx context.Context, arg UnbindNodeFromSiteParams) (int64, error)
+	UpdateAgentLifecycle(ctx context.Context, arg UpdateAgentLifecycleParams) (Device, error)
+	UpdateAgentProfile(ctx context.Context, arg UpdateAgentProfileParams) (AgentProfile, error)
 	// Mode changes preserve the device principal, gateway, credential and pool allocation. The caller
 	// authorizes ownership; the service serializes this update with a row lock before invoking it.
 	UpdateDeviceMode(ctx context.Context, arg UpdateDeviceModeParams) (Device, error)
@@ -1351,6 +1390,9 @@ type Querier interface {
 	// Resize the org tunnel pool. The service refuses a shrink that would orphan
 	// live allocations (checked in Go before calling this); this just persists it.
 	UpdateOrgPoolCidr(ctx context.Context, arg UpdateOrgPoolCidrParams) (Organization, error)
+	// NULL is explicit unlimited. The dedicated endpoint avoids conflating an
+	// omitted field in the legacy name PATCH with clearing the quota.
+	UpdateOrganizationAgentQuota(ctx context.Context, arg UpdateOrganizationAgentQuotaParams) (Organization, error)
 	// Slug is immutable after creation (S1.2); only name is updatable here.
 	UpdateOrganizationName(ctx context.Context, arg UpdateOrganizationNameParams) (Organization, error)
 	UpdateResource(ctx context.Context, arg UpdateResourceParams) (Resource, error)

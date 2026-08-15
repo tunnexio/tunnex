@@ -32,6 +32,13 @@ func TestAgentDeviceRowsAreCapExempt(t *testing.T) {
 		t.Fatalf("pool: %v", err)
 	}
 	t.Cleanup(pool.Close)
+	var oneAgentIndex bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='devices_agent_node_key')`).Scan(&oneAgentIndex); err != nil {
+		t.Fatalf("inspect agent uniqueness index: %v", err)
+	}
+	if !oneAgentIndex {
+		t.Skip("legacy one-agent-per-node assertion is superseded by migration 0089")
+	}
 	q := sqlc.New(pool)
 
 	org, owner, node := uuid.New(), uuid.New(), uuid.New()

@@ -1,0 +1,1 @@
+disposable Linux gateway lacks tun, wg/wg-quick, resolver, or capabilities

@@ -2,12 +2,115 @@ package http
 
 import (
 	"context"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
+	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/apps/api/internal/release"
 )
+
+func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAgentBootstrapTokenRequestObject) (api.IssueAgentBootstrapTokenResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+		return nil, err
+	}
+	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
+		return nil, apierr.New(http.StatusForbidden, "edition_required", "managed agent enrollment is a Tunnex Enterprise feature")
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	if s.releaseBootstrap == nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "bootstrap_unavailable", "managed agent enrollment is temporarily unavailable")
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	tok, err := s.devices.IssueAgentBootstrapToken(ctx, p.UserID, req.OrgId, req.Body.GatewayId, req.Body.Name)
+	if err != nil {
+		return nil, err
+	}
+	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, Release: toAPIBootstrapRelease(*s.releaseBootstrap)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
+
+func toAPIBootstrapRelease(r release.BootstrapRelease) api.AgentBootstrapRelease {
+	return api.AgentBootstrapRelease{
+		Tag: r.Tag, SourceSha: r.SourceSHA, ManifestUrl: r.ManifestURL, VerifierKeyId: r.VerifierKeyID,
+		Runtime: api.AgentBootstrapRuntimeRelease{
+			Binary: api.TunnexAgentRuntime, Version: r.Runtime.Version,
+			LinuxAmd64: toAPIBootstrapAsset(r.Runtime.LinuxAMD64),
+			LinuxArm64: toAPIBootstrapAsset(r.Runtime.LinuxARM64),
+			Unit:       toAPIBootstrapAsset(r.Runtime.Unit),
+		},
+	}
+}
+
+func toAPIBootstrapAsset(a release.RuntimeAsset) api.AgentBootstrapRuntimeAsset {
+	return api.AgentBootstrapRuntimeAsset{Name: a.Name, Sha256: a.SHA256, SourceSha: a.SourceSHA}
+}
+
+// SetOrganizationAgentQuota updates the explicit nullable enterprise quota.
+// Permission is checked before the edition gate to preserve no-oracle policy.
+func (s apiServer) SetOrganizationAgentQuota(ctx context.Context, req api.SetOrganizationAgentQuotaRequestObject) (api.SetOrganizationAgentQuotaResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+		return nil, err
+	}
+	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
+		return nil, policyEditionRequired()
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	org, err := s.orgs.SetAgentQuota(ctx, req.OrgId, req.Body.MaxAgentIdentities)
+	if err != nil {
+		return nil, err
+	}
+	return api.SetOrganizationAgentQuota200JSONResponse{Body: toAPIOrg(org), Headers: api.SetOrganizationAgentQuota200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+// SetOrganizationAgentRuntimeEnabled is the explicit F04 organization
+// on-switch. Permission is checked before edition so unauthorized callers
+// cannot use this endpoint as an entitlement oracle.
+func (s apiServer) SetOrganizationAgentRuntimeEnabled(ctx context.Context, req api.SetOrganizationAgentRuntimeEnabledRequestObject) (api.SetOrganizationAgentRuntimeEnabledResponseObject, error) {
+	ctx, err := authorize(ctx, req.OrgId, rbac.PermAgentRuntimeManage)
+	if err != nil {
+		return nil, err
+	}
+	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
+		return nil, policyEditionRequired()
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	org, err := s.orgs.SetAgentRuntimeEnabled(ctx, req.OrgId, req.Body.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	return api.SetOrganizationAgentRuntimeEnabled200JSONResponse{
+		Body:    api.AgentRuntimeSetting{Enabled: org.ManagedAgentRuntimeEnabled},
+		Headers: api.SetOrganizationAgentRuntimeEnabled200ResponseHeaders{XRequestId: reqID(ctx)},
+	}, nil
+}
+
+func (s apiServer) BootstrapAgent(ctx context.Context, req api.BootstrapAgentRequestObject) (api.BootstrapAgentResponseObject, error) {
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	if req.Body.PublicKey == "" {
+		return nil, apierr.BadRequest("invalid_wg_key", "public_key is required")
+	}
+	res, err := s.devices.Create(ctx, devices.CreateInput{PublicKey: req.Body.PublicKey, BootstrapToken: req.Body.BootstrapToken})
+	if err != nil {
+		return nil, err
+	}
+	return api.BootstrapAgent200JSONResponse{Body: api.AgentBootstrapResponse{Device: toAPIDevice(res.Device), Config: res.Config, RuntimeCredential: res.RuntimeCredential}, Headers: api.BootstrapAgent200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
 
 // ListAgents GET /api/v1/organizations/{orgId}/agents — S15.3.
 //
@@ -23,7 +126,10 @@ func (s apiServer) ListAgents(ctx context.Context, req api.ListAgentsRequestObje
 	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
 		return nil, err
 	}
-	if s.policy == nil {
+	principal, _ := authctx.PrincipalFrom(ctx)
+	role, _ := principal.RoleIn(req.OrgId)
+	canViewOwners := rbac.Can(role, rbac.PermMemberManage)
+	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
 		return nil, policyEditionRequired()
 	}
 	rows, err := s.nodes.ListAgents(ctx, req.OrgId)
@@ -40,7 +146,9 @@ func (s apiServer) ListAgents(ctx context.Context, req api.ListAgentsRequestObje
 			Status:         r.Status,
 			Unattributable: r.OwnerEmail == nil,
 		}
-		a.OwnerEmail = r.OwnerEmail
+		if canViewOwners || (r.OwnerUserID != uuid.Nil && r.OwnerUserID == principal.UserID) {
+			a.OwnerEmail = r.OwnerEmail
+		}
 		a.Address = r.Address
 
 		// ⛔ `config_issued` IS NOT LIVENESS AND NO LONGER PRETENDS TO BE. It was named `connected` and

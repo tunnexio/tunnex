@@ -588,6 +588,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/bootstrap-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a single-use managed agent bootstrap token */
+        post: operations["issueAgentBootstrapToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem a managed agent bootstrap token */
+        post: operations["bootstrapAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/runtime/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Poll managed agent configuration
+         * @description Machine-only managed-runtime channel. Authenticates with the exact agent runtime bearer and returns a configuration only when the desired revision is newer than `applied_revision`; an unchanged revision returns 204 with no body. The optional wait is a bounded long poll. Explicit organization opt-out is a terminal uniform 401 so the runtime offboards; edition unavailability remains a non-terminal 403. No bearer, bootstrap token, private key, token hash, or raw error is ever returned.
+         */
+        get: operations["pollAgentRuntime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/runtime/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report managed agent runtime state
+         * @description Machine-only managed-runtime channel. Reports bounded revision and health facts for the exact agent runtime bearer. The server rejects backwards or ahead-of-desired revisions and stores only the stable error enum, never raw runtime output. No credential, bootstrap token, private key, token hash, or raw error is accepted or returned.
+         */
+        post: operations["reportAgentRuntime"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /** Get an agent profile and canonical lifecycle/telemetry */
+        get: operations["getAgentProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update agent metadata or request an explicit lifecycle transition */
+        patch: operations["updateAgentProfile"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get managed agent runtime status
+         * @description Organization/admin read-only projection for one agent. Uses human/session authorization, never the machine runtime bearer. The projection contains desired/applied facts, connectivity/last-seen state, and bounded stale/error facts only; it never returns credentials, private keys, token hashes, or raw runtime errors.
+         */
+        get: operations["getAgentRuntimeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/nodes/join-token": {
         parameters: {
             query?: never;
@@ -1770,6 +1890,28 @@ export interface paths {
         patch: operations["updateOrganization"];
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agent-quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the organization managed-agent identity quota
+         * @description Enterprise organization setting. Requires org:update. `max_agent_identities: null` means unlimited. The server counts pending, active, and suspended agent identities organization-wide; revoked and deleted identities do not count. No remaining count is returned or inferred.
+         */
+        put: operations["setOrganizationAgentQuota"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/deletion-preflight": {
         parameters: {
             query?: never;
@@ -1825,6 +1967,28 @@ export interface paths {
         put?: never;
         /** Register a site gateway (S8.1; site:manage) */
         post: operations["registerSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-runtime-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Enable or disable managed-agent runtime synchronization for an organization
+         * @description Enterprise-only explicit opt-in. Requires agent_runtime:manage. A paid licence unlocks this capability but never enables it implicitly; the default is disabled. Disabling an active organization makes the next runtime poll/report a terminal uniform refusal so managed tunnels offboard instead of preserving synchronization indefinitely.
+         */
+        put: operations["setOrganizationAgentRuntimeEnabled"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2216,6 +2380,13 @@ export interface components {
             pool_cidr: string;
             /** @description S9.1 D-S9.5-OPTIN: whether this org has opted into OpenVPN. Default false. When false the OpenVPN device type is not offered and the export endpoint refuses (opt_in_required). */
             ovpn_enabled?: boolean;
+            /**
+             * Format: int32
+             * @description F02: organization-wide managed-agent identity quota. null means unlimited; no remaining count is exposed.
+             */
+            max_agent_identities: number | null;
+            /** @description F04: explicit organization opt-in for managed runtime synchronization. Default false; a paid licence does not enable it implicitly. */
+            managed_agent_runtime_enabled: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2744,6 +2915,11 @@ export interface components {
         UpdateOrganizationRequest: {
             name: string;
         };
+        /** @description F02 H1-H3. Null explicitly clears the quota and means unlimited. */
+        SetOrganizationAgentQuotaRequest: {
+            /** Format: int32 */
+            max_agent_identities: number | null;
+        };
         GatewayEndpoint: {
             /** @description The raw mTLS gateway control URL used by future join commands. */
             url: string;
@@ -3057,7 +3233,7 @@ export interface components {
             /** @description True when the config this device was ISSUED no longer matches reality, so the user must re-import it. Three causes: (1) its baked site ROUTES no longer match the org's current routed ranges — STATIC exports only, since a managed device polls routes; (2) its baked tunnel ADDRESS is not the device's current address — EVERY mode, including managed, because every issued config embeds an interface address; (3) its baked GATEWAY is not the device's current gateway — STATIC exports only, because a static export is a file that never polls and cannot be re-pointed, whereas a managed device re-homes itself through the dial channel (residual: only when its node is a hub-set member). Reported for all provisioning modes; false when nothing was recorded at issuance (rows predating the address snapshot), because unknown must not be reported as stale. Advisory, never enforcement. */
             needs_reexport?: boolean;
             /** @enum {string} */
-            status: "active" | "revoked" | "pending";
+            status: "active" | "revoked" | "pending" | "suspended";
             /**
              * Format: uuid
              * @description S7.3: who approved this device. null = grandfathered / auto-active (device_approval off). Set = explicitly approved.
@@ -3102,6 +3278,155 @@ export interface components {
             kind?: "human" | "agent";
             /** @enum {string} */
             provisioning?: "managed" | "static";
+        };
+        AgentProfile: {
+            /** Format: uuid */
+            device_id: string;
+            name: string;
+            environment: string;
+            runtime: string;
+            labels: {
+                [key: string]: string;
+            };
+            /** Format: uuid */
+            owner_id: string;
+            /** Format: email */
+            owner_email: string;
+            /** @enum {string} */
+            status: "pending" | "active" | "suspended" | "revoked";
+            /** Format: date-time */
+            last_handshake_at?: string | null;
+            /** Format: int64 */
+            rx_bytes?: number | null;
+            /** Format: int64 */
+            tx_bytes?: number | null;
+        };
+        /** @description Secret-free server-owned configuration for one managed agent. Runtime credentials, bootstrap tokens, token hashes, and private keys are never configuration fields. */
+        ManagedAgentConfig: {
+            /** Format: int64 */
+            revision: number;
+            /** Format: uuid */
+            device_id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** @description The managed agent tunnel address/prefix. */
+            address: string;
+            /** @description The gateway endpoint in host:port form. */
+            gateway_endpoint: string;
+            /** @description The gateway WireGuard public key. */
+            gateway_public_key: string;
+            allowed_ips: string[];
+            dns: string[];
+            persistent_keepalive: number;
+        };
+        AgentRuntimeSetting: {
+            /** @description Explicit organization opt-in for F04 managed runtime synchronization. */
+            enabled: boolean;
+        };
+        /** @description Bounded, secret-free facts reported by one managed agent runtime. */
+        AgentRuntimeReport: {
+            /** Format: int64 */
+            applied_revision: number;
+            /** Format: int64 */
+            attempted_revision: number;
+            client_version: string;
+            /**
+             * @description Empty means no error; otherwise a bounded stable code, never raw runtime output.
+             * @enum {string}
+             */
+            error_code: "" | "invalid_config" | "apply_failed";
+        };
+        /** @description Secret-free organization/admin projection of one managed agent runtime. */
+        AgentRuntimeStatus: {
+            /** Format: uuid */
+            device_id: string;
+            /** Format: int64 */
+            desired_revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** Format: int64 */
+            last_attempted_revision: number;
+            client_version: string;
+            /**
+             * @description Server-derived connectivity fact; unknown means the control plane cannot establish it.
+             * @enum {string}
+             */
+            connectivity: "unknown" | "connected" | "disconnected";
+            /**
+             * @description ready means a fresh report applied the current desired revision without a bounded error; last_good means a prior applied revision is retained while freshness, revision, or apply state is not current; inconclusive means no applied configuration is established.
+             * @enum {string}
+             */
+            health: "ready" | "last_good" | "inconclusive";
+            /** @description Whether the last runtime report is absent or outside the server's three-minute freshness window. */
+            stale: boolean;
+            /** Format: date-time */
+            last_seen_at?: string | null;
+            /**
+             * @description Last bounded stable runtime error, never raw runtime output.
+             * @enum {string|null}
+             */
+            last_error_code?: "invalid_config" | "apply_failed" | null;
+            /** Format: int64 */
+            last_error_revision?: number | null;
+        };
+        AgentBootstrapTokenRequest: {
+            name: string;
+            /** Format: uuid */
+            gateway_id: string;
+        };
+        AgentBootstrapTokenResponse: {
+            /** @description Shown once and stored only as a hash. */
+            bootstrap_token: string;
+            release: components["schemas"]["AgentBootstrapRelease"];
+        };
+        /** @description Server-verified immutable runtime release metadata. Contains no secret or signing private key. */
+        AgentBootstrapRelease: {
+            /** @description Immutable v* or tunnex-build-* release tag. */
+            tag: string;
+            /** @description Full source commit SHA bound by the signed descriptor. */
+            source_sha: string;
+            /**
+             * Format: uri
+             * @description Immutable release.json URL for the exact tag.
+             */
+            manifest_url: string;
+            /** @description Public verifier key identifier only; no key material. */
+            verifier_key_id: string;
+            runtime: components["schemas"]["AgentBootstrapRuntimeRelease"];
+        };
+        AgentBootstrapRuntimeRelease: {
+            /** @enum {string} */
+            binary: "tunnex-agent-runtime";
+            version: string;
+            linux_amd64: components["schemas"]["AgentBootstrapRuntimeAsset"];
+            linux_arm64: components["schemas"]["AgentBootstrapRuntimeAsset"];
+            unit: components["schemas"]["AgentBootstrapRuntimeAsset"];
+        };
+        AgentBootstrapRuntimeAsset: {
+            name: string;
+            sha256: string;
+            source_sha: string;
+        };
+        AgentBootstrapRequest: {
+            bootstrap_token: string;
+            /** @description Client-generated WireGuard public key. */
+            public_key: string;
+        };
+        AgentBootstrapResponse: {
+            device: components["schemas"]["Device"];
+            /** @description WireGuard config template with a client-private-key placeholder. */
+            config: string;
+            /** @description Shown once */
+            runtime_credential: string;
+        };
+        UpdateAgentProfileRequest: {
+            environment?: string;
+            runtime?: string;
+            labels?: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            status?: "active" | "suspended";
         };
         UpdateDeviceModeRequest: {
             /** @description true for full-tunnel egress; false for split-tunnel */
@@ -3479,6 +3804,16 @@ export interface components {
     responses: {
         /** @description Error response. */
         Error: {
+            headers: {
+                "X-Request-Id": components["headers"]["RequestId"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Uniform machine-channel authentication refusal. The response must not reveal whether the bearer, organization, device, agent kind, or revocation state exists. */
+        RuntimeUnauthorized: {
             headers: {
                 "X-Request-Id": components["headers"]["RequestId"];
                 [name: string]: unknown;
@@ -4274,6 +4609,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Agent"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    issueAgentBootstrapToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentBootstrapTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The bootstrap token, shown once. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBootstrapTokenResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    bootstrapAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentBootstrapRequest"];
+            };
+        };
+        responses: {
+            /** @description Bootstrap material. The runtime credential is shown exactly once. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBootstrapResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    pollAgentRuntime: {
+        parameters: {
+            query: {
+                applied_revision: number;
+                client_version: string;
+                /** @description Bounded long-poll wait requested by the runtime; the server may return sooner. */
+                wait_seconds?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Strictly newer managed configuration. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedAgentConfig"];
+                };
+            };
+            /** @description Desired revision is unchanged; no configuration body is returned. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            403: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    reportAgentRuntime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRuntimeReport"];
+            };
+        };
+        responses: {
+            /** @description Report accepted. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The agent profile. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfile"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated agent profile. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfile"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentRuntimeStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime status projection. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRuntimeStatus"];
                 };
             };
             default: components["responses"]["Error"];
@@ -6275,6 +6805,34 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    setOrganizationAgentQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetOrganizationAgentQuotaRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated organization quota. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     orgDeletionPreflight: {
         parameters: {
             query?: never;
@@ -6384,6 +6942,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Site"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setOrganizationAgentRuntimeEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRuntimeSetting"];
+            };
+        };
+        responses: {
+            /** @description Persisted managed-agent runtime setting. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRuntimeSetting"];
                 };
             };
             default: components["responses"]["Error"];

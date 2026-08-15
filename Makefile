@@ -297,7 +297,7 @@ web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 20 — wor
 	  -v tunnex-web-nm:/w/apps/web/node_modules \
 	  -v tunnex-shared-nm:/w/packages/shared/node_modules \
 	  -e ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
-	  node:20-alpine sh -c 'corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
+	  node:20-alpine sh -c 'apk add --no-cache jq >/dev/null && corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
 	    pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build'
 
 .PHONY: test-cli

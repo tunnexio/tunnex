@@ -27,6 +27,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/bootstrap"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
@@ -353,6 +354,7 @@ func main() {
 		WithCRLRebuilder(ovpnCRLRebuilder{ovpnSvc})
 	idpSyncPort := apphttp.NewIdpSyncPort(pool, sealer, membersSvc, deviceSvc, licenceMgr, logger)
 	var releaseStatus *release.Status
+	var releaseBootstrap *release.BootstrapRelease
 	currentRelease := release.Current{Sequence: cfg.ReleaseSequence, Version: cfg.ReleaseVersion, SourceSHA: cfg.ReleaseSourceSHA, Protocol: policyspec.ProtocolVersion}
 	if cfg.ReleaseManifestPath != "" {
 		signed, loadErr := release.Load(cfg.ReleaseManifestPath, cfg.ReleasePublicKey)
@@ -372,6 +374,11 @@ func main() {
 				ApprovalMode:   "host_command_only",
 			}
 		} else {
+			if metadata, metadataErr := release.BootstrapReleaseFromSigned(signed, cfg.ReleaseManifestURL); metadataErr == nil {
+				releaseBootstrap = &metadata
+			} else {
+				logger.Warn("bootstrap_release_metadata_unavailable", slog.String("error", metadataErr.Error()))
+			}
 			// The installed descriptor is itself the authoritative provenance for a
 			// fresh install. Do not rely on optional dotenv copies of those fields.
 			currentRelease.Sequence = signed.Manifest.Sequence
@@ -408,8 +415,12 @@ func main() {
 		}()
 	}
 
+	systemQueries := sqlc.New(pool)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
-		System:                sqlc.New(pool),
+		System: systemQueries,
+		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
+			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
+		}),
 		Licence:               licenceMgr,
 		Orgs:                  tenancy.NewService(pool).WithLicence(licenceMgr),
 		CliAuth:               cliAuthSvc,
@@ -436,6 +447,7 @@ func main() {
 		GatewayControlURL:     cfg.GatewayControlURL,
 		NodeAgentImage:        cfg.NodeAgentImage,
 		ReleaseStatus:         releaseStatus,
+		ReleaseBootstrap:      releaseBootstrap,
 		ReleaseStatusProvider: releaseStatusProvider,
 		SMTPConfigured:        mail.Configured(mail.Config{Host: cfg.SMTP.Host}),
 		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
