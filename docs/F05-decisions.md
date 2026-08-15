@@ -1,7 +1,9 @@
 # F05 — Runtime bearer and WireGuard rotation decisions
 
-Status: **In progress**. F05.1 covers the runtime bearer. F05.2 reuses the same
-operator action and runtime channel to rotate the managed agent's WireGuard key.
+Status: **SATISFIES / Done**. F05.1 covers the runtime bearer and F05.2 reuses
+the same operator action and runtime channel to rotate the managed agent's
+WireGuard key. The combined AWS acceptance is recorded in
+`walk-artifacts/F05/20260815-aws-dev-live.md`.
 
 ## Essential contract
 
@@ -75,7 +77,7 @@ the WG candidate/request and preserves `devices.public_key`; revoke/delete
 invalidates both and reuses F04's clean offboard. Expiry is evaluated on existing
 request, poll, and gateway-report traffic; F05 adds no scheduler.
 
-## Combined AWS DEV live checklist (not yet executed)
+## Combined AWS DEV live checklist — executed
 
 1. Deploy exact content commit to the authorized development CP only; verify
    schema 94 clean and keep the previous API/web/runtime images recorded.
