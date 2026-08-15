@@ -755,7 +755,12 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 			if werr != nil {
 				return DesiredState{}, werr // DesiredState-ATOMIC: a widening query fault fails the whole fetch
 			}
-			ds.Peers = wp // REPLACE the node's own /32 device peers with the union (site-link peers append below)
+			// REPLACE the node's own /32 device peers with the union (site-link peers
+			// append below), then restore this node's F05 warm candidates. Widening is
+			// intentionally authoritative for canonical peers, but it must not erase a
+			// prepared candidate before the reporter can acknowledge its empty-
+			// AllowedIPs stage.
+			ds.Peers = widenedPeersWithWarmCandidates(wp, stagedRows)
 			// WF-OVPN-9: widen the OVPN roster (CCD) across the SAME members so a multi-remote .ovpn reaches an
 			// accepting gateway whichever it fails over to — the OpenVPN twin of the WG peer widening above,
 			// reading the same activeHubMembers authority. REPLACES the node's own per-node roster.
@@ -834,6 +839,14 @@ func appendWarmWireGuardCandidates(peers []Peer, seen map[string]struct{}, candi
 		seen[*candidate.CandidatePublicKey] = struct{}{}
 	}
 	return peers
+}
+
+func widenedPeersWithWarmCandidates(peers []Peer, candidates []sqlc.ListPreparedAgentWireGuardPeersForNodeRow) []Peer {
+	seen := make(map[string]struct{}, len(peers))
+	for _, peer := range peers {
+		seen[peer.PublicKey] = struct{}{}
+	}
+	return appendWarmWireGuardCandidates(peers, seen, candidates)
 }
 
 // widenedDevicePeers is WF-A D-WFA-5b's device-peer hosting: the UNION of device peers across all hub-set

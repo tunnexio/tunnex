@@ -40,6 +40,16 @@ func TestWarmWireGuardCandidateNeverDuplicatesAllowedIPs(t *testing.T) {
 	}
 }
 
+func TestHubWideningRetainsWarmWireGuardCandidate(t *testing.T) {
+	currentKey := "kJ+D3mNKUQzae+23TrhT0g08UTSh9DfxXpKVyGw28EE="
+	candidateKey := "WlEiCXJIkuDu09Ji0dvI1RwdkbLwkZ+qdR/M0r6/I94="
+	widened := []Peer{{PublicKey: currentKey, AllowedIPs: []string{"10.99.0.7/32"}}}
+	peers := widenedPeersWithWarmCandidates(widened, []sqlc.ListPreparedAgentWireGuardPeersForNodeRow{{CandidatePublicKey: &candidateKey}})
+	if len(peers) != 2 || peers[1].PublicKey != candidateKey || len(peers[1].AllowedIPs) != 0 {
+		t.Fatalf("hub widening erased or routed the warm candidate: %#v", peers)
+	}
+}
+
 func genCSR(t *testing.T, cn string) string {
 	t.Helper()
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
