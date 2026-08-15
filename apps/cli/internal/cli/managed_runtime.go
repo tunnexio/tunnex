@@ -252,6 +252,9 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 			}
 			_ = os.Remove(previousPath)
 			_ = os.Remove(s.credentialPath + ".candidate")
+			if err := s.cancelLocalWireGuardCandidate(ctx); err != nil {
+				return ManagedAgentConfig{}, err
+			}
 			return ManagedAgentConfig{}, ErrRuntimeUnauthorized
 		}
 		// Any non-401 proves the candidate authenticated; promotion happens in
@@ -276,9 +279,13 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 	}
 	if resp.StatusCode() == http.StatusUnauthorized {
 		// Suspension/revocation invalidates any uncommitted successor. Discard it
-		// so a later resume/request cannot retry a hash now retained as terminal
-		// history by the control plane.
+		// and restore any locally switched WireGuard key before F04 cleanly
+		// offboards the interface. A later resume must start from the canonical
+		// current key, never from a cancelled candidate.
 		_ = os.Remove(s.credentialPath + ".candidate")
+		if err := s.cancelLocalWireGuardCandidate(ctx); err != nil {
+			return ManagedAgentConfig{}, err
+		}
 		return ManagedAgentConfig{}, ErrRuntimeUnauthorized
 	}
 	if resp.StatusCode() == http.StatusNoContent {

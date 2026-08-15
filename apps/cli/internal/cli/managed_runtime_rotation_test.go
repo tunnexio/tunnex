@@ -209,9 +209,23 @@ func TestManagedRuntimeRotationRestartRecoveryAndRollback(t *testing.T) {
 func TestManagedRuntimeRefusedCurrentDiscardsUncommittedCandidate(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "runtime-credential")
+	configPath := filepath.Join(dir, "runtime.conf")
+	statePath := filepath.Join(dir, "runtime-state.json")
 	current := "tnx_runtime_current_before_suspend"
+	oldPrivate := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{11}, 32))
+	candidatePrivate := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{12}, 32))
+	oldConfig := "[Interface]\nPrivateKey = " + oldPrivate + "\nAddress = 10.99.0.7/32\n"
+	candidateConfig := "[Interface]\nPrivateKey = " + candidatePrivate + "\nAddress = 10.99.0.7/32\n"
 	for file, value := range map[string]string{path: current, path + ".candidate": "tnx_runtime_uncommitted_candidate"} {
 		if err := WriteFileAtomic0600(file, []byte(value+"\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for file, value := range map[string]string{
+		configPath: candidateConfig, configPath + ".previous": oldConfig,
+		configPath + ".candidate-key": candidatePrivate + "\n",
+	} {
+		if err := WriteFileAtomic0600(file, []byte(value)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -219,9 +233,20 @@ func TestManagedRuntimeRefusedCurrentDiscardsUncommittedCandidate(t *testing.T) 
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
-	state := ManagedRuntimeState{Server: server.URL, ClientVersion: "test", WireGuardRevision: 1}
+	state := ManagedRuntimeState{Server: server.URL, ClientVersion: "test", WireGuardRevision: 1,
+		WireGuardCandidateRevision: 2, WireGuardCandidateApplied: true}
+	if err := saveManagedRuntimeState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+	keyRestores := 0
 	source, err := newManagedRuntimeSource(server.URL, current, path,
-		filepath.Join(dir, "runtime.conf"), filepath.Join(dir, "state.json"), &state, 0, nil)
+		configPath, statePath, &state, 0, func(_ context.Context, _, keyPath string) error {
+			keyRestores++
+			if got := strings.TrimSpace(string(mustRead(t, keyPath))); got != oldPrivate {
+				t.Fatalf("restored live key = %q, want last-good", got)
+			}
+			return nil
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,6 +259,17 @@ func TestManagedRuntimeRefusedCurrentDiscardsUncommittedCandidate(t *testing.T) 
 	}
 	if _, err := os.Stat(path + ".candidate"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("candidate scratch remains after terminal current refusal: %v", err)
+	}
+	if keyRestores != 1 || state.WireGuardCandidateRevision != 0 || state.WireGuardCandidateApplied {
+		t.Fatalf("WireGuard rollback calls=%d state=%+v", keyRestores, state)
+	}
+	if got := configValue(string(mustRead(t, configPath)), "PrivateKey"); got != oldPrivate {
+		t.Fatalf("restored config key = %q, want last-good", got)
+	}
+	for _, scratch := range []string{configPath + ".candidate-key", configPath + ".previous"} {
+		if _, err := os.Stat(scratch); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("WireGuard scratch remains after terminal refusal at %s: %v", scratch, err)
+		}
 	}
 }
 
