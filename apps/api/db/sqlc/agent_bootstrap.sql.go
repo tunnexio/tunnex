@@ -13,6 +13,74 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const authenticateAgentRuntimeCredential = `-- name: AuthenticateAgentRuntimeCredential :one
+WITH matched AS (
+  SELECT credential.id, credential.org_id, credential.device_id, credential.token_hash, credential.created_at, credential.revoked_at, credential.revision, credential.state, credential.candidate_expires_at, credential.activated_at, credential.terminal_at, credential.rotation_requested_at, credential.rotation_deadline, credential.rotation_requested_by FROM agent_runtime_credentials credential
+  WHERE credential.token_hash = $1 AND credential.revoked_at IS NULL
+    AND (credential.state = 'current'
+      OR (credential.state = 'candidate' AND credential.candidate_expires_at > now()))
+  FOR UPDATE
+), transitioned AS (
+  UPDATE agent_runtime_credentials credential
+  SET state = CASE WHEN credential.id = matched.id THEN 'current' ELSE 'superseded' END,
+      revoked_at = CASE WHEN credential.id = matched.id THEN NULL ELSE now() END,
+      activated_at = CASE WHEN credential.id = matched.id THEN now() ELSE credential.activated_at END,
+      terminal_at = CASE WHEN credential.id = matched.id THEN NULL ELSE now() END,
+      candidate_expires_at = NULL,
+      rotation_requested_at = NULL, rotation_deadline = NULL,
+      rotation_requested_by = NULL
+  FROM matched
+  WHERE matched.state = 'candidate'
+    AND credential.device_id = matched.device_id
+    AND credential.state IN ('current', 'candidate')
+  RETURNING credential.id, credential.org_id, credential.device_id, credential.token_hash, credential.created_at, credential.revoked_at, credential.revision, credential.state, credential.candidate_expires_at, credential.activated_at, credential.terminal_at, credential.rotation_requested_at, credential.rotation_deadline, credential.rotation_requested_by
+)
+SELECT transitioned.id, transitioned.org_id, transitioned.device_id, transitioned.token_hash, transitioned.created_at, transitioned.revoked_at, transitioned.revision, transitioned.state, transitioned.candidate_expires_at, transitioned.activated_at, transitioned.terminal_at, transitioned.rotation_requested_at, transitioned.rotation_deadline, transitioned.rotation_requested_by FROM transitioned, matched WHERE transitioned.id = matched.id
+UNION ALL
+SELECT id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by FROM matched WHERE state = 'current'
+LIMIT 1
+`
+
+type AuthenticateAgentRuntimeCredentialRow struct {
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	TokenHash           []byte             `json:"token_hash"`
+	CreatedAt           time.Time          `json:"created_at"`
+	RevokedAt           pgtype.Timestamptz `json:"revoked_at"`
+	Revision            int64              `json:"revision"`
+	State               string             `json:"state"`
+	CandidateExpiresAt  pgtype.Timestamptz `json:"candidate_expires_at"`
+	ActivatedAt         pgtype.Timestamptz `json:"activated_at"`
+	TerminalAt          pgtype.Timestamptz `json:"terminal_at"`
+	RotationRequestedAt pgtype.Timestamptz `json:"rotation_requested_at"`
+	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
+	RotationRequestedBy pgtype.UUID        `json:"rotation_requested_by"`
+}
+
+// lint:cross-org — the bearer hash is the credential; its row supplies org/device binding.
+func (q *Queries) AuthenticateAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AuthenticateAgentRuntimeCredentialRow, error) {
+	row := q.db.QueryRow(ctx, authenticateAgentRuntimeCredential, tokenHash)
+	var i AuthenticateAgentRuntimeCredentialRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DeviceID,
+		&i.TokenHash,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.Revision,
+		&i.State,
+		&i.CandidateExpiresAt,
+		&i.ActivatedAt,
+		&i.TerminalAt,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.RotationRequestedBy,
+	)
+	return i, err
+}
+
 const consumeAgentBootstrapToken = `-- name: ConsumeAgentBootstrapToken :one
 UPDATE agent_bootstrap_tokens
 SET consumed_at = now(), consumed_device_id = $2
@@ -87,7 +155,7 @@ func (q *Queries) CreateAgentBootstrapToken(ctx context.Context, arg CreateAgent
 const createAgentRuntimeCredential = `-- name: CreateAgentRuntimeCredential :one
 INSERT INTO agent_runtime_credentials (org_id, device_id, token_hash)
 VALUES ($1, $2, $3)
-RETURNING id, org_id, device_id, token_hash, created_at, revoked_at
+RETURNING id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by
 `
 
 type CreateAgentRuntimeCredentialParams struct {
@@ -106,8 +174,41 @@ func (q *Queries) CreateAgentRuntimeCredential(ctx context.Context, arg CreateAg
 		&i.TokenHash,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Revision,
+		&i.State,
+		&i.CandidateExpiresAt,
+		&i.ActivatedAt,
+		&i.TerminalAt,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.RotationRequestedBy,
 	)
 	return i, err
+}
+
+const expireAgentRuntimeCredentialRotation = `-- name: ExpireAgentRuntimeCredentialRotation :exec
+WITH expired_candidate AS (
+  UPDATE agent_runtime_credentials candidate
+  SET state = 'revoked', revoked_at = COALESCE(revoked_at, now()),
+      terminal_at = COALESCE(terminal_at, now()), candidate_expires_at = NULL
+  WHERE candidate.org_id = $1 AND candidate.device_id = $2
+    AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= now()
+)
+UPDATE agent_runtime_credentials current
+SET rotation_requested_at = NULL, rotation_deadline = NULL,
+    rotation_requested_by = NULL
+WHERE current.org_id = $1 AND current.device_id = $2
+  AND current.state = 'current' AND current.rotation_deadline <= now()
+`
+
+type ExpireAgentRuntimeCredentialRotationParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+func (q *Queries) ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error {
+	_, err := q.db.Exec(ctx, expireAgentRuntimeCredentialRotation, arg.OrgID, arg.DeviceID)
+	return err
 }
 
 const getAgentBootstrapToken = `-- name: GetAgentBootstrapToken :one
@@ -135,8 +236,8 @@ func (q *Queries) GetAgentBootstrapToken(ctx context.Context, tokenHash []byte) 
 }
 
 const getAgentRuntimeCredential = `-- name: GetAgentRuntimeCredential :one
-SELECT id, org_id, device_id, token_hash, created_at, revoked_at FROM agent_runtime_credentials
-WHERE token_hash = $1 AND revoked_at IS NULL
+SELECT id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by FROM agent_runtime_credentials
+WHERE token_hash = $1 AND revoked_at IS NULL AND state = 'current'
 `
 
 // lint:cross-org — F04's bearer hash is the credential; the returned row supplies its org/device binding.
@@ -150,6 +251,180 @@ func (q *Queries) GetAgentRuntimeCredential(ctx context.Context, tokenHash []byt
 		&i.TokenHash,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Revision,
+		&i.State,
+		&i.CandidateExpiresAt,
+		&i.ActivatedAt,
+		&i.TerminalAt,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.RotationRequestedBy,
+	)
+	return i, err
+}
+
+const getAgentRuntimeCredentialRotation = `-- name: GetAgentRuntimeCredentialRotation :one
+SELECT current.device_id, current.revision,
+  current.rotation_requested_at, current.rotation_deadline,
+  CAST(candidate.id IS NOT NULL AS boolean) AS candidate_pending
+FROM agent_runtime_credentials current
+JOIN devices d ON d.id = current.device_id AND d.org_id = current.org_id
+LEFT JOIN agent_runtime_credentials candidate
+  ON candidate.device_id = current.device_id AND candidate.state = 'candidate'
+WHERE current.org_id = $1 AND current.device_id = $2
+  AND current.state = 'current' AND current.revoked_at IS NULL
+  AND d.kind = 'agent' AND d.deleted_at IS NULL
+`
+
+type GetAgentRuntimeCredentialRotationParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+type GetAgentRuntimeCredentialRotationRow struct {
+	DeviceID            uuid.UUID          `json:"device_id"`
+	Revision            int64              `json:"revision"`
+	RotationRequestedAt pgtype.Timestamptz `json:"rotation_requested_at"`
+	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
+	CandidatePending    bool               `json:"candidate_pending"`
+}
+
+func (q *Queries) GetAgentRuntimeCredentialRotation(ctx context.Context, arg GetAgentRuntimeCredentialRotationParams) (GetAgentRuntimeCredentialRotationRow, error) {
+	row := q.db.QueryRow(ctx, getAgentRuntimeCredentialRotation, arg.OrgID, arg.DeviceID)
+	var i GetAgentRuntimeCredentialRotationRow
+	err := row.Scan(
+		&i.DeviceID,
+		&i.Revision,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.CandidatePending,
+	)
+	return i, err
+}
+
+const prepareAgentRuntimeCredentialCandidate = `-- name: PrepareAgentRuntimeCredentialCandidate :one
+WITH current_credential AS (
+  SELECT current.id, current.org_id, current.device_id, current.token_hash, current.created_at, current.revoked_at, current.revision, current.state, current.candidate_expires_at, current.activated_at, current.terminal_at, current.rotation_requested_at, current.rotation_deadline, current.rotation_requested_by FROM agent_runtime_credentials current
+  WHERE current.org_id = $1 AND current.device_id = $2
+    AND current.state = 'current' AND current.revoked_at IS NULL
+    AND current.rotation_requested_at IS NOT NULL
+    AND current.rotation_deadline > now()
+    AND $4 = current.revision + 1
+  FOR UPDATE
+), prepared AS (
+  INSERT INTO agent_runtime_credentials (
+    org_id, device_id, token_hash, revision, state, candidate_expires_at
+  )
+  SELECT org_id, device_id, $3, $4, 'candidate', rotation_deadline
+  FROM current_credential
+  ON CONFLICT (device_id) WHERE state = 'candidate'
+  DO UPDATE SET token_hash = agent_runtime_credentials.token_hash
+  WHERE agent_runtime_credentials.revision = EXCLUDED.revision
+    AND agent_runtime_credentials.token_hash = EXCLUDED.token_hash
+    AND agent_runtime_credentials.candidate_expires_at > now()
+  RETURNING agent_runtime_credentials.id, agent_runtime_credentials.org_id, agent_runtime_credentials.device_id, agent_runtime_credentials.token_hash, agent_runtime_credentials.created_at, agent_runtime_credentials.revoked_at, agent_runtime_credentials.revision, agent_runtime_credentials.state, agent_runtime_credentials.candidate_expires_at, agent_runtime_credentials.activated_at, agent_runtime_credentials.terminal_at, agent_runtime_credentials.rotation_requested_at, agent_runtime_credentials.rotation_deadline, agent_runtime_credentials.rotation_requested_by
+)
+SELECT id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by FROM prepared
+`
+
+type PrepareAgentRuntimeCredentialCandidateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	TokenHash []byte    `json:"token_hash"`
+	Revision  int64     `json:"revision"`
+}
+
+type PrepareAgentRuntimeCredentialCandidateRow struct {
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	TokenHash           []byte             `json:"token_hash"`
+	CreatedAt           time.Time          `json:"created_at"`
+	RevokedAt           pgtype.Timestamptz `json:"revoked_at"`
+	Revision            int64              `json:"revision"`
+	State               string             `json:"state"`
+	CandidateExpiresAt  pgtype.Timestamptz `json:"candidate_expires_at"`
+	ActivatedAt         pgtype.Timestamptz `json:"activated_at"`
+	TerminalAt          pgtype.Timestamptz `json:"terminal_at"`
+	RotationRequestedAt pgtype.Timestamptz `json:"rotation_requested_at"`
+	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
+	RotationRequestedBy pgtype.UUID        `json:"rotation_requested_by"`
+}
+
+func (q *Queries) PrepareAgentRuntimeCredentialCandidate(ctx context.Context, arg PrepareAgentRuntimeCredentialCandidateParams) (PrepareAgentRuntimeCredentialCandidateRow, error) {
+	row := q.db.QueryRow(ctx, prepareAgentRuntimeCredentialCandidate,
+		arg.OrgID,
+		arg.DeviceID,
+		arg.TokenHash,
+		arg.Revision,
+	)
+	var i PrepareAgentRuntimeCredentialCandidateRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DeviceID,
+		&i.TokenHash,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.Revision,
+		&i.State,
+		&i.CandidateExpiresAt,
+		&i.ActivatedAt,
+		&i.TerminalAt,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.RotationRequestedBy,
+	)
+	return i, err
+}
+
+const requestAgentRuntimeCredentialRotation = `-- name: RequestAgentRuntimeCredentialRotation :one
+UPDATE agent_runtime_credentials current
+SET rotation_requested_at = now(), rotation_deadline = $3,
+    rotation_requested_by = $4
+FROM devices d
+WHERE current.org_id = $1 AND current.device_id = $2
+  AND current.state = 'current' AND current.revoked_at IS NULL
+  AND d.id = current.device_id AND d.org_id = current.org_id
+  AND d.kind = 'agent' AND d.status = 'active' AND d.deleted_at IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM agent_runtime_credentials candidate
+    WHERE candidate.device_id = current.device_id
+      AND candidate.state = 'candidate'
+  )
+RETURNING current.id, current.org_id, current.device_id, current.token_hash, current.created_at, current.revoked_at, current.revision, current.state, current.candidate_expires_at, current.activated_at, current.terminal_at, current.rotation_requested_at, current.rotation_deadline, current.rotation_requested_by
+`
+
+type RequestAgentRuntimeCredentialRotationParams struct {
+	OrgID               uuid.UUID          `json:"org_id"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
+	RotationRequestedBy pgtype.UUID        `json:"rotation_requested_by"`
+}
+
+func (q *Queries) RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error) {
+	row := q.db.QueryRow(ctx, requestAgentRuntimeCredentialRotation,
+		arg.OrgID,
+		arg.DeviceID,
+		arg.RotationDeadline,
+		arg.RotationRequestedBy,
+	)
+	var i AgentRuntimeCredential
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DeviceID,
+		&i.TokenHash,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.Revision,
+		&i.State,
+		&i.CandidateExpiresAt,
+		&i.ActivatedAt,
+		&i.TerminalAt,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.RotationRequestedBy,
 	)
 	return i, err
 }

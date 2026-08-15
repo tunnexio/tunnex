@@ -40,6 +40,7 @@ type Node = {
 };
 
 type AgentRuntimeStatus = components["schemas"]["AgentRuntimeStatus"];
+type AgentCredentialRotationStatus = components["schemas"]["AgentCredentialRotationStatus"];
 
 function AgentRuntimePanel({ status }: { status: AgentRuntimeStatus }) {
   const healthLabel = status.health === "last_good"
@@ -214,18 +215,24 @@ function AgentRuntimeSettingCard({
 function AgentProfilePanel({
   profile,
   runtime,
+  credentialRotation,
   editorVersion,
   canManageLifecycle,
+  canRotateCredential,
   onSaveMetadata,
   onLifecycleChange,
+  onRotateCredential,
   disabled,
 }: {
   profile: AgentProfile;
   runtime: AgentRuntimeStatus | null;
+  credentialRotation: AgentCredentialRotationStatus | null;
   editorVersion: number;
   canManageLifecycle: boolean;
+  canRotateCredential: boolean;
   onSaveMetadata: (value: AgentProfileEditorValue) => void;
   onLifecycleChange: (status: "active" | "suspended") => void;
+  onRotateCredential: () => void;
   disabled: boolean;
 }) {
   return (
@@ -245,6 +252,18 @@ function AgentProfilePanel({
         disabled={disabled}
       />
       {runtime && <AgentRuntimePanel status={runtime} />}
+      {canRotateCredential && credentialRotation && (
+        <div data-testid="agent-credential-rotation" className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
+          <div>
+            <div className="text-slate-500">Runtime credential</div>
+            <div>Revision {credentialRotation.current_revision} · {credentialRotation.state}</div>
+            {credentialRotation.deadline && <div className="text-slate-500">Deadline {credentialRotation.deadline}</div>}
+          </div>
+          <Button onClick={onRotateCredential} disabled={disabled || profile.status !== "active" || credentialRotation.state !== "current"}>
+            Rotate credential
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -270,6 +289,7 @@ export default function Agents() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [rows, setRows] = useState<Loaded<AgentRow[]> | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<Record<string, AgentRuntimeStatus | null>>({});
+  const [credentialRotation, setCredentialRotation] = useState<Record<string, AgentCredentialRotationStatus | null>>({});
   const [profiles, setProfiles] = useState<Record<string, AgentProfile | null>>({});
   const [myRole, setMyRole] = useState<Role>();
   const [gateways, setGateways] = useState<Node[]>([]);
@@ -305,6 +325,7 @@ export default function Agents() {
       setGw("");
       setNotEntitled(false);
       setRuntimeStatus({});
+      setCredentialRotation({});
       setProfiles({});
       setMyRole(undefined);
 
@@ -344,11 +365,13 @@ export default function Agents() {
       }
       setRows({ ok: true, data: data as AgentRow[] });
 
+      let loadedRole: Role | undefined;
       if (currentUserId) {
         const members = await api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: id } } });
         if (!cancelled && members.data) {
           const member = members.data.find((candidate) => candidate.user_id === currentUserId);
-          setMyRole(member?.role as Role | undefined);
+          loadedRole = member?.role as Role | undefined;
+          setMyRole(loadedRole);
         }
       }
 
@@ -359,12 +382,20 @@ export default function Agents() {
           if (cancelled || profileResult.error || !profileResult.data) return;
           const profile = profileResult.data as AgentProfile;
           setProfiles((previous) => ({ ...previous, [agent.device_id]: profile }));
-          return api.GET(
+          void api.GET(
             "/api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status",
             { params: { path: { orgId: id, deviceId: agent.device_id } } },
           ).then((runtimeResult) => {
             if (cancelled || runtimeResult.error || !runtimeResult.data) return;
             setRuntimeStatus((previous) => ({ ...previous, [agent.device_id]: runtimeResult.data as AgentRuntimeStatus }));
+          });
+          if (!can(loadedRole, "agent_credential:rotate")) return;
+          void api.GET(
+            "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
+            { params: { path: { orgId: id, deviceId: agent.device_id } } },
+          ).then((rotationResult) => {
+            if (cancelled || rotationResult.error || !rotationResult.data) return;
+            setCredentialRotation((previous) => ({ ...previous, [agent.device_id]: rotationResult.data as AgentCredentialRotationStatus }));
           });
         });
       }
@@ -409,6 +440,32 @@ export default function Agents() {
       return;
     }
     setReload((n) => n + 1);
+  }
+
+  async function rotateCredential(agent: AgentRow) {
+    if (!orgId) return;
+    setProfileBusy(agent.device_id);
+    setProfileError(null);
+    const requested = await api.POST(
+      "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
+      { params: { path: { orgId, deviceId: agent.device_id } } },
+    );
+    if (requested.error) {
+      setProfileBusy(null);
+      setProfileError("Could not request credential rotation.");
+      return;
+    }
+    // Refetch server state; do not render optimistic status from the mutation.
+    const refreshed = await api.GET(
+      "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
+      { params: { path: { orgId, deviceId: agent.device_id } } },
+    );
+    setProfileBusy(null);
+    if (refreshed.error || !refreshed.data) {
+      setProfileError("Rotation was requested but its status could not be refreshed.");
+      return;
+    }
+    setCredentialRotation((previous) => ({ ...previous, [agent.device_id]: refreshed.data as AgentCredentialRotationStatus }));
   }
 
   async function enrol() {
@@ -590,10 +647,13 @@ export default function Agents() {
                     <AgentProfilePanel
                       profile={profile}
                       runtime={status ?? null}
+                      credentialRotation={credentialRotation[agent.device_id] ?? null}
                       editorVersion={profileEditorVersion}
                       canManageLifecycle={can(myRole, "member:manage")}
+                      canRotateCredential={can(myRole, "agent_credential:rotate")}
                       onSaveMetadata={(value) => void saveProfileMetadata(agent, value)}
                       onLifecycleChange={(next) => setConfirmLifecycle({ agent, status: next })}
+                      onRotateCredential={() => void rotateCredential(agent)}
                       disabled={profileBusy === agent.device_id}
                     />
                     {profileError && profileBusy === null && <p role="alert" className="text-xs text-danger">{profileError}</p>}
