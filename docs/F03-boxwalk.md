@@ -1,11 +1,12 @@
 # F03 managed-agent bootstrap boxwalk
 
-Status: **INCONCLUSIVE — current-source rerun required**. The approval-on
-same-process behavior passed on the authorized AWS development control plane
-and disposable Ubuntu 26.04 VM, but the shared source moved after the deployed
-API was built. The redacted rerun evidence and exact provenance gap are under
-`walk-artifacts/F03/20260815T081148Z/`. No run is currently counted as live-wire
-satisfaction for the final shared source.
+Status: **SATISFIES** for implementation commit
+`bb7a40621444f2e8569a07a0b73deda59aeb0811`. The exact-commit API, signed
+descriptor, runtime binaries, unit, and real node reporter were deployed to the
+authorized AWS development control plane and disposable Ubuntu 26.04 VM. The
+approval-on same-process flow, real handshake/liveness, restart, one-time
+replay, revoke, credential refusal, and scoped cleanup all passed. Redacted
+evidence is under `walk-artifacts/F03/20260815T091341Z/`.
 
 ## Preconditions and secret hygiene
 
@@ -109,7 +110,38 @@ private material belongs only in an ignored temporary directory.
    record the resource identifiers and successful cleanup in `cleanup.txt`.
    Do not delete shared or production data.
 
-## Current substitute evidence
+## Current live-wire evidence
+
+### Exact-commit AWS development walk (2026-08-15)
+
+Implementation commit `bb7a40621444f2e8569a07a0b73deda59aeb0811`
+produced the deployed API binary and the signed immutable
+`tunnex-build-bb7a40621444f2e8569a07a0b73deda59aeb0811` descriptor. The
+runtime binaries and unit were digest- and source-bound to that commit before
+the one-time token was issued.
+
+With device approval enabled, the released command started one runtime process
+at revision 0 with no interface. After a full pending poll cycle the MainPID
+was unchanged and `NRestarts=0`. Supported owner approval returned HTTP 204;
+without a manual start or restart, that same process applied revision 1. The
+real isolated node reporter and managed runtime completed a WireGuard
+handshake. The runtime status was desired/attempted/applied `1/1/1`,
+`connectivity=connected`, `health=ready`, `stale=false`; the released Agents
+payload reported `gateway_reporting=true`, `online=true`, and a fresh non-null
+handshake.
+
+A runtime service restart preserved revision 1 and advanced the handshake.
+Replaying the consumed bootstrap token with a fresh public key returned the
+uniform HTTP 401 refusal, created no second device, and left managed hashes and
+the interface unchanged. Canonical revoke returned HTTP 204; the next poll
+removed `runtime` and clean-exited with the unit inactive/enabled,
+`NRestarts=0`, systemd result `success`, and exit status 0. The revoked
+credential received HTTP 401. Cleanup removed only the disposable agent,
+gateway, reporter, runtime, namespace/interface, nft table, and scratch
+secrets; prerequisites and unrelated resources remained. See
+`walk-artifacts/F03/20260815T091341Z/`.
+
+## Historical substitute evidence
 
 ### Partial AWS development walks (2026-08-15)
 

@@ -1,0 +1,12 @@
+service_active_after_install=true
+service_enabled_after_install=true
+runtime_binary_sha256=cb3ad679e278a6079c3bcb320c2f7b709314f0ba317488c54c07e6545b523a50
+runtime_unit_sha256=29dd5518d31f60a2ddca9b116113a32054335fbddf2996da8131a29cfae093a6
+protect_system=strict
+no_new_privileges=false
+capability_bounding_set=CAP_NET_ADMIN
+ambient_capabilities=CAP_NET_ADMIN
+read_write_paths=/etc/wireguard /etc/tunnex-agent /var/lib/tunnex-agent
+device_allow=/dev/net/tun rw
+restrict_address_families=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ubuntu_apparmor_or_netlink_refusal_observed=false

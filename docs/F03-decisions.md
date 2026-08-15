@@ -1,12 +1,12 @@
 # F03 — Managed agent bootstrap and enrollment decisions
 
 This is the F03 story-close paper. It records measured behavior and the
-live-wire proof boundary. The authorized AWS development approval-on rerun
-passed behaviorally, but is **INCONCLUSIVE** for final current-source
-satisfaction because the shared API/status source moved after the deployed
-binary was built. Its redacted evidence and provenance gap are under
-`walk-artifacts/F03/20260815T081148Z/`. Story status remains a root-review and
-plan-ledger decision.
+live-wire proof boundary. The exact implementation commit
+`bb7a40621444f2e8569a07a0b73deda59aeb0811` passed the authorized AWS
+development approval-on walk with its API, signed descriptor, runtime, unit,
+and real reporter source- and digest-bound to that commit. Redacted evidence is
+under `walk-artifacts/F03/20260815T091341Z/`. The boxwalk is **SATISFIES**;
+story status remains a root-review and plan-ledger decision.
 
 ## Acceptance question
 

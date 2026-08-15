@@ -1,0 +1,6 @@
+replay_public_key=fresh-client-generated
+replay_http=401
+replay_error_class=invalid_bootstrap_token
+second_device_created=false
+managed_file_hashes_unchanged=true
+runtime_interface_after_replay=present

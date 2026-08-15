@@ -1,0 +1,7 @@
+environment=authorized AWS development control plane plus disposable Ubuntu 26.04 VM
+control_plane_edition=enterprise
+schema_version=93
+source_commit=bb7a40621444f2e8569a07a0b73deda59aeb0811
+organization=pseudonymized-disposable-org
+gateway=f03-parity-gw-20260815T091341Z
+agent=f03-parity-agent-20260815T091341Z
