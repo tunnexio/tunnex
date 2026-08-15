@@ -162,8 +162,9 @@ afterEach(() => {
 
 describe("released Agents route — F04 runtime facts", () => {
   it("requests credential rotation and renders only the refetched secret-free status", async () => {
-    let status: { device_id: string; current_revision: number; state: string; requested_revision: number | null; deadline: string | null } = {
+    let status: { device_id: string; current_revision: number; state: string; requested_revision: number | null; deadline: string | null; wireguard_current_revision: number; wireguard_state: string; wireguard_requested_revision: number | null } = {
       device_id: "device-a", current_revision: 1, state: "current", requested_revision: null, deadline: null,
+      wireguard_current_revision: 1, wireguard_state: "current", wireguard_requested_revision: null,
     };
     get.mockImplementation(async (path: string) => {
       if (path.endsWith("/nodes")) return { data: [{ id: "node-a", name: "gateway-a", status: "active", endpoint: "gw.example:51820" }] };
@@ -176,7 +177,7 @@ describe("released Agents route — F04 runtime facts", () => {
     });
     post.mockImplementation(async (path: string) => {
       if (path.endsWith("/credential-rotation")) {
-        status = { device_id: "device-a", current_revision: 1, state: "requested", requested_revision: 2, deadline: "2026-08-15T12:00:00Z" };
+        status = { device_id: "device-a", current_revision: 1, state: "requested", requested_revision: 2, deadline: "2026-08-15T12:00:00Z", wireguard_current_revision: 1, wireguard_state: "requested", wireguard_requested_revision: 2 };
         return { data: status, response: { status: 200 } };
       }
       return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
@@ -189,7 +190,7 @@ describe("released Agents route — F04 runtime facts", () => {
       "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
       { params: { path: { orgId: "org-a", deviceId: "device-a" } } },
     ));
-    await waitFor(() => expect(screen.getByText("Revision 1 · requested")).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText("Revision 1 · requested")).toHaveLength(2));
     const rotationGets = get.mock.calls.filter(([path]) => String(path).endsWith("/credential-rotation"));
     expect(rotationGets.length).toBeGreaterThanOrEqual(2);
     expect(document.body.textContent).not.toMatch(/tnx_runtime_|token_hash|[0-9a-f]{64}/i);

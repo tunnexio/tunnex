@@ -257,9 +257,11 @@ function AgentProfilePanel({
           <div>
             <div className="text-slate-500">Runtime credential</div>
             <div>Revision {credentialRotation.current_revision} · {credentialRotation.state}</div>
+            <div className="text-slate-500">WireGuard key</div>
+            <div>Revision {credentialRotation.wireguard_current_revision} · {credentialRotation.wireguard_state}</div>
             {credentialRotation.deadline && <div className="text-slate-500">Deadline {credentialRotation.deadline}</div>}
           </div>
-          <Button onClick={onRotateCredential} disabled={disabled || profile.status !== "active" || credentialRotation.state !== "current"}>
+          <Button onClick={onRotateCredential} disabled={disabled || profile.status !== "active" || credentialRotation.state !== "current" || credentialRotation.wireguard_state !== "current"}>
             Rotate credential
           </Button>
         </div>

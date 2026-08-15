@@ -67,6 +67,57 @@ WHERE current.org_id = $1 AND current.device_id = $2
   AND current.state = 'current' AND current.revoked_at IS NULL
   AND d.kind = 'agent' AND d.deleted_at IS NULL;
 
+-- name: RequestAgentWireGuardRotation :one
+INSERT INTO agent_wireguard_rotations (
+  device_id, org_id, current_revision, requested_revision, state,
+  requested_at, deadline, requested_by
+)
+SELECT d.id, d.org_id, 1, 2, 'requested', now(), $3, $4
+FROM devices d
+WHERE d.id = $2 AND d.org_id = $1 AND d.kind = 'agent'
+  AND d.status = 'active' AND d.deleted_at IS NULL
+ON CONFLICT (device_id) DO UPDATE
+SET requested_revision = agent_wireguard_rotations.current_revision + 1,
+    state = 'requested', candidate_public_key = NULL,
+    requested_at = now(), deadline = EXCLUDED.deadline,
+    requested_by = EXCLUDED.requested_by, staged_at = NULL,
+    updated_at = now()
+WHERE agent_wireguard_rotations.org_id = EXCLUDED.org_id
+  AND agent_wireguard_rotations.state = 'current'
+RETURNING agent_wireguard_rotations.*;
+
+-- name: GetAgentWireGuardRotation :one
+SELECT r.* FROM agent_wireguard_rotations r
+JOIN devices d ON d.id = r.device_id AND d.org_id = r.org_id
+WHERE r.org_id = $1 AND r.device_id = $2
+  AND d.kind = 'agent' AND d.deleted_at IS NULL;
+
+-- name: ExpireAgentWireGuardRotation :exec
+UPDATE agent_wireguard_rotations
+SET state = 'current', requested_revision = NULL,
+    candidate_public_key = NULL, requested_at = NULL, deadline = NULL,
+    requested_by = NULL, staged_at = NULL, updated_at = now()
+WHERE org_id = $1 AND device_id = $2 AND state <> 'current'
+  AND deadline <= now();
+
+-- name: PrepareAgentWireGuardCandidate :one
+UPDATE agent_wireguard_rotations r
+SET state = 'prepared', candidate_public_key = $3, updated_at = now()
+FROM devices d
+WHERE r.org_id = $1 AND r.device_id = $2
+  AND d.id = r.device_id AND d.org_id = r.org_id
+  AND d.kind = 'agent' AND d.status = 'active' AND d.deleted_at IS NULL
+  AND r.requested_revision = $4 AND r.deadline > now()
+  AND r.state IN ('requested', 'prepared')
+  AND (r.candidate_public_key IS NULL OR r.candidate_public_key = $3)
+  AND $3 ~ '^[A-Za-z0-9+/]{43}=$' AND $3 <> d.public_key
+  AND NOT EXISTS (
+    SELECT 1 FROM devices collision
+    WHERE collision.node_id = d.node_id AND collision.public_key = $3
+      AND collision.id <> d.id AND collision.deleted_at IS NULL
+  )
+RETURNING r.*;
+
 -- name: PrepareAgentRuntimeCredentialCandidate :one
 WITH current_credential AS (
   SELECT current.* FROM agent_runtime_credentials current

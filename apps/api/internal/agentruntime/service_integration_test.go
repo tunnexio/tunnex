@@ -57,7 +57,7 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	if got, err := svc.Authenticate(ctx, valid); err != nil || got.OrgID != org || got.DeviceID != agent {
 		t.Fatalf("pending runtime auth = %#v, %v; want identity-only wait", got, err)
 	}
-	if cfg, unchanged, err := svc.Poll(ctx, Identity{OrgID: org, DeviceID: agent}, 0, "v-f04"); err != nil || !unchanged || cfg.Revision != 0 {
+	if cfg, unchanged, err := svc.Poll(ctx, Identity{OrgID: org, DeviceID: agent}, 0, 1, "v-f04"); err != nil || !unchanged || cfg.Revision != 0 {
 		t.Fatalf("pending runtime poll = %#v, unchanged=%v, err=%v; want no-config wait", cfg, unchanged, err)
 	}
 	seed(`UPDATE devices SET status='active' WHERE id=$1`, agent)
@@ -81,25 +81,25 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	}
 
 	id := Identity{OrgID: org, DeviceID: agent}
-	cfg, unchanged, err := svc.Poll(ctx, id, 0, "v-f04")
+	cfg, unchanged, err := svc.Poll(ctx, id, 0, 1, "v-f04")
 	if err != nil || unchanged || cfg.Revision != 1 || cfg.DeviceID != agent || cfg.OrgID != org || cfg.Address != "10.97.0.2/32" {
 		t.Fatalf("poll initial = %#v, unchanged=%v, err=%v", cfg, unchanged, err)
 	}
-	if _, unchanged, err := svc.Poll(ctx, id, 1, "v-f04"); err != nil || !unchanged {
+	if _, unchanged, err := svc.Poll(ctx, id, 1, 1, "v-f04"); err != nil || !unchanged {
 		t.Fatalf("poll unchanged = unchanged=%v, err=%v", unchanged, err)
 	}
 	seed(`UPDATE devices SET status='suspended' WHERE id=$1`, agent)
 	if _, err := svc.Authenticate(ctx, valid); err != ErrUnauthorized {
 		t.Fatalf("suspended runtime auth = %v, want uniform unauthorized", err)
 	}
-	if _, _, err := svc.Poll(ctx, id, 0, "v-f04"); err != ErrRuntimeStateMissing {
+	if _, _, err := svc.Poll(ctx, id, 0, 1, "v-f04"); err != ErrRuntimeStateMissing {
 		t.Fatalf("suspended poll = %v, want no config", err)
 	}
 	seed(`UPDATE devices SET status='active' WHERE id=$1`, agent)
 	if _, err := q.BumpAgentDesiredRevision(ctx, sqlc.BumpAgentDesiredRevisionParams{DeviceID: agent, OrgID: org}); err != nil {
 		t.Fatal(err)
 	}
-	if cfg, unchanged, err := svc.Poll(ctx, id, 1, "v-f04"); err != nil || unchanged || cfg.Revision != 2 {
+	if cfg, unchanged, err := svc.Poll(ctx, id, 1, 1, "v-f04"); err != nil || unchanged || cfg.Revision != 2 {
 		t.Fatalf("resumed poll = %#v, unchanged=%v, err=%v", cfg, unchanged, err)
 	}
 	if err := svc.Report(ctx, id, 0, 2, "v-f04", ""); err != ErrInvalidReport {
@@ -162,7 +162,7 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	if err != nil || oldIdentity.CredentialRevision != 1 {
 		t.Fatalf("old identity = %#v, %v", oldIdentity, err)
 	}
-	if cfg, unchanged, err := svc.Poll(ctx, oldIdentity, 4, "v-f05"); err != nil || unchanged || cfg.CredentialRotationRevision == nil || *cfg.CredentialRotationRevision != 2 {
+	if cfg, unchanged, err := svc.Poll(ctx, oldIdentity, 4, 1, "v-f05"); err != nil || unchanged || cfg.CredentialRotationRevision == nil || *cfg.CredentialRotationRevision != 2 {
 		t.Fatalf("rotation poll = %#v, unchanged=%v, err=%v", cfg, unchanged, err)
 	}
 	candidate := "tnx_runtime_candidate_" + agent.String()
@@ -195,12 +195,33 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	wgRequested, err := q.RequestAgentWireGuardRotation(ctx, sqlc.RequestAgentWireGuardRotationParams{
+		OrgID: org, ID: agent,
+		Deadline:    pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+		RequestedBy: pgtype.UUID{Bytes: owner, Valid: true},
+	})
+	if err != nil || wgRequested.RequestedRevision == nil || *wgRequested.RequestedRevision != 2 {
+		t.Fatalf("request WireGuard rotation = %#v, %v", wgRequested, err)
+	}
+	if cfg, unchanged, err := svc.Poll(ctx, candidateIdentity, 4, 1, "v-f05"); err != nil || unchanged || cfg.WireGuardRotationRevision == nil || *cfg.WireGuardRotationRevision != 2 || cfg.WireGuardRotationState == nil || *cfg.WireGuardRotationState != "requested" {
+		t.Fatalf("WireGuard rotation poll = %#v, unchanged=%v, err=%v", cfg, unchanged, err)
+	}
+	wgCandidate := "WlEiCXJIkuDu09Ji0dvI1RwdkbLwkZ+qdR/M0r6/I94="
+	if err := svc.PrepareWireGuardCandidate(ctx, candidateIdentity, 2, wgCandidate); err != nil {
+		t.Fatalf("prepare WireGuard candidate: %v", err)
+	}
+	if err := svc.PrepareWireGuardCandidate(ctx, candidateIdentity, 2, wgCandidate); err != nil {
+		t.Fatalf("idempotent WireGuard prepare: %v", err)
+	}
 	next := "tnx_runtime_cancelled_" + agent.String()
 	nextHash := sha256.Sum256([]byte(next))
 	if err := svc.PrepareCredentialCandidate(ctx, candidateIdentity, 3, fmt.Sprintf("%x", nextHash[:])); err != nil {
 		t.Fatal(err)
 	}
 	seed(`UPDATE devices SET status='suspended' WHERE id=$1`, agent)
+	if wg, err := q.GetAgentWireGuardRotation(ctx, sqlc.GetAgentWireGuardRotationParams{OrgID: org, DeviceID: agent}); err != nil || wg.State != "current" || wg.CandidatePublicKey != nil {
+		t.Fatalf("suspend did not cancel WireGuard candidate = %#v, %v", wg, err)
+	}
 	if _, err := svc.Authenticate(ctx, next); err != ErrUnauthorized {
 		t.Fatalf("suspended candidate = %v, want unauthorized", err)
 	}

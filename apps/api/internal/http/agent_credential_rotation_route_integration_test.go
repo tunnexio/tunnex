@@ -61,7 +61,8 @@ func TestAgentCredentialRotationEnterpriseRoutePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	postBody, ok := post.(api.RequestAgentCredentialRotation200JSONResponse)
-	if !ok || postBody.Body.State != "requested" || postBody.Body.RequestedRevision == nil || *postBody.Body.RequestedRevision != 2 {
+	if !ok || postBody.Body.State != "requested" || postBody.Body.RequestedRevision == nil || *postBody.Body.RequestedRevision != 2 ||
+		postBody.Body.WireguardState != "requested" || postBody.Body.WireguardRequestedRevision == nil || *postBody.Body.WireguardRequestedRevision != 2 {
 		t.Fatalf("rotation response = %#v", post)
 	}
 	got, err := s.GetAgentCredentialRotation(principal(owner, rbac.RoleOwner), getReq)
@@ -69,7 +70,7 @@ func TestAgentCredentialRotationEnterpriseRoutePostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded, _ := json.Marshal(got)
-	if strings.Contains(strings.ToLower(string(encoded)), "token_hash") || strings.Contains(string(encoded), "tnx_runtime_") || strings.Contains(string(encoded), string(hash[:])) {
+	if strings.Contains(strings.ToLower(string(encoded)), "token_hash") || strings.Contains(strings.ToLower(string(encoded)), "public_key") || strings.Contains(string(encoded), "tnx_runtime_") || strings.Contains(string(encoded), string(hash[:])) {
 		t.Fatalf("rotation projection leaked secret/hash: %s", encoded)
 	}
 	var audits int

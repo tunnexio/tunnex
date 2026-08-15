@@ -684,6 +684,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/runtime/wireguard-candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare a locally generated WireGuard public-key successor
+         * @description Machine-only endpoint authenticated by the current runtime bearer. It accepts only the requested revision and candidate public key. The private key is generated and retained on the agent host. Repeating the same revision and public key is idempotent.
+         */
+        post: operations["prepareAgentRuntimeWireGuard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agents/{deviceId}": {
         parameters: {
             query?: never;
@@ -3364,12 +3384,33 @@ export interface components {
              * @description Non-secret requested successor revision; omitted when no request is pending.
              */
             credential_rotation_revision?: number | null;
+            /**
+             * Format: int64
+             * @description Last handshake-committed WireGuard key revision.
+             */
+            wireguard_current_revision: number;
+            /**
+             * Format: int64
+             * @description Requested locally generated WireGuard successor revision.
+             */
+            wireguard_rotation_revision?: number | null;
+            /**
+             * @description Non-secret stage reached by the candidate on the assigned gateway.
+             * @enum {string|null}
+             */
+            wireguard_rotation_state?: "requested" | "prepared" | "staged" | null;
         };
         AgentCredentialCandidate: {
             /** Format: int64 */
             revision: number;
             /** @description Lowercase hexadecimal SHA-256 of a bearer generated only on the agent host. */
             token_hash: string;
+        };
+        AgentWireGuardCandidate: {
+            /** Format: int64 */
+            revision: number;
+            /** @description Public half of a WireGuard key generated only on the agent host. */
+            public_key: string;
         };
         AgentCredentialRotationStatus: {
             /** Format: uuid */
@@ -3382,6 +3423,12 @@ export interface components {
             requested_revision?: number | null;
             /** Format: date-time */
             deadline?: string | null;
+            /** Format: int64 */
+            wireguard_current_revision: number;
+            /** @enum {string} */
+            wireguard_state: "current" | "requested" | "prepared" | "staged";
+            /** Format: int64 */
+            wireguard_requested_revision?: number | null;
         };
         AgentRuntimeSetting: {
             /** @description Explicit organization opt-in for F04 managed runtime synchronization. */
@@ -4739,6 +4786,8 @@ export interface operations {
                 client_version: string;
                 /** @description Bounded long-poll wait requested by the runtime; the server may return sooner. */
                 wait_seconds?: number;
+                /** @description Last handshake-committed WireGuard key revision known by the runtime. */
+                wireguard_revision?: number;
             };
             header?: never;
             path?: never;
@@ -4808,6 +4857,31 @@ export interface operations {
         };
         responses: {
             /** @description Candidate hash prepared. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
+    prepareAgentRuntimeWireGuard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentWireGuardCandidate"];
+            };
+        };
+        responses: {
+            /** @description Candidate public key prepared. */
             204: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];

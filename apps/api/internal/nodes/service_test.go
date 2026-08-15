@@ -26,6 +26,20 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 )
 
+func TestWarmWireGuardCandidateNeverDuplicatesAllowedIPs(t *testing.T) {
+	currentKey := "kJ+D3mNKUQzae+23TrhT0g08UTSh9DfxXpKVyGw28EE="
+	candidateKey := "WlEiCXJIkuDu09Ji0dvI1RwdkbLwkZ+qdR/M0r6/I94="
+	peers := []Peer{{PublicKey: currentKey, AllowedIPs: []string{"10.99.0.7/32"}}}
+	peers = appendWarmWireGuardCandidates(peers, map[string]struct{}{currentKey: {}}, []sqlc.ListPreparedAgentWireGuardPeersForNodeRow{{CandidatePublicKey: &candidateKey}})
+	if len(peers) != 2 || len(peers[0].AllowedIPs) != 1 || len(peers[1].AllowedIPs) != 0 {
+		t.Fatalf("warm stage duplicated crypto routes: %#v", peers)
+	}
+	peers = appendWarmWireGuardCandidates(peers, map[string]struct{}{currentKey: {}, candidateKey: {}}, []sqlc.ListPreparedAgentWireGuardPeersForNodeRow{{CandidatePublicKey: &candidateKey}})
+	if len(peers) != 2 {
+		t.Fatalf("duplicate candidate peer appended: %#v", peers)
+	}
+}
+
 func genCSR(t *testing.T, cn string) string {
 	t.Helper()
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)

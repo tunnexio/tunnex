@@ -211,6 +211,25 @@ func (q *Queries) ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg 
 	return err
 }
 
+const expireAgentWireGuardRotation = `-- name: ExpireAgentWireGuardRotation :exec
+UPDATE agent_wireguard_rotations
+SET state = 'current', requested_revision = NULL,
+    candidate_public_key = NULL, requested_at = NULL, deadline = NULL,
+    requested_by = NULL, staged_at = NULL, updated_at = now()
+WHERE org_id = $1 AND device_id = $2 AND state <> 'current'
+  AND deadline <= now()
+`
+
+type ExpireAgentWireGuardRotationParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+func (q *Queries) ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAgentWireGuardRotationParams) error {
+	_, err := q.db.Exec(ctx, expireAgentWireGuardRotation, arg.OrgID, arg.DeviceID)
+	return err
+}
+
 const getAgentBootstrapToken = `-- name: GetAgentBootstrapToken :one
 SELECT id, org_id, gateway_node_id, agent_name, token_hash, expires_at, consumed_at, consumed_device_id, issued_by, created_at FROM agent_bootstrap_tokens
 WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
@@ -302,6 +321,38 @@ func (q *Queries) GetAgentRuntimeCredentialRotation(ctx context.Context, arg Get
 	return i, err
 }
 
+const getAgentWireGuardRotation = `-- name: GetAgentWireGuardRotation :one
+SELECT r.device_id, r.org_id, r.current_revision, r.requested_revision, r.state, r.candidate_public_key, r.requested_at, r.deadline, r.requested_by, r.staged_at, r.completed_at, r.updated_at FROM agent_wireguard_rotations r
+JOIN devices d ON d.id = r.device_id AND d.org_id = r.org_id
+WHERE r.org_id = $1 AND r.device_id = $2
+  AND d.kind = 'agent' AND d.deleted_at IS NULL
+`
+
+type GetAgentWireGuardRotationParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+func (q *Queries) GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error) {
+	row := q.db.QueryRow(ctx, getAgentWireGuardRotation, arg.OrgID, arg.DeviceID)
+	var i AgentWireguardRotation
+	err := row.Scan(
+		&i.DeviceID,
+		&i.OrgID,
+		&i.CurrentRevision,
+		&i.RequestedRevision,
+		&i.State,
+		&i.CandidatePublicKey,
+		&i.RequestedAt,
+		&i.Deadline,
+		&i.RequestedBy,
+		&i.StagedAt,
+		&i.CompletedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const prepareAgentRuntimeCredentialCandidate = `-- name: PrepareAgentRuntimeCredentialCandidate :one
 WITH current_credential AS (
   SELECT current.id, current.org_id, current.device_id, current.token_hash, current.created_at, current.revoked_at, current.revision, current.state, current.candidate_expires_at, current.activated_at, current.terminal_at, current.rotation_requested_at, current.rotation_deadline, current.rotation_requested_by FROM agent_runtime_credentials current
@@ -378,6 +429,57 @@ func (q *Queries) PrepareAgentRuntimeCredentialCandidate(ctx context.Context, ar
 	return i, err
 }
 
+const prepareAgentWireGuardCandidate = `-- name: PrepareAgentWireGuardCandidate :one
+UPDATE agent_wireguard_rotations r
+SET state = 'prepared', candidate_public_key = $3, updated_at = now()
+FROM devices d
+WHERE r.org_id = $1 AND r.device_id = $2
+  AND d.id = r.device_id AND d.org_id = r.org_id
+  AND d.kind = 'agent' AND d.status = 'active' AND d.deleted_at IS NULL
+  AND r.requested_revision = $4 AND r.deadline > now()
+  AND r.state IN ('requested', 'prepared')
+  AND (r.candidate_public_key IS NULL OR r.candidate_public_key = $3)
+  AND $3 ~ '^[A-Za-z0-9+/]{43}=$' AND $3 <> d.public_key
+  AND NOT EXISTS (
+    SELECT 1 FROM devices collision
+    WHERE collision.node_id = d.node_id AND collision.public_key = $3
+      AND collision.id <> d.id AND collision.deleted_at IS NULL
+  )
+RETURNING r.device_id, r.org_id, r.current_revision, r.requested_revision, r.state, r.candidate_public_key, r.requested_at, r.deadline, r.requested_by, r.staged_at, r.completed_at, r.updated_at
+`
+
+type PrepareAgentWireGuardCandidateParams struct {
+	OrgID              uuid.UUID `json:"org_id"`
+	DeviceID           uuid.UUID `json:"device_id"`
+	CandidatePublicKey *string   `json:"candidate_public_key"`
+	RequestedRevision  *int64    `json:"requested_revision"`
+}
+
+func (q *Queries) PrepareAgentWireGuardCandidate(ctx context.Context, arg PrepareAgentWireGuardCandidateParams) (AgentWireguardRotation, error) {
+	row := q.db.QueryRow(ctx, prepareAgentWireGuardCandidate,
+		arg.OrgID,
+		arg.DeviceID,
+		arg.CandidatePublicKey,
+		arg.RequestedRevision,
+	)
+	var i AgentWireguardRotation
+	err := row.Scan(
+		&i.DeviceID,
+		&i.OrgID,
+		&i.CurrentRevision,
+		&i.RequestedRevision,
+		&i.State,
+		&i.CandidatePublicKey,
+		&i.RequestedAt,
+		&i.Deadline,
+		&i.RequestedBy,
+		&i.StagedAt,
+		&i.CompletedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const requestAgentRuntimeCredentialRotation = `-- name: RequestAgentRuntimeCredentialRotation :one
 UPDATE agent_runtime_credentials current
 SET rotation_requested_at = now(), rotation_deadline = $3,
@@ -425,6 +527,58 @@ func (q *Queries) RequestAgentRuntimeCredentialRotation(ctx context.Context, arg
 		&i.RotationRequestedAt,
 		&i.RotationDeadline,
 		&i.RotationRequestedBy,
+	)
+	return i, err
+}
+
+const requestAgentWireGuardRotation = `-- name: RequestAgentWireGuardRotation :one
+INSERT INTO agent_wireguard_rotations (
+  device_id, org_id, current_revision, requested_revision, state,
+  requested_at, deadline, requested_by
+)
+SELECT d.id, d.org_id, 1, 2, 'requested', now(), $3, $4
+FROM devices d
+WHERE d.id = $2 AND d.org_id = $1 AND d.kind = 'agent'
+  AND d.status = 'active' AND d.deleted_at IS NULL
+ON CONFLICT (device_id) DO UPDATE
+SET requested_revision = agent_wireguard_rotations.current_revision + 1,
+    state = 'requested', candidate_public_key = NULL,
+    requested_at = now(), deadline = EXCLUDED.deadline,
+    requested_by = EXCLUDED.requested_by, staged_at = NULL,
+    updated_at = now()
+WHERE agent_wireguard_rotations.org_id = EXCLUDED.org_id
+  AND agent_wireguard_rotations.state = 'current'
+RETURNING agent_wireguard_rotations.device_id, agent_wireguard_rotations.org_id, agent_wireguard_rotations.current_revision, agent_wireguard_rotations.requested_revision, agent_wireguard_rotations.state, agent_wireguard_rotations.candidate_public_key, agent_wireguard_rotations.requested_at, agent_wireguard_rotations.deadline, agent_wireguard_rotations.requested_by, agent_wireguard_rotations.staged_at, agent_wireguard_rotations.completed_at, agent_wireguard_rotations.updated_at
+`
+
+type RequestAgentWireGuardRotationParams struct {
+	OrgID       uuid.UUID          `json:"org_id"`
+	ID          uuid.UUID          `json:"id"`
+	Deadline    pgtype.Timestamptz `json:"deadline"`
+	RequestedBy pgtype.UUID        `json:"requested_by"`
+}
+
+func (q *Queries) RequestAgentWireGuardRotation(ctx context.Context, arg RequestAgentWireGuardRotationParams) (AgentWireguardRotation, error) {
+	row := q.db.QueryRow(ctx, requestAgentWireGuardRotation,
+		arg.OrgID,
+		arg.ID,
+		arg.Deadline,
+		arg.RequestedBy,
+	)
+	var i AgentWireguardRotation
+	err := row.Scan(
+		&i.DeviceID,
+		&i.OrgID,
+		&i.CurrentRevision,
+		&i.RequestedRevision,
+		&i.State,
+		&i.CandidatePublicKey,
+		&i.RequestedAt,
+		&i.Deadline,
+		&i.RequestedBy,
+		&i.StagedAt,
+		&i.CompletedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

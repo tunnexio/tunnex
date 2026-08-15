@@ -22,6 +22,9 @@ func TestAgentCredentialRotationMigrationContract(t *testing.T) {
 		"agent_runtime_credentials_one_candidate_key", "rotation_deadline",
 		"devices_f05_runtime_credential_lifecycle", "NEW.status = 'revoked'",
 		"f05_bound_runtime_credential_history", "position > 10",
+		"CREATE TABLE agent_wireguard_rotations", "candidate_public_key",
+		"state IN ('current', 'requested', 'prepared', 'staged')",
+		"devices_f05_wireguard_rotation_lifecycle",
 	} {
 		if !strings.Contains(upText, required) {
 			t.Fatalf("0094 up missing %q", required)
@@ -30,6 +33,7 @@ func TestAgentCredentialRotationMigrationContract(t *testing.T) {
 	for _, required := range []string{
 		"refusing to roll back 0094", "revision <> 1", "state <> 'current'",
 		"rotation_requested_at IS NOT NULL", "DROP TRIGGER devices_f05_runtime_credential_lifecycle",
+		"SELECT 1 FROM agent_wireguard_rotations", "DROP TABLE agent_wireguard_rotations",
 	} {
 		if !strings.Contains(downText, required) {
 			t.Fatalf("0094 down missing preservation guard %q", required)
@@ -50,6 +54,8 @@ func TestAgentCredentialRotationQueryContract(t *testing.T) {
 		"PrepareAgentRuntimeCredentialCandidate", "current.rotation_deadline > now()",
 		"agent_runtime_credentials.token_hash = EXCLUDED.token_hash", "AuthenticateAgentRuntimeCredential",
 		"ELSE 'superseded'", "credential.id = matched.id THEN 'current'",
+		"PrepareAgentWireGuardCandidate", "candidate_public_key = $3",
+		"candidate_public_key IS NULL OR r.candidate_public_key = $3",
 	} {
 		if !strings.Contains(s, required) {
 			t.Fatalf("rotation query contract missing %q", required)

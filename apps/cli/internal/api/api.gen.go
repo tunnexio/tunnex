@@ -45,6 +45,14 @@ const (
 	AgentCredentialRotationStatusStateRequested AgentCredentialRotationStatusState = "requested"
 )
 
+// Defines values for AgentCredentialRotationStatusWireguardState.
+const (
+	AgentCredentialRotationStatusWireguardStateCurrent   AgentCredentialRotationStatusWireguardState = "current"
+	AgentCredentialRotationStatusWireguardStatePrepared  AgentCredentialRotationStatusWireguardState = "prepared"
+	AgentCredentialRotationStatusWireguardStateRequested AgentCredentialRotationStatusWireguardState = "requested"
+	AgentCredentialRotationStatusWireguardStateStaged    AgentCredentialRotationStatusWireguardState = "staged"
+)
+
 // Defines values for AgentProfileStatus.
 const (
 	AgentProfileStatusActive    AgentProfileStatus = "active"
@@ -280,6 +288,13 @@ const (
 	Scale     LicenseStatusTier = "scale"
 	Starter   LicenseStatusTier = "starter"
 	Trial     LicenseStatusTier = "trial"
+)
+
+// Defines values for ManagedAgentConfigWireguardRotationState.
+const (
+	ManagedAgentConfigWireguardRotationStatePrepared  ManagedAgentConfigWireguardRotationState = "prepared"
+	ManagedAgentConfigWireguardRotationStateRequested ManagedAgentConfigWireguardRotationState = "requested"
+	ManagedAgentConfigWireguardRotationStateStaged    ManagedAgentConfigWireguardRotationState = "staged"
 )
 
 // Defines values for MemberRole.
@@ -667,15 +682,21 @@ type AgentCredentialCandidate struct {
 
 // AgentCredentialRotationStatus defines model for AgentCredentialRotationStatus.
 type AgentCredentialRotationStatus struct {
-	CurrentRevision   int64                              `json:"current_revision"`
-	Deadline          *time.Time                         `json:"deadline"`
-	DeviceId          openapi_types.UUID                 `json:"device_id"`
-	RequestedRevision *int64                             `json:"requested_revision"`
-	State             AgentCredentialRotationStatusState `json:"state"`
+	CurrentRevision            int64                                       `json:"current_revision"`
+	Deadline                   *time.Time                                  `json:"deadline"`
+	DeviceId                   openapi_types.UUID                          `json:"device_id"`
+	RequestedRevision          *int64                                      `json:"requested_revision"`
+	State                      AgentCredentialRotationStatusState          `json:"state"`
+	WireguardCurrentRevision   int64                                       `json:"wireguard_current_revision"`
+	WireguardRequestedRevision *int64                                      `json:"wireguard_requested_revision"`
+	WireguardState             AgentCredentialRotationStatusWireguardState `json:"wireguard_state"`
 }
 
 // AgentCredentialRotationStatusState defines model for AgentCredentialRotationStatus.State.
 type AgentCredentialRotationStatusState string
+
+// AgentCredentialRotationStatusWireguardState defines model for AgentCredentialRotationStatus.WireguardState.
+type AgentCredentialRotationStatusWireguardState string
 
 // AgentProfile defines model for AgentProfile.
 type AgentProfile struct {
@@ -745,6 +766,13 @@ type AgentRuntimeStatusHealth string
 
 // AgentRuntimeStatusLastErrorCode Last bounded stable runtime error, never raw runtime output.
 type AgentRuntimeStatusLastErrorCode string
+
+// AgentWireGuardCandidate defines model for AgentWireGuardCandidate.
+type AgentWireGuardCandidate struct {
+	// PublicKey Public half of a WireGuard key generated only on the agent host.
+	PublicKey string `json:"public_key"`
+	Revision  int64  `json:"revision"`
+}
 
 // AssignMachineCredentialOwnerRequest defines model for AssignMachineCredentialOwnerRequest.
 type AssignMachineCredentialOwnerRequest struct {
@@ -1524,7 +1552,19 @@ type ManagedAgentConfig struct {
 	OrgId               openapi_types.UUID `json:"org_id"`
 	PersistentKeepalive int                `json:"persistent_keepalive"`
 	Revision            int64              `json:"revision"`
+
+	// WireguardCurrentRevision Last handshake-committed WireGuard key revision.
+	WireguardCurrentRevision int64 `json:"wireguard_current_revision"`
+
+	// WireguardRotationRevision Requested locally generated WireGuard successor revision.
+	WireguardRotationRevision *int64 `json:"wireguard_rotation_revision"`
+
+	// WireguardRotationState Non-secret stage reached by the candidate on the assigned gateway.
+	WireguardRotationState *ManagedAgentConfigWireguardRotationState `json:"wireguard_rotation_state"`
 }
+
+// ManagedAgentConfigWireguardRotationState Non-secret stage reached by the candidate on the assigned gateway.
+type ManagedAgentConfigWireguardRotationState string
 
 // Member defines model for Member.
 type Member struct {
@@ -2195,6 +2235,9 @@ type PollAgentRuntimeParams struct {
 
 	// WaitSeconds Bounded long-poll wait requested by the runtime; the server may return sooner.
 	WaitSeconds *int `form:"wait_seconds,omitempty" json:"wait_seconds,omitempty"`
+
+	// WireguardRevision Last handshake-committed WireGuard key revision known by the runtime.
+	WireguardRevision *int64 `form:"wireguard_revision,omitempty" json:"wireguard_revision,omitempty"`
 }
 
 // ChangePasswordJSONBody defines parameters for ChangePassword.
@@ -2283,6 +2326,9 @@ type PrepareAgentRuntimeCredentialJSONRequestBody = AgentCredentialCandidate
 
 // ReportAgentRuntimeJSONRequestBody defines body for ReportAgentRuntime for application/json ContentType.
 type ReportAgentRuntimeJSONRequestBody = AgentRuntimeReport
+
+// PrepareAgentRuntimeWireGuardJSONRequestBody defines body for PrepareAgentRuntimeWireGuard for application/json ContentType.
+type PrepareAgentRuntimeWireGuardJSONRequestBody = AgentWireGuardCandidate
 
 // CliAuthorizeJSONRequestBody defines body for CliAuthorize for application/json ContentType.
 type CliAuthorizeJSONRequestBody = CliAuthorizeRequest
@@ -2587,6 +2633,11 @@ type ClientInterface interface {
 	ReportAgentRuntimeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ReportAgentRuntime(ctx context.Context, body ReportAgentRuntimeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PrepareAgentRuntimeWireGuardWithBody request with any body
+	PrepareAgentRuntimeWireGuardWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PrepareAgentRuntimeWireGuard(ctx context.Context, body PrepareAgentRuntimeWireGuardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CliAuthorizeWithBody request with any body
 	CliAuthorizeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3353,6 +3404,30 @@ func (c *Client) ReportAgentRuntimeWithBody(ctx context.Context, contentType str
 
 func (c *Client) ReportAgentRuntime(ctx context.Context, body ReportAgentRuntimeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReportAgentRuntimeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PrepareAgentRuntimeWireGuardWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareAgentRuntimeWireGuardRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PrepareAgentRuntimeWireGuard(ctx context.Context, body PrepareAgentRuntimeWireGuardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrepareAgentRuntimeWireGuardRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6169,6 +6244,22 @@ func NewPollAgentRuntimeRequest(server string, params *PollAgentRuntimeParams) (
 
 		}
 
+		if params.WireguardRevision != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "wireguard_revision", runtime.ParamLocationQuery, *params.WireguardRevision); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -6201,6 +6292,46 @@ func NewReportAgentRuntimeRequestWithBody(server string, contentType string, bod
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/agent/runtime/report")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPrepareAgentRuntimeWireGuardRequest calls the generic PrepareAgentRuntimeWireGuard builder with application/json body
+func NewPrepareAgentRuntimeWireGuardRequest(server string, body PrepareAgentRuntimeWireGuardJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPrepareAgentRuntimeWireGuardRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPrepareAgentRuntimeWireGuardRequestWithBody generates requests for PrepareAgentRuntimeWireGuard with any type of body
+func NewPrepareAgentRuntimeWireGuardRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/wireguard-candidate")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -12325,6 +12456,11 @@ type ClientWithResponsesInterface interface {
 
 	ReportAgentRuntimeWithResponse(ctx context.Context, body ReportAgentRuntimeJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportAgentRuntimeResponse, error)
 
+	// PrepareAgentRuntimeWireGuardWithBodyWithResponse request with any body
+	PrepareAgentRuntimeWireGuardWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeWireGuardResponse, error)
+
+	PrepareAgentRuntimeWireGuardWithResponse(ctx context.Context, body PrepareAgentRuntimeWireGuardJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeWireGuardResponse, error)
+
 	// CliAuthorizeWithBodyWithResponse request with any body
 	CliAuthorizeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CliAuthorizeResponse, error)
 
@@ -13107,6 +13243,29 @@ func (r ReportAgentRuntimeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ReportAgentRuntimeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PrepareAgentRuntimeWireGuardResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *RuntimeUnauthorized
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PrepareAgentRuntimeWireGuardResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PrepareAgentRuntimeWireGuardResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -16422,6 +16581,23 @@ func (c *ClientWithResponses) ReportAgentRuntimeWithResponse(ctx context.Context
 	return ParseReportAgentRuntimeResponse(rsp)
 }
 
+// PrepareAgentRuntimeWireGuardWithBodyWithResponse request with arbitrary body returning *PrepareAgentRuntimeWireGuardResponse
+func (c *ClientWithResponses) PrepareAgentRuntimeWireGuardWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeWireGuardResponse, error) {
+	rsp, err := c.PrepareAgentRuntimeWireGuardWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareAgentRuntimeWireGuardResponse(rsp)
+}
+
+func (c *ClientWithResponses) PrepareAgentRuntimeWireGuardWithResponse(ctx context.Context, body PrepareAgentRuntimeWireGuardJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeWireGuardResponse, error) {
+	rsp, err := c.PrepareAgentRuntimeWireGuard(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrepareAgentRuntimeWireGuardResponse(rsp)
+}
+
 // CliAuthorizeWithBodyWithResponse request with arbitrary body returning *CliAuthorizeResponse
 func (c *ClientWithResponses) CliAuthorizeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CliAuthorizeResponse, error) {
 	rsp, err := c.CliAuthorizeWithBody(ctx, contentType, body, reqEditors...)
@@ -18483,6 +18659,39 @@ func ParseReportAgentRuntimeResponse(rsp *http.Response) (*ReportAgentRuntimeRes
 	}
 
 	response := &ReportAgentRuntimeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePrepareAgentRuntimeWireGuardResponse parses an HTTP response from a PrepareAgentRuntimeWireGuardWithResponse call
+func ParsePrepareAgentRuntimeWireGuardResponse(rsp *http.Response) (*PrepareAgentRuntimeWireGuardResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PrepareAgentRuntimeWireGuardResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

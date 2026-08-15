@@ -30,6 +30,72 @@ func (q *Queries) ClearNodePolicyDesyncSince(ctx context.Context, arg ClearNodeP
 	return err
 }
 
+const commitAgentWireGuardCandidate = `-- name: CommitAgentWireGuardCandidate :one
+WITH eligible AS (
+  SELECT r.device_id, r.requested_revision, r.candidate_public_key
+  FROM agent_wireguard_rotations r
+  JOIN devices d ON d.id = r.device_id AND d.org_id = r.org_id
+  WHERE d.node_id = $1 AND d.status = 'active' AND d.deleted_at IS NULL
+    AND r.candidate_public_key = $2 AND r.state = 'staged'
+    AND r.deadline > now() AND $3::timestamptz IS NOT NULL
+  FOR UPDATE OF r, d
+), promoted AS (
+  UPDATE devices d
+  SET public_key = eligible.candidate_public_key, updated_at = now()
+  FROM eligible WHERE d.id = eligible.device_id
+  RETURNING d.id, d.node_id, eligible.requested_revision
+), completed AS (
+  UPDATE agent_wireguard_rotations r
+  SET current_revision = promoted.requested_revision,
+      requested_revision = NULL, state = 'current',
+      candidate_public_key = NULL, requested_at = NULL, deadline = NULL,
+      requested_by = NULL, staged_at = NULL,
+      completed_at = now(), updated_at = now()
+  FROM promoted WHERE r.device_id = promoted.id
+  RETURNING r.device_id, promoted.node_id, r.current_revision
+), recorded AS (
+  INSERT INTO device_status (device_id, last_handshake_at, rx_bytes, tx_bytes, updated_at)
+  SELECT device_id, $3, $4, $5, now() FROM completed
+  ON CONFLICT (device_id) DO UPDATE
+  SET last_handshake_at = EXCLUDED.last_handshake_at,
+      rx_bytes = EXCLUDED.rx_bytes, tx_bytes = EXCLUDED.tx_bytes,
+      updated_at = now()
+  RETURNING device_id
+)
+SELECT completed.device_id, completed.node_id, completed.current_revision
+FROM completed JOIN recorded USING (device_id)
+`
+
+type CommitAgentWireGuardCandidateParams struct {
+	NodeID          uuid.UUID `json:"node_id"`
+	PublicKey       *string   `json:"public_key"`
+	LastHandshakeAt time.Time `json:"last_handshake_at"`
+	RxBytes         int64     `json:"rx_bytes"`
+	TxBytes         int64     `json:"tx_bytes"`
+}
+
+type CommitAgentWireGuardCandidateRow struct {
+	DeviceID        uuid.UUID `json:"device_id"`
+	NodeID          uuid.UUID `json:"node_id"`
+	CurrentRevision int64     `json:"current_revision"`
+}
+
+// The assigned gateway's nonzero candidate handshake is the sole commit
+// signal. Canonical public key, device telemetry, and rotation state advance in
+// one statement/transaction; the next desired state retires the old peer.
+func (q *Queries) CommitAgentWireGuardCandidate(ctx context.Context, arg CommitAgentWireGuardCandidateParams) (CommitAgentWireGuardCandidateRow, error) {
+	row := q.db.QueryRow(ctx, commitAgentWireGuardCandidate,
+		arg.NodeID,
+		arg.PublicKey,
+		arg.LastHandshakeAt,
+		arg.RxBytes,
+		arg.TxBytes,
+	)
+	var i CommitAgentWireGuardCandidateRow
+	err := row.Scan(&i.DeviceID, &i.NodeID, &i.CurrentRevision)
+	return i, err
+}
+
 const consumeJoinToken = `-- name: ConsumeJoinToken :one
 UPDATE node_join_tokens
 SET consumed_at = now()
@@ -1226,6 +1292,36 @@ func (q *Queries) SetNodeWGInfo(ctx context.Context, arg SetNodeWGInfoParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const stageAgentWireGuardCandidate = `-- name: StageAgentWireGuardCandidate :one
+UPDATE agent_wireguard_rotations r
+SET state = 'staged', staged_at = COALESCE(staged_at, now()), updated_at = now()
+FROM devices d
+WHERE d.id = r.device_id AND d.org_id = r.org_id AND d.node_id = $1
+  AND d.status = 'active' AND d.deleted_at IS NULL
+  AND r.candidate_public_key = $2
+  AND r.state IN ('prepared', 'staged') AND r.deadline > now()
+RETURNING r.device_id, r.requested_revision
+`
+
+type StageAgentWireGuardCandidateParams struct {
+	NodeID    uuid.UUID `json:"node_id"`
+	PublicKey *string   `json:"public_key"`
+}
+
+type StageAgentWireGuardCandidateRow struct {
+	DeviceID          uuid.UUID `json:"device_id"`
+	RequestedRevision *int64    `json:"requested_revision"`
+}
+
+// A gateway report containing the warm candidate proves it was installed. A
+// zero handshake is sufficient for stage acknowledgement, never for cutover.
+func (q *Queries) StageAgentWireGuardCandidate(ctx context.Context, arg StageAgentWireGuardCandidateParams) (StageAgentWireGuardCandidateRow, error) {
+	row := q.db.QueryRow(ctx, stageAgentWireGuardCandidate, arg.NodeID, arg.PublicKey)
+	var i StageAgentWireGuardCandidateRow
+	err := row.Scan(&i.DeviceID, &i.RequestedRevision)
+	return i, err
 }
 
 const stampNodePolicyDesyncSince = `-- name: StampNodePolicyDesyncSince :exec

@@ -45,5 +45,8 @@ func rotationStatusResponse(status devices.AgentCredentialRotationStatus) api.Ag
 		DeviceId: status.DeviceID, CurrentRevision: status.CurrentRevision,
 		State:             api.AgentCredentialRotationStatusState(status.State),
 		RequestedRevision: status.RequestedRevision, Deadline: status.Deadline,
+		WireguardCurrentRevision:   status.WireGuardCurrentRevision,
+		WireguardState:             api.AgentCredentialRotationStatusWireguardState(status.WireGuardState),
+		WireguardRequestedRevision: status.WireGuardRequestedRevision,
 	}
 }

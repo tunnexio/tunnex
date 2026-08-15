@@ -218,6 +218,56 @@ FROM node_peer_status nps
 JOIN nodes n ON n.id = nps.node_id
 WHERE n.org_id = @org_id;
 
+-- name: StageAgentWireGuardCandidate :one
+-- A gateway report containing the warm candidate proves it was installed. A
+-- zero handshake is sufficient for stage acknowledgement, never for cutover.
+UPDATE agent_wireguard_rotations r
+SET state = 'staged', staged_at = COALESCE(staged_at, now()), updated_at = now()
+FROM devices d
+WHERE d.id = r.device_id AND d.org_id = r.org_id AND d.node_id = @node_id
+  AND d.status = 'active' AND d.deleted_at IS NULL
+  AND r.candidate_public_key = @public_key
+  AND r.state IN ('prepared', 'staged') AND r.deadline > now()
+RETURNING r.device_id, r.requested_revision;
+
+-- name: CommitAgentWireGuardCandidate :one
+-- The assigned gateway's nonzero candidate handshake is the sole commit
+-- signal. Canonical public key, device telemetry, and rotation state advance in
+-- one statement/transaction; the next desired state retires the old peer.
+WITH eligible AS (
+  SELECT r.device_id, r.requested_revision, r.candidate_public_key
+  FROM agent_wireguard_rotations r
+  JOIN devices d ON d.id = r.device_id AND d.org_id = r.org_id
+  WHERE d.node_id = @node_id AND d.status = 'active' AND d.deleted_at IS NULL
+    AND r.candidate_public_key = @public_key AND r.state = 'staged'
+    AND r.deadline > now() AND @last_handshake_at::timestamptz IS NOT NULL
+  FOR UPDATE OF r, d
+), promoted AS (
+  UPDATE devices d
+  SET public_key = eligible.candidate_public_key, updated_at = now()
+  FROM eligible WHERE d.id = eligible.device_id
+  RETURNING d.id, d.node_id, eligible.requested_revision
+), completed AS (
+  UPDATE agent_wireguard_rotations r
+  SET current_revision = promoted.requested_revision,
+      requested_revision = NULL, state = 'current',
+      candidate_public_key = NULL, requested_at = NULL, deadline = NULL,
+      requested_by = NULL, staged_at = NULL,
+      completed_at = now(), updated_at = now()
+  FROM promoted WHERE r.device_id = promoted.id
+  RETURNING r.device_id, promoted.node_id, r.current_revision
+), recorded AS (
+  INSERT INTO device_status (device_id, last_handshake_at, rx_bytes, tx_bytes, updated_at)
+  SELECT device_id, @last_handshake_at, @rx_bytes, @tx_bytes, now() FROM completed
+  ON CONFLICT (device_id) DO UPDATE
+  SET last_handshake_at = EXCLUDED.last_handshake_at,
+      rx_bytes = EXCLUDED.rx_bytes, tx_bytes = EXCLUDED.tx_bytes,
+      updated_at = now()
+  RETURNING device_id
+)
+SELECT completed.device_id, completed.node_id, completed.current_revision
+FROM completed JOIN recorded USING (device_id);
+
 -- name: GetOrgHubSet :one
 -- lint:cross-org — org-scoped by PK. The persisted transit-hub election (S8.6 REDUCE): the two
 -- writer-partitioned fields (configured + demoted) + the D5 generation. The ACTIVE order is DERIVED from

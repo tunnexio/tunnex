@@ -11,7 +11,13 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'refusing to roll back 0094 while runtime credential rotation state exists';
   END IF;
+  IF EXISTS (SELECT 1 FROM agent_wireguard_rotations) THEN
+    RAISE EXCEPTION 'refusing to roll back 0094 while WireGuard rotation state exists';
+  END IF;
 
+  DROP TRIGGER devices_f05_wireguard_rotation_lifecycle ON devices;
+  DROP FUNCTION f05_wireguard_rotation_lifecycle();
+  DROP TABLE agent_wireguard_rotations;
   DROP TRIGGER devices_f05_runtime_credential_lifecycle ON devices;
   DROP FUNCTION f05_runtime_credential_lifecycle();
   DROP TRIGGER agent_runtime_credentials_f05_bounded_history ON agent_runtime_credentials;

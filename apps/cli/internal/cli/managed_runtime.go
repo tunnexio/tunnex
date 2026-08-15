@@ -30,29 +30,34 @@ const (
 )
 
 type ManagedRuntimeState struct {
-	Server          string `json:"server"`
-	AppliedRevision int64  `json:"applied_revision"`
-	ClientVersion   string `json:"client_version"`
+	Server                     string `json:"server"`
+	AppliedRevision            int64  `json:"applied_revision"`
+	ClientVersion              string `json:"client_version"`
+	WireGuardRevision          int64  `json:"wireguard_revision"`
+	WireGuardCandidateRevision int64  `json:"wireguard_candidate_revision,omitempty"`
+	WireGuardCandidateApplied  bool   `json:"wireguard_candidate_applied,omitempty"`
 }
 
 type ManagedRuntimeOptions struct {
-	StatePath      string
-	CredentialPath string
-	ConfigPath     string
-	ClientVersion  string
-	PollWait       int
-	Interval       time.Duration
-	Backoff        time.Duration
-	MaxBackoff     time.Duration
-	Jitter         func(time.Duration) time.Duration
-	ApplyCommand   func(context.Context, string, string) error
+	StatePath        string
+	CredentialPath   string
+	ConfigPath       string
+	ClientVersion    string
+	PollWait         int
+	Interval         time.Duration
+	Backoff          time.Duration
+	MaxBackoff       time.Duration
+	Jitter           func(time.Duration) time.Duration
+	ApplyCommand     func(context.Context, string, string) error
+	RotateKeyCommand func(context.Context, string, string) error
 }
 
 func DefaultManagedRuntimeOptions() ManagedRuntimeOptions {
 	return ManagedRuntimeOptions{StatePath: ManagedRuntimeStatePath, CredentialPath: ManagedRuntimeToken,
 		ConfigPath: ManagedRuntimeConfig, ClientVersion: ManagedRuntimeBinary, PollWait: 30,
 		Interval: 30 * time.Second, Backoff: time.Second, MaxBackoff: time.Minute,
-		Jitter: boundedRuntimeJitter, ApplyCommand: runWireGuardQuick}
+		Jitter: boundedRuntimeJitter, ApplyCommand: runWireGuardQuick,
+		RotateKeyCommand: runWireGuardKeySwap}
 }
 
 func BootstrapManagedAgent(ctx context.Context, server, token, configPath, credentialPath, statePath, clientVersion string) error {
@@ -84,7 +89,7 @@ func BootstrapManagedAgent(ctx context.Context, server, token, configPath, crede
 	files := map[string][]byte{
 		configPath:     []byte(config),
 		credentialPath: []byte(resp.JSON200.RuntimeCredential + "\n"),
-		statePath:      mustJSON(ManagedRuntimeState{Server: server, ClientVersion: clientVersion}),
+		statePath:      mustJSON(ManagedRuntimeState{Server: server, ClientVersion: clientVersion, WireGuardRevision: 1}),
 	}
 	old := make(map[string][]byte)
 	existed := make(map[string]bool)
@@ -125,11 +130,15 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	if err != nil {
 		return err
 	}
+	if state.WireGuardRevision == 0 {
+		state.WireGuardRevision = 1
+	}
 	credential, err := loadRuntimeCredential(opts.CredentialPath)
 	if err != nil {
 		return err
 	}
-	source, err := newManagedRuntimeSource(state.Server, credential, opts.CredentialPath, opts.PollWait)
+	source, err := newManagedRuntimeSource(state.Server, credential, opts.CredentialPath, opts.ConfigPath,
+		opts.StatePath, &state, opts.PollWait, opts.RotateKeyCommand)
 	if err != nil {
 		return err
 	}
@@ -198,10 +207,16 @@ type managedRuntimeSource struct {
 	credential     string
 	credentialPath string
 	wait           int
+	configPath     string
+	statePath      string
+	state          *ManagedRuntimeState
+	rotateKey      func(context.Context, string, string) error
 }
 
-func newManagedRuntimeSource(server, credential, credentialPath string, wait int) (*managedRuntimeSource, error) {
-	s := &managedRuntimeSource{server: strings.TrimRight(server, "/"), credentialPath: credentialPath, wait: wait}
+func newManagedRuntimeSource(server, credential, credentialPath, configPath, statePath string,
+	state *ManagedRuntimeState, wait int, rotateKey func(context.Context, string, string) error) (*managedRuntimeSource, error) {
+	s := &managedRuntimeSource{server: strings.TrimRight(server, "/"), credentialPath: credentialPath,
+		configPath: configPath, statePath: statePath, state: state, wait: wait, rotateKey: rotateKey}
 	if err := s.setCredential(credential); err != nil {
 		return nil, err
 	}
@@ -250,6 +265,15 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 			return ManagedAgentConfig{}, err
 		}
 	}
+	if resp.JSON200 != nil {
+		if err := s.reconcileWireGuardRotation(ctx, resp.JSON200); err != nil {
+			return ManagedAgentConfig{}, err
+		}
+	} else if resp.StatusCode() == http.StatusNoContent {
+		if err := s.cancelLocalWireGuardCandidate(ctx); err != nil {
+			return ManagedAgentConfig{}, err
+		}
+	}
 	if resp.StatusCode() == http.StatusUnauthorized {
 		// Suspension/revocation invalidates any uncommitted successor. Discard it
 		// so a later resume/request cannot retry a hash now retained as terminal
@@ -264,11 +288,238 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 		return ManagedAgentConfig{}, fmt.Errorf("runtime poll failed with HTTP %d", resp.StatusCode())
 	}
 	c := resp.JSON200
-	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive, CredentialRotationRevision: c.CredentialRotationRevision}, nil
+	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive, CredentialRotationRevision: c.CredentialRotationRevision,
+		WireGuardCurrentRevision:  c.WireguardCurrentRevision,
+		WireGuardRotationRevision: c.WireguardRotationRevision,
+		WireGuardRotationState:    wireGuardRotationState(c.WireguardRotationState)}, nil
 }
 
 func (s *managedRuntimeSource) poll(ctx context.Context, applied int64, version string) (*api.PollAgentRuntimeResponse, error) {
-	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait})
+	wgRevision := int64(1)
+	if s.state != nil && s.state.WireGuardRevision > 0 {
+		wgRevision = s.state.WireGuardRevision
+	}
+	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait, WireguardRevision: &wgRevision})
+}
+
+func wireGuardRotationState(state *api.ManagedAgentConfigWireguardRotationState) *string {
+	if state == nil {
+		return nil
+	}
+	v := string(*state)
+	return &v
+}
+
+func (s *managedRuntimeSource) reconcileWireGuardRotation(ctx context.Context, cfg *api.ManagedAgentConfig) error {
+	if s.state == nil || s.statePath == "" || s.configPath == "" {
+		return errors.New("managed-agent WireGuard rotation state is unavailable")
+	}
+	// An older control plane omits the additive field; revision 1 is the legacy
+	// current key and preserves rolling-upgrade compatibility.
+	if cfg.WireguardCurrentRevision == 0 {
+		cfg.WireguardCurrentRevision = 1
+	}
+	candidatePath := s.configPath + ".candidate-key"
+	previousPath := s.configPath + ".previous"
+	if s.state.WireGuardCandidateRevision > 0 && cfg.WireguardCurrentRevision == s.state.WireGuardCandidateRevision {
+		s.state.WireGuardRevision = cfg.WireguardCurrentRevision
+		s.state.WireGuardCandidateRevision = 0
+		s.state.WireGuardCandidateApplied = false
+		if err := saveManagedRuntimeState(s.statePath, *s.state); err != nil {
+			return err
+		}
+		_ = os.Remove(candidatePath)
+		_ = os.Remove(previousPath)
+		return nil
+	}
+	if cfg.WireguardRotationRevision == nil || cfg.WireguardRotationState == nil {
+		if s.state.WireGuardCandidateRevision > 0 {
+			return s.cancelLocalWireGuardCandidate(ctx)
+		}
+		s.state.WireGuardRevision = cfg.WireguardCurrentRevision
+		_ = os.Remove(candidatePath)
+		return saveManagedRuntimeState(s.statePath, *s.state)
+	}
+	revision := *cfg.WireguardRotationRevision
+	state := string(*cfg.WireguardRotationState)
+	if state == "requested" {
+		privateKey, publicKey, err := loadOrCreateWireGuardCandidate(candidatePath)
+		if err != nil {
+			return err
+		}
+		_ = privateKey // plaintext remains in the mode-0600 candidate file
+		resp, err := s.client.PrepareAgentRuntimeWireGuardWithResponse(ctx, api.AgentWireGuardCandidate{Revision: revision, PublicKey: publicKey})
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode() == http.StatusUnauthorized {
+			return ErrRuntimeUnauthorized
+		}
+		if resp.StatusCode() != http.StatusNoContent {
+			return fmt.Errorf("runtime WireGuard prepare failed with HTTP %d", resp.StatusCode())
+		}
+		return nil
+	}
+	if state == "prepared" {
+		if _, _, err := readWireGuardCandidate(candidatePath); err != nil {
+			return fmt.Errorf("prepared WireGuard candidate is not recoverable locally: %w", err)
+		}
+		return nil
+	}
+	if state != "staged" {
+		return errors.New("runtime WireGuard rotation state is invalid")
+	}
+	if _, _, err := readWireGuardCandidate(candidatePath); err != nil {
+		return fmt.Errorf("staged WireGuard candidate is not recoverable locally: %w", err)
+	}
+	if s.state.WireGuardCandidateRevision != revision {
+		s.state.WireGuardCandidateRevision = revision
+		s.state.WireGuardCandidateApplied = false
+		if err := saveManagedRuntimeState(s.statePath, *s.state); err != nil {
+			s.state.WireGuardCandidateRevision = 0
+			return err
+		}
+	}
+	if s.state.WireGuardCandidateApplied {
+		return nil
+	}
+	if err := s.applyLocalWireGuardCandidate(ctx, candidatePath, previousPath); err != nil {
+		s.state.WireGuardCandidateRevision = 0
+		s.state.WireGuardCandidateApplied = false
+		_ = saveManagedRuntimeState(s.statePath, *s.state)
+		return err
+	}
+	s.state.WireGuardCandidateApplied = true
+	return saveManagedRuntimeState(s.statePath, *s.state)
+}
+
+func loadOrCreateWireGuardCandidate(path string) (string, string, error) {
+	privateKey, publicKey, err := readWireGuardCandidate(path)
+	if err == nil {
+		return privateKey, publicKey, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", "", err
+	}
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		return "", "", err
+	}
+	privateKey = base64.StdEncoding.EncodeToString(key.Bytes())
+	publicKey = base64.StdEncoding.EncodeToString(key.PublicKey().Bytes())
+	if err := WriteFileAtomic0600(path, []byte(privateKey+"\n")); err != nil {
+		return "", "", err
+	}
+	return privateKey, publicKey, nil
+}
+
+func readWireGuardCandidate(path string) (string, string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", err
+	}
+	privateKey := strings.TrimSpace(string(b))
+	raw, err := base64.StdEncoding.DecodeString(privateKey)
+	if err != nil || len(raw) != 32 {
+		return "", "", errors.New("WireGuard candidate private key is invalid")
+	}
+	key, err := ecdh.X25519().NewPrivateKey(raw)
+	if err != nil {
+		return "", "", err
+	}
+	return privateKey, base64.StdEncoding.EncodeToString(key.PublicKey().Bytes()), nil
+}
+
+func (s *managedRuntimeSource) applyLocalWireGuardCandidate(ctx context.Context, candidatePath, previousPath string) error {
+	live, err := os.ReadFile(s.configPath)
+	if err != nil {
+		return err
+	}
+	candidate, _, err := readWireGuardCandidate(candidatePath)
+	if err != nil {
+		return err
+	}
+	current := live
+	if existing, readErr := os.ReadFile(previousPath); readErr == nil {
+		current = existing
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	} else if err := WriteFileAtomic0600(previousPath, current); err != nil {
+		return err
+	}
+	if configValue(string(current), "PrivateKey") == "" {
+		return errors.New("managed-agent config has no local private key")
+	}
+	next := replaceConfigPrivateKey(string(current), candidate)
+	if err := WriteFileAtomic0600(s.configPath, []byte(next)); err != nil {
+		return err
+	}
+	if s.rotateKey == nil {
+		return nil
+	}
+	if err := s.rotateKey(ctx, s.configPath, candidatePath); err != nil {
+		if restoreErr := s.restorePreviousWireGuardConfig(ctx, previousPath); restoreErr != nil {
+			return errors.Join(err, restoreErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *managedRuntimeSource) cancelLocalWireGuardCandidate(ctx context.Context) error {
+	candidatePath := s.configPath + ".candidate-key"
+	previousPath := s.configPath + ".previous"
+	if s.state != nil && s.state.WireGuardCandidateRevision > 0 {
+		if err := s.restorePreviousWireGuardConfig(ctx, previousPath); err != nil {
+			return err
+		}
+		s.state.WireGuardCandidateRevision = 0
+		s.state.WireGuardCandidateApplied = false
+		if err := saveManagedRuntimeState(s.statePath, *s.state); err != nil {
+			return err
+		}
+	}
+	_ = os.Remove(candidatePath)
+	_ = os.Remove(previousPath)
+	return nil
+}
+
+func (s *managedRuntimeSource) restorePreviousWireGuardConfig(ctx context.Context, previousPath string) error {
+	previous, err := os.ReadFile(previousPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New("last-good WireGuard config is unavailable")
+	}
+	if err != nil {
+		return err
+	}
+	if err := WriteFileAtomic0600(s.configPath, previous); err != nil {
+		return err
+	}
+	if s.rotateKey == nil {
+		return nil
+	}
+	privateKey := configValue(string(previous), "PrivateKey")
+	if privateKey == "" {
+		return errors.New("last-good WireGuard config has no private key")
+	}
+	restoreKeyPath := s.configPath + ".restore-key"
+	if err := WriteFileAtomic0600(restoreKeyPath, []byte(privateKey+"\n")); err != nil {
+		return err
+	}
+	defer os.Remove(restoreKeyPath) //nolint:errcheck
+	return s.rotateKey(ctx, s.configPath, restoreKeyPath)
+}
+
+func replaceConfigPrivateKey(config, privateKey string) string {
+	lines := strings.Split(config, "\n")
+	for i, line := range lines {
+		name, _, ok := strings.Cut(line, "=")
+		if ok && strings.TrimSpace(name) == "PrivateKey" {
+			lines[i] = "PrivateKey = " + privateKey
+			return strings.Join(lines, "\n")
+		}
+	}
+	return config
 }
 
 func (s *managedRuntimeSource) rotateCredential(ctx context.Context, applied int64, version string, revision int64) (*api.PollAgentRuntimeResponse, error) {
@@ -404,6 +655,16 @@ func runWireGuardQuick(ctx context.Context, path, action string) error {
 	return exec.CommandContext(ctx, "wg-quick", "up", path).Run()
 }
 
+// runWireGuardKeySwap changes only the live interface private key. The service,
+// interface, address, peer, routes, and DNS remain in place during F05.2.
+func runWireGuardKeySwap(ctx context.Context, configPath, keyPath string) error {
+	name := strings.TrimSuffix(filepath.Base(configPath), filepath.Ext(configPath))
+	if name == "" || strings.ContainsAny(name, " /\\") {
+		return errors.New("managed-agent WireGuard interface name is invalid")
+	}
+	return exec.CommandContext(ctx, "wg", "set", name, "private-key", keyPath).Run()
+}
+
 func runWireGuardQuickDown(ctx context.Context, path string) error {
 	cmd := exec.CommandContext(ctx, "wg-quick", "down", path)
 	out, err := cmd.CombinedOutput()
@@ -457,6 +718,14 @@ func saveManagedRuntimeState(path string, state ManagedRuntimeState) error {
 	if state.Server == "" || state.ClientVersion == "" {
 		return errors.New("managed-agent runtime state is incomplete")
 	}
+	if state.WireGuardRevision == 0 {
+		state.WireGuardRevision = 1
+	}
+	if state.WireGuardRevision < 1 || state.WireGuardCandidateRevision < 0 ||
+		(state.WireGuardCandidateRevision > 0 && state.WireGuardCandidateRevision <= state.WireGuardRevision) ||
+		(state.WireGuardCandidateApplied && state.WireGuardCandidateRevision == 0) {
+		return errors.New("managed-agent WireGuard rotation state is invalid")
+	}
 	return WriteFileAtomic0600(path, mustJSON(state))
 }
 
@@ -477,6 +746,14 @@ func loadManagedRuntimeState(path string) (ManagedRuntimeState, error) {
 	var state ManagedRuntimeState
 	if err := json.Unmarshal(b, &state); err != nil {
 		return ManagedRuntimeState{}, err
+	}
+	if state.WireGuardRevision == 0 {
+		state.WireGuardRevision = 1
+	}
+	if state.WireGuardRevision < 1 || state.WireGuardCandidateRevision < 0 ||
+		(state.WireGuardCandidateRevision > 0 && state.WireGuardCandidateRevision <= state.WireGuardRevision) ||
+		(state.WireGuardCandidateApplied && state.WireGuardCandidateRevision == 0) {
+		return ManagedRuntimeState{}, errors.New("managed-agent WireGuard rotation state is invalid")
 	}
 	return state, nil
 }

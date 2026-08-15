@@ -26,6 +26,9 @@ type ManagedAgentConfig struct {
 	DNS                        []string
 	PersistentKeepalive        int
 	CredentialRotationRevision *int64
+	WireGuardCurrentRevision   int64
+	WireGuardRotationRevision  *int64
+	WireGuardRotationState     *string
 }
 
 // AgentRuntimeReport contains bounded facts only. ErrorCode is a stable code,

@@ -1083,6 +1083,50 @@ func (q *Queries) ListPendingDevicesByOrg(ctx context.Context, orgID uuid.UUID) 
 	return items, nil
 }
 
+const listPreparedAgentWireGuardPeersForNode = `-- name: ListPreparedAgentWireGuardPeersForNode :many
+SELECT r.device_id, r.candidate_public_key
+FROM agent_wireguard_rotations r
+JOIN devices d ON d.id = r.device_id AND d.org_id = r.org_id
+JOIN users u ON u.id = d.user_id
+JOIN memberships mem ON mem.org_id = d.org_id AND mem.user_id = d.user_id
+WHERE d.node_id = $1 AND d.status = 'active' AND NOT d.health_blocked
+  AND d.deleted_at IS NULL AND u.status = 'active' AND u.deleted_at IS NULL
+  AND r.state IN ('prepared', 'staged') AND r.deadline > now()
+  AND r.candidate_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+  AND r.candidate_public_key <> d.public_key
+ORDER BY r.device_id
+`
+
+type ListPreparedAgentWireGuardPeersForNodeRow struct {
+	DeviceID           uuid.UUID `json:"device_id"`
+	CandidatePublicKey *string   `json:"candidate_public_key"`
+}
+
+// F05.2 warm stage: the candidate has deliberately empty AllowedIPs. The
+// canonical devices.public_key peer above remains the sole owner of the
+// agent's /32 until a real nonzero candidate handshake commits the cutover.
+// lint:cross-org — keyed by the mTLS-authorized gateway node, exactly like
+// ListActiveWireGuardPeersForNode.
+func (q *Queries) ListPreparedAgentWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListPreparedAgentWireGuardPeersForNodeRow, error) {
+	rows, err := q.db.Query(ctx, listPreparedAgentWireGuardPeersForNode, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPreparedAgentWireGuardPeersForNodeRow{}
+	for rows.Next() {
+		var i ListPreparedAgentWireGuardPeersForNodeRow
+		if err := rows.Scan(&i.DeviceID, &i.CandidatePublicKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStaticDevicesForOrg = `-- name: ListStaticDevicesForOrg :many
 SELECT id, name, user_id, provisioned_ranges FROM devices
 WHERE org_id = $1 AND provisioning_mode = 'static' AND status = 'active' AND deleted_at IS NULL

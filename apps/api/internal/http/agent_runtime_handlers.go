@@ -24,6 +24,23 @@ func (s apiServer) PrepareAgentRuntimeCredential(ctx context.Context, req api.Pr
 	return api.PrepareAgentRuntimeCredential204Response{Headers: api.PrepareAgentRuntimeCredential204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
+func (s apiServer) PrepareAgentRuntimeWireGuard(ctx context.Context, req api.PrepareAgentRuntimeWireGuardRequestObject) (api.PrepareAgentRuntimeWireGuardResponseObject, error) {
+	id, ok := agentruntime.IdentityFromContext(ctx)
+	if !ok || req.Body == nil {
+		return nil, runtimeUnauthorized()
+	}
+	if err := s.agentRuntime.PrepareWireGuardCandidate(ctx, id, req.Body.Revision, req.Body.PublicKey); err != nil {
+		return nil, runtimeMachineError(err)
+	}
+	// The assigned gateway must fetch the warm empty-AllowedIPs peer before the
+	// runtime may switch. This is a best-effort fast path; its watch interval is
+	// the durable fallback.
+	if s.devices != nil {
+		s.devices.PushOrgNodes(ctx, id.OrgID)
+	}
+	return api.PrepareAgentRuntimeWireGuard204Response{Headers: api.PrepareAgentRuntimeWireGuard204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
 func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntimeRequestObject) (api.PollAgentRuntimeResponseObject, error) {
 	id, ok := agentruntime.IdentityFromContext(ctx)
 	if !ok {
@@ -33,7 +50,11 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 	if req.Params.WaitSeconds != nil {
 		wait = time.Duration(*req.Params.WaitSeconds) * time.Second
 	}
-	cfg, unchanged, err := s.agentRuntime.PollWait(ctx, id, req.Params.AppliedRevision, req.Params.ClientVersion, wait)
+	wgRevision := int64(1)
+	if req.Params.WireguardRevision != nil {
+		wgRevision = *req.Params.WireguardRevision
+	}
+	cfg, unchanged, err := s.agentRuntime.PollWait(ctx, id, req.Params.AppliedRevision, wgRevision, req.Params.ClientVersion, wait)
 	if err != nil {
 		return nil, runtimeMachineError(err)
 	}
@@ -44,9 +65,20 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 		Body: api.ManagedAgentConfig{Revision: cfg.Revision, DeviceId: cfg.DeviceID, OrgId: cfg.OrgID,
 			Address: cfg.Address, GatewayEndpoint: cfg.GatewayEndpoint, GatewayPublicKey: cfg.GatewayPublicKey,
 			AllowedIps: cfg.AllowedIPs, Dns: cfg.DNS, PersistentKeepalive: cfg.PersistentKeepalive,
-			CredentialRotationRevision: cfg.CredentialRotationRevision},
+			CredentialRotationRevision: cfg.CredentialRotationRevision,
+			WireguardCurrentRevision:   cfg.WireGuardCurrentRevision,
+			WireguardRotationRevision:  cfg.WireGuardRotationRevision,
+			WireguardRotationState:     runtimeWireGuardState(cfg.WireGuardRotationState)},
 		Headers: api.PollAgentRuntime200ResponseHeaders{XRequestId: reqID(ctx)},
 	}, nil
+}
+
+func runtimeWireGuardState(state *string) *api.ManagedAgentConfigWireguardRotationState {
+	if state == nil {
+		return nil
+	}
+	v := api.ManagedAgentConfigWireguardRotationState(*state)
+	return &v
 }
 
 func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRuntimeRequestObject) (api.ReportAgentRuntimeResponseObject, error) {
@@ -120,7 +152,7 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 			raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			var id agentruntime.Identity
 			var err error
-			if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" {
+			if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" || r.URL.Path == "/api/v1/agent/runtime/wireguard-candidate" {
 				id, err = svc.AuthenticateCurrent(r.Context(), strings.TrimSpace(raw))
 			} else {
 				id, err = svc.Authenticate(r.Context(), strings.TrimSpace(raw))
@@ -135,5 +167,5 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 }
 
 func isRuntimeChannelPath(path string) bool {
-	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate"
+	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate"
 }

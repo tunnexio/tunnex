@@ -1,8 +1,7 @@
-# F05.1 runtime-bearer rotation review packet
+# F05 credential rotation review packet
 
-Review state: **source-ready, not F05 Done**. This packet covers only the
-runtime bearer. WireGuard key rotation remains F05.2, and the authorized AWS
-development walk in `F05-decisions.md` has not been executed from this branch.
+Review state: **F05.1 + F05.2 source-ready, not F05 Done**. The one combined
+authorized AWS development walk in `F05-decisions.md` has not been executed.
 
 ## Focused outcome
 
@@ -23,50 +22,54 @@ development walk in `F05-decisions.md` has not been executed from this branch.
 - Suspend cancels the request/candidate while preserving current. Revoke/delete
   invalidates both and leaves clean tunnel offboarding to the existing F04 401
   path.
+- The same operator action opens a bounded WireGuard request. The runtime keeps
+  the successor private key locally and sends only its public half. Gateway
+  desired state warm-stages that key with empty AllowedIPs while the old peer
+  remains the sole owner of the `/32`.
+- A gateway status report first acknowledges stage. The runtime then hot-swaps
+  only the local interface key. A real nonzero candidate handshake on the
+  assigned gateway atomically commits `devices.public_key`, telemetry, and the
+  key revision; the next desired state retires the old peer. Timeout/suspend
+  restores the last-good local key/config without changing the canonical key.
 
 ## Exact verification completed
 
-From `apps/api`:
+F05.1's previously recorded default/Enterprise API, CLI, released-route, build,
+and real PostgreSQL results remain unchanged. F05.2 added these focused current
+head results from `apps/api`:
 
 ```text
-TUNNEX_TEST_DATABASE_URL=postgres://...@127.0.0.1:32768/tunnex?sslmode=disable \
-  go test ./db -run '^TestAgentCredentialRotation(MigrationPostgres|MigrationContract|QueryContract)$' -count=1 -v
-PASS (including real up/down, rollback refusal, hash preservation, and 10-row bound)
+go run ./cmd/migrate up
+PASS: schema 94, dirty=false
 
-go test ./db ./internal/agentruntime ./internal/devices ./internal/http ./internal/rbac -count=1
-PASS
+go run ./cmd/migrate down
+PASS on pristine state: schema 93, dirty=false
+REFUSED with row/hash preservation after bearer history
+REFUSED with row preservation after one WireGuard rotation row
 
-go test -tags enterprise ./db ./internal/agentruntime ./internal/devices ./internal/http ./internal/rbac -count=1
-PASS
-
-TUNNEX_TEST_DATABASE_URL=postgres://... go test ./internal/agentruntime \
-  -run '^TestRuntimeServicePostgresContract$' -count=1 -v
-PASS (non-skipped real PostgreSQL prepare, promotion, old-401 contract)
+TUNNEX_TEST_DATABASE_URL=postgres://... go test ./internal/agentruntime ./internal/nodes \
+  -run '^(TestRuntimeServicePostgresContract|TestReportStatus)$' -count=1 -v
+PASS (public-only prepare; zero-handshake stage; nonzero-handshake atomic key+telemetry commit; suspend cancellation)
 
 TUNNEX_TEST_DATABASE_URL=postgres://... go test -tags enterprise ./internal/http \
   -run '^TestAgentCredentialRotationEnterpriseRoutePostgres$' -count=1 -v
 PASS (non-skipped member 403, owner request/refetch, audit, secret-free wire)
-
-go build ./...
-PASS
-
-go build -tags enterprise ./...
-PASS
 ```
 
 From `apps/cli`:
 
 ```text
-go test ./internal/cli -count=1
-PASS
+go test ./internal/cli -run '^(TestManagedRuntime(WireGuard|RotatesBearer|Refused)|TestAgentRuntime.*Unauthorized.*|TestManagedAgentRuntimeTerminalUnauthorized.*)' -count=1 -v
+PASS (hot key switch, restart completion, cancellation restore, bearer no-WG-churn, F04 offboard)
 ```
 
 From `apps/web`, using the installed pinned binaries (the local pnpm wrapper
 attempted an unnecessary non-TTY reinstall):
 
 ```text
-./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vitest run && ./node_modules/.bin/vite build
-PASS: 75 files, 1047 tests, typecheck, production build
+./node_modules/.bin/vitest run test/agentsruntimewiring.test.tsx
+./node_modules/.bin/tsc --noEmit
+PASS: 23/23 released-route tests and typecheck
 ```
 
 `git diff --check` also passes. The OpenAPI Go/TypeScript clients, sqlc
@@ -92,10 +95,10 @@ versions. No live credential, private key, or license was added.
 
 1. Execute the exact AWS DEV CP and Ubuntu VM checklist in
    `docs/F05-decisions.md` on an exact content commit. This is the remaining
-   F05.1 live proof; no production deployment is authorized here.
-2. F05.2 still needs a separately reviewed bounded-overlap WireGuard public-key
-   rotation design and implementation. This branch intentionally does not
-   alter WireGuard keys/configuration.
+   full F05 live proof; no production deployment is authorized here.
+2. The local host is Darwin, so the injected executable hot-swap/rollback test
+   is current source proof; real Linux `wg set`, gateway reconcile, and
+   handshake evidence belong to the combined Ubuntu/AWS walk.
 3. Full repository-wide API suites were not substituted for the focused
    default/Enterprise packages above. The exact F05 PostgreSQL integrations are
    non-skipped, and the full released-route web gate is green.

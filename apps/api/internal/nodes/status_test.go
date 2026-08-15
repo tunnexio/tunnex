@@ -47,7 +47,7 @@ func TestReportStatus(t *testing.T) {
 	mustExec("INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'n1',$3)", node1, org, "c1-"+node1.String())
 	mustExec("INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'n2',$3)", node2, org, "c2-"+node2.String())
 	// device on node1 (pubkey K1) and device on node2 (pubkey K2).
-	if err := tx.QueryRow(ctx, "INSERT INTO devices (org_id,user_id,node_id,name,public_key,assigned_ip) VALUES ($1, $2, $3, 'd1', 'kJ+D3mNKUQzae+23TrhT0g08UTSh9DfxXpKVyGw28EE=', '10.99.0.2') RETURNING id", org, user, node1).Scan(&dev1); err != nil {
+	if err := tx.QueryRow(ctx, "INSERT INTO devices (org_id,user_id,node_id,name,public_key,assigned_ip,kind) VALUES ($1, $2, $3, 'd1', 'kJ+D3mNKUQzae+23TrhT0g08UTSh9DfxXpKVyGw28EE=', '10.99.0.2','agent') RETURNING id", org, user, node1).Scan(&dev1); err != nil {
 		t.Fatalf("device1: %v", err)
 	}
 	mustExec("INSERT INTO devices (org_id,user_id,node_id,name,public_key,assigned_ip) VALUES ($1, $2, $3, 'd2', 'U1UKutt7rp0rN6FwRxL8NtPdPs55fpGRZiPq9MsrCbE=', '10.99.0.3')", org, user, node2)
@@ -121,6 +121,34 @@ func TestReportStatus(t *testing.T) {
 	}
 	if !hsValid {
 		t.Fatal("a handshake within the skew tolerance must be stored")
+	}
+
+	// F05.2: empty-AllowedIPs candidate is first acknowledged by its presence
+	// in a real gateway report. Canonical key does not move on a zero handshake;
+	// the first nonzero handshake commits key+telemetry atomically.
+	candidate := "WlEiCXJIkuDu09Ji0dvI1RwdkbLwkZ+qdR/M0r6/I94="
+	mustExec(`INSERT INTO agent_wireguard_rotations
+		(device_id,org_id,current_revision,requested_revision,state,candidate_public_key,requested_at,deadline,requested_by)
+		VALUES ($1,$2,1,2,'prepared',$3,now(),now()+interval '1 hour',$4)`, dev1, org, candidate, user)
+	if err := svc.ReportStatus(ctx, node1Row, []PeerStatus{{PublicKey: candidate}}); err != nil {
+		t.Fatalf("stage candidate: %v", err)
+	}
+	var rotationState, canonical string
+	if err := tx.QueryRow(ctx, `SELECT r.state,d.public_key FROM agent_wireguard_rotations r JOIN devices d ON d.id=r.device_id WHERE r.device_id=$1`, dev1).Scan(&rotationState, &canonical); err != nil {
+		t.Fatal(err)
+	}
+	if rotationState != "staged" || canonical == candidate {
+		t.Fatalf("zero-handshake stage state=%q canonical=%q", rotationState, canonical)
+	}
+	if err := svc.ReportStatus(ctx, node1Row, []PeerStatus{{PublicKey: candidate, LastHandshake: time.Now().Unix(), RxBytes: 303, TxBytes: 404}}); err != nil {
+		t.Fatalf("commit candidate: %v", err)
+	}
+	var currentRevision int64
+	if err := tx.QueryRow(ctx, `SELECT r.state,r.current_revision,d.public_key FROM agent_wireguard_rotations r JOIN devices d ON d.id=r.device_id WHERE r.device_id=$1`, dev1).Scan(&rotationState, &currentRevision, &canonical); err != nil {
+		t.Fatal(err)
+	}
+	if rotationState != "current" || currentRevision != 2 || canonical != candidate {
+		t.Fatalf("handshake commit state=%q revision=%d canonical=%q", rotationState, currentRevision, canonical)
 	}
 }
 

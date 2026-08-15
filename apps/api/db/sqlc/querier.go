@@ -87,6 +87,10 @@ type Querier interface {
 	// gates). System-wide by design: clears health_blocked wherever the backing
 	// report has gone stale, returning the affected devices for auditing + org push.
 	ClearStaleHealthBlocks(ctx context.Context, ttl pgtype.Interval) ([]ClearStaleHealthBlocksRow, error)
+	// The assigned gateway's nonzero candidate handshake is the sole commit
+	// signal. Canonical public key, device telemetry, and rotation state advance in
+	// one statement/transaction; the next desired state retires the old peer.
+	CommitAgentWireGuardCandidate(ctx context.Context, arg CommitAgentWireGuardCandidateParams) (CommitAgentWireGuardCandidateRow, error)
 	// lint:cross-org — user-scoped credential.
 	// Arm enrollment: only an UNCONFIRMED row flips to confirmed, stamping the confirming code's
 	// timestep as the replay clock so the very first login can't replay the confirmation code.
@@ -426,6 +430,7 @@ type Querier interface {
 	// runtime bootstrap must never turn knowledge of another org's UUID into state.
 	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (AgentRuntimeState, error)
 	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
+	ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAgentWireGuardRotationParams) error
 	// S7.5.4: move a temporary grant's window IN PLACE (never delete+recreate — that would
 	// churn the /32 out+back and cause a spurious push). The `expires_at > now()` predicate
 	// is the LAPSE GUARD: a grant that has already expired matches 0 rows, so extend and the
@@ -445,6 +450,7 @@ type Querier interface {
 	GetAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AgentRuntimeCredential, error)
 	GetAgentRuntimeCredentialRotation(ctx context.Context, arg GetAgentRuntimeCredentialRotationParams) (GetAgentRuntimeCredentialRotationRow, error)
 	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
+	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
 	// credential_expired UX line).
 	GetCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
@@ -968,6 +974,12 @@ type Querier interface {
 	ListPendingSiteSubnetsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListPendingSiteSubnetsForOrgRow, error)
 	// Admin LIST — every rule incl. expired ones (the UI shows a lapsed grant distinctly).
 	ListPolicyRulesByOrg(ctx context.Context, orgID uuid.UUID) ([]PolicyRule, error)
+	// F05.2 warm stage: the candidate has deliberately empty AllowedIPs. The
+	// canonical devices.public_key peer above remains the sole owner of the
+	// agent's /32 until a real nonzero candidate handshake commits the cutover.
+	// lint:cross-org — keyed by the mTLS-authorized gateway node, exactly like
+	// ListActiveWireGuardPeersForNode.
+	ListPreparedAgentWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListPreparedAgentWireGuardPeersForNodeRow, error)
 	ListResourcesByOrg(ctx context.Context, orgID uuid.UUID) ([]Resource, error)
 	// The CRL entries for an org: serials revoked and not yet past expiry (an expired cert need not
 	// appear on the CRL — it's rejected on validity anyway). Slice 5 renders these into the CRL.
@@ -1066,6 +1078,7 @@ type Querier interface {
 	// pre-flight checks run first, and both happen inside one transaction.
 	PeekJoinToken(ctx context.Context, tokenHash []byte) (NodeJoinToken, error)
 	PrepareAgentRuntimeCredentialCandidate(ctx context.Context, arg PrepareAgentRuntimeCredentialCandidateParams) (PrepareAgentRuntimeCredentialCandidateRow, error)
+	PrepareAgentWireGuardCandidate(ctx context.Context, arg PrepareAgentWireGuardCandidateParams) (AgentWireguardRotation, error)
 	// One stamp for all three poll outcomes (the two-tier health, D2):
 	//   success  → ok=true,  advance_clock=true  (last_sync_at = now; error cleared)
 	//   transient→ ok=false, advance_clock=false (last_sync_at FROZEN at the last good sync — the
@@ -1123,6 +1136,7 @@ type Querier interface {
 	// cleared rather than resurrected.
 	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (AgentRuntimeState, error)
 	RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error)
+	RequestAgentWireGuardRotation(ctx context.Context, arg RequestAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set
 	// from ListCascadeRevokedDevicesForNode.
 	// Restores ONE cascade-revoked device (S13.1 D5), to the address the caller resolved.
@@ -1327,6 +1341,9 @@ type Querier interface {
 	// to revoke it from — invisible and still working, which is the worst state this product can produce.
 	// Returns rows-affected so the caller can tell "not found" from "not revoked" instead of reporting success.
 	SoftDeleteRevokedDevice(ctx context.Context, arg SoftDeleteRevokedDeviceParams) (int64, error)
+	// A gateway report containing the warm candidate proves it was installed. A
+	// zero handshake is sufficient for stage acknowledgement, never for cutover.
+	StageAgentWireGuardCandidate(ctx context.Context, arg StageAgentWireGuardCandidateParams) (StageAgentWireGuardCandidateRow, error)
 	// S7.4b (X-4): stamp the term-3 desync ONSET, CONTROL-PLANE-ONLY, idempotent per episode —
 	// the WHERE ... IS NULL preserves the first onset (a repeated mismatch never re-stamps a
 	// newer time). Called from exactly one site (nodes.trackDesync); the value is the CP clock,

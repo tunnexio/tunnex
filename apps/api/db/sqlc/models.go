@@ -87,6 +87,21 @@ type AgentRuntimeState struct {
 	UpdatedAt             time.Time          `json:"updated_at"`
 }
 
+type AgentWireguardRotation struct {
+	DeviceID           uuid.UUID          `json:"device_id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	CurrentRevision    int64              `json:"current_revision"`
+	RequestedRevision  *int64             `json:"requested_revision"`
+	State              string             `json:"state"`
+	CandidatePublicKey *string            `json:"candidate_public_key"`
+	RequestedAt        pgtype.Timestamptz `json:"requested_at"`
+	Deadline           pgtype.Timestamptz `json:"deadline"`
+	RequestedBy        pgtype.UUID        `json:"requested_by"`
+	StagedAt           pgtype.Timestamptz `json:"staged_at"`
+	CompletedAt        pgtype.Timestamptz `json:"completed_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+}
+
 type AuditLog struct {
 	ID          uuid.UUID   `json:"id"`
 	OrgID       pgtype.UUID `json:"org_id"`

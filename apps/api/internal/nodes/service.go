@@ -605,6 +605,7 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 		}
 	}
 	peers := make([]Peer, 0, len(rows))
+	peerKeys := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
 		// Keyless (OVPN) devices are excluded AT THE SOURCE now (ListActiveWireGuardPeersForNode's format
 		// check — the single owner of the D-S9.4-MODEL invariant). This stays as a cheap subordinate
@@ -624,7 +625,16 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 			}
 		}
 		peers = append(peers, p)
+		peerKeys[r.PublicKey] = struct{}{}
 	}
+	// F05.2 warm stage. The old canonical peer above remains the only peer
+	// owning the agent address. The candidate has empty AllowedIPs until this
+	// gateway reports its nonzero handshake and the CP commits the key.
+	stagedRows, err := s.q.ListPreparedAgentWireGuardPeersForNode(ctx, node.ID)
+	if err != nil {
+		return DesiredState{}, err
+	}
+	peers = appendWarmWireGuardCandidates(peers, peerKeys, stagedRows)
 	// The interface address is the pool gateway (first usable host) with the
 	// pool's prefix, so the server has an on-link route to the whole pool and can
 	// route peer traffic. Derived from the org pool (S3.5). If the org row is
@@ -810,6 +820,20 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 		ds.Policy = s.finalizeArtifact(topo, node, ds.Policy)
 	}
 	return ds, nil
+}
+
+func appendWarmWireGuardCandidates(peers []Peer, seen map[string]struct{}, candidates []sqlc.ListPreparedAgentWireGuardPeersForNodeRow) []Peer {
+	for _, candidate := range candidates {
+		if candidate.CandidatePublicKey == nil {
+			continue
+		}
+		if _, duplicate := seen[*candidate.CandidatePublicKey]; duplicate {
+			continue
+		}
+		peers = append(peers, Peer{PublicKey: *candidate.CandidatePublicKey, AllowedIPs: []string{}})
+		seen[*candidate.CandidatePublicKey] = struct{}{}
+	}
+	return peers
 }
 
 // widenedDevicePeers is WF-A D-WFA-5b's device-peer hosting: the UNION of device peers across all hub-set
@@ -1832,6 +1856,35 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 	// direction: it nulls a previously-valid handshake (fake-offline is a
 	// tolerable degradation; fake-online would be a lie).
 	maxHS := time.Now().Add(2 * time.Minute).Unix()
+	committedWGKey := false
+	if err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		for _, st := range stats {
+			publicKey := st.PublicKey
+			if _, err := q.StageAgentWireGuardCandidate(ctx, sqlc.StageAgentWireGuardCandidateParams{
+				NodeID: node.ID, PublicKey: &publicKey,
+			}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			if st.LastHandshake <= 0 || st.LastHandshake > maxHS {
+				continue
+			}
+			if _, err := q.CommitAgentWireGuardCandidate(ctx, sqlc.CommitAgentWireGuardCandidateParams{
+				NodeID: node.ID, PublicKey: &publicKey,
+				LastHandshakeAt: time.Unix(st.LastHandshake, 0).UTC(),
+				RxBytes:         st.RxBytes, TxBytes: st.TxBytes,
+			}); err == nil {
+				committedWGKey = true
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if committedWGKey && s.pushOrg != nil {
+		s.pushOrg(ctx, node.OrgID)
+	}
 	params := make([]sqlc.UpsertDeviceStatusParams, 0, len(stats))
 	peerParams := make([]sqlc.UpsertNodePeerStatusParams, 0, len(stats)) // S8.6: the gateway-peer sibling
 	for _, st := range stats {

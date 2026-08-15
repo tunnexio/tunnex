@@ -736,6 +736,11 @@ paths:
           required: false
           description: Bounded long-poll wait requested by the runtime; the server may return sooner.
           schema: { type: integer, minimum: 0, maximum: 60, default: 0 }
+        - name: wireguard_revision
+          in: query
+          required: false
+          description: Last handshake-committed WireGuard key revision known by the runtime.
+          schema: { type: integer, format: int64, minimum: 1, default: 1 }
       responses:
         "200":
           description: Strictly newer managed configuration.
@@ -793,6 +798,29 @@ paths:
       responses:
         "204":
           description: Candidate hash prepared.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/agent/runtime/wireguard-candidate:
+    post:
+      operationId: prepareAgentRuntimeWireGuard
+      summary: Prepare a locally generated WireGuard public-key successor
+      description: >-
+        Machine-only endpoint authenticated by the current runtime bearer. It accepts only the requested
+        revision and candidate public key. The private key is generated and retained on the agent host.
+        Repeating the same revision and public key is idempotent.
+      security:
+        - runtimeBearer: []
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentWireGuardCandidate" }
+      responses:
+        "204":
+          description: Candidate public key prepared.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
         default: { $ref: "#/components/responses/Error" }
@@ -4538,7 +4566,7 @@ components:
       description: >-
         Secret-free server-owned configuration for one managed agent. Runtime credentials, bootstrap tokens,
         token hashes, and private keys are never configuration fields.
-      required: [revision, device_id, org_id, address, gateway_endpoint, gateway_public_key, allowed_ips, dns, persistent_keepalive]
+      required: [revision, device_id, org_id, address, gateway_endpoint, gateway_public_key, allowed_ips, dns, persistent_keepalive, wireguard_current_revision]
       additionalProperties: false
       properties:
         revision: { type: integer, format: int64, minimum: 1 }
@@ -4560,6 +4588,22 @@ components:
           minimum: 2
           nullable: true
           description: Non-secret requested successor revision; omitted when no request is pending.
+        wireguard_current_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Last handshake-committed WireGuard key revision.
+        wireguard_rotation_revision:
+          type: integer
+          format: int64
+          minimum: 2
+          nullable: true
+          description: Requested locally generated WireGuard successor revision.
+        wireguard_rotation_state:
+          type: string
+          enum: [requested, prepared, staged]
+          nullable: true
+          description: Non-secret stage reached by the candidate on the assigned gateway.
 
     AgentCredentialCandidate:
       type: object
@@ -4572,9 +4616,20 @@ components:
           pattern: "^[0-9a-f]{64}$"
           description: Lowercase hexadecimal SHA-256 of a bearer generated only on the agent host.
 
+    AgentWireGuardCandidate:
+      type: object
+      required: [revision, public_key]
+      additionalProperties: false
+      properties:
+        revision: { type: integer, format: int64, minimum: 2 }
+        public_key:
+          type: string
+          pattern: "^[A-Za-z0-9+/]{43}=$"
+          description: Public half of a WireGuard key generated only on the agent host.
+
     AgentCredentialRotationStatus:
       type: object
-      required: [device_id, current_revision, state]
+      required: [device_id, current_revision, state, wireguard_current_revision, wireguard_state]
       additionalProperties: false
       properties:
         device_id: { type: string, format: uuid }
@@ -4582,6 +4637,9 @@ components:
         state: { type: string, enum: [current, requested, candidate] }
         requested_revision: { type: integer, format: int64, minimum: 2, nullable: true }
         deadline: { type: string, format: date-time, nullable: true }
+        wireguard_current_revision: { type: integer, format: int64, minimum: 1 }
+        wireguard_state: { type: string, enum: [current, requested, prepared, staged] }
+        wireguard_requested_revision: { type: integer, format: int64, minimum: 2, nullable: true }
 
     AgentRuntimeSetting:
       type: object
