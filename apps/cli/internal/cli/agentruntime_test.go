@@ -159,6 +159,9 @@ func TestAgentRuntimeHeartbeatUnauthorizedOffboards(t *testing.T) {
 	if outcome != AgentRuntimeInconclusive || !errors.Is(err, ErrRuntimeUnauthorized) || applier.disabled != 1 {
 		t.Fatalf("heartbeat unauthorized outcome=%q err=%v disabled=%d; want terminal offboard", outcome, err, applier.disabled)
 	}
+	if runtime.AppliedRevision() != 0 {
+		t.Fatalf("terminal offboard revision=%d, want 0 for re-enable recovery", runtime.AppliedRevision())
+	}
 }
 
 func TestAgentRuntimeApplyFailureKeepsLastGoodRevision(t *testing.T) {

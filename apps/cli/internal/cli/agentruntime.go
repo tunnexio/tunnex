@@ -171,6 +171,12 @@ func (r *AgentRuntime) offboardUnauthorized(ctx context.Context) error {
 	if err := r.applier.Disable(ctx); err != nil {
 		return errors.Join(ErrRuntimeUnauthorized, fmt.Errorf("disable revoked agent tunnel: %w", err))
 	}
+	// The applied revision describes the live data plane. A successful
+	// terminal offboard removes that data plane, so persist revision zero. A
+	// later opt-in can then re-apply the current server revision instead of
+	// treating an absent interface as already current.
+	r.applied = 0
+	r.initialized = false
 	return ErrRuntimeUnauthorized
 }
 

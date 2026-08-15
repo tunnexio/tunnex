@@ -192,6 +192,10 @@ func TestManagedAgentRuntimeTerminalUnauthorizedExitsCleanAfterDisable(t *testin
 	if err != nil || disabled != 1 {
 		t.Fatalf("terminal unauthorized = err %v, disable attempts %d; want clean exit after one disable", err, disabled)
 	}
+	state, err := loadManagedRuntimeState(statePath)
+	if err != nil || state.AppliedRevision != 0 {
+		t.Fatalf("terminal offboard state=%+v err=%v; want applied revision 0", state, err)
+	}
 }
 
 func TestManagedAgentRuntimeTerminalUnauthorizedDisableFailureStaysNonzero(t *testing.T) {
@@ -295,6 +299,9 @@ func TestManagedAgentRuntimeRevokedCredentialStopsAndDisables(t *testing.T) {
 	_, err = runtime.CheckOnce(context.Background())
 	if !errors.Is(err, ErrRuntimeUnauthorized) || applier.disabled != 1 {
 		t.Fatalf("revoked runtime = err %v disabled=%d", err, applier.disabled)
+	}
+	if runtime.AppliedRevision() != 0 {
+		t.Fatalf("revoked runtime revision=%d, want 0", runtime.AppliedRevision())
 	}
 }
 
