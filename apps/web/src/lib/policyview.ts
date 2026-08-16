@@ -243,6 +243,8 @@ export interface LoadState {
   membersLoaded?: boolean; // S7.5.4: for resolving a per-user subject to a member name
   sitesLoaded?: boolean; // S8.2c WF-8: for resolving a site subject to its NAME (not the raw UUID)
   k8sServicesLoaded?: boolean; // S10.3: for resolving a k8s_service dst to its FQDN
+  agentsLoaded?: boolean; // F06: for resolving a managed-agent policy source honestly
+  agents?: Array<{ device_id: string; name: string; gateway_name: string }>;
 }
 
 function short(id: string): string {
@@ -342,6 +344,22 @@ function resolveK8sService(
   return { id, label: `removed service ${short(id)}`, state: "deleted" };
 }
 
+function resolveAgent(
+  id: string,
+  agents: Array<{ device_id: string; name: string }>,
+  loaded: boolean,
+): RefLabel {
+  const agent = agents.find((candidate) => candidate.device_id === id);
+  if (agent) return { id, label: agent.name, state: "ok" };
+  if (!loaded)
+    return {
+      id,
+      label: `agent ${short(id)}. refresh`,
+      state: "unresolved",
+    };
+  return { id, label: `removed agent ${short(id)}`, state: "deleted" };
+}
+
 export function ruleRow(
   rule: PolicyRule,
   groups: UserGroup[],
@@ -372,7 +390,13 @@ export function ruleRow(
               label: rule.src_cidr ?? "cidr",
               state: "ok",
             }
-          : resolveGroup(rule.src_group_id ?? "", groups, loaded.groupsLoaded);
+          : rule.src_kind === "agent"
+            ? resolveAgent(
+                rule.src_device_id ?? "",
+                loaded.agents ?? [],
+                loaded.agentsLoaded ?? false,
+              )
+            : resolveGroup(rule.src_group_id ?? "", groups, loaded.groupsLoaded);
   // S8.1: dst_kind may be 'site' (a site-subnet grant) — resolve it to a site NAME (WF-8), NOT the
   // resource branch (which would render a valid site rule as a broken 'deleted resource'), preserving
   // the never-mislabeled invariant.
@@ -516,14 +540,38 @@ export function defaultDstKind(i: {
 }
 
 export function defaultSrcKind(i: {
-  editingKind?: "group" | "user" | "site" | "cidr";
+  editingKind?: "group" | "user" | "site" | "cidr" | "agent";
   hasGroups: boolean;
   hasSites: boolean;
-}): "group" | "user" | "site" | "cidr" {
+  hasAgents?: boolean;
+}): "group" | "user" | "site" | "cidr" | "agent" {
   if (i.editingKind) return i.editingKind;
   if (i.hasGroups) return "group";
   if (i.hasSites) return "site"; // a no-groups site org creates site→ rules; users alone can't open the modal
+  if (i.hasAgents) return "agent";
   return "group";
+}
+
+export function ruleSourceReady(i: {
+  kind: "group" | "user" | "site" | "cidr" | "agent";
+  group: string;
+  user: string;
+  site: string;
+  cidr: string;
+  agent: string;
+}): boolean {
+  switch (i.kind) {
+    case "group":
+      return i.group !== "";
+    case "user":
+      return i.user !== "";
+    case "site":
+      return i.site !== "";
+    case "cidr":
+      return i.cidr.trim() !== "";
+    case "agent":
+      return i.agent !== "";
+  }
 }
 
 export interface RuleBodyInput {
@@ -1040,32 +1088,56 @@ export function srcGroupEmptyExplain(w: GroupEmptyWarn): string | null {
 // 204 carries no body, so the server never says how many it took. An operator removing a stale group can
 // destroy access rules they never saw.
 //
-// ⛔ AND WE CANNOT NAME THE COUNT HONESTLY TODAY. The wireframe's pattern is "Removing ap-lan deletes 2 rules
-// referencing it… Counts come from the server's cascade preview." THERE IS NO CASCADE-PREVIEW ENDPOINT
-// (measured: zero operationIds mention it). Computing the count client-side from the loaded rules would be a
-// SECOND SOURCE OF TRUTH about what the server is about to do — wrong the moment two admins act at once, and
-// refused everywhere else this epic (the last-owner 403, the reactive-403 precedent).
-//
-// So: state the RISK, which is certain, and omit the NUMBER, which we do not own. Registered: a server
-// cascade-preview endpoint, after which this copy names counts the server itself computed.
+// F06 adds the one count this delete newly needs: managed-agent delegations. It is computed by the server from
+// agent_profiles.managing_group_id and is therefore safe to name here. Rule-cascade counts still have no
+// server preview, so the copy names that certain risk without inventing a number.
 export function cascadeConfirmCopy(
   kind: "group" | "resource",
   name: string,
+  managedAgentCount?: number,
 ): {
   title: string;
   body: string;
   typeToConfirm: string;
+  impactKnown: boolean;
 } {
   const what = kind === "group" ? "group" : "resource";
   const role =
     kind === "group" ? "a rule source or destination" : "a rule destination";
+  const delegationCopy =
+    kind === "group"
+      ? managedAgentCount === undefined
+        ? "The managed-agent delegation impact could not be read, so deletion is blocked. "
+        : `It also clears delegated management for ${managedAgentCount} managed ${managedAgentCount === 1 ? "agent" : "agents"}. `
+      : "";
   return {
     title: `Delete ${what} “${name}”?`,
     body:
       `Deleting this ${what} also deletes every access rule that uses it as ${role}. ` +
+      delegationCopy +
       `Those rules are removed outright — they do not remain as broken rules you can review afterwards. ` +
       `This cannot be undone.`,
     typeToConfirm: name,
+    impactKnown: kind === "resource" || managedAgentCount !== undefined,
+  };
+}
+
+export function groupMemberRemovalCopy(
+  memberName: string,
+  groupName: string,
+  managedAgentCount?: number,
+): { body: string; impactKnown: boolean } {
+  if (managedAgentCount === undefined) {
+    return {
+      body: `The managed-agent delegation impact for “${groupName}” could not be read, so removing ${memberName} is blocked.`,
+      impactKnown: false,
+    };
+  }
+  return {
+    body:
+      `Remove ${memberName} from “${groupName}”? They immediately lose this group’s policy access and ` +
+      `delegated management of ${managedAgentCount} managed ${managedAgentCount === 1 ? "agent" : "agents"}.`,
+    impactKnown: true,
   };
 }
 

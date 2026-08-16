@@ -12,7 +12,10 @@ import (
 )
 
 func (s apiServer) GetAgentCredentialRotation(ctx context.Context, req api.GetAgentCredentialRotationRequestObject) (api.GetAgentCredentialRotationResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentCredentialRotate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
+		return nil, err
+	}
+	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
 	}
 	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {

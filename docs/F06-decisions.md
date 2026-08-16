@@ -1,8 +1,9 @@
 # F06 — Agent ownership and delegated RBAC decisions
 
-Status: **paper locked; product code not started**. This commit-one records the
-smallest F06 contract measured from the F01–F05 foundation at content tip
-`d71f86f`. It is not a completion claim.
+Status: **implementation review-ready; live acceptance pending**. Commit-one
+locked the smallest F06 contract measured from the F01–F05 foundation at
+content tip `d71f86f`; the product slices now implement that contract, but this
+paper does not claim completion until the combined DEV box-walk passes.
 
 ## Acceptance question
 
@@ -138,7 +139,10 @@ F06 adds no human permission checks to the runtime bearer path.
 ### D6 — Owner/team assignment is one atomic mutation
 
 The existing agent profile PATCH is extended with optional `owner_id` and
-`managing_group_id` fields; no second assignment endpoint is added. The service
+`managing_group_update: {group_id: uuid|null}` fields; no second assignment
+endpoint is added. The nested update shape was explicitly approved on
+2026-08-16 because generated Go request types cannot otherwise distinguish an
+omitted nullable UUID from an explicit null. The service
 locks the device/profile, validates the new owner membership and managing group
 tenant, updates both canonical owner and optional team, and inserts one audit
 row in one transaction. Any validation, concurrent lifecycle change, or audit
@@ -147,7 +151,8 @@ failure leaves both assignment fields unchanged.
 Only an organization-wide `agent:manage` holder may include assignment fields.
 A scoped owner or team manager may use the same endpoint for metadata/lifecycle
 but receives 403 if either assignment field is present. Omitted fields mean
-unchanged; explicit `managing_group_id: null` clears the team. The response and
+unchanged; explicit `managing_group_update: {group_id: null}` clears the team.
+The response and
 a fresh GET are server truth; the UI never applies an optimistic assignment.
 
 ### D7 — Privileged facts and DOM absence are server-shaped

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
-import { api, loadOne, type Loaded, type Role } from "../lib/api";
+import { api, loadOne, type Loaded, type Member, type Role, type UserGroup } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/rbac";
 import {
@@ -219,7 +219,10 @@ function AgentProfilePanel({
   editorVersion,
   canManageLifecycle,
   canRotateCredential,
+  assignmentMembers,
+  assignmentGroups,
   onSaveMetadata,
+  onSaveAssignment,
   onLifecycleChange,
   onRotateCredential,
   disabled,
@@ -230,7 +233,10 @@ function AgentProfilePanel({
   editorVersion: number;
   canManageLifecycle: boolean;
   canRotateCredential: boolean;
+  assignmentMembers: Member[];
+  assignmentGroups: UserGroup[];
   onSaveMetadata: (value: AgentProfileEditorValue) => void;
+  onSaveAssignment: (value: { owner_id?: string; managing_group_update?: { group_id: string | null } }) => void;
   onLifecycleChange: (status: "active" | "suspended") => void;
   onRotateCredential: () => void;
   disabled: boolean;
@@ -239,6 +245,7 @@ function AgentProfilePanel({
     <div data-testid="agent-profile" className="grid gap-3 text-xs text-slate-300">
       <div className="grid gap-2 sm:grid-cols-3">
         <div><span className="text-slate-500">Owner</span><div>{profile.owner_email}</div></div>
+        <div><span className="text-slate-500">Managing team</span><div>{profile.managing_group_name ?? "None"}</div></div>
         <div><span className="text-slate-500">Telemetry</span><div>{profile.last_handshake_at ?? "never reported"}</div></div>
         {profile.rx_bytes != null && <div><span className="text-slate-500">Received</span><div className="font-mono">{profile.rx_bytes}</div></div>}
         {profile.tx_bytes != null && <div><span className="text-slate-500">Sent</span><div className="font-mono">{profile.tx_bytes}</div></div>}
@@ -251,8 +258,18 @@ function AgentProfilePanel({
         onLifecycleChange={onLifecycleChange}
         disabled={disabled}
       />
+      {profile.permissions.assign && (
+        <AgentAssignmentEditor
+          key={`${profile.device_id}:${profile.owner_id}:${profile.managing_group_id ?? "none"}`}
+          profile={profile}
+          members={assignmentMembers}
+          groups={assignmentGroups}
+          onSave={onSaveAssignment}
+          disabled={disabled}
+        />
+      )}
       {runtime && <AgentRuntimePanel status={runtime} />}
-      {canRotateCredential && credentialRotation && (
+      {credentialRotation && (
         <div data-testid="agent-credential-rotation" className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
           <div>
             <div className="text-slate-500">Runtime credential</div>
@@ -261,11 +278,63 @@ function AgentProfilePanel({
             <div>Revision {credentialRotation.wireguard_current_revision} · {credentialRotation.wireguard_state}</div>
             {credentialRotation.deadline && <div className="text-slate-500">Deadline {credentialRotation.deadline}</div>}
           </div>
-          <Button onClick={onRotateCredential} disabled={disabled || profile.status !== "active" || credentialRotation.state !== "current" || credentialRotation.wireguard_state !== "current"}>
-            Rotate credential
-          </Button>
+          {canRotateCredential && (
+            <Button onClick={onRotateCredential} disabled={disabled || profile.status !== "active" || credentialRotation.state !== "current" || credentialRotation.wireguard_state !== "current"}>
+              Rotate credential
+            </Button>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function AgentAssignmentEditor({
+  profile,
+  members,
+  groups,
+  onSave,
+  disabled,
+}: {
+  profile: AgentProfile;
+  members: Member[];
+  groups: UserGroup[];
+  onSave: (value: { owner_id?: string; managing_group_update?: { group_id: string | null } }) => void;
+  disabled: boolean;
+}) {
+  const [ownerId, setOwnerId] = useState(profile.owner_id);
+  const [groupId, setGroupId] = useState(profile.managing_group_id ?? "");
+  const nextGroupId = groupId || null;
+  const ownerChanged = ownerId !== profile.owner_id;
+  const groupChanged = nextGroupId !== profile.managing_group_id;
+
+  function save() {
+    const value: { owner_id?: string; managing_group_update?: { group_id: string | null } } = {};
+    if (ownerChanged) value.owner_id = ownerId;
+    if (groupChanged) value.managing_group_update = { group_id: nextGroupId };
+    onSave(value);
+  }
+
+  return (
+    <div data-testid="agent-assignment-editor" className="grid gap-3 rounded-md border border-slate-700 p-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Accountable owner">
+          <Select value={ownerId} onChange={(event) => setOwnerId(event.target.value)} disabled={disabled}>
+            {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.email}</option>)}
+          </Select>
+        </Field>
+        <Field label="Managing team">
+          <Select value={groupId} onChange={(event) => setGroupId(event.target.value)} disabled={disabled}>
+            <option value="">No managing team</option>
+            {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <p className="text-[11px] text-ink-secondary">
+        Changing the owner changes accountability only; it does not change the tunnel or access grants.
+        A managing team can view and manage this agent, but cannot grant access, rotate credentials, or revoke it.
+      </p>
+      <div><Button onClick={save} disabled={disabled || !ownerId || (!ownerChanged && !groupChanged)}>Save assignment</Button></div>
     </div>
   );
 }
@@ -294,6 +363,8 @@ export default function Agents() {
   const [credentialRotation, setCredentialRotation] = useState<Record<string, AgentCredentialRotationStatus | null>>({});
   const [profiles, setProfiles] = useState<Record<string, AgentProfile | null>>({});
   const [myRole, setMyRole] = useState<Role>();
+  const [assignmentMembers, setAssignmentMembers] = useState<Member[]>([]);
+  const [assignmentGroups, setAssignmentGroups] = useState<UserGroup[]>([]);
   const [gateways, setGateways] = useState<Node[]>([]);
   const [notEntitled, setNotEntitled] = useState(false);
   const [runtimeEnabled, setRuntimeEnabled] = useState(false);
@@ -330,6 +401,8 @@ export default function Agents() {
       setCredentialRotation({});
       setProfiles({});
       setMyRole(undefined);
+      setAssignmentMembers([]);
+      setAssignmentGroups([]);
 
       const n = await loadOne<Node[]>(() =>
         api.GET("/api/v1/organizations/{orgId}/nodes", {
@@ -374,6 +447,11 @@ export default function Agents() {
           const member = members.data.find((candidate) => candidate.user_id === currentUserId);
           loadedRole = member?.role as Role | undefined;
           setMyRole(loadedRole);
+          if (can(loadedRole, "agent:manage")) {
+            setAssignmentMembers((members.data as Member[]).filter((candidate) => candidate.status === "active"));
+            const groups = await api.GET("/api/v1/organizations/{orgId}/groups", { params: { path: { orgId: id } } });
+            if (!cancelled && groups.data) setAssignmentGroups(groups.data as UserGroup[]);
+          }
         }
       }
 
@@ -391,7 +469,6 @@ export default function Agents() {
             if (cancelled || runtimeResult.error || !runtimeResult.data) return;
             setRuntimeStatus((previous) => ({ ...previous, [agent.device_id]: runtimeResult.data as AgentRuntimeStatus }));
           });
-          if (!can(loadedRole, "agent_credential:rotate")) return;
           void api.GET(
             "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
             { params: { path: { orgId: id, deviceId: agent.device_id } } },
@@ -424,6 +501,25 @@ export default function Agents() {
       return;
     }
     setReload((n) => n + 1);
+  }
+
+  async function saveAgentAssignment(
+    agent: AgentRow,
+    value: { owner_id?: string; managing_group_update?: { group_id: string | null } },
+  ) {
+    if (!orgId || Object.keys(value).length === 0) return;
+    setProfileBusy(agent.device_id);
+    setProfileError(null);
+    const result = await api.PATCH("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+      params: { path: { orgId, deviceId: agent.device_id } },
+      body: value,
+    });
+    setProfileBusy(null);
+    if (result.error || !result.data) {
+      setProfileError("Could not save the agent assignment.");
+      return;
+    }
+    setReload((revision) => revision + 1);
   }
 
   async function applyLifecycle(agent: AgentRow, status: "active" | "suspended") {
@@ -525,6 +621,11 @@ export default function Agents() {
     setReload((n) => n + 1);
   }
 
+  // A route render may run once with the prior org's state before the loading effect clears it.
+  // Refuse that frame completely: privileged owner/team/runtime facts never enter the new org's DOM.
+  if (currentOrg && orgId !== currentOrg.id) {
+    return <Card>Loading agents…</Card>;
+  }
   if (notEntitled) return null;
 
   return (
@@ -557,7 +658,7 @@ export default function Agents() {
 
       {/* ⛔ THE CREATION PATH. Pick the gateway the agent connects through, name it, and get the command to
           run on the agent's own host. */}
-      <Card>
+      {can(myRole, "agent:enroll") && <Card>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[12rem] flex-1">
             <Field label="Agent name">
@@ -604,7 +705,7 @@ export default function Agents() {
           this agent, and gives you one command to run on the agent's host.{" "}
           {AGENT_PREREQ}
         </p>
-      </Card>
+      </Card>}
 
       <Card>
         <p className="text-xs text-slate-500">
@@ -651,9 +752,12 @@ export default function Agents() {
                       runtime={status ?? null}
                       credentialRotation={credentialRotation[agent.device_id] ?? null}
                       editorVersion={profileEditorVersion}
-                      canManageLifecycle={can(myRole, "member:manage")}
-                      canRotateCredential={can(myRole, "agent_credential:rotate")}
+                      canManageLifecycle={profile.permissions.manage}
+                      canRotateCredential={profile.permissions.rotate_credentials}
+                      assignmentMembers={assignmentMembers}
+                      assignmentGroups={assignmentGroups}
                       onSaveMetadata={(value) => void saveProfileMetadata(agent, value)}
+                      onSaveAssignment={(value) => void saveAgentAssignment(agent, value)}
                       onLifecycleChange={(next) => setConfirmLifecycle({ agent, status: next })}
                       onRotateCredential={() => void rotateCredential(agent)}
                       disabled={profileBusy === agent.device_id}
@@ -715,19 +819,20 @@ export default function Agents() {
                     </span>
                   ),
                 },
-                ...(can(myRole, "member:manage") ? [{
+                ...(Object.values(profiles).some((profile) => profile?.permissions.view_privileged) ? [{
                   key: "owner",
                   header: "Authorised by",
                   // ⚠ THE UNATTRIBUTABLE STATE IS SEARCHABLE BY THE WORD THE BADGE USES, not only by an
                   // email that does not exist — otherwise the one row an operator most needs to find is the
                   // one row no search term reaches.
                   sortValue: (a: AgentRow) =>
-                    a.owner_email ?? "unattributable no owner recorded",
+                    profiles[a.device_id]?.owner_email ?? a.owner_email ?? "unattributable no owner recorded",
                   cell: (a: AgentRow) => {
+                    const ownerEmail = profiles[a.device_id]?.owner_email ?? a.owner_email;
                     const note = attributionNote(a);
-                    return a.owner_email ? (
+                    return ownerEmail ? (
                       <span className="text-xs text-slate-400">
-                        {a.owner_email}
+                        {ownerEmail}
                       </span>
                     ) : note ? (
                       <span title={note.detail}>
@@ -766,14 +871,12 @@ export default function Agents() {
                     </span>
                   ),
                 },
-                ...(can(myRole, "member:manage") ? [{
+                ...(Object.values(profiles).some((profile) => profile?.permissions.revoke) ? [{
                   key: "actions",
                   header: "Actions",
-                  cell: (a: AgentRow) => (
-                    <Button variant="ghost" onClick={() => setConfirmRemove(a)}>
-                      Remove
-                    </Button>
-                  ),
+                  cell: (a: AgentRow) => profiles[a.device_id]?.permissions.revoke ? (
+                    <Button variant="ghost" onClick={() => setConfirmRemove(a)}>Remove</Button>
+                  ) : null,
                 }] : []),
               ]}
             />
@@ -786,7 +889,7 @@ export default function Agents() {
           <Card>
             <h2 className="text-sm font-semibold text-ink-heading">Remove {confirmRemove.name}?</h2>
             <p className="mt-2 max-w-md text-xs text-ink-secondary">
-              The agent will be revoked first, then removed from this roster. Its existing tunnel credential will stop working.
+              The agent will be revoked first, then removed from this roster. Its runtime service will offboard, any pending credential or WireGuard rotation will be cancelled, and its existing tunnel credential will stop working. Access-policy grants that no longer match an active agent remain saved for review; they are not silently deleted.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setConfirmRemove(null)} disabled={removing}>Cancel</Button>

@@ -2464,6 +2464,8 @@ export interface components {
             org_id: string;
             name: string;
             description: string;
+            /** @description Present for policy managers: current live agent-profile assignments cleared if this group is deleted; removing one group member withdraws that person's authority over the same agents without clearing the assignment. */
+            managed_agent_count?: number;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3353,6 +3355,9 @@ export interface components {
             owner_id: string;
             /** Format: email */
             owner_email: string;
+            /** Format: uuid */
+            managing_group_id: string | null;
+            managing_group_name: string | null;
             /** @enum {string} */
             status: "pending" | "active" | "suspended" | "revoked";
             /** Format: date-time */
@@ -3361,6 +3366,16 @@ export interface components {
             rx_bytes?: number | null;
             /** Format: int64 */
             tx_bytes?: number | null;
+            permissions: components["schemas"]["AgentEffectivePermissions"];
+        };
+        /** @description Server-computed authority for this exact agent; clients must not infer it from the organization role. */
+        AgentEffectivePermissions: {
+            view_privileged: boolean;
+            manage: boolean;
+            assign: boolean;
+            grant_access: boolean;
+            revoke: boolean;
+            rotate_credentials: boolean;
         };
         /** @description Secret-free server-owned configuration for one managed agent. Runtime credentials, bootstrap tokens, token hashes, and private keys are never configuration fields. */
         ManagedAgentConfig: {
@@ -3538,6 +3553,13 @@ export interface components {
             };
             /** @enum {string} */
             status?: "active" | "suspended";
+            /** Format: uuid */
+            owner_id?: string;
+            managing_group_update?: components["schemas"]["AgentManagingGroupUpdate"];
+        };
+        AgentManagingGroupUpdate: {
+            /** Format: uuid */
+            group_id: string | null;
         };
         UpdateDeviceModeRequest: {
             /** @description true for full-tunnel egress; false for split-tunnel */
@@ -3655,6 +3677,8 @@ export interface components {
             joined_at: string;
             /** @description Live machine credentials this person OWNS, across every organization. Deactivating them stops every one of these immediately (D23) — the roster carries the number so the confirmation can say what the act will break, rather than an operator finding out from a broken pipeline. */
             machine_credentials?: number;
+            /** @description Current managed agents this person can manage through team membership, across every organization. Deactivation withdraws that authority immediately without clearing the team's assignment. */
+            managed_agent_delegations?: number;
         };
         ChangeRoleRequest: {
             /** @enum {string} */

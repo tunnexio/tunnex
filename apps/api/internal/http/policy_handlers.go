@@ -70,9 +70,24 @@ func (s apiServer) ListGroups(ctx context.Context, req api.ListGroupsRequestObje
 	if err != nil {
 		return nil, err
 	}
+	var managedAgentCounts map[uuid.UUID]int64
+	if _, manageErr := authorize(ctx, req.OrgId, rbac.PermPolicyManage); manageErr == nil {
+		if s.devices == nil {
+			return nil, apierr.New(http.StatusInternalServerError, "agent_service_unavailable", "agent service unavailable")
+		}
+		managedAgentCounts, err = s.devices.AgentManagingGroupCounts(ctx, req.OrgId)
+		if err != nil {
+			return nil, err
+		}
+	}
 	out := make([]api.UserGroup, 0, len(gs))
 	for _, g := range gs {
-		out = append(out, toAPIGroup(g))
+		item := toAPIGroup(g)
+		if managedAgentCounts != nil {
+			count := int(managedAgentCounts[g.ID])
+			item.ManagedAgentCount = &count
+		}
+		out = append(out, item)
 	}
 	return api.ListGroups200JSONResponse{Body: out, Headers: api.ListGroups200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -242,6 +257,29 @@ func (s apiServer) DeleteResource(ctx context.Context, req api.DeleteResourceReq
 
 // ── rules ───────────────────────────────────────────────────────────────────────
 
+// requireAgentGrantForExistingRule adds F06's second gate only when the
+// already-authorized policy mutation targets an agent-source rule. Ordinary
+// group/user/site/CIDR rules retain their existing policy:manage boundary.
+func (s apiServer) requireAgentGrantForExistingRule(ctx context.Context, orgID, ruleID uuid.UUID) error {
+	rules, err := s.policy.ListPolicyRules(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		if rule.ID != ruleID {
+			continue
+		}
+		if rule.SrcKind != "agent" {
+			return nil
+		}
+		_, err := authorize(ctx, orgID, rbac.PermAgentGrantAccess)
+		return err
+	}
+	// Preserve the existing service's normalized not-found response; this
+	// helper must not invent a second existence oracle.
+	return nil
+}
+
 func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesRequestObject) (api.ListPolicyRulesResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyView); err != nil {
 		return nil, err
@@ -271,6 +309,11 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRuleRequestObject) (api.CreatePolicyRuleResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
 		return nil, err
+	}
+	if req.Body != nil && req.Body.SrcKind != nil && string(*req.Body.SrcKind) == "agent" {
+		if _, err := authorize(ctx, req.OrgId, rbac.PermAgentGrantAccess); err != nil {
+			return nil, err
+		}
 	}
 	if s.policy == nil {
 		return nil, policyEditionRequired()
@@ -319,6 +362,9 @@ func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRul
 	if s.policy == nil {
 		return nil, policyEditionRequired()
 	}
+	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+		return nil, err
+	}
 	uid, sys, cause := auditActor(ctx)
 	if err := s.policy.DeletePolicyRule(ctx, req.OrgId, req.RuleId, uid, sys, cause); err != nil {
 		return nil, err
@@ -333,6 +379,9 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 	}
 	if s.policy == nil {
 		return nil, policyEditionRequired()
+	}
+	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+		return nil, err
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -360,6 +409,9 @@ func (s apiServer) SetPolicyRuleEnabled(ctx context.Context, req api.SetPolicyRu
 	}
 	if s.policy == nil {
 		return nil, policyEditionRequired()
+	}
+	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+		return nil, err
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")

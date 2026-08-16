@@ -1,6 +1,6 @@
 import { createElement, useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const get = vi.fn();
 const put = vi.fn();
@@ -120,6 +120,16 @@ const profile = {
   labels: { team: "sec" },
   owner_id: "user-a",
   owner_email: "owner@example.com",
+  managing_group_id: null,
+  managing_group_name: null,
+  permissions: {
+    view_privileged: true,
+    manage: true,
+    assign: true,
+    grant_access: true,
+    revoke: true,
+    rotate_credentials: true,
+  },
   status: "active",
   last_handshake_at: "2026-08-14T10:00:00Z",
   rx_bytes: 12,
@@ -196,23 +206,69 @@ describe("released Agents route — F04 runtime facts", () => {
     expect(document.body.textContent).not.toMatch(/tnx_runtime_|token_hash|[0-9a-f]{64}/i);
   });
 
-  it("keeps credential rotation telemetry and calls absent for a plain member", async () => {
+  it("shows rotation status read-only to the accountable member-owner", async () => {
     viewerId = "member-b";
     get.mockImplementation(async (path: string) => {
       if (path.endsWith("/nodes")) return { data: [], response: { status: 200 } };
       if (path.endsWith("/agents")) return { data: [agent], response: { status: 200 } };
       if (path.endsWith("/members")) return { data: [{ user_id: "member-b", role: "member" }], response: { status: 200 } };
-      if (path.endsWith("/agents/{deviceId}")) return { data: { ...profile, owner_id: "member-b", owner_email: "member@example.com" }, response: { status: 200 } };
+      if (path.endsWith("/agents/{deviceId}")) return { data: {
+        ...profile,
+        owner_id: "member-b",
+        owner_email: "member@example.com",
+        permissions: { ...profile.permissions, assign: false, grant_access: false, rotate_credentials: false },
+      }, response: { status: 200 } };
       if (path.endsWith("/runtime-status")) return { data: runtime, response: { status: 200 } };
+      if (path.endsWith("/credential-rotation")) return { data: {
+        device_id: "device-a", current_revision: 2, state: "current", requested_revision: null, deadline: null,
+        wireguard_current_revision: 3, wireguard_state: "current", wireguard_requested_revision: null,
+      }, response: { status: 200 } };
       return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
     });
     const { default: Agents } = await import("../src/pages/Agents");
     render(createElement(Agents));
     fireEvent.click(await screen.findByRole("button", { name: "Open builder-a" }));
     await waitFor(() => expect(screen.queryByTestId("agent-profile")).not.toBeNull());
-    expect(screen.queryByTestId("agent-credential-rotation")).toBeNull();
+    expect(screen.getByTestId("agent-credential-rotation")).toBeTruthy();
+    expect(screen.getByText("Revision 2 · current")).toBeTruthy();
+    expect(screen.getByText("Revision 3 · current")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Rotate credential" })).toBeNull();
-    expect(get.mock.calls.some(([path]) => String(path).endsWith("/credential-rotation"))).toBe(false);
+    expect(screen.queryByTestId("agent-assignment-editor")).toBeNull();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeTruthy();
+    expect(get.mock.calls.some(([path]) => String(path).endsWith("/credential-rotation"))).toBe(true);
+  });
+
+  it("changes owner and managing team through one server-refetched profile PATCH", async () => {
+    const members = [
+      { user_id: "user-a", email: "owner@example.com", name: "Owner", role: "owner", status: "active", email_verified: true, joined_at: "2026-08-14T10:00:00Z" },
+      { user_id: "user-b", email: "next@example.com", name: "Next", role: "member", status: "active", email_verified: true, joined_at: "2026-08-14T10:00:00Z" },
+    ];
+    get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/nodes")) return { data: [], response: { status: 200 } };
+      if (path.endsWith("/agents")) return { data: [agent], response: { status: 200 } };
+      if (path.endsWith("/members")) return { data: members, response: { status: 200 } };
+      if (path.endsWith("/groups")) return { data: [{ id: "group-a", org_id: "org-a", name: "Platform", description: "", created_at: "2026-08-14T10:00:00Z", updated_at: "2026-08-14T10:00:00Z" }], response: { status: 200 } };
+      if (path.endsWith("/agents/{deviceId}")) return { data: profile, response: { status: 200 } };
+      return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
+    });
+    patch.mockResolvedValue({ data: { ...profile, owner_id: "user-b", owner_email: "next@example.com", managing_group_id: "group-a", managing_group_name: "Platform" }, response: { status: 200 } });
+    const { default: Agents } = await import("../src/pages/Agents");
+    render(createElement(Agents));
+    fireEvent.click(await screen.findByRole("button", { name: "Open builder-a" }));
+    const editor = await screen.findByTestId("agent-assignment-editor");
+    const [ownerSelect, groupSelect] = within(editor).getAllByRole("combobox");
+    fireEvent.change(ownerSelect, { target: { value: "user-b" } });
+    fireEvent.change(groupSelect, { target: { value: "group-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/agents/{deviceId}",
+      {
+        params: { path: { orgId: "org-a", deviceId: "device-a" } },
+        body: { owner_id: "user-b", managing_group_update: { group_id: "group-a" } },
+      },
+    ));
+    expect(screen.getByText(/does not change the tunnel or access grants/i)).toBeTruthy();
+    expect(screen.getByText(/cannot grant access, rotate credentials, or revoke it/i)).toBeTruthy();
   });
 
   it("passes the server-owned immutable release DTO into the real enrollment command", async () => {
@@ -579,7 +635,7 @@ describe("released Agents route — F04 runtime facts", () => {
     render(createElement(Agents));
     fireEvent.click(await screen.findByRole("button", { name: "Open builder-a" }));
     await waitFor(() => expect(screen.queryByTestId("agent-profile")).toBeNull());
-    expect(document.body.textContent).not.toMatch(/owner@example\.com|Environment|Runtime|Telemetry|Lifecycle|Suspend agent|Resume agent|runtime_credential|bootstrap_token|private_key|token_hash/i);
+    expect(document.body.textContent).not.toMatch(/owner@example\.com|Managing team|Environment|Runtime|Telemetry|Lifecycle|Save assignment|Suspend agent|Resume agent|runtime_credential|bootstrap_token|private_key|token_hash/i);
   });
 
   it("removes the owner column and owner email for a plain member even when the list payload contains it", async () => {

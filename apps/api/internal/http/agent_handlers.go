@@ -19,7 +19,7 @@ import (
 )
 
 func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAgentBootstrapTokenRequestObject) (api.IssueAgentBootstrapTokenResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentEnroll); err != nil {
 		return nil, err
 	}
 	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {

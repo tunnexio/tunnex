@@ -33,7 +33,16 @@ ORDER BY created_at;
 SELECT m.user_id, m.role, m.created_at AS joined_at,
        u.email, u.name, u.status, (u.email_verified_at IS NOT NULL)::boolean AS email_verified,
        (SELECT count(*) FROM machine_credentials mc
-         WHERE mc.user_id = m.user_id AND mc.revoked_at IS NULL)::bigint AS machine_credentials
+         WHERE mc.user_id = m.user_id AND mc.revoked_at IS NULL)::bigint AS machine_credentials,
+       (SELECT count(DISTINCT ap.device_id)
+          FROM group_members gm
+          JOIN memberships delegated_m
+            ON delegated_m.org_id = gm.org_id AND delegated_m.user_id = gm.user_id
+          JOIN agent_profiles ap ON ap.managing_group_id = gm.group_id
+          JOIN devices d ON d.id = ap.device_id AND d.org_id = gm.org_id
+         WHERE gm.user_id = m.user_id
+           AND delegated_m.access_revoked_at IS NULL
+           AND d.deleted_at IS NULL)::bigint AS managed_agent_delegations
 FROM memberships m
 JOIN users u ON u.id = m.user_id
 WHERE m.org_id = $1 AND u.deleted_at IS NULL

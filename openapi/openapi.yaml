@@ -3274,6 +3274,10 @@ components:
         org_id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        managed_agent_count:
+          type: integer
+          minimum: 0
+          description: "Present for policy managers: current live agent-profile assignments cleared if this group is deleted; removing one group member withdraws that person's authority over the same agents without clearing the assignment."
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         # origin distinguishes a hand-managed group from a directory-synced one (S7.5.2). A
@@ -4544,7 +4548,7 @@ components:
 
     AgentProfile:
       type: object
-      required: [device_id, name, environment, runtime, labels, owner_id, owner_email, status]
+      required: [device_id, name, environment, runtime, labels, owner_id, owner_email, managing_group_id, managing_group_name, status, permissions]
       additionalProperties: false
       properties:
         device_id: { type: string, format: uuid }
@@ -4556,10 +4560,26 @@ components:
           additionalProperties: { type: string }
         owner_id: { type: string, format: uuid }
         owner_email: { type: string, format: email }
+        managing_group_id: { type: string, format: uuid, nullable: true }
+        managing_group_name: { type: string, nullable: true }
         status: { type: string, enum: [pending, active, suspended, revoked] }
         last_handshake_at: { type: string, format: date-time, nullable: true }
         rx_bytes: { type: integer, format: int64, nullable: true }
         tx_bytes: { type: integer, format: int64, nullable: true }
+        permissions: { $ref: "#/components/schemas/AgentEffectivePermissions" }
+
+    AgentEffectivePermissions:
+      type: object
+      required: [view_privileged, manage, assign, grant_access, revoke, rotate_credentials]
+      additionalProperties: false
+      description: Server-computed authority for this exact agent; clients must not infer it from the organization role.
+      properties:
+        view_privileged: { type: boolean }
+        manage: { type: boolean }
+        assign: { type: boolean }
+        grant_access: { type: boolean }
+        revoke: { type: boolean }
+        rotate_credentials: { type: boolean }
 
     ManagedAgentConfig:
       type: object
@@ -4773,6 +4793,15 @@ components:
           maxProperties: 32
           additionalProperties: { type: string, maxLength: 100 }
         status: { type: string, enum: [active, suspended] }
+        owner_id: { type: string, format: uuid }
+        managing_group_update: { $ref: "#/components/schemas/AgentManagingGroupUpdate" }
+
+    AgentManagingGroupUpdate:
+      type: object
+      required: [group_id]
+      additionalProperties: false
+      properties:
+        group_id: { type: string, format: uuid, nullable: true }
 
     UpdateDeviceModeRequest:
       type: object
@@ -4968,6 +4997,11 @@ components:
             Live machine credentials this person OWNS, across every organization. Deactivating them stops
             every one of these immediately (D23) — the roster carries the number so the confirmation can
             say what the act will break, rather than an operator finding out from a broken pipeline.
+        managed_agent_delegations:
+          type: integer
+          description: >-
+            Current managed agents this person can manage through team membership, across every organization.
+            Deactivation withdraws that authority immediately without clearing the team's assignment.
 
     ChangeRoleRequest:
       type: object

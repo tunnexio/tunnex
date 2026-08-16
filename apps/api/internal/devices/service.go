@@ -831,17 +831,19 @@ func AgentLifecycleTransition(from, to string) bool {
 }
 
 type AgentProfile struct {
-	DeviceID        uuid.UUID
-	Name            string
-	Environment     string
-	Runtime         string
-	Labels          []byte
-	OwnerID         uuid.UUID
-	OwnerEmail      string
-	Status          string
-	LastHandshakeAt *time.Time
-	RxBytes         *int64
-	TxBytes         *int64
+	DeviceID          uuid.UUID
+	Name              string
+	Environment       string
+	Runtime           string
+	Labels            []byte
+	OwnerID           uuid.UUID
+	OwnerEmail        string
+	ManagingGroupID   *uuid.UUID
+	ManagingGroupName *string
+	Status            string
+	LastHandshakeAt   *time.Time
+	RxBytes           *int64
+	TxBytes           *int64
 }
 
 func (s *Service) GetAgentProfile(ctx context.Context, orgID, deviceID uuid.UUID) (AgentProfile, error) {
@@ -852,9 +854,50 @@ func (s *Service) GetAgentProfile(ctx context.Context, orgID, deviceID uuid.UUID
 	if err != nil {
 		return AgentProfile{}, err
 	}
+	var managingGroupID *uuid.UUID
+	if r.ManagingGroupID.Valid {
+		v := uuid.UUID(r.ManagingGroupID.Bytes)
+		managingGroupID = &v
+	}
 	return AgentProfile{DeviceID: r.DeviceID, Name: r.Name, Environment: r.Environment, Runtime: r.Runtime,
 		Labels: r.Labels, OwnerID: r.UserID, OwnerEmail: r.OwnerEmail, Status: r.Status,
+		ManagingGroupID: managingGroupID, ManagingGroupName: r.ManagingGroupName,
 		LastHandshakeAt: tsPtr(r.LastHandshakeAt), RxBytes: r.RxBytes, TxBytes: r.TxBytes}, nil
+}
+
+type AgentScopedAuthority struct {
+	Owner   bool
+	Manager bool
+}
+
+// AgentManagingGroupCounts returns the server-owned destructive-impact count
+// for every managing group in an organization. Missing groups have zero
+// assignments. The web uses this only when presenting a group/member removal
+// confirmation; it never derives the count from separately loaded agents.
+func (s *Service) AgentManagingGroupCounts(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]int64, error) {
+	rows, err := s.q.ListAgentManagingGroupCounts(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]int64, len(rows))
+	for _, row := range rows {
+		if row.ManagingGroupID.Valid {
+			out[row.ManagingGroupID.Bytes] = row.ManagedAgentCount
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) AgentScopedAuthority(ctx context.Context, orgID, deviceID, userID uuid.UUID) (AgentScopedAuthority, error) {
+	if s.pool == nil {
+		p, err := s.GetAgentProfile(ctx, orgID, deviceID)
+		return AgentScopedAuthority{Owner: err == nil && p.OwnerID == userID}, err
+	}
+	r, err := s.q.GetAgentScopedAuthority(ctx, sqlc.GetAgentScopedAuthorityParams{DeviceID: deviceID, OrgID: orgID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentScopedAuthority{}, nil
+	}
+	return AgentScopedAuthority{Owner: r.IsOwner, Manager: r.IsManager}, err
 }
 
 // IsAgentOwner deliberately returns only an authorization fact. Callers use it
@@ -878,6 +921,17 @@ func (s *Service) UpdateAgentProfile(ctx context.Context, actorID, orgID, device
 // UpdateAgentProfileWithLifecycle is atomic: a rejected lifecycle transition
 // rolls back the metadata update in the same transaction.
 func (s *Service) UpdateAgentProfileWithLifecycle(ctx context.Context, actorID, orgID, deviceID uuid.UUID, environment, runtime string, labels []byte, status *string) (AgentProfile, error) {
+	return s.UpdateAgentProfileWithLifecycleAndGovernance(ctx, actorID, orgID, deviceID, environment, runtime, labels, status, AgentGovernanceUpdate{ProfileUpdateRequested: true})
+}
+
+type AgentGovernanceUpdate struct {
+	OwnerID                *uuid.UUID
+	ManagingGroupSet       bool
+	ManagingGroupID        *uuid.UUID
+	ProfileUpdateRequested bool
+}
+
+func (s *Service) UpdateAgentProfileWithLifecycleAndGovernance(ctx context.Context, actorID, orgID, deviceID uuid.UUID, environment, runtime string, labels []byte, status *string, governance AgentGovernanceUpdate) (AgentProfile, error) {
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		current, err := q.GetAgentProfileForOrg(ctx, sqlc.GetAgentProfileForOrgParams{DeviceID: deviceID, OrgID: orgID})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -889,26 +943,97 @@ func (s *Service) UpdateAgentProfileWithLifecycle(ctx context.Context, actorID, 
 		if status != nil && !AgentLifecycleTransition(current.Status, *status) {
 			return apierr.Conflict("invalid_agent_transition", "agent lifecycle transition is not allowed")
 		}
-		if _, err := q.UpdateAgentProfile(ctx, sqlc.UpdateAgentProfileParams{DeviceID: deviceID, Environment: environment, Runtime: runtime, Labels: labels, OrgID: orgID}); err != nil {
+		locked, err := q.GetAgentGovernanceForUpdate(ctx, sqlc.GetAgentGovernanceForUpdateParams{DeviceID: deviceID, OrgID: orgID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.NotFound("agent_not_found", "agent not found")
+		}
+		if err != nil {
 			return err
 		}
-		if status != nil {
+		if governance.OwnerID != nil {
+			if _, err := q.GetCurrentAgentOwnerCandidate(ctx, sqlc.GetCurrentAgentOwnerCandidateParams{OrgID: orgID, UserID: *governance.OwnerID}); errors.Is(err, pgx.ErrNoRows) {
+				return apierr.BadRequest("invalid_agent_owner", "agent owner must be a current organization member")
+			} else if err != nil {
+				return err
+			}
+		}
+		if governance.ManagingGroupSet && governance.ManagingGroupID != nil {
+			if _, err := q.GetUserGroup(ctx, sqlc.GetUserGroupParams{ID: *governance.ManagingGroupID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+				return apierr.BadRequest("invalid_agent_managing_group", "managing group must belong to the organization")
+			} else if err != nil {
+				return err
+			}
+		}
+		if governance.ProfileUpdateRequested {
+			if _, err := q.UpdateAgentProfile(ctx, sqlc.UpdateAgentProfileParams{DeviceID: deviceID, Environment: environment, Runtime: runtime, Labels: labels, OrgID: orgID}); err != nil {
+				return err
+			}
+		}
+		if governance.ProfileUpdateRequested && status != nil {
 			if _, err := q.UpdateAgentLifecycle(ctx, sqlc.UpdateAgentLifecycleParams{ID: deviceID, OrgID: orgID, Status: *status, Status_2: current.Status}); errors.Is(err, pgx.ErrNoRows) {
 				return apierr.Conflict("agent_lifecycle_changed", "agent lifecycle changed; retry the update")
 			} else if err != nil {
 				return err
 			}
 		}
-		meta := map[string]any{}
-		if status != nil {
-			meta["from"], meta["to"] = current.Status, *status
+		assignmentChanged := false
+		if governance.OwnerID != nil && *governance.OwnerID != locked.UserID {
+			if _, err := q.SetAgentOwner(ctx, sqlc.SetAgentOwnerParams{ID: deviceID, OrgID: orgID, UserID: *governance.OwnerID}); err != nil {
+				return err
+			}
+			assignmentChanged = true
 		}
-		return audit(ctx, q, orgID, &actorID, "agent.profile_updated", "device", deviceID.String(), meta)
+		oldGroup := (*uuid.UUID)(nil)
+		if locked.ManagingGroupID.Valid {
+			v := uuid.UUID(locked.ManagingGroupID.Bytes)
+			oldGroup = &v
+		}
+		if governance.ManagingGroupSet && !sameOptionalUUID(oldGroup, governance.ManagingGroupID) {
+			group := pgtype.UUID{}
+			if governance.ManagingGroupID != nil {
+				group = pgtype.UUID{Bytes: *governance.ManagingGroupID, Valid: true}
+			}
+			if _, err := q.SetAgentManagingGroup(ctx, sqlc.SetAgentManagingGroupParams{DeviceID: deviceID, ManagingGroupID: group, OrgID: orgID}); err != nil {
+				return err
+			}
+			assignmentChanged = true
+		}
+		if governance.ProfileUpdateRequested {
+			meta := map[string]any{}
+			if status != nil {
+				meta["from"], meta["to"] = current.Status, *status
+			}
+			if err := audit(ctx, q, orgID, &actorID, "agent.profile_updated", "device", deviceID.String(), meta); err != nil {
+				return err
+			}
+		}
+		if assignmentChanged {
+			newOwner := locked.UserID
+			if governance.OwnerID != nil {
+				newOwner = *governance.OwnerID
+			}
+			newGroup := oldGroup
+			if governance.ManagingGroupSet {
+				newGroup = governance.ManagingGroupID
+			}
+			return audit(ctx, q, orgID, &actorID, "agent.assignment_updated", "device", deviceID.String(), map[string]any{
+				"old_owner_id": locked.UserID, "new_owner_id": newOwner,
+				"old_managing_group_id": oldGroup, "new_managing_group_id": newGroup,
+			})
+		}
+		return nil
 	})
 	if err != nil {
 		return AgentProfile{}, err
 	}
 	return s.GetAgentProfile(ctx, orgID, deviceID)
+}
+
+func sameOptionalUUID(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // sortedKeys returns a and b in ascending order, so multiple advisory locks are

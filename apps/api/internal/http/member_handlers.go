@@ -41,15 +41,17 @@ func toAPIMember(r sqlc.ListOrgMembersWithUserRow) api.Member {
 	// dies with its owner's deactivation; until this number reached the screen, an operator could not learn
 	// that before acting, and a broken GitOps pipeline was never connected back to the offboarding.
 	mc := int(r.MachineCredentials)
+	delegations := int(r.ManagedAgentDelegations)
 	return api.Member{
-		MachineCredentials: &mc,
-		UserId:             r.UserID,
-		Email:              openapi_types.Email(r.Email),
-		Name:               r.Name,
-		Role:               api.MemberRole(r.Role),
-		Status:             api.MemberStatus(r.Status),
-		EmailVerified:      r.EmailVerified,
-		JoinedAt:           r.JoinedAt,
+		MachineCredentials:      &mc,
+		ManagedAgentDelegations: &delegations,
+		UserId:                  r.UserID,
+		Email:                   openapi_types.Email(r.Email),
+		Name:                    r.Name,
+		Role:                    api.MemberRole(r.Role),
+		Status:                  api.MemberStatus(r.Status),
+		EmailVerified:           r.EmailVerified,
+		JoinedAt:                r.JoinedAt,
 	}
 }
 

@@ -98,7 +98,7 @@ func (s apiServer) GetAgentRuntimeStatus(ctx context.Context, req api.GetAgentRu
 	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentProfileAccess(ctx, req.OrgId, req.DeviceId); err != nil {
+	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
 	}
 	status, err := s.agentRuntime.Status(ctx, req.OrgId, req.DeviceId)

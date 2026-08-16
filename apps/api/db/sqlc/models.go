@@ -54,6 +54,8 @@ type AgentProfile struct {
 	Labels      []byte    `json:"labels"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// Optional existing organization group whose current members may view and manage this agent; not an ownership or policy grant.
+	ManagingGroupID pgtype.UUID `json:"managing_group_id"`
 }
 
 type AgentRuntimeCredential struct {

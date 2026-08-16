@@ -204,12 +204,8 @@ func (s apiServer) RemoveDevice(ctx context.Context, req api.RemoveDeviceRequest
 	p, _ := authctx.PrincipalFrom(ctx)
 	role, _ := p.RoleIn(req.OrgId)
 
-	dev, err := s.devices.Get(ctx, req.OrgId, req.DeviceId)
-	if err != nil {
+	if _, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "remove"); err != nil {
 		return nil, err
-	}
-	if dev.UserID != p.UserID && !rbac.Can(role, rbac.PermMemberManage) {
-		return nil, apierr.New(403, "forbidden", "you may not remove this device")
 	}
 	if err := s.devices.RemoveRevoked(ctx, req.OrgId, p.UserID, req.DeviceId); err != nil {
 		return nil, err
@@ -224,12 +220,8 @@ func (s apiServer) RevokeDevice(ctx context.Context, req api.RevokeDeviceRequest
 	p, _ := authctx.PrincipalFrom(ctx)
 	role, _ := p.RoleIn(req.OrgId)
 
-	dev, err := s.devices.Get(ctx, req.OrgId, req.DeviceId)
-	if err != nil {
+	if _, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "revoke"); err != nil {
 		return nil, err
-	}
-	if dev.UserID != p.UserID && !rbac.Can(role, rbac.PermMemberManage) {
-		return nil, apierr.New(403, "forbidden", "you may not revoke this device")
 	}
 	if err := s.devices.Revoke(ctx, req.OrgId, p.UserID, req.DeviceId); err != nil {
 		return nil, err
@@ -237,6 +229,32 @@ func (s apiServer) RevokeDevice(ctx context.Context, req api.RevokeDeviceRequest
 	return api.RevokeDevice204Response{
 		Headers: api.RevokeDevice204ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
+}
+
+// authorizeDeviceLifecycleTarget preserves the shared human-device endpoint
+// without turning agent existence into an oracle. A caller without global
+// agent:revoke first proves relational agent authority. If that fails, the
+// target may still be their human device; a missing/foreign row returns the
+// same forbidden envelope as an existing unauthorized agent.
+func (s apiServer) authorizeDeviceLifecycleTarget(ctx context.Context, orgID, deviceID, userID uuid.UUID, role, verb string) (sqlc.Device, error) {
+	if rbac.Can(role, rbac.PermAgentRevoke) {
+		return s.devices.Get(ctx, orgID, deviceID)
+	}
+	agentErr := s.requireAgentPermission(ctx, orgID, deviceID, rbac.PermAgentRevoke)
+	if agentErr == nil {
+		return s.devices.Get(ctx, orgID, deviceID)
+	}
+	dev, err := s.devices.Get(ctx, orgID, deviceID)
+	if err != nil {
+		return sqlc.Device{}, agentErr
+	}
+	if dev.Kind == "agent" {
+		return sqlc.Device{}, agentErr
+	}
+	if dev.UserID != userID && !rbac.Can(role, rbac.PermMemberManage) {
+		return sqlc.Device{}, apierr.New(403, "forbidden", "you may not "+verb+" this device")
+	}
+	return dev, nil
 }
 
 // onlineThreshold: a device is treated as "online" if its last WireGuard

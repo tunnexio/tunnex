@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -59,6 +59,7 @@ import {
   flowLayout,
   cascadeConfirmCopy,
   cascadeConfirmSatisfied,
+  groupMemberRemovalCopy,
   srcGroupEmptyWarn,
   srcGroupEmptyBadge,
   srcGroupEmptyExplain,
@@ -79,6 +80,7 @@ import {
   destinationOptions,
   ruleEffectSummary,
   ruleEffectCaution,
+  ruleSourceReady,
 } from "../lib/policyview";
 import {
   DIRECTORY_MANAGED_BADGE,
@@ -124,32 +126,48 @@ export default function Access() {
   // symptom (patching the disabled expression would leave the stale copy feeding the rule modal too).
   const [subjectsRev, setSubjectsRev] = useState(0);
   const [roleResolved, setRoleResolved] = useState(false);
+  const reloadEpoch = useRef(0);
+  const selectedOrgId = useRef<string | null>(currentOrg?.id ?? null);
+  selectedOrgId.current = currentOrg?.id ?? null;
 
   const reload = useCallback(async () => {
+    const epoch = ++reloadEpoch.current;
+    const target = currentOrg;
+    const isCurrent = () =>
+      reloadEpoch.current === epoch &&
+      selectedOrgId.current === (target?.id ?? null);
     setLoadError(null);
     setFatal(null);
     setRoleError(null);
     setRoleResolved(false);
+    setMeta(null);
+    setOrg(null);
+    setMyRole(undefined);
+    if (orgLoading) return;
+    if (!target) {
+      if (isCurrent()) {
+        setFatal(
+          orgFailed
+            ? "Could not load your organizations."
+            : "You are not a member of any organization yet.",
+        );
+      }
+      return;
+    }
     const mRes = await loadOne(() => api.GET("/api/v1/meta"));
+    if (!isCurrent()) return;
     if (!mRes.ok) return setLoadError(mRes.error); // [67]: surface loadOne's (human) message
     setMeta(mRes.data as Meta);
     // ⛔ THE ORG COMES FROM THE SEAM, NOT FROM INDEX ZERO (S12.5).
     // ⛔ LOADING IS NOT ABSENCE (S12.5). See the note in Dashboard.tsx — three states, not two: still
     // loading (say nothing), the read failed (say THAT), genuinely no membership (say that).
-    if (orgLoading) return;
-    const first = currentOrg;
-    if (!first)
-      return setFatal(
-        orgFailed
-          ? "Could not load your organizations."
-          : "You are not a member of any organization yet.",
-      );
-    setOrg(first);
+    setOrg(target);
     const memRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/members", {
-        params: { path: { orgId: first.id } },
+        params: { path: { orgId: target.id } },
       }),
     )) as Loaded<Member[]>;
+    if (!isCurrent()) return;
     const resolved = roleFromMembers(memRes, myId);
     if (resolved.failed)
       return setRoleError(
@@ -160,9 +178,12 @@ export default function Access() {
     // ⚠ currentOrg IS A DEPENDENCY, AND THAT IS THE HALF THAT MAKES THE SWITCHER WORK. Without it the
     // page keeps rendering the org it mounted with — the control moves, the data does not, and the user is
     // looking at one tenant's screen labelled with another's name.
-  }, [currentOrg, myId]);
+  }, [currentOrg, myId, orgFailed, orgLoading]);
   useEffect(() => {
     reload();
+    return () => {
+      reloadEpoch.current += 1;
+    };
   }, [reload]);
 
   const gate = policyGate({
@@ -180,6 +201,17 @@ export default function Access() {
     canView: gate.canView,
     role: myRole,
   });
+
+  // The shell switches currentOrg synchronously, while this page deliberately reloads
+  // meta + membership before accepting the next org into page state. Do not render one
+  // tenant's rules or agent names under another tenant's shell during that interval.
+  if (currentOrg && org?.id !== currentOrg.id) {
+    return (
+      <Card className="mt-6">
+        <p className="text-sm text-slate-500">Loading access policies…</p>
+      </Card>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -416,6 +448,10 @@ function RulesSection({
   const [members, setMembers] = useState<Member[]>([]);
   const [sites, setSites] = useState<Site[]>([]); // S8.2c D5: site rule subjects
   const [services, setServices] = useState<K8sService[]>([]); // S10.3: k8s_service dst subjects
+  const [agents, setAgents] = useState<
+    Array<{ device_id: string; name: string; gateway_name: string }>
+  >([]);
+  const [agentsOrgId, setAgentsOrgId] = useState("");
   const [loaded, setLoaded] = useState<LoadState>({
     groupsLoaded: false,
     resourcesLoaded: false,
@@ -455,7 +491,13 @@ function RulesSection({
 
   const load = useCallback(async () => {
     setErr(null); // [310]: never carry a stale partial-load/mutation error into a fresh load
-    const [rr, gr, resr, mr, mo, sr, ksr] = await Promise.all([
+    setAgentsOrgId("");
+    setLoaded((previous) => ({
+      ...previous,
+      agentsLoaded: false,
+      agents: [],
+    }));
+    const [rr, gr, resr, mr, mo, sr, ksr, ar] = await Promise.all([
       loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/policies", {
           params: { path: { orgId } },
@@ -491,6 +533,11 @@ function RulesSection({
           params: { path: { orgId } },
         }),
       ), // S10.3: k8s_service dst subjects
+      loadOne(() =>
+        api.GET("/api/v1/organizations/{orgId}/agents", {
+          params: { path: { orgId } },
+        }),
+      ),
     ]);
     // Summary inputs — set from the SAME results (a rules-load failure → summary shows "failed", never 0).
     setRulesResult(
@@ -531,6 +578,15 @@ function RulesSection({
     setMembers((mr.ok ? (mr.data as Member[]) : []) as Member[]);
     setSites((sr.ok ? (sr.data as Site[]) : []) as Site[]); // D5
     setServices((ksr.ok ? (ksr.data as K8sService[]) : []) as K8sService[]); // S10.3: k8s_service dst subjects
+    const loadedAgents = ar.ok
+      ? (ar.data as Array<{
+          device_id: string;
+          name: string;
+          gateway_name: string;
+        }>)
+      : [];
+    setAgents(loadedAgents);
+    setAgentsOrgId(orgId);
     // D-a6 loaded flags come from the SAME source: a set that FAILED to load → its refs are
     // "unresolved", not "deleted".
     setLoaded({
@@ -539,11 +595,13 @@ function RulesSection({
       membersLoaded: mr.ok,
       sitesLoaded: sr.ok,
       k8sServicesLoaded: ksr.ok,
+      agentsLoaded: ar.ok,
+      agents: loadedAgents,
     }); // sitesLoaded → WF-8; k8sServicesLoaded → S10.3
     setErr(
-      gr.ok && resr.ok && mr.ok && sr.ok && ksr.ok
+      gr.ok && resr.ok && mr.ok && sr.ok && ksr.ok && ar.ok
         ? null
-        : "Some groups/resources/members/sites/services failed to load. names may show as unresolved. Refresh.",
+        : "Some groups/resources/members/sites/services/agents failed to load. names may show as unresolved. Refresh.",
     ); // ksr.ok: a services-load failure must raise the banner too
     // The ONLY clear path (amendment A: gated on this successful load): drop stale ids no
     // longer present, keep the rest (B).
@@ -554,6 +612,7 @@ function RulesSection({
   }, [load, subjectsRev]); // S8.5: re-load when a sibling section mutates groups/resources (stale-button fix)
 
   const notice = staleNoticeText(staleRuleIds); // DERIVED — no notice state
+  const visibleAgents = agentsOrgId === orgId ? agents : [];
 
   async function del(id: string) {
     const { error } = await api.DELETE(
@@ -602,7 +661,11 @@ function RulesSection({
           <ComposeGate surface="Access rules">
             <Button
               onClick={() => setCreating(true)}
-              disabled={groups.length === 0 && sites.length === 0}
+              disabled={
+                groups.length === 0 &&
+                sites.length === 0 &&
+                visibleAgents.length === 0
+              }
             >
               Add rule
             </Button>
@@ -643,10 +706,13 @@ function RulesSection({
 
       {view.showContent && (
         <>
-          {groups.length === 0 && sites.length === 0 && loaded.groupsLoaded && (
+          {groups.length === 0 &&
+            sites.length === 0 &&
+            visibleAgents.length === 0 &&
+            loaded.groupsLoaded && (
             <p className="mt-2 text-xs text-slate-500">
-              Create a group of users or register a site (site-to-site source)
-              to add a rule.
+              Create a group of users, register a site, or enrol an agent to add
+              a rule.
             </p>
           )}
           {/* ── ACCESS FLOW ({{ polFlow }}) — built from the handoff's buildPolicyFlow(), not from a screenshot.
@@ -1268,6 +1334,7 @@ function RulesSection({
           members={activeMembers(members)}
           sites={sites}
           services={services}
+          agents={visibleAgents}
           editing={editing}
           onClose={() => {
             setCreating(false);
@@ -1514,6 +1581,7 @@ function RuleFormModal({
   members,
   sites,
   services,
+  agents,
   editing,
   onClose,
   onDone,
@@ -1524,6 +1592,7 @@ function RuleFormModal({
   members: Member[];
   sites: Site[];
   services: K8sService[];
+  agents: Array<{ device_id: string; name: string; gateway_name: string }>;
   editing: PolicyRule | null;
   onClose: () => void;
   onDone: (staleRuleId?: string) => void;
@@ -1538,33 +1607,10 @@ function RuleFormModal({
   // ⛔ S15.3 — agents enrolled in this org, offered as a policy SOURCE. Without this the AI-agents screen
   // says an agent "reaches only what it is granted" and nothing could grant it anything: a capability the
   // product had and the operator could not reach.
-  const [agents, setAgents] = useState<
-    Array<{ device_id: string; name: string; gateway_name: string }>
-  >([]);
-  const [srcAgent, setSrcAgent] = useState("");
-  // ⚠ Enterprise-only endpoint: a 403 is a SUCCESSFUL refusal, so the list simply stays empty and the
-  // "AI agent" option is never offered. It must not surface as an error in a rule dialog.
-  useEffect(() => {
-    let cancelled = false;
-    void api
-      .GET("/api/v1/organizations/{orgId}/agents", {
-        params: { path: { orgId } },
-      })
-      .then(({ data, error }) => {
-        if (cancelled || error || !data) return;
-        setAgents(
-          data as Array<{
-            device_id: string;
-            name: string;
-            gateway_name: string;
-          }>,
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
+  const [srcAgent, setSrcAgent] = useState(
+    editing?.src_device_id ?? agents[0]?.device_id ?? "",
+  );
+  const visibleAgents = agents;
   const [srcKind, setSrcKind] = useState<
     "group" | "user" | "site" | "cidr" | "agent"
   >(
@@ -1576,9 +1622,12 @@ function RuleFormModal({
             ? "site"
             : editing?.src_kind === "cidr"
               ? "cidr"
-              : undefined,
+              : editing?.src_kind === "agent"
+                ? "agent"
+                : undefined,
       hasGroups,
       hasSites: sites.length > 0,
+      hasAgents: agents.length > 0,
     }),
   );
   const [src, setSrc] = useState(editing?.src_group_id ?? groups[0]?.id ?? "");
@@ -1702,13 +1751,14 @@ function RuleFormModal({
           <Button
             disabled={
               busy ||
-              (srcKind === "group"
-                ? !src
-                : srcKind === "user"
-                  ? !srcUser
-                  : srcKind === "cidr"
-                    ? !srcCidr.trim()
-                    : !srcSite) ||
+              !ruleSourceReady({
+                kind: srcKind,
+                group: src,
+                user: srcUser,
+                site: srcSite,
+                cidr: srcCidr,
+                agent: srcAgent,
+              }) ||
               (dstKind === "group"
                 ? !dstGroup
                 : dstKind === "resource"
@@ -1754,7 +1804,7 @@ function RuleFormModal({
             groups,
             members,
             sites,
-            agents,
+            agents: visibleAgents,
             dstKind,
             dstSite,
           })}
@@ -1809,7 +1859,7 @@ function RuleFormModal({
               groups,
               members,
               sites,
-              agents,
+              agents: visibleAgents,
               dstKind,
               dstSite,
             }).find(
@@ -2112,6 +2162,16 @@ function GroupsResourcesSection({
             deletingGroups.length === 1
               ? deletingGroups[0].name
               : `${deletingGroups.length} groups`
+          }
+          managedAgentCount={
+            deletingGroups.every(
+              (group) => group.managed_agent_count !== undefined,
+            )
+              ? deletingGroups.reduce(
+                  (sum, group) => sum + (group.managed_agent_count ?? 0),
+                  0,
+                )
+              : undefined
           }
           onCancel={() => setDeletingGroups([])}
           onConfirm={() => {
@@ -2906,17 +2966,19 @@ function PostureChecksSection({
 function CascadeDeleteModal({
   kind,
   name,
+  managedAgentCount,
   onCancel,
   onConfirm,
 }: {
   kind: "group" | "resource";
   name: string;
+  managedAgentCount?: number;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const [typed, setTyped] = useState("");
-  const copy = cascadeConfirmCopy(kind, name);
-  const ok = cascadeConfirmSatisfied(typed, name);
+  const copy = cascadeConfirmCopy(kind, name, managedAgentCount);
+  const ok = copy.impactKnown && cascadeConfirmSatisfied(typed, name);
   return (
     <Modal
       title={copy.title}
@@ -2989,6 +3051,7 @@ function GroupMembersPanel({
   // THREE ARMS, as everywhere else: null = not asked, {ok:false} = asked and failed, {ok:true} = the answer.
   const [loaded, setLoaded] = useState<Loaded<GroupMember[]> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
 
   const fetchMembers = useCallback(async () => {
     const r = (await loadOne(() =>
@@ -3023,9 +3086,57 @@ function GroupMembersPanel({
   const rows = loaded?.ok ? loaded.data : [];
   const inGroup = new Set(rows.map((m) => m.user_id));
   const addable = members.filter((m) => !inGroup.has(m.user_id));
+  const removalCopy = removingMember
+    ? groupMemberRemovalCopy(
+        removingMember.name || removingMember.email,
+        group.name,
+        group.managed_agent_count,
+      )
+    : null;
 
   return (
-    <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
+    <>
+      {removingMember && removalCopy && (
+        <Modal
+          title="Remove group member?"
+          danger
+          onDismiss={() => setRemovingMember(null)}
+          actions={
+            <>
+              <Button variant="ghost" onClick={() => setRemovingMember(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy || !removalCopy.impactKnown}
+                onClick={() => {
+                  const member = removingMember;
+                  setRemovingMember(null);
+                  void mutateMembership(() =>
+                    api.DELETE(
+                      "/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}",
+                      {
+                        params: {
+                          path: {
+                            orgId,
+                            groupId: group.id,
+                            userId: member.user_id,
+                          },
+                        },
+                      },
+                    ),
+                  );
+                }}
+              >
+                Remove member
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-slate-300">{removalCopy.body}</p>
+        </Modal>
+      )}
+      <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
       {/* ⚠ THE PANEL NAMES ITSELF. Expanded content that opens with a bare list of emails leaves the
           operator to infer what they are looking at and what they may do to it. */}
       <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wide text-ink-tertiary">
@@ -3056,22 +3167,7 @@ function GroupMembersPanel({
                   <Button
                     variant="ghost"
                     disabled={busy}
-                    onClick={() =>
-                      mutateMembership(() =>
-                        api.DELETE(
-                          "/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}",
-                          {
-                            params: {
-                              path: {
-                                orgId,
-                                groupId: group.id,
-                                userId: m.user_id,
-                              },
-                            },
-                          },
-                        ),
-                      )
-                    }
+                    onClick={() => setRemovingMember(m)}
                   >
                     Remove
                   </Button>
@@ -3116,7 +3212,8 @@ function GroupMembersPanel({
           )}
         </div>
       }
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -29,13 +29,76 @@ ON CONFLICT (device_id) DO NOTHING;
 
 -- name: GetAgentProfileForOrg :one
 SELECT ap.device_id, d.name, ap.environment, ap.runtime, ap.labels,
-       d.user_id, u.email AS owner_email, d.status,
+       d.user_id, u.email AS owner_email, ap.managing_group_id,
+       ug.name AS managing_group_name, d.status,
        ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes
 FROM agent_profiles ap
 JOIN devices d ON d.id = ap.device_id
 JOIN users u ON u.id = d.user_id
+LEFT JOIN user_groups ug ON ug.id = ap.managing_group_id AND ug.org_id = d.org_id
 LEFT JOIN device_status ds ON ds.device_id = d.id
 WHERE ap.device_id = $1 AND d.org_id = $2 AND d.kind = 'agent' AND d.deleted_at IS NULL;
+
+-- name: GetAgentGovernanceForUpdate :one
+SELECT d.user_id, ap.managing_group_id
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+WHERE ap.device_id = $1 AND d.org_id = $2 AND d.kind = 'agent' AND d.deleted_at IS NULL
+FOR UPDATE OF ap, d;
+
+-- name: GetAgentScopedAuthority :one
+SELECT
+    d.user_id = sqlc.arg(user_id)::uuid AS is_owner,
+    EXISTS (
+        SELECT 1
+        FROM group_members gm
+        JOIN memberships m ON m.org_id = gm.org_id AND m.user_id = gm.user_id
+        JOIN users u ON u.id = gm.user_id
+        WHERE gm.org_id = d.org_id
+          AND gm.group_id = ap.managing_group_id
+          AND gm.user_id = sqlc.arg(user_id)::uuid
+          AND m.access_revoked_at IS NULL
+          AND u.status = 'active'
+          AND u.deleted_at IS NULL
+    ) AS is_manager
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+WHERE ap.device_id = $1 AND d.org_id = $2 AND d.kind = 'agent' AND d.deleted_at IS NULL;
+
+-- name: ListAgentManagingGroupCounts :many
+-- Server-owned destructive-impact preview for F06. Deleting a group clears
+-- these exact assignments through ON DELETE SET NULL; the client must not
+-- infer this count from separately loaded agent rows.
+SELECT ap.managing_group_id, count(*)::bigint AS managed_agent_count
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+WHERE d.org_id = $1
+  AND d.deleted_at IS NULL
+  AND ap.managing_group_id IS NOT NULL
+GROUP BY ap.managing_group_id;
+
+-- name: GetCurrentAgentOwnerCandidate :one
+SELECT m.user_id
+FROM memberships m
+JOIN users u ON u.id = m.user_id
+WHERE m.org_id = $1 AND m.user_id = $2
+  AND m.access_revoked_at IS NULL
+  AND u.status = 'active'
+  AND u.deleted_at IS NULL
+FOR UPDATE OF m, u;
+
+-- name: SetAgentOwner :one
+UPDATE devices
+SET user_id = $3, updated_at = now()
+WHERE id = $1 AND org_id = $2 AND kind = 'agent' AND deleted_at IS NULL
+RETURNING *;
+
+-- name: SetAgentManagingGroup :one
+UPDATE agent_profiles ap
+SET managing_group_id = $2, updated_at = now()
+FROM devices d
+WHERE ap.device_id = $1 AND d.id = ap.device_id AND d.org_id = $3 AND d.kind = 'agent' AND d.deleted_at IS NULL
+RETURNING ap.*;
 
 -- name: UpdateAgentProfile :one
 UPDATE agent_profiles ap

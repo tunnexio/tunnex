@@ -98,6 +98,15 @@ const (
 	// an active managed agent to replace its machine bearer. It is deliberately
 	// narrower than runtime opt-in, device lifecycle, and future F06 delegation.
 	PermAgentCredentialRotate Permission = "agent_credential:rotate"
+	// F06 agent-governance permissions are deliberately separate: enrolling,
+	// reading privileged facts, managing lifecycle/metadata, authoring access,
+	// and revoking have different blast radii and must not ride on org/member
+	// administration permissions.
+	PermAgentEnroll         Permission = "agent:enroll"
+	PermAgentViewPrivileged Permission = "agent:view_privileged"
+	PermAgentManage         Permission = "agent:manage"
+	PermAgentGrantAccess    Permission = "agent:grant_access"
+	PermAgentRevoke         Permission = "agent:revoke"
 )
 
 // Roles.
@@ -156,6 +165,11 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sManage:             true,
 		PermAgentRuntimeManage:    true,
 		PermAgentCredentialRotate: true,
+		PermAgentEnroll:           true,
+		PermAgentViewPrivileged:   true,
+		PermAgentManage:           true,
+		PermAgentGrantAccess:      true,
+		PermAgentRevoke:           true,
 	},
 	RoleOwner: {
 		PermOrgView:               true,
@@ -177,16 +191,22 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMachineManage:         true, // owner-only: minting a non-human org principal is org-delete-grade
 		PermAgentRuntimeManage:    true,
 		PermAgentCredentialRotate: true,
+		PermAgentEnroll:           true,
+		PermAgentViewPrivileged:   true,
+		PermAgentManage:           true,
+		PermAgentGrantAccess:      true,
+		PermAgentRevoke:           true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org
 	// administration. PermPolicyManage is still enterprise-gated at the handler (a TunnexGrant → 403
 	// edition_required in the open build), so holding the perm here does not widen the edition surface.
 	RoleOperator: {
-		PermOrgView:      true,
-		PermK8sManage:    true,
-		PermPolicyView:   true,
-		PermPolicyManage: true,
+		PermOrgView:          true,
+		PermK8sManage:        true,
+		PermPolicyView:       true,
+		PermPolicyManage:     true,
+		PermAgentGrantAccess: true,
 		// member:list is READ-ONLY (WF-OP-1) — the operator resolves a TunnexGrant's user subject
 		// (email -> id) via GET /members; it NEVER mutates membership (no member:invite / member:manage).
 		// The role was first scoped from the intended verbs, before the subject-resolution path existed;
@@ -241,7 +261,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermOrgView, PermMemberList, PermPolicyView:
+	case PermOrgView, PermMemberList, PermPolicyView, PermAgentViewPrivileged:
 		return false
 	default:
 		return true

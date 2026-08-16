@@ -698,19 +698,39 @@ type AgentCredentialRotationStatusState string
 // AgentCredentialRotationStatusWireguardState defines model for AgentCredentialRotationStatus.WireguardState.
 type AgentCredentialRotationStatusWireguardState string
 
+// AgentEffectivePermissions Server-computed authority for this exact agent; clients must not infer it from the organization role.
+type AgentEffectivePermissions struct {
+	Assign            bool `json:"assign"`
+	GrantAccess       bool `json:"grant_access"`
+	Manage            bool `json:"manage"`
+	Revoke            bool `json:"revoke"`
+	RotateCredentials bool `json:"rotate_credentials"`
+	ViewPrivileged    bool `json:"view_privileged"`
+}
+
+// AgentManagingGroupUpdate defines model for AgentManagingGroupUpdate.
+type AgentManagingGroupUpdate struct {
+	GroupId *openapi_types.UUID `json:"group_id"`
+}
+
 // AgentProfile defines model for AgentProfile.
 type AgentProfile struct {
-	DeviceId        openapi_types.UUID  `json:"device_id"`
-	Environment     string              `json:"environment"`
-	Labels          map[string]string   `json:"labels"`
-	LastHandshakeAt *time.Time          `json:"last_handshake_at"`
-	Name            string              `json:"name"`
-	OwnerEmail      openapi_types.Email `json:"owner_email"`
-	OwnerId         openapi_types.UUID  `json:"owner_id"`
-	Runtime         string              `json:"runtime"`
-	RxBytes         *int64              `json:"rx_bytes"`
-	Status          AgentProfileStatus  `json:"status"`
-	TxBytes         *int64              `json:"tx_bytes"`
+	DeviceId          openapi_types.UUID  `json:"device_id"`
+	Environment       string              `json:"environment"`
+	Labels            map[string]string   `json:"labels"`
+	LastHandshakeAt   *time.Time          `json:"last_handshake_at"`
+	ManagingGroupId   *openapi_types.UUID `json:"managing_group_id"`
+	ManagingGroupName *string             `json:"managing_group_name"`
+	Name              string              `json:"name"`
+	OwnerEmail        openapi_types.Email `json:"owner_email"`
+	OwnerId           openapi_types.UUID  `json:"owner_id"`
+
+	// Permissions Server-computed authority for this exact agent; clients must not infer it from the organization role.
+	Permissions AgentEffectivePermissions `json:"permissions"`
+	Runtime     string                    `json:"runtime"`
+	RxBytes     *int64                    `json:"rx_bytes"`
+	Status      AgentProfileStatus        `json:"status"`
+	TxBytes     *int64                    `json:"tx_bytes"`
 }
 
 // AgentProfileStatus defines model for AgentProfile.Status.
@@ -1573,11 +1593,14 @@ type Member struct {
 	JoinedAt      time.Time           `json:"joined_at"`
 
 	// MachineCredentials Live machine credentials this person OWNS, across every organization. Deactivating them stops every one of these immediately (D23) — the roster carries the number so the confirmation can say what the act will break, rather than an operator finding out from a broken pipeline.
-	MachineCredentials *int               `json:"machine_credentials,omitempty"`
-	Name               string             `json:"name"`
-	Role               MemberRole         `json:"role"`
-	Status             MemberStatus       `json:"status"`
-	UserId             openapi_types.UUID `json:"user_id"`
+	MachineCredentials *int `json:"machine_credentials,omitempty"`
+
+	// ManagedAgentDelegations Current managed agents this person can manage through team membership, across every organization. Deactivation withdraws that authority immediately without clearing the team's assignment.
+	ManagedAgentDelegations *int               `json:"managed_agent_delegations,omitempty"`
+	Name                    string             `json:"name"`
+	Role                    MemberRole         `json:"role"`
+	Status                  MemberStatus       `json:"status"`
+	UserId                  openapi_types.UUID `json:"user_id"`
 }
 
 // MemberRole defines model for Member.Role.
@@ -2116,10 +2139,12 @@ type UnbindSiteNodeRequest struct {
 
 // UpdateAgentProfileRequest defines model for UpdateAgentProfileRequest.
 type UpdateAgentProfileRequest struct {
-	Environment *string                          `json:"environment,omitempty"`
-	Labels      *map[string]string               `json:"labels,omitempty"`
-	Runtime     *string                          `json:"runtime,omitempty"`
-	Status      *UpdateAgentProfileRequestStatus `json:"status,omitempty"`
+	Environment         *string                          `json:"environment,omitempty"`
+	Labels              *map[string]string               `json:"labels,omitempty"`
+	ManagingGroupUpdate *AgentManagingGroupUpdate        `json:"managing_group_update,omitempty"`
+	OwnerId             *openapi_types.UUID              `json:"owner_id,omitempty"`
+	Runtime             *string                          `json:"runtime,omitempty"`
+	Status              *UpdateAgentProfileRequestStatus `json:"status,omitempty"`
 }
 
 // UpdateAgentProfileRequestStatus defines model for UpdateAgentProfileRequest.Status.
@@ -2199,10 +2224,13 @@ type UserGroup struct {
 	Id          openapi_types.UUID    `json:"id"`
 	IdpGroupId  *string               `json:"idp_group_id,omitempty"`
 	IdpProvider *UserGroupIdpProvider `json:"idp_provider,omitempty"`
-	Name        string                `json:"name"`
-	OrgId       openapi_types.UUID    `json:"org_id"`
-	Origin      *UserGroupOrigin      `json:"origin,omitempty"`
-	UpdatedAt   time.Time             `json:"updated_at"`
+
+	// ManagedAgentCount Present for policy managers: current live agent-profile assignments cleared if this group is deleted; removing one group member withdraws that person's authority over the same agents without clearing the assignment.
+	ManagedAgentCount *int               `json:"managed_agent_count,omitempty"`
+	Name              string             `json:"name"`
+	OrgId             openapi_types.UUID `json:"org_id"`
+	Origin            *UserGroupOrigin   `json:"origin,omitempty"`
+	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
 // UserGroupIdpProvider defines model for UserGroup.IdpProvider.

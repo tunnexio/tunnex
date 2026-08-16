@@ -266,6 +266,38 @@ export function rosterSubtitle(members: Member[]): string {
   return off === 0 ? head : `${head}, ${off} deactivated and unable to sign in`;
 }
 
+/** Server-owned impact copy for deployment-wide account deactivation. */
+export function deactivationImpactCopy(members: Member[]): string | null {
+  const affected = members.filter(
+    (member) =>
+      (member.machine_credentials ?? 0) > 0 ||
+      (member.managed_agent_delegations ?? 0) > 0,
+  );
+  if (affected.length === 0) return null;
+  const credentials = affected.reduce(
+    (total, member) => total + (member.machine_credentials ?? 0),
+    0,
+  );
+  const delegations = affected.reduce(
+    (total, member) => total + (member.managed_agent_delegations ?? 0),
+    0,
+  );
+  const who = affected
+    .map(
+      (member) =>
+        `${member.email} (${member.machine_credentials ?? 0} machine credentials, ${member.managed_agent_delegations ?? 0} managed-agent delegations)`,
+    )
+    .join("\n  ");
+  return (
+    `${credentials} machine credential${credentials === 1 ? "" : "s"} will stop working and ` +
+    `${delegations} managed-agent delegation${delegations === 1 ? "" : "s"} will be withdrawn immediately.\n\n` +
+    `  ${who}\n\n` +
+    `Machine credentials are owned by a person, and deactivating that person stops every credential ` +
+    `they own. Team-managed agents keep their team assignment, but this person loses authority over them. ` +
+    `Nothing is revoked: reactivating restores them.\n\nDeactivate anyway?`
+  );
+}
+
 /** `2 owners` / `1 owner` / `0 owners` — the zero is stated, never dropped. */
 export function roleTallyLabel(t: RoleTally): string {
   return `${t.n} ${t.n === 1 ? t.role : t.role + "s"}`;

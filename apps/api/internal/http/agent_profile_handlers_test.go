@@ -12,14 +12,16 @@ import (
 )
 
 func TestAgentProfilePermissionBeforeData(t *testing.T) {
-	if agentProfileLifecycleAllowed(rbac.RoleMember, "active") {
-		t.Fatal("plain member must not receive lifecycle authority")
+	org := uuid.New()
+	ctx := authctx.WithPrincipal(context.Background(), &authctx.Principal{
+		UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: rbac.RoleMember},
+	})
+	if err := (apiServer{}).requireAgentPermission(ctx, org, uuid.New(), rbac.PermAgentViewPrivileged); !hasCode(err, 403, "forbidden") {
+		t.Fatalf("permission refusal without a device service: %v", err)
 	}
-	// IsAgentOwner is called before GetAgentProfile, so a non-owner member gets
-	// a refusal without loading owner email, telemetry, or profile metadata.
 }
 
-func TestAgentProfileLifecycleAuthority(t *testing.T) {
+func TestAgentProfileGlobalLifecycleAuthority(t *testing.T) {
 	for _, status := range []string{"active", "suspended"} {
 		if !agentProfileLifecycleAllowed(rbac.RoleAdmin, status) {
 			t.Errorf("admin should manage %s", status)
@@ -31,7 +33,7 @@ func TestAgentProfileLifecycleAuthority(t *testing.T) {
 		}
 	}
 	if agentProfileLifecycleAllowed(rbac.RoleMember, "suspended") {
-		t.Fatal("owner/member must not self-suspend or self-resume")
+		t.Fatal("member role alone must not grant lifecycle authority; scoped owner/team authority is relational")
 	}
 }
 

@@ -445,11 +445,13 @@ type Querier interface {
 	GetActiveCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
 	// lint:cross-org — the public redemption credential is an unguessable hash; org is learned from the token row.
 	GetAgentBootstrapToken(ctx context.Context, tokenHash []byte) (AgentBootstrapToken, error)
+	GetAgentGovernanceForUpdate(ctx context.Context, arg GetAgentGovernanceForUpdateParams) (GetAgentGovernanceForUpdateRow, error)
 	GetAgentProfileForOrg(ctx context.Context, arg GetAgentProfileForOrgParams) (GetAgentProfileForOrgRow, error)
 	// lint:cross-org — F04's bearer hash is the credential; the returned row supplies its org/device binding.
 	GetAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AgentRuntimeCredential, error)
 	GetAgentRuntimeCredentialRotation(ctx context.Context, arg GetAgentRuntimeCredentialRotationParams) (GetAgentRuntimeCredentialRotationRow, error)
 	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
+	GetAgentScopedAuthority(ctx context.Context, arg GetAgentScopedAuthorityParams) (GetAgentScopedAuthorityRow, error)
 	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
 	// credential_expired UX line).
@@ -459,6 +461,7 @@ type Querier interface {
 	// Verify path: read the CONFIRMED secret + replay clock under a row lock, so the replay-guard
 	// read+update can't interleave with a concurrent verify.
 	GetConfirmedTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error)
+	GetCurrentAgentOwnerCandidate(ctx context.Context, arg GetCurrentAgentOwnerCandidateParams) (uuid.UUID, error)
 	GetDevice(ctx context.Context, arg GetDeviceParams) (Device, error)
 	// Row-locking read (S7.3 finding #6): Revoke reads the PRIOR status in-tx to label the
 	// audit (device.cancelled for pending vs device.revoked for active). FOR UPDATE serializes
@@ -754,6 +757,10 @@ type Querier interface {
 	//   the WG fleet on a hub member). The OVPN device's /32 reaches the data plane via the compiled
 	//   artifact + the OVPN roster (which now shares the identity gate), never this list.
 	ListActiveWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListActiveWireGuardPeersForNodeRow, error)
+	// Server-owned destructive-impact preview for F06. Deleting a group clears
+	// these exact assignments through ON DELETE SET NULL; the client must not
+	// infer this count from separately loaded agent rows.
+	ListAgentManagingGroupCounts(ctx context.Context, orgID uuid.UUID) ([]ListAgentManagingGroupCountsRow, error)
 	// S15.3 — the agent surface's one query.
 	//
 	// ⛔ AN AGENT IS A PEER HOMED ON A GATEWAY, NOT A GATEWAY. It holds its own /32, its traffic is FORWARDED
@@ -1264,6 +1271,8 @@ type Querier interface {
 	// runs once per org. lint:cross-org — keyed by node_id inside the node-revoke transaction (org-authorized
 	// upstream, mirrors RevokeDevicesForNode).
 	RevokeOVPNClientCertsForNode(ctx context.Context, nodeID uuid.UUID) ([]uuid.UUID, error)
+	SetAgentManagingGroup(ctx context.Context, arg SetAgentManagingGroupParams) (AgentProfile, error)
+	SetAgentOwner(ctx context.Context, arg SetAgentOwnerParams) (Device, error)
 	// The deployment-administrator capability, both directions (S12.11).
 	//
 	// ⛔ GrantCPAdmin IS NOT THIS QUERY WITH A PARAMETER. That one is the BOOTSTRAP grant: it runs inside the
