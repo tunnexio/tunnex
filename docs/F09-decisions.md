@@ -1,7 +1,9 @@
 # F09 — Agent groups and reusable policy templates decisions
 
-Status: **IN PROGRESS — reversible model/compiler foundation committed; API/UI
-vertical slice in progress**.
+Status: **SATISFIES — implementation, focused gates and the combined AWS DEV
+walk are complete at `4e09c9378e193cd6f8b2db901d012b5533396241`**. Owner/member API,
+compiler, lifecycle, released owner authoring DOM and unrelated-member DOM
+absence all ran live. Opt-in and all disposable live access state were restored.
 
 ## Customer outcome
 
@@ -270,6 +272,7 @@ refusal; replacement; assignment removal; owner/admin UI; unrelated-member
 absence; migration rollback/refusal; and zero story-prefixed rows/scratch after
 cleanup. No separate slice walks and no reusable secret enters an artifact.
 
-Product implementation does not begin until the preceding F08 story's remaining
-named live member-session absence leg is either satisfied or explicitly
-dispositioned under the one-story-at-a-time protocol.
+The preceding F08 member-session absence leg remained an explicit SUBSTITUTE;
+F09 did not reuse it as live evidence. F09's independent wire and permission
+proof is recorded in `docs/F09-boxwalk.md` and
+`walk-artifacts/F09/20260816T1159Z/`.
