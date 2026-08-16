@@ -30,7 +30,11 @@ func TestAgentAccessDiagnosticPostgresContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	// Register the pool close before the fixture cleanup below. Cleanup callbacks
+	// run LIFO, so the organization (and its cascaded device_status row) is
+	// deleted while the pool is still usable instead of silently leaking into
+	// later package-level integration tests.
+	t.Cleanup(pool.Close)
 	q := sqlc.New(pool)
 	org, owner, outsider, node, device, resource, rule := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	exec := func(stmt string, args ...any) {
