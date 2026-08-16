@@ -102,6 +102,14 @@ var walkBodies = map[string]string{
 	"createagentpolicytemplateversion":           `{"items":[{"destination_kind":"resource","destination_id":"00000000-0000-0000-0000-000000000000"}]}`,
 	"previewagentpolicytemplate":                 `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000"}`,
 	"applyagentpolicytemplate":                   `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000","preview_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","idempotency_key":"walk"}`,
+	// F10 JIT agent access. Keep these structurally valid so the spec-driven
+	// walk measures authentication rather than request validation.
+	"setorganizationagentjitaccessenabled": `{"enabled":true}`,
+	"createagentaccessrequest":             `{"device_id":"00000000-0000-0000-0000-000000000000","destination_kind":"resource","destination_id":"00000000-0000-0000-0000-000000000000","duration_seconds":300,"reason":"walk","idempotency_key":"walk-create"}`,
+	"approveagentaccessrequest":            `{"idempotency_key":"walk-approve"}`,
+	"rejectagentaccessrequest":             `{"reason":"walk","idempotency_key":"walk-reject"}`,
+	"cancelagentaccessrequest":             `{"idempotency_key":"walk-cancel"}`,
+	"revokeagentaccessrequest":             `{"idempotency_key":"walk-revoke"}`,
 }
 
 // Required query tuples serve the same purpose as walkBodies: make the request
@@ -152,6 +160,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
 			reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
 
 			var body io.Reader
 			if b, ok := walkBodies[strings.ToLower(op.OperationID)]; ok {
