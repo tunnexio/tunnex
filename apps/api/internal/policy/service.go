@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -85,6 +86,13 @@ func (s *Service) UpdateGroup(ctx context.Context, orgID, groupID uuid.UUID, nam
 
 func (s *Service) DeleteGroup(ctx context.Context, orgID, groupID uuid.UUID) error {
 	return s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
+		versions, e := q.CountAgentPolicyTemplateGroupReferences(ctx, sqlc.CountAgentPolicyTemplateGroupReferencesParams{OrgID: orgID, DstGroupID: pgtype.UUID{Bytes: groupID, Valid: true}})
+		if e != nil {
+			return e
+		}
+		if versions != 0 {
+			return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this group", versions))
+		}
 		n, e := q.DeleteUserGroup(ctx, sqlc.DeleteUserGroupParams{ID: groupID, OrgID: orgID})
 		if e != nil {
 			return e
@@ -269,6 +277,13 @@ func (s *Service) UpdateResource(ctx context.Context, orgID, resourceID uuid.UUI
 
 func (s *Service) DeleteResource(ctx context.Context, orgID, resourceID uuid.UUID) error {
 	return s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
+		versions, e := q.CountAgentPolicyTemplateResourceReferences(ctx, sqlc.CountAgentPolicyTemplateResourceReferencesParams{OrgID: orgID, DstResourceID: pgtype.UUID{Bytes: resourceID, Valid: true}})
+		if e != nil {
+			return e
+		}
+		if versions != 0 {
+			return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this resource", versions))
+		}
 		n, e := q.DeleteResource(ctx, sqlc.DeleteResourceParams{ID: resourceID, OrgID: orgID})
 		if e != nil {
 			return e
@@ -284,6 +299,31 @@ func (s *Service) DeleteResource(ctx context.Context, orgID, resourceID uuid.UUI
 
 func (s *Service) ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.PolicyRule, error) {
 	return s.q.ListPolicyRulesByOrg(ctx, orgID)
+}
+
+func (s *Service) AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]bool, error) {
+	ids, err := s.q.ListAgentTemplateManagedRuleIDs(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
+func refuseAgentTemplateManagedRule(ctx context.Context, q *sqlc.Queries, orgID, ruleID uuid.UUID) error {
+	managed, err := q.IsAgentTemplateManagedRule(ctx, sqlc.IsAgentTemplateManagedRuleParams{
+		OrgID: orgID, PolicyRuleID: ruleID,
+	})
+	if err != nil {
+		return err
+	}
+	if managed {
+		return apierr.Conflict("agent_template_managed_rule", "this rule is managed by an agent policy template assignment; change or remove the assignment instead")
+	}
+	return nil
 }
 
 // PolicyRuleCidrWarnings computes, per rule id, the S8.7 read-time warning cidr_outside_org_ranges: true for
@@ -538,6 +578,9 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 
 func (s *Service) DeletePolicyRule(ctx context.Context, orgID, ruleID, actorUserID uuid.UUID, actorSystem, cause string) error {
 	return s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
+		if err := refuseAgentTemplateManagedRule(ctx, q, orgID, ruleID); err != nil {
+			return err
+		}
 		n, e := q.DeletePolicyRule(ctx, sqlc.DeletePolicyRuleParams{ID: ruleID, OrgID: orgID})
 		if e != nil {
 			return e
@@ -557,6 +600,9 @@ func (s *Service) DeletePolicyRule(ctx context.Context, orgID, ruleID, actorUser
 // exist changes) and audits with TWO DISTINCT actions (policy.rule_enabled / policy.rule_disabled), so
 // "who cut access at 3am" is a one-read action filter, not a metadata query.
 func (s *Service) SetPolicyRuleEnabled(ctx context.Context, orgID, ruleID uuid.UUID, enabled bool) (sqlc.PolicyRule, error) {
+	if err := refuseAgentTemplateManagedRule(ctx, s.q, orgID, ruleID); err != nil {
+		return sqlc.PolicyRule{}, err
+	}
 	// F-A1: read current state FIRST and NO-OP if already in the desired state — no push, no audit. The
 	// wasted push is the smaller half; the real defect a naive toggle would introduce is an AUDIT LIE — a
 	// policy.rule_disabled row that corresponds to no change in access corrupts exactly the one-read
@@ -576,6 +622,9 @@ func (s *Service) SetPolicyRuleEnabled(ctx context.Context, orgID, ruleID uuid.U
 	}
 	var r sqlc.PolicyRule
 	err = s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
+		if e := refuseAgentTemplateManagedRule(ctx, q, orgID, ruleID); e != nil {
+			return e
+		}
 		var e error
 		r, e = q.SetPolicyRuleEnabled(ctx, sqlc.SetPolicyRuleEnabledParams{ID: ruleID, OrgID: orgID, Disabled: !enabled})
 		if e != nil {
@@ -620,6 +669,9 @@ func (s *Service) ExtendGrant(ctx context.Context, orgID, ruleID uuid.UUID, newE
 	// false; ExtendPolicyRule SETs only expires_at) — no artifact-affecting field can flow
 	// through it, so dropping the push can never hide an edit that SHOULD push. (S7.5.4 box-walk)
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if e := refuseAgentTemplateManagedRule(ctx, q, orgID, ruleID); e != nil {
+			return e
+		}
 		// Read the CURRENT window FIRST, under a row lock, so (a) old_expires_at is the true
 		// PRE-update value for the D7 old->new audit, and (b) the sweeper's DELETE can't
 		// interleave between this read and the UPDATE (extend and sweep serialize on this lock).
@@ -801,34 +853,42 @@ func (s *Service) SetMode(ctx context.Context, orgID uuid.UUID, mode string) (st
 // BuildSnapshot loads the org's full policy state into the pure-compiler input.
 // S7.2 calls Compile(BuildSnapshot(...)) when serving a node's desired state.
 func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot, error) {
-	org, err := s.q.GetOrganizationByID(ctx, orgID)
+	return BuildSnapshotWithQueries(ctx, s.q, orgID)
+}
+
+// BuildSnapshotWithQueries exposes the canonical snapshot loader to an
+// enclosing transaction. F09 preview/apply uses this rather than duplicating
+// destination or membership resolution, so its digest and mutation are based
+// on the exact same rows as the compiler.
+func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID) (Snapshot, error) {
+	org, err := q.GetOrganizationByID(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	// COMPILER INPUT: active rules only — expired temporary grants are excluded here
 	// (the clockless pure compiler can't filter by now(); the snapshot build applies
 	// it). The admin LIST uses ListPolicyRulesByOrg (shows expired rules distinctly).
-	rules, err := s.q.ListActivePolicyRulesForOrg(ctx, orgID)
+	rules, err := q.ListActivePolicyRulesForOrg(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	resources, err := s.q.ListResourcesByOrg(ctx, orgID)
+	resources, err := q.ListResourcesByOrg(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	members, err := s.q.ListGroupMembershipsByOrg(ctx, orgID)
+	members, err := q.ListGroupMembershipsByOrg(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	devices, err := s.q.ListActiveDevicesForOrg(ctx, orgID)
+	devices, err := q.ListActiveDevicesForOrg(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	agentGroupMembers, err := s.q.ListActiveAgentGroupMembersForOrg(ctx, orgID)
+	agentGroupMembers, err := q.ListActiveAgentGroupMembersForOrg(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	siteSubnets, err := s.q.ListSiteSubnetsForOrg(ctx, orgID) // S8.1: dst_kind='site' resolution input
+	siteSubnets, err := q.ListSiteSubnetsForOrg(ctx, orgID) // S8.1: dst_kind='site' resolution input
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -851,7 +911,7 @@ func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot,
 	for _, ss := range siteSubnets {
 		snap.SiteSubnets = append(snap.SiteSubnets, SiteSubnet{SiteID: ss.SiteID, CIDR: ss.Cidr.String()})
 	}
-	siteNodes, err := s.q.ListSiteNodesForOrg(ctx, orgID) // S8.2: (site_id, node_id) for src placement
+	siteNodes, err := q.ListSiteNodesForOrg(ctx, orgID) // S8.2: (site_id, node_id) for src placement
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -866,7 +926,7 @@ func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot,
 	}
 	// S10.3: exposed K8s Services (id -> current VIP) for dst_kind='k8s_service' resolution. LIVE only, so a
 	// soft-deleted Service is absent -> its grant compiles to nothing.
-	exposed, err := s.q.ListActiveK8sServicesForOrg(ctx, orgID)
+	exposed, err := q.ListActiveK8sServicesForOrg(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}

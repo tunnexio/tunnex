@@ -81,6 +81,29 @@ const (
 	AgentCredentialRotationStatusWireguardStateStaged    AgentCredentialRotationStatusWireguardState = "staged"
 )
 
+// Defines values for AgentGroupMemberStatus.
+const (
+	AgentGroupMemberStatusActive    AgentGroupMemberStatus = "active"
+	AgentGroupMemberStatusPending   AgentGroupMemberStatus = "pending"
+	AgentGroupMemberStatusRevoked   AgentGroupMemberStatus = "revoked"
+	AgentGroupMemberStatusSuspended AgentGroupMemberStatus = "suspended"
+)
+
+// Defines values for AgentPolicyTemplateItemInputDestinationKind.
+const (
+	AgentPolicyTemplateItemInputDestinationKindGroup      AgentPolicyTemplateItemInputDestinationKind = "group"
+	AgentPolicyTemplateItemInputDestinationKindK8sService AgentPolicyTemplateItemInputDestinationKind = "k8s_service"
+	AgentPolicyTemplateItemInputDestinationKindResource   AgentPolicyTemplateItemInputDestinationKind = "resource"
+	AgentPolicyTemplateItemInputDestinationKindSite       AgentPolicyTemplateItemInputDestinationKind = "site"
+)
+
+// Defines values for AgentPolicyTemplateTupleProtocol.
+const (
+	AgentPolicyTemplateTupleProtocolAny AgentPolicyTemplateTupleProtocol = "any"
+	AgentPolicyTemplateTupleProtocolTcp AgentPolicyTemplateTupleProtocol = "tcp"
+	AgentPolicyTemplateTupleProtocolUdp AgentPolicyTemplateTupleProtocol = "udp"
+)
+
 // Defines values for AgentProfileStatus.
 const (
 	AgentProfileStatusActive    AgentProfileStatus = "active"
@@ -404,11 +427,12 @@ const (
 
 // Defines values for PolicyRuleSrcKind.
 const (
-	PolicyRuleSrcKindAgent PolicyRuleSrcKind = "agent"
-	PolicyRuleSrcKindCidr  PolicyRuleSrcKind = "cidr"
-	PolicyRuleSrcKindGroup PolicyRuleSrcKind = "group"
-	PolicyRuleSrcKindSite  PolicyRuleSrcKind = "site"
-	PolicyRuleSrcKindUser  PolicyRuleSrcKind = "user"
+	PolicyRuleSrcKindAgent      PolicyRuleSrcKind = "agent"
+	PolicyRuleSrcKindAgentGroup PolicyRuleSrcKind = "agent_group"
+	PolicyRuleSrcKindCidr       PolicyRuleSrcKind = "cidr"
+	PolicyRuleSrcKindGroup      PolicyRuleSrcKind = "group"
+	PolicyRuleSrcKindSite       PolicyRuleSrcKind = "site"
+	PolicyRuleSrcKindUser       PolicyRuleSrcKind = "user"
 )
 
 // Defines values for ResourceProtocol.
@@ -451,8 +475,8 @@ const (
 
 // Defines values for UpdateAgentProfileRequestStatus.
 const (
-	Active    UpdateAgentProfileRequestStatus = "active"
-	Suspended UpdateAgentProfileRequestStatus = "suspended"
+	UpdateAgentProfileRequestStatusActive    UpdateAgentProfileRequestStatus = "active"
+	UpdateAgentProfileRequestStatusSuspended UpdateAgentProfileRequestStatus = "suspended"
 )
 
 // Defines values for UpgradeStatusApprovalMode.
@@ -527,8 +551,8 @@ const (
 
 // Defines values for TestAgentAccessParamsProtocol.
 const (
-	TestAgentAccessParamsProtocolTcp TestAgentAccessParamsProtocol = "tcp"
-	TestAgentAccessParamsProtocolUdp TestAgentAccessParamsProtocol = "udp"
+	Tcp TestAgentAccessParamsProtocol = "tcp"
+	Udp TestAgentAccessParamsProtocol = "udp"
 )
 
 // AcceptInviteRequest defines model for AcceptInviteRequest.
@@ -600,6 +624,11 @@ type ActivityEntry struct {
 	CreatedAt   time.Time           `json:"created_at"`
 	TargetId    *string             `json:"target_id,omitempty"`
 	TargetType  *string             `json:"target_type,omitempty"`
+}
+
+// AddAgentGroupMemberRequest defines model for AddAgentGroupMemberRequest.
+type AddAgentGroupMemberRequest struct {
+	DeviceId openapi_types.UUID `json:"device_id"`
 }
 
 // AddGroupMemberRequest defines model for AddGroupMemberRequest.
@@ -784,9 +813,124 @@ type AgentEffectivePermissions struct {
 	ViewPrivileged    bool `json:"view_privileged"`
 }
 
+// AgentGroup defines model for AgentGroup.
+type AgentGroup struct {
+	CreatedAt   time.Time          `json:"created_at"`
+	Description string             `json:"description"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	OrgId       openapi_types.UUID `json:"org_id"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+// AgentGroupMember defines model for AgentGroupMember.
+type AgentGroupMember struct {
+	AddedAt    time.Time              `json:"added_at"`
+	AssignedIp *string                `json:"assigned_ip"`
+	DeviceId   openapi_types.UUID     `json:"device_id"`
+	Name       string                 `json:"name"`
+	NodeId     openapi_types.UUID     `json:"node_id"`
+	Status     AgentGroupMemberStatus `json:"status"`
+}
+
+// AgentGroupMemberStatus defines model for AgentGroupMember.Status.
+type AgentGroupMemberStatus string
+
 // AgentManagingGroupUpdate defines model for AgentManagingGroupUpdate.
 type AgentManagingGroupUpdate struct {
 	GroupId *openapi_types.UUID `json:"group_id"`
+}
+
+// AgentPolicyTemplate defines model for AgentPolicyTemplate.
+type AgentPolicyTemplate struct {
+	CreatedAt   time.Time          `json:"created_at"`
+	Description string             `json:"description"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	OrgId       openapi_types.UUID `json:"org_id"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+// AgentPolicyTemplateApplyResult defines model for AgentPolicyTemplateApplyResult.
+type AgentPolicyTemplateApplyResult struct {
+	AssignmentId openapi_types.UUID         `json:"assignment_id"`
+	NoOp         bool                       `json:"no_op"`
+	Preview      AgentPolicyTemplatePreview `json:"preview"`
+}
+
+// AgentPolicyTemplateAssignment defines model for AgentPolicyTemplateAssignment.
+type AgentPolicyTemplateAssignment struct {
+	AppliedAt         time.Time          `json:"applied_at"`
+	GroupId           openapi_types.UUID `json:"group_id"`
+	GroupName         string             `json:"group_name"`
+	Id                openapi_types.UUID `json:"id"`
+	RuleCount         int                `json:"rule_count"`
+	TemplateId        openapi_types.UUID `json:"template_id"`
+	TemplateName      string             `json:"template_name"`
+	TemplateVersionId openapi_types.UUID `json:"template_version_id"`
+	Version           int                `json:"version"`
+}
+
+// AgentPolicyTemplateDestinationImpact defines model for AgentPolicyTemplateDestinationImpact.
+type AgentPolicyTemplateDestinationImpact struct {
+	VersionCount int `json:"version_count"`
+}
+
+// AgentPolicyTemplateItemInput defines model for AgentPolicyTemplateItemInput.
+type AgentPolicyTemplateItemInput struct {
+	DestinationId   openapi_types.UUID                          `json:"destination_id"`
+	DestinationKind AgentPolicyTemplateItemInputDestinationKind `json:"destination_kind"`
+}
+
+// AgentPolicyTemplateItemInputDestinationKind defines model for AgentPolicyTemplateItemInput.DestinationKind.
+type AgentPolicyTemplateItemInputDestinationKind string
+
+// AgentPolicyTemplatePreview defines model for AgentPolicyTemplatePreview.
+type AgentPolicyTemplatePreview struct {
+	Added           []AgentPolicyTemplateTuple `json:"added"`
+	AffectedAgents  int                        `json:"affected_agents"`
+	ChangedGateways int                        `json:"changed_gateways"`
+	CreatedRules    int                        `json:"created_rules"`
+	Digest          string                     `json:"digest"`
+	Removed         []AgentPolicyTemplateTuple `json:"removed"`
+	RemovedRules    int                        `json:"removed_rules"`
+	ReusedRules     int                        `json:"reused_rules"`
+}
+
+// AgentPolicyTemplateRemovalImpact defines model for AgentPolicyTemplateRemovalImpact.
+type AgentPolicyTemplateRemovalImpact struct {
+	Assignments     int `json:"assignments"`
+	ChangedGateways int `json:"changed_gateways"`
+	GeneratedRules  int `json:"generated_rules"`
+	Members         int `json:"members"`
+	WithdrawnTuples int `json:"withdrawn_tuples"`
+}
+
+// AgentPolicyTemplateSetting defines model for AgentPolicyTemplateSetting.
+type AgentPolicyTemplateSetting struct {
+	// Enabled Explicit F09 organization opt-in. Disabling is refused while live assignments exist.
+	Enabled bool `json:"enabled"`
+}
+
+// AgentPolicyTemplateTuple defines model for AgentPolicyTemplateTuple.
+type AgentPolicyTemplateTuple struct {
+	DestinationCidr string                           `json:"destination_cidr"`
+	DeviceId        openapi_types.UUID               `json:"device_id"`
+	NodeId          openapi_types.UUID               `json:"node_id"`
+	PortHigh        int                              `json:"port_high"`
+	PortLow         int                              `json:"port_low"`
+	Protocol        AgentPolicyTemplateTupleProtocol `json:"protocol"`
+}
+
+// AgentPolicyTemplateTupleProtocol defines model for AgentPolicyTemplateTuple.Protocol.
+type AgentPolicyTemplateTupleProtocol string
+
+// AgentPolicyTemplateVersion defines model for AgentPolicyTemplateVersion.
+type AgentPolicyTemplateVersion struct {
+	CreatedAt  time.Time          `json:"created_at"`
+	Id         openapi_types.UUID `json:"id"`
+	TemplateId openapi_types.UUID `json:"template_id"`
+	Version    int                `json:"version"`
 }
 
 // AgentProfile defines model for AgentProfile.
@@ -868,6 +1012,14 @@ type AgentWireGuardCandidate struct {
 	// PublicKey Public half of a WireGuard key generated only on the agent host.
 	PublicKey string `json:"public_key"`
 	Revision  int64  `json:"revision"`
+}
+
+// ApplyAgentPolicyTemplateRequest defines model for ApplyAgentPolicyTemplateRequest.
+type ApplyAgentPolicyTemplateRequest struct {
+	GroupId           openapi_types.UUID `json:"group_id"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	PreviewDigest     string             `json:"preview_digest"`
+	TemplateVersionId openapi_types.UUID `json:"template_version_id"`
 }
 
 // AssignMachineCredentialOwnerRequest defines model for AssignMachineCredentialOwnerRequest.
@@ -994,6 +1146,23 @@ type CliCredentialGrant struct {
 // CpAdminRequest defines model for CpAdminRequest.
 type CpAdminRequest struct {
 	Granted bool `json:"granted"`
+}
+
+// CreateAgentGroupRequest defines model for CreateAgentGroupRequest.
+type CreateAgentGroupRequest struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// CreateAgentPolicyTemplateRequest defines model for CreateAgentPolicyTemplateRequest.
+type CreateAgentPolicyTemplateRequest struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// CreateAgentPolicyTemplateVersionRequest defines model for CreateAgentPolicyTemplateVersionRequest.
+type CreateAgentPolicyTemplateVersionRequest struct {
+	Items []AgentPolicyTemplateItemInput `json:"items"`
 }
 
 // CreateDeviceRequest defines model for CreateDeviceRequest.
@@ -1853,8 +2022,10 @@ type OrgOverview struct {
 
 // Organization defines model for Organization.
 type Organization struct {
-	CreatedAt time.Time          `json:"created_at"`
-	Id        openapi_types.UUID `json:"id"`
+	// AgentPolicyTemplatesEnabled F09: explicit organization opt-in for managed-agent groups and reusable policy templates. Default false; a paid licence does not enable it implicitly.
+	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
+	CreatedAt                   time.Time          `json:"created_at"`
+	Id                          openapi_types.UUID `json:"id"`
 
 	// ManagedAgentRuntimeEnabled F04: explicit organization opt-in for managed runtime synchronization. Default false; a paid licence does not enable it implicitly.
 	ManagedAgentRuntimeEnabled bool `json:"managed_agent_runtime_enabled"`
@@ -1909,8 +2080,14 @@ type PolicyRule struct {
 	Enabled               bool                `json:"enabled"`
 	ExpiresAt             *time.Time          `json:"expires_at"`
 	Id                    openapi_types.UUID  `json:"id"`
-	ManagedByOperator     bool                `json:"managed_by_operator"`
-	OrgId                 openapi_types.UUID  `json:"org_id"`
+
+	// ManagedByAgentTemplate True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces.
+	ManagedByAgentTemplate bool               `json:"managed_by_agent_template"`
+	ManagedByOperator      bool               `json:"managed_by_operator"`
+	OrgId                  openapi_types.UUID `json:"org_id"`
+
+	// SrcAgentGroupId F09 — set when src_kind=agent_group: the reusable managed-agent group expanded by the compiler.
+	SrcAgentGroupId *openapi_types.UUID `json:"src_agent_group_id"`
 
 	// SrcCidr Set when src_kind=cidr (S8.7): a literal source CIDR (/32-precise).
 	SrcCidr *string `json:"src_cidr"`
@@ -1933,6 +2110,12 @@ type PolicyRuleSrcKind string
 type PoolCidrRequest struct {
 	// Cidr New pool CIDR (IPv4). Must contain or be contained by the current range.
 	Cidr string `json:"cidr"`
+}
+
+// PreviewAgentPolicyTemplateRequest defines model for PreviewAgentPolicyTemplateRequest.
+type PreviewAgentPolicyTemplateRequest struct {
+	GroupId           openapi_types.UUID `json:"group_id"`
+	TemplateVersionId openapi_types.UUID `json:"template_version_id"`
 }
 
 // RegisterK8sClusterRequest defines model for RegisterK8sClusterRequest.
@@ -2213,6 +2396,18 @@ type UnbindSiteNodeRequest struct {
 	NodeId *openapi_types.UUID `json:"node_id,omitempty"`
 }
 
+// UpdateAgentGroupRequest defines model for UpdateAgentGroupRequest.
+type UpdateAgentGroupRequest struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// UpdateAgentPolicyTemplateRequest defines model for UpdateAgentPolicyTemplateRequest.
+type UpdateAgentPolicyTemplateRequest struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+}
+
 // UpdateAgentProfileRequest defines model for UpdateAgentProfileRequest.
 type UpdateAgentProfileRequest struct {
 	Environment         *string                          `json:"environment,omitempty"`
@@ -2380,6 +2575,12 @@ type ListAccessEventsParams struct {
 	Limit      *int                `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetAgentPolicyTemplateDestinationImpactParams defines parameters for GetAgentPolicyTemplateDestinationImpact.
+type GetAgentPolicyTemplateDestinationImpactParams struct {
+	DestinationKind string             `form:"destination_kind" json:"destination_kind"`
+	DestinationId   openapi_types.UUID `form:"destination_id" json:"destination_id"`
+}
+
 // TestAgentAccessParams defines parameters for TestAgentAccess.
 type TestAgentAccessParams struct {
 	Destination string                        `form:"destination" json:"destination"`
@@ -2494,6 +2695,33 @@ type CreateOrganizationJSONRequestBody = CreateOrganizationRequest
 
 // UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
 type UpdateOrganizationJSONRequestBody = UpdateOrganizationRequest
+
+// CreateAgentGroupJSONRequestBody defines body for CreateAgentGroup for application/json ContentType.
+type CreateAgentGroupJSONRequestBody = CreateAgentGroupRequest
+
+// UpdateAgentGroupJSONRequestBody defines body for UpdateAgentGroup for application/json ContentType.
+type UpdateAgentGroupJSONRequestBody = UpdateAgentGroupRequest
+
+// AddAgentGroupMemberJSONRequestBody defines body for AddAgentGroupMember for application/json ContentType.
+type AddAgentGroupMemberJSONRequestBody = AddAgentGroupMemberRequest
+
+// ApplyAgentPolicyTemplateJSONRequestBody defines body for ApplyAgentPolicyTemplate for application/json ContentType.
+type ApplyAgentPolicyTemplateJSONRequestBody = ApplyAgentPolicyTemplateRequest
+
+// PreviewAgentPolicyTemplateJSONRequestBody defines body for PreviewAgentPolicyTemplate for application/json ContentType.
+type PreviewAgentPolicyTemplateJSONRequestBody = PreviewAgentPolicyTemplateRequest
+
+// SetOrganizationAgentPolicyTemplatesEnabledJSONRequestBody defines body for SetOrganizationAgentPolicyTemplatesEnabled for application/json ContentType.
+type SetOrganizationAgentPolicyTemplatesEnabledJSONRequestBody = AgentPolicyTemplateSetting
+
+// CreateAgentPolicyTemplateJSONRequestBody defines body for CreateAgentPolicyTemplate for application/json ContentType.
+type CreateAgentPolicyTemplateJSONRequestBody = CreateAgentPolicyTemplateRequest
+
+// UpdateAgentPolicyTemplateJSONRequestBody defines body for UpdateAgentPolicyTemplate for application/json ContentType.
+type UpdateAgentPolicyTemplateJSONRequestBody = UpdateAgentPolicyTemplateRequest
+
+// CreateAgentPolicyTemplateVersionJSONRequestBody defines body for CreateAgentPolicyTemplateVersion for application/json ContentType.
+type CreateAgentPolicyTemplateVersionJSONRequestBody = CreateAgentPolicyTemplateVersionRequest
 
 // SetOrganizationAgentQuotaJSONRequestBody defines body for SetOrganizationAgentQuota for application/json ContentType.
 type SetOrganizationAgentQuotaJSONRequestBody = SetOrganizationAgentQuotaRequest
@@ -2886,6 +3114,81 @@ type ClientInterface interface {
 
 	// GetAccessLogHealth request
 	GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentGroups request
+	ListAgentGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentGroupWithBody request with any body
+	CreateAgentGroupWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAgentGroup(ctx context.Context, orgId openapi_types.UUID, body CreateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveAgentGroup request
+	ArchiveAgentGroup(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentGroupWithBody request with any body
+	UpdateAgentGroupWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAgentGroup(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body UpdateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentGroupMembers request
+	ListAgentGroupMembers(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddAgentGroupMemberWithBody request with any body
+	AddAgentGroupMemberWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AddAgentGroupMember(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body AddAgentGroupMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveAgentGroupMember request
+	RemoveAgentGroupMember(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentPolicyTemplateAssignments request
+	ListAgentPolicyTemplateAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApplyAgentPolicyTemplateWithBody request with any body
+	ApplyAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ApplyAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, body ApplyAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveAgentPolicyTemplateAssignment request
+	RemoveAgentPolicyTemplateAssignment(ctx context.Context, orgId openapi_types.UUID, assignmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentPolicyTemplateDestinationImpact request
+	GetAgentPolicyTemplateDestinationImpact(ctx context.Context, orgId openapi_types.UUID, params *GetAgentPolicyTemplateDestinationImpactParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewAgentPolicyTemplateWithBody request with any body
+	PreviewAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PreviewAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, body PreviewAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetOrganizationAgentPolicyTemplatesEnabledWithBody request with any body
+	SetOrganizationAgentPolicyTemplatesEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentPolicyTemplatesEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentPolicyTemplates request
+	ListAgentPolicyTemplates(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentPolicyTemplateWithBody request with any body
+	CreateAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, body CreateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveAgentPolicyTemplate request
+	ArchiveAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAgentPolicyTemplateWithBody request with any body
+	UpdateAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body UpdateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentPolicyTemplateVersions request
+	ListAgentPolicyTemplateVersions(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentPolicyTemplateVersionWithBody request with any body
+	CreateAgentPolicyTemplateVersionWithBody(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAgentPolicyTemplateVersion(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body CreateAgentPolicyTemplateVersionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetOrganizationAgentQuotaWithBody request with any body
 	SetOrganizationAgentQuotaWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4136,6 +4439,342 @@ func (c *Client) ListAccessEvents(ctx context.Context, orgId openapi_types.UUID,
 
 func (c *Client) GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAccessLogHealthRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentGroupsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentGroupWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentGroupRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentGroup(ctx context.Context, orgId openapi_types.UUID, body CreateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentGroupRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ArchiveAgentGroup(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveAgentGroupRequest(c.Server, orgId, groupId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAgentGroupWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentGroupRequestWithBody(c.Server, orgId, groupId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAgentGroup(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body UpdateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentGroupRequest(c.Server, orgId, groupId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentGroupMembers(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentGroupMembersRequest(c.Server, orgId, groupId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddAgentGroupMemberWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddAgentGroupMemberRequestWithBody(c.Server, orgId, groupId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddAgentGroupMember(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body AddAgentGroupMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddAgentGroupMemberRequest(c.Server, orgId, groupId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveAgentGroupMember(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveAgentGroupMemberRequest(c.Server, orgId, groupId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentPolicyTemplateAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentPolicyTemplateAssignmentsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ApplyAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyAgentPolicyTemplateRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ApplyAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, body ApplyAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApplyAgentPolicyTemplateRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveAgentPolicyTemplateAssignment(ctx context.Context, orgId openapi_types.UUID, assignmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveAgentPolicyTemplateAssignmentRequest(c.Server, orgId, assignmentId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentPolicyTemplateDestinationImpact(ctx context.Context, orgId openapi_types.UUID, params *GetAgentPolicyTemplateDestinationImpactParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentPolicyTemplateDestinationImpactRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAgentPolicyTemplateRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, body PreviewAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAgentPolicyTemplateRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAgentPolicyTemplatesEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentPolicyTemplatesEnabledRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentPolicyTemplatesEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentPolicyTemplatesEnabledRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentPolicyTemplates(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentPolicyTemplatesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentPolicyTemplateRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, body CreateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentPolicyTemplateRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ArchiveAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveAgentPolicyTemplateRequest(c.Server, orgId, templateId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAgentPolicyTemplateWithBody(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentPolicyTemplateRequestWithBody(c.Server, orgId, templateId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAgentPolicyTemplate(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body UpdateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAgentPolicyTemplateRequest(c.Server, orgId, templateId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentPolicyTemplateVersions(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentPolicyTemplateVersionsRequest(c.Server, orgId, templateId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentPolicyTemplateVersionWithBody(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentPolicyTemplateVersionRequestWithBody(c.Server, orgId, templateId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentPolicyTemplateVersion(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body CreateAgentPolicyTemplateVersionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentPolicyTemplateVersionRequest(c.Server, orgId, templateId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7768,6 +8407,876 @@ func NewGetAccessLogHealthRequest(server string, orgId openapi_types.UUID) (*htt
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListAgentGroupsRequest generates requests for ListAgentGroups
+func NewListAgentGroupsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentGroupRequest calls the generic CreateAgentGroup builder with application/json body
+func NewCreateAgentGroupRequest(server string, orgId openapi_types.UUID, body CreateAgentGroupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentGroupRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAgentGroupRequestWithBody generates requests for CreateAgentGroup with any type of body
+func NewCreateAgentGroupRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewArchiveAgentGroupRequest generates requests for ArchiveAgentGroup
+func NewArchiveAgentGroupRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAgentGroupRequest calls the generic UpdateAgentGroup builder with application/json body
+func NewUpdateAgentGroupRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, body UpdateAgentGroupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAgentGroupRequestWithBody(server, orgId, groupId, "application/json", bodyReader)
+}
+
+// NewUpdateAgentGroupRequestWithBody generates requests for UpdateAgentGroup with any type of body
+func NewUpdateAgentGroupRequestWithBody(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAgentGroupMembersRequest generates requests for ListAgentGroupMembers
+func NewListAgentGroupMembersRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/members", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAddAgentGroupMemberRequest calls the generic AddAgentGroupMember builder with application/json body
+func NewAddAgentGroupMemberRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, body AddAgentGroupMemberJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddAgentGroupMemberRequestWithBody(server, orgId, groupId, "application/json", bodyReader)
+}
+
+// NewAddAgentGroupMemberRequestWithBody generates requests for AddAgentGroupMember with any type of body
+func NewAddAgentGroupMemberRequestWithBody(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/members", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveAgentGroupMemberRequest generates requests for RemoveAgentGroupMember
+func NewRemoveAgentGroupMemberRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/members/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAgentPolicyTemplateAssignmentsRequest generates requests for ListAgentPolicyTemplateAssignments
+func NewListAgentPolicyTemplateAssignmentsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-template-assignments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApplyAgentPolicyTemplateRequest calls the generic ApplyAgentPolicyTemplate builder with application/json body
+func NewApplyAgentPolicyTemplateRequest(server string, orgId openapi_types.UUID, body ApplyAgentPolicyTemplateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApplyAgentPolicyTemplateRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewApplyAgentPolicyTemplateRequestWithBody generates requests for ApplyAgentPolicyTemplate with any type of body
+func NewApplyAgentPolicyTemplateRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-template-assignments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveAgentPolicyTemplateAssignmentRequest generates requests for RemoveAgentPolicyTemplateAssignment
+func NewRemoveAgentPolicyTemplateAssignmentRequest(server string, orgId openapi_types.UUID, assignmentId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "assignmentId", runtime.ParamLocationPath, assignmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-template-assignments/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAgentPolicyTemplateDestinationImpactRequest generates requests for GetAgentPolicyTemplateDestinationImpact
+func NewGetAgentPolicyTemplateDestinationImpactRequest(server string, orgId openapi_types.UUID, params *GetAgentPolicyTemplateDestinationImpactParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-template-destination-impact", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "destination_kind", runtime.ParamLocationQuery, params.DestinationKind); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "destination_id", runtime.ParamLocationQuery, params.DestinationId); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPreviewAgentPolicyTemplateRequest calls the generic PreviewAgentPolicyTemplate builder with application/json body
+func NewPreviewAgentPolicyTemplateRequest(server string, orgId openapi_types.UUID, body PreviewAgentPolicyTemplateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewAgentPolicyTemplateRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewPreviewAgentPolicyTemplateRequestWithBody generates requests for PreviewAgentPolicyTemplate with any type of body
+func NewPreviewAgentPolicyTemplateRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-template-preview", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetOrganizationAgentPolicyTemplatesEnabledRequest calls the generic SetOrganizationAgentPolicyTemplatesEnabled builder with application/json body
+func NewSetOrganizationAgentPolicyTemplatesEnabledRequest(server string, orgId openapi_types.UUID, body SetOrganizationAgentPolicyTemplatesEnabledJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetOrganizationAgentPolicyTemplatesEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetOrganizationAgentPolicyTemplatesEnabledRequestWithBody generates requests for SetOrganizationAgentPolicyTemplatesEnabled with any type of body
+func NewSetOrganizationAgentPolicyTemplatesEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-template-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAgentPolicyTemplatesRequest generates requests for ListAgentPolicyTemplates
+func NewListAgentPolicyTemplatesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-templates", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentPolicyTemplateRequest calls the generic CreateAgentPolicyTemplate builder with application/json body
+func NewCreateAgentPolicyTemplateRequest(server string, orgId openapi_types.UUID, body CreateAgentPolicyTemplateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentPolicyTemplateRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAgentPolicyTemplateRequestWithBody generates requests for CreateAgentPolicyTemplate with any type of body
+func NewCreateAgentPolicyTemplateRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-templates", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewArchiveAgentPolicyTemplateRequest generates requests for ArchiveAgentPolicyTemplate
+func NewArchiveAgentPolicyTemplateRequest(server string, orgId openapi_types.UUID, templateId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "templateId", runtime.ParamLocationPath, templateId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-templates/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAgentPolicyTemplateRequest calls the generic UpdateAgentPolicyTemplate builder with application/json body
+func NewUpdateAgentPolicyTemplateRequest(server string, orgId openapi_types.UUID, templateId openapi_types.UUID, body UpdateAgentPolicyTemplateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAgentPolicyTemplateRequestWithBody(server, orgId, templateId, "application/json", bodyReader)
+}
+
+// NewUpdateAgentPolicyTemplateRequestWithBody generates requests for UpdateAgentPolicyTemplate with any type of body
+func NewUpdateAgentPolicyTemplateRequestWithBody(server string, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "templateId", runtime.ParamLocationPath, templateId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-templates/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAgentPolicyTemplateVersionsRequest generates requests for ListAgentPolicyTemplateVersions
+func NewListAgentPolicyTemplateVersionsRequest(server string, orgId openapi_types.UUID, templateId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "templateId", runtime.ParamLocationPath, templateId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-templates/%s/versions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentPolicyTemplateVersionRequest calls the generic CreateAgentPolicyTemplateVersion builder with application/json body
+func NewCreateAgentPolicyTemplateVersionRequest(server string, orgId openapi_types.UUID, templateId openapi_types.UUID, body CreateAgentPolicyTemplateVersionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentPolicyTemplateVersionRequestWithBody(server, orgId, templateId, "application/json", bodyReader)
+}
+
+// NewCreateAgentPolicyTemplateVersionRequestWithBody generates requests for CreateAgentPolicyTemplateVersion with any type of body
+func NewCreateAgentPolicyTemplateVersionRequestWithBody(server string, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "templateId", runtime.ParamLocationPath, templateId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-policy-templates/%s/versions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -12823,6 +14332,81 @@ type ClientWithResponsesInterface interface {
 	// GetAccessLogHealthWithResponse request
 	GetAccessLogHealthWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAccessLogHealthResponse, error)
 
+	// ListAgentGroupsWithResponse request
+	ListAgentGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupsResponse, error)
+
+	// CreateAgentGroupWithBodyWithResponse request with any body
+	CreateAgentGroupWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentGroupResponse, error)
+
+	CreateAgentGroupWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentGroupResponse, error)
+
+	// ArchiveAgentGroupWithResponse request
+	ArchiveAgentGroupWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAgentGroupResponse, error)
+
+	// UpdateAgentGroupWithBodyWithResponse request with any body
+	UpdateAgentGroupWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentGroupResponse, error)
+
+	UpdateAgentGroupWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body UpdateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentGroupResponse, error)
+
+	// ListAgentGroupMembersWithResponse request
+	ListAgentGroupMembersWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupMembersResponse, error)
+
+	// AddAgentGroupMemberWithBodyWithResponse request with any body
+	AddAgentGroupMemberWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddAgentGroupMemberResponse, error)
+
+	AddAgentGroupMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body AddAgentGroupMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*AddAgentGroupMemberResponse, error)
+
+	// RemoveAgentGroupMemberWithResponse request
+	RemoveAgentGroupMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveAgentGroupMemberResponse, error)
+
+	// ListAgentPolicyTemplateAssignmentsWithResponse request
+	ListAgentPolicyTemplateAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplateAssignmentsResponse, error)
+
+	// ApplyAgentPolicyTemplateWithBodyWithResponse request with any body
+	ApplyAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyAgentPolicyTemplateResponse, error)
+
+	ApplyAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, body ApplyAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyAgentPolicyTemplateResponse, error)
+
+	// RemoveAgentPolicyTemplateAssignmentWithResponse request
+	RemoveAgentPolicyTemplateAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, assignmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveAgentPolicyTemplateAssignmentResponse, error)
+
+	// GetAgentPolicyTemplateDestinationImpactWithResponse request
+	GetAgentPolicyTemplateDestinationImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetAgentPolicyTemplateDestinationImpactParams, reqEditors ...RequestEditorFn) (*GetAgentPolicyTemplateDestinationImpactResponse, error)
+
+	// PreviewAgentPolicyTemplateWithBodyWithResponse request with any body
+	PreviewAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAgentPolicyTemplateResponse, error)
+
+	PreviewAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, body PreviewAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAgentPolicyTemplateResponse, error)
+
+	// SetOrganizationAgentPolicyTemplatesEnabledWithBodyWithResponse request with any body
+	SetOrganizationAgentPolicyTemplatesEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentPolicyTemplatesEnabledResponse, error)
+
+	SetOrganizationAgentPolicyTemplatesEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentPolicyTemplatesEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentPolicyTemplatesEnabledResponse, error)
+
+	// ListAgentPolicyTemplatesWithResponse request
+	ListAgentPolicyTemplatesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplatesResponse, error)
+
+	// CreateAgentPolicyTemplateWithBodyWithResponse request with any body
+	CreateAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateResponse, error)
+
+	CreateAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateResponse, error)
+
+	// ArchiveAgentPolicyTemplateWithResponse request
+	ArchiveAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAgentPolicyTemplateResponse, error)
+
+	// UpdateAgentPolicyTemplateWithBodyWithResponse request with any body
+	UpdateAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentPolicyTemplateResponse, error)
+
+	UpdateAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body UpdateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentPolicyTemplateResponse, error)
+
+	// ListAgentPolicyTemplateVersionsWithResponse request
+	ListAgentPolicyTemplateVersionsWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplateVersionsResponse, error)
+
+	// CreateAgentPolicyTemplateVersionWithBodyWithResponse request with any body
+	CreateAgentPolicyTemplateVersionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateVersionResponse, error)
+
+	CreateAgentPolicyTemplateVersionWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body CreateAgentPolicyTemplateVersionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateVersionResponse, error)
+
 	// SetOrganizationAgentQuotaWithBodyWithResponse request with any body
 	SetOrganizationAgentQuotaWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentQuotaResponse, error)
 
@@ -14253,6 +15837,440 @@ func (r GetAccessLogHealthResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetAccessLogHealthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentGroupsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentGroup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentGroupsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentGroupsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAgentGroupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentGroup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentGroupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ArchiveAgentGroupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveAgentGroupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveAgentGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAgentGroupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentGroup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAgentGroupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAgentGroupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentGroupMembersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentGroupMember
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentGroupMembersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentGroupMembersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AddAgentGroupMemberResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AddAgentGroupMemberResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddAgentGroupMemberResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveAgentGroupMemberResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentPolicyTemplateRemovalImpact
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveAgentGroupMemberResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveAgentGroupMemberResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentPolicyTemplateAssignmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentPolicyTemplateAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentPolicyTemplateAssignmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentPolicyTemplateAssignmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ApplyAgentPolicyTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentPolicyTemplateApplyResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ApplyAgentPolicyTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApplyAgentPolicyTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveAgentPolicyTemplateAssignmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentPolicyTemplateRemovalImpact
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveAgentPolicyTemplateAssignmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveAgentPolicyTemplateAssignmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentPolicyTemplateDestinationImpactResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentPolicyTemplateDestinationImpact
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentPolicyTemplateDestinationImpactResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentPolicyTemplateDestinationImpactResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PreviewAgentPolicyTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentPolicyTemplatePreview
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewAgentPolicyTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewAgentPolicyTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetOrganizationAgentPolicyTemplatesEnabledResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentPolicyTemplateSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetOrganizationAgentPolicyTemplatesEnabledResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetOrganizationAgentPolicyTemplatesEnabledResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentPolicyTemplatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentPolicyTemplate
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentPolicyTemplatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentPolicyTemplatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAgentPolicyTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentPolicyTemplate
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentPolicyTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentPolicyTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ArchiveAgentPolicyTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveAgentPolicyTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveAgentPolicyTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAgentPolicyTemplateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentPolicyTemplate
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAgentPolicyTemplateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAgentPolicyTemplateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentPolicyTemplateVersionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentPolicyTemplateVersion
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentPolicyTemplateVersionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentPolicyTemplateVersionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAgentPolicyTemplateVersionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentPolicyTemplateVersion
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentPolicyTemplateVersionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentPolicyTemplateVersionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -17280,6 +19298,249 @@ func (c *ClientWithResponses) GetAccessLogHealthWithResponse(ctx context.Context
 	return ParseGetAccessLogHealthResponse(rsp)
 }
 
+// ListAgentGroupsWithResponse request returning *ListAgentGroupsResponse
+func (c *ClientWithResponses) ListAgentGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupsResponse, error) {
+	rsp, err := c.ListAgentGroups(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentGroupsResponse(rsp)
+}
+
+// CreateAgentGroupWithBodyWithResponse request with arbitrary body returning *CreateAgentGroupResponse
+func (c *ClientWithResponses) CreateAgentGroupWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentGroupResponse, error) {
+	rsp, err := c.CreateAgentGroupWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentGroupResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAgentGroupWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentGroupResponse, error) {
+	rsp, err := c.CreateAgentGroup(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentGroupResponse(rsp)
+}
+
+// ArchiveAgentGroupWithResponse request returning *ArchiveAgentGroupResponse
+func (c *ClientWithResponses) ArchiveAgentGroupWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAgentGroupResponse, error) {
+	rsp, err := c.ArchiveAgentGroup(ctx, orgId, groupId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveAgentGroupResponse(rsp)
+}
+
+// UpdateAgentGroupWithBodyWithResponse request with arbitrary body returning *UpdateAgentGroupResponse
+func (c *ClientWithResponses) UpdateAgentGroupWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentGroupResponse, error) {
+	rsp, err := c.UpdateAgentGroupWithBody(ctx, orgId, groupId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentGroupResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAgentGroupWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body UpdateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentGroupResponse, error) {
+	rsp, err := c.UpdateAgentGroup(ctx, orgId, groupId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentGroupResponse(rsp)
+}
+
+// ListAgentGroupMembersWithResponse request returning *ListAgentGroupMembersResponse
+func (c *ClientWithResponses) ListAgentGroupMembersWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupMembersResponse, error) {
+	rsp, err := c.ListAgentGroupMembers(ctx, orgId, groupId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentGroupMembersResponse(rsp)
+}
+
+// AddAgentGroupMemberWithBodyWithResponse request with arbitrary body returning *AddAgentGroupMemberResponse
+func (c *ClientWithResponses) AddAgentGroupMemberWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddAgentGroupMemberResponse, error) {
+	rsp, err := c.AddAgentGroupMemberWithBody(ctx, orgId, groupId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddAgentGroupMemberResponse(rsp)
+}
+
+func (c *ClientWithResponses) AddAgentGroupMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body AddAgentGroupMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*AddAgentGroupMemberResponse, error) {
+	rsp, err := c.AddAgentGroupMember(ctx, orgId, groupId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddAgentGroupMemberResponse(rsp)
+}
+
+// RemoveAgentGroupMemberWithResponse request returning *RemoveAgentGroupMemberResponse
+func (c *ClientWithResponses) RemoveAgentGroupMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveAgentGroupMemberResponse, error) {
+	rsp, err := c.RemoveAgentGroupMember(ctx, orgId, groupId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveAgentGroupMemberResponse(rsp)
+}
+
+// ListAgentPolicyTemplateAssignmentsWithResponse request returning *ListAgentPolicyTemplateAssignmentsResponse
+func (c *ClientWithResponses) ListAgentPolicyTemplateAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplateAssignmentsResponse, error) {
+	rsp, err := c.ListAgentPolicyTemplateAssignments(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentPolicyTemplateAssignmentsResponse(rsp)
+}
+
+// ApplyAgentPolicyTemplateWithBodyWithResponse request with arbitrary body returning *ApplyAgentPolicyTemplateResponse
+func (c *ClientWithResponses) ApplyAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApplyAgentPolicyTemplateResponse, error) {
+	rsp, err := c.ApplyAgentPolicyTemplateWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyAgentPolicyTemplateResponse(rsp)
+}
+
+func (c *ClientWithResponses) ApplyAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, body ApplyAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*ApplyAgentPolicyTemplateResponse, error) {
+	rsp, err := c.ApplyAgentPolicyTemplate(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApplyAgentPolicyTemplateResponse(rsp)
+}
+
+// RemoveAgentPolicyTemplateAssignmentWithResponse request returning *RemoveAgentPolicyTemplateAssignmentResponse
+func (c *ClientWithResponses) RemoveAgentPolicyTemplateAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, assignmentId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveAgentPolicyTemplateAssignmentResponse, error) {
+	rsp, err := c.RemoveAgentPolicyTemplateAssignment(ctx, orgId, assignmentId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveAgentPolicyTemplateAssignmentResponse(rsp)
+}
+
+// GetAgentPolicyTemplateDestinationImpactWithResponse request returning *GetAgentPolicyTemplateDestinationImpactResponse
+func (c *ClientWithResponses) GetAgentPolicyTemplateDestinationImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetAgentPolicyTemplateDestinationImpactParams, reqEditors ...RequestEditorFn) (*GetAgentPolicyTemplateDestinationImpactResponse, error) {
+	rsp, err := c.GetAgentPolicyTemplateDestinationImpact(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentPolicyTemplateDestinationImpactResponse(rsp)
+}
+
+// PreviewAgentPolicyTemplateWithBodyWithResponse request with arbitrary body returning *PreviewAgentPolicyTemplateResponse
+func (c *ClientWithResponses) PreviewAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAgentPolicyTemplateResponse, error) {
+	rsp, err := c.PreviewAgentPolicyTemplateWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAgentPolicyTemplateResponse(rsp)
+}
+
+func (c *ClientWithResponses) PreviewAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, body PreviewAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAgentPolicyTemplateResponse, error) {
+	rsp, err := c.PreviewAgentPolicyTemplate(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAgentPolicyTemplateResponse(rsp)
+}
+
+// SetOrganizationAgentPolicyTemplatesEnabledWithBodyWithResponse request with arbitrary body returning *SetOrganizationAgentPolicyTemplatesEnabledResponse
+func (c *ClientWithResponses) SetOrganizationAgentPolicyTemplatesEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentPolicyTemplatesEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAgentPolicyTemplatesEnabledWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentPolicyTemplatesEnabledResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetOrganizationAgentPolicyTemplatesEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentPolicyTemplatesEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentPolicyTemplatesEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAgentPolicyTemplatesEnabled(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentPolicyTemplatesEnabledResponse(rsp)
+}
+
+// ListAgentPolicyTemplatesWithResponse request returning *ListAgentPolicyTemplatesResponse
+func (c *ClientWithResponses) ListAgentPolicyTemplatesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplatesResponse, error) {
+	rsp, err := c.ListAgentPolicyTemplates(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentPolicyTemplatesResponse(rsp)
+}
+
+// CreateAgentPolicyTemplateWithBodyWithResponse request with arbitrary body returning *CreateAgentPolicyTemplateResponse
+func (c *ClientWithResponses) CreateAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateResponse, error) {
+	rsp, err := c.CreateAgentPolicyTemplateWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentPolicyTemplateResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateResponse, error) {
+	rsp, err := c.CreateAgentPolicyTemplate(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentPolicyTemplateResponse(rsp)
+}
+
+// ArchiveAgentPolicyTemplateWithResponse request returning *ArchiveAgentPolicyTemplateResponse
+func (c *ClientWithResponses) ArchiveAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAgentPolicyTemplateResponse, error) {
+	rsp, err := c.ArchiveAgentPolicyTemplate(ctx, orgId, templateId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveAgentPolicyTemplateResponse(rsp)
+}
+
+// UpdateAgentPolicyTemplateWithBodyWithResponse request with arbitrary body returning *UpdateAgentPolicyTemplateResponse
+func (c *ClientWithResponses) UpdateAgentPolicyTemplateWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentPolicyTemplateResponse, error) {
+	rsp, err := c.UpdateAgentPolicyTemplateWithBody(ctx, orgId, templateId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentPolicyTemplateResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAgentPolicyTemplateWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body UpdateAgentPolicyTemplateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentPolicyTemplateResponse, error) {
+	rsp, err := c.UpdateAgentPolicyTemplate(ctx, orgId, templateId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAgentPolicyTemplateResponse(rsp)
+}
+
+// ListAgentPolicyTemplateVersionsWithResponse request returning *ListAgentPolicyTemplateVersionsResponse
+func (c *ClientWithResponses) ListAgentPolicyTemplateVersionsWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplateVersionsResponse, error) {
+	rsp, err := c.ListAgentPolicyTemplateVersions(ctx, orgId, templateId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentPolicyTemplateVersionsResponse(rsp)
+}
+
+// CreateAgentPolicyTemplateVersionWithBodyWithResponse request with arbitrary body returning *CreateAgentPolicyTemplateVersionResponse
+func (c *ClientWithResponses) CreateAgentPolicyTemplateVersionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateVersionResponse, error) {
+	rsp, err := c.CreateAgentPolicyTemplateVersionWithBody(ctx, orgId, templateId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentPolicyTemplateVersionResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAgentPolicyTemplateVersionWithResponse(ctx context.Context, orgId openapi_types.UUID, templateId openapi_types.UUID, body CreateAgentPolicyTemplateVersionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentPolicyTemplateVersionResponse, error) {
+	rsp, err := c.CreateAgentPolicyTemplateVersion(ctx, orgId, templateId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentPolicyTemplateVersionResponse(rsp)
+}
+
 // SetOrganizationAgentQuotaWithBodyWithResponse request with arbitrary body returning *SetOrganizationAgentQuotaResponse
 func (c *ClientWithResponses) SetOrganizationAgentQuotaWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentQuotaResponse, error) {
 	rsp, err := c.SetOrganizationAgentQuotaWithBody(ctx, orgId, contentType, body, reqEditors...)
@@ -20016,6 +22277,612 @@ func ParseGetAccessLogHealthResponse(rsp *http.Response) (*GetAccessLogHealthRes
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentGroupsResponse parses an HTTP response from a ListAgentGroupsWithResponse call
+func ParseListAgentGroupsResponse(rsp *http.Response) (*ListAgentGroupsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentGroupsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentGroupResponse parses an HTTP response from a CreateAgentGroupWithResponse call
+func ParseCreateAgentGroupResponse(rsp *http.Response) (*CreateAgentGroupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseArchiveAgentGroupResponse parses an HTTP response from a ArchiveAgentGroupWithResponse call
+func ParseArchiveAgentGroupResponse(rsp *http.Response) (*ArchiveAgentGroupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveAgentGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAgentGroupResponse parses an HTTP response from a UpdateAgentGroupWithResponse call
+func ParseUpdateAgentGroupResponse(rsp *http.Response) (*UpdateAgentGroupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAgentGroupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentGroupMembersResponse parses an HTTP response from a ListAgentGroupMembersWithResponse call
+func ParseListAgentGroupMembersResponse(rsp *http.Response) (*ListAgentGroupMembersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentGroupMembersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentGroupMember
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddAgentGroupMemberResponse parses an HTTP response from a AddAgentGroupMemberWithResponse call
+func ParseAddAgentGroupMemberResponse(rsp *http.Response) (*AddAgentGroupMemberResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddAgentGroupMemberResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveAgentGroupMemberResponse parses an HTTP response from a RemoveAgentGroupMemberWithResponse call
+func ParseRemoveAgentGroupMemberResponse(rsp *http.Response) (*RemoveAgentGroupMemberResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveAgentGroupMemberResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentPolicyTemplateRemovalImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentPolicyTemplateAssignmentsResponse parses an HTTP response from a ListAgentPolicyTemplateAssignmentsWithResponse call
+func ParseListAgentPolicyTemplateAssignmentsResponse(rsp *http.Response) (*ListAgentPolicyTemplateAssignmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentPolicyTemplateAssignmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentPolicyTemplateAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApplyAgentPolicyTemplateResponse parses an HTTP response from a ApplyAgentPolicyTemplateWithResponse call
+func ParseApplyAgentPolicyTemplateResponse(rsp *http.Response) (*ApplyAgentPolicyTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApplyAgentPolicyTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentPolicyTemplateApplyResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveAgentPolicyTemplateAssignmentResponse parses an HTTP response from a RemoveAgentPolicyTemplateAssignmentWithResponse call
+func ParseRemoveAgentPolicyTemplateAssignmentResponse(rsp *http.Response) (*RemoveAgentPolicyTemplateAssignmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveAgentPolicyTemplateAssignmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentPolicyTemplateRemovalImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentPolicyTemplateDestinationImpactResponse parses an HTTP response from a GetAgentPolicyTemplateDestinationImpactWithResponse call
+func ParseGetAgentPolicyTemplateDestinationImpactResponse(rsp *http.Response) (*GetAgentPolicyTemplateDestinationImpactResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentPolicyTemplateDestinationImpactResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentPolicyTemplateDestinationImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewAgentPolicyTemplateResponse parses an HTTP response from a PreviewAgentPolicyTemplateWithResponse call
+func ParsePreviewAgentPolicyTemplateResponse(rsp *http.Response) (*PreviewAgentPolicyTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewAgentPolicyTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentPolicyTemplatePreview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetOrganizationAgentPolicyTemplatesEnabledResponse parses an HTTP response from a SetOrganizationAgentPolicyTemplatesEnabledWithResponse call
+func ParseSetOrganizationAgentPolicyTemplatesEnabledResponse(rsp *http.Response) (*SetOrganizationAgentPolicyTemplatesEnabledResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetOrganizationAgentPolicyTemplatesEnabledResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentPolicyTemplateSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentPolicyTemplatesResponse parses an HTTP response from a ListAgentPolicyTemplatesWithResponse call
+func ParseListAgentPolicyTemplatesResponse(rsp *http.Response) (*ListAgentPolicyTemplatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentPolicyTemplatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentPolicyTemplate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentPolicyTemplateResponse parses an HTTP response from a CreateAgentPolicyTemplateWithResponse call
+func ParseCreateAgentPolicyTemplateResponse(rsp *http.Response) (*CreateAgentPolicyTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentPolicyTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentPolicyTemplate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseArchiveAgentPolicyTemplateResponse parses an HTTP response from a ArchiveAgentPolicyTemplateWithResponse call
+func ParseArchiveAgentPolicyTemplateResponse(rsp *http.Response) (*ArchiveAgentPolicyTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveAgentPolicyTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAgentPolicyTemplateResponse parses an HTTP response from a UpdateAgentPolicyTemplateWithResponse call
+func ParseUpdateAgentPolicyTemplateResponse(rsp *http.Response) (*UpdateAgentPolicyTemplateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAgentPolicyTemplateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentPolicyTemplate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentPolicyTemplateVersionsResponse parses an HTTP response from a ListAgentPolicyTemplateVersionsWithResponse call
+func ParseListAgentPolicyTemplateVersionsResponse(rsp *http.Response) (*ListAgentPolicyTemplateVersionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentPolicyTemplateVersionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentPolicyTemplateVersion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentPolicyTemplateVersionResponse parses an HTTP response from a CreateAgentPolicyTemplateVersionWithResponse call
+func ParseCreateAgentPolicyTemplateVersionResponse(rsp *http.Response) (*CreateAgentPolicyTemplateVersionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentPolicyTemplateVersionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentPolicyTemplateVersion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

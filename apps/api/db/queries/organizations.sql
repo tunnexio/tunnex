@@ -52,6 +52,14 @@ SET managed_agent_runtime_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING *;
 
+-- name: SetOrganizationAgentPolicyTemplatesEnabled :one
+-- F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
+-- which refuses while a live assignment exists.
+UPDATE organizations
+SET agent_policy_templates_enabled = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
 -- name: SoftDeleteOrganization :execrows
 UPDATE organizations
 SET deleted_at = now()

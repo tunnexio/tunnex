@@ -250,6 +250,15 @@ export default function Settings() {
                 </Card>
               </div>
             )}
+            {meta?.edition === "enterprise" && (
+              <div className="mb-3.5 break-inside-avoid">
+                <AgentPolicyTemplatesToggle
+                  org={org}
+                  canEdit={emailVerified}
+                  onSaved={(o) => setOrg(o)}
+                />
+              </div>
+            )}
             {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
             <div className="mb-3.5 break-inside-avoid">
               <OrgOVPNToggle
@@ -292,6 +301,69 @@ export default function Settings() {
         </div>
       )}
     </div>
+  );
+}
+
+function AgentPolicyTemplatesToggle({
+  org,
+  canEdit,
+  onSaved,
+}: {
+  org: Org;
+  canEdit: boolean;
+  onSaved: (org: Org) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const enabled = org.agent_policy_templates_enabled;
+
+  async function toggle() {
+    setBusy(true);
+    setErr(null);
+    const next = !enabled;
+    const result = await api.PUT(
+      "/api/v1/organizations/{orgId}/agent-policy-template-settings",
+      { params: { path: { orgId: org.id } }, body: { enabled: next } },
+    );
+    if (result.error) {
+      setBusy(false);
+      return setErr(
+        apiErrorMessage(
+          result.error,
+          next
+            ? "Could not enable agent policy templates."
+            : "Could not disable agent policy templates.",
+        ),
+      );
+    }
+    const refetch = await api.GET("/api/v1/organizations/{orgId}", {
+      params: { path: { orgId: org.id } },
+    });
+    setBusy(false);
+    if (refetch.error || !refetch.data) {
+      return setErr("The setting was saved, but the organization could not be refreshed.");
+    }
+    onSaved(refetch.data);
+  }
+
+  return (
+    <Card data-testid="agent-policy-template-settings">
+      <h2 className="text-sm font-semibold text-slate-300">
+        Agent groups &amp; policy templates
+      </h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Off by default. Enabling unlocks reusable agent-group policy authoring;
+        it creates no access until an authorized operator previews and applies a template.
+      </p>
+      <Button className="mt-3" disabled={!canEdit || busy} onClick={toggle}>
+        {busy
+          ? "Saving…"
+          : enabled
+            ? "Disable agent policy templates"
+            : "Enable agent policy templates"}
+      </Button>
+      <ErrorText>{err}</ErrorText>
+    </Card>
   );
 }
 

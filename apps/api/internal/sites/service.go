@@ -8,6 +8,7 @@ package sites
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 
 	"github.com/google/uuid"
@@ -252,6 +253,13 @@ func (s *Service) DeleteSite(ctx context.Context, actor, orgID, siteID uuid.UUID
 		return err
 	}
 	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		versions, err := q.CountAgentPolicyTemplateSiteReferences(ctx, sqlc.CountAgentPolicyTemplateSiteReferencesParams{OrgID: orgID, DstSiteID: pgtype.UUID{Bytes: siteID, Valid: true}})
+		if err != nil {
+			return err
+		}
+		if versions != 0 {
+			return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this site", versions))
+		}
 		n, err := q.DeleteSite(ctx, sqlc.DeleteSiteParams{ID: siteID, OrgID: orgID})
 		if err != nil {
 			return err

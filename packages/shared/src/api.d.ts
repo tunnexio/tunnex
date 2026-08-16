@@ -2437,6 +2437,254 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agent-policy-template-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Enable or disable managed-agent groups and policy templates */
+        put: operations["setOrganizationAgentPolicyTemplatesEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-policy-template-destination-impact": {
+        parameters: {
+            query: {
+                destination_kind: "resource" | "group" | "site" | "k8s_service";
+                destination_id: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Count immutable F09 template references before deleting a destination */
+        get: operations["getAgentPolicyTemplateDestinationImpact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List F09 managed-agent groups */
+        get: operations["listAgentGroups"];
+        put?: never;
+        /** Create an F09 managed-agent group */
+        post: operations["createAgentGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-groups/{groupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Archive an empty agent group
+         * @description Refuses while memberships or active assignments remain.
+         */
+        delete: operations["archiveAgentGroup"];
+        options?: never;
+        head?: never;
+        /** Rename or update one agent group */
+        patch: operations["updateAgentGroup"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-groups/{groupId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        /** List current managed-agent members */
+        get: operations["listAgentGroupMembers"];
+        put?: never;
+        /** Add one active managed agent to a group */
+        post: operations["addAgentGroupMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-groups/{groupId}/members/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove one member and report exact compiled access withdrawal */
+        delete: operations["removeAgentGroupMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-policy-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List F09 reusable policy templates */
+        get: operations["listAgentPolicyTemplates"];
+        put?: never;
+        /** Create reusable policy-template metadata */
+        post: operations["createAgentPolicyTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Archive template metadata without changing live assignments */
+        delete: operations["archiveAgentPolicyTemplate"];
+        options?: never;
+        head?: never;
+        /** Rename or update reusable template metadata */
+        patch: operations["updateAgentPolicyTemplate"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        /** List immutable versions of one agent policy template */
+        get: operations["listAgentPolicyTemplateVersions"];
+        put?: never;
+        /** Create the next immutable template version */
+        post: operations["createAgentPolicyTemplateVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-policy-template-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pure preview using the canonical policy compiler */
+        post: operations["previewAgentPolicyTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-policy-template-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List current applied template assignments */
+        get: operations["listAgentPolicyTemplateAssignments"];
+        put?: never;
+        /** Atomically apply an exact template version after a fresh preview */
+        post: operations["applyAgentPolicyTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                assignmentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Atomically withdraw one assignment and only its orphaned ordinary rules */
+        delete: operations["removeAgentPolicyTemplateAssignment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2471,10 +2719,157 @@ export interface components {
             max_agent_identities: number | null;
             /** @description F04: explicit organization opt-in for managed runtime synchronization. Default false; a paid licence does not enable it implicitly. */
             managed_agent_runtime_enabled: boolean;
+            /** @description F09: explicit organization opt-in for managed-agent groups and reusable policy templates. Default false; a paid licence does not enable it implicitly. */
+            agent_policy_templates_enabled: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        AgentGroup: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            name: string;
+            description: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateAgentGroupRequest: {
+            name: string;
+            description?: string;
+        };
+        UpdateAgentGroupRequest: {
+            name: string;
+            description?: string;
+        };
+        AddAgentGroupMemberRequest: {
+            /** Format: uuid */
+            device_id: string;
+        };
+        AgentGroupMember: {
+            /** Format: uuid */
+            device_id: string;
+            name: string;
+            /** @enum {string} */
+            status: "active" | "pending" | "suspended" | "revoked";
+            /** Format: uuid */
+            node_id: string;
+            assigned_ip?: string | null;
+            /** Format: date-time */
+            added_at: string;
+        };
+        AgentPolicyTemplate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            name: string;
+            description: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AgentPolicyTemplateSetting: {
+            /** @description Explicit F09 organization opt-in. Disabling is refused while live assignments exist. */
+            enabled: boolean;
+        };
+        AgentPolicyTemplateDestinationImpact: {
+            version_count: number;
+        };
+        CreateAgentPolicyTemplateRequest: {
+            name: string;
+            description?: string;
+        };
+        UpdateAgentPolicyTemplateRequest: {
+            name: string;
+            description?: string;
+        };
+        AgentPolicyTemplateItemInput: {
+            /** @enum {string} */
+            destination_kind: "resource" | "group" | "site" | "k8s_service";
+            /** Format: uuid */
+            destination_id: string;
+        };
+        CreateAgentPolicyTemplateVersionRequest: {
+            items: components["schemas"]["AgentPolicyTemplateItemInput"][];
+        };
+        AgentPolicyTemplateVersion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            template_id: string;
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+        };
+        PreviewAgentPolicyTemplateRequest: {
+            /** Format: uuid */
+            group_id: string;
+            /** Format: uuid */
+            template_version_id: string;
+        };
+        AgentPolicyTemplateTuple: {
+            /** Format: uuid */
+            device_id: string;
+            /** Format: uuid */
+            node_id: string;
+            destination_cidr: string;
+            /** @enum {string} */
+            protocol: "any" | "tcp" | "udp";
+            port_low: number;
+            port_high: number;
+        };
+        AgentPolicyTemplatePreview: {
+            digest: string;
+            affected_agents: number;
+            created_rules: number;
+            reused_rules: number;
+            removed_rules: number;
+            changed_gateways: number;
+            added: components["schemas"]["AgentPolicyTemplateTuple"][];
+            removed: components["schemas"]["AgentPolicyTemplateTuple"][];
+        };
+        ApplyAgentPolicyTemplateRequest: {
+            /** Format: uuid */
+            group_id: string;
+            /** Format: uuid */
+            template_version_id: string;
+            preview_digest: string;
+            idempotency_key: string;
+        };
+        AgentPolicyTemplateApplyResult: {
+            /** Format: uuid */
+            assignment_id: string;
+            no_op: boolean;
+            preview: components["schemas"]["AgentPolicyTemplatePreview"];
+        };
+        AgentPolicyTemplateAssignment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            group_id: string;
+            group_name: string;
+            /** Format: uuid */
+            template_id: string;
+            template_name: string;
+            /** Format: uuid */
+            template_version_id: string;
+            version: number;
+            rule_count: number;
+            /** Format: date-time */
+            applied_at: string;
+        };
+        AgentPolicyTemplateRemovalImpact: {
+            members: number;
+            assignments: number;
+            generated_rules: number;
+            withdrawn_tuples: number;
+            changed_gateways: number;
         };
         PoolCidrRequest: {
             /** @description New pool CIDR (IPv4). Must contain or be contained by the current range. */
@@ -2635,13 +3030,15 @@ export interface components {
         };
         PolicyRule: {
             managed_by_operator: boolean;
+            /** @description True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces. */
+            managed_by_agent_template: boolean;
             enabled: boolean;
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             org_id: string;
             /** @enum {string} */
-            src_kind: "group" | "user" | "site" | "cidr" | "agent";
+            src_kind: "group" | "user" | "site" | "cidr" | "agent" | "agent_group";
             /** Format: uuid */
             src_group_id?: string | null;
             /** Format: uuid */
@@ -2655,6 +3052,11 @@ export interface components {
              * @description S15.3 — set when src_kind=agent: the agent device whose /32 is the source.
              */
             src_device_id?: string | null;
+            /**
+             * Format: uuid
+             * @description F09 — set when src_kind=agent_group: the reusable managed-agent group expanded by the compiler.
+             */
+            src_agent_group_id?: string | null;
             cidr_outside_org_ranges: boolean;
             /** @enum {string} */
             dst_kind: "resource" | "group" | "site" | "k8s_service";
@@ -7898,6 +8300,503 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setOrganizationAgentPolicyTemplatesEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPolicyTemplateSetting"];
+            };
+        };
+        responses: {
+            /** @description Persisted organization setting. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentPolicyTemplateDestinationImpact: {
+        parameters: {
+            query: {
+                destination_kind: "resource" | "group" | "site" | "k8s_service";
+                destination_id: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-owned blocking immutable-version count. Available even while the F09 opt-in is off. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateDestinationImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current non-archived groups. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentGroup"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAgentGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Group created. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentGroup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    archiveAgentGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Empty group archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAgentGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description Group updated and server-refetched. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentGroup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentGroupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current members. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentGroupMember"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addAgentGroupMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddAgentGroupMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description Member present; idempotent. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeAgentGroupMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed; ordinary rules remain stable. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateRemovalImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentPolicyTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current non-archived templates. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplate"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAgentPolicyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentPolicyTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Template created. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplate"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    archiveAgentPolicyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Template archived; existing assignments remain active. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAgentPolicyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentPolicyTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Template metadata updated. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplate"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentPolicyTemplateVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Immutable versions, newest first. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateVersion"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAgentPolicyTemplateVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                templateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentPolicyTemplateVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Immutable version created. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateVersion"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    previewAgentPolicyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewAgentPolicyTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Current bounded impact and stale-protected digest; no write occurred. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplatePreview"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentPolicyTemplateAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current server-owned assignments. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateAssignment"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    applyAgentPolicyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyAgentPolicyTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Assignment applied or idempotently replayed. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateApplyResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeAgentPolicyTemplateAssignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                assignmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Assignment removed and exact withdrawal impact returned. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPolicyTemplateRemovalImpact"];
+                };
             };
             default: components["responses"]["Error"];
         };

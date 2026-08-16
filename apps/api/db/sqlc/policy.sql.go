@@ -517,7 +517,7 @@ func (q *Queries) ListActiveDevicesForOrg(ctx context.Context, orgID uuid.UUID) 
 const listActivePolicyRulesForOrg = `-- name: ListActivePolicyRulesForOrg :many
 SELECT id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id FROM policy_rules
 WHERE org_id = $1 AND (expires_at IS NULL OR expires_at > now())
-ORDER BY created_at
+ORDER BY created_at, id
 `
 
 // COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:
@@ -612,6 +612,7 @@ const listGroupMembershipsByOrg = `-- name: ListGroupMembershipsByOrg :many
 SELECT group_id, user_id
 FROM group_members
 WHERE org_id = $1
+ORDER BY group_id, user_id
 `
 
 type ListGroupMembershipsByOrgRow struct {

@@ -110,9 +110,6 @@ CREATE TABLE agent_policy_template_version_items (
     dst_group_id        uuid,
     dst_site_id         uuid,
     dst_k8s_service_id  uuid,
-    protocol            text NOT NULL DEFAULT 'any' CHECK (protocol IN ('any', 'tcp', 'udp')),
-    port_low            integer CHECK (port_low IS NULL OR port_low BETWEEN 1 AND 65535),
-    port_high           integer CHECK (port_high IS NULL OR port_high BETWEEN 1 AND 65535),
     created_at          timestamptz NOT NULL DEFAULT now(),
     UNIQUE (id, org_id),
     UNIQUE (template_version_id, ordinal),
@@ -131,13 +128,6 @@ CREATE TABLE agent_policy_template_version_items (
      OR (dst_kind = 'group' AND dst_group_id IS NOT NULL AND dst_resource_id IS NULL AND dst_site_id IS NULL AND dst_k8s_service_id IS NULL)
      OR (dst_kind = 'site' AND dst_site_id IS NOT NULL AND dst_resource_id IS NULL AND dst_group_id IS NULL AND dst_k8s_service_id IS NULL)
      OR (dst_kind = 'k8s_service' AND dst_k8s_service_id IS NOT NULL AND dst_resource_id IS NULL AND dst_group_id IS NULL AND dst_site_id IS NULL)
-    ),
-    CHECK (
-        (protocol = 'any' AND port_low IS NULL AND port_high IS NULL)
-     OR (protocol IN ('tcp', 'udp') AND (
-            (port_low IS NULL AND port_high IS NULL)
-         OR (port_low IS NOT NULL AND port_high IS NOT NULL AND port_low <= port_high)
-        ))
     )
 );
 CREATE INDEX agent_policy_template_version_items_org_version_idx
@@ -152,12 +142,14 @@ CREATE TABLE agent_policy_template_assignments (
     state                  text NOT NULL DEFAULT 'active'
                                CHECK (state IN ('active', 'superseded', 'removed')),
     preview_digest         text NOT NULL CHECK (preview_digest ~ '^[0-9a-f]{64}$'),
+    idempotency_key        text NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 128),
     applied_by_user_id     uuid NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
     previous_assignment_id uuid,
     applied_at             timestamptz NOT NULL DEFAULT now(),
     ended_at               timestamptz,
     updated_at             timestamptz NOT NULL DEFAULT now(),
     UNIQUE (id, org_id),
+    UNIQUE (org_id, idempotency_key),
     FOREIGN KEY (agent_group_id, org_id)
         REFERENCES agent_groups (id, org_id) ON DELETE RESTRICT,
     FOREIGN KEY (template_id, org_id)

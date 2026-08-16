@@ -1030,7 +1030,45 @@ describe("resPortsValid (Feature 1 — resource port scope, client UX gate; serv
 describe("grantControls — the withhold decision (M3)", () => {
   it("withholds every mutation on a managed grant, offers them otherwise", () => {
     expect(grantControls({ managedByOperator: true }).withheld).toBe(true);
+    expect(
+      grantControls({
+        managedByOperator: false,
+        managedByAgentTemplate: true,
+      }).withheld,
+    ).toBe(true);
     expect(grantControls({ managedByOperator: false }).withheld).toBe(false);
+  });
+
+  it("resolves and labels an assignment-owned agent-group source without exposing an edit path", () => {
+    const row = ruleRow(
+      {
+        id: "rule-f09",
+        org_id: "org-a",
+        src_kind: "agent_group",
+        src_agent_group_id: "group-a",
+        dst_kind: "resource",
+        dst_resource_id: "resource-a",
+        created_at: new Date().toISOString(),
+        enabled: true,
+        managed_by_operator: false,
+        managed_by_agent_template: true,
+        cidr_outside_org_ranges: false,
+        dst_k8s_service_vanished: false,
+      } as PolicyRule,
+      [],
+      [R("resource-a", "database")],
+      [],
+      [],
+      {
+        groupsLoaded: true,
+        resourcesLoaded: true,
+        agentGroupsLoaded: true,
+        agentGroups: [{ id: "group-a", name: "workers" }],
+      },
+    );
+    expect(row.src.label).toBe("workers");
+    expect(row.managedByAgentTemplate).toBe(true);
+    expect(grantControls(row).withheld).toBe(true);
   });
 });
 
@@ -1452,7 +1490,7 @@ describe("srcGroupEmptyWarn — the fourth warn kind, admitted by the test that 
 
 describe("cascadeConfirmCopy — names only server-owned impact", () => {
   it("states that rules are deleted and names the server-owned agent count", () => {
-    const c = cascadeConfirmCopy("group", "Interns", 2);
+    const c = cascadeConfirmCopy("group", "Interns", 2, 0);
     expect(c.body).toMatch(/deletes every access rule/i);
     expect(c.body).toMatch(/delegated management for 2 managed agents/i);
     expect(c.body).toMatch(/cannot be undone/i);
@@ -1460,23 +1498,29 @@ describe("cascadeConfirmCopy — names only server-owned impact", () => {
   });
 
   it("blocks a group delete when the server-owned delegation count is absent", () => {
-    const c = cascadeConfirmCopy("group", "Interns");
+    const c = cascadeConfirmCopy("group", "Interns", undefined, 0);
     expect(c.body).toMatch(/could not be read/i);
     expect(c.impactKnown).toBe(false);
   });
 
   it("says rules VANISH rather than becoming reviewable-broken — the measured behaviour", () => {
     // ON DELETE CASCADE: the rows go. An operator who expects orphaned-but-visible rules is wrong.
-    expect(cascadeConfirmCopy("group", "X", 0).body).toMatch(/do not remain/i);
+    expect(cascadeConfirmCopy("group", "X", 0, 0).body).toMatch(/do not remain/i);
   });
 
   it("group and resource differ in the ROLE they name", () => {
-    expect(cascadeConfirmCopy("group", "X", 0).body).toMatch(
+    expect(cascadeConfirmCopy("group", "X", 0, 0).body).toMatch(
       /source or destination/,
     );
-    expect(cascadeConfirmCopy("resource", "X").body).toMatch(
+    expect(cascadeConfirmCopy("resource", "X", undefined, 0).body).toMatch(
       /rule destination/,
     );
+  });
+
+  it("blocks a destination referenced by immutable template versions", () => {
+    const c = cascadeConfirmCopy("resource", "DB", undefined, 2);
+    expect(c.body).toMatch(/2 immutable agent policy template versions reference/i);
+    expect(c.blocked).toBe(true);
   });
 
   it("names member-removal policy and delegation impact and blocks unknown impact", () => {

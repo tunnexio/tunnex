@@ -31,6 +31,7 @@ type policyPort interface {
 	UpdateResource(ctx context.Context, orgID, resourceID uuid.UUID, in policyspec.ResourceInput, label *string) (sqlc.Resource, error)
 	DeleteResource(ctx context.Context, orgID, resourceID uuid.UUID) error
 	ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.PolicyRule, error)
+	AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]bool, error)
 	CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in policyspec.RuleInput, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.PolicyRule, error)
 	// PolicyRuleCidrWarnings returns per-rule-id the S8.7 cidr_outside_org_ranges warning (a src_kind='cidr'
 	// rule that places nowhere — no containing site with a bound gateway). Read-time derived; takes the
@@ -291,6 +292,16 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 	if err != nil {
 		return nil, err
 	}
+	_, mayViewAgentTemplates := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage)
+	if mayViewAgentTemplates != nil {
+		filtered := rs[:0]
+		for _, rule := range rs {
+			if rule.SrcKind != "agent_group" {
+				filtered = append(filtered, rule)
+			}
+		}
+		rs = filtered
+	}
 	warn, err := s.policy.PolicyRuleCidrWarnings(ctx, req.OrgId, rs) // S8.7 read-time warn (D1); reuse the fetched rules ([15])
 	if err != nil {
 		return nil, err
@@ -299,9 +310,16 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 	if err != nil {
 		return nil, err
 	}
+	templateManaged := map[uuid.UUID]bool{}
+	if mayViewAgentTemplates == nil {
+		templateManaged, err = s.policy.AgentTemplateManagedRuleIDs(ctx, req.OrgId)
+		if err != nil {
+			return nil, err
+		}
+	}
 	out := make([]api.PolicyRule, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, toAPIRule(r, warn[r.ID], vanished[r.ID]))
+		out = append(out, toAPIRule(r, warn[r.ID], vanished[r.ID], templateManaged[r.ID]))
 	}
 	return api.ListPolicyRules200JSONResponse{Body: out, Headers: api.ListPolicyRules200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -535,14 +553,16 @@ func (s apiServer) k8sVanishedMap(ctx context.Context, orgID uuid.UUID, rules []
 	return out, nil
 }
 
-func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool) api.PolicyRule {
+func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, agentTemplateManaged ...bool) api.PolicyRule {
+	templateManaged := len(agentTemplateManaged) != 0 && agentTemplateManaged[0]
 	out := api.PolicyRule{
 		Id: r.ID, OrgId: r.OrgID, SrcKind: api.PolicyRuleSrcKind(r.SrcKind),
 		DstKind: api.PolicyRuleDstKind(r.DstKind), CreatedAt: r.CreatedAt,
-		CidrOutsideOrgRanges:  cidrOutside,              // S8.7 warn-not-refuse (D1); always false for non-cidr sources
-		DstK8sServiceVanished: k8sVanished,              // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
-		Enabled:               !r.Disabled,              // F3: positive framing — a rule is enabled unless disabled
-		ManagedByOperator:     r.ManagedByMachine.Valid, // S10.2 D2 cond 1: GitOps-managed → badge + warn-on-edit
+		CidrOutsideOrgRanges:   cidrOutside,              // S8.7 warn-not-refuse (D1); always false for non-cidr sources
+		DstK8sServiceVanished:  k8sVanished,              // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
+		Enabled:                !r.Disabled,              // F3: positive framing — a rule is enabled unless disabled
+		ManagedByOperator:      r.ManagedByMachine.Valid, // S10.2 D2 cond 1: GitOps-managed → badge + warn-on-edit
+		ManagedByAgentTemplate: templateManaged,
 	}
 	if r.SrcGroupID.Valid {
 		u := uuid.UUID(r.SrcGroupID.Bytes)
@@ -559,6 +579,10 @@ func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool) api.PolicyRule 
 	if r.SrcDeviceID.Valid { // S15.3: src_kind=agent
 		n := uuid.UUID(r.SrcDeviceID.Bytes)
 		out.SrcDeviceId = &n
+	}
+	if r.SrcAgentGroupID.Valid {
+		u := uuid.UUID(r.SrcAgentGroupID.Bytes)
+		out.SrcAgentGroupId = &u
 	}
 	if r.SrcCidr != nil { // S8.7: src_kind=cidr
 		out.SrcCidr = r.SrcCidr

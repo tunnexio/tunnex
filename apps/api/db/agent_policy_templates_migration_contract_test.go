@@ -34,12 +34,18 @@ func TestAgentPolicyTemplatesMigrationContract(t *testing.T) {
 		"agent_group_member_require_live_agent",
 		"agent_policy_template_actor_require_membership",
 		"policy_rules_id_org_key UNIQUE (id, org_id)",
+		"idempotency_key        text NOT NULL",
+		"UNIQUE (org_id, idempotency_key)",
 		"WHERE state = 'active'",
 		"ON DELETE RESTRICT",
 	} {
 		if !strings.Contains(u, want) {
 			t.Fatalf("0097 up missing %q", want)
 		}
+	}
+	if strings.Contains(u, "agent_policy_template_version_items (\n") &&
+		(strings.Contains(u, "    protocol            text") || strings.Contains(u, "    port_low")) {
+		t.Fatal("template items must inherit canonical destination L4 scope, not store rule-level overrides")
 	}
 
 	d := string(down)

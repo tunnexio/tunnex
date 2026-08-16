@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"regexp"
 
@@ -454,6 +455,13 @@ func (s *Service) UnexposeService(ctx context.Context, actorUserID uuid.UUID, ac
 		svc, e := q.GetK8sService(ctx, sqlc.GetK8sServiceParams{OrgID: orgID, ID: serviceID})
 		if e != nil {
 			return apierr.NotFound("service_not_found", "no such exposed Service in this organization")
+		}
+		templateVersions, e := q.CountAgentPolicyTemplateK8sServiceReferences(ctx, sqlc.CountAgentPolicyTemplateK8sServiceReferencesParams{OrgID: orgID, DstK8sServiceID: pgtype.UUID{Bytes: serviceID, Valid: true}})
+		if e != nil {
+			return e
+		}
+		if templateVersions != 0 {
+			return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this Service", templateVersions))
 		}
 		if e := q.SoftDeleteK8sService(ctx, sqlc.SoftDeleteK8sServiceParams{OrgID: orgID, ID: serviceID}); e != nil {
 			return e

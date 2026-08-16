@@ -13,6 +13,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAgentPolicyTemplateK8sServiceReferences = `-- name: CountAgentPolicyTemplateK8sServiceReferences :one
+SELECT count(DISTINCT template_version_id)
+FROM agent_policy_template_version_items
+WHERE org_id = $1 AND dst_k8s_service_id = $2
+`
+
+type CountAgentPolicyTemplateK8sServiceReferencesParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	DstK8sServiceID pgtype.UUID `json:"dst_k8s_service_id"`
+}
+
+// Immutable F09 template versions retain their destination identity. A soft
+// unexpose must refuse before it would turn a reusable template into a silent
+// no-op; the released confirmation reads the same server-owned count.
+func (q *Queries) CountAgentPolicyTemplateK8sServiceReferences(ctx context.Context, arg CountAgentPolicyTemplateK8sServiceReferencesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAgentPolicyTemplateK8sServiceReferences, arg.OrgID, arg.DstK8sServiceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countClusterCascade = `-- name: CountClusterCascade :one
 SELECT
   (SELECT count(*) FROM k8s_services s WHERE s.cluster_id = $2 AND s.org_id = $1 AND s.deleted_at IS NULL) AS service_count,

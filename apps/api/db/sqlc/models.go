@@ -87,6 +87,7 @@ type AgentPolicyTemplateAssignment struct {
 	TemplateVersionID    uuid.UUID          `json:"template_version_id"`
 	State                string             `json:"state"`
 	PreviewDigest        string             `json:"preview_digest"`
+	IdempotencyKey       string             `json:"idempotency_key"`
 	AppliedByUserID      uuid.UUID          `json:"applied_by_user_id"`
 	PreviousAssignmentID pgtype.UUID        `json:"previous_assignment_id"`
 	AppliedAt            time.Time          `json:"applied_at"`
@@ -121,9 +122,6 @@ type AgentPolicyTemplateVersionItem struct {
 	DstGroupID        pgtype.UUID `json:"dst_group_id"`
 	DstSiteID         pgtype.UUID `json:"dst_site_id"`
 	DstK8sServiceID   pgtype.UUID `json:"dst_k8s_service_id"`
-	Protocol          string      `json:"protocol"`
-	PortLow           *int32      `json:"port_low"`
-	PortHigh          *int32      `json:"port_high"`
 	CreatedAt         time.Time   `json:"created_at"`
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 
 // SLICE 6 — Settings. Second SHEDDER, and the consequence here is different in kind from every screen before it.
 //
@@ -41,6 +41,7 @@ let ssoFail = false; // docs/laws.md — no globals/setup file, so auto-cleanup 
 
 let edition: "open" | "enterprise" = "enterprise";
 let ovpnEnabled = false;
+let agentTemplatesEnabled = false;
 
 vi.mock("../src/lib/api", async () => {
   const actual =
@@ -61,9 +62,21 @@ vi.mock("../src/lib/api", async () => {
                 id: "org-1",
                 name: "Acme",
                 ovpn_enabled: ovpnEnabled,
+                agent_policy_templates_enabled: agentTemplatesEnabled,
                 mfa_required: false,
               },
             ],
+          };
+        }
+        if (path === "/api/v1/organizations/{orgId}") {
+          return {
+            data: {
+              id: "org-1",
+              name: "Acme",
+              ovpn_enabled: ovpnEnabled,
+              agent_policy_templates_enabled: agentTemplatesEnabled,
+              mfa_required: false,
+            },
           };
         }
         if (path.endsWith("/members"))
@@ -82,7 +95,11 @@ vi.mock("../src/lib/api", async () => {
               };
         return { data: [] };
       }),
-      PUT: vi.fn(async () => ({ data: { enabled: true } })),
+      PUT: vi.fn(async (path: string, request: { body?: { enabled?: boolean } }) => {
+        if (path.endsWith("/agent-policy-template-settings"))
+          agentTemplatesEnabled = request.body?.enabled === true;
+        return { data: { enabled: request.body?.enabled ?? true } };
+      }),
       POST: vi.fn(async () => ({ data: {} })),
       DELETE: vi.fn(async () => ({ data: {} })),
     },
@@ -109,10 +126,37 @@ beforeEach(() => {
   __lateGets = [];
   edition = "enterprise";
   ovpnEnabled = false;
+  agentTemplatesEnabled = false;
   // ⛔ EVERY mock-controlling global must be reset here. `ssoFail` was added without one, so a test that set
   // it leaked into the next file-order test — and the symptom was a query "not finding" text that a DOM dump
   // showed present, because the component under assertion had loaded the OTHER arm.
   ssoFail = false;
+});
+
+describe("Settings — F09 unlock then explicit opt-in", () => {
+  it("renders default-off truth and refetches the persisted enabled state", async () => {
+    agentTemplatesEnabled = false;
+    withAuth(<Settings />);
+    const enable = await screen.findByRole("button", {
+      name: "Enable agent policy templates",
+    });
+    fireEvent.click(enable);
+    await screen.findByRole("button", {
+      name: "Disable agent policy templates",
+    });
+    expect(agentTemplatesEnabled).toBe(true);
+  });
+
+  it("renders persisted enabled state without defaulting it off", async () => {
+    agentTemplatesEnabled = true;
+    withAuth(<Settings />);
+    await screen.findByRole("button", {
+      name: "Disable agent policy templates",
+    });
+    expect(
+      screen.queryByRole("button", { name: "Enable agent policy templates" }),
+    ).toBeNull();
+  });
 });
 
 describe("Settings — wiring: the control must reflect the ORG'S state, not a default (destination: `settings`)", () => {

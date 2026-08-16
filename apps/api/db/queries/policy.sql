@@ -50,7 +50,8 @@ ORDER BY u.email;
 -- Compiler input: every (group, user) pair in the org.
 SELECT group_id, user_id
 FROM group_members
-WHERE org_id = $1;
+WHERE org_id = $1
+ORDER BY group_id, user_id;
 
 -- ── resources (static destinations) ─────────────────────────────────────────────
 -- name: CreateResource :one
@@ -101,7 +102,7 @@ ORDER BY created_at;
 -- pure compiler stays clockless; this query applies now() at snapshot-build time.
 SELECT * FROM policy_rules
 WHERE org_id = $1 AND (expires_at IS NULL OR expires_at > now())
-ORDER BY created_at;
+ORDER BY created_at, id;
 
 -- name: DeletePolicyRule :execrows
 DELETE FROM policy_rules

@@ -12,6 +12,7 @@ import {
   type Site,
   type SiteSubnet,
   type SiteReferences,
+  type AgentPolicyTemplateDestinationImpact,
   type Node,
   type HubSet,
   type DNSForward,
@@ -1735,19 +1736,42 @@ function DeleteSiteModal({
 }) {
   const [refs, setRefs] = useState<SiteReferences | null>(null);
   const [refErr, setRefErr] = useState<string | null>(null);
+  const [templateImpact, setTemplateImpact] =
+    useState<AgentPolicyTemplateDestinationImpact | null>(null);
+  const [templateImpactErr, setTemplateImpactErr] = useState<string | null>(
+    null,
+  );
   const [typed, setTyped] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const r = (await loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/sites/{siteId}", {
-          params: { path: { orgId, siteId: site.id } },
-        }),
-      )) as Loaded<SiteReferences>;
+      const [r, template] = await Promise.all([
+        loadOne(() =>
+          api.GET("/api/v1/organizations/{orgId}/sites/{siteId}", {
+            params: { path: { orgId, siteId: site.id } },
+          }),
+        ) as Promise<Loaded<SiteReferences>>,
+        loadOne(() =>
+          api.GET(
+            "/api/v1/organizations/{orgId}/agent-policy-template-destination-impact",
+            {
+              params: {
+                path: { orgId },
+                query: {
+                  destination_kind: "site",
+                  destination_id: site.id,
+                },
+              },
+            },
+          ),
+        ) as Promise<Loaded<AgentPolicyTemplateDestinationImpact>>,
+      ]);
       if (r.ok) setRefs(r.data);
       else setRefErr(r.error);
+      if (template.ok) setTemplateImpact(template.data);
+      else setTemplateImpactErr(template.error);
     })();
   }, [orgId, site.id]);
 
@@ -1779,7 +1803,12 @@ function DeleteSiteModal({
             variant="primary"
             className="bg-danger hover:bg-danger"
             onClick={submit}
-            disabled={busy || !nameMatchesExactly(typed, site.name)}
+            disabled={
+              busy ||
+              !nameMatchesExactly(typed, site.name) ||
+              templateImpact === null ||
+              templateImpact.version_count > 0
+            }
           >
             Delete site
           </Button>
@@ -1793,6 +1822,12 @@ function DeleteSiteModal({
           Couldn’t read what this affects ({refErr}). Deleting still cascades.
         </p>
       )}
+      {templateImpactErr && (
+        <p className="text-xs text-amber-300">
+          Couldn’t read immutable template impact ({templateImpactErr}), so
+          deletion is blocked.
+        </p>
+      )}
       {refs && (
         <p className="text-sm text-slate-400">
           This deletes the site and cascades what currently references it:{" "}
@@ -1801,6 +1836,13 @@ function DeleteSiteModal({
           <strong>{refs.subnet_count}</strong>{" "}
           {refs.subnet_count === 1 ? "subnet" : "subnets"}; the gateway is
           unbound.
+        </p>
+      )}
+      {templateImpact && (
+        <p className="mt-2 text-xs text-slate-400">
+          {templateImpact.version_count === 0
+            ? "No immutable agent policy template version references this site."
+            : `${templateImpact.version_count} immutable agent policy template ${templateImpact.version_count === 1 ? "version references" : "versions reference"} this site, so deletion is blocked.`}
         </p>
       )}
       <p className="mt-3 text-xs text-slate-500">

@@ -389,6 +389,43 @@ func (q *Queries) SetOrgOVPNEnabled(ctx context.Context, arg SetOrgOVPNEnabledPa
 	return i, err
 }
 
+const setOrganizationAgentPolicyTemplatesEnabled = `-- name: SetOrganizationAgentPolicyTemplatesEnabled :one
+UPDATE organizations
+SET agent_policy_templates_enabled = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled
+`
+
+type SetOrganizationAgentPolicyTemplatesEnabledParams struct {
+	ID                          uuid.UUID `json:"id"`
+	AgentPolicyTemplatesEnabled bool      `json:"agent_policy_templates_enabled"`
+}
+
+// F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
+// which refuses while a live assignment exists.
+func (q *Queries) SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (Organization, error) {
+	row := q.db.QueryRow(ctx, setOrganizationAgentPolicyTemplatesEnabled, arg.ID, arg.AgentPolicyTemplatesEnabled)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.MaxDevicesPerUser,
+		&i.PoolCidr,
+		&i.ZeroTrustMode,
+		&i.DeviceApproval,
+		&i.FlowSeq,
+		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+	)
+	return i, err
+}
+
 const setOrganizationAgentRuntimeEnabled = `-- name: SetOrganizationAgentRuntimeEnabled :one
 UPDATE organizations
 SET managed_agent_runtime_enabled = $2, updated_at = now()

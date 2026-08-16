@@ -23,6 +23,12 @@ import {
   type HealthCheck,
   type CreatePolicyRuleRequest,
   type AgentAccessDiagnostic,
+  type AgentGroup,
+  type AgentGroupMember,
+  type AgentPolicyTemplate,
+  type AgentPolicyTemplateVersion,
+  type AgentPolicyTemplatePreview,
+  type AgentPolicyTemplateAssignment,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { portLabel } from "../lib/k8sview";
@@ -270,10 +276,18 @@ export default function Access() {
 
       {view === "admin_body" && org && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {org.agent_policy_templates_enabled && gate.canManageAgentTemplates && (
+            <AgentPolicyTemplatesSection
+              key={`f09-${org.id}`}
+              orgId={org.id}
+              onApplied={() => setSubjectsRev((v) => v + 1)}
+            />
+          )}
           <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
           <RulesSection
             orgId={org.id}
             canManage={gate.canManagePolicy}
+            canManageAgentTemplates={gate.canManageAgentTemplates}
             subjectsRev={subjectsRev}
           />
           <GroupsResourcesSection
@@ -292,6 +306,304 @@ export default function Access() {
         </div>
       )}
     </div>
+  );
+}
+
+function AgentPolicyTemplatesSection({
+  orgId,
+  onApplied,
+}: {
+  orgId: string;
+  onApplied: () => void;
+}) {
+  const [groups, setGroups] = useState<AgentGroup[] | null>(null);
+  const [templates, setTemplates] = useState<AgentPolicyTemplate[] | null>(null);
+  const [agents, setAgents] = useState<Array<{ device_id: string; name: string }> | null>(null);
+  const [resources, setResources] = useState<Resource[] | null>(null);
+  const [members, setMembers] = useState<AgentGroupMember[] | null>(null);
+  const [versions, setVersions] = useState<AgentPolicyTemplateVersion[] | null>(null);
+  const [assignments, setAssignments] = useState<AgentPolicyTemplateAssignment[] | null>(null);
+  const [groupId, setGroupId] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [versionId, setVersionId] = useState("");
+  const [agentId, setAgentId] = useState("");
+  const [resourceId, setResourceId] = useState("");
+  const [groupName, setGroupName] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const [selectedGroupName, setSelectedGroupName] = useState("");
+  const [selectedTemplateName, setSelectedTemplateName] = useState("");
+  const [preview, setPreview] = useState<AgentPolicyTemplatePreview | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const epoch = useRef(0);
+
+  const loadBase = useCallback(async () => {
+    const current = ++epoch.current;
+    setErr(null);
+    const [gs, ts, as, rs, xs] = await Promise.all([
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/resources", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-template-assignments", { params: { path: { orgId } } })),
+    ]);
+    if (current !== epoch.current) return;
+    if (!gs.ok || !ts.ok || !as.ok || !rs.ok || !xs.ok) {
+      setGroups(null);
+      setTemplates(null);
+      setAgents(null);
+      setResources(null);
+      setAssignments(null);
+      return setErr("Could not load agent groups and policy templates. Refresh to retry.");
+    }
+    setGroups(gs.data);
+    setTemplates(ts.data);
+    setAgents(as.data.map((agent) => ({ device_id: agent.device_id, name: agent.name })));
+    setResources(rs.data);
+    setAssignments(xs.data);
+    setGroupId((value) => gs.data.some((g) => g.id === value) ? value : (gs.data[0]?.id ?? ""));
+    setTemplateId((value) => ts.data.some((t) => t.id === value) ? value : (ts.data[0]?.id ?? ""));
+    setAgentId((value) => as.data.some((a) => a.device_id === value) ? value : (as.data[0]?.device_id ?? ""));
+    setResourceId((value) => rs.data.some((r) => r.id === value) ? value : (rs.data[0]?.id ?? ""));
+  }, [orgId]);
+
+  useEffect(() => {
+    setSelectedGroupName(groups?.find((group) => group.id === groupId)?.name ?? "");
+  }, [groups, groupId]);
+
+  useEffect(() => {
+    setSelectedTemplateName(templates?.find((template) => template.id === templateId)?.name ?? "");
+  }, [templates, templateId]);
+
+  useEffect(() => {
+    void loadBase();
+    return () => { epoch.current += 1; };
+  }, [loadBase]);
+
+  useEffect(() => {
+    let off = false;
+    setMembers(null);
+    setPreview(null);
+    if (!groupId) return () => { off = true; };
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }))
+      .then((result) => {
+        if (off) return;
+        if (!result.ok) return setErr(result.error);
+        setMembers(result.data);
+      });
+    return () => { off = true; };
+  }, [orgId, groupId]);
+
+  useEffect(() => {
+    let off = false;
+    setVersions(null);
+    setVersionId("");
+    setPreview(null);
+    if (!templateId) return () => { off = true; };
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", { params: { path: { orgId, templateId } } }))
+      .then((result) => {
+        if (off) return;
+        if (!result.ok) return setErr(result.error);
+        setVersions(result.data);
+        setVersionId(result.data[0]?.id ?? "");
+      });
+    return () => { off = true; };
+  }, [orgId, templateId]);
+
+  async function mutate(call: () => Promise<{ error?: unknown }>, fallback: string) {
+    setBusy(true);
+    setErr(null);
+    setNotice(null);
+    try {
+      const result = await call();
+      if (result.error) {
+        setErr(apiErrorMessage(result.error, fallback));
+        return false;
+      }
+      return true;
+    } catch {
+      setErr("Could not reach the API.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createGroup() {
+    if (!groupName.trim()) return;
+    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId } }, body: { name: groupName.trim() } }), "Could not create the agent group."))) return;
+    setGroupName("");
+    await loadBase();
+  }
+
+  async function addMember() {
+    if (!groupId || !agentId) return;
+    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } }, body: { device_id: agentId } }), "Could not add the agent."))) return;
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }));
+    if (result.ok) setMembers(result.data); else setErr(result.error);
+  }
+
+  async function removeMember(member: AgentGroupMember) {
+    if (!groupId) return;
+    const groupAssignments = (assignments ?? []).filter((assignment) => assignment.group_id === groupId);
+    const rules = groupAssignments.reduce((sum, assignment) => sum + assignment.rule_count, 0);
+    if (!window.confirm(`Remove ${member.name} from this group? ${groupAssignments.length} assignments and ${rules} generated rules remain; only this agent's compiled access is withdrawn.`)) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const result = await api.DELETE("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members/{deviceId}", { params: { path: { orgId, groupId, deviceId: member.device_id } } });
+      if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not remove the agent."));
+      const refetch = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }));
+      if (!refetch.ok) return setErr(refetch.error);
+      setMembers(refetch.data);
+      setNotice(`Removed ${member.name}: ${result.data.withdrawn_tuples} compiled tuples withdrawn across ${result.data.changed_gateways} gateways; ${result.data.generated_rules} generated rules preserved.`);
+      onApplied();
+    } catch {
+      setErr("Could not reach the API.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateGroup() {
+    if (!groupId || !selectedGroupName.trim()) return;
+    if (!(await mutate(() => api.PATCH("/api/v1/organizations/{orgId}/agent-groups/{groupId}", { params: { path: { orgId, groupId } }, body: { name: selectedGroupName.trim() } }), "Could not update the group."))) return;
+    await loadBase();
+  }
+
+  async function archiveGroup() {
+    if (!groupId) return;
+    const active = (assignments ?? []).filter((assignment) => assignment.group_id === groupId);
+    const ruleCount = active.reduce((sum, assignment) => sum + assignment.rule_count, 0);
+    if (!window.confirm(`Archive this group? It currently has ${(members ?? []).length} members, ${active.length} active assignments, and ${ruleCount} generated rules. All must be zero.`)) return;
+    if (!(await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/agent-groups/{groupId}", { params: { path: { orgId, groupId } } }), "Could not archive the group."))) return;
+    setMembers(null);
+    await loadBase();
+  }
+
+  async function createTemplate() {
+    if (!templateName.trim()) return;
+    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-policy-templates", { params: { path: { orgId } }, body: { name: templateName.trim() } }), "Could not create the template."))) return;
+    setTemplateName("");
+    await loadBase();
+  }
+
+  async function updateTemplate() {
+    if (!templateId || !selectedTemplateName.trim()) return;
+    if (!(await mutate(() => api.PATCH("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}", { params: { path: { orgId, templateId } }, body: { name: selectedTemplateName.trim() } }), "Could not update the template."))) return;
+    await loadBase();
+  }
+
+  async function archiveTemplate() {
+    if (!templateId) return;
+    const active = (assignments ?? []).filter((assignment) => assignment.template_id === templateId);
+    if (!window.confirm(`Archive this template? ${active.length} live assignments remain unchanged; remove them separately to withdraw access.`)) return;
+    if (!(await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}", { params: { path: { orgId, templateId } } }), "Could not archive the template."))) return;
+    setVersions(null);
+    await loadBase();
+  }
+
+  async function createVersion() {
+    if (!templateId || !resourceId) return;
+    setBusy(true);
+    setErr(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", {
+      params: { path: { orgId, templateId } },
+      body: { items: [{ destination_kind: "resource", destination_id: resourceId }] },
+    });
+    setBusy(false);
+    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not create the immutable version."));
+    const refetch = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", { params: { path: { orgId, templateId } } }));
+    if (!refetch.ok) return setErr(refetch.error);
+    setVersions(refetch.data);
+    setVersionId(result.data.id);
+    setPreview(null);
+  }
+
+  async function previewApply() {
+    if (!groupId || !versionId) return;
+    setBusy(true);
+    setErr(null);
+    setNotice(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-template-preview", {
+      params: { path: { orgId } }, body: { group_id: groupId, template_version_id: versionId },
+    });
+    setBusy(false);
+    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not preview the policy change."));
+    setPreview(result.data);
+  }
+
+  async function apply() {
+    if (!preview || !groupId || !versionId) return;
+    setBusy(true);
+    setErr(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-template-assignments", {
+      params: { path: { orgId } },
+      body: { group_id: groupId, template_version_id: versionId, preview_digest: preview.digest, idempotency_key: crypto.randomUUID() },
+    });
+    setBusy(false);
+    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not apply the template."));
+    await loadBase();
+    setPreview(null);
+    setNotice(`Applied to ${result.data.preview.affected_agents} agents; ${result.data.preview.changed_gateways} gateway artifacts changed.`);
+    onApplied();
+  }
+
+  async function removeAssignment(assignment: AgentPolicyTemplateAssignment) {
+    if (!window.confirm(`Remove ${assignment.template_name} v${assignment.version} from ${assignment.group_name}? ${assignment.rule_count} assignment-owned rules may be withdrawn; shared rules are preserved.`)) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const result = await api.DELETE("/api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}", { params: { path: { orgId, assignmentId: assignment.id } } });
+      if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not remove the assignment."));
+      await loadBase();
+      setPreview(null);
+      setNotice(`Assignment removed: ${result.data.generated_rules} orphaned rules deleted and ${result.data.withdrawn_tuples} compiled tuples withdrawn across ${result.data.changed_gateways} gateways.`);
+      onApplied();
+    } catch {
+      setErr("Could not reach the API.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (groups === null || templates === null || agents === null || resources === null || assignments === null) {
+    return <Card><h2 className="text-sm font-semibold text-slate-300">Agent groups &amp; templates</h2><ErrorText>{err}</ErrorText>{!err && <p className="mt-2 text-xs text-slate-500">Loading…</p>}</Card>;
+  }
+
+  const memberIds = new Set((members ?? []).map((member) => member.device_id));
+  return (
+    <Card data-testid="agent-policy-templates">
+      <h2 className="text-sm font-semibold text-slate-300">Agent groups &amp; templates</h2>
+      <p className="mt-1 text-xs text-slate-500">Build one immutable policy version, preview its exact compiled impact, then apply it through the ordinary policy engine.</p>
+      <ErrorText>{err}</ErrorText>
+      {notice && <p className="mt-2 text-xs text-emerald-400">{notice}</p>}
+      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <div className="space-y-2 rounded-card border border-white/10 p-3">
+          <h3 className="text-xs font-semibold text-slate-300">1. Agent group</h3>
+          <div className="flex gap-2"><Input aria-label="New agent group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Group name" /><Button disabled={busy || !groupName.trim()} onClick={createGroup}>Create group</Button></div>
+          <Select aria-label="Agent group" value={groupId} onChange={(e) => setGroupId(e.target.value)}><option value="">Select group</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select>
+          {groupId && <div className="flex gap-2"><Input aria-label="Selected agent group name" value={selectedGroupName} onChange={(e) => setSelectedGroupName(e.target.value)} /><Button disabled={busy || !selectedGroupName.trim()} onClick={updateGroup}>Save name</Button><Button disabled={busy} onClick={archiveGroup}>Archive</Button></div>}
+          <div className="flex gap-2"><Select aria-label="Agent to add" value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">Select agent</option>{agents.map((a) => <option key={a.device_id} value={a.device_id}>{a.name}</option>)}</Select><Button disabled={busy || !groupId || !agentId || memberIds.has(agentId)} onClick={addMember}>Add agent</Button></div>
+          {members && <div className="space-y-1 text-xs text-slate-400"><p>Members: {members.length || "none"}</p>{members.map((member) => <div className="flex items-center justify-between gap-2" key={member.device_id}><span>{member.name} · {member.status}</span><Button disabled={busy} onClick={() => removeMember(member)}>Remove</Button></div>)}</div>}
+        </div>
+        <div className="space-y-2 rounded-card border border-white/10 p-3">
+          <h3 className="text-xs font-semibold text-slate-300">2. Immutable template version</h3>
+          <div className="flex gap-2"><Input aria-label="New agent policy template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" /><Button disabled={busy || !templateName.trim()} onClick={createTemplate}>Create template</Button></div>
+          <Select aria-label="Agent policy template" value={templateId} onChange={(e) => setTemplateId(e.target.value)}><option value="">Select template</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+          {templateId && <div className="flex gap-2"><Input aria-label="Selected agent policy template name" value={selectedTemplateName} onChange={(e) => setSelectedTemplateName(e.target.value)} /><Button disabled={busy || !selectedTemplateName.trim()} onClick={updateTemplate}>Save name</Button><Button disabled={busy} onClick={archiveTemplate}>Archive</Button></div>}
+          <div className="flex gap-2"><Select aria-label="Template destination resource" value={resourceId} onChange={(e) => setResourceId(e.target.value)}><option value="">Select resource</option>{resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select><Button disabled={busy || !templateId || !resourceId} onClick={createVersion}>Create version</Button></div>
+          <Select aria-label="Template version" value={versionId} onChange={(e) => { setVersionId(e.target.value); setPreview(null); }}><option value="">Select version</option>{(versions ?? []).map((v) => <option key={v.id} value={v.id}>v{v.version}</option>)}</Select>
+        </div>
+      </div>
+      <div className="mt-3 flex gap-2"><Button disabled={busy || !groupId || !versionId} onClick={previewApply}>Preview impact</Button>{preview && <Button disabled={busy} onClick={apply}>Apply preview</Button>}</div>
+      {preview && <div className="mt-3 rounded-card border border-white/10 p-3 text-xs text-slate-300" data-testid="agent-policy-template-preview"><p>{preview.affected_agents} agents · {preview.created_rules} rules created · {preview.reused_rules} reused · {preview.removed_rules} removed · {preview.changed_gateways} gateways changed</p><p className="mt-1 font-mono text-[10px] text-slate-500">Digest {preview.digest}</p></div>}
+      <div className="mt-4 space-y-2" data-testid="agent-policy-template-assignments">
+        <h3 className="text-xs font-semibold text-slate-300">Current assignments</h3>
+        {assignments.length === 0 ? <p className="text-xs text-slate-500">No template assignments.</p> : assignments.map((assignment) => <div className="flex items-center justify-between gap-3 rounded-card border border-white/10 p-3 text-xs" key={assignment.id}><div><p className="text-slate-300">{assignment.group_name} → {assignment.template_name} v{assignment.version}</p><p className="text-slate-500">{assignment.rule_count} assignment-owned rules · applied {relativeAge(assignment.applied_at)}</p></div><Button disabled={busy} onClick={() => removeAssignment(assignment)}>Remove assignment</Button></div>)}
+      </div>
+    </Card>
   );
 }
 
@@ -600,10 +912,12 @@ function ModeSection({
 function RulesSection({
   orgId,
   canManage,
+  canManageAgentTemplates,
   subjectsRev,
 }: {
   orgId: string;
   canManage: boolean;
+  canManageAgentTemplates: boolean;
   subjectsRev: number;
 }) {
   const [rules, setRules] = useState<PolicyRule[]>([]);
@@ -661,7 +975,7 @@ function RulesSection({
       agentsLoaded: false,
       agents: [],
     }));
-    const [rr, gr, resr, mr, mo, sr, ksr, ar] = await Promise.all([
+    const [rr, gr, resr, mr, mo, sr, ksr, ar, agr] = await Promise.all([
       loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/policies", {
           params: { path: { orgId } },
@@ -702,6 +1016,13 @@ function RulesSection({
           params: { path: { orgId } },
         }),
       ),
+      canManageAgentTemplates
+        ? loadOne(() =>
+            api.GET("/api/v1/organizations/{orgId}/agent-groups", {
+              params: { path: { orgId } },
+            }),
+          )
+        : Promise.resolve({ ok: true as const, data: [] as AgentGroup[] }),
     ]);
     // Summary inputs — set from the SAME results (a rules-load failure → summary shows "failed", never 0).
     setRulesResult(
@@ -761,16 +1082,18 @@ function RulesSection({
       k8sServicesLoaded: ksr.ok,
       agentsLoaded: ar.ok,
       agents: loadedAgents,
+      agentGroupsLoaded: agr.ok,
+      agentGroups: agr.ok ? (agr.data as AgentGroup[]) : [],
     }); // sitesLoaded → WF-8; k8sServicesLoaded → S10.3
     setErr(
-      gr.ok && resr.ok && mr.ok && sr.ok && ksr.ok && ar.ok
+      gr.ok && resr.ok && mr.ok && sr.ok && ksr.ok && ar.ok && agr.ok
         ? null
         : "Some groups/resources/members/sites/services/agents failed to load. names may show as unresolved. Refresh.",
     ); // ksr.ok: a services-load failure must raise the banner too
     // The ONLY clear path (amendment A: gated on this successful load): drop stale ids no
     // longer present, keep the rest (B).
     setStaleRuleIds((prev) => pruneStaleRuleIds(prev, true, freshRules));
-  }, [orgId]);
+  }, [canManageAgentTemplates, orgId]);
   useEffect(() => {
     load();
   }, [load, subjectsRev]); // S8.5: re-load when a sibling section mutates groups/resources (stale-button fix)
@@ -1357,6 +1680,8 @@ function RulesSection({
                       loaded,
                       services,
                     );
+                    if (row.managedByAgentTemplate)
+                      return "managed by agent template";
                     if (row.managedByOperator) return "managed by gitops";
                     return grantExpiry(r, Date.now()).state === "permanent"
                       ? "standard"
@@ -1374,6 +1699,12 @@ function RulesSection({
                     );
                     /* S10.2 D2 cond 1: a GitOps-managed grant is badged; its mutation controls are
                        withheld in the actions column. */
+                    if (row.managedByAgentTemplate)
+                      return (
+                        <span className="rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-300">
+                          Managed by agent template
+                        </span>
+                      );
                     if (row.managedByOperator) return <ManagedBadge />;
                     const exp = grantExpiry(r, Date.now());
                     return exp.state === "permanent" ? (
@@ -2321,7 +2652,9 @@ function GroupsResourcesSection({
       )}
       {deletingGroups.length > 0 && (
         <CascadeDeleteModal
+          orgId={orgId}
           kind="group"
+          destinationIds={deletingGroups.map((group) => group.id)}
           name={
             deletingGroups.length === 1
               ? deletingGroups[0].name
@@ -2694,7 +3027,9 @@ function GroupsResourcesSection({
       </div>
       {confirmRes && (
         <CascadeDeleteModal
+          orgId={orgId}
           kind="resource"
+          destinationIds={[confirmRes.id]}
           name={confirmRes.name}
           onCancel={() => setConfirmRes(null)}
           onConfirm={() => {
@@ -3128,21 +3463,62 @@ function PostureChecksSection({
 // (ON DELETE CASCADE on src_group_id / dst_group_id / dst_resource_id) and the SAME silence (a 204 with no
 // body), so they get the same guard rather than two that can drift apart.
 function CascadeDeleteModal({
+  orgId,
   kind,
   name,
+  destinationIds,
   managedAgentCount,
   onCancel,
   onConfirm,
 }: {
+  orgId: string;
   kind: "group" | "resource";
   name: string;
+  destinationIds: string[];
   managedAgentCount?: number;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const [typed, setTyped] = useState("");
-  const copy = cascadeConfirmCopy(kind, name, managedAgentCount);
-  const ok = copy.impactKnown && cascadeConfirmSatisfied(typed, name);
+  const [templateVersionCount, setTemplateVersionCount] = useState<number>();
+  useEffect(() => {
+    let cancelled = false;
+    setTemplateVersionCount(undefined);
+    Promise.all(
+      destinationIds.map((destinationId) =>
+        api.GET(
+          "/api/v1/organizations/{orgId}/agent-policy-template-destination-impact",
+          {
+            params: {
+              path: { orgId },
+              query: {
+                destination_kind: kind,
+                destination_id: destinationId,
+              },
+            },
+          },
+        ),
+      ),
+    ).then((results) => {
+      if (cancelled || results.some((result) => result.error || !result.data)) return;
+      setTemplateVersionCount(
+        results.reduce((sum, result) => sum + (result.data?.version_count ?? 0), 0),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationIds.join(","), kind, orgId]);
+  const copy = cascadeConfirmCopy(
+    kind,
+    name,
+    managedAgentCount,
+    templateVersionCount,
+  );
+  const ok =
+    copy.impactKnown &&
+    !copy.blocked &&
+    cascadeConfirmSatisfied(typed, name);
   return (
     <Modal
       title={copy.title}

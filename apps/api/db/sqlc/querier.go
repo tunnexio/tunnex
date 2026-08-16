@@ -16,6 +16,7 @@ type Querier interface {
 	// lint:cross-org — authorized by the invitation id obtained via its token, not
 	// by org scope. Single-use: only transitions a pending, unexpired invite.
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
+	AddAgentGroupMember(ctx context.Context, arg AddAgentGroupMemberParams) (int64, error)
 	// ── group_members ───────────────────────────────────────────────────────────────
 	// Returns rows-affected: 0 on ON CONFLICT (already a member) so the caller can skip
 	// the audit event for a no-op re-add (idempotent, still 204).
@@ -142,6 +143,16 @@ type Querier interface {
 	// F02 H2: pending, active, and suspended reserve org-wide agent identity
 	// capacity; revoked and deleted identities do not count.
 	CountAgentIdentitiesForQuota(ctx context.Context, orgID uuid.UUID) (int64, error)
+	CountAgentPolicyTemplateGroupReferences(ctx context.Context, arg CountAgentPolicyTemplateGroupReferencesParams) (int64, error)
+	// Immutable F09 template versions retain their destination identity. A soft
+	// unexpose must refuse before it would turn a reusable template into a silent
+	// no-op; the released confirmation reads the same server-owned count.
+	CountAgentPolicyTemplateK8sServiceReferences(ctx context.Context, arg CountAgentPolicyTemplateK8sServiceReferencesParams) (int64, error)
+	// Destination delete guards. Immutable template versions keep their exact
+	// destination identity, so each owning service refuses before its normal
+	// cascade/soft-delete could silently change reusable policy meaning.
+	CountAgentPolicyTemplateResourceReferences(ctx context.Context, arg CountAgentPolicyTemplateResourceReferencesParams) (int64, error)
+	CountAgentPolicyTemplateSiteReferences(ctx context.Context, arg CountAgentPolicyTemplateSiteReferencesParams) (int64, error)
 	// ⛔ THE LAST-HOLDER GUARD READS THIS, so it counts only accounts that can actually SIGN IN and use the
 	// capability: soft-deleted rows are excluded (a deleted holder recovers nothing) and so are deactivated
 	// ones (SessionAuth 401s them, so they cannot exercise it either). Counting either would let the deployment
@@ -252,6 +263,10 @@ type Querier interface {
 	// re-open CountOrganizationsEver exists to prevent.
 	CountUsers(ctx context.Context) (int64, error)
 	CreateAgentBootstrapToken(ctx context.Context, arg CreateAgentBootstrapTokenParams) (AgentBootstrapToken, error)
+	CreateAgentGroup(ctx context.Context, arg CreateAgentGroupParams) (AgentGroup, error)
+	CreateAgentPolicyTemplate(ctx context.Context, arg CreateAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
+	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
+	CreateAgentPolicyTemplateVersionItem(ctx context.Context, arg CreateAgentPolicyTemplateVersionItemParams) (AgentPolicyTemplateVersionItem, error)
 	CreateAgentRuntimeCredential(ctx context.Context, arg CreateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
 	CreateAuthToken(ctx context.Context, arg CreateAuthTokenParams) (AuthToken, error)
 	CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapAdminParams) (User, error)
@@ -441,11 +456,18 @@ type Querier interface {
 	// Returns a fresh time-ordered UUIDv7 from the database. Demonstrates the sqlc
 	// pipeline and the uuid override; callers may also generate v7 ids in Go.
 	GenerateID(ctx context.Context) (uuid.UUID, error)
+	GetActiveAgentPolicyTemplateAssignment(ctx context.Context, arg GetActiveAgentPolicyTemplateAssignmentParams) (AgentPolicyTemplateAssignment, error)
+	GetActiveAgentPolicyTemplateAssignmentForUpdate(ctx context.Context, arg GetActiveAgentPolicyTemplateAssignmentForUpdateParams) (AgentPolicyTemplateAssignment, error)
 	// Active = not revoked and not expired. Expired/revoked rows fail auth closed.
 	GetActiveCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
 	// lint:cross-org — the public redemption credential is an unguessable hash; org is learned from the token row.
 	GetAgentBootstrapToken(ctx context.Context, tokenHash []byte) (AgentBootstrapToken, error)
 	GetAgentGovernanceForUpdate(ctx context.Context, arg GetAgentGovernanceForUpdateParams) (GetAgentGovernanceForUpdateRow, error)
+	GetAgentGroup(ctx context.Context, arg GetAgentGroupParams) (AgentGroup, error)
+	GetAgentGroupForUpdate(ctx context.Context, arg GetAgentGroupForUpdateParams) (AgentGroup, error)
+	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
+	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
+	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
 	GetAgentProfileForOrg(ctx context.Context, arg GetAgentProfileForOrgParams) (GetAgentProfileForOrgRow, error)
 	// lint:cross-org — F04's bearer hash is the credential; the returned row supplies its org/device binding.
 	GetAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AgentRuntimeCredential, error)
@@ -665,6 +687,7 @@ type Querier interface {
 	// Consume all outstanding tokens of a purpose for a user (e.g. before issuing a
 	// new password-reset token, so only the latest is valid).
 	InvalidateUserTokens(ctx context.Context, arg InvalidateUserTokensParams) error
+	IsAgentTemplateManagedRule(ctx context.Context, arg IsAgentTemplateManagedRuleParams) (bool, error)
 	// The security-focused feed: deny + deny_aggregate + terminated only, same keyset shape.
 	ListAccessDenies(ctx context.Context, arg ListAccessDeniesParams) ([]AccessEvent, error)
 	ListAccessDeniesByAgent(ctx context.Context, arg ListAccessDeniesByAgentParams) ([]AccessEvent, error)
@@ -763,10 +786,17 @@ type Querier interface {
 	//   the WG fleet on a hub member). The OVPN device's /32 reaches the data plane via the compiled
 	//   artifact + the OVPN roster (which now shares the identity gate), never this list.
 	ListActiveWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListActiveWireGuardPeersForNodeRow, error)
+	ListAgentGroupMembers(ctx context.Context, arg ListAgentGroupMembersParams) ([]ListAgentGroupMembersRow, error)
+	ListAgentGroups(ctx context.Context, orgID uuid.UUID) ([]AgentGroup, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
 	// these exact assignments through ON DELETE SET NULL; the client must not
 	// infer this count from separately loaded agent rows.
 	ListAgentManagingGroupCounts(ctx context.Context, orgID uuid.UUID) ([]ListAgentManagingGroupCountsRow, error)
+	ListAgentPolicyTemplateRuleBindings(ctx context.Context, arg ListAgentPolicyTemplateRuleBindingsParams) ([]ListAgentPolicyTemplateRuleBindingsRow, error)
+	ListAgentPolicyTemplateVersionItems(ctx context.Context, arg ListAgentPolicyTemplateVersionItemsParams) ([]AgentPolicyTemplateVersionItem, error)
+	ListAgentPolicyTemplateVersions(ctx context.Context, arg ListAgentPolicyTemplateVersionsParams) ([]AgentPolicyTemplateVersion, error)
+	ListAgentPolicyTemplates(ctx context.Context, orgID uuid.UUID) ([]AgentPolicyTemplate, error)
+	ListAgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
 	// S15.3 — the agent surface's one query.
 	//
 	// ⛔ AN AGENT IS A PEER HOMED ON A GATEWAY, NOT A GATEWAY. It holds its own /32, its traffic is FORWARDED
@@ -1079,6 +1109,7 @@ type Querier interface {
 	MarkCertDelivered(ctx context.Context, id uuid.UUID) error
 	MarkDomainVerified(ctx context.Context, arg MarkDomainVerifiedParams) (DomainClaim, error)
 	MarkEmailVerified(ctx context.Context, id uuid.UUID) error
+	NextAgentPolicyTemplateVersion(ctx context.Context, arg NextAgentPolicyTemplateVersionParams) (int32, error)
 	// lint:cross-org — the token itself is the credential; the org comes from the returned row.
 	//
 	// ⛔ READ WITHOUT CONSUMING, so a refusal that the operator can FIX does not destroy their token.
@@ -1129,6 +1160,8 @@ type Querier interface {
 	// permanently open (if the inherited value were NULL) — and neither state announces itself. One statement, so the
 	// marker cannot disagree with the serial it describes.
 	RekeyNode(ctx context.Context, arg RekeyNodeParams) (Node, error)
+	RemoveAgentGroupMember(ctx context.Context, arg RemoveAgentGroupMemberParams) (int64, error)
+	RemoveAgentGroupMembershipsForDevice(ctx context.Context, arg RemoveAgentGroupMembershipsForDeviceParams) (int64, error)
 	RemoveGroupMember(ctx context.Context, arg RemoveGroupMemberParams) (int64, error)
 	RemoveIdpAccessSource(ctx context.Context, arg RemoveIdpAccessSourceParams) error
 	// Remove a synced member — scoped to origin='idp_sync' so the reconcile can NEVER delete a
@@ -1323,6 +1356,9 @@ type Querier interface {
 	SetOrgOVPNEnabled(ctx context.Context, arg SetOrgOVPNEnabledParams) (Organization, error)
 	// ── org enforcement mode ────────────────────────────────────────────────────────
 	SetOrgZeroTrustMode(ctx context.Context, arg SetOrgZeroTrustModeParams) (Organization, error)
+	// F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
+	// which refuses while a live assignment exists.
+	SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (Organization, error)
 	// F04 unlock-then-opt-in: the paid licence only unlocks this setting. The
 	// organization must explicitly enable runtime synchronization, and disabling
 	// it immediately withdraws the poll/report/status surface.

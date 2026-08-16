@@ -1327,11 +1327,19 @@ func (s *Service) Revoke(ctx context.Context, orgID, actorID, deviceID uuid.UUID
 		if _, e := q.RevokeOVPNClientCertsForDevice(ctx, deviceID); e != nil {
 			return e
 		}
+		removedAgentGroups, e := q.RemoveAgentGroupMembershipsForDevice(ctx, sqlc.RemoveAgentGroupMembershipsForDeviceParams{
+			OrgID: orgID, DeviceID: deviceID,
+		})
+		if e != nil {
+			return e
+		}
 		action := "device.revoked"
 		if prior.Status == "pending" {
 			action = "device.cancelled" // owner withdrew a pending enrollment
 		}
-		return audit(ctx, q, orgID, &actorID, action, "device", deviceID.String(), map[string]any{})
+		return audit(ctx, q, orgID, &actorID, action, "device", deviceID.String(), map[string]any{
+			"removed_agent_group_memberships": removedAgentGroups,
+		})
 	})
 	if err != nil {
 		return err

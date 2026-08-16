@@ -168,6 +168,7 @@ export interface PolicyGate {
   // S7.5.3: posture-check config is its OWN grant (device_health:manage) — deliberately
   // not a reuse of device:approve (approval and health are orthogonal governance axes).
   canManageDeviceHealth: boolean;
+  canManageAgentTemplates: boolean;
 }
 
 export function policyGate(input: {
@@ -188,6 +189,10 @@ export function policyGate(input: {
       isEnterprise &&
       input.emailVerified &&
       can(input.role, "device_health:manage"),
+    canManageAgentTemplates:
+      isEnterprise &&
+      input.emailVerified &&
+      can(input.role, "agent_template:manage"),
   };
 }
 
@@ -233,6 +238,7 @@ export interface RuleRow {
    * be silently reverted on the next reconcile (the render-floor discipline applied to authority).
    */
   managedByOperator: boolean;
+  managedByAgentTemplate: boolean;
 }
 
 // loaded flags say whether each referent SET loaded successfully. When a set failed to
@@ -245,6 +251,8 @@ export interface LoadState {
   k8sServicesLoaded?: boolean; // S10.3: for resolving a k8s_service dst to its FQDN
   agentsLoaded?: boolean; // F06: for resolving a managed-agent policy source honestly
   agents?: Array<{ device_id: string; name: string; gateway_name: string }>;
+  agentGroupsLoaded?: boolean;
+  agentGroups?: Array<{ id: string; name: string }>;
 }
 
 function short(id: string): string {
@@ -360,6 +368,18 @@ function resolveAgent(
   return { id, label: `removed agent ${short(id)}`, state: "deleted" };
 }
 
+function resolveAgentGroup(
+  id: string,
+  groups: Array<{ id: string; name: string }>,
+  loaded: boolean,
+): RefLabel {
+  const group = groups.find((candidate) => candidate.id === id);
+  if (group) return { id, label: group.name, state: "ok" };
+  if (!loaded)
+    return { id, label: `agent group ${short(id)}. refresh`, state: "unresolved" };
+  return { id, label: `archived agent group ${short(id)}`, state: "deleted" };
+}
+
 export function ruleRow(
   rule: PolicyRule,
   groups: UserGroup[],
@@ -396,6 +416,12 @@ export function ruleRow(
                 loaded.agents ?? [],
                 loaded.agentsLoaded ?? false,
               )
+            : rule.src_kind === "agent_group"
+              ? resolveAgentGroup(
+                  rule.src_agent_group_id ?? "",
+                  loaded.agentGroups ?? [],
+                  loaded.agentGroupsLoaded ?? false,
+                )
             : resolveGroup(rule.src_group_id ?? "", groups, loaded.groupsLoaded);
   // S8.1: dst_kind may be 'site' (a site-subnet grant) — resolve it to a site NAME (WF-8), NOT the
   // resource branch (which would render a valid site rule as a broken 'deleted resource'), preserving
@@ -429,6 +455,7 @@ export function ruleRow(
     cidrOutsideRanges: rule.cidr_outside_org_ranges,
     k8sServiceVanished: rule.dst_k8s_service_vanished,
     managedByOperator: rule.managed_by_operator,
+    managedByAgentTemplate: rule.managed_by_agent_template,
   };
 }
 
@@ -700,16 +727,16 @@ export function swapPartialMessage(oldIdShort: string): string {
 // dashboard change silently reverted on the next reconcile.
 export const MANAGED_BADGE = "Managed by GitOps";
 export function managedGrantWarning(): string {
-  return "This grant is managed by the GitOps operator. edit its TunnexGrant CR, not the dashboard.";
+  return "This grant is managed by automation. Change its owning GitOps object or agent policy template assignment instead of editing the generated rule.";
 }
 
 // grantControls (M3) is the PURE, unit-pinned withhold decision for a grant row: `withheld` true means every
 // dashboard mutation (extend/edit/disable/enable/delete) is withheld — edit the CR. Extracted from inline JSX
 // so re-exposing a mutation on a managed grant fails a test, not just review.
-export function grantControls(row: Pick<RuleRow, "managedByOperator">): {
+export function grantControls(row: Pick<RuleRow, "managedByOperator"> & { managedByAgentTemplate?: boolean }): {
   withheld: boolean;
 } {
-  return { withheld: row.managedByOperator };
+  return { withheld: row.managedByOperator || row.managedByAgentTemplate === true };
 }
 
 // canEditRuleInModal: the rule-EDIT (swap) modal only rewrites group/resource grants with a group/user
@@ -1095,11 +1122,13 @@ export function cascadeConfirmCopy(
   kind: "group" | "resource",
   name: string,
   managedAgentCount?: number,
+  templateVersionCount?: number,
 ): {
   title: string;
   body: string;
   typeToConfirm: string;
   impactKnown: boolean;
+  blocked: boolean;
 } {
   const what = kind === "group" ? "group" : "resource";
   const role =
@@ -1110,15 +1139,25 @@ export function cascadeConfirmCopy(
         ? "The managed-agent delegation impact could not be read, so deletion is blocked. "
         : `It also clears delegated management for ${managedAgentCount} managed ${managedAgentCount === 1 ? "agent" : "agents"}. `
       : "";
+  const templateCopy =
+    templateVersionCount === undefined
+      ? "The immutable-template impact could not be read, so deletion is blocked. "
+      : templateVersionCount > 0
+        ? `${templateVersionCount} immutable agent policy template ${templateVersionCount === 1 ? "version references" : "versions reference"} this ${what}, so deletion is blocked. `
+        : "No immutable agent policy template version references it. ";
   return {
     title: `Delete ${what} “${name}”?`,
     body:
       `Deleting this ${what} also deletes every access rule that uses it as ${role}. ` +
       delegationCopy +
+      templateCopy +
       `Those rules are removed outright — they do not remain as broken rules you can review afterwards. ` +
       `This cannot be undone.`,
     typeToConfirm: name,
-    impactKnown: kind === "resource" || managedAgentCount !== undefined,
+    impactKnown:
+      (kind === "resource" || managedAgentCount !== undefined) &&
+      templateVersionCount !== undefined,
+    blocked: (templateVersionCount ?? 0) > 0,
   };
 }
 

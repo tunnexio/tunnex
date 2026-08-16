@@ -57,7 +57,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GenericMessage" }
         default: { $ref: "#/components/responses/Error" }
-
   /api/v1/auth/login:
     post:
       operationId: login
@@ -3223,6 +3222,279 @@ paths:
         "204": { description: Removed. }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agent-policy-template-settings:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setOrganizationAgentPolicyTemplatesEnabled
+      summary: Enable or disable managed-agent groups and policy templates
+      tags: [agents, policy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentPolicyTemplateSetting" }
+      responses:
+        "200":
+          description: Persisted organization setting.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentPolicyTemplateSetting" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-policy-template-destination-impact:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: destination_kind, in: query, required: true, schema: { type: string, enum: [resource, group, site, k8s_service] } }
+      - { name: destination_id, in: query, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAgentPolicyTemplateDestinationImpact
+      summary: Count immutable F09 template references before deleting a destination
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Server-owned blocking immutable-version count. Available even while the F09 opt-in is off.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplateDestinationImpact" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-groups:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentGroups
+      summary: List F09 managed-agent groups
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Current non-archived groups.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AgentGroup" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAgentGroup
+      summary: Create an F09 managed-agent group
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAgentGroupRequest" } } }
+      responses:
+        "201":
+          description: Group created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentGroup" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-groups/{groupId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updateAgentGroup
+      summary: Rename or update one agent group
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateAgentGroupRequest" } } }
+      responses:
+        "200":
+          description: Group updated and server-refetched.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentGroup" } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: archiveAgentGroup
+      summary: Archive an empty agent group
+      description: Refuses while memberships or active assignments remain.
+      tags: [agent-templates]
+      responses:
+        "204": { description: Empty group archived. }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/agent-groups/{groupId}/members:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentGroupMembers
+      summary: List current managed-agent members
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Current members.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AgentGroupMember" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: addAgentGroupMember
+      summary: Add one active managed agent to a group
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AddAgentGroupMemberRequest" } } }
+      responses:
+        "204": { description: Member present; idempotent. }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-groups/{groupId}/members/{deviceId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: removeAgentGroupMember
+      summary: Remove one member and report exact compiled access withdrawal
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Member removed; ordinary rules remain stable.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplateRemovalImpact" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-policy-templates:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentPolicyTemplates
+      summary: List F09 reusable policy templates
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Current non-archived templates.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AgentPolicyTemplate" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAgentPolicyTemplate
+      summary: Create reusable policy-template metadata
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAgentPolicyTemplateRequest" } } }
+      responses:
+        "201":
+          description: Template created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplate" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-policy-templates/{templateId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: templateId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updateAgentPolicyTemplate
+      summary: Rename or update reusable template metadata
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UpdateAgentPolicyTemplateRequest" } } }
+      responses:
+        "200":
+          description: Template metadata updated.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplate" } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: archiveAgentPolicyTemplate
+      summary: Archive template metadata without changing live assignments
+      tags: [agent-templates]
+      responses:
+        "204": { description: Template archived; existing assignments remain active. }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: templateId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentPolicyTemplateVersions
+      summary: List immutable versions of one agent policy template
+      tags: [agents, policy]
+      responses:
+        "200":
+          description: Immutable versions, newest first.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AgentPolicyTemplateVersion" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAgentPolicyTemplateVersion
+      summary: Create the next immutable template version
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAgentPolicyTemplateVersionRequest" } } }
+      responses:
+        "201":
+          description: Immutable version created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplateVersion" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-policy-template-preview:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: previewAgentPolicyTemplate
+      summary: Pure preview using the canonical policy compiler
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PreviewAgentPolicyTemplateRequest" } } }
+      responses:
+        "200":
+          description: Current bounded impact and stale-protected digest; no write occurred.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplatePreview" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-policy-template-assignments:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentPolicyTemplateAssignments
+      summary: List current applied template assignments
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Current server-owned assignments.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AgentPolicyTemplateAssignment" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: applyAgentPolicyTemplate
+      summary: Atomically apply an exact template version after a fresh preview
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ApplyAgentPolicyTemplateRequest" } } }
+      responses:
+        "200":
+          description: Assignment applied or idempotently replayed.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplateApplyResult" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: removeAgentPolicyTemplateAssignment
+      summary: Atomically withdraw one assignment and only its orphaned ordinary rules
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Assignment removed and exact withdrawal impact returned.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplateRemovalImpact" } } }
+        default: { $ref: "#/components/responses/Error" }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -3267,7 +3539,7 @@ components:
 
     Organization:
       type: object
-      required: [id, name, slug, pool_cidr, max_agent_identities, managed_agent_runtime_enabled, created_at, updated_at]
+      required: [id, name, slug, pool_cidr, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, created_at, updated_at]
       additionalProperties: false
       properties:
         id:
@@ -3292,12 +3564,195 @@ components:
         managed_agent_runtime_enabled:
           type: boolean
           description: "F04: explicit organization opt-in for managed runtime synchronization. Default false; a paid licence does not enable it implicitly."
+        agent_policy_templates_enabled:
+          type: boolean
+          description: "F09: explicit organization opt-in for managed-agent groups and reusable policy templates. Default false; a paid licence does not enable it implicitly."
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    AgentGroup:
+      type: object
+      required: [id, org_id, name, description, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateAgentGroupRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+    UpdateAgentGroupRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+    AddAgentGroupMemberRequest:
+      type: object
+      required: [device_id]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+    AgentGroupMember:
+      type: object
+      required: [device_id, name, status, node_id, added_at]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [active, pending, suspended, revoked] }
+        node_id: { type: string, format: uuid }
+        assigned_ip: { type: string, nullable: true }
+        added_at: { type: string, format: date-time }
+    AgentPolicyTemplate:
+      type: object
+      required: [id, org_id, name, description, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AgentPolicyTemplateSetting:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Explicit F09 organization opt-in. Disabling is refused while live assignments exist.
+    AgentPolicyTemplateDestinationImpact:
+      type: object
+      required: [version_count]
+      additionalProperties: false
+      properties:
+        version_count: { type: integer, minimum: 0 }
+    CreateAgentPolicyTemplateRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+    UpdateAgentPolicyTemplateRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+    AgentPolicyTemplateItemInput:
+      type: object
+      required: [destination_kind, destination_id]
+      additionalProperties: false
+      properties:
+        destination_kind: { type: string, enum: [resource, group, site, k8s_service] }
+        destination_id: { type: string, format: uuid }
+    CreateAgentPolicyTemplateVersionRequest:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/AgentPolicyTemplateItemInput" }
+    AgentPolicyTemplateVersion:
+      type: object
+      required: [id, template_id, version, created_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+    PreviewAgentPolicyTemplateRequest:
+      type: object
+      required: [group_id, template_version_id]
+      additionalProperties: false
+      properties:
+        group_id: { type: string, format: uuid }
+        template_version_id: { type: string, format: uuid }
+    AgentPolicyTemplateTuple:
+      type: object
+      required: [device_id, node_id, destination_cidr, protocol, port_low, port_high]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        node_id: { type: string, format: uuid }
+        destination_cidr: { type: string }
+        protocol: { type: string, enum: [any, tcp, udp] }
+        port_low: { type: integer, minimum: 0, maximum: 65535 }
+        port_high: { type: integer, minimum: 0, maximum: 65535 }
+    AgentPolicyTemplatePreview:
+      type: object
+      required: [digest, affected_agents, created_rules, reused_rules, removed_rules, changed_gateways, added, removed]
+      additionalProperties: false
+      properties:
+        digest: { type: string, pattern: "^[0-9a-f]{64}$" }
+        affected_agents: { type: integer, minimum: 0 }
+        created_rules: { type: integer, minimum: 0 }
+        reused_rules: { type: integer, minimum: 0 }
+        removed_rules: { type: integer, minimum: 0 }
+        changed_gateways: { type: integer, minimum: 0 }
+        added: { type: array, items: { $ref: "#/components/schemas/AgentPolicyTemplateTuple" } }
+        removed: { type: array, items: { $ref: "#/components/schemas/AgentPolicyTemplateTuple" } }
+    ApplyAgentPolicyTemplateRequest:
+      type: object
+      required: [group_id, template_version_id, preview_digest, idempotency_key]
+      additionalProperties: false
+      properties:
+        group_id: { type: string, format: uuid }
+        template_version_id: { type: string, format: uuid }
+        preview_digest: { type: string, pattern: "^[0-9a-f]{64}$" }
+        idempotency_key: { type: string, minLength: 1, maxLength: 128 }
+    AgentPolicyTemplateApplyResult:
+      type: object
+      required: [assignment_id, no_op, preview]
+      additionalProperties: false
+      properties:
+        assignment_id: { type: string, format: uuid }
+        no_op: { type: boolean }
+        preview: { $ref: "#/components/schemas/AgentPolicyTemplatePreview" }
+    AgentPolicyTemplateAssignment:
+      type: object
+      additionalProperties: false
+      required: [id, group_id, group_name, template_id, template_name, template_version_id, version, rule_count, applied_at]
+      properties:
+        id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+        group_name: { type: string }
+        template_id: { type: string, format: uuid }
+        template_name: { type: string }
+        template_version_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        rule_count: { type: integer, minimum: 0 }
+        applied_at: { type: string, format: date-time }
+    AgentPolicyTemplateRemovalImpact:
+      type: object
+      additionalProperties: false
+      required: [members, assignments, generated_rules, withdrawn_tuples, changed_gateways]
+      properties:
+        members: { type: integer, minimum: 0 }
+        assignments: { type: integer, minimum: 0 }
+        generated_rules: { type: integer, minimum: 0 }
+        withdrawn_tuples: { type: integer, minimum: 0 }
+        changed_gateways: { type: integer, minimum: 0 }
 
     PoolCidrRequest:
       type: object
@@ -3485,7 +3940,7 @@ components:
 
     PolicyRule:
       type: object
-      required: [id, org_id, src_kind, dst_kind, created_at, cidr_outside_org_ranges, dst_k8s_service_vanished, enabled, managed_by_operator]
+      required: [id, org_id, src_kind, dst_kind, created_at, cidr_outside_org_ranges, dst_k8s_service_vanished, enabled, managed_by_operator, managed_by_agent_template]
       additionalProperties: false
       properties:
         # S10.2 D2 cond 1: true = created/managed by the GitOps operator (a machine credential); the dashboard
@@ -3493,6 +3948,9 @@ components:
         # it on the next reconcile. false = dashboard-created (unmanaged, freely editable). DERIVED from the
         # managed_by_machine ownership marker (S10.2 Slice 3a).
         managed_by_operator: { type: boolean }
+        managed_by_agent_template:
+          type: boolean
+          description: "True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces."
         # F3: true = the rule contributes its allow; false = DISABLED (permission withdrawn, compiled to
         # nothing — "as if the rule weren't there" under default-deny). Toggled via PATCH; a disabled rule
         # is shown distinctly (dimmed), never hidden, so the list can't lie about what's enforcing.
@@ -3500,12 +3958,13 @@ components:
         id: { type: string, format: uuid }
         org_id: { type: string, format: uuid }
         # S7.5.4: the SOURCE subject is a group or a single user; S8.2: or a site's LAN; S8.7: or a literal CIDR (exactly one src_* set).
-        src_kind: { type: string, enum: [group, user, site, cidr, agent] }
+        src_kind: { type: string, enum: [group, user, site, cidr, agent, agent_group] }
         src_group_id: { type: string, format: uuid, nullable: true }
         src_user_id: { type: string, format: uuid, nullable: true }
         src_site_id: { type: string, format: uuid, nullable: true }
         src_cidr: { type: string, nullable: true, description: "Set when src_kind=cidr (S8.7): a literal source CIDR (/32-precise)." }
         src_device_id: { type: string, format: uuid, nullable: true, description: "S15.3 — set when src_kind=agent: the agent device whose /32 is the source." }
+        src_agent_group_id: { type: string, format: uuid, nullable: true, description: "F09 — set when src_kind=agent_group: the reusable managed-agent group expanded by the compiler." }
         # S8.7 warn-not-refuse: true when src_cidr is not inside any current org range (site subnet / routed range / device pool) — a rule matching nothing (a silent no-op wearing a rule's face). DERIVED at read time from CURRENT ranges, so it sheds once the range lands. false for non-cidr sources.
         cidr_outside_org_ranges: { type: boolean }
         dst_kind: { type: string, enum: [resource, group, site, k8s_service] }

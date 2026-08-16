@@ -92,13 +92,24 @@ var walkBodies = map[string]string{
 	// S7.5.3 device health gated ops (enterprise; each still 401s sessionless).
 	"puthealthcheck":     `{"mode":"warn"}`,
 	"reportdevicehealth": `{"platform":"macos","os_version":"14.0","disk_encrypted":true}`,
+	// F09 reusable agent policy templates. Valid inert bodies ensure the walk reaches authentication.
+	"setorganizationagentpolicytemplatesenabled": `{"enabled":true}`,
+	"createagentgroup":                           `{"name":"Walk"}`,
+	"updateagentgroup":                           `{"name":"Walk"}`,
+	"addagentgroupmember":                        `{"device_id":"00000000-0000-0000-0000-000000000000"}`,
+	"createagentpolicytemplate":                  `{"name":"Walk"}`,
+	"updateagentpolicytemplate":                  `{"name":"Walk"}`,
+	"createagentpolicytemplateversion":           `{"items":[{"destination_kind":"resource","destination_id":"00000000-0000-0000-0000-000000000000"}]}`,
+	"previewagentpolicytemplate":                 `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000"}`,
+	"applyagentpolicytemplate":                   `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000","preview_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","idempotency_key":"walk"}`,
 }
 
 // Required query tuples serve the same purpose as walkBodies: make the request
 // structurally valid so this walk measures authentication rather than the
 // generated parameter validator. Keep values inert and non-secret.
 var walkQueries = map[string]string{
-	"testagentaccess": "?destination=192.0.2.10&protocol=tcp&port=443",
+	"testagentaccess":                         "?destination=192.0.2.10&protocol=tcp&port=443",
+	"getagentpolicytemplatedestinationimpact": "?destination_kind=resource&destination_id=00000000-0000-0000-0000-000000000000",
 }
 
 // TestSessionlessMutationsAre401 walks EVERY operation in the OpenAPI spec and
@@ -139,6 +150,8 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{clusterId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{serviceId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
+			reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
 
 			var body io.Reader
 			if b, ok := walkBodies[strings.ToLower(op.OperationID)]; ok {

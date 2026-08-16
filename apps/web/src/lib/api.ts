@@ -30,6 +30,14 @@ export type PolicyRule = components["schemas"]["PolicyRule"];
 export type AgentAccessDiagnostic =
   components["schemas"]["AgentAccessDiagnostic"];
 export type AgentAccessCheck = components["schemas"]["AgentAccessCheck"];
+export type AgentGroup = components["schemas"]["AgentGroup"];
+export type AgentGroupMember = components["schemas"]["AgentGroupMember"];
+export type AgentPolicyTemplate = components["schemas"]["AgentPolicyTemplate"];
+export type AgentPolicyTemplateVersion = components["schemas"]["AgentPolicyTemplateVersion"];
+export type AgentPolicyTemplatePreview = components["schemas"]["AgentPolicyTemplatePreview"];
+export type AgentPolicyTemplateAssignment = components["schemas"]["AgentPolicyTemplateAssignment"];
+export type AgentPolicyTemplateRemovalImpact = components["schemas"]["AgentPolicyTemplateRemovalImpact"];
+export type AgentPolicyTemplateDestinationImpact = components["schemas"]["AgentPolicyTemplateDestinationImpact"];
 export type ZeroTrustMode = components["schemas"]["ZeroTrustMode"];
 export type AffectedDevice = components["schemas"]["AffectedDevice"];
 // S7.5.4 — per-user + temporary grants.

@@ -1,6 +1,7 @@
 # F09 — Agent groups and reusable policy templates decisions
 
-Status: **PAPER LOCKED / PRODUCT CODE NOT STARTED**.
+Status: **IN PROGRESS — reversible model/compiler foundation committed; API/UI
+vertical slice in progress**.
 
 ## Customer outcome
 
@@ -51,14 +52,20 @@ audited and wake policy reconciliation only when the group has live assignments.
 Add `agent_policy_templates` and immutable
 `agent_policy_template_versions`. Editing a template creates the next monotonic
 version in one transaction; an existing version is never rewritten. Each
-version contains an ordered, bounded list of destination references plus the
-same protocol/port inputs accepted by ordinary policy rules. Temporary/JIT
-expiry belongs to F10 and is not smuggled into reusable F09 templates.
+version contains an ordered, bounded list of destination references. L4 scope
+is owned by the canonical destination exactly as it is for ordinary policy
+rules: resources and Kubernetes Services supply their protocol/ports, while
+groups and sites retain their existing compiler semantics. Template items do
+not add a second per-rule L4 override that `policy_rules` cannot represent.
+Temporary/JIT expiry belongs to F10 and is not smuggled into reusable F09
+templates.
 
 Names and descriptions are mutable template metadata. Version content is
 canonical JSON only at the API boundary; normalized relational item rows own
 database validation, tenant FKs and deterministic ordering. Raw compiled policy,
-CIDR snapshots and agent addresses are never stored in a version.
+CIDR, protocol/port snapshots and agent addresses are never stored in a
+version. Preview digests include the current destination-owned L4 inputs, so a
+destination edit between preview and apply is detected as stale.
 
 ### D3 — Assignments pin an exact version
 

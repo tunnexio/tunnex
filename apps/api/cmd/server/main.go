@@ -438,6 +438,7 @@ func main() {
 		Mfa:                   mfaSvc,
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPort(pool, pushHub),
+		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),
 		IdpSync:               idpSyncPort,
 		DeviceApprovalEnabled: apphttp.NewDeviceApprovalEdition(),
