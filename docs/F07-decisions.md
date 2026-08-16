@@ -1,6 +1,8 @@
 # F07 — Truthful agent audit attribution decisions
 
-Status: **IMPLEMENTED / LOCAL REVIEW AND GATES PASS / LIVE WALK PENDING**.
+Status: **DONE**. Implementation, story-end review, exact local gates and the
+AWS DEV box-walk pass. Redacted evidence is under
+`walk-artifacts/F07/20260816T0553Z/`.
 This story starts from the exact completed F06 content tip `44568f6` and stays
 inside the existing compiled-policy, gateway flow-log, access-event ingest,
 query API, and released Access Events page. It remains In progress until the
