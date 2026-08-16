@@ -170,12 +170,14 @@ SELECT id FROM sites WHERE id=$1 AND org_id=$2 FOR UPDATE;
 SELECT id FROM k8s_services WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL FOR UPDATE;
 
 -- name: LockAgentAccessK8sClusterDestinations :many
-SELECT id FROM k8s_services WHERE org_id=$1 AND cluster_id=$2 FOR UPDATE;
+SELECT id FROM k8s_services
+WHERE org_id=$1 AND cluster_id=$2 AND deleted_at IS NULL
+FOR UPDATE;
 
 -- name: CountLiveAgentAccessRequestsByK8sCluster :one
 SELECT count(*)
 FROM agent_access_requests ar
-JOIN k8s_services ks ON ks.id=ar.dst_k8s_service_id AND ks.org_id=ar.org_id
+JOIN k8s_services ks ON ks.id=ar.dst_k8s_service_id AND ks.org_id=ar.org_id AND ks.deleted_at IS NULL
 WHERE ar.org_id=$1 AND ks.cluster_id=$2 AND ar.state IN ('pending','approved');
 
 -- name: ListLiveAgentAccessRequestsByDeviceForUpdate :many
