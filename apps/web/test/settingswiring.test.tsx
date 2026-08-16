@@ -145,6 +145,9 @@ const withAuthAndSwitch = () => render(
 );
 
 beforeEach(() => {
+  if (typeof window.localStorage.removeItem === "function") {
+    window.localStorage.removeItem("tunnex.currentOrg");
+  }
   __cleaned = false;
   __lateGets = [];
   edition = "enterprise";
