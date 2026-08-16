@@ -693,11 +693,20 @@ function AgentJITAccessSection({
       }
       return;
     }
+    // A rolling upgrade can briefly return the pre-F10 list shape here. Fail
+    // the optional panel visibly; never fabricate an empty history and never
+    // crash the whole Access page.
+    if (!Array.isArray(requestResult.data?.items)) {
+      setAuthorized(true);
+      setError("Could not load request history.");
+      return;
+    }
+    const requestItems = requestResult.data.items;
     if (scoped.length === 0) {
       setAuthorized(true);
       setAgents([]);
       setDestinations([]);
-      setRequests(requestResult.data.items);
+      setRequests(requestItems);
       return;
     }
     const destinationResult = await loadOne(() =>
@@ -711,22 +720,28 @@ function AgentJITAccessSection({
       setError(destinationResult.error);
       return;
     }
+    if (!Array.isArray(destinationResult.data)) {
+      setAuthorized(true);
+      setError("Could not load access destinations.");
+      return;
+    }
+    const destinationItems = destinationResult.data;
     setAuthorized(true);
     setAgents(scoped);
-    setDestinations(destinationResult.data);
-    setRequests(requestResult.data.items);
+    setDestinations(destinationItems);
+    setRequests(requestItems);
     setAgentId((current) =>
       scoped.some((agent) => agent.device_id === current)
         ? current
         : (scoped[0]?.device_id ?? ""),
     );
     setDestinationKey((current) =>
-      destinationResult.data.some(
+      destinationItems.some(
         (destination) => `${destination.kind}:${destination.id}` === current,
       )
         ? current
-        : destinationResult.data[0]
-          ? `${destinationResult.data[0].kind}:${destinationResult.data[0].id}`
+        : destinationItems[0]
+          ? `${destinationItems[0].kind}:${destinationItems[0].id}`
           : "",
     );
   }, [canApprove, orgId]);
