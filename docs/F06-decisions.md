@@ -1,9 +1,10 @@
 # F06 — Agent ownership and delegated RBAC decisions
 
-Status: **implementation review-ready; live acceptance pending**. Commit-one
-locked the smallest F06 contract measured from the F01–F05 foundation at
-content tip `d71f86f`; the product slices now implement that contract, but this
-paper does not claim completion until the combined DEV box-walk passes.
+Status: **SATISFIES**. Commit-one locked the smallest F06 contract measured
+from the F01–F05 foundation at content tip `d71f86f`; exact implementation
+`8c3fed8` passed review, required local gates, and the combined AWS DEV walk.
+Redacted live evidence is committed under
+`walk-artifacts/F06/20260816T0410Z/`.
 
 ## Acceptance question
 
