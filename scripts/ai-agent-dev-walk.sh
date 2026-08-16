@@ -87,7 +87,7 @@ case "$action" in
     ;;
   cleanup-check)
     prefix=$(printf '%s' "$story" | tr '[:upper:]' '[:lower:]')
-    cleanup_sql="SELECT 'devices=' || count(*) FROM devices WHERE name LIKE '${prefix}-%'; SELECT 'nodes=' || count(*) FROM nodes WHERE name LIKE '${prefix}-%'; SELECT 'resources=' || count(*) FROM resources WHERE name LIKE '${prefix}-%';"
+    cleanup_sql="SELECT 'devices=' || count(*) FROM devices WHERE name LIKE '${prefix}-%' AND deleted_at IS NULL; SELECT 'nodes=' || count(*) FROM nodes WHERE name LIKE '${prefix}-%'; SELECT 'resources=' || count(*) FROM resources WHERE name LIKE '${prefix}-%';"
     cp_read "cd '$compose_dir' && docker compose -f '$compose_file' exec -T postgres psql -v ON_ERROR_STOP=1 -U tunnex -d tunnex -Atc \"$cleanup_sql\"; test ! -e '$scratch' && echo cp_scratch=absent || echo cp_scratch=present"
     if [[ -n "$vm_host" ]]; then
       vm_read "for p in /usr/local/bin/tunnex-agent-runtime /etc/systemd/system/tunnex-agent-runtime.service /etc/wireguard/runtime.conf /etc/tunnex-agent/runtime-credential /var/lib/tunnex-agent/runtime-state.json; do test ! -e \"\$p\" || echo \"managed_path_present=\$p\"; done; test -z \"\$(wg show interfaces 2>/dev/null)\" && echo runtime_interface=absent; test ! -e '$scratch' && echo vm_scratch=absent || echo vm_scratch=present"

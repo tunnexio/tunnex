@@ -1,6 +1,6 @@
 # F08 — Read-only Test Access diagnostics decisions
 
-Status: **IMPLEMENTED / STORY-END REVIEW AND LIVE WALK PENDING**.
+Status: **IMPLEMENTED / CORE LIVE WALK PASS / MEMBER-SESSION LEG PENDING**.
 
 ## Customer outcome
 
