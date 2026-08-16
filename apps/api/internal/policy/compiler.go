@@ -148,6 +148,28 @@ type Device struct {
 	// device. ⚠ It never enters the enforcement projection: the artifact still emits SrcIP/DstCIDR/
 	// Protocol/PortLow/PortHigh, and `hashAllow` is unchanged.
 	Kind string
+	// ConfigRevision is the managed agent revision captured in the same DB
+	// snapshot as the device/address. It is observability metadata only; nil for
+	// human devices or an agent with no runtime state.
+	ConfigRevision *int64
+}
+
+// subjectAttribution projects the complete active address-bearing subject set
+// into hash-excluded artifact metadata. It is deliberately independent of
+// grants so a zero-grant default deny remains attributable.
+func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
+	out := make([]policyspec.SubjectAttribution, 0, len(devices))
+	for _, d := range devices {
+		if d.AssignedIP == "" || d.ID == uuid.Nil {
+			continue
+		}
+		out = append(out, policyspec.SubjectAttribution{
+			SrcIP: d.AssignedIP, DeviceID: d.ID.String(), Kind: d.Kind,
+			ConfigRevision: d.ConfigRevision,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SrcIP < out[j].SrcIP })
+	return out
 }
 
 // Snapshot is the full org policy state the compiler consumes.
@@ -180,6 +202,7 @@ type Snapshot struct {
 // reproducing the wg0<->wg0 blanket accept it replaces.
 func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	mesh := s.Mode == ModeOff
+	subjects := subjectAttribution(s.Devices)
 
 	// Nodes in play = nodes that have at least one active device, every site-bound gateway node, and every
 	// selected Kubernetes connector. A connector gets an artifact even with no local devices: it owns the
@@ -226,7 +249,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 
 	if mesh {
 		for nodeID := range nodeSet {
-			c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeOff, Mesh: true, Allow: nil}
+			c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeOff, Mesh: true, Allow: nil, Subjects: subjects}
 			c.Version = policyspec.RequiredVersion(c) // content-derived (S8.2 D1b); mesh has no v5 feature
 			out[nodeID] = c
 		}
@@ -617,7 +640,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	for nodeID := range nodeSet {
 		list := acc[nodeID].list
 		sortAllows(list)
-		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list}
+		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list, Subjects: subjects}
 		c.Version = policyspec.RequiredVersion(c) // content-derived (S8.2 D1b): v5 iff a CIDR source present
 		out[nodeID] = c
 	}

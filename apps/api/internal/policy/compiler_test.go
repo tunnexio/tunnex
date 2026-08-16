@@ -47,11 +47,13 @@ func hasAllow(entries []policyspec.AllowEntry, src, dst string) bool {
 // (Mesh=false). If this ever compiles to a non-empty or mesh output, default-deny
 // is broken.
 func TestEnforcingZeroGrantsIsEmptyNotPermissive(t *testing.T) {
+	agentID := uuid.New()
+	revision := int64(9)
 	snap := policy.Snapshot{
 		Mode: policy.ModeEnforcing,
 		Devices: []policy.Device{
-			{UserID: uAlice, NodeID: nodeA, AssignedIP: "10.99.0.10"},
-			{UserID: uBob, NodeID: nodeA, AssignedIP: "10.99.0.11"},
+			{ID: uuid.New(), UserID: uAlice, NodeID: nodeA, AssignedIP: "10.99.0.10", Kind: "human"},
+			{ID: agentID, UserID: uBob, NodeID: nodeA, AssignedIP: "10.99.0.11", Kind: "agent", ConfigRevision: &revision},
 		},
 		// no groups, no memberships, no rules
 	}
@@ -68,6 +70,21 @@ func TestEnforcingZeroGrantsIsEmptyNotPermissive(t *testing.T) {
 	}
 	if c.Mode != policy.ModeEnforcing {
 		t.Fatalf("mode = %q, want enforcing", c.Mode)
+	}
+	if len(c.Subjects) != 2 {
+		t.Fatalf("deny-all artifact must retain every active subject, got %+v", c.Subjects)
+	}
+	if got := c.Subjects[1]; got.DeviceID != agentID.String() || got.Kind != "agent" || got.ConfigRevision == nil || *got.ConfigRevision != revision {
+		t.Fatalf("agent subject attribution missing from zero-grant artifact: %+v", got)
+	}
+}
+
+func TestSubjectAttributionIsHashBlind(t *testing.T) {
+	base := policyspec.Compiled{Version: 1, Mode: policy.ModeEnforcing}
+	with := base
+	with.Subjects = []policyspec.SubjectAttribution{{SrcIP: "10.99.0.9", DeviceID: uuid.NewString(), Kind: "agent"}}
+	if policyspec.CanonicalHash(base) != policyspec.CanonicalHash(with) {
+		t.Fatal("subject attribution must not perturb the enforcement hash")
 	}
 }
 

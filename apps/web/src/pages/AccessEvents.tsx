@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "../lib/useOrg";
 import { api, apiErrorMessage, type Org } from "../lib/api";
 import { relativeAge } from "../lib/format";
@@ -11,6 +11,7 @@ import {
   decisionLabel,
   decisionTone,
   destinationFor,
+  eventTimeline,
   isLastPage,
   nextCursor,
   retentionNote,
@@ -18,6 +19,7 @@ import {
   type AccessEvent,
   type AccessLogHealth,
 } from "../lib/flowlogview";
+import type { AgentRow } from "../lib/agentview";
 
 const PAGE = 100;
 
@@ -39,24 +41,43 @@ export default function AccessEvents() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = useState<AgentRow[]>([]);
+  const [agentId, setAgentId] = useState("");
+  const [selected, setSelected] = useState<AccessEvent | null>(null);
+  const loadEpoch = useRef(0);
+  const queryEpoch = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const epoch = ++loadEpoch.current;
+    queryEpoch.current++;
+    setOrg(null);
+    setRows(null);
+    setHealth(null);
+    setAgents([]);
+    setAgentId("");
+    setSelected(null);
+    setError(null);
     (async () => {
       const { data: meta } = await api.GET("/api/v1/meta");
-      if (cancelled) return;
+      if (epoch !== loadEpoch.current) return;
       setEdition(meta?.edition === "enterprise" ? "enterprise" : "open");
-      // ⭐ The org-list fetch is gone (S12.5) — OrgProvider reads it once for the shell.
       setOrg(currentOrg);
+      if (currentOrg && meta?.edition === "enterprise") {
+        const { data } = await api.GET("/api/v1/organizations/{orgId}/agents", {
+          params: { path: { orgId: currentOrg.id } },
+        });
+        if (epoch === loadEpoch.current) setAgents((data as AgentRow[] | undefined) ?? []);
+      }
     })();
     return () => {
-      cancelled = true;
+      loadEpoch.current++;
     };
   }, [currentOrg]);
 
   const load = useCallback(
     async (reset: boolean) => {
       if (!org) return;
+      const epoch = reset ? ++queryEpoch.current : queryEpoch.current;
       setBusy(true);
       setError(null);
       const cursor = reset ? null : nextCursor(rows ?? []);
@@ -68,11 +89,13 @@ export default function AccessEvents() {
             query: {
               limit: PAGE,
               denies_only: deniesOnly || undefined,
+              src_agent_id: agentId || undefined,
               ...(cursor ?? {}),
             },
           },
         },
       );
+      if (epoch !== queryEpoch.current) return;
       setBusy(false);
       if (err)
         return setError(apiErrorMessage(err, "Could not load access events."));
@@ -81,21 +104,26 @@ export default function AccessEvents() {
       // The API documents that a short page IS the last page — so stop asking.
       setDone(isLastPage(page, PAGE));
     },
-    [org, rows, deniesOnly],
+    [org, rows, deniesOnly, agentId],
   );
 
   useEffect(() => {
     if (!org || !isEnterprise(edition)) return;
     void load(true);
     void (async () => {
+      const epoch = loadEpoch.current;
       const { data } = await api.GET(
         "/api/v1/organizations/{orgId}/access-log/health",
         { params: { path: { orgId: org.id } } },
       );
-      if (data) setHealth(data as AccessLogHealth);
+      if (epoch === loadEpoch.current && data) setHealth(data as AccessLogHealth);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [org, edition, deniesOnly]);
+  }, [org, edition, deniesOnly, agentId]);
+
+  if (currentOrg && (!org || currentOrg.id !== org.id)) {
+    return <p className="text-sm text-slate-500">Loading access events…</p>;
+  }
 
   if (!isEnterprise(edition)) {
     return (
@@ -127,9 +155,26 @@ export default function AccessEvents() {
             <input
               type="checkbox"
               checked={deniesOnly}
-              onChange={(e) => setDeniesOnly(e.target.checked)}
+              onChange={(e) => {
+                setDeniesOnly(e.target.checked);
+                setSelected(null);
+              }}
             />
             Denies only
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            Agent
+            <select
+              value={agentId}
+              onChange={(e) => {
+                setAgentId(e.target.value);
+                setSelected(null);
+              }}
+              className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs"
+            >
+              <option value="">All sources</option>
+              {agents.map((a) => <option key={a.device_id} value={a.device_id}>{a.name}</option>)}
+            </select>
           </label>
           {rn && (
             <span
@@ -197,10 +242,10 @@ export default function AccessEvents() {
             {
               key: "source",
               header: "Source",
-              sortValue: (e) => sourceFor(e),
+              sortValue: (e) => sourceFor(e, agents.find((a) => a.device_id === e.src_agent_id)?.name),
               cell: (e) => (
                 <span className="font-mono text-xs text-slate-300">
-                  {sourceFor(e)}
+                  {sourceFor(e, agents.find((a) => a.device_id === e.src_agent_id)?.name)}
                 </span>
               ),
             },
@@ -223,9 +268,29 @@ export default function AccessEvents() {
                 </span>
               ),
             },
+            {
+              key: "details",
+              header: "Details",
+              cell: (e) => <Button onClick={() => setSelected(e)}>View</Button>,
+            },
           ]}
         />
       </div>
+
+      {selected && (
+        <Card className="mt-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-300">Event timeline</h2>
+            <Button onClick={() => setSelected(null)}>Close</Button>
+          </div>
+          <ol className="mt-3 space-y-2">
+            {eventTimeline(selected).map((item) => (
+              <li key={item} className="text-xs text-slate-400">{item}</li>
+            ))}
+          </ol>
+          <p className="mt-3 text-xs text-slate-600">Gateway and rule names are current labels only and are not recorded in this historical event.</p>
+        </Card>
+      )}
 
       {/* ⛔ KEYSET, NOT PAGE NUMBERS — the cursor is (created_at, id), the INGEST clock. Paginating
           on occurred_at would skew: an agent with a slow clock inserts rows that sort before ones

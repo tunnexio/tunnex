@@ -1214,6 +1214,7 @@ paths:
       tags: [organizations]
       parameters:
         - { name: denies_only, in: query, required: false, schema: { type: boolean, default: false }, description: Only deny/deny_aggregate/terminated events (the security feed). }
+        - { name: src_agent_id, in: query, required: false, schema: { type: string, format: uuid }, description: Only events attributed by the applied gateway artifact to this verified agent device. }
         # Keyset cursor: pass the last entry's created_at + id to fetch the next page.
         - { name: cursor_ts, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: cursor_id, in: query, required: false, schema: { type: string, format: uuid } }
@@ -5207,10 +5208,11 @@ components:
         seq: { type: integer, format: int64, description: Per-org monotonic sequence (tamper-evidence / gap detection). }
         occurred_at: { type: string, format: date-time, description: Agent-clock flow observation time (NOT the pagination clock). }
         decision: { type: string, enum: [allow, deny, deny_aggregate, terminated, gap] }
-        # GRANT-level attribution (rule_id -> resource/group). device/user are DEFERRED
-        # (nil) — never derived from a racy src_ip lookup.
+        # Attribution is stamped from the successfully applied gateway artifact and
+        # verified against the org-scoped device row; never inferred from src_ip.
         rule_id: { type: string, format: uuid }
         node_id: { type: string, format: uuid }
+        src_agent_id: { type: string, format: uuid, description: Present only when the verified source device kind is agent. }
         src_ip: { type: string }
         dst_ip: { type: string }
         dst_resource_id: { type: string, format: uuid }
@@ -5219,6 +5221,10 @@ components:
         dst_port: { type: integer }
         deny_count: { type: integer, description: ">1 for a per-source deny aggregate (port-scan collapse); N for a gap marker." }
         window_end: { type: string, format: date-time, description: deny_aggregate window end. }
+        policy_hash: { type: string, pattern: '^[0-9a-f]{12}$', description: Canonical hash of the policy successfully applied when the gateway observed the flow. }
+        policy_version: { type: integer, minimum: 1 }
+        src_config_revision: { type: integer, format: int64, minimum: 0, description: Applied managed-agent configuration revision at observation time. }
+        decision_reason: { type: string, enum: [matched_grant, no_matching_grant, grant_revoked, events_dropped] }
 
     AccessLogHealth:
       type: object

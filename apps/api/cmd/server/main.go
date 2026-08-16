@@ -421,6 +421,7 @@ func main() {
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
 		}),
+		AgentRuntimeNotify:    pushHub,
 		Licence:               licenceMgr,
 		Orgs:                  tenancy.NewService(pool).WithLicence(licenceMgr),
 		CliAuth:               cliAuthSvc,

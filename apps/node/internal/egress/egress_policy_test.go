@@ -26,7 +26,8 @@ func TestApplyFailureLeavesAppliedStale(t *testing.T) {
 	// First: a good apply of policy version 1 records applied=1 + the CANONICAL policy
 	// hash (nodepolicy.CanonicalHash — the same bytes the control plane hashes; NEVER
 	// the ruleset text, which carries node-local subnet state).
-	v1 := &nodepolicy.Compiled{Version: 1, Mode: nodepolicy.ModeEnforcing, Mesh: false}
+	rev1 := int64(1)
+	v1 := &nodepolicy.Compiled{Version: 1, Mode: nodepolicy.ModeEnforcing, Mesh: false, Subjects: []nodepolicy.SubjectAttribution{{SrcIP: "10.99.0.10", DeviceID: "agent-v1", Kind: "agent", ConfigRevision: &rev1}}}
 	m.SetPolicy(v1)
 	if err := m.applyAndTrack(context.Background(), m.ruleset(""), v1); err != nil {
 		t.Fatalf("good apply: %v", err)
@@ -35,11 +36,15 @@ func TestApplyFailureLeavesAppliedStale(t *testing.T) {
 		t.Fatalf("after good apply want v=1, canonical hash, nil err; got v=%d h=%q e=%v", v, h, e)
 	}
 	goodHash := nodepolicy.CanonicalHash(v1)
+	if a := m.FlowAttribution("10.99.0.10"); a.SrcDeviceID != "agent-v1" || a.PolicyHash != goodHash || a.PolicyVersion != 1 {
+		t.Fatalf("last-good attribution not installed atomically: %+v", a)
+	}
 
 	// Now: desired advances to version 2, but the apply FAILS (bad ruleset / no nft).
 	boom := errors.New("nft apply: rejected")
 	m.apply = func(context.Context, string) error { return boom }
-	v2 := &nodepolicy.Compiled{Version: 2, Mode: nodepolicy.ModeEnforcing, Mesh: false}
+	rev2 := int64(2)
+	v2 := &nodepolicy.Compiled{Version: 2, Mode: nodepolicy.ModeEnforcing, Mesh: false, Subjects: []nodepolicy.SubjectAttribution{{SrcIP: "10.99.0.10", DeviceID: "agent-v2", Kind: "agent", ConfigRevision: &rev2}}}
 	m.SetPolicy(v2)
 	if err := m.applyAndTrack(context.Background(), m.ruleset(""), v2); !errors.Is(err, boom) {
 		t.Fatalf("failed apply must return the error; got %v", err)
@@ -55,6 +60,9 @@ func TestApplyFailureLeavesAppliedStale(t *testing.T) {
 	// desired (2) != applied (1) => STALE, visible to the control plane.
 	if m.desiredVersion() == v {
 		t.Fatal("desired should have advanced past applied (stale not detectable)")
+	}
+	if a := m.FlowAttribution("10.99.0.10"); a.SrcDeviceID != "agent-v1" || a.PolicyHash != goodHash || a.PolicyVersion != 1 {
+		t.Fatalf("failed candidate must preserve the last-good attribution snapshot: %+v", a)
 	}
 }
 
@@ -451,6 +459,12 @@ func TestNeverReceivedIsDenyAllNotMesh(t *testing.T) {
 // supported version clears the refusal and renders normally.
 func TestUnsupportedVersionRefusedIsDenyAll(t *testing.T) {
 	m := New("wg0")
+	m.apply = func(context.Context, string) error { return nil }
+	lastGood := &nodepolicy.Compiled{Version: 1, Mode: nodepolicy.ModeEnforcing, Subjects: []nodepolicy.SubjectAttribution{{SrcIP: "10.0.0.1", DeviceID: "last-good-agent", Kind: "agent"}}}
+	m.SetPolicy(lastGood)
+	if err := m.applyAndTrack(context.Background(), m.ruleset(""), lastGood); err != nil {
+		t.Fatal(err)
+	}
 	tooNew := &nodepolicy.Compiled{
 		Version: nodepolicy.MaxSupportedVersion + 1,
 		Mode:    "enforcing",
@@ -460,6 +474,9 @@ func TestUnsupportedVersionRefusedIsDenyAll(t *testing.T) {
 	m.SetPolicy(tooNew)
 	if m.RefusedVersion() != nodepolicy.MaxSupportedVersion+1 {
 		t.Fatalf("RefusedVersion = %d, want %d", m.RefusedVersion(), nodepolicy.MaxSupportedVersion+1)
+	}
+	if got := m.FlowAttribution("10.0.0.1"); got != (flowlog.Attribution{}) {
+		t.Fatalf("synthetic refusal deny-all must not be mislabeled with last-good attribution: %+v", got)
 	}
 	// Note-2 pin: the agent must NEVER report the refused artifact's hash as applied — that would
 	// read synced-and-healthy to the CP desync detector, contradicting the degraded kind. Structural:

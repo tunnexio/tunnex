@@ -23,11 +23,13 @@ const insertAccessEventBatch = `-- name: InsertAccessEventBatch :batchexec
 INSERT INTO access_events (
     id, org_id, seq, node_id, occurred_at, decision, rule_id,
     src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id,
-    protocol, dst_port, deny_count, window_end, created_at
+    protocol, dst_port, deny_count, window_end, created_at,
+    policy_hash, policy_version, src_config_revision, src_kind, decision_reason
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13,
-    $14, $15, $16, $17, $18
+    $14, $15, $16, $17, $18,
+    $19, $20, $21, $22, $23
 )
 `
 
@@ -38,24 +40,29 @@ type InsertAccessEventBatchBatchResults struct {
 }
 
 type InsertAccessEventBatchParams struct {
-	ID            uuid.UUID          `json:"id"`
-	OrgID         uuid.UUID          `json:"org_id"`
-	Seq           int64              `json:"seq"`
-	NodeID        pgtype.UUID        `json:"node_id"`
-	OccurredAt    time.Time          `json:"occurred_at"`
-	Decision      string             `json:"decision"`
-	RuleID        pgtype.UUID        `json:"rule_id"`
-	SrcDeviceID   pgtype.UUID        `json:"src_device_id"`
-	SrcUserID     pgtype.UUID        `json:"src_user_id"`
-	SrcIp         string             `json:"src_ip"`
-	DstIp         string             `json:"dst_ip"`
-	DstResourceID pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID    pgtype.UUID        `json:"dst_group_id"`
-	Protocol      string             `json:"protocol"`
-	DstPort       *int32             `json:"dst_port"`
-	DenyCount     int32              `json:"deny_count"`
-	WindowEnd     pgtype.Timestamptz `json:"window_end"`
-	CreatedAt     time.Time          `json:"created_at"`
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	Seq               int64              `json:"seq"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	OccurredAt        time.Time          `json:"occurred_at"`
+	Decision          string             `json:"decision"`
+	RuleID            pgtype.UUID        `json:"rule_id"`
+	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
+	SrcUserID         pgtype.UUID        `json:"src_user_id"`
+	SrcIp             string             `json:"src_ip"`
+	DstIp             string             `json:"dst_ip"`
+	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
+	Protocol          string             `json:"protocol"`
+	DstPort           *int32             `json:"dst_port"`
+	DenyCount         int32              `json:"deny_count"`
+	WindowEnd         pgtype.Timestamptz `json:"window_end"`
+	CreatedAt         time.Time          `json:"created_at"`
+	PolicyHash        *string            `json:"policy_hash"`
+	PolicyVersion     *int32             `json:"policy_version"`
+	SrcConfigRevision *int64             `json:"src_config_revision"`
+	SrcKind           *string            `json:"src_kind"`
+	DecisionReason    *string            `json:"decision_reason"`
 }
 
 // The hot ingest path (review fold-2 #6): pipeline a whole batch's inserts in ONE round trip
@@ -84,6 +91,11 @@ func (q *Queries) InsertAccessEventBatch(ctx context.Context, arg []InsertAccess
 			a.DenyCount,
 			a.WindowEnd,
 			a.CreatedAt,
+			a.PolicyHash,
+			a.PolicyVersion,
+			a.SrcConfigRevision,
+			a.SrcKind,
+			a.DecisionReason,
 		}
 		batch.Queue(insertAccessEventBatch, vals...)
 	}

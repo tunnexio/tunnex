@@ -191,6 +191,17 @@ type AllowEntry struct {
 	SrcDeviceID string `json:"src_device_id,omitempty"`
 }
 
+// SubjectAttribution is observability-only identity metadata captured in the
+// same snapshot as the compiled artifact. It is independent of Allow entries so
+// a source with zero grants can still be truthfully identified when the kernel
+// emits a default deny. It is excluded from CanonicalHash and enforcement.
+type SubjectAttribution struct {
+	SrcIP          string `json:"src_ip"`
+	DeviceID       string `json:"device_id"`
+	Kind           string `json:"kind"`
+	ConfigRevision *int64 `json:"config_revision,omitempty"`
+}
+
 // Route is one kernel-route intent (S8.2): the agent must program a route to DstCIDR via the tunnel
 // interface (wg0) so packets destined to a remote SITE subnet reach the WG interface at all (today the
 // kernel only knows the pool route). This is EXPLICIT propagation output (the overruled-into shape) —
@@ -218,11 +229,12 @@ type Route struct {
 // Invariant (enforced by the compiler + guarded by test): Mesh==true ONLY when
 // Mode=="off". The enforcing path can never emit a blanket allow.
 type Compiled struct {
-	Version int          `json:"version"` // == ProtocolVersion
-	NodeID  string       `json:"node_id"`
-	Mode    string       `json:"mode"` // "off" | "enforcing"
-	Mesh    bool         `json:"mesh"`
-	Allow   []AllowEntry `json:"allow"`
+	Version  int                  `json:"version"` // == ProtocolVersion
+	NodeID   string               `json:"node_id"`
+	Mode     string               `json:"mode"` // "off" | "enforcing"
+	Mesh     bool                 `json:"mesh"`
+	Allow    []AllowEntry         `json:"allow"`
+	Subjects []SubjectAttribution `json:"subjects,omitempty"`
 	// Routes (v5, S8.2) is the site-to-site kernel-route intent — PLUMBING, out of CanonicalHash, but
 	// present triggers RequiredVersion=5 (an old agent refuses rather than ignoring the routes). Carried
 	// in BOTH modes: an off-mode gateway still needs the kernel route to reach a remote site subnet.

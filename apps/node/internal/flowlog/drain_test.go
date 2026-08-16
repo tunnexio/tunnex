@@ -43,7 +43,7 @@ func TestRunDrainCarriesLossAsGap(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		buf.Add(Event{SrcIP: "10.99.0.10"})
 	}
-	pump := NewPump(&fakeSource{}, buf, nil, nil)
+	pump := NewPump(&fakeSource{}, buf, nil)
 	rep := &fakeReporter{failNext: 1} // first report fails
 
 	ctx, cancel := context.WithCancel(context.Background())

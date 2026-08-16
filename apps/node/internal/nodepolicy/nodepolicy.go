@@ -54,6 +54,16 @@ type AllowEntry struct {
 	SrcDeviceID string `json:"src_device_id,omitempty"`
 }
 
+// SubjectAttribution mirrors policyspec.SubjectAttribution. It is installed
+// only with a successfully applied artifact and never participates in policy
+// enforcement or CanonicalHash.
+type SubjectAttribution struct {
+	SrcIP          string `json:"src_ip"`
+	DeviceID       string `json:"device_id"`
+	Kind           string `json:"kind"`
+	ConfigRevision *int64 `json:"config_revision,omitempty"`
+}
+
 // Compiled is the per-node policy artifact. Mesh=true (mode off) => the agent keeps
 // the legacy blanket wg0<->wg0 forward accept (no behavior change when Zero Trust is
 // off). Mesh=false (enforcing) => ONLY Allow is permitted; everything else is dropped
@@ -63,11 +73,12 @@ type AllowEntry struct {
 // here silently forks the hash the control plane computes. The golden test
 // (nodepolicy_test.go, same fixture + hex as policyspec's) pins this.
 type Compiled struct {
-	Version int          `json:"version"`
-	NodeID  string       `json:"node_id"`
-	Mode    string       `json:"mode"`
-	Mesh    bool         `json:"mesh"`
-	Allow   []AllowEntry `json:"allow"`
+	Version  int                  `json:"version"`
+	NodeID   string               `json:"node_id"`
+	Mode     string               `json:"mode"`
+	Mesh     bool                 `json:"mesh"`
+	Allow    []AllowEntry         `json:"allow"`
+	Subjects []SubjectAttribution `json:"subjects,omitempty"`
 	// Routes (v5, S8.2) is the site-to-site kernel-route intent — reachability PLUMBING, EXCLUDED from
 	// CanonicalHash (hashView omits it, like policyspec), so route drift never disturbs the policy hash.
 	// The agent programs each as a kernel route via the tunnel iface. Mirror of policyspec.Compiled.

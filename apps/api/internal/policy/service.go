@@ -880,7 +880,10 @@ func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot,
 		if d.AssignedIp != nil {
 			ip = *d.AssignedIp
 		}
-		snap.Devices = append(snap.Devices, Device{ID: d.ID, UserID: d.UserID, NodeID: d.NodeID, AssignedIP: ip, Kind: d.Kind})
+		snap.Devices = append(snap.Devices, Device{
+			ID: d.ID, UserID: d.UserID, NodeID: d.NodeID, AssignedIP: ip,
+			Kind: d.Kind, ConfigRevision: d.AgentConfigRevision,
+		})
 	}
 	return snap, nil
 }
@@ -906,7 +909,7 @@ func (s *Service) CompiledForNode(ctx context.Context, orgID, nodeID, activeHub 
 		// device-less SITE gateway still lands at v5 consistently across the served + pushed paths.
 		return &policyspec.Compiled{
 			Version: policyspec.RequiredVersion(policyspec.Compiled{Mode: ModeEnforcing}), NodeID: nodeID.String(),
-			Mode: ModeEnforcing, Mesh: false, // deny-all: no blanket even with no devices
+			Mode: ModeEnforcing, Mesh: false, Subjects: subjectAttribution(snap.Devices), // deny-all: no blanket even with no devices
 		}, nil
 	}
 	return nil, nil // off / no policy -> agent keeps the legacy mesh
@@ -939,7 +942,7 @@ func (s *Service) CompiledArtifactsForNodes(ctx context.Context, orgID uuid.UUID
 			// device-less SITE gateway consistently on both paths.
 			out[id] = &policyspec.Compiled{
 				Version: policyspec.RequiredVersion(policyspec.Compiled{Mode: ModeEnforcing}), NodeID: id.String(),
-				Mode: ModeEnforcing, Mesh: false,
+				Mode: ModeEnforcing, Mesh: false, Subjects: subjectAttribution(snap.Devices),
 			}
 			continue
 		}

@@ -48,6 +48,12 @@ RETURNING ars.device_id, ars.desired_revision, ars.applied_revision,
 -- Reports may arrive out of order. Monotonic maxima prevent a stale poll from
 -- rolling back success, and an error at or below an already-applied revision is
 -- cleared rather than resurrected.
+WITH previous AS MATERIALIZED (
+    SELECT ars.device_id, ars.applied_revision AS previous_applied_revision
+    FROM agent_runtime_state ars
+    WHERE ars.device_id = $1
+    FOR UPDATE OF ars
+)
 UPDATE agent_runtime_state ars
 SET applied_revision = GREATEST(ars.applied_revision, $3),
     last_attempted_revision = GREATEST(ars.last_attempted_revision, $4),
@@ -66,8 +72,9 @@ SET applied_revision = GREATEST(ars.applied_revision, $3),
         ELSE $4
     END,
     updated_at = now()
-FROM devices d
+FROM devices d, previous p
 WHERE ars.device_id = $1
+  AND p.device_id = ars.device_id
   AND d.id = ars.device_id
   AND d.org_id = $2
   AND d.kind = 'agent'
@@ -78,4 +85,5 @@ WHERE ars.device_id = $1
   AND (sqlc.arg(error_code)::text <> '' OR $3 = $4)
 RETURNING ars.device_id, ars.desired_revision, ars.applied_revision,
           ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
-          ars.last_error_code, ars.last_error_revision, ars.created_at, ars.updated_at;
+          ars.last_error_code, ars.last_error_revision, ars.created_at, ars.updated_at,
+          d.node_id, ars.applied_revision > p.previous_applied_revision AS applied_changed;

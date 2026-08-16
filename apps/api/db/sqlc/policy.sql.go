@@ -454,10 +454,12 @@ func (q *Queries) GetUserGroup(ctx context.Context, arg GetUserGroupParams) (Use
 }
 
 const listActiveDevicesForOrg = `-- name: ListActiveDevicesForOrg :many
-SELECT d.id, d.user_id, d.node_id, d.assigned_ip, d.kind
+SELECT d.id, d.user_id, d.node_id, d.assigned_ip, d.kind,
+       ars.applied_revision AS agent_config_revision
 FROM devices d
 JOIN users u ON u.id = d.user_id
 JOIN memberships mem ON mem.org_id = d.org_id AND mem.user_id = d.user_id
+LEFT JOIN agent_runtime_state ars ON ars.device_id = d.id AND d.kind = 'agent'
 WHERE d.org_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND u.status = 'active' AND u.deleted_at IS NULL
@@ -466,11 +468,12 @@ ORDER BY d.assigned_ip
 `
 
 type ListActiveDevicesForOrgRow struct {
-	ID         uuid.UUID `json:"id"`
-	UserID     uuid.UUID `json:"user_id"`
-	NodeID     uuid.UUID `json:"node_id"`
-	AssignedIp *string   `json:"assigned_ip"`
-	Kind       string    `json:"kind"`
+	ID                  uuid.UUID `json:"id"`
+	UserID              uuid.UUID `json:"user_id"`
+	NodeID              uuid.UUID `json:"node_id"`
+	AssignedIp          *string   `json:"assigned_ip"`
+	Kind                string    `json:"kind"`
+	AgentConfigRevision *int64    `json:"agent_config_revision"`
 }
 
 // ── compiler inputs ─────────────────────────────────────────────────────────────
@@ -495,6 +498,7 @@ func (q *Queries) ListActiveDevicesForOrg(ctx context.Context, orgID uuid.UUID) 
 			&i.NodeID,
 			&i.AssignedIp,
 			&i.Kind,
+			&i.AgentConfigRevision,
 		); err != nil {
 			return nil, err
 		}

@@ -463,6 +463,14 @@ type Querier interface {
 	GetConfirmedTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error)
 	GetCurrentAgentOwnerCandidate(ctx context.Context, arg GetCurrentAgentOwnerCandidateParams) (uuid.UUID, error)
 	GetDevice(ctx context.Context, arg GetDeviceParams) (Device, error)
+	// lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
+	// owning user (S7.5.4 v3 flow attribution: src_device_id -> src_user_id, a clean FK join,
+	// NEVER an src_ip->device guess).
+	// lint:allow-deleted — DELIBERATELY no deleted_at filter (the REVIEWED escape, not an
+	// incidental substring [8]): a since-revoked/deleted device's HISTORICAL flow must still
+	// attribute its user (access_events is an immutable record; src_device_id/src_user_id are
+	// plain uuids, not FKs, precisely so they survive the device/user deletion).
+	GetDeviceAttributionForOrg(ctx context.Context, arg GetDeviceAttributionForOrgParams) (GetDeviceAttributionForOrgRow, error)
 	// Row-locking read (S7.3 finding #6): Revoke reads the PRIOR status in-tx to label the
 	// audit (device.cancelled for pending vs device.revoked for active). FOR UPDATE serializes
 	// against a concurrently-committing Approve (pending->active) so the label can't be stale —
@@ -474,14 +482,6 @@ type Querier interface {
 	// lint:cross-org — keyed by device_id; the caller authorized the device via its
 	// org (GetDevice) before reading its health snapshot.
 	GetDeviceHealth(ctx context.Context, deviceID uuid.UUID) (DeviceHealth, error)
-	// lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
-	// owning user (S7.5.4 v3 flow attribution: src_device_id -> src_user_id, a clean FK join,
-	// NEVER an src_ip->device guess).
-	// lint:allow-deleted — DELIBERATELY no deleted_at filter (the REVIEWED escape, not an
-	// incidental substring [8]): a since-revoked/deleted device's HISTORICAL flow must still
-	// attribute its user (access_events is an immutable record; src_device_id/src_user_id are
-	// plain uuids, not FKs, precisely so they survive the device/user deletion).
-	GetDeviceUserForOrg(ctx context.Context, arg GetDeviceUserForOrgParams) (uuid.UUID, error)
 	GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) (DomainClaim, error)
 	// lint:cross-org — SSO callback resolves the config by (provider, client_id)
 	// before an org context exists; org_id is a column on the returned row.
@@ -667,11 +667,13 @@ type Querier interface {
 	InvalidateUserTokens(ctx context.Context, arg InvalidateUserTokensParams) error
 	// The security-focused feed: deny + deny_aggregate + terminated only, same keyset shape.
 	ListAccessDenies(ctx context.Context, arg ListAccessDeniesParams) ([]AccessEvent, error)
+	ListAccessDeniesByAgent(ctx context.Context, arg ListAccessDeniesByAgentParams) ([]AccessEvent, error)
 	// Keyset page, newest-first, scoped by org. Expanded (created_at, id) < (cursor) predicate
 	// (row-value form confuses sqlc's type inference for the id cursor). First page passes a
 	// far-future created_at + a max uuid so the whole feed is < the cursor. Uses
 	// access_events_org_created_id_idx.
 	ListAccessEvents(ctx context.Context, arg ListAccessEventsParams) ([]AccessEvent, error)
+	ListAccessEventsByAgent(ctx context.Context, arg ListAccessEventsByAgentParams) ([]AccessEvent, error)
 	ListAccessSources(ctx context.Context, arg ListAccessSourcesParams) ([]ListAccessSourcesRow, error)
 	// The org's live tunnel allocations (flat pool, across all nodes) WITH the owning
 	// device (id, name). The SINGLE definition of "live allocation" — used by BOTH
@@ -1141,7 +1143,7 @@ type Querier interface {
 	// Reports may arrive out of order. Monotonic maxima prevent a stale poll from
 	// rolling back success, and an error at or below an already-applied revision is
 	// cleared rather than resurrected.
-	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (AgentRuntimeState, error)
+	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (ReportAgentRuntimeStateRow, error)
 	RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error)
 	RequestAgentWireGuardRotation(ctx context.Context, arg RequestAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set

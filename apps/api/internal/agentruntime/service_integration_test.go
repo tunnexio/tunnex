@@ -16,6 +16,23 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 )
 
+type recordingRuntimeNotifier struct {
+	mu  sync.Mutex
+	ids []uuid.UUID
+}
+
+func (n *recordingRuntimeNotifier) Notify(id uuid.UUID) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.ids = append(n.ids, id)
+}
+
+func (n *recordingRuntimeNotifier) snapshot() []uuid.UUID {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return append([]uuid.UUID(nil), n.ids...)
+}
+
 func TestRuntimeServicePostgresContract(t *testing.T) {
 	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -148,6 +165,21 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	state, err = q.GetAgentRuntimeState(ctx, sqlc.GetAgentRuntimeStateParams{DeviceID: agent, OrgID: org})
 	if err != nil || state.AppliedRevision != 4 || state.LastErrorCode != nil {
 		t.Fatalf("last-good cleared state = %#v, err=%v", state, err)
+	}
+
+	notifier := &recordingRuntimeNotifier{}
+	svc.SetNotifier(notifier)
+	if _, err := q.BumpAgentDesiredRevision(ctx, sqlc.BumpAgentDesiredRevisionParams{DeviceID: agent, OrgID: org}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Report(ctx, id, 5, 5, "v-f07", ""); err != nil {
+		t.Fatalf("revision-changing report: %v", err)
+	}
+	if err := svc.Report(ctx, id, 5, 5, "v-f07", ""); err != nil {
+		t.Fatalf("same-revision heartbeat: %v", err)
+	}
+	if got := notifier.snapshot(); len(got) != 1 || got[0] != node {
+		t.Fatalf("gateway notifications = %v, want exactly assigned node %s", got, node)
 	}
 
 	requested, err := q.RequestAgentRuntimeCredentialRotation(ctx, sqlc.RequestAgentRuntimeCredentialRotationParams{

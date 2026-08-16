@@ -7,8 +7,10 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const bumpAgentDesiredRevision = `-- name: BumpAgentDesiredRevision :one
@@ -124,6 +126,12 @@ func (q *Queries) GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeS
 }
 
 const reportAgentRuntimeState = `-- name: ReportAgentRuntimeState :one
+WITH previous AS MATERIALIZED (
+    SELECT ars.device_id, ars.applied_revision AS previous_applied_revision
+    FROM agent_runtime_state ars
+    WHERE ars.device_id = $1
+    FOR UPDATE OF ars
+)
 UPDATE agent_runtime_state ars
 SET applied_revision = GREATEST(ars.applied_revision, $3),
     last_attempted_revision = GREATEST(ars.last_attempted_revision, $4),
@@ -142,8 +150,9 @@ SET applied_revision = GREATEST(ars.applied_revision, $3),
         ELSE $4
     END,
     updated_at = now()
-FROM devices d
+FROM devices d, previous p
 WHERE ars.device_id = $1
+  AND p.device_id = ars.device_id
   AND d.id = ars.device_id
   AND d.org_id = $2
   AND d.kind = 'agent'
@@ -154,7 +163,8 @@ WHERE ars.device_id = $1
   AND ($6::text <> '' OR $3 = $4)
 RETURNING ars.device_id, ars.desired_revision, ars.applied_revision,
           ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
-          ars.last_error_code, ars.last_error_revision, ars.created_at, ars.updated_at
+          ars.last_error_code, ars.last_error_revision, ars.created_at, ars.updated_at,
+          d.node_id, ars.applied_revision > p.previous_applied_revision AS applied_changed
 `
 
 type ReportAgentRuntimeStateParams struct {
@@ -164,6 +174,21 @@ type ReportAgentRuntimeStateParams struct {
 	LastAttemptedRevision int64     `json:"last_attempted_revision"`
 	ClientVersion         string    `json:"client_version"`
 	ErrorCode             string    `json:"error_code"`
+}
+
+type ReportAgentRuntimeStateRow struct {
+	DeviceID              uuid.UUID          `json:"device_id"`
+	DesiredRevision       int64              `json:"desired_revision"`
+	AppliedRevision       int64              `json:"applied_revision"`
+	LastAttemptedRevision int64              `json:"last_attempted_revision"`
+	ClientVersion         string             `json:"client_version"`
+	LastSeenAt            pgtype.Timestamptz `json:"last_seen_at"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorRevision     *int64             `json:"last_error_revision"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+	NodeID                uuid.UUID          `json:"node_id"`
+	AppliedChanged        bool               `json:"applied_changed"`
 }
 
 // Inputs:
@@ -176,7 +201,7 @@ type ReportAgentRuntimeStateParams struct {
 // Reports may arrive out of order. Monotonic maxima prevent a stale poll from
 // rolling back success, and an error at or below an already-applied revision is
 // cleared rather than resurrected.
-func (q *Queries) ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (AgentRuntimeState, error) {
+func (q *Queries) ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (ReportAgentRuntimeStateRow, error) {
 	row := q.db.QueryRow(ctx, reportAgentRuntimeState,
 		arg.DeviceID,
 		arg.OrgID,
@@ -185,7 +210,7 @@ func (q *Queries) ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRu
 		arg.ClientVersion,
 		arg.ErrorCode,
 	)
-	var i AgentRuntimeState
+	var i ReportAgentRuntimeStateRow
 	err := row.Scan(
 		&i.DeviceID,
 		&i.DesiredRevision,
@@ -197,6 +222,8 @@ func (q *Queries) ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRu
 		&i.LastErrorRevision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NodeID,
+		&i.AppliedChanged,
 	)
 	return i, err
 }

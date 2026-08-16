@@ -45,19 +45,20 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
-	System            *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
-	Orgs              *tenancy.Service
-	CliAuth           *cliauth.Service
-	Auth              *auth.Service
-	Members           *tenancy.MembershipService
-	Invites           *invites.Service
-	Nodes             *nodes.Service
-	AgentRuntimeOptIn agentruntime.OptInFunc
-	Devices           *devices.Service
-	Ovpn              *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export. CA loads lazily (D-S9.5-OPTIN a)
-	Sites             *sites.Service
-	K8s               *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity
-	Machine           *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
+	System             *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
+	Orgs               *tenancy.Service
+	CliAuth            *cliauth.Service
+	Auth               *auth.Service
+	Members            *tenancy.MembershipService
+	Invites            *invites.Service
+	Nodes              *nodes.Service
+	AgentRuntimeOptIn  agentruntime.OptInFunc
+	AgentRuntimeNotify agentruntime.Notifier
+	Devices            *devices.Service
+	Ovpn               *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export. CA loads lazily (D-S9.5-OPTIN a)
+	Sites              *sites.Service
+	K8s                *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity
+	Machine            *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
 	// Licence is the entitlement source. ⚠ Never nil in production; a nil manager would mean Community,
 	// which is the fail-open default rather than a failure.
 	Licence   *licence.Manager
@@ -226,6 +227,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	// sessions still proceed to strict validation and receive 400 for malformed
 	// bodies.
 	agentRuntime := agentruntime.New(d.System, d.AgentRuntimeOptIn)
+	agentRuntime.SetNotifier(d.AgentRuntimeNotify)
 	r.Use(runtimeAuthMiddleware(agentRuntime))
 	r.Use(authBeforeAgentValidation)
 

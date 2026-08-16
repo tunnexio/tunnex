@@ -408,6 +408,34 @@ func (q *Queries) GetDevice(ctx context.Context, arg GetDeviceParams) (Device, e
 	return i, err
 }
 
+const getDeviceAttributionForOrg = `-- name: GetDeviceAttributionForOrg :one
+SELECT user_id, kind FROM devices WHERE id = $1 AND org_id = $2
+`
+
+type GetDeviceAttributionForOrgParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+type GetDeviceAttributionForOrgRow struct {
+	UserID uuid.UUID `json:"user_id"`
+	Kind   string    `json:"kind"`
+}
+
+// lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
+// owning user (S7.5.4 v3 flow attribution: src_device_id -> src_user_id, a clean FK join,
+// NEVER an src_ip->device guess).
+// lint:allow-deleted — DELIBERATELY no deleted_at filter (the REVIEWED escape, not an
+// incidental substring [8]): a since-revoked/deleted device's HISTORICAL flow must still
+// attribute its user (access_events is an immutable record; src_device_id/src_user_id are
+// plain uuids, not FKs, precisely so they survive the device/user deletion).
+func (q *Queries) GetDeviceAttributionForOrg(ctx context.Context, arg GetDeviceAttributionForOrgParams) (GetDeviceAttributionForOrgRow, error) {
+	row := q.db.QueryRow(ctx, getDeviceAttributionForOrg, arg.ID, arg.OrgID)
+	var i GetDeviceAttributionForOrgRow
+	err := row.Scan(&i.UserID, &i.Kind)
+	return i, err
+}
+
 const getDeviceForUpdate = `-- name: GetDeviceForUpdate :one
 SELECT id, org_id, user_id, node_id, name, platform, public_key, assigned_ip, status, created_at, updated_at, revoked_at, deleted_at, full_tunnel, approved_by, health_blocked, transport, provisioning_mode, provisioned_ranges, revoked_cause, provisioned_ip, revoked_prev_status, provisioned_node_id, kind FROM devices
 WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
@@ -453,29 +481,6 @@ func (q *Queries) GetDeviceForUpdate(ctx context.Context, arg GetDeviceForUpdate
 		&i.Kind,
 	)
 	return i, err
-}
-
-const getDeviceUserForOrg = `-- name: GetDeviceUserForOrg :one
-SELECT user_id FROM devices WHERE id = $1 AND org_id = $2
-`
-
-type GetDeviceUserForOrgParams struct {
-	ID    uuid.UUID `json:"id"`
-	OrgID uuid.UUID `json:"org_id"`
-}
-
-// lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
-// owning user (S7.5.4 v3 flow attribution: src_device_id -> src_user_id, a clean FK join,
-// NEVER an src_ip->device guess).
-// lint:allow-deleted — DELIBERATELY no deleted_at filter (the REVIEWED escape, not an
-// incidental substring [8]): a since-revoked/deleted device's HISTORICAL flow must still
-// attribute its user (access_events is an immutable record; src_device_id/src_user_id are
-// plain uuids, not FKs, precisely so they survive the device/user deletion).
-func (q *Queries) GetDeviceUserForOrg(ctx context.Context, arg GetDeviceUserForOrgParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getDeviceUserForOrg, arg.ID, arg.OrgID)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
 }
 
 const getOrgNode = `-- name: GetOrgNode :one

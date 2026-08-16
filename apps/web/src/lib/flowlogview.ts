@@ -1,40 +1,18 @@
 // Flow logs — the view-model.
+
+import type { AccessEvent as APIAccessEvent } from "./api";
 //
 // ⛔ THE FOURTH UNREACHABLE-SURFACE INSTANCE. `GET …/access-events` and `…/access-log/health`
 // shipped in S7.5.1 and `apps/web` rendered NEITHER — same class as the five idp-sync endpoints
 // S14.14 closed. Neither the old page census nor the founder's list found it; only running the
 // census against the DESIGN did.
 //
-// ⛔ AND THE DESIGN SHOWS A COLUMN THE SERVER DELIBERATELY REFUSES TO FILL. Its SOURCE column reads
-// `alice · 100.90.4.11` — a person and an address. The schema says, in its own words:
-//
-//     GRANT-level attribution (rule_id -> resource/group). device/user are DEFERRED (nil) —
-//     never derived from a racy src_ip lookup.
-//
-// So the user half is not missing data, it is a REFUSED INFERENCE: an IP maps to a device only via
-// a lease that may have moved, and naming the wrong person in a security feed is worse than naming
-// nobody. We render what the server attributes and say why the rest is absent.
+// F07 adds agent identity from the successfully applied gateway artifact. It still refuses the
+// human-trigger inference: current ownership is accountability, not proof that a human initiated
+// a packet. Current display names are labelled current; event-time identity remains the UUID.
 
-export type Decision =
-  "allow" | "deny" | "deny_aggregate" | "terminated" | "gap";
-
-export type AccessEvent = {
-  id: string;
-  created_at: string;
-  seq: number;
-  occurred_at: string;
-  decision: Decision;
-  rule_id?: string | null;
-  node_id?: string | null;
-  src_ip: string;
-  dst_ip: string;
-  dst_resource_id?: string | null;
-  dst_group_id?: string | null;
-  protocol: string;
-  dst_port?: number | null;
-  deny_count?: number | null;
-  window_end?: string | null;
-};
+export type AccessEvent = APIAccessEvent;
+export type Decision = AccessEvent["decision"];
 
 /**
  * ⛔ `gap` IS A FIRST-CLASS VERDICT AND IT IS THE MOST IMPORTANT ONE.
@@ -113,15 +91,34 @@ export function destinationFor(e: AccessEvent): string {
 }
 
 /**
- * ⛔ SOURCE IS AN ADDRESS, NOT A PERSON — see the header. The design pairs a name with the IP; the
- * server refuses to derive one. This returns only what was attributed.
+ * Agent identity is artifact-stamped; human identity is never inferred. Names come from the
+ * current roster, so the UI labels them current instead of rewriting history.
  */
-export function sourceFor(e: AccessEvent): string {
+export function sourceFor(e: AccessEvent, agentName?: string | null): string {
+  if (e.src_agent_id) {
+    const label = agentName
+      ? `${agentName} (current name)`
+      : `agent ${e.src_agent_id.slice(0, 8)} (current name unavailable)`;
+    return `${label} · ${e.src_ip}`;
+  }
   return e.src_ip;
 }
 
 export const ATTRIBUTION_NOTE =
-  "Events are attributed to a source ADDRESS, not to a person. An address maps to a device only through a lease that may since have moved, so naming a user here would be a guess — and a wrong name in a security log is worse than no name.";
+  "Agent identity is recorded only when the successfully applied gateway policy stamped it. Human identity is not inferred from an address or from current ownership.";
+
+export function eventTimeline(e: AccessEvent): string[] {
+  const reason = e.decision_reason?.replace(/_/g, " ") ?? "reason unavailable";
+  const source = e.src_agent_id
+    ? `Source agent ${e.src_agent_id} · configuration revision ${e.src_config_revision ?? "not recorded"}`
+    : `Source ${e.src_ip} · agent identity not recorded`;
+  const applied = e.policy_hash && e.policy_version
+    ? `Gateway ${e.node_id ?? "not recorded"} · applied policy v${e.policy_version} · ${e.policy_hash}`
+    : `Gateway ${e.node_id ?? "not recorded"} · applied policy version not recorded`;
+  const route = `${e.src_ip} → ${e.dst_ip} · ${e.protocol.toUpperCase()}${e.dst_port ? `/${e.dst_port}` : ""} · rule ${e.rule_id ?? "no matching grant"}`;
+  const decision = `${e.decision.toUpperCase()} · ${reason} · ingest sequence ${e.seq} at ${e.created_at}`;
+  return [source, applied, route, decision];
+}
 
 /**
  * ⛔ THE KEYSET CURSOR IS THE INGEST CLOCK, NOT THE OBSERVATION CLOCK — and the schema warns about

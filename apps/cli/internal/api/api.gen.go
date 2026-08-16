@@ -33,6 +33,14 @@ const (
 	Terminated    AccessEventDecision = "terminated"
 )
 
+// Defines values for AccessEventDecisionReason.
+const (
+	EventsDropped   AccessEventDecisionReason = "events_dropped"
+	GrantRevoked    AccessEventDecisionReason = "grant_revoked"
+	MatchedGrant    AccessEventDecisionReason = "matched_grant"
+	NoMatchingGrant AccessEventDecisionReason = "no_matching_grant"
+)
+
 // Defines values for AgentBootstrapRuntimeReleaseBinary.
 const (
 	TunnexAgentRuntime AgentBootstrapRuntimeReleaseBinary = "tunnex-agent-runtime"
@@ -506,8 +514,9 @@ type AcceptInviteRequest struct {
 
 // AccessEvent defines model for AccessEvent.
 type AccessEvent struct {
-	CreatedAt time.Time           `json:"created_at"`
-	Decision  AccessEventDecision `json:"decision"`
+	CreatedAt      time.Time                  `json:"created_at"`
+	Decision       AccessEventDecision        `json:"decision"`
+	DecisionReason *AccessEventDecisionReason `json:"decision_reason,omitempty"`
 
 	// DenyCount >1 for a per-source deny aggregate (port-scan collapse); N for a gap marker.
 	DenyCount     *int                `json:"deny_count,omitempty"`
@@ -519,13 +528,23 @@ type AccessEvent struct {
 	NodeId        *openapi_types.UUID `json:"node_id,omitempty"`
 
 	// OccurredAt Agent-clock flow observation time (NOT the pagination clock).
-	OccurredAt time.Time           `json:"occurred_at"`
-	Protocol   string              `json:"protocol"`
-	RuleId     *openapi_types.UUID `json:"rule_id,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+
+	// PolicyHash Canonical hash of the policy successfully applied when the gateway observed the flow.
+	PolicyHash    *string             `json:"policy_hash,omitempty"`
+	PolicyVersion *int                `json:"policy_version,omitempty"`
+	Protocol      string              `json:"protocol"`
+	RuleId        *openapi_types.UUID `json:"rule_id,omitempty"`
 
 	// Seq Per-org monotonic sequence (tamper-evidence / gap detection).
-	Seq   int64  `json:"seq"`
-	SrcIp string `json:"src_ip"`
+	Seq int64 `json:"seq"`
+
+	// SrcAgentId Present only when the verified source device kind is agent.
+	SrcAgentId *openapi_types.UUID `json:"src_agent_id,omitempty"`
+
+	// SrcConfigRevision Applied managed-agent configuration revision at observation time.
+	SrcConfigRevision *int64 `json:"src_config_revision,omitempty"`
+	SrcIp             string `json:"src_ip"`
 
 	// WindowEnd deny_aggregate window end.
 	WindowEnd *time.Time `json:"window_end,omitempty"`
@@ -533,6 +552,9 @@ type AccessEvent struct {
 
 // AccessEventDecision defines model for AccessEvent.Decision.
 type AccessEventDecision string
+
+// AccessEventDecisionReason defines model for AccessEvent.DecisionReason.
+type AccessEventDecisionReason string
 
 // AccessLogHealth defines model for AccessLogHealth.
 type AccessLogHealth struct {
@@ -2295,7 +2317,10 @@ type StartSsoLoginParamsProvider string
 // ListAccessEventsParams defines parameters for ListAccessEvents.
 type ListAccessEventsParams struct {
 	// DeniesOnly Only deny/deny_aggregate/terminated events (the security feed).
-	DeniesOnly *bool               `form:"denies_only,omitempty" json:"denies_only,omitempty"`
+	DeniesOnly *bool `form:"denies_only,omitempty" json:"denies_only,omitempty"`
+
+	// SrcAgentId Only events attributed by the applied gateway artifact to this verified agent device.
+	SrcAgentId *openapi_types.UUID `form:"src_agent_id,omitempty" json:"src_agent_id,omitempty"`
 	CursorTs   *time.Time          `form:"cursor_ts,omitempty" json:"cursor_ts,omitempty"`
 	CursorId   *openapi_types.UUID `form:"cursor_id,omitempty" json:"cursor_id,omitempty"`
 	Limit      *int                `form:"limit,omitempty" json:"limit,omitempty"`
@@ -7546,6 +7571,22 @@ func NewListAccessEventsRequest(server string, orgId openapi_types.UUID, params 
 		if params.DeniesOnly != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "denies_only", runtime.ParamLocationQuery, *params.DeniesOnly); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SrcAgentId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "src_agent_id", runtime.ParamLocationQuery, *params.SrcAgentId); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

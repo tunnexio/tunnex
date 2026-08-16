@@ -3812,6 +3812,11 @@ export interface components {
             rule_id?: string;
             /** Format: uuid */
             node_id?: string;
+            /**
+             * Format: uuid
+             * @description Present only when the verified source device kind is agent.
+             */
+            src_agent_id?: string;
             src_ip: string;
             dst_ip: string;
             /** Format: uuid */
@@ -3827,6 +3832,16 @@ export interface components {
              * @description deny_aggregate window end.
              */
             window_end?: string;
+            /** @description Canonical hash of the policy successfully applied when the gateway observed the flow. */
+            policy_hash?: string;
+            policy_version?: number;
+            /**
+             * Format: int64
+             * @description Applied managed-agent configuration revision at observation time.
+             */
+            src_config_revision?: number;
+            /** @enum {string} */
+            decision_reason?: "matched_grant" | "no_matching_grant" | "grant_revoked" | "events_dropped";
         };
         AccessLogHealth: {
             /** Format: date-time */
@@ -5322,6 +5337,8 @@ export interface operations {
             query?: {
                 /** @description Only deny/deny_aggregate/terminated events (the security feed). */
                 denies_only?: boolean;
+                /** @description Only events attributed by the applied gateway artifact to this verified agent device. */
+                src_agent_id?: string;
                 cursor_ts?: string;
                 cursor_id?: string;
                 limit?: number;

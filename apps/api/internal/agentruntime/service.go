@@ -75,13 +75,22 @@ func OrganizationOptIn(q *sqlc.Queries, unlocked func() bool) OptInFunc {
 type Service struct {
 	q        *sqlc.Queries
 	optIn    OptInFunc
+	notify   Notifier
 	now      func() time.Time
 	pollTick time.Duration
 }
 
+// Notifier wakes the assigned gateway after an agent's applied configuration
+// revision advances. The gateway's policy artifact is the source of access-log
+// attribution, so waiting for the periodic reconcile would temporarily stamp
+// flows with the previous revision.
+type Notifier interface{ Notify(nodeID uuid.UUID) }
+
 func New(q *sqlc.Queries, optIn OptInFunc) *Service {
 	return &Service{q: q, optIn: optIn, now: time.Now, pollTick: time.Second}
 }
+
+func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
 func (s *Service) Authenticate(ctx context.Context, raw string) (Identity, error) {
 	if s == nil || s.q == nil || !strings.HasPrefix(raw, RuntimeCredentialPrefix) {
@@ -337,6 +346,12 @@ func (s *Service) Report(ctx context.Context, id Identity, appliedRevision, atte
 	}
 	if state.AppliedRevision < appliedRevision || state.LastAttemptedRevision < attemptedRevision {
 		return ErrInvalidReport
+	}
+	// Best-effort invalidation after the durable report. Duplicate notifications
+	// are harmless (the node re-fetches full desired state); same-revision
+	// heartbeats do not create needless recompiles.
+	if s.notify != nil && state.AppliedChanged {
+		s.notify.Notify(state.NodeID)
 	}
 	return nil
 }

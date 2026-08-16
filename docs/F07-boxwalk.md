@@ -1,8 +1,8 @@
 # F07 — Truthful agent audit attribution box-walk
 
-Status: **DRAFT / NOT YET RUN**. This walk runs once after the full F07 source
-slice, review and exact-head local gates are complete. Unit/integration tests are
-SUBSTITUTES, never live-wire satisfaction.
+Status: **READY / NOT YET RUN**. The full F07 source slice, story-end review and
+exact local gates are complete. Unit/integration tests are SUBSTITUTES, never
+live-wire satisfaction; F07 remains In progress until this combined walk passes.
 
 ## Safe scope
 

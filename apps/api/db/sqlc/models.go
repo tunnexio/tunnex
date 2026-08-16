@@ -13,24 +13,29 @@ import (
 )
 
 type AccessEvent struct {
-	ID            uuid.UUID          `json:"id"`
-	OrgID         uuid.UUID          `json:"org_id"`
-	Seq           int64              `json:"seq"`
-	NodeID        pgtype.UUID        `json:"node_id"`
-	OccurredAt    time.Time          `json:"occurred_at"`
-	Decision      string             `json:"decision"`
-	RuleID        pgtype.UUID        `json:"rule_id"`
-	SrcDeviceID   pgtype.UUID        `json:"src_device_id"`
-	SrcUserID     pgtype.UUID        `json:"src_user_id"`
-	SrcIp         string             `json:"src_ip"`
-	DstIp         string             `json:"dst_ip"`
-	DstResourceID pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID    pgtype.UUID        `json:"dst_group_id"`
-	Protocol      string             `json:"protocol"`
-	DstPort       *int32             `json:"dst_port"`
-	DenyCount     int32              `json:"deny_count"`
-	WindowEnd     pgtype.Timestamptz `json:"window_end"`
-	CreatedAt     time.Time          `json:"created_at"`
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	Seq               int64              `json:"seq"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	OccurredAt        time.Time          `json:"occurred_at"`
+	Decision          string             `json:"decision"`
+	RuleID            pgtype.UUID        `json:"rule_id"`
+	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
+	SrcUserID         pgtype.UUID        `json:"src_user_id"`
+	SrcIp             string             `json:"src_ip"`
+	DstIp             string             `json:"dst_ip"`
+	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
+	Protocol          string             `json:"protocol"`
+	DstPort           *int32             `json:"dst_port"`
+	DenyCount         int32              `json:"deny_count"`
+	WindowEnd         pgtype.Timestamptz `json:"window_end"`
+	CreatedAt         time.Time          `json:"created_at"`
+	PolicyHash        *string            `json:"policy_hash"`
+	PolicyVersion     *int32             `json:"policy_version"`
+	SrcConfigRevision *int64             `json:"src_config_revision"`
+	SrcKind           *string            `json:"src_kind"`
+	DecisionReason    *string            `json:"decision_reason"`
 }
 
 type AgentBootstrapToken struct {

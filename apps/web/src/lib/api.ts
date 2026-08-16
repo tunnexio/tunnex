@@ -21,6 +21,7 @@ export type Role = Member["role"];
 export type SsoConfigView = components["schemas"]["SsoConfigView"];
 export type ResizeConflict = components["schemas"]["ResizeConflict"];
 export type AuditLogEntry = components["schemas"]["AuditLogEntry"];
+export type AccessEvent = components["schemas"]["AccessEvent"];
 // S7.4a — Zero Trust admin UI DTOs.
 export type UserGroup = components["schemas"]["UserGroup"];
 export type GroupMember = components["schemas"]["GroupMember"];

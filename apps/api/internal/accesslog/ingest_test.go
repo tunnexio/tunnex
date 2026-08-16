@@ -27,13 +27,18 @@ func (s stubGrants) ResolveGrant(_ context.Context, _ uuid.UUID, ruleID uuid.UUI
 type stubDevices struct {
 	user  *uuid.UUID
 	known uuid.UUID
+	kind  string
 }
 
-func (s stubDevices) ResolveUser(_ context.Context, _ uuid.UUID, deviceID uuid.UUID) (*uuid.UUID, bool) {
+func (s stubDevices) Resolve(_ context.Context, _ uuid.UUID, deviceID uuid.UUID) (*uuid.UUID, string, bool) {
 	if deviceID == s.known {
-		return s.user, true
+		kind := s.kind
+		if kind == "" {
+			kind = "agent"
+		}
+		return s.user, kind, true
 	}
-	return nil, false // unknown / foreign device id
+	return nil, "", false // unknown / foreign device id
 }
 
 // TestIngestStampsDeviceAndJoinsUser (S7.5.4 v3): an agent-stamped src_device_id is
@@ -47,9 +52,11 @@ func TestIngestStampsDeviceAndJoinsUser(t *testing.T) {
 	ing := NewIngester(pool, stubGrants{}, stubDevices{user: &user, known: dev}, nil, nil)
 
 	now := time.Now().UTC()
+	revision := int64(4)
 	batch := []WireEvent{
-		{OccurredAt: now, Verdict: "allow", SrcIP: "10.99.0.10", SrcDeviceID: dev.String(), DstIP: "10.0.5.5", Protocol: "tcp"},
+		{OccurredAt: now, Verdict: "allow", PolicyHash: "abcdef123456", PolicyVersion: 7, SrcIP: "10.99.0.10", SrcDeviceID: dev.String(), SrcDeviceKind: "agent", SrcConfigRevision: &revision, DstIP: "10.0.5.5", Protocol: "tcp"},
 		{OccurredAt: now, Verdict: "allow", SrcIP: "10.99.0.11", SrcDeviceID: foreign.String(), DstIP: "10.0.5.6", Protocol: "tcp"},
+		{OccurredAt: now, Verdict: "future_verdict", SrcIP: "10.99.0.12", DstIP: "10.0.5.7", Protocol: "tcp"},
 	}
 	if err := ing.IngestBatch(ctx, org, node, batch, 0); err != nil {
 		t.Fatalf("ingest: %v", err)
@@ -66,12 +73,18 @@ func TestIngestStampsDeviceAndJoinsUser(t *testing.T) {
 	if known.SrcDeviceID == nil || *known.SrcDeviceID != dev || known.SrcUserID == nil || *known.SrcUserID != user {
 		t.Fatalf("known device must stamp device + join user, got %+v", known)
 	}
+	if known.SrcKind != "agent" || known.PolicyHash != "abcdef123456" || known.PolicyVersion != 7 || known.SrcConfigRevision == nil || *known.SrcConfigRevision != 4 || known.DecisionReason != ReasonMatchedGrant {
+		t.Fatalf("applied snapshot metadata must round-trip exactly, got %+v", known)
+	}
 	// [9]: an UNVERIFIED/foreign device id is DROPPED (not persisted) — both device + user nil,
 	// so the immutable log never holds an id that doesn't belong to this org (cross-tenant seed).
 	_ = foreign
 	unknown := bySrc["10.99.0.11"]
 	if unknown.SrcDeviceID != nil || unknown.SrcUserID != nil {
 		t.Fatalf("unverified device: BOTH device + user must be dropped to unattributed, got %+v", unknown)
+	}
+	if _, exists := bySrc["10.99.0.12"]; exists {
+		t.Fatal("unknown verdict must be rejected, never silently reclassified as allow")
 	}
 }
 
@@ -183,6 +196,33 @@ func TestIngestDenyUnderThresholdNotAggregated(t *testing.T) {
 		if r.Decision != string(DecisionDeny) {
 			t.Fatalf("want plain deny, got %q", r.Decision)
 		}
+	}
+}
+
+func TestDenyAggregationNeverCrossesAppliedSnapshot(t *testing.T) {
+	agent, user := uuid.New(), uuid.New()
+	r1, r2 := int64(4), int64(5)
+	ing := NewIngester(nil, nil, stubDevices{user: &user, known: agent}, nil, nil)
+	batch := make([]WireEvent, 0, 12)
+	for i := 0; i < 6; i++ {
+		batch = append(batch,
+			WireEvent{OccurredAt: time.Unix(int64(i), 0), Verdict: "deny", SrcIP: "10.99.0.7", SrcDeviceID: agent.String(), SrcDeviceKind: "agent", SrcConfigRevision: &r1, PolicyHash: "aaaaaaaaaaaa", PolicyVersion: 7},
+			WireEvent{OccurredAt: time.Unix(int64(i+10), 0), Verdict: "deny", SrcIP: "10.99.0.7", SrcDeviceID: agent.String(), SrcDeviceKind: "agent", SrcConfigRevision: &r2, PolicyHash: "bbbbbbbbbbbb", PolicyVersion: 7},
+		)
+	}
+	got := ing.aggregate(context.Background(), uuid.New(), uuid.New(), batch)
+	if len(got) != 2 {
+		t.Fatalf("different applied snapshots must form separate aggregates, got %+v", got)
+	}
+	seen := map[string]int64{}
+	for _, e := range got {
+		if e.Decision != DecisionDenyAggregate || e.DenyCount != 6 || e.SrcConfigRevision == nil {
+			t.Fatalf("bad snapshot aggregate: %+v", e)
+		}
+		seen[e.PolicyHash] = *e.SrcConfigRevision
+	}
+	if seen["aaaaaaaaaaaa"] != 4 || seen["bbbbbbbbbbbb"] != 5 {
+		t.Fatalf("snapshot attribution mixed across aggregate: %v", seen)
 	}
 }
 

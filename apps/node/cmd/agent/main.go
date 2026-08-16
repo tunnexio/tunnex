@@ -884,13 +884,11 @@ func startFlowLog(ctx context.Context, group int, client *control.Client, egress
 		logger.Error("flowlog_source_failed", slog.Int("group", group), slog.String("error", err.Error()))
 		return
 	}
-	pump := flowlog.NewPump(src, flowlog.NewBuffer(0), func() string {
-		_, hash, _, _ := egressMgr.AppliedStatus()
-		return hash
-	}, func(srcIP string) string {
-		// v3 (S7.5.4): stamp the source device from the applied artifact's /32->device
-		// map — authoritative, never an src_ip->device DB guess.
-		return egressMgr.DeviceForIP(srcIP)
+	pump := flowlog.NewPump(src, flowlog.NewBuffer(0), func(srcIP string) flowlog.Attribution {
+		// F07: one locked event-time snapshot of the successfully applied
+		// policy and its complete subject map. Never mix desired identity with
+		// a last-good hash after an apply failure.
+		return egressMgr.FlowAttribution(srcIP)
 	})
 	go pump.Run(ctx)
 	go flowlog.RunDrain(ctx, pump, client, getdur("TUNNEX_FLOWLOG_INTERVAL", flowlog.DefaultDrainInterval), logger)

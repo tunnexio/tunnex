@@ -1,10 +1,31 @@
 # F07 — Truthful agent audit attribution decisions
 
-Status: **IN PROGRESS — COMMIT-ONE PAPER**. This paper starts from the exact
-completed F06 content tip `44568f6`. Product code has not started on this
-branch. The implementation must stay inside the existing compiled-policy,
-gateway flow-log, access-event ingest, query API, and released Access Events
-page.
+Status: **IMPLEMENTED / LOCAL REVIEW AND GATES PASS / LIVE WALK PENDING**.
+This story starts from the exact completed F06 content tip `44568f6` and stays
+inside the existing compiled-policy, gateway flow-log, access-event ingest,
+query API, and released Access Events page. It remains In progress until the
+single combined AWS DEV box-walk passes.
+
+## Story-end review and local proof
+
+The security/integrity, concurrency/state, and migration/compatibility review
+found and folded four concrete defects before the source freeze:
+
+1. a runtime applied-revision report did not wake the assigned gateway, so the
+   artifact could temporarily retain the prior configuration revision;
+2. deny aggregation could combine observations from two applied policy/config
+   snapshots into one historical row;
+3. an unsupported-policy synthetic deny-all could stamp last-good attribution
+   even though that artifact was not deciding the packet; and
+4. the first notifier query fold duplicated the runtime org-scope contract;
+   the authenticated device row lock is now separate while the authoritative
+   org/kind/deleted checks remain on the update.
+
+Post-fold focused tests and the exact local composite gates pass: generated
+artifacts, migration 0096 on fresh PostgreSQL, both API editions, both builds,
+Linux node tests with NET_ADMIN, helper tests and cross-compiles, and the full
+web typecheck/1060-test/production-build gate. These are local proofs, not a
+substitute for the live box-walk.
 
 ## Acceptance question
 
@@ -46,6 +67,7 @@ historical table and its typed query/store contract:
 - applied policy hash;
 - applied policy protocol version;
 - source agent configuration revision;
+- source device kind, so agent attribution is preserved at event time;
 - a bounded decision-reason enum.
 
 The existing `node_id`, `rule_id`, source/destination identity columns, route

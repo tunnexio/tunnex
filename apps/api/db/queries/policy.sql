@@ -146,10 +146,12 @@ RETURNING id, org_id;
 -- must not participate in policy (as a source OR a destination) even if the device
 -- itself was never revoked. NOT health_blocked (S7.5.3): a health-blocked device's
 -- /32 leaves the compiled allow-sets (source AND destination) the same way.
-SELECT d.id, d.user_id, d.node_id, d.assigned_ip, d.kind
+SELECT d.id, d.user_id, d.node_id, d.assigned_ip, d.kind,
+       ars.applied_revision AS agent_config_revision
 FROM devices d
 JOIN users u ON u.id = d.user_id
 JOIN memberships mem ON mem.org_id = d.org_id AND mem.user_id = d.user_id
+LEFT JOIN agent_runtime_state ars ON ars.device_id = d.id AND d.kind = 'agent'
 WHERE d.org_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND u.status = 'active' AND u.deleted_at IS NULL
