@@ -188,6 +188,12 @@ func (q *Queries) CreateUserGroup(ctx context.Context, arg CreateUserGroupParams
 const deleteExpiredGrants = `-- name: DeleteExpiredGrants :many
 DELETE FROM policy_rules
 WHERE expires_at IS NOT NULL AND expires_at <= now()
+  AND NOT EXISTS (
+      SELECT 1 FROM agent_access_requests ar
+      WHERE ar.org_id=policy_rules.org_id
+        AND ar.policy_rule_id=policy_rules.id
+        AND ar.state='approved'
+  )
 RETURNING id, org_id
 `
 
@@ -784,7 +790,7 @@ const setOrgZeroTrustMode = `-- name: SetOrgZeroTrustMode :one
 UPDATE organizations
 SET zero_trust_mode = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
 `
 
 type SetOrgZeroTrustModeParams struct {
@@ -812,6 +818,7 @@ func (q *Queries) SetOrgZeroTrustMode(ctx context.Context, arg SetOrgZeroTrustMo
 		&i.MaxAgentIdentities,
 		&i.ManagedAgentRuntimeEnabled,
 		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }

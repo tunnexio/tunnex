@@ -29,6 +29,7 @@ type Querier interface {
 	// lint:cross-org — site_id is org-checked by the caller (GetSite) before this insert; site_subnets
 	// has no org_id column of its own (it inherits the site's org via the FK).
 	AddSiteSubnet(ctx context.Context, arg AddSiteSubnetParams) (SiteSubnet, error)
+	ApproveAgentAccessRequest(ctx context.Context, arg ApproveAgentAccessRequestParams) (AgentAccessRequest, error)
 	// The browser leg binds the human's identity to the pending device code.
 	ApproveCliDeviceCode(ctx context.Context, arg ApproveCliDeviceCodeParams) (int64, error)
 	// S7.3: pending -> active, recording the approver (approved_by). Only a PENDING device
@@ -70,6 +71,7 @@ type Querier interface {
 	// never derive colliding seq (review #1). flow_seq lives on organizations and is NEVER swept,
 	// so seq is monotonic + sweep-proof (review #6). The batch's seqs are (returned-n+1)..returned.
 	BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) (int64, error)
+	CancelAgentAccessRequest(ctx context.Context, arg CancelAgentAccessRequestParams) (AgentAccessRequest, error)
 	ChangeMemberRole(ctx context.Context, arg ChangeMemberRoleParams) (Membership, error)
 	// lint:cross-org — the DOWNGRADE-RELEASE sweep (the enforcement mirror of
 	// unlock-then-opt-in): when the device-health feature is OFF (open build), NO
@@ -178,6 +180,8 @@ type Querier interface {
 	CountDevicesForUserCap(ctx context.Context, arg CountDevicesForUserCapParams) (int64, error)
 	// Any origin — the refuse-unless-empty guard (D1) must see a hand-added member too.
 	CountGroupMembers(ctx context.Context, arg CountGroupMembersParams) (int64, error)
+	CountLiveAgentAccessRequests(ctx context.Context, orgID uuid.UUID) (int64, error)
+	CountLiveAgentAccessRequestsByDevice(ctx context.Context, arg CountLiveAgentAccessRequestsByDeviceParams) (int64, error)
 	// lint:cross-org — keyed by node_id, which the caller resolved from an org-scoped node row.
 	// ⛔ THE PREDICATE THAT MAKES A REVOKE REFUSABLE (S12.12 D1). Exactly the set RevokeDevicesForNode would
 	// sweep, asked BEFORE the sweep instead of after it. The two must stay identical: a count that is narrower
@@ -262,6 +266,8 @@ type Querier interface {
 	// "does it have one now" — otherwise deleting every account reopens admin minting, which is the same
 	// re-open CountOrganizationsEver exists to prevent.
 	CountUsers(ctx context.Context) (int64, error)
+	// F10 approval-gated temporary access workflow.
+	CreateAgentAccessRequest(ctx context.Context, arg CreateAgentAccessRequestParams) (AgentAccessRequest, error)
 	CreateAgentBootstrapToken(ctx context.Context, arg CreateAgentBootstrapTokenParams) (AgentBootstrapToken, error)
 	CreateAgentGroup(ctx context.Context, arg CreateAgentGroupParams) (AgentGroup, error)
 	CreateAgentPolicyTemplate(ctx context.Context, arg CreateAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
@@ -444,6 +450,7 @@ type Querier interface {
 	// The org join is the tenant boundary; device ids are globally unique, but a
 	// runtime bootstrap must never turn knowledge of another org's UUID into state.
 	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (AgentRuntimeState, error)
+	ExpireAgentAccessRequest(ctx context.Context, arg ExpireAgentAccessRequestParams) (AgentAccessRequest, error)
 	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
 	ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAgentWireGuardRotationParams) error
 	// S7.5.4: move a temporary grant's window IN PLACE (never delete+recreate — that would
@@ -460,6 +467,10 @@ type Querier interface {
 	GetActiveAgentPolicyTemplateAssignmentForUpdate(ctx context.Context, arg GetActiveAgentPolicyTemplateAssignmentForUpdateParams) (AgentPolicyTemplateAssignment, error)
 	// Active = not revoked and not expired. Expired/revoked rows fail auth closed.
 	GetActiveCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
+	GetAgentAccessOperation(ctx context.Context, arg GetAgentAccessOperationParams) (AgentAccessRequestOperation, error)
+	GetAgentAccessRequest(ctx context.Context, arg GetAgentAccessRequestParams) (AgentAccessRequest, error)
+	GetAgentAccessRequestByPolicyRule(ctx context.Context, arg GetAgentAccessRequestByPolicyRuleParams) (AgentAccessRequest, error)
+	GetAgentAccessRequestForUpdate(ctx context.Context, arg GetAgentAccessRequestForUpdateParams) (AgentAccessRequest, error)
 	// lint:cross-org — the public redemption credential is an unguessable hash; org is learned from the token row.
 	GetAgentBootstrapToken(ctx context.Context, tokenHash []byte) (AgentBootstrapToken, error)
 	GetAgentGovernanceForUpdate(ctx context.Context, arg GetAgentGovernanceForUpdateParams) (GetAgentGovernanceForUpdateRow, error)
@@ -667,6 +678,8 @@ type Querier interface {
 	// Same plain insert as InsertAccessEvent (seq is unique via the counter; the unique index is
 	// the fail-LOUD backstop).
 	InsertAccessEventBatch(ctx context.Context, arg []InsertAccessEventBatchParams) *InsertAccessEventBatchBatchResults
+	InsertAgentAccessOperation(ctx context.Context, arg InsertAgentAccessOperationParams) (int64, error)
+	InsertAgentAccessRequestEvent(ctx context.Context, arg InsertAgentAccessRequestEventParams) (AgentAccessRequestEvent, error)
 	// audit_logs is append-only: there are intentionally NO update or delete queries
 	// here, and the DB enforces it (see 0002 triggers).
 	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (AuditLog, error)
@@ -786,6 +799,8 @@ type Querier interface {
 	//   the WG fleet on a hub member). The OVPN device's /32 reaches the data plane via the compiled
 	//   artifact + the OVPN roster (which now shares the identity gate), never this list.
 	ListActiveWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListActiveWireGuardPeersForNodeRow, error)
+	ListAgentAccessRequestEvents(ctx context.Context, arg ListAgentAccessRequestEventsParams) ([]AgentAccessRequestEvent, error)
+	ListAgentAccessRequests(ctx context.Context, arg ListAgentAccessRequestsParams) ([]AgentAccessRequest, error)
 	ListAgentGroupMembers(ctx context.Context, arg ListAgentGroupMembersParams) ([]ListAgentGroupMembersRow, error)
 	ListAgentGroups(ctx context.Context, orgID uuid.UUID) ([]AgentGroup, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
@@ -861,6 +876,7 @@ type Querier interface {
 	// middle of an operator's device list with no owner and no posture.
 	ListDevicesByUser(ctx context.Context, arg ListDevicesByUserParams) ([]ListDevicesByUserRow, error)
 	ListDomainClaims(ctx context.Context, orgID uuid.UUID) ([]DomainClaim, error)
+	ListDueAgentAccessRequestsForUpdate(ctx context.Context) ([]AgentAccessRequest, error)
 	// The poller's work-list: every org/provider with sync turned on. Deliberately CROSS-ORG — the
 	// background poller iterates all tenants; each config is reconciled org-scoped downstream.
 	// lint:cross-org
@@ -1131,6 +1147,7 @@ type Querier interface {
 	//              tier only, never escalates — a stable known-bad mapping, not a worsening outage)
 	// advance_clock also drives whether last_sync_error is cleared vs set.
 	RecordIdpSyncResult(ctx context.Context, arg RecordIdpSyncResultParams) error
+	RejectAgentAccessRequest(ctx context.Context, arg RejectAgentAccessRequestParams) (AgentAccessRequest, error)
 	// S7.3: pending -> revoked, FREEING the held pool IP (assigned_ip=NULL) so it returns to
 	// the pool for reuse (D1b — the same release RevokeDevice does). Only a PENDING device
 	// can be rejected. Returns node_id for the (own-node) push.
@@ -1224,6 +1241,7 @@ type Querier interface {
 	// a user coming back — reactivation reverses its own act and no one else's.
 	// lint:cross-org — keyed by user + org inside the org-scoped reactivate transaction.
 	RestoreOVPNCertsForReactivatedUser(ctx context.Context, arg RestoreOVPNCertsForReactivatedUserParams) ([]string, error)
+	RevokeAgentAccessRequest(ctx context.Context, arg RevokeAgentAccessRequestParams) (AgentAccessRequest, error)
 	// The SWEEP: password reset and account deactivation kill every live CLI
 	// credential exactly like they kill sessions (a surviving credential would be a
 	// back door around the sweep).
@@ -1356,6 +1374,9 @@ type Querier interface {
 	SetOrgOVPNEnabled(ctx context.Context, arg SetOrgOVPNEnabledParams) (Organization, error)
 	// ── org enforcement mode ────────────────────────────────────────────────────────
 	SetOrgZeroTrustMode(ctx context.Context, arg SetOrgZeroTrustModeParams) (Organization, error)
+	// F10 unlock-then-opt-in. The JIT service refuses disable while pending or
+	// approved requests exist.
+	SetOrganizationAgentJITAccessEnabled(ctx context.Context, arg SetOrganizationAgentJITAccessEnabledParams) (Organization, error)
 	// F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
 	// which refuses while a live assignment exists.
 	SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (Organization, error)

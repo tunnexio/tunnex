@@ -137,6 +137,12 @@ RETURNING *;
 -- extend rescued (expires_at moved to the future) no longer matches expires_at <= now().
 DELETE FROM policy_rules
 WHERE expires_at IS NOT NULL AND expires_at <= now()
+  AND NOT EXISTS (
+      SELECT 1 FROM agent_access_requests ar
+      WHERE ar.org_id=policy_rules.org_id
+        AND ar.policy_rule_id=policy_rules.id
+        AND ar.state='approved'
+  )
 RETURNING id, org_id;
 
 -- ── compiler inputs ─────────────────────────────────────────────────────────────

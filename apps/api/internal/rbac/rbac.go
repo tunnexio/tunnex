@@ -111,6 +111,11 @@ const (
 	// group/template administration. Applying a template still separately
 	// requires policy:manage and agent:grant_access.
 	PermAgentTemplateManage Permission = "agent_template:manage"
+	// F10 separates asking for temporary access from approving it. Scoped agent
+	// owners/managers receive request authority relationally; only owner/admin
+	// roles hold organization-wide approval authority.
+	PermAgentAccessRequest Permission = "agent_access:request"
+	PermAgentAccessApprove Permission = "agent_access:approve"
 )
 
 // Roles.
@@ -175,6 +180,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentGrantAccess:      true,
 		PermAgentRevoke:           true,
 		PermAgentTemplateManage:   true,
+		PermAgentAccessRequest:    true,
+		PermAgentAccessApprove:    true,
 	},
 	RoleOwner: {
 		PermOrgView:               true,
@@ -202,6 +209,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentGrantAccess:      true,
 		PermAgentRevoke:           true,
 		PermAgentTemplateManage:   true,
+		PermAgentAccessRequest:    true,
+		PermAgentAccessApprove:    true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org

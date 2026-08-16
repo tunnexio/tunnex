@@ -133,7 +133,7 @@ func (s apiServer) requireAgentPermission(ctx context.Context, orgID, deviceID o
 	if rbac.Can(role, permission) {
 		return nil
 	}
-	if permission != rbac.PermAgentViewPrivileged && permission != rbac.PermAgentManage && permission != rbac.PermAgentRevoke {
+	if permission != rbac.PermAgentViewPrivileged && permission != rbac.PermAgentManage && permission != rbac.PermAgentRevoke && permission != rbac.PermAgentAccessRequest {
 		return apierr.New(403, "forbidden", "you may not access this agent")
 	}
 	if s.devices == nil {
@@ -143,7 +143,7 @@ func (s apiServer) requireAgentPermission(ctx context.Context, orgID, deviceID o
 	if err != nil {
 		return err
 	}
-	allowed := scope.Owner || (scope.Manager && (permission == rbac.PermAgentViewPrivileged || permission == rbac.PermAgentManage))
+	allowed := scope.Owner || (scope.Manager && (permission == rbac.PermAgentViewPrivileged || permission == rbac.PermAgentManage || permission == rbac.PermAgentAccessRequest))
 	if !allowed {
 		return apierr.New(403, "forbidden", "you may not access this agent")
 	}

@@ -1,6 +1,6 @@
 # F10 — Just-in-time agent access decisions
 
-Status: **decisions locked; product implementation not started**.
+Status: **In progress — decisions locked; workflow model and core service implemented**.
 
 ## Customer outcome
 
@@ -186,8 +186,8 @@ rendered.
 ### D11 — Migration and rollback preserve every existing grant
 
 Migration `0098` adds the organization flag, request/event tables, tenant-scoped
-FKs/indexes/checks and the optional request binding on `policy_rules`. Existing
-rules are untouched and remain unbound. Up is valid with existing permanent,
+FKs/indexes/checks and a request-owned reference to the materialized policy rule.
+Existing rules are untouched and remain unbound. Up is valid with existing permanent,
 temporary, F09-managed and machine-managed rules.
 
 Down succeeds only when every organization opt-in is off and all F10 request/event

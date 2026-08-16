@@ -38,6 +38,54 @@ type AccessEvent struct {
 	DecisionReason    *string            `json:"decision_reason"`
 }
 
+type AgentAccessRequest struct {
+	ID                       uuid.UUID          `json:"id"`
+	OrgID                    uuid.UUID          `json:"org_id"`
+	DeviceID                 uuid.UUID          `json:"device_id"`
+	DstKind                  string             `json:"dst_kind"`
+	DstResourceID            pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID               pgtype.UUID        `json:"dst_group_id"`
+	DstSiteID                pgtype.UUID        `json:"dst_site_id"`
+	DstK8sServiceID          pgtype.UUID        `json:"dst_k8s_service_id"`
+	Reason                   string             `json:"reason"`
+	RequestedDurationSeconds int32              `json:"requested_duration_seconds"`
+	State                    string             `json:"state"`
+	RequestedByUserID        uuid.UUID          `json:"requested_by_user_id"`
+	RequestedAt              time.Time          `json:"requested_at"`
+	ApprovedByUserID         pgtype.UUID        `json:"approved_by_user_id"`
+	ApprovedAt               pgtype.Timestamptz `json:"approved_at"`
+	ApprovedExpiresAt        pgtype.Timestamptz `json:"approved_expires_at"`
+	RejectedByUserID         pgtype.UUID        `json:"rejected_by_user_id"`
+	RejectedAt               pgtype.Timestamptz `json:"rejected_at"`
+	RejectionReason          *string            `json:"rejection_reason"`
+	CancelledByUserID        pgtype.UUID        `json:"cancelled_by_user_id"`
+	CancelledAt              pgtype.Timestamptz `json:"cancelled_at"`
+	RevokedByUserID          pgtype.UUID        `json:"revoked_by_user_id"`
+	RevokedAt                pgtype.Timestamptz `json:"revoked_at"`
+	PolicyRuleID             pgtype.UUID        `json:"policy_rule_id"`
+	UpdatedAt                time.Time          `json:"updated_at"`
+}
+
+type AgentAccessRequestEvent struct {
+	ID          uuid.UUID   `json:"id"`
+	OrgID       uuid.UUID   `json:"org_id"`
+	RequestID   uuid.UUID   `json:"request_id"`
+	State       string      `json:"state"`
+	ActorUserID pgtype.UUID `json:"actor_user_id"`
+	ActorSystem *string     `json:"actor_system"`
+	Metadata    []byte      `json:"metadata"`
+	CreatedAt   time.Time   `json:"created_at"`
+}
+
+type AgentAccessRequestOperation struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	RequestID      uuid.UUID `json:"request_id"`
+	Operation      string    `json:"operation"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	ParameterHash  string    `json:"parameter_hash"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 type AgentBootstrapToken struct {
 	ID               uuid.UUID          `json:"id"`
 	OrgID            uuid.UUID          `json:"org_id"`
@@ -752,6 +800,7 @@ type Organization struct {
 	MaxAgentIdentities          *int32             `json:"max_agent_identities"`
 	ManagedAgentRuntimeEnabled  bool               `json:"managed_agent_runtime_enabled"`
 	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
+	AgentJitAccessEnabled       bool               `json:"agent_jit_access_enabled"`
 }
 
 type OvpnClientCert struct {
