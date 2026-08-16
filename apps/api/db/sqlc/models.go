@@ -51,6 +51,82 @@ type AgentBootstrapToken struct {
 	CreatedAt        time.Time          `json:"created_at"`
 }
 
+type AgentGroup struct {
+	ID          uuid.UUID          `json:"id"`
+	OrgID       uuid.UUID          `json:"org_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+type AgentGroupMember struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	AgentGroupID    uuid.UUID `json:"agent_group_id"`
+	DeviceID        uuid.UUID `json:"device_id"`
+	CreatedByUserID uuid.UUID `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type AgentPolicyTemplate struct {
+	ID          uuid.UUID          `json:"id"`
+	OrgID       uuid.UUID          `json:"org_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+type AgentPolicyTemplateAssignment struct {
+	ID                   uuid.UUID          `json:"id"`
+	OrgID                uuid.UUID          `json:"org_id"`
+	AgentGroupID         uuid.UUID          `json:"agent_group_id"`
+	TemplateID           uuid.UUID          `json:"template_id"`
+	TemplateVersionID    uuid.UUID          `json:"template_version_id"`
+	State                string             `json:"state"`
+	PreviewDigest        string             `json:"preview_digest"`
+	AppliedByUserID      uuid.UUID          `json:"applied_by_user_id"`
+	PreviousAssignmentID pgtype.UUID        `json:"previous_assignment_id"`
+	AppliedAt            time.Time          `json:"applied_at"`
+	EndedAt              pgtype.Timestamptz `json:"ended_at"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+}
+
+type AgentPolicyTemplateRuleBinding struct {
+	OrgID                 uuid.UUID `json:"org_id"`
+	AssignmentID          uuid.UUID `json:"assignment_id"`
+	TemplateVersionItemID uuid.UUID `json:"template_version_item_id"`
+	PolicyRuleID          uuid.UUID `json:"policy_rule_id"`
+	CreatedAt             time.Time `json:"created_at"`
+}
+
+type AgentPolicyTemplateVersion struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	TemplateID      uuid.UUID `json:"template_id"`
+	Version         int32     `json:"version"`
+	CreatedByUserID uuid.UUID `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type AgentPolicyTemplateVersionItem struct {
+	ID                uuid.UUID   `json:"id"`
+	OrgID             uuid.UUID   `json:"org_id"`
+	TemplateVersionID uuid.UUID   `json:"template_version_id"`
+	Ordinal           int32       `json:"ordinal"`
+	DstKind           string      `json:"dst_kind"`
+	DstResourceID     pgtype.UUID `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID `json:"dst_group_id"`
+	DstSiteID         pgtype.UUID `json:"dst_site_id"`
+	DstK8sServiceID   pgtype.UUID `json:"dst_k8s_service_id"`
+	Protocol          string      `json:"protocol"`
+	PortLow           *int32      `json:"port_low"`
+	PortHigh          *int32      `json:"port_high"`
+	CreatedAt         time.Time   `json:"created_at"`
+}
+
 // F01 metadata keyed by the canonical agent device; owner/status/telemetry are deliberately not duplicated here.
 type AgentProfile struct {
 	DeviceID    uuid.UUID `json:"device_id"`
@@ -663,20 +739,21 @@ type OrgMfa struct {
 }
 
 type Organization struct {
-	ID                         uuid.UUID          `json:"id"`
-	Name                       string             `json:"name"`
-	Slug                       string             `json:"slug"`
-	CreatedAt                  time.Time          `json:"created_at"`
-	UpdatedAt                  time.Time          `json:"updated_at"`
-	DeletedAt                  pgtype.Timestamptz `json:"deleted_at"`
-	MaxDevicesPerUser          int32              `json:"max_devices_per_user"`
-	PoolCidr                   string             `json:"pool_cidr"`
-	ZeroTrustMode              string             `json:"zero_trust_mode"`
-	DeviceApproval             string             `json:"device_approval"`
-	FlowSeq                    int64              `json:"flow_seq"`
-	OvpnEnabled                bool               `json:"ovpn_enabled"`
-	MaxAgentIdentities         *int32             `json:"max_agent_identities"`
-	ManagedAgentRuntimeEnabled bool               `json:"managed_agent_runtime_enabled"`
+	ID                          uuid.UUID          `json:"id"`
+	Name                        string             `json:"name"`
+	Slug                        string             `json:"slug"`
+	CreatedAt                   time.Time          `json:"created_at"`
+	UpdatedAt                   time.Time          `json:"updated_at"`
+	DeletedAt                   pgtype.Timestamptz `json:"deleted_at"`
+	MaxDevicesPerUser           int32              `json:"max_devices_per_user"`
+	PoolCidr                    string             `json:"pool_cidr"`
+	ZeroTrustMode               string             `json:"zero_trust_mode"`
+	DeviceApproval              string             `json:"device_approval"`
+	FlowSeq                     int64              `json:"flow_seq"`
+	OvpnEnabled                 bool               `json:"ovpn_enabled"`
+	MaxAgentIdentities          *int32             `json:"max_agent_identities"`
+	ManagedAgentRuntimeEnabled  bool               `json:"managed_agent_runtime_enabled"`
+	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
 }
 
 type OvpnClientCert struct {
@@ -737,6 +814,7 @@ type PolicyRule struct {
 	ManagedByMachine pgtype.UUID        `json:"managed_by_machine"`
 	SrcDeviceID      pgtype.UUID        `json:"src_device_id"`
 	DstK8sClusterID  pgtype.UUID        `json:"dst_k8s_cluster_id"`
+	SrcAgentGroupID  pgtype.UUID        `json:"src_agent_group_id"`
 }
 
 type PoolVipOwnershipDelivery struct {

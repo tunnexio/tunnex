@@ -824,6 +824,10 @@ func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot,
 	if err != nil {
 		return Snapshot{}, err
 	}
+	agentGroupMembers, err := s.q.ListActiveAgentGroupMembersForOrg(ctx, orgID)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	siteSubnets, err := s.q.ListSiteSubnetsForOrg(ctx, orgID) // S8.1: dst_kind='site' resolution input
 	if err != nil {
 		return Snapshot{}, err
@@ -833,11 +837,12 @@ func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot,
 		snap.Rules = append(snap.Rules, Rule{
 			ID:      r.ID,
 			SrcKind: r.SrcKind, SrcGroupID: fromPgUUID(r.SrcGroupID), SrcUserID: fromPgUUID(r.SrcUserID),
-			SrcSiteID:     fromPgUUID(r.SrcSiteID),   // S8.2: src_kind='site' resolution
-			SrcCIDR:       derefString(r.SrcCidr),    // S8.7: src_kind='cidr' resolution
-			SrcDeviceID:   fromPgUUID(r.SrcDeviceID), // S15.3: src_kind='agent' resolution
-			DstKind:       r.DstKind,
-			DstResourceID: fromPgUUID(r.DstResourceID), DstGroupID: fromPgUUID(r.DstGroupID),
+			SrcSiteID:       fromPgUUID(r.SrcSiteID),       // S8.2: src_kind='site' resolution
+			SrcCIDR:         derefString(r.SrcCidr),        // S8.7: src_kind='cidr' resolution
+			SrcDeviceID:     fromPgUUID(r.SrcDeviceID),     // S15.3: src_kind='agent' resolution
+			SrcAgentGroupID: fromPgUUID(r.SrcAgentGroupID), // F09: active agent-group resolution
+			DstKind:         r.DstKind,
+			DstResourceID:   fromPgUUID(r.DstResourceID), DstGroupID: fromPgUUID(r.DstGroupID),
 			DstSiteID:       fromPgUUID(r.DstSiteID),
 			DstK8sServiceID: fromPgUUID(r.DstK8sServiceID), // S10.3: dst_kind='k8s_service' resolution
 			Disabled:        r.Disabled,                    // F3: carried to the compiler, which OWNS the skip
@@ -874,6 +879,11 @@ func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot,
 	}
 	for _, m := range members {
 		snap.Memberships = append(snap.Memberships, Membership{GroupID: m.GroupID, UserID: m.UserID})
+	}
+	for _, m := range agentGroupMembers {
+		snap.AgentGroupMemberships = append(snap.AgentGroupMemberships, AgentGroupMembership{
+			GroupID: m.AgentGroupID, DeviceID: m.DeviceID,
+		})
 	}
 	for _, d := range devices {
 		ip := ""

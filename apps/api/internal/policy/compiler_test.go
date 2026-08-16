@@ -182,6 +182,42 @@ func TestRevokedDeviceLeavesCompiledOutput(t *testing.T) {
 	}
 }
 
+func TestAgentGroupSourceExpandsOnlyCurrentMembers(t *testing.T) {
+	group := uuid.New()
+	agentA, agentB, outsider := uuid.New(), uuid.New(), uuid.New()
+	node := uuid.New()
+	res := uuid.New()
+	snap := policy.Snapshot{
+		Mode: policy.ModeEnforcing,
+		Rules: []policy.Rule{{
+			ID: uuid.New(), SrcKind: "agent_group", SrcAgentGroupID: group,
+			DstKind: "resource", DstResourceID: res,
+		}},
+		Resources: []policy.Resource{{ID: res, CIDR: "10.80.0.0/24", Protocol: "tcp", PortLow: 443, PortHigh: 443}},
+		Devices: []policy.Device{
+			{ID: agentA, NodeID: node, AssignedIP: "10.99.0.10", Kind: "agent"},
+			{ID: agentB, NodeID: node, AssignedIP: "10.99.0.11", Kind: "agent"},
+			{ID: outsider, NodeID: node, AssignedIP: "10.99.0.12", Kind: "agent"},
+		},
+		AgentGroupMemberships: []policy.AgentGroupMembership{
+			{GroupID: group, DeviceID: agentA},
+			{GroupID: group, DeviceID: agentB},
+		},
+	}
+
+	compiled := policy.Compile(snap)[node]
+	if len(compiled.Allow) != 2 {
+		t.Fatalf("agent-group allow count=%d want=2: %#v", len(compiled.Allow), compiled.Allow)
+	}
+	got := map[string]bool{}
+	for _, allow := range compiled.Allow {
+		got[allow.SrcDeviceID] = true
+	}
+	if !got[agentA.String()] || !got[agentB.String()] || got[outsider.String()] {
+		t.Fatalf("agent-group expansion=%v", got)
+	}
+}
+
 // Identity binding: access derives ONLY from the owner's group memberships. A
 // device whose owner is in no group gets no grants even when rules exist.
 func TestNoGrantsWithoutOwnerMembership(t *testing.T) {

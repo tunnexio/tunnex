@@ -78,6 +78,7 @@ type Rule struct {
 	SrcSiteID       uuid.UUID // S8.2: src_kind='site' — resolved to the SOURCE site's subnet CIDRs
 	SrcCIDR         string    // S8.7: src_kind='cidr' — a LITERAL source CIDR, placed on its containing site's gateway
 	SrcDeviceID     uuid.UUID // S15.3: src_kind='agent' — the agent DEVICE whose /32 is the source
+	SrcAgentGroupID uuid.UUID // F09: src_kind='agent_group' — current active managed-agent members
 	DstKind         string
 	DstResourceID   uuid.UUID
 	DstGroupID      uuid.UUID
@@ -174,19 +175,28 @@ func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
 
 // Snapshot is the full org policy state the compiler consumes.
 type Snapshot struct {
-	Mode            string
-	Rules           []Rule
-	Resources       []Resource
-	ExposedServices []ExposedService // S10.3: dst_kind='k8s_service' resolution (id → current VIP)
-	Memberships     []Membership
-	Devices         []Device
-	SiteSubnets     []SiteSubnet // S8.1: (site_id, cidr) rows for dst_kind='site' resolution
-	SiteNodes       []SiteNode   // S8.2: (site_id, node_id) bindings for src_kind='site' node placement
+	Mode                  string
+	Rules                 []Rule
+	Resources             []Resource
+	ExposedServices       []ExposedService // S10.3: dst_kind='k8s_service' resolution (id → current VIP)
+	Memberships           []Membership
+	AgentGroupMemberships []AgentGroupMembership
+	Devices               []Device
+	SiteSubnets           []SiteSubnet // S8.1: (site_id, cidr) rows for dst_kind='site' resolution
+	SiteNodes             []SiteNode   // S8.2: (site_id, node_id) bindings for src_kind='site' node placement
 	// ActiveHub is the DERIVED active transit hub (S8.6 REDUCE #1), THREADED IN by the caller from the ONE
 	// shared derivation (nodes.deriveActive) — the SAME per-compile value that feeds the data-plane graph.
 	// The compiler does NOT elect: the site→site transit grant lands on THIS node. uuid.Nil = no hub (no
 	// site→site transit to place — a non-site compile, or no capable gateway).
 	ActiveHub uuid.UUID
+}
+
+// AgentGroupMembership is the F09 agent-group compiler input. Human
+// user_groups remain represented by Membership above; the models do not share
+// a table or meaning.
+type AgentGroupMembership struct {
+	GroupID  uuid.UUID
+	DeviceID uuid.UUID
 }
 
 // Compile produces the compiled artifact for every node that has at least one
@@ -266,6 +276,15 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			userGroups[m.UserID] = g
 		}
 		g[m.GroupID] = true
+	}
+	agentGroups := map[uuid.UUID]map[uuid.UUID]bool{}
+	for _, m := range s.AgentGroupMemberships {
+		groups := agentGroups[m.DeviceID]
+		if groups == nil {
+			groups = map[uuid.UUID]bool{}
+			agentGroups[m.DeviceID] = groups
+		}
+		groups[m.GroupID] = true
 	}
 
 	resourceByID := make(map[uuid.UUID]Resource, len(s.Resources))
@@ -418,6 +437,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			continue
 		}
 		owner := userGroups[d.UserID]
+		deviceAgentGroups := agentGroups[d.ID]
 		for _, r := range s.Rules {
 			if r.Disabled { // F3: withdrawn allow — contributes no grant (as-if-absent under default-deny)
 				continue
@@ -426,7 +446,9 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			// owner IS that user; a "group" rule matches iff the owner is in the group
 			// (the pre-S7.5.4 path, and the default for legacy blank src_kind).
 			var matched bool
-			if r.SrcKind == "agent" {
+			if r.SrcKind == "agent_group" {
+				matched = deviceAgentGroups[r.SrcAgentGroupID]
+			} else if r.SrcKind == "agent" {
 				// ⛔ EXACTLY ONE DEVICE. An agent IS a peer, so the grant names it directly — naming its
 				// gateway would grant every device homed there, a grant to one agent silently becoming a
 				// grant to everything behind it.

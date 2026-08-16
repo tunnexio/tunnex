@@ -675,6 +675,10 @@ type Querier interface {
 	ListAccessEvents(ctx context.Context, arg ListAccessEventsParams) ([]AccessEvent, error)
 	ListAccessEventsByAgent(ctx context.Context, arg ListAccessEventsByAgentParams) ([]AccessEvent, error)
 	ListAccessSources(ctx context.Context, arg ListAccessSourcesParams) ([]ListAccessSourcesRow, error)
+	// Compiler input only: inactive/deleted/non-agent devices must never expand an
+	// agent-group source. Suspension keeps the membership row but contributes no
+	// source until the canonical device becomes active again.
+	ListActiveAgentGroupMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActiveAgentGroupMembersForOrgRow, error)
 	// The org's live tunnel allocations (flat pool, across all nodes) WITH the owning
 	// device (id, name). The SINGLE definition of "live allocation" — used by BOTH
 	// device-create's lowest-free choice AND resize's orphan check/409 objects, so
