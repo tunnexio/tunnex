@@ -46,8 +46,9 @@ added to the F04 runtime channel.
 
 A request names an active or suspended managed-agent device and one existing
 destination of kind `resource`, `group`, `site`, or `k8s_service`. It stores the
-destination reference, not CIDR/port/name snapshots used for enforcement. The
-approval view resolves and displays the current canonical destination facts.
+destination UUID plus an immutable display-name snapshot. Enforcement always
+resolves the live canonical destination while the request is pending or approved;
+the snapshot is history-only and never becomes policy input.
 
 Cluster-scope Kubernetes approval is excluded because it has its own candidate
 and approval lifecycle. F09 templates, agent groups, arbitrary CIDRs, nested
@@ -116,6 +117,13 @@ Approval is atomic: lock request/agent/destination and organization opt-in,
 revalidate current authorization and lifecycle, insert rule, append event/audit,
 commit, then use the existing post-commit policy push. A failed audit or rule
 insert leaves the request pending and creates no access.
+
+Deleting a destination is refused with an explicit conflict while any request
+for it is pending or approved. Terminal request history never permanently owns
+the destination: after rejection, cancellation, expiry or revocation the
+destination may be deleted, while the request retains its UUID and immutable
+display name for operator history. F10 does not silently close a live request as
+a side effect of an unrelated destructive action.
 
 ### D6 — F10 owns expiry for request-bound rules
 
@@ -186,7 +194,10 @@ rendered.
 ### D11 — Migration and rollback preserve every existing grant
 
 Migration `0098` adds the organization flag, request/event tables, tenant-scoped
-FKs/indexes/checks and a request-owned reference to the materialized policy rule.
+device/user FKs, destination UUID/name snapshots, indexes/checks and a
+request-owned reference to the materialized policy rule. Destination identity is
+validated and snapshotted at creation, but terminal history intentionally has no
+hard destination FK so it cannot permanently block canonical deletion.
 Existing rules are untouched and remain unbound. Up is valid with existing permanent,
 temporary, F09-managed and machine-managed rules.
 
@@ -227,6 +238,7 @@ the explicit current-state diagnostic.
 | Cancel request | Request detail/list | Pending request ends; no policy rule existed. |
 | Approve/reject | Approval inbox | Approval creates one expiring rule; rejection creates none. |
 | Emergency revoke | Approved request detail | Rule is removed immediately and access will not return on agent resume. |
+| Delete referenced destination | Existing destination delete surface | Refused while a JIT request is pending/approved; terminal request history remains readable after deletion. |
 
 There is no F10 mutation without a released route caller.
 
