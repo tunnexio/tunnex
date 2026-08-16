@@ -710,6 +710,13 @@ type AgentAccessCheck struct {
 // AgentAccessCheckStatus defines model for AgentAccessCheck.Status.
 type AgentAccessCheckStatus string
 
+// AgentAccessDestination defines model for AgentAccessDestination.
+type AgentAccessDestination struct {
+	Id   openapi_types.UUID         `json:"id"`
+	Kind AgentAccessDestinationKind `json:"kind"`
+	Name string                     `json:"name"`
+}
+
 // AgentAccessDestinationKind defines model for AgentAccessDestinationKind.
 type AgentAccessDestinationKind string
 
@@ -3256,6 +3263,9 @@ type ClientInterface interface {
 	// GetAccessLogHealth request
 	GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAgentAccessDestinations request
+	ListAgentAccessDestinations(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgentAccessRequests request
 	ListAgentAccessRequests(ctx context.Context, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -4619,6 +4629,18 @@ func (c *Client) ListAccessEvents(ctx context.Context, orgId openapi_types.UUID,
 
 func (c *Client) GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAccessLogHealthRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentAccessDestinations(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentAccessDestinationsRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -8754,6 +8776,40 @@ func NewGetAccessLogHealthRequest(server string, orgId openapi_types.UUID) (*htt
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/organizations/%s/access-log/health", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAgentAccessDestinationsRequest generates requests for ListAgentAccessDestinations
+func NewListAgentAccessDestinationsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-destinations", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -15197,6 +15253,9 @@ type ClientWithResponsesInterface interface {
 	// GetAccessLogHealthWithResponse request
 	GetAccessLogHealthWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAccessLogHealthResponse, error)
 
+	// ListAgentAccessDestinationsWithResponse request
+	ListAgentAccessDestinationsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentAccessDestinationsResponse, error)
+
 	// ListAgentAccessRequestsWithResponse request
 	ListAgentAccessRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams, reqEditors ...RequestEditorFn) (*ListAgentAccessRequestsResponse, error)
 
@@ -16741,6 +16800,29 @@ func (r GetAccessLogHealthResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetAccessLogHealthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentAccessDestinationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentAccessDestination
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentAccessDestinationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentAccessDestinationsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -20410,6 +20492,15 @@ func (c *ClientWithResponses) GetAccessLogHealthWithResponse(ctx context.Context
 	return ParseGetAccessLogHealthResponse(rsp)
 }
 
+// ListAgentAccessDestinationsWithResponse request returning *ListAgentAccessDestinationsResponse
+func (c *ClientWithResponses) ListAgentAccessDestinationsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentAccessDestinationsResponse, error) {
+	rsp, err := c.ListAgentAccessDestinations(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentAccessDestinationsResponse(rsp)
+}
+
 // ListAgentAccessRequestsWithResponse request returning *ListAgentAccessRequestsResponse
 func (c *ClientWithResponses) ListAgentAccessRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams, reqEditors ...RequestEditorFn) (*ListAgentAccessRequestsResponse, error) {
 	rsp, err := c.ListAgentAccessRequests(ctx, orgId, params, reqEditors...)
@@ -23514,6 +23605,39 @@ func ParseGetAccessLogHealthResponse(rsp *http.Response) (*GetAccessLogHealthRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AccessLogHealth
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentAccessDestinationsResponse parses an HTTP response from a ListAgentAccessDestinationsWithResponse call
+func ParseListAgentAccessDestinationsResponse(rsp *http.Response) (*ListAgentAccessDestinationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentAccessDestinationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentAccessDestination
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

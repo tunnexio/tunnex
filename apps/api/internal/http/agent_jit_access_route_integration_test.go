@@ -116,6 +116,17 @@ func TestAgentJITAccessRoutesAuthorizationRefetchAndRuleOwnership(t *testing.T) 
 	if _, err := s.ListAgentAccessRequests(unrelatedCtx, api.ListAgentAccessRequestsRequestObject{OrgId: org}); !hasCode(err, 403, "forbidden") {
 		t.Fatalf("unrelated list: %v", err)
 	}
+	destinations, err := s.ListAgentAccessDestinations(requesterCtx, api.ListAgentAccessDestinationsRequestObject{OrgId: org})
+	if err != nil {
+		t.Fatal(err)
+	}
+	destinationBody := destinations.(api.ListAgentAccessDestinations200JSONResponse).Body
+	if len(destinationBody) != 1 || destinationBody[0].Id != resource || destinationBody[0].Name != "production-db" {
+		t.Fatalf("scoped destination picker: %#v", destinationBody)
+	}
+	if _, err := s.ListAgentAccessDestinations(unrelatedCtx, api.ListAgentAccessDestinationsRequestObject{OrgId: org}); !hasCode(err, 403, "forbidden") {
+		t.Fatalf("unrelated destinations: %v", err)
+	}
 	listed, err := s.ListAgentAccessRequests(requesterCtx, api.ListAgentAccessRequestsRequestObject{OrgId: org})
 	if err != nil {
 		t.Fatal(err)

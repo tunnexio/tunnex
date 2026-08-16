@@ -2725,6 +2725,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agent-access-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List named destinations available to an authorized JIT requester */
+        get: operations["listAgentAccessDestinations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}": {
         parameters: {
             query?: never;
@@ -3025,6 +3044,12 @@ export interface components {
         AgentAccessRequestState: "pending" | "approved" | "rejected" | "cancelled" | "expired" | "revoked";
         /** @enum {string} */
         AgentAccessDestinationKind: "resource" | "group" | "site" | "k8s_service";
+        AgentAccessDestination: {
+            kind: components["schemas"]["AgentAccessDestinationKind"];
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         CreateAgentAccessRequest: {
             /** Format: uuid */
             device_id: string;
@@ -9157,6 +9182,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentAccessRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentAccessDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Minimal destination picker facts; no policy internals. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessDestination"][];
                 };
             };
             default: components["responses"]["Error"];

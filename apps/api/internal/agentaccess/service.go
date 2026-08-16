@@ -52,6 +52,11 @@ type Destination struct {
 	ID   uuid.UUID
 }
 
+type NamedDestination struct {
+	Destination
+	Name string
+}
+
 type CreateInput struct {
 	DeviceID       uuid.UUID
 	Destination    Destination
@@ -414,6 +419,29 @@ func (s *Service) Describe(ctx context.Context, row sqlc.AgentAccessRequest) (st
 		return "", "", classify(err)
 	}
 	return agentName, destinationName, nil
+}
+
+func (s *Service) ListDestinations(ctx context.Context, orgID uuid.UUID) ([]NamedDestination, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT kind,id,name FROM (
+			SELECT 'resource'::text AS kind,id,name FROM resources WHERE org_id=$1
+			UNION ALL SELECT 'group',id,name FROM user_groups WHERE org_id=$1
+			UNION ALL SELECT 'site',id,name FROM sites WHERE org_id=$1
+			UNION ALL SELECT 'k8s_service',id,name FROM k8s_services WHERE org_id=$1
+		) destinations ORDER BY kind,name,id`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []NamedDestination{}
+	for rows.Next() {
+		var item NamedDestination
+		if err := rows.Scan(&item.Kind, &item.ID, &item.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 func (s *Service) SweepExpired(ctx context.Context) (int, error) {

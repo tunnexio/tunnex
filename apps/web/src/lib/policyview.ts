@@ -239,6 +239,8 @@ export interface RuleRow {
    */
   managedByOperator: boolean;
   managedByAgentTemplate: boolean;
+  managedByAgentAccess: boolean;
+  agentAccessRequestId?: string | null;
 }
 
 // loaded flags say whether each referent SET loaded successfully. When a set failed to
@@ -456,6 +458,8 @@ export function ruleRow(
     k8sServiceVanished: rule.dst_k8s_service_vanished,
     managedByOperator: rule.managed_by_operator,
     managedByAgentTemplate: rule.managed_by_agent_template,
+    managedByAgentAccess: rule.managed_by_agent_access,
+    agentAccessRequestId: rule.agent_access_request_id,
   };
 }
 
@@ -727,16 +731,16 @@ export function swapPartialMessage(oldIdShort: string): string {
 // dashboard change silently reverted on the next reconcile.
 export const MANAGED_BADGE = "Managed by GitOps";
 export function managedGrantWarning(): string {
-  return "This grant is managed by automation. Change its owning GitOps object or agent policy template assignment instead of editing the generated rule.";
+  return "This grant is workflow-managed. Change its owning GitOps object, agent template assignment, or JIT access request instead of editing the generated rule.";
 }
 
 // grantControls (M3) is the PURE, unit-pinned withhold decision for a grant row: `withheld` true means every
 // dashboard mutation (extend/edit/disable/enable/delete) is withheld — edit the CR. Extracted from inline JSX
 // so re-exposing a mutation on a managed grant fails a test, not just review.
-export function grantControls(row: Pick<RuleRow, "managedByOperator"> & { managedByAgentTemplate?: boolean }): {
+export function grantControls(row: Pick<RuleRow, "managedByOperator"> & { managedByAgentTemplate?: boolean; managedByAgentAccess?: boolean }): {
   withheld: boolean;
 } {
-  return { withheld: row.managedByOperator || row.managedByAgentTemplate === true };
+  return { withheld: row.managedByOperator || row.managedByAgentTemplate === true || row.managedByAgentAccess === true };
 }
 
 // canEditRuleInModal: the rule-EDIT (swap) modal only rewrites group/resource grants with a group/user

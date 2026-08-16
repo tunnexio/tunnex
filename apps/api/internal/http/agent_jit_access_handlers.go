@@ -28,6 +28,40 @@ type agentAccessPort interface {
 	List(context.Context, uuid.UUID, *string, *uuid.UUID, *time.Time, *uuid.UUID, int32) ([]sqlc.AgentAccessRequest, error)
 	ListForActor(context.Context, uuid.UUID, uuid.UUID, *string, *uuid.UUID, *time.Time, *uuid.UUID, int32) ([]sqlc.AgentAccessRequest, error)
 	Describe(context.Context, sqlc.AgentAccessRequest) (string, string, error)
+	ListDestinations(context.Context, uuid.UUID) ([]agentaccess.NamedDestination, error)
+}
+
+func (s apiServer) ListAgentAccessDestinations(ctx context.Context, req api.ListAgentAccessDestinationsRequestObject) (api.ListAgentAccessDestinationsResponseObject, error) {
+	ctx, err := authorize(ctx, req.OrgId, rbac.PermOrgView)
+	if err != nil {
+		return nil, err
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	role, _ := p.RoleIn(req.OrgId)
+	if !rbac.Can(role, rbac.PermAgentAccessRequest) {
+		if s.system == nil {
+			return nil, apierr.Internal()
+		}
+		n, err := s.system.CountAgentJITRequestAuthorities(ctx, sqlc.CountAgentJITRequestAuthoritiesParams{OrgID: req.OrgId, UserID: p.UserID})
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, apierr.New(403, "forbidden", "you may not access agent requests")
+		}
+	}
+	if s.agentAccess == nil {
+		return nil, agentAccessEditionRequired()
+	}
+	rows, err := s.agentAccess.ListDestinations(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.AgentAccessDestination, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, api.AgentAccessDestination{Kind: api.AgentAccessDestinationKind(row.Kind), Id: row.ID, Name: row.Name})
+	}
+	return api.ListAgentAccessDestinations200JSONResponse{Body: out, Headers: api.ListAgentAccessDestinations200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func agentAccessEditionRequired() error {

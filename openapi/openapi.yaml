@@ -3559,6 +3559,23 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agent-access-destinations:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentAccessDestinations
+      summary: List named destinations available to an authorized JIT requester
+      tags: [agent-access]
+      responses:
+        "200":
+          description: Minimal destination picker facts; no policy internals.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AgentAccessDestination" }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/agent-access-requests/{requestId}:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3928,6 +3945,14 @@ components:
     AgentAccessDestinationKind:
       type: string
       enum: [resource, group, site, k8s_service]
+    AgentAccessDestination:
+      type: object
+      required: [kind, id, name]
+      additionalProperties: false
+      properties:
+        kind: { $ref: "#/components/schemas/AgentAccessDestinationKind" }
+        id: { type: string, format: uuid }
+        name: { type: string }
     CreateAgentAccessRequest:
       type: object
       required: [device_id, destination_kind, destination_id, reason, duration_seconds, idempotency_key]

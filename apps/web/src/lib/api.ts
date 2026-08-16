@@ -30,6 +30,13 @@ export type PolicyRule = components["schemas"]["PolicyRule"];
 export type AgentAccessDiagnostic =
   components["schemas"]["AgentAccessDiagnostic"];
 export type AgentAccessCheck = components["schemas"]["AgentAccessCheck"];
+export type AgentAccessDestination =
+  components["schemas"]["AgentAccessDestination"];
+export type AgentAccessRequest = components["schemas"]["AgentAccessRequest"];
+export type AgentAccessRequestPage =
+  components["schemas"]["AgentAccessRequestPage"];
+export type AgentJITAccessSetting =
+  components["schemas"]["AgentJITAccessSetting"];
 export type AgentGroup = components["schemas"]["AgentGroup"];
 export type AgentGroupMember = components["schemas"]["AgentGroupMember"];
 export type AgentPolicyTemplate = components["schemas"]["AgentPolicyTemplate"];

@@ -23,6 +23,8 @@ import {
   type HealthCheck,
   type CreatePolicyRuleRequest,
   type AgentAccessDiagnostic,
+  type AgentAccessDestination,
+  type AgentAccessRequest,
   type AgentGroup,
   type AgentGroupMember,
   type AgentPolicyTemplate,
@@ -31,6 +33,7 @@ import {
   type AgentPolicyTemplateAssignment,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { can } from "../lib/rbac";
 import { portLabel } from "../lib/k8sview";
 import {
   Button,
@@ -272,6 +275,16 @@ export default function Access() {
 
       {org && gate.isEnterprise && roleResolved && (
         <TestAccessSection key={org.id} orgId={org.id} />
+      )}
+
+      {org && gate.isEnterprise && roleResolved && (
+        <AgentJITAccessSection
+          key={`f10-${org.id}`}
+          orgId={org.id}
+          enabled={org.agent_jit_access_enabled}
+          canApprove={can(myRole, "agent_access:approve")}
+          currentUserId={myId}
+        />
       )}
 
       {view === "admin_body" && org && (
@@ -613,6 +626,293 @@ type TestableAgent = { device_id: string; name: string };
 // loading each agent profile; an unrelated member therefore gets no Test Access
 // DOM at all. The keyed parent remount plus request epoch prevent tenant/input
 // results from committing after an org or tuple switch.
+function AgentJITAccessSection({
+  orgId,
+  enabled,
+  canApprove,
+  currentUserId,
+}: {
+  orgId: string;
+  enabled: boolean;
+  canApprove: boolean;
+  currentUserId: string;
+}) {
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [agents, setAgents] = useState<Array<{ device_id: string; name: string }>>([]);
+  const [destinations, setDestinations] = useState<AgentAccessDestination[]>([]);
+  const [requests, setRequests] = useState<AgentAccessRequest[]>([]);
+  const [agentId, setAgentId] = useState("");
+  const [destinationKey, setDestinationKey] = useState("");
+  const [reason, setReason] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState("3600");
+  const [history, setHistory] = useState<Record<string, string[]>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loadEpoch = useRef(0);
+
+  const load = useCallback(async () => {
+    const epoch = ++loadEpoch.current;
+    setError(null);
+    setHistory({});
+    const agentResult = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agents", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    if (!agentResult.ok) {
+      if (canApprove) setError(agentResult.error);
+      else setAuthorized(false);
+      return;
+    }
+    const visible = await Promise.all(
+      agentResult.data.map(async (agent) => {
+        const profile = await loadOne(() =>
+          api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+            params: { path: { orgId, deviceId: agent.device_id } },
+          }),
+        );
+        return profile.ok ? { device_id: agent.device_id, name: agent.name } : null;
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    const scoped = visible.filter(
+      (agent): agent is { device_id: string; name: string } => agent != null,
+    );
+    if (!canApprove && scoped.length === 0) {
+      setAuthorized(false);
+      setAgents([]);
+      setDestinations([]);
+      setRequests([]);
+      return;
+    }
+    const [destinationResult, requestResult] = await Promise.all([
+      loadOne(() =>
+        api.GET("/api/v1/organizations/{orgId}/agent-access-destinations", {
+          params: { path: { orgId } },
+        }),
+      ),
+      loadOne(() =>
+        api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
+          params: { path: { orgId }, query: { page_size: 50 } },
+        }),
+      ),
+    ]);
+    if (epoch !== loadEpoch.current) return;
+    if (!destinationResult.ok || !requestResult.ok) {
+      setAuthorized(true);
+      if (!destinationResult.ok) setError(destinationResult.error);
+      else if (!requestResult.ok) setError(requestResult.error);
+      return;
+    }
+    setAuthorized(true);
+    setAgents(scoped);
+    setDestinations(destinationResult.data);
+    setRequests(requestResult.data.items);
+    setAgentId((current) =>
+      scoped.some((agent) => agent.device_id === current)
+        ? current
+        : (scoped[0]?.device_id ?? ""),
+    );
+    setDestinationKey((current) =>
+      destinationResult.data.some(
+        (destination) => `${destination.kind}:${destination.id}` === current,
+      )
+        ? current
+        : destinationResult.data[0]
+          ? `${destinationResult.data[0].kind}:${destinationResult.data[0].id}`
+          : "",
+    );
+  }, [canApprove, orgId]);
+
+  useEffect(() => {
+    void load();
+    return () => {
+      loadEpoch.current += 1;
+    };
+  }, [load]);
+
+  async function submitRequest() {
+    const destination = destinations.find(
+      (item) => `${item.kind}:${item.id}` === destinationKey,
+    );
+    if (!destination || !agentId || !reason.trim()) return;
+    setBusy(true);
+    setError(null);
+    const response = await api.POST(
+      "/api/v1/organizations/{orgId}/agent-access-requests",
+      {
+        params: { path: { orgId } },
+        body: {
+          device_id: agentId,
+          destination_kind: destination.kind,
+          destination_id: destination.id,
+          reason: reason.trim(),
+          duration_seconds: Number(durationSeconds),
+          idempotency_key: `web-create-${crypto.randomUUID()}`,
+        },
+      },
+    );
+    setBusy(false);
+    if (response.error) {
+      return setError(
+        apiErrorMessage(response.error, "Could not request temporary access."),
+      );
+    }
+    setReason("");
+    await load();
+  }
+
+  async function transition(
+    request: AgentAccessRequest,
+    action: "approve" | "reject" | "cancel" | "revoke",
+  ) {
+    setBusy(true);
+    setError(null);
+    const key = `web-${action}-${crypto.randomUUID()}`;
+    let response;
+    if (action === "approve") {
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/approve",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
+      );
+    } else if (action === "reject") {
+      const rejection = window.prompt("Why is this request being rejected?")?.trim();
+      if (!rejection) {
+        setBusy(false);
+        return;
+      }
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/reject",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key, reason: rejection } },
+      );
+    } else if (action === "cancel") {
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/cancel",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
+      );
+    } else {
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/revoke",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
+      );
+    }
+    setBusy(false);
+    if (response.error) {
+      return setError(
+        apiErrorMessage(response.error, `Could not ${action} the request.`),
+      );
+    }
+    await load();
+  }
+
+  async function showHistory(requestId: string) {
+    const response = await api.GET(
+      "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}",
+      { params: { path: { orgId, requestId } } },
+    );
+    if (response.error || !response.data) {
+      return setError(apiErrorMessage(response.error, "Could not load request history."));
+    }
+    setHistory((current) => ({
+      ...current,
+      [requestId]: response.data.events.map((event) => event.state),
+    }));
+  }
+
+  if (authorized === false) return null;
+  if (authorized == null) return null;
+
+  return (
+    <Card data-testid="agent-jit-access-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-200">
+            Just-in-time agent access
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Request one expiring destination grant. Pending requests change no policy.
+          </p>
+        </div>
+        <Button disabled={busy} onClick={() => void load()}>Refresh</Button>
+      </div>
+      {!enabled && (
+        <p className="mt-3 text-xs text-amber-300">
+          JIT agent access is off. An owner or admin can enable it in Org Settings.
+        </p>
+      )}
+      {enabled && agents.length > 0 && destinations.length > 0 && (
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <Field label="Agent">
+            <Select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
+              {agents.map((agent) => <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Destination">
+            <Select value={destinationKey} onChange={(event) => setDestinationKey(event.target.value)}>
+              {destinations.map((destination) => (
+                <option key={`${destination.kind}:${destination.id}`} value={`${destination.kind}:${destination.id}`}>
+                  {destination.name} · {destination.kind.replace("_", " ")}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Reason">
+            <Input value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Why is access needed?" />
+          </Field>
+          <Field label="Duration">
+            <Select value={durationSeconds} onChange={(event) => setDurationSeconds(event.target.value)}>
+              <option value="900">15 minutes</option>
+              <option value="3600">1 hour</option>
+              <option value="14400">4 hours</option>
+              <option value="86400">24 hours</option>
+            </Select>
+          </Field>
+          <div className="flex items-end">
+            <Button disabled={busy || !reason.trim()} onClick={() => void submitRequest()}>
+              {busy ? "Saving…" : "Request access"}
+            </Button>
+          </div>
+        </div>
+      )}
+      {enabled && (agents.length === 0 || destinations.length === 0) && (
+        <p className="mt-3 text-xs text-slate-500">
+          {agents.length === 0 ? "No manageable agents are available." : "No access destinations are configured."}
+        </p>
+      )}
+      <ErrorText>{error}</ErrorText>
+      {requests.length > 0 && (
+        <div className="mt-5 space-y-2">
+          {requests.map((request) => (
+            <div key={request.id} className="rounded border border-slate-800 px-3 py-3" data-testid={`jit-request-${request.id}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm text-slate-300">{request.agent_name} → {request.destination_name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{request.reason} · {request.state} · requested {relativeAge(request.requested_at)}</p>
+                  {request.approved_expires_at && <p className="mt-1 text-xs text-amber-300">Expires {relativeAge(request.approved_expires_at)}</p>}
+                  {history[request.id] && <p className="mt-1 font-mono text-[10px] text-slate-500">{history[request.id].join(" → ")}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void showHistory(request.id)}>History</Button>
+                  {canApprove && request.state === "pending" && (
+                    <><Button disabled={busy} onClick={() => void transition(request, "approve")}>Approve</Button><Button disabled={busy} onClick={() => void transition(request, "reject")}>Reject</Button></>
+                  )}
+                  {!canApprove && request.state === "pending" && request.requested_by_user_id === currentUserId && (
+                    <Button disabled={busy} onClick={() => void transition(request, "cancel")}>Cancel</Button>
+                  )}
+                  {canApprove && request.state === "approved" && (
+                    <Button disabled={busy} onClick={() => void transition(request, "revoke")}>Revoke</Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TestAccessSection({ orgId }: { orgId: string }) {
   const [agents, setAgents] = useState<TestableAgent[] | null>(null);
   const [agentId, setAgentId] = useState("");
@@ -1680,6 +1980,8 @@ function RulesSection({
                       loaded,
                       services,
                     );
+                    if (row.managedByAgentAccess)
+                      return "managed by jit access";
                     if (row.managedByAgentTemplate)
                       return "managed by agent template";
                     if (row.managedByOperator) return "managed by gitops";
@@ -1699,6 +2001,12 @@ function RulesSection({
                     );
                     /* S10.2 D2 cond 1: a GitOps-managed grant is badged; its mutation controls are
                        withheld in the actions column. */
+                    if (row.managedByAgentAccess)
+                      return (
+                        <span className="rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-300">
+                          JIT access
+                        </span>
+                      );
                     if (row.managedByAgentTemplate)
                       return (
                         <span className="rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-300">

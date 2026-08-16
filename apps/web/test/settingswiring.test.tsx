@@ -42,6 +42,7 @@ let ssoFail = false; // docs/laws.md — no globals/setup file, so auto-cleanup 
 let edition: "open" | "enterprise" = "enterprise";
 let ovpnEnabled = false;
 let agentTemplatesEnabled = false;
+let jitAccessEnabled = false;
 
 vi.mock("../src/lib/api", async () => {
   const actual =
@@ -93,11 +94,15 @@ vi.mock("../src/lib/api", async () => {
                 data: undefined,
                 error: { error: { code: "sso_not_configured" } },
               };
+        if (path.endsWith("/agent-jit-access-settings"))
+          return { data: { enabled: jitAccessEnabled, pending_requests: 0, approved_requests: 0 } };
         return { data: [] };
       }),
       PUT: vi.fn(async (path: string, request: { body?: { enabled?: boolean } }) => {
         if (path.endsWith("/agent-policy-template-settings"))
           agentTemplatesEnabled = request.body?.enabled === true;
+        if (path.endsWith("/agent-jit-access-settings"))
+          jitAccessEnabled = request.body?.enabled === true;
         return { data: { enabled: request.body?.enabled ?? true } };
       }),
       POST: vi.fn(async () => ({ data: {} })),
@@ -127,10 +132,29 @@ beforeEach(() => {
   edition = "enterprise";
   ovpnEnabled = false;
   agentTemplatesEnabled = false;
+  jitAccessEnabled = false;
   // ⛔ EVERY mock-controlling global must be reset here. `ssoFail` was added without one, so a test that set
   // it leaked into the next file-order test — and the symptom was a query "not finding" text that a DOM dump
   // showed present, because the component under assertion had loaded the OTHER arm.
   ssoFail = false;
+});
+
+describe("Settings — F10 unlock then explicit opt-in", () => {
+  it("renders default-off truth, writes once, and refetches persisted state", async () => {
+    withAuth(<Settings />);
+    const enable = await screen.findByRole("button", { name: "Enable JIT agent access" });
+    expect(screen.getByText("0 pending · 0 approved")).toBeTruthy();
+    fireEvent.click(enable);
+    await screen.findByRole("button", { name: "Disable JIT agent access" });
+    expect(jitAccessEnabled).toBe(true);
+  });
+
+  it("renders persisted enabled state without defaulting it off", async () => {
+    jitAccessEnabled = true;
+    withAuth(<Settings />);
+    await screen.findByRole("button", { name: "Disable JIT agent access" });
+    expect(screen.queryByRole("button", { name: "Enable JIT agent access" })).toBeNull();
+  });
 });
 
 describe("Settings — F09 unlock then explicit opt-in", () => {
