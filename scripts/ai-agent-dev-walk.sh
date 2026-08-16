@@ -47,7 +47,7 @@ vm_read() {
   "${ssh_cmd[@]}" "$vm_host" "$@"
 }
 
-schema_read="cd '$compose_dir' && docker compose -f '$compose_file' exec -T postgres psql -U tunnex -d tunnex -Atc 'SELECT version::text || '"'"'|'"'"' || dirty::text FROM schema_migrations LIMIT 1'"
+schema_read="cd '$compose_dir' && docker compose -f '$compose_file' exec -T postgres psql -U tunnex -d tunnex -At -F '|' -c 'SELECT version, dirty FROM schema_migrations LIMIT 1'"
 
 case "$action" in
   preflight)
