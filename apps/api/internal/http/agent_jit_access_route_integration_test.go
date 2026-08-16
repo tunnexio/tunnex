@@ -162,6 +162,26 @@ func TestAgentJITAccessRoutesAuthorizationRefetchAndRuleOwnership(t *testing.T) 
 	if _, err := s.RevokeAgentAccessRequest(ownerCtx, api.RevokeAgentAccessRequestRequestObject{OrgId: org, RequestId: createdBody.Body.Id, Body: &api.AgentAccessIdempotencyRequest{IdempotencyKey: "route-revoke-1"}}); err != nil {
 		t.Fatal(err)
 	}
+	createBody.IdempotencyKey = "route-create-authority-loss"
+	createdLost, err := s.CreateAgentAccessRequest(requesterCtx, api.CreateAgentAccessRequestRequestObject{OrgId: org, Body: createBody})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lostID := createdLost.(api.CreateAgentAccessRequest201JSONResponse).Body.Id
+	exec(`UPDATE devices SET user_id=$1 WHERE id=$2 AND org_id=$3`, unrelated, agent, org)
+	listed, err = s.ListAgentAccessRequests(requesterCtx, api.ListAgentAccessRequestsRequestObject{OrgId: org})
+	if err != nil || len(listed.(api.ListAgentAccessRequests200JSONResponse).Body.Items) != 2 {
+		t.Fatalf("original requester history after authority loss response=%#v err=%v", listed, err)
+	}
+	if _, err := s.GetAgentAccessRequest(requesterCtx, api.GetAgentAccessRequestRequestObject{OrgId: org, RequestId: lostID}); err != nil {
+		t.Fatalf("original requester detail after authority loss: %v", err)
+	}
+	if _, err := s.ApproveAgentAccessRequest(ownerCtx, api.ApproveAgentAccessRequestRequestObject{OrgId: org, RequestId: lostID, Body: &api.AgentAccessIdempotencyRequest{IdempotencyKey: "route-approve-authority-loss"}}); !hasCode(err, 409, "agent_access_request_conflict") {
+		t.Fatalf("approval after requester authority loss: %v", err)
+	}
+	if _, err := s.CancelAgentAccessRequest(requesterCtx, api.CancelAgentAccessRequestRequestObject{OrgId: org, RequestId: lostID, Body: &api.AgentAccessIdempotencyRequest{IdempotencyKey: "route-cancel-authority-loss"}}); err != nil {
+		t.Fatalf("original requester cancel after authority loss: %v", err)
+	}
 	setting, err := s.SetOrganizationAgentJITAccessEnabled(ownerCtx, api.SetOrganizationAgentJITAccessEnabledRequestObject{OrgId: org, Body: &api.SetAgentJITAccessSettingRequest{Enabled: false}})
 	if err != nil || setting.(api.SetOrganizationAgentJITAccessEnabled200JSONResponse).Body.Enabled {
 		t.Fatalf("disable after revoke: response=%#v err=%v", setting, err)

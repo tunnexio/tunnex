@@ -679,30 +679,36 @@ function AgentJITAccessSection({
     const scoped = visible.filter(
       (agent): agent is { device_id: string; name: string } => agent != null,
     );
-    if (!canApprove && scoped.length === 0) {
-      setAuthorized(false);
-      setAgents([]);
-      setDestinations([]);
-      setRequests([]);
+    const requestResult = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
+        params: { path: { orgId }, query: { page_size: 50 } },
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    if (!requestResult.ok) {
+      if (!canApprove && scoped.length === 0) setAuthorized(false);
+      else {
+        setAuthorized(true);
+        setError(requestResult.error);
+      }
       return;
     }
-    const [destinationResult, requestResult] = await Promise.all([
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/agent-access-destinations", {
-          params: { path: { orgId } },
-        }),
-      ),
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
-          params: { path: { orgId }, query: { page_size: 50 } },
-        }),
-      ),
-    ]);
-    if (epoch !== loadEpoch.current) return;
-    if (!destinationResult.ok || !requestResult.ok) {
+    if (scoped.length === 0) {
       setAuthorized(true);
-      if (!destinationResult.ok) setError(destinationResult.error);
-      else if (!requestResult.ok) setError(requestResult.error);
+      setAgents([]);
+      setDestinations([]);
+      setRequests(requestResult.data.items);
+      return;
+    }
+    const destinationResult = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agent-access-destinations", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    if (!destinationResult.ok) {
+      setAuthorized(true);
+      setError(destinationResult.error);
       return;
     }
     setAuthorized(true);
@@ -867,6 +873,9 @@ function AgentJITAccessSection({
               <option value="14400">4 hours</option>
               <option value="86400">24 hours</option>
             </Select>
+            <p className="mt-1 text-[10px] text-slate-500">
+              Requested window; exact expiry is calculated when approved.
+            </p>
           </Field>
           <div className="flex items-end">
             <Button disabled={busy || !reason.trim()} onClick={() => void submitRequest()}>
@@ -884,7 +893,7 @@ function AgentJITAccessSection({
       {requests.length > 0 && (
         <div className="mt-5 space-y-2">
           {requests.map((request) => (
-            <div key={request.id} className="rounded border border-slate-800 px-3 py-3" data-testid={`jit-request-${request.id}`}>
+            <div key={request.id} id={`jit-request-${request.id}`} className="rounded border border-slate-800 px-3 py-3" data-testid={`jit-request-${request.id}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm text-slate-300">{request.agent_name} → {request.destination_name}</p>
@@ -2003,9 +2012,9 @@ function RulesSection({
                        withheld in the actions column. */
                     if (row.managedByAgentAccess)
                       return (
-                        <span className="rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-300">
+                        <a href={row.agentAccessRequestId ? `#jit-request-${row.agentAccessRequestId}` : undefined} className="rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-300">
                           JIT access
-                        </span>
+                        </a>
                       );
                     if (row.managedByAgentTemplate)
                       return (

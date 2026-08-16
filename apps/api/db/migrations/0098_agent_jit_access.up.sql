@@ -14,6 +14,7 @@ CREATE TABLE agent_access_requests (
     dst_group_id               uuid,
     dst_site_id                uuid,
     dst_k8s_service_id         uuid,
+    dst_name                   text NOT NULL CHECK (length(btrim(dst_name)) >= 1),
     reason                     text NOT NULL CHECK (length(btrim(reason)) BETWEEN 1 AND 500),
     requested_duration_seconds integer NOT NULL CHECK (requested_duration_seconds BETWEEN 300 AND 86400),
     state                      text NOT NULL DEFAULT 'pending'
@@ -35,14 +36,6 @@ CREATE TABLE agent_access_requests (
     UNIQUE (id, org_id),
     FOREIGN KEY (device_id, org_id)
         REFERENCES devices (id, org_id) ON DELETE RESTRICT,
-    FOREIGN KEY (dst_resource_id, org_id)
-        REFERENCES resources (id, org_id) ON DELETE RESTRICT,
-    FOREIGN KEY (dst_group_id, org_id)
-        REFERENCES user_groups (id, org_id) ON DELETE RESTRICT,
-    FOREIGN KEY (dst_site_id, org_id)
-        REFERENCES sites (id, org_id) ON DELETE RESTRICT,
-    FOREIGN KEY (dst_k8s_service_id, org_id)
-        REFERENCES k8s_services (id, org_id) ON DELETE RESTRICT,
     CHECK (
         (dst_kind = 'resource' AND dst_resource_id IS NOT NULL AND dst_group_id IS NULL AND dst_site_id IS NULL AND dst_k8s_service_id IS NULL)
      OR (dst_kind = 'group' AND dst_group_id IS NOT NULL AND dst_resource_id IS NULL AND dst_site_id IS NULL AND dst_k8s_service_id IS NULL)
@@ -103,6 +96,43 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER agent_access_requests_require_managed_agent_before_write
     BEFORE INSERT OR UPDATE OF org_id, device_id ON agent_access_requests
     FOR EACH ROW EXECUTE FUNCTION agent_access_request_require_managed_agent();
+
+CREATE FUNCTION agent_access_request_snapshot_destination() RETURNS trigger AS $$
+BEGIN
+    CASE NEW.dst_kind
+    WHEN 'resource' THEN
+        SELECT name INTO STRICT NEW.dst_name FROM resources
+        WHERE id = NEW.dst_resource_id AND org_id = NEW.org_id FOR KEY SHARE;
+    WHEN 'group' THEN
+        SELECT name INTO STRICT NEW.dst_name FROM user_groups
+        WHERE id = NEW.dst_group_id AND org_id = NEW.org_id FOR KEY SHARE;
+    WHEN 'site' THEN
+        SELECT name INTO STRICT NEW.dst_name FROM sites
+        WHERE id = NEW.dst_site_id AND org_id = NEW.org_id FOR KEY SHARE;
+    WHEN 'k8s_service' THEN
+        SELECT name INTO STRICT NEW.dst_name FROM k8s_services
+        WHERE id = NEW.dst_k8s_service_id AND org_id = NEW.org_id
+          AND deleted_at IS NULL FOR KEY SHARE;
+    END CASE;
+    RETURN NEW;
+EXCEPTION WHEN NO_DATA_FOUND THEN
+    RAISE EXCEPTION 'agent access destination does not exist in the stated organization';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER agent_access_requests_snapshot_destination_before_write
+    BEFORE INSERT OR UPDATE OF org_id, dst_kind, dst_resource_id, dst_group_id,
+        dst_site_id, dst_k8s_service_id ON agent_access_requests
+    FOR EACH ROW EXECUTE FUNCTION agent_access_request_snapshot_destination();
+
+CREATE FUNCTION agent_access_request_destination_snapshot_immutable() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'agent access destination snapshots are immutable';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER agent_access_requests_destination_snapshot_no_update
+    BEFORE UPDATE OF dst_name ON agent_access_requests
+    FOR EACH ROW WHEN (OLD.dst_name IS DISTINCT FROM NEW.dst_name)
+    EXECUTE FUNCTION agent_access_request_destination_snapshot_immutable();
 
 CREATE TABLE agent_access_request_events (
     id                uuid PRIMARY KEY DEFAULT uuid_generate_v7(),

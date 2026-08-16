@@ -47,6 +47,7 @@ type AgentAccessRequest struct {
 	DstGroupID               pgtype.UUID        `json:"dst_group_id"`
 	DstSiteID                pgtype.UUID        `json:"dst_site_id"`
 	DstK8sServiceID          pgtype.UUID        `json:"dst_k8s_service_id"`
+	DstName                  string             `json:"dst_name"`
 	Reason                   string             `json:"reason"`
 	RequestedDurationSeconds int32              `json:"requested_duration_seconds"`
 	State                    string             `json:"state"`

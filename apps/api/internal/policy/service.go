@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
@@ -86,6 +87,16 @@ func (s *Service) UpdateGroup(ctx context.Context, orgID, groupID uuid.UUID, nam
 
 func (s *Service) DeleteGroup(ctx context.Context, orgID, groupID uuid.UUID) error {
 	return s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
+		if _, e := agentaccessguard.LockDestination(ctx, q, orgID, "group", groupID); e != nil {
+			return e
+		}
+		live, e := agentaccessguard.LiveDestinationRequests(ctx, q, orgID, "group", groupID)
+		if e != nil {
+			return e
+		}
+		if live != 0 {
+			return apierr.Conflict("agent_access_destination_in_use", fmt.Sprintf("%d pending or approved agent access requests reference this group", live))
+		}
 		versions, e := q.CountAgentPolicyTemplateGroupReferences(ctx, sqlc.CountAgentPolicyTemplateGroupReferencesParams{OrgID: orgID, DstGroupID: pgtype.UUID{Bytes: groupID, Valid: true}})
 		if e != nil {
 			return e
@@ -277,6 +288,16 @@ func (s *Service) UpdateResource(ctx context.Context, orgID, resourceID uuid.UUI
 
 func (s *Service) DeleteResource(ctx context.Context, orgID, resourceID uuid.UUID) error {
 	return s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
+		if _, e := agentaccessguard.LockDestination(ctx, q, orgID, "resource", resourceID); e != nil {
+			return e
+		}
+		live, e := agentaccessguard.LiveDestinationRequests(ctx, q, orgID, "resource", resourceID)
+		if e != nil {
+			return e
+		}
+		if live != 0 {
+			return apierr.Conflict("agent_access_destination_in_use", fmt.Sprintf("%d pending or approved agent access requests reference this resource", live))
+		}
 		versions, e := q.CountAgentPolicyTemplateResourceReferences(ctx, sqlc.CountAgentPolicyTemplateResourceReferencesParams{OrgID: orgID, DstResourceID: pgtype.UUID{Bytes: resourceID, Valid: true}})
 		if e != nil {
 			return e

@@ -17,7 +17,7 @@ UPDATE agent_access_requests
 SET state='approved', approved_by_user_id=$3, approved_at=$4,
     approved_expires_at=$5, policy_rule_id=$6
 WHERE id=$1 AND org_id=$2 AND state='pending'
-RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
+RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
 `
 
 type ApproveAgentAccessRequestParams struct {
@@ -48,6 +48,7 @@ func (q *Queries) ApproveAgentAccessRequest(ctx context.Context, arg ApproveAgen
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -73,7 +74,7 @@ const cancelAgentAccessRequest = `-- name: CancelAgentAccessRequest :one
 UPDATE agent_access_requests
 SET state='cancelled', cancelled_by_user_id=$3, cancelled_at=$4
 WHERE id=$1 AND org_id=$2 AND state='pending'
-RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
+RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
 `
 
 type CancelAgentAccessRequestParams struct {
@@ -100,6 +101,7 @@ func (q *Queries) CancelAgentAccessRequest(ctx context.Context, arg CancelAgentA
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -121,6 +123,23 @@ func (q *Queries) CancelAgentAccessRequest(ctx context.Context, arg CancelAgentA
 	return i, err
 }
 
+const countAgentAccessRequestsRequestedByActor = `-- name: CountAgentAccessRequestsRequestedByActor :one
+SELECT count(*) FROM agent_access_requests
+WHERE org_id=$1 AND requested_by_user_id=$2
+`
+
+type CountAgentAccessRequestsRequestedByActorParams struct {
+	OrgID             uuid.UUID `json:"org_id"`
+	RequestedByUserID uuid.UUID `json:"requested_by_user_id"`
+}
+
+func (q *Queries) CountAgentAccessRequestsRequestedByActor(ctx context.Context, arg CountAgentAccessRequestsRequestedByActorParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAgentAccessRequestsRequestedByActor, arg.OrgID, arg.RequestedByUserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countLiveAgentAccessRequests = `-- name: CountLiveAgentAccessRequests :one
 SELECT count(*) FROM agent_access_requests
 WHERE org_id=$1 AND state IN ('pending','approved')
@@ -128,6 +147,38 @@ WHERE org_id=$1 AND state IN ('pending','approved')
 
 func (q *Queries) CountLiveAgentAccessRequests(ctx context.Context, orgID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countLiveAgentAccessRequests, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countLiveAgentAccessRequestsByDestination = `-- name: CountLiveAgentAccessRequestsByDestination :one
+SELECT count(*) FROM agent_access_requests
+WHERE org_id=$1 AND state IN ('pending','approved')
+  AND (
+      (dst_kind='resource' AND dst_resource_id=$2::uuid)
+      OR (dst_kind='group' AND dst_group_id=$3::uuid)
+      OR (dst_kind='site' AND dst_site_id=$4::uuid)
+      OR (dst_kind='k8s_service' AND dst_k8s_service_id=$5::uuid)
+  )
+`
+
+type CountLiveAgentAccessRequestsByDestinationParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	DstResourceID   pgtype.UUID `json:"dst_resource_id"`
+	DstGroupID      pgtype.UUID `json:"dst_group_id"`
+	DstSiteID       pgtype.UUID `json:"dst_site_id"`
+	DstK8sServiceID pgtype.UUID `json:"dst_k8s_service_id"`
+}
+
+func (q *Queries) CountLiveAgentAccessRequestsByDestination(ctx context.Context, arg CountLiveAgentAccessRequestsByDestinationParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countLiveAgentAccessRequestsByDestination,
+		arg.OrgID,
+		arg.DstResourceID,
+		arg.DstGroupID,
+		arg.DstSiteID,
+		arg.DstK8sServiceID,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -150,13 +201,32 @@ func (q *Queries) CountLiveAgentAccessRequestsByDevice(ctx context.Context, arg 
 	return count, err
 }
 
+const countLiveAgentAccessRequestsByK8sCluster = `-- name: CountLiveAgentAccessRequestsByK8sCluster :one
+SELECT count(*)
+FROM agent_access_requests ar
+JOIN k8s_services ks ON ks.id=ar.dst_k8s_service_id AND ks.org_id=ar.org_id
+WHERE ar.org_id=$1 AND ks.cluster_id=$2 AND ar.state IN ('pending','approved')
+`
+
+type CountLiveAgentAccessRequestsByK8sClusterParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+func (q *Queries) CountLiveAgentAccessRequestsByK8sCluster(ctx context.Context, arg CountLiveAgentAccessRequestsByK8sClusterParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countLiveAgentAccessRequestsByK8sCluster, arg.OrgID, arg.ClusterID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAgentAccessRequest = `-- name: CreateAgentAccessRequest :one
 
 INSERT INTO agent_access_requests (
   org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id,
   dst_k8s_service_id, reason, requested_duration_seconds, requested_by_user_id
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
+RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
 `
 
 type CreateAgentAccessRequestParams struct {
@@ -196,6 +266,7 @@ func (q *Queries) CreateAgentAccessRequest(ctx context.Context, arg CreateAgentA
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -221,7 +292,7 @@ const expireAgentAccessRequest = `-- name: ExpireAgentAccessRequest :one
 UPDATE agent_access_requests
 SET state='expired'
 WHERE id=$1 AND org_id=$2 AND state='approved' AND approved_expires_at <= now()
-RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
+RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
 `
 
 type ExpireAgentAccessRequestParams struct {
@@ -241,6 +312,7 @@ func (q *Queries) ExpireAgentAccessRequest(ctx context.Context, arg ExpireAgentA
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -290,7 +362,7 @@ func (q *Queries) GetAgentAccessOperation(ctx context.Context, arg GetAgentAcces
 }
 
 const getAgentAccessRequest = `-- name: GetAgentAccessRequest :one
-SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
+SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
 WHERE id=$1 AND org_id=$2
 `
 
@@ -311,6 +383,7 @@ func (q *Queries) GetAgentAccessRequest(ctx context.Context, arg GetAgentAccessR
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -333,7 +406,7 @@ func (q *Queries) GetAgentAccessRequest(ctx context.Context, arg GetAgentAccessR
 }
 
 const getAgentAccessRequestByPolicyRule = `-- name: GetAgentAccessRequestByPolicyRule :one
-SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
+SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
 WHERE org_id=$1 AND policy_rule_id=$2
 `
 
@@ -354,6 +427,7 @@ func (q *Queries) GetAgentAccessRequestByPolicyRule(ctx context.Context, arg Get
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -376,7 +450,7 @@ func (q *Queries) GetAgentAccessRequestByPolicyRule(ctx context.Context, arg Get
 }
 
 const getAgentAccessRequestForUpdate = `-- name: GetAgentAccessRequestForUpdate :one
-SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
+SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
 WHERE id=$1 AND org_id=$2
 FOR UPDATE
 `
@@ -398,6 +472,7 @@ func (q *Queries) GetAgentAccessRequestForUpdate(ctx context.Context, arg GetAge
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -560,7 +635,7 @@ func (q *Queries) ListAgentAccessRequestEvents(ctx context.Context, arg ListAgen
 }
 
 const listAgentAccessRequests = `-- name: ListAgentAccessRequests :many
-SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
+SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
 WHERE org_id=$1
   AND ($2::text IS NULL OR state=$2)
   AND ($3::uuid IS NULL OR device_id=$3)
@@ -605,6 +680,7 @@ func (q *Queries) ListAgentAccessRequests(ctx context.Context, arg ListAgentAcce
 			&i.DstGroupID,
 			&i.DstSiteID,
 			&i.DstK8sServiceID,
+			&i.DstName,
 			&i.Reason,
 			&i.RequestedDurationSeconds,
 			&i.State,
@@ -634,7 +710,7 @@ func (q *Queries) ListAgentAccessRequests(ctx context.Context, arg ListAgentAcce
 }
 
 const listAgentAccessRequestsForActor = `-- name: ListAgentAccessRequestsForActor :many
-SELECT ar.id, ar.org_id, ar.device_id, ar.dst_kind, ar.dst_resource_id, ar.dst_group_id, ar.dst_site_id, ar.dst_k8s_service_id, ar.reason, ar.requested_duration_seconds, ar.state, ar.requested_by_user_id, ar.requested_at, ar.approved_by_user_id, ar.approved_at, ar.approved_expires_at, ar.rejected_by_user_id, ar.rejected_at, ar.rejection_reason, ar.cancelled_by_user_id, ar.cancelled_at, ar.revoked_by_user_id, ar.revoked_at, ar.policy_rule_id, ar.updated_at
+SELECT ar.id, ar.org_id, ar.device_id, ar.dst_kind, ar.dst_resource_id, ar.dst_group_id, ar.dst_site_id, ar.dst_k8s_service_id, ar.dst_name, ar.reason, ar.requested_duration_seconds, ar.state, ar.requested_by_user_id, ar.requested_at, ar.approved_by_user_id, ar.approved_at, ar.approved_expires_at, ar.rejected_by_user_id, ar.rejected_at, ar.rejection_reason, ar.cancelled_by_user_id, ar.cancelled_at, ar.revoked_by_user_id, ar.revoked_at, ar.policy_rule_id, ar.updated_at
 FROM agent_access_requests ar
 JOIN devices d ON d.id=ar.device_id AND d.org_id=ar.org_id
 JOIN agent_profiles ap ON ap.device_id=d.id
@@ -645,6 +721,8 @@ WHERE ar.org_id=$1
        OR (ar.requested_at, ar.id) < ($4::timestamptz,
                                      $5::uuid))
   AND (
+      ar.requested_by_user_id=$6::uuid
+      OR
       d.user_id=$6::uuid
       OR EXISTS (
           SELECT 1
@@ -699,6 +777,7 @@ func (q *Queries) ListAgentAccessRequestsForActor(ctx context.Context, arg ListA
 			&i.DstGroupID,
 			&i.DstSiteID,
 			&i.DstK8sServiceID,
+			&i.DstName,
 			&i.Reason,
 			&i.RequestedDurationSeconds,
 			&i.State,
@@ -728,7 +807,7 @@ func (q *Queries) ListAgentAccessRequestsForActor(ctx context.Context, arg ListA
 }
 
 const listDueAgentAccessRequestsForUpdate = `-- name: ListDueAgentAccessRequestsForUpdate :many
-SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
+SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
 WHERE state='approved' AND approved_expires_at <= now()
 ORDER BY approved_expires_at, id
 FOR UPDATE SKIP LOCKED
@@ -755,6 +834,7 @@ func (q *Queries) ListDueAgentAccessRequestsForUpdate(ctx context.Context) ([]Ag
 			&i.DstGroupID,
 			&i.DstSiteID,
 			&i.DstK8sServiceID,
+			&i.DstName,
 			&i.Reason,
 			&i.RequestedDurationSeconds,
 			&i.State,
@@ -784,7 +864,7 @@ func (q *Queries) ListDueAgentAccessRequestsForUpdate(ctx context.Context) ([]Ag
 }
 
 const listLiveAgentAccessRequestsByDeviceForUpdate = `-- name: ListLiveAgentAccessRequestsByDeviceForUpdate :many
-SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
+SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
 WHERE org_id=$1 AND device_id=$2 AND state IN ('pending','approved')
 ORDER BY requested_at, id
 FOR UPDATE
@@ -813,6 +893,7 @@ func (q *Queries) ListLiveAgentAccessRequestsByDeviceForUpdate(ctx context.Conte
 			&i.DstGroupID,
 			&i.DstSiteID,
 			&i.DstK8sServiceID,
+			&i.DstName,
 			&i.Reason,
 			&i.RequestedDurationSeconds,
 			&i.State,
@@ -841,12 +922,108 @@ func (q *Queries) ListLiveAgentAccessRequestsByDeviceForUpdate(ctx context.Conte
 	return items, nil
 }
 
+const lockAgentAccessGroupDestination = `-- name: LockAgentAccessGroupDestination :one
+SELECT id FROM user_groups WHERE id=$1 AND org_id=$2 FOR UPDATE
+`
+
+type LockAgentAccessGroupDestinationParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) LockAgentAccessGroupDestination(ctx context.Context, arg LockAgentAccessGroupDestinationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAgentAccessGroupDestination, arg.ID, arg.OrgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockAgentAccessK8sClusterDestinations = `-- name: LockAgentAccessK8sClusterDestinations :many
+SELECT id FROM k8s_services WHERE org_id=$1 AND cluster_id=$2 FOR UPDATE
+`
+
+type LockAgentAccessK8sClusterDestinationsParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+func (q *Queries) LockAgentAccessK8sClusterDestinations(ctx context.Context, arg LockAgentAccessK8sClusterDestinationsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockAgentAccessK8sClusterDestinations, arg.OrgID, arg.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAgentAccessK8sServiceDestination = `-- name: LockAgentAccessK8sServiceDestination :one
+SELECT id FROM k8s_services WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL FOR UPDATE
+`
+
+type LockAgentAccessK8sServiceDestinationParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) LockAgentAccessK8sServiceDestination(ctx context.Context, arg LockAgentAccessK8sServiceDestinationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAgentAccessK8sServiceDestination, arg.ID, arg.OrgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockAgentAccessResourceDestination = `-- name: LockAgentAccessResourceDestination :one
+SELECT id FROM resources WHERE id=$1 AND org_id=$2 FOR UPDATE
+`
+
+type LockAgentAccessResourceDestinationParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+// Destructive destination paths lock the canonical row before counting live
+// workflow references. The create trigger takes FOR KEY SHARE on the same row,
+// closing the count/delete race without retaining a permanent history FK.
+func (q *Queries) LockAgentAccessResourceDestination(ctx context.Context, arg LockAgentAccessResourceDestinationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAgentAccessResourceDestination, arg.ID, arg.OrgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockAgentAccessSiteDestination = `-- name: LockAgentAccessSiteDestination :one
+SELECT id FROM sites WHERE id=$1 AND org_id=$2 FOR UPDATE
+`
+
+type LockAgentAccessSiteDestinationParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) LockAgentAccessSiteDestination(ctx context.Context, arg LockAgentAccessSiteDestinationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAgentAccessSiteDestination, arg.ID, arg.OrgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const rejectAgentAccessRequest = `-- name: RejectAgentAccessRequest :one
 UPDATE agent_access_requests
 SET state='rejected', rejected_by_user_id=$3, rejected_at=$4,
     rejection_reason=$5
 WHERE id=$1 AND org_id=$2 AND state='pending'
-RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
+RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
 `
 
 type RejectAgentAccessRequestParams struct {
@@ -875,6 +1052,7 @@ func (q *Queries) RejectAgentAccessRequest(ctx context.Context, arg RejectAgentA
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,
@@ -900,7 +1078,7 @@ const revokeAgentAccessRequest = `-- name: RevokeAgentAccessRequest :one
 UPDATE agent_access_requests
 SET state='revoked', revoked_by_user_id=$3, revoked_at=$4
 WHERE id=$1 AND org_id=$2 AND state='approved'
-RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
+RETURNING id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at
 `
 
 type RevokeAgentAccessRequestParams struct {
@@ -927,6 +1105,7 @@ func (q *Queries) RevokeAgentAccessRequest(ctx context.Context, arg RevokeAgentA
 		&i.DstGroupID,
 		&i.DstSiteID,
 		&i.DstK8sServiceID,
+		&i.DstName,
 		&i.Reason,
 		&i.RequestedDurationSeconds,
 		&i.State,

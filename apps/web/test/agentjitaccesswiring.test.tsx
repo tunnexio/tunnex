@@ -56,7 +56,12 @@ vi.mock("../src/lib/api", async () => {
         if (path.endsWith("/agents/{deviceId}")) return profileAllowed ? { data: { device_id: "agent-a", name: "build-agent" } } : { error: { error: { code: "forbidden" } } };
         if (path.endsWith("/agent-access-destinations")) { requestReads.push(`${orgId}:destinations`); return { data: [{ kind: "resource", id: "resource-a", name: "database" }] }; }
         if (path.endsWith("/agent-access-requests/{requestId}")) return { data: { request: requests[0], events: [{ id: "event-a", state: requests[0]?.state ?? "pending", created_at: now }] } };
-        if (path.endsWith("/agent-access-requests")) { requestReads.push(`${orgId}:requests`); return { data: { items: orgId === "org-a" ? requests : [] } }; }
+        if (path.endsWith("/agent-access-requests")) {
+          requestReads.push(`${orgId}:requests`);
+          if (role === "member" && !profileAllowed && requests.length === 0)
+            return { error: { error: { code: "forbidden" } } };
+          return { data: { items: orgId === "org-a" ? requests : [] } };
+        }
         if (path.endsWith("/policies")) return { data: requests[0]?.state === "approved" ? [{ id: "rule-a", org_id: "org-a", src_kind: "agent", src_device_id: "agent-a", dst_kind: "resource", dst_resource_id: "resource-a", created_at: now, expires_at: "2026-08-16T11:00:00Z", enabled: true, managed_by_operator: false, managed_by_agent_template: false, managed_by_agent_access: true, agent_access_request_id: "request-a", cidr_outside_org_ranges: false, dst_k8s_service_vanished: false }] : [] };
         if (path.endsWith("/resources")) return { data: [{ id: "resource-a", name: "database", cidr: "10.20.0.0/24" }] };
         return { data: [] };
@@ -133,8 +138,20 @@ describe("released F10 JIT agent access workflow", () => {
     render(<Access />);
     await screen.findByText("Access policies are managed by owners and admins.");
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Just-in-time agent access" })).toBeNull());
-    expect(requestReads).toEqual([]);
+    expect(requestReads).toEqual(["org-a:requests"]);
     expect(screen.queryByText("Just-in-time agent access")).toBeNull();
+  });
+
+  it("keeps original-requester history and cancel after current scope is removed", async () => {
+    role = "member";
+    profileAllowed = false;
+    requests = [requestRow("pending")];
+    render(<Access />);
+    await screen.findByText(/ship release · pending/);
+    expect(screen.queryByPlaceholderText("Why is access needed?")).toBeNull();
+    expect(requestReads).toEqual(["org-a:requests"]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await screen.findByText(/ship release · cancelled/);
   });
 
   it("withdraws prior-organization JIT facts synchronously", async () => {

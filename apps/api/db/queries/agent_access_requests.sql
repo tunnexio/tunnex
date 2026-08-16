@@ -39,6 +39,8 @@ WHERE ar.org_id=$1
        OR (ar.requested_at, ar.id) < (sqlc.narg('before_requested_at')::timestamptz,
                                      sqlc.narg('before_id')::uuid))
   AND (
+      ar.requested_by_user_id=sqlc.arg('actor_id')::uuid
+      OR
       d.user_id=sqlc.arg('actor_id')::uuid
       OR EXISTS (
           SELECT 1
@@ -137,6 +139,44 @@ WHERE org_id=$1 AND state IN ('pending','approved');
 -- name: CountLiveAgentAccessRequestsByDevice :one
 SELECT count(*) FROM agent_access_requests
 WHERE org_id=$1 AND device_id=$2 AND state IN ('pending','approved');
+
+-- name: CountAgentAccessRequestsRequestedByActor :one
+SELECT count(*) FROM agent_access_requests
+WHERE org_id=$1 AND requested_by_user_id=$2;
+
+-- name: CountLiveAgentAccessRequestsByDestination :one
+SELECT count(*) FROM agent_access_requests
+WHERE org_id=$1 AND state IN ('pending','approved')
+  AND (
+      (dst_kind='resource' AND dst_resource_id=sqlc.narg('dst_resource_id')::uuid)
+      OR (dst_kind='group' AND dst_group_id=sqlc.narg('dst_group_id')::uuid)
+      OR (dst_kind='site' AND dst_site_id=sqlc.narg('dst_site_id')::uuid)
+      OR (dst_kind='k8s_service' AND dst_k8s_service_id=sqlc.narg('dst_k8s_service_id')::uuid)
+  );
+
+-- Destructive destination paths lock the canonical row before counting live
+-- workflow references. The create trigger takes FOR KEY SHARE on the same row,
+-- closing the count/delete race without retaining a permanent history FK.
+-- name: LockAgentAccessResourceDestination :one
+SELECT id FROM resources WHERE id=$1 AND org_id=$2 FOR UPDATE;
+
+-- name: LockAgentAccessGroupDestination :one
+SELECT id FROM user_groups WHERE id=$1 AND org_id=$2 FOR UPDATE;
+
+-- name: LockAgentAccessSiteDestination :one
+SELECT id FROM sites WHERE id=$1 AND org_id=$2 FOR UPDATE;
+
+-- name: LockAgentAccessK8sServiceDestination :one
+SELECT id FROM k8s_services WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL FOR UPDATE;
+
+-- name: LockAgentAccessK8sClusterDestinations :many
+SELECT id FROM k8s_services WHERE org_id=$1 AND cluster_id=$2 FOR UPDATE;
+
+-- name: CountLiveAgentAccessRequestsByK8sCluster :one
+SELECT count(*)
+FROM agent_access_requests ar
+JOIN k8s_services ks ON ks.id=ar.dst_k8s_service_id AND ks.org_id=ar.org_id
+WHERE ar.org_id=$1 AND ks.cluster_id=$2 AND ar.state IN ('pending','approved');
 
 -- name: ListLiveAgentAccessRequestsByDeviceForUpdate :many
 SELECT * FROM agent_access_requests

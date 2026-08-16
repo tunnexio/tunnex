@@ -66,6 +66,13 @@ vi.mock("../src/lib/api", async () => {
                 agent_policy_templates_enabled: agentTemplatesEnabled,
                 mfa_required: false,
               },
+              {
+                id: "org-2",
+                name: "Beta",
+                ovpn_enabled: false,
+                agent_policy_templates_enabled: false,
+                mfa_required: false,
+              },
             ],
           };
         }
@@ -111,7 +118,7 @@ vi.mock("../src/lib/api", async () => {
   };
 });
 
-import { OrgProvider } from "../src/lib/useOrg";
+import { OrgProvider, useOrg } from "../src/lib/useOrg";
 import Settings from "../src/pages/Settings";
 import { AuthProvider } from "../src/lib/auth";
 
@@ -125,6 +132,17 @@ const withAuth = (ui: React.ReactElement) =>
       <OrgProvider>{ui}</OrgProvider>
     </AuthProvider>,
   );
+
+function SwitchOrganization() {
+  const { orgs, setOrg } = useOrg();
+  return <button onClick={() => orgs[1] && setOrg(orgs[1].id)}>Switch organization</button>;
+}
+
+const withAuthAndSwitch = () => render(
+  <AuthProvider>
+    <OrgProvider><SwitchOrganization /><Settings /></OrgProvider>
+  </AuthProvider>,
+);
 
 beforeEach(() => {
   __cleaned = false;
@@ -154,6 +172,14 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
     withAuth(<Settings />);
     await screen.findByRole("button", { name: "Disable JIT agent access" });
     expect(screen.queryByRole("button", { name: "Enable JIT agent access" })).toBeNull();
+  });
+
+  it("withdraws prior-organization JIT settings synchronously", async () => {
+    withAuthAndSwitch();
+    await screen.findByRole("button", { name: "Enable JIT agent access" });
+    fireEvent.click(screen.getByRole("button", { name: "Switch organization" }));
+    expect(screen.queryByRole("button", { name: "Enable JIT agent access" })).toBeNull();
+    expect(screen.getByText("Loading settings…")).toBeTruthy();
   });
 });
 

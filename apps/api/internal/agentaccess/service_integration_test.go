@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,10 +72,27 @@ func TestAgentAccessRequestApprovalAndExpiryPostgres(t *testing.T) {
 	push := &testPusher{}
 	svc := New(pool, push)
 	in := CreateInput{DeviceID: agent, Destination: Destination{Kind: "resource", ID: resource}, Reason: "deploy migration", Duration: MinDuration, IdempotencyKey: "create-1"}
-	request, replay, err := svc.Create(ctx, org, actor, in)
-	if err != nil || replay || request.State != "pending" {
-		t.Fatalf("create state=%s replay=%v err=%v", request.State, replay, err)
+	type createResult struct {
+		row    sqlc.AgentAccessRequest
+		replay bool
+		err    error
 	}
+	results := make(chan createResult, 2)
+	var start sync.WaitGroup
+	start.Add(2)
+	for range 2 {
+		go func() {
+			start.Done()
+			start.Wait()
+			row, replay, err := svc.Create(ctx, org, actor, in)
+			results <- createResult{row: row, replay: replay, err: err}
+		}()
+	}
+	first, second := <-results, <-results
+	if first.err != nil || second.err != nil || first.row.ID != second.row.ID || first.replay == second.replay {
+		t.Fatalf("concurrent replay first=%s/%v/%v second=%s/%v/%v", first.row.ID, first.replay, first.err, second.row.ID, second.replay, second.err)
+	}
+	request := first.row
 	var policyCount int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules WHERE org_id=$1`, org).Scan(&policyCount); err != nil || policyCount != 0 {
 		t.Fatalf("pending changed policy count=%d err=%v", policyCount, err)
@@ -105,6 +123,14 @@ func TestAgentAccessRequestApprovalAndExpiryPostgres(t *testing.T) {
 		t.Fatalf("rule src=%s expires=%s request=%s", srcKind, expires, approved.ApprovedExpiresAt.Time)
 	}
 	policySvc := policy.NewService(pool)
+	assertDestinationConflict := func(err error) {
+		t.Helper()
+		var domain *apierr.Error
+		if !errors.As(err, &domain) || domain.Status != 409 || domain.Code != "agent_access_destination_in_use" {
+			t.Fatalf("live destination delete err=%v", err)
+		}
+	}
+	assertDestinationConflict(policySvc.DeleteResource(ctx, org, resource))
 	assertManagedConflict := func(operation string, err error) {
 		t.Helper()
 		var domain *apierr.Error
@@ -151,7 +177,62 @@ func TestAgentAccessRequestApprovalAndExpiryPostgres(t *testing.T) {
 	if eventCount != 3 || auditCount != 3 {
 		t.Fatalf("provenance events=%d audits=%d", eventCount, auditCount)
 	}
+	if err := policySvc.DeleteResource(ctx, org, resource); err != nil {
+		t.Fatalf("terminal history blocked destination delete: %v", err)
+	}
+	if _, destinationName, err := svc.Describe(ctx, final); err != nil || destinationName != "db" {
+		t.Fatalf("destination snapshot name=%q err=%v", destinationName, err)
+	}
 	if _, err := pool.Exec(ctx, `UPDATE agent_access_request_events SET metadata='{"tampered":true}' WHERE request_id=$1`, request.ID); err == nil || !strings.Contains(err.Error(), "append-only") {
 		t.Fatalf("event ledger mutation err=%v", err)
+	}
+
+	// Disable must lock the org before counting. A concurrent creator that
+	// already holds the opt-in share lock commits first; disable then observes
+	// the new pending row and refuses instead of leaving live state while off.
+	resource2 := uuid.New()
+	exec(`INSERT INTO resources (id,org_id,name,cidr,protocol,port_low,port_high) VALUES ($1,$2,'db-2','10.51.0.0/24','tcp',5432,5432)`, resource2, org)
+	blocker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := blocker.Exec(ctx, `SELECT id FROM organizations WHERE id=$1 FOR SHARE`, org); err != nil {
+		t.Fatal(err)
+	}
+	disableResult := make(chan error, 1)
+	go func() { _, err := svc.SetEnabled(ctx, org, actor, false); disableResult <- err }()
+	time.Sleep(100 * time.Millisecond)
+	if _, err := blocker.Exec(ctx, `INSERT INTO agent_access_requests (org_id,device_id,dst_kind,dst_resource_id,reason,requested_duration_seconds,requested_by_user_id) VALUES ($1,$2,'resource',$3,'race proof',3600,$4)`, org, agent, resource2, actor); err != nil {
+		t.Fatal(err)
+	}
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-disableResult; !errors.Is(err, ErrConflict) {
+		t.Fatalf("disable/create race err=%v", err)
+	}
+
+	resource3 := uuid.New()
+	exec(`INSERT INTO resources (id,org_id,name,cidr,protocol,port_low,port_high) VALUES ($1,$2,'db-3','10.52.0.0/24','tcp',5432,5432)`, resource3, org)
+	destinationCreator, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := destinationCreator.Exec(ctx, `SELECT id FROM resources WHERE id=$1 AND org_id=$2 FOR KEY SHARE`, resource3, org); err != nil {
+		t.Fatal(err)
+	}
+	deleteResult := make(chan error, 1)
+	go func() { deleteResult <- policySvc.DeleteResource(ctx, org, resource3) }()
+	time.Sleep(100 * time.Millisecond)
+	if _, err := destinationCreator.Exec(ctx, `INSERT INTO agent_access_requests (org_id,device_id,dst_kind,dst_resource_id,reason,requested_duration_seconds,requested_by_user_id) VALUES ($1,$2,'resource',$3,'delete race proof',3600,$4)`, org, agent, resource3, actor); err != nil {
+		t.Fatal(err)
+	}
+	if err := destinationCreator.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertDestinationConflict(<-deleteResult)
+	var destinationStillExists bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM resources WHERE id=$1 AND org_id=$2)`, resource3, org).Scan(&destinationStillExists); err != nil || !destinationStillExists {
+		t.Fatalf("raced destination preserved=%v err=%v", destinationStillExists, err)
 	}
 }

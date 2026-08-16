@@ -28,9 +28,21 @@ func TestAgentJITAccessMigrationContract(t *testing.T) {
 		"PRIMARY KEY (org_id, operation, idempotency_key)",
 		"agent_access_requests_due_idx",
 		"agent_access_request_require_managed_agent",
+		"agent_access_request_snapshot_destination",
+		"agent_access_request_destination_snapshot_immutable",
 	} {
 		if !strings.Contains(up, want) {
 			t.Fatalf("0098 up missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		"REFERENCES resources (id, org_id)",
+		"REFERENCES user_groups (id, org_id)",
+		"REFERENCES sites (id, org_id)",
+		"REFERENCES k8s_services (id, org_id)",
+	} {
+		if strings.Contains(up, forbidden) {
+			t.Fatalf("terminal history must not retain destination FK %q", forbidden)
 		}
 	}
 	for _, want := range []string{

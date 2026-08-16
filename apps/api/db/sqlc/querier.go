@@ -142,6 +142,7 @@ type Querier interface {
 	// S7.3 D4 — existing active devices stay active, not retro-pended).
 	CountActiveDevicesForOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountActiveNodesByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
+	CountAgentAccessRequestsRequestedByActor(ctx context.Context, arg CountAgentAccessRequestsRequestedByActorParams) (int64, error)
 	// F02 H2: pending, active, and suspended reserve org-wide agent identity
 	// capacity; revoked and deleted identities do not count.
 	CountAgentIdentitiesForQuota(ctx context.Context, orgID uuid.UUID) (int64, error)
@@ -184,7 +185,9 @@ type Querier interface {
 	// Any origin — the refuse-unless-empty guard (D1) must see a hand-added member too.
 	CountGroupMembers(ctx context.Context, arg CountGroupMembersParams) (int64, error)
 	CountLiveAgentAccessRequests(ctx context.Context, orgID uuid.UUID) (int64, error)
+	CountLiveAgentAccessRequestsByDestination(ctx context.Context, arg CountLiveAgentAccessRequestsByDestinationParams) (int64, error)
 	CountLiveAgentAccessRequestsByDevice(ctx context.Context, arg CountLiveAgentAccessRequestsByDeviceParams) (int64, error)
+	CountLiveAgentAccessRequestsByK8sCluster(ctx context.Context, arg CountLiveAgentAccessRequestsByK8sClusterParams) (int64, error)
 	// lint:cross-org — keyed by node_id, which the caller resolved from an org-scoped node row.
 	// ⛔ THE PREDICATE THAT MAKES A REVOKE REFUSABLE (S12.12 D1). Exactly the set RevokeDevicesForNode would
 	// sweep, asked BEFORE the sweep instead of after it. The two must stay identical: a count that is narrower
@@ -1110,6 +1113,14 @@ type Querier interface {
 	// pool resize, site-subnet approval) must include the org's VIP ranges so disjointness stays bidirectional
 	// (the validator-input-filtering law). Returns the raw cidr text.
 	ListVIPRangesForOrg(ctx context.Context, orgID uuid.UUID) ([]string, error)
+	LockAgentAccessGroupDestination(ctx context.Context, arg LockAgentAccessGroupDestinationParams) (uuid.UUID, error)
+	LockAgentAccessK8sClusterDestinations(ctx context.Context, arg LockAgentAccessK8sClusterDestinationsParams) ([]uuid.UUID, error)
+	LockAgentAccessK8sServiceDestination(ctx context.Context, arg LockAgentAccessK8sServiceDestinationParams) (uuid.UUID, error)
+	// Destructive destination paths lock the canonical row before counting live
+	// workflow references. The create trigger takes FOR KEY SHARE on the same row,
+	// closing the count/delete race without retaining a permanent history FK.
+	LockAgentAccessResourceDestination(ctx context.Context, arg LockAgentAccessResourceDestinationParams) (uuid.UUID, error)
+	LockAgentAccessSiteDestination(ctx context.Context, arg LockAgentAccessSiteDestinationParams) (uuid.UUID, error)
 	// lint:cross-org — a transaction-scoped advisory lock on an arbitrary key (a
 	// user id or org id, passed as text). Create takes BOTH (in sorted order, so no
 	// deadlock) to make the per-user cap check AND the org-wide IP allocation atomic

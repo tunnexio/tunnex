@@ -104,6 +104,13 @@ func TestAgentJITAccessMigrationPostgres(t *testing.T) {
 	if _, err := refusePool.Exec(ctx, `INSERT INTO agent_access_requests (id,org_id,device_id,dst_kind,dst_resource_id,reason,requested_duration_seconds,requested_by_user_id) VALUES ($1,$2,$3,'resource',$4,'temporary deploy',3600,$5)`, request, org, agent, resource, actor); err != nil {
 		t.Fatal(err)
 	}
+	var snapshot string
+	if err := refusePool.QueryRow(ctx, `SELECT dst_name FROM agent_access_requests WHERE id=$1`, request).Scan(&snapshot); err != nil || snapshot != "db" {
+		t.Fatalf("destination snapshot=%q err=%v", snapshot, err)
+	}
+	if _, err := refusePool.Exec(ctx, `UPDATE agent_access_requests SET dst_name='tampered' WHERE id=$1`, request); err == nil {
+		t.Fatal("destination snapshot mutation must fail")
+	}
 	if _, err := refusePool.Exec(ctx, `INSERT INTO agent_access_request_events (org_id,request_id,state,actor_user_id) VALUES ($1,$2,'pending',$3)`, org, request, actor); err != nil {
 		t.Fatal(err)
 	}

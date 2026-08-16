@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -98,6 +99,10 @@ func (s *Service) SetEnabled(ctx context.Context, orgID, actor uuid.UUID, enable
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	q := sqlc.New(tx)
+	var lockedOrg uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT id FROM organizations WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, orgID).Scan(&lockedOrg); err != nil {
+		return false, classify(err)
+	}
 	if !enabled {
 		n, err := q.CountLiveAgentAccessRequests(ctx, orgID)
 		if err != nil {
@@ -138,6 +143,9 @@ func (s *Service) Create(ctx context.Context, orgID, actor uuid.UUID, in CreateI
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	q := sqlc.New(tx)
+	if err := lockOperation(ctx, tx, orgID, "create", in.IdempotencyKey); err != nil {
+		return sqlc.AgentAccessRequest{}, false, err
+	}
 	if prior, replay, err := replayOperation(ctx, q, orgID, "create", in.IdempotencyKey, hash); err != nil || replay {
 		return prior, replay, err
 	}
@@ -187,6 +195,9 @@ func (s *Service) approve(ctx context.Context, orgID, requestID, actor uuid.UUID
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	q := sqlc.New(tx)
+	if err := lockOperation(ctx, tx, orgID, "approve", key); err != nil {
+		return sqlc.AgentAccessRequest{}, false, err
+	}
 	if prior, replay, err := replayOperation(ctx, q, orgID, "approve", key, hash); err != nil || replay {
 		return prior, replay, err
 	}
@@ -201,6 +212,9 @@ func (s *Service) approve(ctx context.Context, orgID, requestID, actor uuid.UUID
 		return sqlc.AgentAccessRequest{}, false, ErrConflict
 	}
 	if err := requireAgent(ctx, tx, orgID, row.DeviceID, true); err != nil {
+		return sqlc.AgentAccessRequest{}, false, err
+	}
+	if err := requireRequesterAuthority(ctx, tx, orgID, row.DeviceID, row.RequestedByUserID); err != nil {
 		return sqlc.AgentAccessRequest{}, false, err
 	}
 	destination := destinationFromRow(row)
@@ -272,6 +286,9 @@ func (s *Service) terminalPending(ctx context.Context, orgID, requestID, actor u
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	q := sqlc.New(tx)
+	if err := lockOperation(ctx, tx, orgID, operation, key); err != nil {
+		return sqlc.AgentAccessRequest{}, false, err
+	}
 	if prior, replay, err := replayOperation(ctx, q, orgID, operation, key, hash); err != nil || replay {
 		return prior, replay, err
 	}
@@ -320,6 +337,9 @@ func (s *Service) Revoke(ctx context.Context, orgID, requestID, actor uuid.UUID,
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	q := sqlc.New(tx)
+	if err := lockOperation(ctx, tx, orgID, "revoke", key); err != nil {
+		return sqlc.AgentAccessRequest{}, false, err
+	}
 	if prior, replay, err := replayOperation(ctx, q, orgID, "revoke", key, hash); err != nil || replay {
 		return prior, replay, err
 	}
@@ -414,9 +434,16 @@ func (s *Service) Describe(ctx context.Context, row sqlc.AgentAccessRequest) (st
 	}
 	dst := destinationFromRow(row)
 	table := map[string]string{"resource": "resources", "group": "user_groups", "site": "sites", "k8s_service": "k8s_services"}[dst.Kind]
+	predicate := ""
+	if dst.Kind == "k8s_service" {
+		predicate = " AND deleted_at IS NULL"
+	}
 	var destinationName string
-	if err := s.pool.QueryRow(ctx, `SELECT name FROM `+table+` WHERE id=$1 AND org_id=$2`, dst.ID, row.OrgID).Scan(&destinationName); err != nil {
-		return "", "", classify(err)
+	if err := s.pool.QueryRow(ctx, `SELECT name FROM `+table+` WHERE id=$1 AND org_id=$2`+predicate, dst.ID, row.OrgID).Scan(&destinationName); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return "", "", classify(err)
+		}
+		destinationName = row.DstName
 	}
 	return agentName, destinationName, nil
 }
@@ -427,7 +454,7 @@ func (s *Service) ListDestinations(ctx context.Context, orgID uuid.UUID) ([]Name
 			SELECT 'resource'::text AS kind,id,name FROM resources WHERE org_id=$1
 			UNION ALL SELECT 'group',id,name FROM user_groups WHERE org_id=$1
 			UNION ALL SELECT 'site',id,name FROM sites WHERE org_id=$1
-			UNION ALL SELECT 'k8s_service',id,name FROM k8s_services WHERE org_id=$1
+			UNION ALL SELECT 'k8s_service',id,name FROM k8s_services WHERE org_id=$1 AND deleted_at IS NULL
 		) destinations ORDER BY kind,name,id`, orgID)
 	if err != nil {
 		return nil, err
@@ -550,7 +577,12 @@ func (s *Service) StartExpirySweeper(ctx context.Context, mayTick func() bool) {
 			return
 		case <-ticker.C:
 			if mayTick == nil || mayTick() {
-				_, _ = s.SweepExpired(ctx)
+				n, err := s.SweepExpired(ctx)
+				if err != nil {
+					slog.Warn("agent access expiry sweep failed", "error", err)
+				} else if n > 0 {
+					slog.Info("agent access requests expired", "count", n)
+				}
 			}
 		}
 	}
@@ -597,13 +629,49 @@ func requireAgent(ctx context.Context, tx pgx.Tx, orgID, deviceID uuid.UUID, act
 	return nil
 }
 
+func requireRequesterAuthority(ctx context.Context, tx pgx.Tx, orgID, deviceID, requester uuid.UUID) error {
+	var role string
+	if err := tx.QueryRow(ctx, `SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id
+		WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL
+		AND u.status='active' AND u.deleted_at IS NULL FOR SHARE OF m,u`, orgID, requester).Scan(&role); err != nil {
+		return ErrConflict
+	}
+	if role == "owner" || role == "admin" {
+		return nil
+	}
+	var owner uuid.UUID
+	var managing pgtype.UUID
+	if err := tx.QueryRow(ctx, `SELECT d.user_id,ap.managing_group_id FROM devices d
+		JOIN agent_profiles ap ON ap.device_id=d.id
+		WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL
+		FOR SHARE OF d,ap`, deviceID, orgID).Scan(&owner, &managing); err != nil {
+		return ErrConflict
+	}
+	if owner == requester {
+		return nil
+	}
+	if !managing.Valid {
+		return ErrConflict
+	}
+	var one int
+	if err := tx.QueryRow(ctx, `SELECT 1 FROM group_members gm
+		WHERE gm.org_id=$1 AND gm.group_id=$2 AND gm.user_id=$3 FOR SHARE OF gm`, orgID, managing.Bytes, requester).Scan(&one); err != nil {
+		return ErrConflict
+	}
+	return nil
+}
+
 func requireDestination(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, dst Destination) error {
 	table := map[string]string{"resource": "resources", "group": "user_groups", "site": "sites", "k8s_service": "k8s_services"}[dst.Kind]
 	if table == "" {
 		return ErrInvalid
 	}
+	predicate := ""
+	if dst.Kind == "k8s_service" {
+		predicate = " AND deleted_at IS NULL"
+	}
 	var one int
-	if err := tx.QueryRow(ctx, `SELECT 1 FROM `+table+` WHERE id=$1 AND org_id=$2`, dst.ID, orgID).Scan(&one); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT 1 FROM `+table+` WHERE id=$1 AND org_id=$2`+predicate, dst.ID, orgID).Scan(&one); err != nil {
 		return classify(err)
 	}
 	return nil
@@ -658,6 +726,11 @@ func replayOperation(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, oper
 	}
 	row, err := q.GetAgentAccessRequest(ctx, sqlc.GetAgentAccessRequestParams{ID: op.RequestID, OrgID: orgID})
 	return row, err == nil, classify(err)
+}
+
+func lockOperation(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, operation, key string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, orgID.String()+"\n"+operation+"\n"+key)
+	return err
 }
 
 func recordOperation(ctx context.Context, q *sqlc.Queries, row sqlc.AgentAccessRequest, operation, key, hash string) error {

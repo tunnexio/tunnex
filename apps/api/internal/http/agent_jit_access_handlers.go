@@ -157,7 +157,13 @@ func (s apiServer) ListAgentAccessRequests(ctx context.Context, req api.ListAgen
 			return nil, err
 		}
 		if n == 0 {
-			return nil, apierr.New(403, "forbidden", "you may not access agent requests")
+			own, err := s.system.CountAgentAccessRequestsRequestedByActor(ctx, sqlc.CountAgentAccessRequestsRequestedByActorParams{OrgID: req.OrgId, RequestedByUserID: p.UserID})
+			if err != nil {
+				return nil, err
+			}
+			if own == 0 {
+				return nil, apierr.New(403, "forbidden", "you may not access agent requests")
+			}
 		}
 	}
 	if req.Params.DeviceId != nil {
@@ -208,7 +214,7 @@ func (s apiServer) GetAgentAccessRequest(ctx context.Context, req api.GetAgentAc
 	if err != nil {
 		return nil, err
 	}
-	row, allowed, err := s.authorizeAgentAccessRequest(ctx, req.OrgId, req.RequestId, false)
+	row, allowed, err := s.authorizeAgentAccessRequest(ctx, req.OrgId, req.RequestId, true)
 	if err != nil {
 		return nil, err
 	}

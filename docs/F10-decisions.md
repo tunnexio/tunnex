@@ -219,8 +219,9 @@ the explicit current-state diagnostic.
 - OpenAPI owns enable/disable, create/list/detail, approve, reject, cancel and
   revoke operations plus generated Go/TypeScript types.
 - Access Policies adds `Request temporary agent access` and an owner/admin
-  `Agent access approvals` inbox. The form shows agent, destination, reason,
-  duration and exact expiry preview; the approval card shows the same facts.
+  `Agent access approvals` inbox. The form shows agent, destination, reason and
+  requested duration, stating that exact expiry is calculated on approval; the
+  approval card shows the resulting server timestamp.
 - Every mutation refetches the server result. No optimistic approval, countdown,
   rule ID or state is rendered.
 - The existing rule table labels active request-owned rules `JIT access` and

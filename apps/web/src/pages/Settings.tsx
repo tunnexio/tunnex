@@ -65,6 +65,9 @@ export default function Settings() {
 
   useEffect(() => {
     let cancelled = false;
+    setOrg(null);
+    setMyRole(undefined);
+    setError(null);
     (async () => {
       try {
         // ⭐ THE ORG-LIST FETCH IS GONE FROM THIS PAGE (S12.5). It existed only to be indexed at zero.
@@ -118,10 +121,14 @@ export default function Settings() {
     // list asynchronously, so on this effect's first run currentOrg is still null. Without the dependency
     // the effect never ran again and the page rendered "You are not a member of any organization yet" — a
     // confident, wrong statement — permanently, for every user. The same line is what makes the switcher work.
-  }, [myId, currentOrg]);
+  }, [myId, currentOrg, orgFailed, orgLoading]);
 
   const isAdmin = can(myRole, "org:update");
   const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
+
+  if (currentOrg && org?.id !== currentOrg.id) {
+    return <p className="text-sm text-slate-400">Loading settings…</p>;
+  }
 
   return (
     // ⛔ CAPPED, AND THE CAP IS THE POINT. On a 32" display an uncapped settings page stretches every card to
