@@ -1,6 +1,6 @@
 # F08 — Read-only Test Access diagnostics decisions
 
-Status: **PAPER / IMPLEMENTATION NOT STARTED**.
+Status: **IMPLEMENTED / STORY-END REVIEW AND LIVE WALK PENDING**.
 
 ## Customer outcome
 
@@ -154,3 +154,18 @@ explicit user-authorized step and is never embedded in the harness or artifacts.
 - no packet capture, traceroute, cloud route-table API or inferred fabric pass;
 - no cached verdict/history/alert (F11) and no MCP/tool diagnostics (F12+);
 - no new permission, ownership model, agent group or policy template (F09).
+
+## Implementation ledger
+
+- OpenAPI owns the one read-only route and bounded diagnostic DTOs; generated
+  Go/TypeScript bindings are checked in from repository-pinned generators.
+- The node service evaluates the selected tuple against its exact finalized
+  gateway artifact, reusing the same topology batch, active-hub choice,
+  `finalizeArtifact`, pushed hash and applied hash as desired-state health.
+- Runtime route intent is derived read-only from the same canonical rows as
+  managed polling; no poll, report, wake or revision mutation occurs.
+- The released Access page scopes the agent list through existing privileged
+  profile access, ignores stale org/input responses and renders server facts.
+- `scripts/ai-agent-dev-walk.sh` implements only the secret-free inventory,
+  provenance and cleanup checks locked above; deployment and credentials remain
+  outside it.

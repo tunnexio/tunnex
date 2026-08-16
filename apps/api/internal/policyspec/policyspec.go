@@ -11,11 +11,84 @@
 package policyspec
 
 import (
+	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// AccessEvaluation is the secret-free result of matching one selected agent
+// against the exact compiled artifact served to its assigned gateway. It is a
+// neutral DTO so the open HTTP build can name the enterprise policy port
+// without importing the enterprise compiler package.
+type AccessEvaluation struct {
+	Allowed       bool
+	Mode          string
+	PolicyVersion int
+	PolicyHash    string
+	RuleID        string
+}
+
+// EvaluateAccess matches the same five enforcement fields rendered by the
+// node agent. Identity is not inferred from the address: the selected device
+// id must be present in the artifact's subject attribution at the exact source
+// address before an allow can match.
+func EvaluateAccess(compiled *Compiled, deviceID uuid.UUID, source, destination, protocol string, port int) AccessEvaluation {
+	if compiled == nil {
+		return AccessEvaluation{}
+	}
+	out := AccessEvaluation{Mode: compiled.Mode, PolicyVersion: compiled.Version}
+	if compiled.Mode == "enforcing" {
+		out.PolicyHash = CanonicalHash(*compiled)
+	}
+	src, srcErr := netip.ParseAddr(source)
+	dst, dstErr := netip.ParseAddr(destination)
+	if srcErr != nil || dstErr != nil || deviceID == uuid.Nil || port < 1 || port > 65535 {
+		return out
+	}
+	attributed := false
+	for _, subject := range compiled.Subjects {
+		if subject.DeviceID == deviceID.String() && subject.SrcIP == src.String() {
+			attributed = true
+			break
+		}
+	}
+	if !attributed {
+		return out
+	}
+	if compiled.Mesh && compiled.Mode == "off" {
+		out.Allowed = true
+		return out
+	}
+	for _, entry := range compiled.Allow {
+		if entry.SrcDeviceID != deviceID.String() || !addressMatch(entry.SrcIP, src) {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(entry.DstCIDR)
+		if err != nil || !prefix.Contains(dst) {
+			continue
+		}
+		if entry.Protocol != ProtoAny && string(entry.Protocol) != protocol {
+			continue
+		}
+		if entry.PortLow != 0 && (port < entry.PortLow || port > entry.PortHigh) {
+			continue
+		}
+		out.Allowed = true
+		out.RuleID = entry.RuleID
+		return out
+	}
+	return out
+}
+
+func addressMatch(raw string, addr netip.Addr) bool {
+	if p, err := netip.ParsePrefix(raw); err == nil {
+		return p.Contains(addr)
+	}
+	a, err := netip.ParseAddr(raw)
+	return err == nil && a == addr
+}
 
 // ResourceInput and RuleInput are the NEUTRAL CRUD payload DTOs for the policy
 // API. They live here (not in internal/policy) so the open-build http

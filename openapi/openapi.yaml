@@ -894,6 +894,47 @@ paths:
               schema: { $ref: "#/components/schemas/AgentRuntimeStatus" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/{deviceId}/test-access:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: testAgentAccess
+      summary: Explain one managed agent access path without probing or changing it
+      description: >-
+        Read-only, server-owned diagnostic for one selected managed agent. It evaluates current lifecycle,
+        runtime, gateway, route and exact compiled-policy facts. It never resolves DNS from the control plane,
+        sends traffic, changes policy, wakes a runtime, or returns credentials, keys, configuration, or hashes
+        that are not already privileged status facts.
+      tags: [agents]
+      parameters:
+        - name: destination
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 253 }
+        - name: protocol
+          in: query
+          required: true
+          schema: { type: string, enum: [tcp, udp] }
+        - name: port
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 65535 }
+      responses:
+        "200":
+          description: Ordered read-only diagnostic; inconclusive facts are explicit.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentAccessDiagnostic" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation:
     parameters:
       - name: orgId
@@ -4717,6 +4758,35 @@ components:
           enum: [invalid_config, apply_failed]
           description: Last bounded stable runtime error, never raw runtime output.
         last_error_revision: { type: integer, format: int64, minimum: 1, nullable: true }
+
+    AgentAccessCheck:
+      type: object
+      required: [status, code, message]
+      additionalProperties: false
+      properties:
+        status: { type: string, enum: [pass, fail, inconclusive] }
+        code: { type: string, minLength: 1, maxLength: 64 }
+        message: { type: string, minLength: 1, maxLength: 256 }
+        facts:
+          type: object
+          additionalProperties: { type: string }
+
+    AgentAccessDiagnostic:
+      type: object
+      required: [device_id, destination, protocol, port, overall, checks]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        destination: { type: string }
+        protocol: { type: string, enum: [tcp, udp] }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        overall: { type: string, enum: [allowed, denied, inconclusive] }
+        first_blocker: { type: string, nullable: true }
+        checks:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items: { $ref: "#/components/schemas/AgentAccessCheck" }
 
     AgentBootstrapTokenRequest:
       type: object

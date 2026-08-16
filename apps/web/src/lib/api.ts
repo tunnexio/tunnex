@@ -27,6 +27,9 @@ export type UserGroup = components["schemas"]["UserGroup"];
 export type GroupMember = components["schemas"]["GroupMember"];
 export type Resource = components["schemas"]["Resource"];
 export type PolicyRule = components["schemas"]["PolicyRule"];
+export type AgentAccessDiagnostic =
+  components["schemas"]["AgentAccessDiagnostic"];
+export type AgentAccessCheck = components["schemas"]["AgentAccessCheck"];
 export type ZeroTrustMode = components["schemas"]["ZeroTrustMode"];
 export type AffectedDevice = components["schemas"]["AffectedDevice"];
 // S7.5.4 — per-user + temporary grants.

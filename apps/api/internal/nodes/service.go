@@ -2173,6 +2173,12 @@ const zeroTrustOff = "off"
 type PolicyHealth struct {
 	Degraded bool
 	Kind     PolicyDegradedKind
+	// PushKnown/PushedHash/AppliedHash are the exact finalized comparison
+	// already computed for health. F08 consumes these secret-free facts rather
+	// than rebuilding a route-less hash in a parallel diagnostic path.
+	PushKnown   bool
+	PushedHash  string
+	AppliedHash string
 	// WF-B: the SUBORDINATE site-link note — INDEPENDENT of the headline Kind (D-WFB-2/D-WFB-3). Set when a
 	// DEMOTED hub member's link is dead WHILE transit rides the active primary (healthy): the site's
 	// headline stays its real state, and this names the demoted-dead peer as a distinct line item
@@ -2235,6 +2241,35 @@ func (s *Service) LoadSiteTopoBatch(ctx context.Context, orgID uuid.UUID, nodes 
 		}
 	}
 	return b
+}
+
+// EvaluateAgentAccess evaluates one selected agent tuple against the exact
+// FINALIZED artifact used by this gateway. It reuses the same topology batch,
+// active-hub choice and finalizeArtifact seam as DesiredState/PolicyHealth, so
+// diagnostics cannot invent a second hash or route model. It is read-only.
+func (s *Service) EvaluateAgentAccess(ctx context.Context, orgID, deviceID uuid.UUID, node sqlc.Node, sourceIP, destination, protocol string, port int, pre ...SiteTopoBatch) (policyspec.AccessEvaluation, []string, error) {
+	if s == nil || s.policy == nil || node.ID == uuid.Nil || node.OrgID != orgID {
+		return policyspec.AccessEvaluation{}, nil, errors.New("agent policy unavailable")
+	}
+	b := s.siteTopoBatchFor(ctx, orgID, []sqlc.Node{node}, pre)
+	if !b.ok {
+		return policyspec.AccessEvaluation{}, nil, errors.New("agent policy topology unavailable")
+	}
+	artifacts, err := s.policy.CompiledArtifactsForNodes(ctx, orgID, []uuid.UUID{node.ID}, b.hubID)
+	if err != nil {
+		return policyspec.AccessEvaluation{}, nil, err
+	}
+	final := s.finalizeArtifact(b.topo, node, artifacts[node.ID])
+	if final == nil {
+		// Off-mode mesh is intentionally nil on the wire. For explanation it is
+		// permitted-without-enforcement, not a missing grant.
+		return policyspec.AccessEvaluation{Allowed: true, Mode: "off"}, nil, nil
+	}
+	routes := make([]string, 0, len(final.Routes))
+	for _, route := range final.Routes {
+		routes = append(routes, route.DstCIDR)
+	}
+	return policyspec.EvaluateAccess(final, deviceID, sourceIP, destination, protocol, port), routes, nil
 }
 
 // fillSiteLinkVerdict derives the ORG-LEVEL site-link health (WF-B) from THE ONE liveness derivation
@@ -2523,7 +2558,10 @@ func (s *Service) PolicyHealthForNodes(ctx context.Context, orgID uuid.UUID, nod
 				CertExpired:                 certExpired,                   // S11 WF-S11-6 — ranked first inside degradedKind too
 			})
 		}
-		ph := PolicyHealth{Degraded: deg, Kind: kind}
+		ph := PolicyHealth{Degraded: deg, Kind: kind, PushKnown: pushKnown, AppliedHash: caps.PolicyHash}
+		if pushKnown {
+			ph.PushedHash = pushed[n.ID]
+		}
 		// WF-B subordinate note: a DEMOTED member is dead while transit rides the active primary. Attach the
 		// named line to every OTHER site gateway (not the dead peer itself — it renders offline), and NEVER
 		// when this node's own headline is site_link_down (the inverse-red guard: a real transit failure gets

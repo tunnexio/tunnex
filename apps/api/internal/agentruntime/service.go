@@ -374,6 +374,35 @@ type Status struct {
 	LastErrorRevision     *int64
 }
 
+// RouteIntent is the public, secret-free routing portion of the managed
+// configuration. It is derived from the same device/org rows as Poll but does
+// not mint, consume, report, wake, or update anything.
+type RouteIntent struct {
+	AllowedIPs []string
+}
+
+func (s *Service) RouteIntent(ctx context.Context, orgID, deviceID uuid.UUID) (RouteIntent, error) {
+	if err := s.requireOptIn(ctx, orgID); err != nil {
+		return RouteIntent{}, err
+	}
+	if s == nil || s.q == nil {
+		return RouteIntent{}, ErrRuntimeStateMissing
+	}
+	dev, err := s.q.GetDevice(ctx, sqlc.GetDeviceParams{ID: deviceID, OrgID: orgID})
+	if err != nil || dev.Kind != "agent" || dev.Status != "active" || dev.AssignedIp == nil {
+		return RouteIntent{}, ErrRuntimeStateMissing
+	}
+	org, err := s.q.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		return RouteIntent{}, ErrRuntimeStateMissing
+	}
+	allowed := []string{org.PoolCidr}
+	if dev.FullTunnel {
+		allowed = []string{"0.0.0.0/0"}
+	}
+	return RouteIntent{AllowedIPs: allowed}, nil
+}
+
 func (s *Service) Status(ctx context.Context, orgID, deviceID uuid.UUID) (Status, error) {
 	if err := s.requireOptIn(ctx, orgID); err != nil {
 		return Status{}, err

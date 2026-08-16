@@ -748,6 +748,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/test-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Explain one managed agent access path without probing or changing it
+         * @description Read-only, server-owned diagnostic for one selected managed agent. It evaluates current lifecycle, runtime, gateway, route and exact compiled-policy facts. It never resolves DNS from the control plane, sends traffic, changes policy, wakes a runtime, or returns credentials, keys, configuration, or hashes that are not already privileged status facts.
+         */
+        get: operations["testAgentAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation": {
         parameters: {
             query?: never;
@@ -3495,6 +3518,27 @@ export interface components {
             /** Format: int64 */
             last_error_revision?: number | null;
         };
+        AgentAccessCheck: {
+            /** @enum {string} */
+            status: "pass" | "fail" | "inconclusive";
+            code: string;
+            message: string;
+            facts?: {
+                [key: string]: string;
+            };
+        };
+        AgentAccessDiagnostic: {
+            /** Format: uuid */
+            device_id: string;
+            destination: string;
+            /** @enum {string} */
+            protocol: "tcp" | "udp";
+            port: number;
+            /** @enum {string} */
+            overall: "allowed" | "denied" | "inconclusive";
+            first_blocker?: string | null;
+            checks: components["schemas"]["AgentAccessCheck"][];
+        };
         AgentBootstrapTokenRequest: {
             name: string;
             /** Format: uuid */
@@ -5006,6 +5050,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRuntimeStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testAgentAccess: {
+        parameters: {
+            query: {
+                destination: string;
+                protocol: "tcp" | "udp";
+                port: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered read-only diagnostic; inconclusive facts are explicit. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessDiagnostic"];
                 };
             };
             default: components["responses"]["Error"];

@@ -41,6 +41,26 @@ const (
 	NoMatchingGrant AccessEventDecisionReason = "no_matching_grant"
 )
 
+// Defines values for AgentAccessCheckStatus.
+const (
+	AgentAccessCheckStatusFail         AgentAccessCheckStatus = "fail"
+	AgentAccessCheckStatusInconclusive AgentAccessCheckStatus = "inconclusive"
+	AgentAccessCheckStatusPass         AgentAccessCheckStatus = "pass"
+)
+
+// Defines values for AgentAccessDiagnosticOverall.
+const (
+	AgentAccessDiagnosticOverallAllowed      AgentAccessDiagnosticOverall = "allowed"
+	AgentAccessDiagnosticOverallDenied       AgentAccessDiagnosticOverall = "denied"
+	AgentAccessDiagnosticOverallInconclusive AgentAccessDiagnosticOverall = "inconclusive"
+)
+
+// Defines values for AgentAccessDiagnosticProtocol.
+const (
+	AgentAccessDiagnosticProtocolTcp AgentAccessDiagnosticProtocol = "tcp"
+	AgentAccessDiagnosticProtocolUdp AgentAccessDiagnosticProtocol = "udp"
+)
+
 // Defines values for AgentBootstrapRuntimeReleaseBinary.
 const (
 	TunnexAgentRuntime AgentBootstrapRuntimeReleaseBinary = "tunnex-agent-runtime"
@@ -505,6 +525,12 @@ const (
 	Microsoft StartSsoLoginParamsProvider = "microsoft"
 )
 
+// Defines values for TestAgentAccessParamsProtocol.
+const (
+	TestAgentAccessParamsProtocolTcp TestAgentAccessParamsProtocol = "tcp"
+	TestAgentAccessParamsProtocolUdp TestAgentAccessParamsProtocol = "udp"
+)
+
 // AcceptInviteRequest defines model for AcceptInviteRequest.
 type AcceptInviteRequest struct {
 	Name     *string `json:"name,omitempty"`
@@ -625,6 +651,34 @@ type Agent struct {
 	// Unattributable No owner is recorded, so activity cannot be tied to a person. ⛔ A statement about the AUDIT TRAIL, never about permission — an unattributable agent is not less authorized.
 	Unattributable bool `json:"unattributable"`
 }
+
+// AgentAccessCheck defines model for AgentAccessCheck.
+type AgentAccessCheck struct {
+	Code    string                 `json:"code"`
+	Facts   *map[string]string     `json:"facts,omitempty"`
+	Message string                 `json:"message"`
+	Status  AgentAccessCheckStatus `json:"status"`
+}
+
+// AgentAccessCheckStatus defines model for AgentAccessCheck.Status.
+type AgentAccessCheckStatus string
+
+// AgentAccessDiagnostic defines model for AgentAccessDiagnostic.
+type AgentAccessDiagnostic struct {
+	Checks       []AgentAccessCheck            `json:"checks"`
+	Destination  string                        `json:"destination"`
+	DeviceId     openapi_types.UUID            `json:"device_id"`
+	FirstBlocker *string                       `json:"first_blocker"`
+	Overall      AgentAccessDiagnosticOverall  `json:"overall"`
+	Port         int                           `json:"port"`
+	Protocol     AgentAccessDiagnosticProtocol `json:"protocol"`
+}
+
+// AgentAccessDiagnosticOverall defines model for AgentAccessDiagnostic.Overall.
+type AgentAccessDiagnosticOverall string
+
+// AgentAccessDiagnosticProtocol defines model for AgentAccessDiagnostic.Protocol.
+type AgentAccessDiagnosticProtocol string
 
 // AgentBootstrapRelease Server-verified immutable runtime release metadata. Contains no secret or signing private key.
 type AgentBootstrapRelease struct {
@@ -2326,6 +2380,16 @@ type ListAccessEventsParams struct {
 	Limit      *int                `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// TestAgentAccessParams defines parameters for TestAgentAccess.
+type TestAgentAccessParams struct {
+	Destination string                        `form:"destination" json:"destination"`
+	Protocol    TestAgentAccessParamsProtocol `form:"protocol" json:"protocol"`
+	Port        int                           `form:"port" json:"port"`
+}
+
+// TestAgentAccessParamsProtocol defines parameters for TestAgentAccess.
+type TestAgentAccessParamsProtocol string
+
 // ListAuditLogsParams defines parameters for ListAuditLogs.
 type ListAuditLogsParams struct {
 	// Actor Filter by acting user (must be an org member).
@@ -2857,6 +2921,9 @@ type ClientInterface interface {
 
 	// GetAgentRuntimeStatus request
 	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAgentAccess request
+	TestAgentAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAuditLogs request
 	ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4225,6 +4292,18 @@ func (c *Client) RequestAgentCredentialRotation(ctx context.Context, orgId opena
 
 func (c *Client) GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAgentRuntimeStatusRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAgentAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAgentAccessRequest(c.Server, orgId, deviceId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -8076,6 +8155,89 @@ func NewGetAgentRuntimeStatusRequest(server string, orgId openapi_types.UUID, de
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTestAgentAccessRequest generates requests for TestAgentAccess
+func NewTestAgentAccessRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/test-access", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "destination", runtime.ParamLocationQuery, params.Destination); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "protocol", runtime.ParamLocationQuery, params.Protocol); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "port", runtime.ParamLocationQuery, params.Port); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -12696,6 +12858,9 @@ type ClientWithResponsesInterface interface {
 	// GetAgentRuntimeStatusWithResponse request
 	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
 
+	// TestAgentAccessWithResponse request
+	TestAgentAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*TestAgentAccessResponse, error)
+
 	// ListAuditLogsWithResponse request
 	ListAuditLogsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error)
 
@@ -14295,6 +14460,29 @@ func (r GetAgentRuntimeStatusResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetAgentRuntimeStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestAgentAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessDiagnostic
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAgentAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAgentAccessResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -17205,6 +17393,15 @@ func (c *ClientWithResponses) GetAgentRuntimeStatusWithResponse(ctx context.Cont
 	return ParseGetAgentRuntimeStatusResponse(rsp)
 }
 
+// TestAgentAccessWithResponse request returning *TestAgentAccessResponse
+func (c *ClientWithResponses) TestAgentAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*TestAgentAccessResponse, error) {
+	rsp, err := c.TestAgentAccess(ctx, orgId, deviceId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAgentAccessResponse(rsp)
+}
+
 // ListAuditLogsWithResponse request returning *ListAuditLogsResponse
 func (c *ClientWithResponses) ListAuditLogsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error) {
 	rsp, err := c.ListAuditLogs(ctx, orgId, params, reqEditors...)
@@ -20112,6 +20309,39 @@ func ParseGetAgentRuntimeStatusResponse(rsp *http.Response) (*GetAgentRuntimeSta
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentRuntimeStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAgentAccessResponse parses an HTTP response from a TestAgentAccessWithResponse call
+func ParseTestAgentAccessResponse(rsp *http.Response) (*TestAgentAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAgentAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessDiagnostic
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

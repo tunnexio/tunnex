@@ -94,6 +94,13 @@ var walkBodies = map[string]string{
 	"reportdevicehealth": `{"platform":"macos","os_version":"14.0","disk_encrypted":true}`,
 }
 
+// Required query tuples serve the same purpose as walkBodies: make the request
+// structurally valid so this walk measures authentication rather than the
+// generated parameter validator. Keep values inert and non-secret.
+var walkQueries = map[string]string{
+	"testagentaccess": "?destination=192.0.2.10&protocol=tcp&port=443",
+}
+
 // TestSessionlessMutationsAre401 walks EVERY operation in the OpenAPI spec and
 // asserts that operations requiring auth reject a sessionless request with 401.
 // It is spec-driven, so any endpoint a future story adds is covered automatically
@@ -136,6 +143,9 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			var body io.Reader
 			if b, ok := walkBodies[strings.ToLower(op.OperationID)]; ok {
 				body = bytes.NewBufferString(b)
+			}
+			if query, ok := walkQueries[strings.ToLower(op.OperationID)]; ok {
+				reqPath += query
 			}
 			req, err := http.NewRequest(method, srv.URL+reqPath, body)
 			if err != nil {

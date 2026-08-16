@@ -22,6 +22,7 @@ import {
   type Device,
   type HealthCheck,
   type CreatePolicyRuleRequest,
+  type AgentAccessDiagnostic,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { portLabel } from "../lib/k8sview";
@@ -263,6 +264,10 @@ export default function Access() {
         </Card>
       )}
 
+      {org && gate.isEnterprise && roleResolved && (
+        <TestAccessSection key={org.id} orgId={org.id} />
+      )}
+
       {view === "admin_body" && org && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
@@ -286,6 +291,165 @@ export default function Access() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+type TestableAgent = { device_id: string; name: string };
+
+// F08 read-only evaluator. The section first proves scoped privileged access by
+// loading each agent profile; an unrelated member therefore gets no Test Access
+// DOM at all. The keyed parent remount plus request epoch prevent tenant/input
+// results from committing after an org or tuple switch.
+function TestAccessSection({ orgId }: { orgId: string }) {
+  const [agents, setAgents] = useState<TestableAgent[] | null>(null);
+  const [agentId, setAgentId] = useState("");
+  const [destination, setDestination] = useState("");
+  const [protocol, setProtocol] = useState<"tcp" | "udp">("tcp");
+  const [port, setPort] = useState("443");
+  const [result, setResult] = useState<AgentAccessDiagnostic | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const loadEpoch = useRef(0);
+  const runEpoch = useRef(0);
+  const tupleKey = `${orgId}\u0000${agentId}\u0000${destination.trim()}\u0000${protocol}\u0000${port}`;
+  const tupleKeyRef = useRef(tupleKey);
+  tupleKeyRef.current = tupleKey;
+
+  useEffect(() => {
+    const epoch = ++loadEpoch.current;
+    setAgents(null);
+    setAgentId("");
+    setResult(null);
+    setError(null);
+    void (async () => {
+      const listed = await loadOne(() =>
+        api.GET("/api/v1/organizations/{orgId}/agents", {
+          params: { path: { orgId } },
+        }),
+      );
+      if (epoch !== loadEpoch.current || !listed.ok) return;
+      const visible = await Promise.all(
+        listed.data.map(async (agent) => {
+          const profile = await loadOne(() =>
+            api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+              params: { path: { orgId, deviceId: agent.device_id } },
+            }),
+          );
+          if (!profile.ok) return null;
+          return { device_id: agent.device_id, name: agent.name };
+        }),
+      );
+      if (epoch !== loadEpoch.current) return;
+      const scoped = visible.filter((v): v is TestableAgent => v != null);
+      setAgents(scoped);
+      setAgentId(scoped[0]?.device_id ?? "");
+    })();
+    return () => {
+      loadEpoch.current += 1;
+      runEpoch.current += 1;
+    };
+  }, [orgId]);
+
+  useEffect(() => {
+    runEpoch.current += 1;
+    setBusy(false);
+    setResult(null);
+    setError(null);
+  }, [orgId, agentId, destination, protocol, port]);
+
+  if (!agents || agents.length === 0) return null;
+
+  const numericPort = Number(port);
+  const runnable =
+    agentId !== "" && destination.trim() !== "" && Number.isInteger(numericPort) && numericPort >= 1 && numericPort <= 65535;
+
+  async function run() {
+    if (!runnable) return;
+    const epoch = ++runEpoch.current;
+    const requestedTupleKey = tupleKey;
+    const tuple = { agentId, destination: destination.trim(), protocol, port: numericPort };
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      const response = await api.GET(
+        "/api/v1/organizations/{orgId}/agents/{deviceId}/test-access",
+        {
+          params: {
+            path: { orgId, deviceId: tuple.agentId },
+            query: { destination: tuple.destination, protocol: tuple.protocol, port: tuple.port },
+          },
+        },
+      );
+      if (epoch !== runEpoch.current || requestedTupleKey !== tupleKeyRef.current) return;
+      if (response.error || !response.data) setError(apiErrorMessage(response.error, "Could not test access."));
+      else setResult(response.data);
+    } catch {
+      if (epoch === runEpoch.current) setError("Could not reach the API.");
+    } finally {
+      if (epoch === runEpoch.current) setBusy(false);
+    }
+  }
+
+  return (
+    <div data-testid="test-access-panel">
+      <Card>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-52 flex-1">
+          <h2 className="text-sm font-semibold text-slate-200">Test access</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Explain current control-plane intent. No packet, DNS query, or policy change is sent.
+          </p>
+        </div>
+        <Field label="Agent">
+          <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+            {agents.map((agent) => (
+              <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Destination IP or hostname">
+          <Input value={destination} placeholder="10.20.0.15" onChange={(e) => setDestination(e.target.value)} />
+        </Field>
+        <Field label="Protocol">
+          <Select value={protocol} onChange={(e) => setProtocol(e.target.value as "tcp" | "udp")}>
+            <option value="tcp">TCP</option><option value="udp">UDP</option>
+          </Select>
+        </Field>
+        <Field label="Port">
+          <Input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
+        </Field>
+        <Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Test access"}</Button>
+      </div>
+      <ErrorText>{error}</ErrorText>
+      {result && (
+        <div className="mt-4" data-testid="test-access-result">
+          <p className="text-sm font-medium text-slate-200">
+            {result.overall === "allowed" ? "Allowed by current Tunnex intent" : result.overall === "denied" ? "Blocked by current Tunnex intent" : "Inconclusive from current evidence"}
+          </p>
+          {result.first_blocker && <p className="mt-1 text-xs text-amber-300">First blocker: {result.first_blocker}</p>}
+          <ol className="mt-3 space-y-2">
+            {result.checks.map((check, index) => (
+              <li key={`${index}-${check.code}`} className="rounded border border-slate-800 px-3 py-2">
+                <div className="flex gap-2 text-xs">
+                  <span aria-hidden="true">{check.status === "pass" ? "✓" : check.status === "fail" ? "×" : "?"}</span>
+                  <span className="font-medium text-slate-300">{check.code}</span>
+                  <span className="text-slate-500">{check.message}</span>
+                </div>
+                {check.facts && Object.keys(check.facts).length > 0 && (
+                  <dl className="mt-2 grid gap-1 font-mono text-[10px] text-slate-500 sm:grid-cols-2">
+                    {Object.entries(check.facts).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => (
+                      <div key={key} className="flex gap-1"><dt>{key}:</dt><dd className="break-all text-slate-400">{value}</dd></div>
+                    ))}
+                  </dl>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      </Card>
     </div>
   );
 }
