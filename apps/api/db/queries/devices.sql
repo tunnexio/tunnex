@@ -77,6 +77,29 @@ WHERE d.org_id = $1
   AND ap.managing_group_id IS NOT NULL
 GROUP BY ap.managing_group_id;
 
+-- name: CountAgentJITRequestAuthorities :one
+-- F10 permission-before-edition check for a scoped requester opening the
+-- request list before any request row exists.
+SELECT count(*)
+FROM devices d
+JOIN agent_profiles ap ON ap.device_id=d.id
+WHERE d.org_id=$1 AND d.kind='agent' AND d.deleted_at IS NULL
+  AND (
+      d.user_id=sqlc.arg(user_id)::uuid
+      OR EXISTS (
+          SELECT 1
+          FROM group_members gm
+          JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id
+          JOIN users u ON u.id=gm.user_id
+          WHERE gm.org_id=d.org_id
+            AND gm.group_id=ap.managing_group_id
+            AND gm.user_id=sqlc.arg(user_id)::uuid
+            AND m.access_revoked_at IS NULL
+            AND u.status='active'
+            AND u.deleted_at IS NULL
+      )
+  );
+
 -- name: GetCurrentAgentOwnerCandidate :one
 SELECT m.user_id
 FROM memberships m

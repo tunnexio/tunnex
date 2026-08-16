@@ -65,6 +65,24 @@ type DecisionInput struct {
 	Reason         string
 }
 
+type Setting struct {
+	Enabled  bool
+	Pending  int64
+	Approved int64
+}
+
+func (s *Service) Setting(ctx context.Context, orgID uuid.UUID) (Setting, error) {
+	var out Setting
+	err := s.pool.QueryRow(ctx, `SELECT agent_jit_access_enabled,
+		(SELECT count(*) FROM agent_access_requests WHERE org_id=$1 AND state='pending'),
+		(SELECT count(*) FROM agent_access_requests WHERE org_id=$1 AND state='approved')
+		FROM organizations WHERE id=$1 AND deleted_at IS NULL`, orgID).Scan(&out.Enabled, &out.Pending, &out.Approved)
+	if err != nil {
+		return Setting{}, classify(err)
+	}
+	return out, nil
+}
+
 func (s *Service) SetEnabled(ctx context.Context, orgID, actor uuid.UUID, enabled bool) (bool, error) {
 	if s == nil || s.pool == nil || orgID == uuid.Nil || actor == uuid.Nil {
 		return false, ErrInvalid
@@ -344,7 +362,7 @@ func (s *Service) Get(ctx context.Context, orgID, requestID uuid.UUID) (sqlc.Age
 	return row, events, err
 }
 
-func (s *Service) List(ctx context.Context, orgID uuid.UUID, state *string, deviceID *uuid.UUID, pageSize int32) ([]sqlc.AgentAccessRequest, error) {
+func (s *Service) List(ctx context.Context, orgID uuid.UUID, state *string, deviceID *uuid.UUID, before *time.Time, beforeID *uuid.UUID, pageSize int32) ([]sqlc.AgentAccessRequest, error) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 50
 	}
@@ -352,7 +370,50 @@ func (s *Service) List(ctx context.Context, orgID uuid.UUID, state *string, devi
 	if deviceID != nil {
 		device = pgUUID(*deviceID)
 	}
-	return sqlc.New(s.pool).ListAgentAccessRequests(ctx, sqlc.ListAgentAccessRequestsParams{OrgID: orgID, State: state, DeviceID: device, PageSize: pageSize})
+	beforeTime := pgtype.Timestamptz{}
+	beforeUUID := pgtype.UUID{}
+	if before != nil && beforeID != nil {
+		beforeTime = pgTime(*before)
+		beforeUUID = pgUUID(*beforeID)
+	}
+	return sqlc.New(s.pool).ListAgentAccessRequests(ctx, sqlc.ListAgentAccessRequestsParams{
+		OrgID: orgID, State: state, DeviceID: device,
+		BeforeRequestedAt: beforeTime, BeforeID: beforeUUID, PageSize: pageSize,
+	})
+}
+
+func (s *Service) ListForActor(ctx context.Context, orgID, actor uuid.UUID, state *string, deviceID *uuid.UUID, before *time.Time, beforeID *uuid.UUID, pageSize int32) ([]sqlc.AgentAccessRequest, error) {
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 50
+	}
+	device := pgtype.UUID{}
+	if deviceID != nil {
+		device = pgUUID(*deviceID)
+	}
+	beforeTime := pgtype.Timestamptz{}
+	beforeUUID := pgtype.UUID{}
+	if before != nil && beforeID != nil {
+		beforeTime = pgTime(*before)
+		beforeUUID = pgUUID(*beforeID)
+	}
+	return sqlc.New(s.pool).ListAgentAccessRequestsForActor(ctx, sqlc.ListAgentAccessRequestsForActorParams{
+		OrgID: orgID, State: state, DeviceID: device,
+		BeforeRequestedAt: beforeTime, BeforeID: beforeUUID, ActorID: actor, PageSize: pageSize,
+	})
+}
+
+func (s *Service) Describe(ctx context.Context, row sqlc.AgentAccessRequest) (string, string, error) {
+	var agentName string
+	if err := s.pool.QueryRow(ctx, `SELECT name FROM devices WHERE id=$1 AND org_id=$2 AND kind='agent'`, row.DeviceID, row.OrgID).Scan(&agentName); err != nil {
+		return "", "", classify(err)
+	}
+	dst := destinationFromRow(row)
+	table := map[string]string{"resource": "resources", "group": "user_groups", "site": "sites", "k8s_service": "k8s_services"}[dst.Kind]
+	var destinationName string
+	if err := s.pool.QueryRow(ctx, `SELECT name FROM `+table+` WHERE id=$1 AND org_id=$2`, dst.ID, row.OrgID).Scan(&destinationName); err != nil {
+		return "", "", classify(err)
+	}
+	return agentName, destinationName, nil
 }
 
 func (s *Service) SweepExpired(ctx context.Context) (int, error) {
@@ -396,6 +457,60 @@ func (s *Service) SweepExpired(ctx context.Context) (int, error) {
 		s.push(ctx, orgID)
 	}
 	return len(due), nil
+}
+
+// CloseForDeviceTx composes F10 with the canonical agent lifecycle. The caller
+// owns the device transaction and row lock; every pending request is cancelled
+// and every approved rule is deleted/revoked before suspend, revoke, or removal
+// can commit. The caller performs the single post-commit org push.
+func CloseForDeviceTx(ctx context.Context, q *sqlc.Queries, orgID, deviceID, actor uuid.UUID, cause string) (int, error) {
+	rows, err := q.ListLiveAgentAccessRequestsByDeviceForUpdate(ctx, sqlc.ListLiveAgentAccessRequestsByDeviceForUpdateParams{
+		OrgID: orgID, DeviceID: deviceID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC()
+	for _, locked := range rows {
+		meta := map[string]any{"cause": cause, "device_id": deviceID.String()}
+		switch locked.State {
+		case "pending":
+			row, err := q.CancelAgentAccessRequest(ctx, sqlc.CancelAgentAccessRequestParams{
+				ID: locked.ID, OrgID: orgID, CancelledByUserID: pgUUID(actor), CancelledAt: pgTime(now),
+			})
+			if err != nil {
+				return 0, classify(err)
+			}
+			if err := recordHumanTransition(ctx, q, row, actor, "agent_access.cancelled", meta); err != nil {
+				return 0, err
+			}
+		case "approved":
+			if !locked.PolicyRuleID.Valid {
+				return 0, fmt.Errorf("approved request %s has no policy rule", locked.ID)
+			}
+			if n, err := q.DeletePolicyRule(ctx, sqlc.DeletePolicyRuleParams{ID: locked.PolicyRuleID.Bytes, OrgID: orgID}); err != nil {
+				return 0, err
+			} else if n != 1 {
+				return 0, fmt.Errorf("approved request %s policy rule missing", locked.ID)
+			}
+			row, err := q.RevokeAgentAccessRequest(ctx, sqlc.RevokeAgentAccessRequestParams{
+				ID: locked.ID, OrgID: orgID, RevokedByUserID: pgUUID(actor), RevokedAt: pgTime(now),
+			})
+			if err != nil {
+				return 0, classify(err)
+			}
+			meta["policy_rule_id"] = uuid.UUID(locked.PolicyRuleID.Bytes).String()
+			if err := recordHumanTransition(ctx, q, row, actor, "agent_access.revoked", meta); err != nil {
+				return 0, err
+			}
+			if err := writeHumanAudit(ctx, q, orgID, actor, "policy.rule_deleted", "policy_rule", locked.PolicyRuleID.Bytes, map[string]any{
+				"cause": cause, "request_id": row.ID.String(),
+			}); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return len(rows), nil
 }
 
 func (s *Service) StartExpirySweeper(ctx context.Context, mayTick func() bool) {

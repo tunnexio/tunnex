@@ -21,7 +21,39 @@ SELECT * FROM agent_access_requests
 WHERE org_id=$1
   AND (sqlc.narg('state')::text IS NULL OR state=sqlc.narg('state'))
   AND (sqlc.narg('device_id')::uuid IS NULL OR device_id=sqlc.narg('device_id'))
+  AND (sqlc.narg('before_requested_at')::timestamptz IS NULL
+       OR (requested_at, id) < (sqlc.narg('before_requested_at')::timestamptz,
+                               sqlc.narg('before_id')::uuid))
 ORDER BY requested_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: ListAgentAccessRequestsForActor :many
+SELECT ar.*
+FROM agent_access_requests ar
+JOIN devices d ON d.id=ar.device_id AND d.org_id=ar.org_id
+JOIN agent_profiles ap ON ap.device_id=d.id
+WHERE ar.org_id=$1
+  AND (sqlc.narg('state')::text IS NULL OR ar.state=sqlc.narg('state'))
+  AND (sqlc.narg('device_id')::uuid IS NULL OR ar.device_id=sqlc.narg('device_id'))
+  AND (sqlc.narg('before_requested_at')::timestamptz IS NULL
+       OR (ar.requested_at, ar.id) < (sqlc.narg('before_requested_at')::timestamptz,
+                                     sqlc.narg('before_id')::uuid))
+  AND (
+      d.user_id=sqlc.arg('actor_id')::uuid
+      OR EXISTS (
+          SELECT 1
+          FROM group_members gm
+          JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id
+          JOIN users u ON u.id=gm.user_id
+          WHERE gm.org_id=d.org_id
+            AND gm.group_id=ap.managing_group_id
+            AND gm.user_id=sqlc.arg('actor_id')::uuid
+            AND m.access_revoked_at IS NULL
+            AND u.status='active'
+            AND u.deleted_at IS NULL
+      )
+  )
+ORDER BY ar.requested_at DESC, ar.id DESC
 LIMIT sqlc.arg('page_size');
 
 -- name: InsertAgentAccessRequestEvent :one
@@ -92,6 +124,12 @@ RETURNING *;
 SELECT * FROM agent_access_requests
 WHERE org_id=$1 AND policy_rule_id=$2;
 
+-- name: ListAgentAccessManagedRules :many
+SELECT policy_rule_id, id AS request_id
+FROM agent_access_requests
+WHERE org_id=$1 AND policy_rule_id IS NOT NULL
+ORDER BY policy_rule_id;
+
 -- name: CountLiveAgentAccessRequests :one
 SELECT count(*) FROM agent_access_requests
 WHERE org_id=$1 AND state IN ('pending','approved');
@@ -99,3 +137,9 @@ WHERE org_id=$1 AND state IN ('pending','approved');
 -- name: CountLiveAgentAccessRequestsByDevice :one
 SELECT count(*) FROM agent_access_requests
 WHERE org_id=$1 AND device_id=$2 AND state IN ('pending','approved');
+
+-- name: ListLiveAgentAccessRequestsByDeviceForUpdate :many
+SELECT * FROM agent_access_requests
+WHERE org_id=$1 AND device_id=$2 AND state IN ('pending','approved')
+ORDER BY requested_at, id
+FOR UPDATE;

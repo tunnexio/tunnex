@@ -74,6 +74,42 @@ func (q *Queries) CountAgentIdentitiesForQuota(ctx context.Context, orgID uuid.U
 	return column_1, err
 }
 
+const countAgentJITRequestAuthorities = `-- name: CountAgentJITRequestAuthorities :one
+SELECT count(*)
+FROM devices d
+JOIN agent_profiles ap ON ap.device_id=d.id
+WHERE d.org_id=$1 AND d.kind='agent' AND d.deleted_at IS NULL
+  AND (
+      d.user_id=$2::uuid
+      OR EXISTS (
+          SELECT 1
+          FROM group_members gm
+          JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id
+          JOIN users u ON u.id=gm.user_id
+          WHERE gm.org_id=d.org_id
+            AND gm.group_id=ap.managing_group_id
+            AND gm.user_id=$2::uuid
+            AND m.access_revoked_at IS NULL
+            AND u.status='active'
+            AND u.deleted_at IS NULL
+      )
+  )
+`
+
+type CountAgentJITRequestAuthoritiesParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// F10 permission-before-edition check for a scoped requester opening the
+// request list before any request row exists.
+func (q *Queries) CountAgentJITRequestAuthorities(ctx context.Context, arg CountAgentJITRequestAuthoritiesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAgentJITRequestAuthorities, arg.OrgID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countDevicesForUserCap = `-- name: CountDevicesForUserCap :one
 SELECT count(*) FROM devices
 WHERE org_id = $1 AND user_id = $2 AND status IN ('active', 'pending') AND deleted_at IS NULL

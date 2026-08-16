@@ -48,6 +48,14 @@ const (
 	AgentAccessCheckStatusPass         AgentAccessCheckStatus = "pass"
 )
 
+// Defines values for AgentAccessDestinationKind.
+const (
+	AgentAccessDestinationKindGroup      AgentAccessDestinationKind = "group"
+	AgentAccessDestinationKindK8sService AgentAccessDestinationKind = "k8s_service"
+	AgentAccessDestinationKindResource   AgentAccessDestinationKind = "resource"
+	AgentAccessDestinationKindSite       AgentAccessDestinationKind = "site"
+)
+
 // Defines values for AgentAccessDiagnosticOverall.
 const (
 	AgentAccessDiagnosticOverallAllowed      AgentAccessDiagnosticOverall = "allowed"
@@ -59,6 +67,16 @@ const (
 const (
 	AgentAccessDiagnosticProtocolTcp AgentAccessDiagnosticProtocol = "tcp"
 	AgentAccessDiagnosticProtocolUdp AgentAccessDiagnosticProtocol = "udp"
+)
+
+// Defines values for AgentAccessRequestState.
+const (
+	AgentAccessRequestStateApproved  AgentAccessRequestState = "approved"
+	AgentAccessRequestStateCancelled AgentAccessRequestState = "cancelled"
+	AgentAccessRequestStateExpired   AgentAccessRequestState = "expired"
+	AgentAccessRequestStatePending   AgentAccessRequestState = "pending"
+	AgentAccessRequestStateRejected  AgentAccessRequestState = "rejected"
+	AgentAccessRequestStateRevoked   AgentAccessRequestState = "revoked"
 )
 
 // Defines values for AgentBootstrapRuntimeReleaseBinary.
@@ -475,8 +493,8 @@ const (
 
 // Defines values for UpdateAgentProfileRequestStatus.
 const (
-	UpdateAgentProfileRequestStatusActive    UpdateAgentProfileRequestStatus = "active"
-	UpdateAgentProfileRequestStatusSuspended UpdateAgentProfileRequestStatus = "suspended"
+	Active    UpdateAgentProfileRequestStatus = "active"
+	Suspended UpdateAgentProfileRequestStatus = "suspended"
 )
 
 // Defines values for UpgradeStatusApprovalMode.
@@ -692,6 +710,9 @@ type AgentAccessCheck struct {
 // AgentAccessCheckStatus defines model for AgentAccessCheck.Status.
 type AgentAccessCheckStatus string
 
+// AgentAccessDestinationKind defines model for AgentAccessDestinationKind.
+type AgentAccessDestinationKind string
+
 // AgentAccessDiagnostic defines model for AgentAccessDiagnostic.
 type AgentAccessDiagnostic struct {
 	Checks       []AgentAccessCheck            `json:"checks"`
@@ -708,6 +729,63 @@ type AgentAccessDiagnosticOverall string
 
 // AgentAccessDiagnosticProtocol defines model for AgentAccessDiagnostic.Protocol.
 type AgentAccessDiagnosticProtocol string
+
+// AgentAccessIdempotencyRequest defines model for AgentAccessIdempotencyRequest.
+type AgentAccessIdempotencyRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+// AgentAccessRequest defines model for AgentAccessRequest.
+type AgentAccessRequest struct {
+	AgentName                string                     `json:"agent_name"`
+	ApprovedAt               *time.Time                 `json:"approved_at,omitempty"`
+	ApprovedByUserId         *openapi_types.UUID        `json:"approved_by_user_id,omitempty"`
+	ApprovedExpiresAt        *time.Time                 `json:"approved_expires_at,omitempty"`
+	CancelledAt              *time.Time                 `json:"cancelled_at,omitempty"`
+	CancelledByUserId        *openapi_types.UUID        `json:"cancelled_by_user_id,omitempty"`
+	DestinationId            openapi_types.UUID         `json:"destination_id"`
+	DestinationKind          AgentAccessDestinationKind `json:"destination_kind"`
+	DestinationName          string                     `json:"destination_name"`
+	DeviceId                 openapi_types.UUID         `json:"device_id"`
+	Id                       openapi_types.UUID         `json:"id"`
+	OrgId                    openapi_types.UUID         `json:"org_id"`
+	Reason                   string                     `json:"reason"`
+	RejectedAt               *time.Time                 `json:"rejected_at,omitempty"`
+	RejectedByUserId         *openapi_types.UUID        `json:"rejected_by_user_id,omitempty"`
+	RejectionReason          *string                    `json:"rejection_reason,omitempty"`
+	RequestedAt              time.Time                  `json:"requested_at"`
+	RequestedByUserId        openapi_types.UUID         `json:"requested_by_user_id"`
+	RequestedDurationSeconds int                        `json:"requested_duration_seconds"`
+	RevokedAt                *time.Time                 `json:"revoked_at,omitempty"`
+	RevokedByUserId          *openapi_types.UUID        `json:"revoked_by_user_id,omitempty"`
+	State                    AgentAccessRequestState    `json:"state"`
+	UpdatedAt                time.Time                  `json:"updated_at"`
+}
+
+// AgentAccessRequestDetail defines model for AgentAccessRequestDetail.
+type AgentAccessRequestDetail struct {
+	Events  []AgentAccessRequestEvent `json:"events"`
+	Request AgentAccessRequest        `json:"request"`
+}
+
+// AgentAccessRequestEvent defines model for AgentAccessRequestEvent.
+type AgentAccessRequestEvent struct {
+	ActorSystem *string                 `json:"actor_system,omitempty"`
+	ActorUserId *openapi_types.UUID     `json:"actor_user_id,omitempty"`
+	CreatedAt   time.Time               `json:"created_at"`
+	Id          openapi_types.UUID      `json:"id"`
+	State       AgentAccessRequestState `json:"state"`
+}
+
+// AgentAccessRequestPage defines model for AgentAccessRequestPage.
+type AgentAccessRequestPage struct {
+	Items                 []AgentAccessRequest `json:"items"`
+	NextBeforeId          *openapi_types.UUID  `json:"next_before_id,omitempty"`
+	NextBeforeRequestedAt *time.Time           `json:"next_before_requested_at,omitempty"`
+}
+
+// AgentAccessRequestState defines model for AgentAccessRequestState.
+type AgentAccessRequestState string
 
 // AgentBootstrapRelease Server-verified immutable runtime release metadata. Contains no secret or signing private key.
 type AgentBootstrapRelease struct {
@@ -835,6 +913,13 @@ type AgentGroupMember struct {
 
 // AgentGroupMemberStatus defines model for AgentGroupMember.Status.
 type AgentGroupMemberStatus string
+
+// AgentJITAccessSetting defines model for AgentJITAccessSetting.
+type AgentJITAccessSetting struct {
+	ApprovedRequests int  `json:"approved_requests"`
+	Enabled          bool `json:"enabled"`
+	PendingRequests  int  `json:"pending_requests"`
+}
 
 // AgentManagingGroupUpdate defines model for AgentManagingGroupUpdate.
 type AgentManagingGroupUpdate struct {
@@ -1146,6 +1231,16 @@ type CliCredentialGrant struct {
 // CpAdminRequest defines model for CpAdminRequest.
 type CpAdminRequest struct {
 	Granted bool `json:"granted"`
+}
+
+// CreateAgentAccessRequest defines model for CreateAgentAccessRequest.
+type CreateAgentAccessRequest struct {
+	DestinationId   openapi_types.UUID         `json:"destination_id"`
+	DestinationKind AgentAccessDestinationKind `json:"destination_kind"`
+	DeviceId        openapi_types.UUID         `json:"device_id"`
+	DurationSeconds int                        `json:"duration_seconds"`
+	IdempotencyKey  string                     `json:"idempotency_key"`
+	Reason          string                     `json:"reason"`
 }
 
 // CreateAgentGroupRequest defines model for CreateAgentGroupRequest.
@@ -2022,6 +2117,9 @@ type OrgOverview struct {
 
 // Organization defines model for Organization.
 type Organization struct {
+	// AgentJitAccessEnabled F10: explicit organization opt-in for approval-gated temporary managed-agent access. Default false; a paid licence does not enable it implicitly.
+	AgentJitAccessEnabled bool `json:"agent_jit_access_enabled"`
+
 	// AgentPolicyTemplatesEnabled F09: explicit organization opt-in for managed-agent groups and reusable policy templates. Default false; a paid licence does not enable it implicitly.
 	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
 	CreatedAt                   time.Time          `json:"created_at"`
@@ -2067,6 +2165,8 @@ type PasswordResetRequest struct {
 
 // PolicyRule defines model for PolicyRule.
 type PolicyRule struct {
+	// AgentAccessRequestId Owning F10 request when managed_by_agent_access is true.
+	AgentAccessRequestId *openapi_types.UUID `json:"agent_access_request_id"`
 	CidrOutsideOrgRanges bool                `json:"cidr_outside_org_ranges"`
 	CreatedAt            time.Time           `json:"created_at"`
 	DstGroupId           *openapi_types.UUID `json:"dst_group_id"`
@@ -2080,6 +2180,9 @@ type PolicyRule struct {
 	Enabled               bool                `json:"enabled"`
 	ExpiresAt             *time.Time          `json:"expires_at"`
 	Id                    openapi_types.UUID  `json:"id"`
+
+	// ManagedByAgentAccess True when the row is owned by an approved F10 JIT agent-access request. Ordinary rule mutation surfaces must treat it as read-only.
+	ManagedByAgentAccess bool `json:"managed_by_agent_access"`
 
 	// ManagedByAgentTemplate True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces.
 	ManagedByAgentTemplate bool               `json:"managed_by_agent_template"`
@@ -2142,6 +2245,12 @@ type RegisterK8sClusterRequest struct {
 // RegisterSiteRequest defines model for RegisterSiteRequest.
 type RegisterSiteRequest struct {
 	Name string `json:"name"`
+}
+
+// RejectAgentAccessRequest defines model for RejectAgentAccessRequest.
+type RejectAgentAccessRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+	Reason         string `json:"reason"`
 }
 
 // RekeyChallengeRequest defines model for RekeyChallengeRequest.
@@ -2274,6 +2383,11 @@ type RoutedRanges struct {
 
 	// Ranges Approved site-subnet CIDRs (canonical masked form, sorted) pushed to split-tunnel device AllowedIPs (S8.5). Ranges only — no identity material. Empty when none declared.
 	Ranges []string `json:"ranges"`
+}
+
+// SetAgentJITAccessSettingRequest defines model for SetAgentJITAccessSettingRequest.
+type SetAgentJITAccessSettingRequest struct {
+	Enabled bool `json:"enabled"`
 }
 
 // SetOrganizationAgentQuotaRequest F02 H1-H3. Null explicitly clears the quota and means unlimited.
@@ -2575,6 +2689,15 @@ type ListAccessEventsParams struct {
 	Limit      *int                `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListAgentAccessRequestsParams defines parameters for ListAgentAccessRequests.
+type ListAgentAccessRequestsParams struct {
+	State             *AgentAccessRequestState `form:"state,omitempty" json:"state,omitempty"`
+	DeviceId          *openapi_types.UUID      `form:"device_id,omitempty" json:"device_id,omitempty"`
+	BeforeRequestedAt *time.Time               `form:"before_requested_at,omitempty" json:"before_requested_at,omitempty"`
+	BeforeId          *openapi_types.UUID      `form:"before_id,omitempty" json:"before_id,omitempty"`
+	PageSize          *int                     `form:"page_size,omitempty" json:"page_size,omitempty"`
+}
+
 // GetAgentPolicyTemplateDestinationImpactParams defines parameters for GetAgentPolicyTemplateDestinationImpact.
 type GetAgentPolicyTemplateDestinationImpactParams struct {
 	DestinationKind string             `form:"destination_kind" json:"destination_kind"`
@@ -2696,6 +2819,21 @@ type CreateOrganizationJSONRequestBody = CreateOrganizationRequest
 // UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
 type UpdateOrganizationJSONRequestBody = UpdateOrganizationRequest
 
+// CreateAgentAccessRequestJSONRequestBody defines body for CreateAgentAccessRequest for application/json ContentType.
+type CreateAgentAccessRequestJSONRequestBody = CreateAgentAccessRequest
+
+// ApproveAgentAccessRequestJSONRequestBody defines body for ApproveAgentAccessRequest for application/json ContentType.
+type ApproveAgentAccessRequestJSONRequestBody = AgentAccessIdempotencyRequest
+
+// CancelAgentAccessRequestJSONRequestBody defines body for CancelAgentAccessRequest for application/json ContentType.
+type CancelAgentAccessRequestJSONRequestBody = AgentAccessIdempotencyRequest
+
+// RejectAgentAccessRequestJSONRequestBody defines body for RejectAgentAccessRequest for application/json ContentType.
+type RejectAgentAccessRequestJSONRequestBody = RejectAgentAccessRequest
+
+// RevokeAgentAccessRequestJSONRequestBody defines body for RevokeAgentAccessRequest for application/json ContentType.
+type RevokeAgentAccessRequestJSONRequestBody = AgentAccessIdempotencyRequest
+
 // CreateAgentGroupJSONRequestBody defines body for CreateAgentGroup for application/json ContentType.
 type CreateAgentGroupJSONRequestBody = CreateAgentGroupRequest
 
@@ -2704,6 +2842,9 @@ type UpdateAgentGroupJSONRequestBody = UpdateAgentGroupRequest
 
 // AddAgentGroupMemberJSONRequestBody defines body for AddAgentGroupMember for application/json ContentType.
 type AddAgentGroupMemberJSONRequestBody = AddAgentGroupMemberRequest
+
+// SetOrganizationAgentJITAccessEnabledJSONRequestBody defines body for SetOrganizationAgentJITAccessEnabled for application/json ContentType.
+type SetOrganizationAgentJITAccessEnabledJSONRequestBody = SetAgentJITAccessSettingRequest
 
 // ApplyAgentPolicyTemplateJSONRequestBody defines body for ApplyAgentPolicyTemplate for application/json ContentType.
 type ApplyAgentPolicyTemplateJSONRequestBody = ApplyAgentPolicyTemplateRequest
@@ -3115,6 +3256,37 @@ type ClientInterface interface {
 	// GetAccessLogHealth request
 	GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAgentAccessRequests request
+	ListAgentAccessRequests(ctx context.Context, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentAccessRequestWithBody request with any body
+	CreateAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, body CreateAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentAccessRequest request
+	GetAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApproveAgentAccessRequestWithBody request with any body
+	ApproveAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ApproveAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body ApproveAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelAgentAccessRequestWithBody request with any body
+	CancelAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CancelAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body CancelAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RejectAgentAccessRequestWithBody request with any body
+	RejectAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RejectAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RejectAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeAgentAccessRequestWithBody request with any body
+	RevokeAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RevokeAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RevokeAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgentGroups request
 	ListAgentGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3141,6 +3313,14 @@ type ClientInterface interface {
 
 	// RemoveAgentGroupMember request
 	RemoveAgentGroupMember(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrganizationAgentJITAccessSetting request
+	GetOrganizationAgentJITAccessSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetOrganizationAgentJITAccessEnabledWithBody request with any body
+	SetOrganizationAgentJITAccessEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetOrganizationAgentJITAccessEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAgentPolicyTemplateAssignments request
 	ListAgentPolicyTemplateAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4449,6 +4629,150 @@ func (c *Client) GetAccessLogHealth(ctx context.Context, orgId openapi_types.UUI
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListAgentAccessRequests(ctx context.Context, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentAccessRequestsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentAccessRequestRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, body CreateAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentAccessRequestRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentAccessRequestRequest(c.Server, orgId, requestId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ApproveAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveAgentAccessRequestRequestWithBody(c.Server, orgId, requestId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ApproveAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body ApproveAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveAgentAccessRequestRequest(c.Server, orgId, requestId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelAgentAccessRequestRequestWithBody(c.Server, orgId, requestId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body CancelAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelAgentAccessRequestRequest(c.Server, orgId, requestId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RejectAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectAgentAccessRequestRequestWithBody(c.Server, orgId, requestId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RejectAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RejectAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectAgentAccessRequestRequest(c.Server, orgId, requestId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAgentAccessRequestWithBody(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAgentAccessRequestRequestWithBody(c.Server, orgId, requestId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RevokeAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAgentAccessRequestRequest(c.Server, orgId, requestId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAgentGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentGroupsRequest(c.Server, orgId)
 	if err != nil {
@@ -4559,6 +4883,42 @@ func (c *Client) AddAgentGroupMember(ctx context.Context, orgId openapi_types.UU
 
 func (c *Client) RemoveAgentGroupMember(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRemoveAgentGroupMemberRequest(c.Server, orgId, groupId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetOrganizationAgentJITAccessSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrganizationAgentJITAccessSettingRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAgentJITAccessEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentJITAccessEnabledRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAgentJITAccessEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAgentJITAccessEnabledRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8411,6 +8771,430 @@ func NewGetAccessLogHealthRequest(server string, orgId openapi_types.UUID) (*htt
 	return req, nil
 }
 
+// NewListAgentAccessRequestsRequest generates requests for ListAgentAccessRequests
+func NewListAgentAccessRequestsRequest(server string, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-requests", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DeviceId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "device_id", runtime.ParamLocationQuery, *params.DeviceId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BeforeRequestedAt != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "before_requested_at", runtime.ParamLocationQuery, *params.BeforeRequestedAt); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.BeforeId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "before_id", runtime.ParamLocationQuery, *params.BeforeId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "page_size", runtime.ParamLocationQuery, *params.PageSize); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentAccessRequestRequest calls the generic CreateAgentAccessRequest builder with application/json body
+func NewCreateAgentAccessRequestRequest(server string, orgId openapi_types.UUID, body CreateAgentAccessRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentAccessRequestRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAgentAccessRequestRequestWithBody generates requests for CreateAgentAccessRequest with any type of body
+func NewCreateAgentAccessRequestRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-requests", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAgentAccessRequestRequest generates requests for GetAgentAccessRequest
+func NewGetAgentAccessRequestRequest(server string, orgId openapi_types.UUID, requestId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "requestId", runtime.ParamLocationPath, requestId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-requests/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApproveAgentAccessRequestRequest calls the generic ApproveAgentAccessRequest builder with application/json body
+func NewApproveAgentAccessRequestRequest(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, body ApproveAgentAccessRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewApproveAgentAccessRequestRequestWithBody(server, orgId, requestId, "application/json", bodyReader)
+}
+
+// NewApproveAgentAccessRequestRequestWithBody generates requests for ApproveAgentAccessRequest with any type of body
+func NewApproveAgentAccessRequestRequestWithBody(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "requestId", runtime.ParamLocationPath, requestId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-requests/%s/approve", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCancelAgentAccessRequestRequest calls the generic CancelAgentAccessRequest builder with application/json body
+func NewCancelAgentAccessRequestRequest(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, body CancelAgentAccessRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCancelAgentAccessRequestRequestWithBody(server, orgId, requestId, "application/json", bodyReader)
+}
+
+// NewCancelAgentAccessRequestRequestWithBody generates requests for CancelAgentAccessRequest with any type of body
+func NewCancelAgentAccessRequestRequestWithBody(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "requestId", runtime.ParamLocationPath, requestId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-requests/%s/cancel", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRejectAgentAccessRequestRequest calls the generic RejectAgentAccessRequest builder with application/json body
+func NewRejectAgentAccessRequestRequest(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, body RejectAgentAccessRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRejectAgentAccessRequestRequestWithBody(server, orgId, requestId, "application/json", bodyReader)
+}
+
+// NewRejectAgentAccessRequestRequestWithBody generates requests for RejectAgentAccessRequest with any type of body
+func NewRejectAgentAccessRequestRequestWithBody(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "requestId", runtime.ParamLocationPath, requestId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-requests/%s/reject", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeAgentAccessRequestRequest calls the generic RevokeAgentAccessRequest builder with application/json body
+func NewRevokeAgentAccessRequestRequest(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, body RevokeAgentAccessRequestJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRevokeAgentAccessRequestRequestWithBody(server, orgId, requestId, "application/json", bodyReader)
+}
+
+// NewRevokeAgentAccessRequestRequestWithBody generates requests for RevokeAgentAccessRequest with any type of body
+func NewRevokeAgentAccessRequestRequestWithBody(server string, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "requestId", runtime.ParamLocationPath, requestId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-access-requests/%s/revoke", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListAgentGroupsRequest generates requests for ListAgentGroups
 func NewListAgentGroupsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -8726,6 +9510,87 @@ func NewRemoveAgentGroupMemberRequest(server string, orgId openapi_types.UUID, g
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetOrganizationAgentJITAccessSettingRequest generates requests for GetOrganizationAgentJITAccessSetting
+func NewGetOrganizationAgentJITAccessSettingRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-jit-access-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetOrganizationAgentJITAccessEnabledRequest calls the generic SetOrganizationAgentJITAccessEnabled builder with application/json body
+func NewSetOrganizationAgentJITAccessEnabledRequest(server string, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetOrganizationAgentJITAccessEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetOrganizationAgentJITAccessEnabledRequestWithBody generates requests for SetOrganizationAgentJITAccessEnabled with any type of body
+func NewSetOrganizationAgentJITAccessEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-jit-access-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -14332,6 +15197,37 @@ type ClientWithResponsesInterface interface {
 	// GetAccessLogHealthWithResponse request
 	GetAccessLogHealthWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAccessLogHealthResponse, error)
 
+	// ListAgentAccessRequestsWithResponse request
+	ListAgentAccessRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams, reqEditors ...RequestEditorFn) (*ListAgentAccessRequestsResponse, error)
+
+	// CreateAgentAccessRequestWithBodyWithResponse request with any body
+	CreateAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentAccessRequestResponse, error)
+
+	CreateAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentAccessRequestResponse, error)
+
+	// GetAgentAccessRequestWithResponse request
+	GetAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentAccessRequestResponse, error)
+
+	// ApproveAgentAccessRequestWithBodyWithResponse request with any body
+	ApproveAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApproveAgentAccessRequestResponse, error)
+
+	ApproveAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body ApproveAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ApproveAgentAccessRequestResponse, error)
+
+	// CancelAgentAccessRequestWithBodyWithResponse request with any body
+	CancelAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CancelAgentAccessRequestResponse, error)
+
+	CancelAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body CancelAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CancelAgentAccessRequestResponse, error)
+
+	// RejectAgentAccessRequestWithBodyWithResponse request with any body
+	RejectAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RejectAgentAccessRequestResponse, error)
+
+	RejectAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RejectAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RejectAgentAccessRequestResponse, error)
+
+	// RevokeAgentAccessRequestWithBodyWithResponse request with any body
+	RevokeAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeAgentAccessRequestResponse, error)
+
+	RevokeAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RevokeAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeAgentAccessRequestResponse, error)
+
 	// ListAgentGroupsWithResponse request
 	ListAgentGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupsResponse, error)
 
@@ -14358,6 +15254,14 @@ type ClientWithResponsesInterface interface {
 
 	// RemoveAgentGroupMemberWithResponse request
 	RemoveAgentGroupMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RemoveAgentGroupMemberResponse, error)
+
+	// GetOrganizationAgentJITAccessSettingWithResponse request
+	GetOrganizationAgentJITAccessSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOrganizationAgentJITAccessSettingResponse, error)
+
+	// SetOrganizationAgentJITAccessEnabledWithBodyWithResponse request with any body
+	SetOrganizationAgentJITAccessEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentJITAccessEnabledResponse, error)
+
+	SetOrganizationAgentJITAccessEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentJITAccessEnabledResponse, error)
 
 	// ListAgentPolicyTemplateAssignmentsWithResponse request
 	ListAgentPolicyTemplateAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplateAssignmentsResponse, error)
@@ -15843,6 +16747,168 @@ func (r GetAccessLogHealthResponse) StatusCode() int {
 	return 0
 }
 
+type ListAgentAccessRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessRequestPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentAccessRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentAccessRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAgentAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessRequest
+	JSON201      *AgentAccessRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessRequestDetail
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ApproveAgentAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ApproveAgentAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApproveAgentAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CancelAgentAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelAgentAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelAgentAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RejectAgentAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RejectAgentAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RejectAgentAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeAgentAccessRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeAgentAccessRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeAgentAccessRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAgentGroupsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -15996,6 +17062,52 @@ func (r RemoveAgentGroupMemberResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RemoveAgentGroupMemberResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetOrganizationAgentJITAccessSettingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentJITAccessSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrganizationAgentJITAccessSettingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrganizationAgentJITAccessSettingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetOrganizationAgentJITAccessEnabledResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentJITAccessSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetOrganizationAgentJITAccessEnabledResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetOrganizationAgentJITAccessEnabledResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19298,6 +20410,109 @@ func (c *ClientWithResponses) GetAccessLogHealthWithResponse(ctx context.Context
 	return ParseGetAccessLogHealthResponse(rsp)
 }
 
+// ListAgentAccessRequestsWithResponse request returning *ListAgentAccessRequestsResponse
+func (c *ClientWithResponses) ListAgentAccessRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentAccessRequestsParams, reqEditors ...RequestEditorFn) (*ListAgentAccessRequestsResponse, error) {
+	rsp, err := c.ListAgentAccessRequests(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentAccessRequestsResponse(rsp)
+}
+
+// CreateAgentAccessRequestWithBodyWithResponse request with arbitrary body returning *CreateAgentAccessRequestResponse
+func (c *ClientWithResponses) CreateAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentAccessRequestResponse, error) {
+	rsp, err := c.CreateAgentAccessRequestWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentAccessRequestResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentAccessRequestResponse, error) {
+	rsp, err := c.CreateAgentAccessRequest(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentAccessRequestResponse(rsp)
+}
+
+// GetAgentAccessRequestWithResponse request returning *GetAgentAccessRequestResponse
+func (c *ClientWithResponses) GetAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentAccessRequestResponse, error) {
+	rsp, err := c.GetAgentAccessRequest(ctx, orgId, requestId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentAccessRequestResponse(rsp)
+}
+
+// ApproveAgentAccessRequestWithBodyWithResponse request with arbitrary body returning *ApproveAgentAccessRequestResponse
+func (c *ClientWithResponses) ApproveAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ApproveAgentAccessRequestResponse, error) {
+	rsp, err := c.ApproveAgentAccessRequestWithBody(ctx, orgId, requestId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveAgentAccessRequestResponse(rsp)
+}
+
+func (c *ClientWithResponses) ApproveAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body ApproveAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*ApproveAgentAccessRequestResponse, error) {
+	rsp, err := c.ApproveAgentAccessRequest(ctx, orgId, requestId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveAgentAccessRequestResponse(rsp)
+}
+
+// CancelAgentAccessRequestWithBodyWithResponse request with arbitrary body returning *CancelAgentAccessRequestResponse
+func (c *ClientWithResponses) CancelAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CancelAgentAccessRequestResponse, error) {
+	rsp, err := c.CancelAgentAccessRequestWithBody(ctx, orgId, requestId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelAgentAccessRequestResponse(rsp)
+}
+
+func (c *ClientWithResponses) CancelAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body CancelAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*CancelAgentAccessRequestResponse, error) {
+	rsp, err := c.CancelAgentAccessRequest(ctx, orgId, requestId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelAgentAccessRequestResponse(rsp)
+}
+
+// RejectAgentAccessRequestWithBodyWithResponse request with arbitrary body returning *RejectAgentAccessRequestResponse
+func (c *ClientWithResponses) RejectAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RejectAgentAccessRequestResponse, error) {
+	rsp, err := c.RejectAgentAccessRequestWithBody(ctx, orgId, requestId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectAgentAccessRequestResponse(rsp)
+}
+
+func (c *ClientWithResponses) RejectAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RejectAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RejectAgentAccessRequestResponse, error) {
+	rsp, err := c.RejectAgentAccessRequest(ctx, orgId, requestId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectAgentAccessRequestResponse(rsp)
+}
+
+// RevokeAgentAccessRequestWithBodyWithResponse request with arbitrary body returning *RevokeAgentAccessRequestResponse
+func (c *ClientWithResponses) RevokeAgentAccessRequestWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevokeAgentAccessRequestResponse, error) {
+	rsp, err := c.RevokeAgentAccessRequestWithBody(ctx, orgId, requestId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAgentAccessRequestResponse(rsp)
+}
+
+func (c *ClientWithResponses) RevokeAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RevokeAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeAgentAccessRequestResponse, error) {
+	rsp, err := c.RevokeAgentAccessRequest(ctx, orgId, requestId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAgentAccessRequestResponse(rsp)
+}
+
 // ListAgentGroupsWithResponse request returning *ListAgentGroupsResponse
 func (c *ClientWithResponses) ListAgentGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupsResponse, error) {
 	rsp, err := c.ListAgentGroups(ctx, orgId, reqEditors...)
@@ -19383,6 +20598,32 @@ func (c *ClientWithResponses) RemoveAgentGroupMemberWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseRemoveAgentGroupMemberResponse(rsp)
+}
+
+// GetOrganizationAgentJITAccessSettingWithResponse request returning *GetOrganizationAgentJITAccessSettingResponse
+func (c *ClientWithResponses) GetOrganizationAgentJITAccessSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOrganizationAgentJITAccessSettingResponse, error) {
+	rsp, err := c.GetOrganizationAgentJITAccessSetting(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrganizationAgentJITAccessSettingResponse(rsp)
+}
+
+// SetOrganizationAgentJITAccessEnabledWithBodyWithResponse request with arbitrary body returning *SetOrganizationAgentJITAccessEnabledResponse
+func (c *ClientWithResponses) SetOrganizationAgentJITAccessEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAgentJITAccessEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAgentJITAccessEnabledWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentJITAccessEnabledResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetOrganizationAgentJITAccessEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentJITAccessEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAgentJITAccessEnabled(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAgentJITAccessEnabledResponse(rsp)
 }
 
 // ListAgentPolicyTemplateAssignmentsWithResponse request returning *ListAgentPolicyTemplateAssignmentsResponse
@@ -22290,6 +23531,244 @@ func ParseGetAccessLogHealthResponse(rsp *http.Response) (*GetAccessLogHealthRes
 	return response, nil
 }
 
+// ParseListAgentAccessRequestsResponse parses an HTTP response from a ListAgentAccessRequestsWithResponse call
+func ParseListAgentAccessRequestsResponse(rsp *http.Response) (*ListAgentAccessRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentAccessRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessRequestPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentAccessRequestResponse parses an HTTP response from a CreateAgentAccessRequestWithResponse call
+func ParseCreateAgentAccessRequestResponse(rsp *http.Response) (*CreateAgentAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentAccessRequestResponse parses an HTTP response from a GetAgentAccessRequestWithResponse call
+func ParseGetAgentAccessRequestResponse(rsp *http.Response) (*GetAgentAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessRequestDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApproveAgentAccessRequestResponse parses an HTTP response from a ApproveAgentAccessRequestWithResponse call
+func ParseApproveAgentAccessRequestResponse(rsp *http.Response) (*ApproveAgentAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApproveAgentAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelAgentAccessRequestResponse parses an HTTP response from a CancelAgentAccessRequestWithResponse call
+func ParseCancelAgentAccessRequestResponse(rsp *http.Response) (*CancelAgentAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelAgentAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRejectAgentAccessRequestResponse parses an HTTP response from a RejectAgentAccessRequestWithResponse call
+func ParseRejectAgentAccessRequestResponse(rsp *http.Response) (*RejectAgentAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RejectAgentAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeAgentAccessRequestResponse parses an HTTP response from a RevokeAgentAccessRequestWithResponse call
+func ParseRevokeAgentAccessRequestResponse(rsp *http.Response) (*RevokeAgentAccessRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeAgentAccessRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAgentGroupsResponse parses an HTTP response from a ListAgentGroupsWithResponse call
 func ParseListAgentGroupsResponse(rsp *http.Response) (*ListAgentGroupsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -22490,6 +23969,72 @@ func ParseRemoveAgentGroupMemberResponse(rsp *http.Response) (*RemoveAgentGroupM
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentPolicyTemplateRemovalImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrganizationAgentJITAccessSettingResponse parses an HTTP response from a GetOrganizationAgentJITAccessSettingWithResponse call
+func ParseGetOrganizationAgentJITAccessSettingResponse(rsp *http.Response) (*GetOrganizationAgentJITAccessSettingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrganizationAgentJITAccessSettingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentJITAccessSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetOrganizationAgentJITAccessEnabledResponse parses an HTTP response from a SetOrganizationAgentJITAccessEnabledWithResponse call
+func ParseSetOrganizationAgentJITAccessEnabledResponse(rsp *http.Response) (*SetOrganizationAgentJITAccessEnabledResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetOrganizationAgentJITAccessEnabledResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentJITAccessSetting
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

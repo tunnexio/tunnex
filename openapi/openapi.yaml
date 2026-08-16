@@ -3495,6 +3495,157 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplateRemovalImpact" } } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agent-jit-access-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getOrganizationAgentJITAccessSetting
+      summary: Read the explicit JIT access opt-in and server-owned blockers
+      tags: [agent-access]
+      responses:
+        "200":
+          description: Current persisted opt-in and live request counts.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentJITAccessSetting" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setOrganizationAgentJITAccessEnabled
+      summary: Enable or disable approval-gated temporary agent access
+      tags: [agent-access]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SetAgentJITAccessSettingRequest" } } }
+      responses:
+        "200":
+          description: Persisted organization setting and live request counts.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentJITAccessSetting" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-access-requests:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentAccessRequests
+      summary: List approval requests visible to the accountable human
+      tags: [agent-access]
+      parameters:
+        - { name: state, in: query, schema: { $ref: "#/components/schemas/AgentAccessRequestState" } }
+        - { name: device_id, in: query, schema: { type: string, format: uuid } }
+        - { name: before_requested_at, in: query, schema: { type: string, format: date-time } }
+        - { name: before_id, in: query, schema: { type: string, format: uuid } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: Tenant-scoped keyset page. Scoped requesters see only agents they may request for.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequestPage" } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAgentAccessRequest
+      summary: Request temporary access for one managed agent
+      tags: [agent-access]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAgentAccessRequest" } } }
+      responses:
+        "201":
+          description: Pending request created; no policy changed.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
+        "200":
+          description: Exact idempotent replay of the existing result.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-access-requests/{requestId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAgentAccessRequest
+      summary: Read one visible request and its immutable transition ledger
+      tags: [agent-access]
+      responses:
+        "200":
+          description: Request detail.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequestDetail" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-access-requests/{requestId}/approve:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: approveAgentAccessRequest
+      summary: Approve once and materialize one expiring ordinary policy rule
+      tags: [agent-access]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessIdempotencyRequest" } } }
+      responses:
+        "200":
+          description: Approved request, or exact idempotent replay.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-access-requests/{requestId}/reject:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: rejectAgentAccessRequest
+      summary: Reject a pending request without creating a policy rule
+      tags: [agent-access]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/RejectAgentAccessRequest" } } }
+      responses:
+        "200":
+          description: Rejected request, or exact idempotent replay.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-access-requests/{requestId}/cancel:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: cancelAgentAccessRequest
+      summary: Cancel a pending request without creating a policy rule
+      tags: [agent-access]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessIdempotencyRequest" } } }
+      responses:
+        "200":
+          description: Cancelled request, or exact idempotent replay.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-access-requests/{requestId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeAgentAccessRequest
+      summary: Emergency-revoke approved temporary access and remove its rule
+      tags: [agent-access]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessIdempotencyRequest" } } }
+      responses:
+        "200":
+          description: Revoked request, or exact idempotent replay.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessRequest" } } }
+        default: { $ref: "#/components/responses/Error" }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -3539,7 +3690,7 @@ components:
 
     Organization:
       type: object
-      required: [id, name, slug, pool_cidr, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, created_at, updated_at]
+      required: [id, name, slug, pool_cidr, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, created_at, updated_at]
       additionalProperties: false
       properties:
         id:
@@ -3567,6 +3718,9 @@ components:
         agent_policy_templates_enabled:
           type: boolean
           description: "F09: explicit organization opt-in for managed-agent groups and reusable policy templates. Default false; a paid licence does not enable it implicitly."
+        agent_jit_access_enabled:
+          type: boolean
+          description: "F10: explicit organization opt-in for approval-gated temporary managed-agent access. Default false; a paid licence does not enable it implicitly."
         created_at:
           type: string
           format: date-time
@@ -3754,6 +3908,104 @@ components:
         withdrawn_tuples: { type: integer, minimum: 0 }
         changed_gateways: { type: integer, minimum: 0 }
 
+    AgentJITAccessSetting:
+      type: object
+      required: [enabled, pending_requests, approved_requests]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        pending_requests: { type: integer, minimum: 0 }
+        approved_requests: { type: integer, minimum: 0 }
+    SetAgentJITAccessSettingRequest:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+    AgentAccessRequestState:
+      type: string
+      enum: [pending, approved, rejected, cancelled, expired, revoked]
+    AgentAccessDestinationKind:
+      type: string
+      enum: [resource, group, site, k8s_service]
+    CreateAgentAccessRequest:
+      type: object
+      required: [device_id, destination_kind, destination_id, reason, duration_seconds, idempotency_key]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        destination_kind: { $ref: "#/components/schemas/AgentAccessDestinationKind" }
+        destination_id: { type: string, format: uuid }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        duration_seconds: { type: integer, minimum: 300, maximum: 86400, default: 3600 }
+        idempotency_key: { type: string, minLength: 1, maxLength: 128 }
+    AgentAccessIdempotencyRequest:
+      type: object
+      required: [idempotency_key]
+      additionalProperties: false
+      properties:
+        idempotency_key: { type: string, minLength: 1, maxLength: 128 }
+    RejectAgentAccessRequest:
+      type: object
+      required: [idempotency_key, reason]
+      additionalProperties: false
+      properties:
+        idempotency_key: { type: string, minLength: 1, maxLength: 128 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    AgentAccessRequest:
+      type: object
+      required: [id, org_id, device_id, agent_name, destination_kind, destination_id, destination_name, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        device_id: { type: string, format: uuid }
+        agent_name: { type: string }
+        destination_kind: { $ref: "#/components/schemas/AgentAccessDestinationKind" }
+        destination_id: { type: string, format: uuid }
+        destination_name: { type: string }
+        reason: { type: string }
+        requested_duration_seconds: { type: integer, minimum: 300, maximum: 86400 }
+        state: { $ref: "#/components/schemas/AgentAccessRequestState" }
+        requested_by_user_id: { type: string, format: uuid }
+        requested_at: { type: string, format: date-time }
+        approved_by_user_id: { type: string, format: uuid }
+        approved_at: { type: string, format: date-time }
+        approved_expires_at: { type: string, format: date-time }
+        rejected_by_user_id: { type: string, format: uuid }
+        rejected_at: { type: string, format: date-time }
+        rejection_reason: { type: string }
+        cancelled_by_user_id: { type: string, format: uuid }
+        cancelled_at: { type: string, format: date-time }
+        revoked_by_user_id: { type: string, format: uuid }
+        revoked_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AgentAccessRequestEvent:
+      type: object
+      required: [id, state, created_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        state: { $ref: "#/components/schemas/AgentAccessRequestState" }
+        actor_user_id: { type: string, format: uuid }
+        actor_system: { type: string }
+        created_at: { type: string, format: date-time }
+    AgentAccessRequestDetail:
+      type: object
+      required: [request, events]
+      additionalProperties: false
+      properties:
+        request: { $ref: "#/components/schemas/AgentAccessRequest" }
+        events: { type: array, items: { $ref: "#/components/schemas/AgentAccessRequestEvent" } }
+    AgentAccessRequestPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AgentAccessRequest" } }
+        next_before_requested_at: { type: string, format: date-time }
+        next_before_id: { type: string, format: uuid }
+
     PoolCidrRequest:
       type: object
       required: [cidr]
@@ -3940,7 +4192,7 @@ components:
 
     PolicyRule:
       type: object
-      required: [id, org_id, src_kind, dst_kind, created_at, cidr_outside_org_ranges, dst_k8s_service_vanished, enabled, managed_by_operator, managed_by_agent_template]
+      required: [id, org_id, src_kind, dst_kind, created_at, cidr_outside_org_ranges, dst_k8s_service_vanished, enabled, managed_by_operator, managed_by_agent_template, managed_by_agent_access]
       additionalProperties: false
       properties:
         # S10.2 D2 cond 1: true = created/managed by the GitOps operator (a machine credential); the dashboard
@@ -3951,6 +4203,14 @@ components:
         managed_by_agent_template:
           type: boolean
           description: "True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces."
+        managed_by_agent_access:
+          type: boolean
+          description: "True when the row is owned by an approved F10 JIT agent-access request. Ordinary rule mutation surfaces must treat it as read-only."
+        agent_access_request_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: "Owning F10 request when managed_by_agent_access is true."
         # F3: true = the rule contributes its allow; false = DISABLED (permission withdrawn, compiled to
         # nothing — "as if the rule weren't there" under default-deny). Toggled via PATCH; a disabled rule
         # is shown distinctly (dimmed), never hidden, so the list can't lie about what's enforcing.

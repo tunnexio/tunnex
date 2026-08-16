@@ -14,6 +14,8 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 )
 
 type testPusher struct{ orgs []uuid.UUID }
@@ -101,6 +103,23 @@ func TestAgentAccessRequestApprovalAndExpiryPostgres(t *testing.T) {
 	}
 	if srcKind != "agent" || !expires.Equal(approved.ApprovedExpiresAt.Time) {
 		t.Fatalf("rule src=%s expires=%s request=%s", srcKind, expires, approved.ApprovedExpiresAt.Time)
+	}
+	policySvc := policy.NewService(pool)
+	assertManagedConflict := func(operation string, err error) {
+		t.Helper()
+		var domain *apierr.Error
+		if !errors.As(err, &domain) || domain.Status != 409 || domain.Code != "agent_access_managed_rule" {
+			t.Fatalf("%s managed-rule guard err=%v", operation, err)
+		}
+	}
+	assertManagedConflict("delete", policySvc.DeletePolicyRule(ctx, org, approved.PolicyRuleID.Bytes, actor, "", ""))
+	_, err = policySvc.SetPolicyRuleEnabled(ctx, org, approved.PolicyRuleID.Bytes, false)
+	assertManagedConflict("disable", err)
+	_, err = policySvc.ExtendGrant(ctx, org, approved.PolicyRuleID.Bytes, approved.ApprovedExpiresAt.Time.Add(time.Minute))
+	assertManagedConflict("extend", err)
+	var requestID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM agent_access_requests WHERE policy_rule_id=$1`, approved.PolicyRuleID.Bytes).Scan(&requestID); err != nil || requestID != request.ID {
+		t.Fatalf("managed-rule request link=%s want=%s err=%v", requestID, request.ID, err)
 	}
 
 	// Make the approved window due without waiting. Preserve the CHECK by moving

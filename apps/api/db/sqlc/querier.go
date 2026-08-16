@@ -145,6 +145,9 @@ type Querier interface {
 	// F02 H2: pending, active, and suspended reserve org-wide agent identity
 	// capacity; revoked and deleted identities do not count.
 	CountAgentIdentitiesForQuota(ctx context.Context, orgID uuid.UUID) (int64, error)
+	// F10 permission-before-edition check for a scoped requester opening the
+	// request list before any request row exists.
+	CountAgentJITRequestAuthorities(ctx context.Context, arg CountAgentJITRequestAuthoritiesParams) (int64, error)
 	CountAgentPolicyTemplateGroupReferences(ctx context.Context, arg CountAgentPolicyTemplateGroupReferencesParams) (int64, error)
 	// Immutable F09 template versions retain their destination identity. A soft
 	// unexpose must refuse before it would turn a reusable template into a silent
@@ -799,8 +802,10 @@ type Querier interface {
 	//   the WG fleet on a hub member). The OVPN device's /32 reaches the data plane via the compiled
 	//   artifact + the OVPN roster (which now shares the identity gate), never this list.
 	ListActiveWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListActiveWireGuardPeersForNodeRow, error)
+	ListAgentAccessManagedRules(ctx context.Context, orgID uuid.UUID) ([]ListAgentAccessManagedRulesRow, error)
 	ListAgentAccessRequestEvents(ctx context.Context, arg ListAgentAccessRequestEventsParams) ([]AgentAccessRequestEvent, error)
 	ListAgentAccessRequests(ctx context.Context, arg ListAgentAccessRequestsParams) ([]AgentAccessRequest, error)
+	ListAgentAccessRequestsForActor(ctx context.Context, arg ListAgentAccessRequestsForActorParams) ([]AgentAccessRequest, error)
 	ListAgentGroupMembers(ctx context.Context, arg ListAgentGroupMembersParams) ([]ListAgentGroupMembersRow, error)
 	ListAgentGroups(ctx context.Context, orgID uuid.UUID) ([]AgentGroup, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
@@ -876,6 +881,9 @@ type Querier interface {
 	// middle of an operator's device list with no owner and no posture.
 	ListDevicesByUser(ctx context.Context, arg ListDevicesByUserParams) ([]ListDevicesByUserRow, error)
 	ListDomainClaims(ctx context.Context, orgID uuid.UUID) ([]DomainClaim, error)
+	// lint:cross-org — the scheduler-leader expiry sweep intentionally scans every
+	// organization; each returned row still carries org_id for same-tx mutation,
+	// audit and one push per affected tenant.
 	ListDueAgentAccessRequestsForUpdate(ctx context.Context) ([]AgentAccessRequest, error)
 	// The poller's work-list: every org/provider with sync turned on. Deliberately CROSS-ORG — the
 	// background poller iterates all tenants; each config is reconciled org-scoped downstream.
@@ -926,6 +934,7 @@ type Querier interface {
 	// agree BY CONSTRUCTION (L2): a zone the gateway would REFUSE for (no Service yet) is never handed to a client
 	// as a resolver. DISTINCT collapses a multi-Service cluster to one zone row.
 	ListK8sServedZonesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sServedZonesForOrgRow, error)
+	ListLiveAgentAccessRequestsByDeviceForUpdate(ctx context.Context, arg ListLiveAgentAccessRequestsByDeviceForUpdateParams) ([]AgentAccessRequest, error)
 	// lint:cross-org — keyed by node_id, which the caller resolved from an org-scoped node row.
 	// The TRANSFER candidate set (S12.12 D1/D4): the devices a revoke would cascade, named so they can be MOVED
 	// instead. Same predicate as CountLiveDevicesForNode and RevokeDevicesForNode — one definition of "homed

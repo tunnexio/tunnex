@@ -313,6 +313,18 @@ func (s *Service) AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UU
 	return out, nil
 }
 
+func (s *Service) AgentAccessManagedRules(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	rows, err := s.q.ListAgentAccessManagedRules(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]uuid.UUID, len(rows))
+	for _, row := range rows {
+		out[row.PolicyRuleID.Bytes] = row.RequestID
+	}
+	return out, nil
+}
+
 func refuseAgentTemplateManagedRule(ctx context.Context, q *sqlc.Queries, orgID, ruleID uuid.UUID) error {
 	managed, err := q.IsAgentTemplateManagedRule(ctx, sqlc.IsAgentTemplateManagedRuleParams{
 		OrgID: orgID, PolicyRuleID: ruleID,
@@ -324,6 +336,22 @@ func refuseAgentTemplateManagedRule(ctx context.Context, q *sqlc.Queries, orgID,
 		return apierr.Conflict("agent_template_managed_rule", "this rule is managed by an agent policy template assignment; change or remove the assignment instead")
 	}
 	return nil
+}
+
+func refuseWorkflowManagedRule(ctx context.Context, q *sqlc.Queries, orgID, ruleID uuid.UUID) error {
+	if err := refuseAgentTemplateManagedRule(ctx, q, orgID, ruleID); err != nil {
+		return err
+	}
+	_, err := q.GetAgentAccessRequestByPolicyRule(ctx, sqlc.GetAgentAccessRequestByPolicyRuleParams{
+		OrgID: orgID, PolicyRuleID: pgtype.UUID{Bytes: ruleID, Valid: true},
+	})
+	if err == nil {
+		return apierr.Conflict("agent_access_managed_rule", "this rule is managed by a JIT agent-access request; revoke the request instead")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	return err
 }
 
 // PolicyRuleCidrWarnings computes, per rule id, the S8.7 read-time warning cidr_outside_org_ranges: true for
@@ -578,7 +606,7 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 
 func (s *Service) DeletePolicyRule(ctx context.Context, orgID, ruleID, actorUserID uuid.UUID, actorSystem, cause string) error {
 	return s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
-		if err := refuseAgentTemplateManagedRule(ctx, q, orgID, ruleID); err != nil {
+		if err := refuseWorkflowManagedRule(ctx, q, orgID, ruleID); err != nil {
 			return err
 		}
 		n, e := q.DeletePolicyRule(ctx, sqlc.DeletePolicyRuleParams{ID: ruleID, OrgID: orgID})
@@ -600,7 +628,7 @@ func (s *Service) DeletePolicyRule(ctx context.Context, orgID, ruleID, actorUser
 // exist changes) and audits with TWO DISTINCT actions (policy.rule_enabled / policy.rule_disabled), so
 // "who cut access at 3am" is a one-read action filter, not a metadata query.
 func (s *Service) SetPolicyRuleEnabled(ctx context.Context, orgID, ruleID uuid.UUID, enabled bool) (sqlc.PolicyRule, error) {
-	if err := refuseAgentTemplateManagedRule(ctx, s.q, orgID, ruleID); err != nil {
+	if err := refuseWorkflowManagedRule(ctx, s.q, orgID, ruleID); err != nil {
 		return sqlc.PolicyRule{}, err
 	}
 	// F-A1: read current state FIRST and NO-OP if already in the desired state — no push, no audit. The
@@ -622,7 +650,7 @@ func (s *Service) SetPolicyRuleEnabled(ctx context.Context, orgID, ruleID uuid.U
 	}
 	var r sqlc.PolicyRule
 	err = s.mutate(ctx, orgID, func(q *sqlc.Queries) error {
-		if e := refuseAgentTemplateManagedRule(ctx, q, orgID, ruleID); e != nil {
+		if e := refuseWorkflowManagedRule(ctx, q, orgID, ruleID); e != nil {
 			return e
 		}
 		var e error
@@ -669,7 +697,7 @@ func (s *Service) ExtendGrant(ctx context.Context, orgID, ruleID uuid.UUID, newE
 	// false; ExtendPolicyRule SETs only expires_at) — no artifact-affecting field can flow
 	// through it, so dropping the push can never hide an edit that SHOULD push. (S7.5.4 box-walk)
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
-		if e := refuseAgentTemplateManagedRule(ctx, q, orgID, ruleID); e != nil {
+		if e := refuseWorkflowManagedRule(ctx, q, orgID, ruleID); e != nil {
 			return e
 		}
 		// Read the CURRENT window FIRST, under a row lock, so (a) old_expires_at is the true

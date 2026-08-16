@@ -487,6 +487,38 @@ func (q *Queries) InsertAgentAccessRequestEvent(ctx context.Context, arg InsertA
 	return i, err
 }
 
+const listAgentAccessManagedRules = `-- name: ListAgentAccessManagedRules :many
+SELECT policy_rule_id, id AS request_id
+FROM agent_access_requests
+WHERE org_id=$1 AND policy_rule_id IS NOT NULL
+ORDER BY policy_rule_id
+`
+
+type ListAgentAccessManagedRulesRow struct {
+	PolicyRuleID pgtype.UUID `json:"policy_rule_id"`
+	RequestID    uuid.UUID   `json:"request_id"`
+}
+
+func (q *Queries) ListAgentAccessManagedRules(ctx context.Context, orgID uuid.UUID) ([]ListAgentAccessManagedRulesRow, error) {
+	rows, err := q.db.Query(ctx, listAgentAccessManagedRules, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAgentAccessManagedRulesRow{}
+	for rows.Next() {
+		var i ListAgentAccessManagedRulesRow
+		if err := rows.Scan(&i.PolicyRuleID, &i.RequestID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAgentAccessRequestEvents = `-- name: ListAgentAccessRequestEvents :many
 SELECT id, org_id, request_id, state, actor_user_id, actor_system, metadata, created_at FROM agent_access_request_events
 WHERE org_id=$1 AND request_id=$2
@@ -532,15 +564,20 @@ SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_
 WHERE org_id=$1
   AND ($2::text IS NULL OR state=$2)
   AND ($3::uuid IS NULL OR device_id=$3)
+  AND ($4::timestamptz IS NULL
+       OR (requested_at, id) < ($4::timestamptz,
+                               $5::uuid))
 ORDER BY requested_at DESC, id DESC
-LIMIT $4
+LIMIT $6
 `
 
 type ListAgentAccessRequestsParams struct {
-	OrgID    uuid.UUID   `json:"org_id"`
-	State    *string     `json:"state"`
-	DeviceID pgtype.UUID `json:"device_id"`
-	PageSize int32       `json:"page_size"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	State             *string            `json:"state"`
+	DeviceID          pgtype.UUID        `json:"device_id"`
+	BeforeRequestedAt pgtype.Timestamptz `json:"before_requested_at"`
+	BeforeID          pgtype.UUID        `json:"before_id"`
+	PageSize          int32              `json:"page_size"`
 }
 
 func (q *Queries) ListAgentAccessRequests(ctx context.Context, arg ListAgentAccessRequestsParams) ([]AgentAccessRequest, error) {
@@ -548,6 +585,102 @@ func (q *Queries) ListAgentAccessRequests(ctx context.Context, arg ListAgentAcce
 		arg.OrgID,
 		arg.State,
 		arg.DeviceID,
+		arg.BeforeRequestedAt,
+		arg.BeforeID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentAccessRequest{}
+	for rows.Next() {
+		var i AgentAccessRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DeviceID,
+			&i.DstKind,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.DstSiteID,
+			&i.DstK8sServiceID,
+			&i.Reason,
+			&i.RequestedDurationSeconds,
+			&i.State,
+			&i.RequestedByUserID,
+			&i.RequestedAt,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.ApprovedExpiresAt,
+			&i.RejectedByUserID,
+			&i.RejectedAt,
+			&i.RejectionReason,
+			&i.CancelledByUserID,
+			&i.CancelledAt,
+			&i.RevokedByUserID,
+			&i.RevokedAt,
+			&i.PolicyRuleID,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentAccessRequestsForActor = `-- name: ListAgentAccessRequestsForActor :many
+SELECT ar.id, ar.org_id, ar.device_id, ar.dst_kind, ar.dst_resource_id, ar.dst_group_id, ar.dst_site_id, ar.dst_k8s_service_id, ar.reason, ar.requested_duration_seconds, ar.state, ar.requested_by_user_id, ar.requested_at, ar.approved_by_user_id, ar.approved_at, ar.approved_expires_at, ar.rejected_by_user_id, ar.rejected_at, ar.rejection_reason, ar.cancelled_by_user_id, ar.cancelled_at, ar.revoked_by_user_id, ar.revoked_at, ar.policy_rule_id, ar.updated_at
+FROM agent_access_requests ar
+JOIN devices d ON d.id=ar.device_id AND d.org_id=ar.org_id
+JOIN agent_profiles ap ON ap.device_id=d.id
+WHERE ar.org_id=$1
+  AND ($2::text IS NULL OR ar.state=$2)
+  AND ($3::uuid IS NULL OR ar.device_id=$3)
+  AND ($4::timestamptz IS NULL
+       OR (ar.requested_at, ar.id) < ($4::timestamptz,
+                                     $5::uuid))
+  AND (
+      d.user_id=$6::uuid
+      OR EXISTS (
+          SELECT 1
+          FROM group_members gm
+          JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id
+          JOIN users u ON u.id=gm.user_id
+          WHERE gm.org_id=d.org_id
+            AND gm.group_id=ap.managing_group_id
+            AND gm.user_id=$6::uuid
+            AND m.access_revoked_at IS NULL
+            AND u.status='active'
+            AND u.deleted_at IS NULL
+      )
+  )
+ORDER BY ar.requested_at DESC, ar.id DESC
+LIMIT $7
+`
+
+type ListAgentAccessRequestsForActorParams struct {
+	OrgID             uuid.UUID          `json:"org_id"`
+	State             *string            `json:"state"`
+	DeviceID          pgtype.UUID        `json:"device_id"`
+	BeforeRequestedAt pgtype.Timestamptz `json:"before_requested_at"`
+	BeforeID          pgtype.UUID        `json:"before_id"`
+	ActorID           uuid.UUID          `json:"actor_id"`
+	PageSize          int32              `json:"page_size"`
+}
+
+func (q *Queries) ListAgentAccessRequestsForActor(ctx context.Context, arg ListAgentAccessRequestsForActorParams) ([]AgentAccessRequest, error) {
+	rows, err := q.db.Query(ctx, listAgentAccessRequestsForActor,
+		arg.OrgID,
+		arg.State,
+		arg.DeviceID,
+		arg.BeforeRequestedAt,
+		arg.BeforeID,
+		arg.ActorID,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -601,8 +734,69 @@ ORDER BY approved_expires_at, id
 FOR UPDATE SKIP LOCKED
 `
 
+// lint:cross-org — the scheduler-leader expiry sweep intentionally scans every
+// organization; each returned row still carries org_id for same-tx mutation,
+// audit and one push per affected tenant.
 func (q *Queries) ListDueAgentAccessRequestsForUpdate(ctx context.Context) ([]AgentAccessRequest, error) {
 	rows, err := q.db.Query(ctx, listDueAgentAccessRequestsForUpdate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentAccessRequest{}
+	for rows.Next() {
+		var i AgentAccessRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DeviceID,
+			&i.DstKind,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.DstSiteID,
+			&i.DstK8sServiceID,
+			&i.Reason,
+			&i.RequestedDurationSeconds,
+			&i.State,
+			&i.RequestedByUserID,
+			&i.RequestedAt,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.ApprovedExpiresAt,
+			&i.RejectedByUserID,
+			&i.RejectedAt,
+			&i.RejectionReason,
+			&i.CancelledByUserID,
+			&i.CancelledAt,
+			&i.RevokedByUserID,
+			&i.RevokedAt,
+			&i.PolicyRuleID,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLiveAgentAccessRequestsByDeviceForUpdate = `-- name: ListLiveAgentAccessRequestsByDeviceForUpdate :many
+SELECT id, org_id, device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, reason, requested_duration_seconds, state, requested_by_user_id, requested_at, approved_by_user_id, approved_at, approved_expires_at, rejected_by_user_id, rejected_at, rejection_reason, cancelled_by_user_id, cancelled_at, revoked_by_user_id, revoked_at, policy_rule_id, updated_at FROM agent_access_requests
+WHERE org_id=$1 AND device_id=$2 AND state IN ('pending','approved')
+ORDER BY requested_at, id
+FOR UPDATE
+`
+
+type ListLiveAgentAccessRequestsByDeviceForUpdateParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+func (q *Queries) ListLiveAgentAccessRequestsByDeviceForUpdate(ctx context.Context, arg ListLiveAgentAccessRequestsByDeviceForUpdateParams) ([]AgentAccessRequest, error) {
+	rows, err := q.db.Query(ctx, listLiveAgentAccessRequestsByDeviceForUpdate, arg.OrgID, arg.DeviceID)
 	if err != nil {
 		return nil, err
 	}

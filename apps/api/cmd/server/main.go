@@ -439,6 +439,7 @@ func main() {
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPort(pool, pushHub),
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
+		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),
 		IdpSync:               idpSyncPort,
 		DeviceApprovalEnabled: apphttp.NewDeviceApprovalEdition(),
@@ -626,6 +627,10 @@ func main() {
 	// a lapsed temporary grant's /32 is pushed off every org gateway promptly. Shares
 	// pollCtx (cancelled on shutdown).
 	apphttp.StartPolicyGrantSweeper(pollCtx, pool, pushHub, mayTick)
+	// F10 JIT approvals own their request-bound rule expiry. The generic policy
+	// sweeper intentionally excludes those rows; the elected writer advances the
+	// workflow, audit and gateway push atomically here.
+	apphttp.StartAgentAccessSweeper(pollCtx, pool, deviceSvc, mayTick)
 	// S7.5.3 device-health staleness sweep (enterprise only): a stale report is
 	// ABSENCE, and absence never blocks — clears health_blocked past the TTL and
 	// pushes the affected orgs. Shares pollCtx (cancelled on shutdown).

@@ -27,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
@@ -932,6 +933,7 @@ type AgentGovernanceUpdate struct {
 }
 
 func (s *Service) UpdateAgentProfileWithLifecycleAndGovernance(ctx context.Context, actorID, orgID, deviceID uuid.UUID, environment, runtime string, labels []byte, status *string, governance AgentGovernanceUpdate) (AgentProfile, error) {
+	jitClosed := false
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		current, err := q.GetAgentProfileForOrg(ctx, sqlc.GetAgentProfileForOrgParams{DeviceID: deviceID, OrgID: orgID})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -974,6 +976,13 @@ func (s *Service) UpdateAgentProfileWithLifecycleAndGovernance(ctx context.Conte
 				return apierr.Conflict("agent_lifecycle_changed", "agent lifecycle changed; retry the update")
 			} else if err != nil {
 				return err
+			}
+			if *status == "suspended" {
+				n, err := agentaccess.CloseForDeviceTx(ctx, q, orgID, deviceID, actorID, "agent_suspended")
+				if err != nil {
+					return err
+				}
+				jitClosed = n != 0
 			}
 		}
 		assignmentChanged := false
@@ -1025,6 +1034,9 @@ func (s *Service) UpdateAgentProfileWithLifecycleAndGovernance(ctx context.Conte
 	})
 	if err != nil {
 		return AgentProfile{}, err
+	}
+	if jitClosed {
+		s.PushOrgNodes(ctx, orgID)
 	}
 	return s.GetAgentProfile(ctx, orgID, deviceID)
 }
@@ -1279,6 +1291,9 @@ func (s *Service) Get(ctx context.Context, orgID, deviceID uuid.UUID) (sqlc.Devi
 // a no-op is how an operator concludes a device is gone when it is still on the roster.
 func (s *Service) RemoveRevoked(ctx context.Context, orgID, actorID, deviceID uuid.UUID) error {
 	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := agentaccess.CloseForDeviceTx(ctx, q, orgID, deviceID, actorID, "agent_removed"); err != nil {
+			return err
+		}
 		n, err := q.SoftDeleteRevokedDevice(ctx, sqlc.SoftDeleteRevokedDeviceParams{ID: deviceID, OrgID: orgID})
 		if err != nil {
 			return err
@@ -1314,6 +1329,9 @@ func (s *Service) Revoke(ctx context.Context, orgID, actorID, deviceID uuid.UUID
 		if _, e := q.RevokeDevice(ctx, sqlc.RevokeDeviceParams{ID: deviceID, OrgID: orgID}); errors.Is(e, pgx.ErrNoRows) {
 			return apierr.Conflict("already_revoked", "device is not active")
 		} else if e != nil {
+			return e
+		}
+		if _, e := agentaccess.CloseForDeviceTx(ctx, q, orgID, deviceID, actorID, "agent_revoked"); e != nil {
 			return e
 		}
 		// Release the device's live status so a revoked device can't report stale

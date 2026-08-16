@@ -2685,6 +2685,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agent-jit-access-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read the explicit JIT access opt-in and server-owned blockers */
+        get: operations["getOrganizationAgentJITAccessSetting"];
+        /** Enable or disable approval-gated temporary agent access */
+        put: operations["setOrganizationAgentJITAccessEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List approval requests visible to the accountable human */
+        get: operations["listAgentAccessRequests"];
+        put?: never;
+        /** Request temporary access for one managed agent */
+        post: operations["createAgentAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        /** Read one visible request and its immutable transition ledger */
+        get: operations["getAgentAccessRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve once and materialize one expiring ordinary policy rule */
+        post: operations["approveAgentAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a pending request without creating a policy rule */
+        post: operations["rejectAgentAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a pending request without creating a policy rule */
+        post: operations["cancelAgentAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Emergency-revoke approved temporary access and remove its rule */
+        post: operations["revokeAgentAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2721,6 +2861,8 @@ export interface components {
             managed_agent_runtime_enabled: boolean;
             /** @description F09: explicit organization opt-in for managed-agent groups and reusable policy templates. Default false; a paid licence does not enable it implicitly. */
             agent_policy_templates_enabled: boolean;
+            /** @description F10: explicit organization opt-in for approval-gated temporary managed-agent access. Default false; a paid licence does not enable it implicitly. */
+            agent_jit_access_enabled: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2870,6 +3012,98 @@ export interface components {
             generated_rules: number;
             withdrawn_tuples: number;
             changed_gateways: number;
+        };
+        AgentJITAccessSetting: {
+            enabled: boolean;
+            pending_requests: number;
+            approved_requests: number;
+        };
+        SetAgentJITAccessSettingRequest: {
+            enabled: boolean;
+        };
+        /** @enum {string} */
+        AgentAccessRequestState: "pending" | "approved" | "rejected" | "cancelled" | "expired" | "revoked";
+        /** @enum {string} */
+        AgentAccessDestinationKind: "resource" | "group" | "site" | "k8s_service";
+        CreateAgentAccessRequest: {
+            /** Format: uuid */
+            device_id: string;
+            destination_kind: components["schemas"]["AgentAccessDestinationKind"];
+            /** Format: uuid */
+            destination_id: string;
+            reason: string;
+            /** @default 3600 */
+            duration_seconds: number;
+            idempotency_key: string;
+        };
+        AgentAccessIdempotencyRequest: {
+            idempotency_key: string;
+        };
+        RejectAgentAccessRequest: {
+            idempotency_key: string;
+            reason: string;
+        };
+        AgentAccessRequest: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            device_id: string;
+            agent_name: string;
+            destination_kind: components["schemas"]["AgentAccessDestinationKind"];
+            /** Format: uuid */
+            destination_id: string;
+            destination_name: string;
+            reason: string;
+            requested_duration_seconds: number;
+            state: components["schemas"]["AgentAccessRequestState"];
+            /** Format: uuid */
+            requested_by_user_id: string;
+            /** Format: date-time */
+            requested_at: string;
+            /** Format: uuid */
+            approved_by_user_id?: string;
+            /** Format: date-time */
+            approved_at?: string;
+            /** Format: date-time */
+            approved_expires_at?: string;
+            /** Format: uuid */
+            rejected_by_user_id?: string;
+            /** Format: date-time */
+            rejected_at?: string;
+            rejection_reason?: string;
+            /** Format: uuid */
+            cancelled_by_user_id?: string;
+            /** Format: date-time */
+            cancelled_at?: string;
+            /** Format: uuid */
+            revoked_by_user_id?: string;
+            /** Format: date-time */
+            revoked_at?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AgentAccessRequestEvent: {
+            /** Format: uuid */
+            id: string;
+            state: components["schemas"]["AgentAccessRequestState"];
+            /** Format: uuid */
+            actor_user_id?: string;
+            actor_system?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AgentAccessRequestDetail: {
+            request: components["schemas"]["AgentAccessRequest"];
+            events: components["schemas"]["AgentAccessRequestEvent"][];
+        };
+        AgentAccessRequestPage: {
+            items: components["schemas"]["AgentAccessRequest"][];
+            /** Format: date-time */
+            next_before_requested_at?: string;
+            /** Format: uuid */
+            next_before_id?: string;
         };
         PoolCidrRequest: {
             /** @description New pool CIDR (IPv4). Must contain or be contained by the current range. */
@@ -3032,6 +3266,13 @@ export interface components {
             managed_by_operator: boolean;
             /** @description True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces. */
             managed_by_agent_template: boolean;
+            /** @description True when the row is owned by an approved F10 JIT agent-access request. Ordinary rule mutation surfaces must treat it as read-only. */
+            managed_by_agent_access: boolean;
+            /**
+             * Format: uuid
+             * @description Owning F10 request when managed_by_agent_access is true.
+             */
+            agent_access_request_id?: string | null;
             enabled: boolean;
             /** Format: uuid */
             id: string;
@@ -8796,6 +9037,267 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentPolicyTemplateRemovalImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getOrganizationAgentJITAccessSetting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current persisted opt-in and live request counts. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentJITAccessSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setOrganizationAgentJITAccessEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAgentJITAccessSettingRequest"];
+            };
+        };
+        responses: {
+            /** @description Persisted organization setting and live request counts. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentJITAccessSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentAccessRequests: {
+        parameters: {
+            query?: {
+                state?: components["schemas"]["AgentAccessRequestState"];
+                device_id?: string;
+                before_requested_at?: string;
+                before_id?: string;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant-scoped keyset page. Scoped requesters see only agents they may request for. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequestPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAgentAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Exact idempotent replay of the existing result. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequest"];
+                };
+            };
+            /** @description Pending request created; no policy changed. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request detail. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequestDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    approveAgentAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccessIdempotencyRequest"];
+            };
+        };
+        responses: {
+            /** @description Approved request, or exact idempotent replay. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rejectAgentAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectAgentAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Rejected request, or exact idempotent replay. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelAgentAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccessIdempotencyRequest"];
+            };
+        };
+        responses: {
+            /** @description Cancelled request, or exact idempotent replay. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAgentAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAccessIdempotencyRequest"];
+            };
+        };
+        responses: {
+            /** @description Revoked request, or exact idempotent replay. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAccessRequest"];
                 };
             };
             default: components["responses"]["Error"];

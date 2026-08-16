@@ -32,6 +32,7 @@ type policyPort interface {
 	DeleteResource(ctx context.Context, orgID, resourceID uuid.UUID) error
 	ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.PolicyRule, error)
 	AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]bool, error)
+	AgentAccessManagedRules(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 	CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in policyspec.RuleInput, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.PolicyRule, error)
 	// PolicyRuleCidrWarnings returns per-rule-id the S8.7 cidr_outside_org_ranges warning (a src_kind='cidr'
 	// rule that places nowhere — no containing site with a bound gateway). Read-time derived; takes the
@@ -317,9 +318,15 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 			return nil, err
 		}
 	}
+	jitManaged, err := s.policy.AgentAccessManagedRules(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]api.PolicyRule, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, toAPIRule(r, warn[r.ID], vanished[r.ID], templateManaged[r.ID]))
+		out = append(out, toAPIRule(r, warn[r.ID], vanished[r.ID], policyRuleOwnership{
+			agentTemplate: templateManaged[r.ID], agentAccessRequestID: jitManaged[r.ID],
+		}))
 	}
 	return api.ListPolicyRules200JSONResponse{Body: out, Headers: api.ListPolicyRules200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -553,8 +560,16 @@ func (s apiServer) k8sVanishedMap(ctx context.Context, orgID uuid.UUID, rules []
 	return out, nil
 }
 
-func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, agentTemplateManaged ...bool) api.PolicyRule {
-	templateManaged := len(agentTemplateManaged) != 0 && agentTemplateManaged[0]
+type policyRuleOwnership struct {
+	agentTemplate        bool
+	agentAccessRequestID uuid.UUID
+}
+
+func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...policyRuleOwnership) api.PolicyRule {
+	var owner policyRuleOwnership
+	if len(ownership) != 0 {
+		owner = ownership[0]
+	}
 	out := api.PolicyRule{
 		Id: r.ID, OrgId: r.OrgID, SrcKind: api.PolicyRuleSrcKind(r.SrcKind),
 		DstKind: api.PolicyRuleDstKind(r.DstKind), CreatedAt: r.CreatedAt,
@@ -562,7 +577,11 @@ func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, agentTemplateMa
 		DstK8sServiceVanished:  k8sVanished,              // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
 		Enabled:                !r.Disabled,              // F3: positive framing — a rule is enabled unless disabled
 		ManagedByOperator:      r.ManagedByMachine.Valid, // S10.2 D2 cond 1: GitOps-managed → badge + warn-on-edit
-		ManagedByAgentTemplate: templateManaged,
+		ManagedByAgentTemplate: owner.agentTemplate,
+		ManagedByAgentAccess:   owner.agentAccessRequestID != uuid.Nil,
+	}
+	if owner.agentAccessRequestID != uuid.Nil {
+		out.AgentAccessRequestId = &owner.agentAccessRequestID
 	}
 	if r.SrcGroupID.Valid {
 		u := uuid.UUID(r.SrcGroupID.Bytes)
