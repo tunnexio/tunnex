@@ -58,7 +58,6 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "device.conf"), nil
 }
 
-
 // WriteFileAtomic0600 writes data to path with 0600 permissions via a same-dir
 // temp file + rename: the file is never observable partially written or with
 // looser permissions (the browser's ~/Downloads drop is the anti-pattern).
@@ -90,7 +89,6 @@ func WriteFileAtomic0600(path string, data []byte) error {
 	}
 	return os.Rename(tmpName, path)
 }
-
 
 // SaveCredential persists the credential (atomic, 0600).
 func SaveCredential(c Credential) error {

@@ -34,7 +34,9 @@ func TestAgentBootstrapMigrationStoresOnlyHashesAndBindsGateway(t *testing.T) {
 
 func TestAgentBootstrapDownRefusesLiveCredentials(t *testing.T) {
 	b, err := os.ReadFile("migrations/0090_agent_bootstrap_tokens.down.sql")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := string(b)
 	if !strings.Contains(s, "refusing to roll back 0090 while bootstrap credentials exist") {
 		t.Fatal("0090 down must refuse to delete live bootstrap/runtime credentials")
