@@ -43,6 +43,7 @@ import {
 import {
   deviceCountFor,
   deviceCountLabel,
+  deactivationImpactCopy,
   groupAccessLabel,
   groupAccessState,
   LAST_OWNER_NOTE,
@@ -238,20 +239,9 @@ export default function Users() {
    * Returns false when the operator declines. ⚠ Silent when nobody selected owns a credential — a confirm
    * that always fires is one people click through, and this one has to be read.
    */
-  function confirmMachineCredentialLoss(ms: Member[]): boolean {
-    const owners = ms.filter((m) => (m.machine_credentials ?? 0) > 0);
-    if (owners.length === 0) return true;
-    const total = owners.reduce((n, m) => n + (m.machine_credentials ?? 0), 0);
-    const who = owners
-      .map((m) => `${m.email} (${m.machine_credentials})`)
-      .join("\n  ");
-    return window.confirm(
-      `${total} machine credential${total === 1 ? "" : "s"} will STOP WORKING IMMEDIATELY.\n\n` +
-        `  ${who}\n\n` +
-        `Machine credentials are owned by a person, and deactivating that person stops every credential ` +
-        `they own — including GitOps operators that are reconciling right now, in any organization. ` +
-        `Nothing is revoked: reactivating restores them.\n\nDeactivate anyway?`,
-    );
+  function confirmDeactivationImpact(ms: Member[]): boolean {
+    const copy = deactivationImpactCopy(ms);
+    return copy === null || window.confirm(copy);
   }
 
   const setActive = (m: Member, activate: boolean) => {
@@ -402,7 +392,7 @@ export default function Users() {
                       // ⚠ THE COUNT IS SERVED WITH THE ROSTER rather than fetched here, so the sentence
                       // cannot be shown against a stale or missing number. The server refuses the
                       // credentials either way — this exists so the refusal is not a surprise.
-                      if (!confirmMachineCredentialLoss(ms)) return;
+                      if (!confirmDeactivationImpact(ms)) return;
                       void Promise.all(ms.map((m) => setActive(m, false)));
                     },
                   },

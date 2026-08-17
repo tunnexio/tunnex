@@ -3,6 +3,7 @@ import {
   api,
   apiErrorCode,
   apiErrorMessage,
+  loadOne,
   type Meta,
   type Org,
   type Member,
@@ -10,6 +11,7 @@ import {
   type SsoConfigView,
   type UserGroup,
   type ResizeConflict,
+  type AgentJITAccessSetting,
 } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
 import { relativeAge } from "../lib/format";
@@ -63,6 +65,9 @@ export default function Settings() {
 
   useEffect(() => {
     let cancelled = false;
+    setOrg(null);
+    setMyRole(undefined);
+    setError(null);
     (async () => {
       try {
         // ⭐ THE ORG-LIST FETCH IS GONE FROM THIS PAGE (S12.5). It existed only to be indexed at zero.
@@ -116,10 +121,14 @@ export default function Settings() {
     // list asynchronously, so on this effect's first run currentOrg is still null. Without the dependency
     // the effect never ran again and the page rendered "You are not a member of any organization yet" — a
     // confident, wrong statement — permanently, for every user. The same line is what makes the switcher work.
-  }, [myId, currentOrg]);
+  }, [myId, currentOrg, orgFailed, orgLoading]);
 
   const isAdmin = can(myRole, "org:update");
   const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
+
+  if (currentOrg && org?.id !== currentOrg.id) {
+    return <p className="text-sm text-slate-400">Loading settings…</p>;
+  }
 
   return (
     // ⛔ CAPPED, AND THE CAP IS THE POINT. On a 32" display an uncapped settings page stretches every card to
@@ -250,6 +259,24 @@ export default function Settings() {
                 </Card>
               </div>
             )}
+            {meta?.edition === "enterprise" && (
+              <div className="mb-3.5 break-inside-avoid">
+                <AgentPolicyTemplatesToggle
+                  org={org}
+                  canEdit={emailVerified}
+                  onSaved={(o) => setOrg(o)}
+                />
+              </div>
+            )}
+            {meta?.edition === "enterprise" && (
+              <div className="mb-3.5 break-inside-avoid">
+                <AgentJITAccessToggle
+                  key={org.id}
+                  orgId={org.id}
+                  canEdit={emailVerified}
+                />
+              </div>
+            )}
             {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
             <div className="mb-3.5 break-inside-avoid">
               <OrgOVPNToggle
@@ -292,6 +319,153 @@ export default function Settings() {
         </div>
       )}
     </div>
+  );
+}
+
+function AgentPolicyTemplatesToggle({
+  org,
+  canEdit,
+  onSaved,
+}: {
+  org: Org;
+  canEdit: boolean;
+  onSaved: (org: Org) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const enabled = org.agent_policy_templates_enabled;
+
+  async function toggle() {
+    setBusy(true);
+    setErr(null);
+    const next = !enabled;
+    const result = await api.PUT(
+      "/api/v1/organizations/{orgId}/agent-policy-template-settings",
+      { params: { path: { orgId: org.id } }, body: { enabled: next } },
+    );
+    if (result.error) {
+      setBusy(false);
+      return setErr(
+        apiErrorMessage(
+          result.error,
+          next
+            ? "Could not enable agent policy templates."
+            : "Could not disable agent policy templates.",
+        ),
+      );
+    }
+    const refetch = await api.GET("/api/v1/organizations/{orgId}", {
+      params: { path: { orgId: org.id } },
+    });
+    setBusy(false);
+    if (refetch.error || !refetch.data) {
+      return setErr("The setting was saved, but the organization could not be refreshed.");
+    }
+    onSaved(refetch.data);
+  }
+
+  return (
+    <Card data-testid="agent-policy-template-settings">
+      <h2 className="text-sm font-semibold text-slate-300">
+        Agent groups &amp; policy templates
+      </h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Off by default. Enabling unlocks reusable agent-group policy authoring;
+        it creates no access until an authorized operator previews and applies a template.
+      </p>
+      <Button className="mt-3" disabled={!canEdit || busy} onClick={toggle}>
+        {busy
+          ? "Saving…"
+          : enabled
+            ? "Disable agent policy templates"
+            : "Enable agent policy templates"}
+      </Button>
+      <ErrorText>{err}</ErrorText>
+    </Card>
+  );
+}
+
+function AgentJITAccessToggle({
+  orgId,
+  canEdit,
+}: {
+  orgId: string;
+  canEdit: boolean;
+}) {
+  const [setting, setSetting] = useState<AgentJITAccessSetting | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function load() {
+    setLoadError(null);
+    const result = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agent-jit-access-settings", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (!result.ok) return setLoadError(result.error);
+    setSetting(result.data);
+  }
+
+  useEffect(() => {
+    void load();
+    // orgId keys this component; a new tenant never inherits the prior setting.
+  }, [orgId]);
+
+  async function toggle() {
+    if (!setting) return;
+    setBusy(true);
+    setErr(null);
+    const response = await api.PUT(
+      "/api/v1/organizations/{orgId}/agent-jit-access-settings",
+      {
+        params: { path: { orgId } },
+        body: { enabled: !setting.enabled },
+      },
+    );
+    if (response.error) {
+      setBusy(false);
+      return setErr(
+        apiErrorMessage(response.error, "Could not update JIT agent access."),
+      );
+    }
+    await load();
+    setBusy(false);
+  }
+
+  return (
+    <Card data-testid="agent-jit-access-settings">
+      <h2 className="text-sm font-semibold text-slate-300">
+        Just-in-time agent access
+      </h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Off by default. Requests require human approval and create one expiring
+        ordinary access rule. Disabling is refused while requests are pending or approved.
+      </p>
+      {loadError ? (
+        <div className="mt-3">
+          <ErrorText>{loadError}</ErrorText>
+          <Button onClick={() => void load()}>Retry</Button>
+        </div>
+      ) : setting ? (
+        <>
+          <p className="mt-2 text-xs text-slate-500">
+            {setting.pending_requests} pending · {setting.approved_requests} approved
+          </p>
+          <Button className="mt-3" disabled={!canEdit || busy} onClick={toggle}>
+            {busy
+              ? "Saving…"
+              : setting.enabled
+                ? "Disable JIT agent access"
+                : "Enable JIT agent access"}
+          </Button>
+        </>
+      ) : (
+        <p className="mt-3 text-xs text-slate-500">Loading…</p>
+      )}
+      <ErrorText>{err}</ErrorText>
+    </Card>
   );
 }
 

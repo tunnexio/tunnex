@@ -16,6 +16,127 @@ INSERT INTO devices (org_id, user_id, node_id, name, platform, public_key, assig
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE(NULLIF(sqlc.arg(kind)::text, ''), 'human'))
 RETURNING *;
 
+-- name: EnsureAgentProfile :exec
+-- lint:cross-org — the device was just inserted in this same org-scoped transaction;
+-- the device ID is not an authorization input and this existence check does not
+-- expose or mutate a device outside the caller's already-authorized create.
+-- lint:allow-deleted — this guard only admits the row created immediately above;
+-- a soft-deleted device cannot be the newly inserted row being profiled.
+INSERT INTO agent_profiles (device_id)
+SELECT $1
+WHERE EXISTS (SELECT 1 FROM devices WHERE id = $1 AND kind = 'agent')
+ON CONFLICT (device_id) DO NOTHING;
+
+-- name: GetAgentProfileForOrg :one
+SELECT ap.device_id, d.name, ap.environment, ap.runtime, ap.labels,
+       d.user_id, u.email AS owner_email, ap.managing_group_id,
+       ug.name AS managing_group_name, d.status,
+       ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+JOIN users u ON u.id = d.user_id
+LEFT JOIN user_groups ug ON ug.id = ap.managing_group_id AND ug.org_id = d.org_id
+LEFT JOIN device_status ds ON ds.device_id = d.id
+WHERE ap.device_id = $1 AND d.org_id = $2 AND d.kind = 'agent' AND d.deleted_at IS NULL;
+
+-- name: GetAgentGovernanceForUpdate :one
+SELECT d.user_id, ap.managing_group_id
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+WHERE ap.device_id = $1 AND d.org_id = $2 AND d.kind = 'agent' AND d.deleted_at IS NULL
+FOR UPDATE OF ap, d;
+
+-- name: GetAgentScopedAuthority :one
+SELECT
+    d.user_id = sqlc.arg(user_id)::uuid AS is_owner,
+    EXISTS (
+        SELECT 1
+        FROM group_members gm
+        JOIN memberships m ON m.org_id = gm.org_id AND m.user_id = gm.user_id
+        JOIN users u ON u.id = gm.user_id
+        WHERE gm.org_id = d.org_id
+          AND gm.group_id = ap.managing_group_id
+          AND gm.user_id = sqlc.arg(user_id)::uuid
+          AND m.access_revoked_at IS NULL
+          AND u.status = 'active'
+          AND u.deleted_at IS NULL
+    ) AS is_manager
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+WHERE ap.device_id = $1 AND d.org_id = $2 AND d.kind = 'agent' AND d.deleted_at IS NULL;
+
+-- name: ListAgentManagingGroupCounts :many
+-- Server-owned destructive-impact preview for F06. Deleting a group clears
+-- these exact assignments through ON DELETE SET NULL; the client must not
+-- infer this count from separately loaded agent rows.
+SELECT ap.managing_group_id, count(*)::bigint AS managed_agent_count
+FROM agent_profiles ap
+JOIN devices d ON d.id = ap.device_id
+WHERE d.org_id = $1
+  AND d.deleted_at IS NULL
+  AND ap.managing_group_id IS NOT NULL
+GROUP BY ap.managing_group_id;
+
+-- name: CountAgentJITRequestAuthorities :one
+-- F10 permission-before-edition check for a scoped requester opening the
+-- request list before any request row exists.
+SELECT count(*)
+FROM devices d
+JOIN agent_profiles ap ON ap.device_id=d.id
+WHERE d.org_id=$1 AND d.kind='agent' AND d.deleted_at IS NULL
+  AND (
+      d.user_id=sqlc.arg(user_id)::uuid
+      OR EXISTS (
+          SELECT 1
+          FROM group_members gm
+          JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id
+          JOIN users u ON u.id=gm.user_id
+          WHERE gm.org_id=d.org_id
+            AND gm.group_id=ap.managing_group_id
+            AND gm.user_id=sqlc.arg(user_id)::uuid
+            AND m.access_revoked_at IS NULL
+            AND u.status='active'
+            AND u.deleted_at IS NULL
+      )
+  );
+
+-- name: GetCurrentAgentOwnerCandidate :one
+SELECT m.user_id
+FROM memberships m
+JOIN users u ON u.id = m.user_id
+WHERE m.org_id = $1 AND m.user_id = $2
+  AND m.access_revoked_at IS NULL
+  AND u.status = 'active'
+  AND u.deleted_at IS NULL
+FOR UPDATE OF m, u;
+
+-- name: SetAgentOwner :one
+UPDATE devices
+SET user_id = $3, updated_at = now()
+WHERE id = $1 AND org_id = $2 AND kind = 'agent' AND deleted_at IS NULL
+RETURNING *;
+
+-- name: SetAgentManagingGroup :one
+UPDATE agent_profiles ap
+SET managing_group_id = $2, updated_at = now()
+FROM devices d
+WHERE ap.device_id = $1 AND d.id = ap.device_id AND d.org_id = $3 AND d.kind = 'agent' AND d.deleted_at IS NULL
+RETURNING ap.*;
+
+-- name: UpdateAgentProfile :one
+UPDATE agent_profiles ap
+SET environment = $2, runtime = $3, labels = $4, updated_at = now()
+FROM devices d
+WHERE ap.device_id = $1 AND d.id = ap.device_id AND d.org_id = $5 AND d.kind = 'agent' AND d.deleted_at IS NULL
+RETURNING ap.*;
+
+-- name: UpdateAgentLifecycle :one
+UPDATE devices
+SET status = $3, updated_at = now()
+WHERE id = $1 AND org_id = $2 AND kind = 'agent' AND deleted_at IS NULL AND status = $4
+RETURNING *;
+
+
 -- name: ApproveDevice :one
 -- S7.3: pending -> active, recording the approver (approved_by). Only a PENDING device
 -- can be approved (pgx.ErrNoRows => not pending: already active / rejected / wrong org).
@@ -63,6 +184,24 @@ LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
 WHERE d.org_id = $1 AND d.status = 'pending' AND d.deleted_at IS NULL AND d.kind <> 'agent'
 ORDER BY d.created_at;
+
+-- name: ListPreparedAgentWireGuardPeersForNode :many
+-- F05.2 warm stage: the candidate has deliberately empty AllowedIPs. The
+-- canonical devices.public_key peer above remains the sole owner of the
+-- agent's /32 until a real nonzero candidate handshake commits the cutover.
+-- lint:cross-org — keyed by the mTLS-authorized gateway node, exactly like
+-- ListActiveWireGuardPeersForNode.
+SELECT r.device_id, r.candidate_public_key
+FROM agent_wireguard_rotations r
+JOIN devices d ON d.id = r.device_id AND d.org_id = r.org_id
+JOIN users u ON u.id = d.user_id
+JOIN memberships mem ON mem.org_id = d.org_id AND mem.user_id = d.user_id
+WHERE d.node_id = $1 AND d.status = 'active' AND NOT d.health_blocked
+  AND d.deleted_at IS NULL AND u.status = 'active' AND u.deleted_at IS NULL
+  AND r.state IN ('prepared', 'staged') AND r.deadline > now()
+  AND r.candidate_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+  AND r.candidate_public_key <> d.public_key
+ORDER BY r.device_id;
 
 -- ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
 -- WireGuard peer — the peer set, the pool allocation, the revocation sweep and the liveness upsert all read
@@ -178,7 +317,7 @@ WHERE org_id = $1 AND user_id = $2 AND status IN ('active', 'pending') AND delet
 -- Clearing it destroyed the only record of what the revocation took, for no gain.
 UPDATE devices
 SET status = 'revoked', revoked_at = now(), revoked_cause = 'deliberate' 
-WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 RETURNING node_id;
 
 -- name: RevokeDevicesForNode :execrows
@@ -200,7 +339,7 @@ RETURNING node_id;
 UPDATE devices
 SET status = 'revoked', revoked_at = now(), revoked_cause = 'cascade',
     revoked_prev_status = status
-WHERE node_id = $1 AND status IN ('active', 'pending') AND deleted_at IS NULL;
+WHERE node_id = $1 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL;
 
 -- name: DeleteDeviceStatus :exec
 -- lint:cross-org — keyed by device_id (the caller already authorized the device
@@ -239,6 +378,15 @@ SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0));
 SELECT id, name, assigned_ip FROM devices
 WHERE org_id = $1 AND assigned_ip IS NOT NULL AND status IN ('active', 'pending') AND deleted_at IS NULL
 ORDER BY assigned_ip;
+
+-- name: CountAgentIdentitiesForQuota :one
+-- F02 H2: pending, active, and suspended reserve org-wide agent identity
+-- capacity; revoked and deleted identities do not count.
+SELECT count(*)::bigint FROM devices
+WHERE org_id = $1
+  AND kind = 'agent'
+  AND status IN ('pending', 'active', 'suspended')
+  AND deleted_at IS NULL;
 
 -- name: ListActiveWireGuardPeersForNode :many
 -- fetches the peers for its own node). TWO invariants own this query (both load-bearing):
@@ -283,7 +431,7 @@ WHERE d.node_id = $1
   AND u.status = 'active' AND u.deleted_at IS NULL
 ORDER BY d.created_at;
 
--- name: GetDeviceUserForOrg :one
+-- name: GetDeviceAttributionForOrg :one
 -- lint:cross-org — org-scoped by the $2 arg; resolves a flow event's SRC device to its
 -- owning user (S7.5.4 v3 flow attribution: src_device_id -> src_user_id, a clean FK join,
 -- NEVER an src_ip->device guess).
@@ -291,7 +439,7 @@ ORDER BY d.created_at;
 -- incidental substring [8]): a since-revoked/deleted device's HISTORICAL flow must still
 -- attribute its user (access_events is an immutable record; src_device_id/src_user_id are
 -- plain uuids, not FKs, precisely so they survive the device/user deletion).
-SELECT user_id FROM devices WHERE id = $1 AND org_id = $2;
+SELECT user_id, kind FROM devices WHERE id = $1 AND org_id = $2;
 
 -- name: ListNodeIDsForUserActiveDevices :many
 -- lint:cross-org — keyed by user_id; used to find which nodes to push after a
@@ -452,7 +600,7 @@ WHERE id = @id AND org_id = @org_id AND status = 'revoked' AND deleted_at IS NUL
 -- sweep, asked BEFORE the sweep instead of after it. The two must stay identical: a count that is narrower
 -- than the cascade lets a revoke through that still disconnects someone, which is the whole defect.
 SELECT count(*) FROM devices
-WHERE node_id = $1 AND status IN ('active', 'pending') AND deleted_at IS NULL;
+WHERE node_id = $1 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL;
 
 -- name: ListLiveDevicesForNode :many
 -- lint:cross-org — keyed by node_id, which the caller resolved from an org-scoped node row.
@@ -469,7 +617,7 @@ WHERE node_id = $1 AND status IN ('active', 'pending') AND deleted_at IS NULL;
 -- hub-set member. The caller needs the mode to report which devices are broken until re-imported.
 SELECT id, name, user_id, assigned_ip, transport, status, provisioning_mode
 FROM devices
-WHERE node_id = $1 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE node_id = $1 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 ORDER BY id;
 
 -- name: TransferDeviceToNode :one
@@ -491,5 +639,5 @@ ORDER BY id;
 -- re-home a revoked device and thereby hand it back onto a live gateway.
 UPDATE devices
 SET node_id = $3, updated_at = now()
-WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending') AND deleted_at IS NULL
+WHERE id = $1 AND org_id = $2 AND status IN ('active', 'pending', 'suspended') AND deleted_at IS NULL
 RETURNING *;

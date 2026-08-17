@@ -1,0 +1,13 @@
+device_delete_http=204
+gateway_revoke_http=204
+gateway_delete_http=204
+disposable_agent_rows_after_cleanup=0
+disposable_gateway_rows_after_cleanup=0
+runtime_service_files_removed=true
+runtime_interface_removed=true
+reporter_service_removed=true
+reporter_namespace_and_nft_table_removed=true
+scratch_token_and_private_key_files_removed=true
+dev_net_tun_preserved=true
+release_verifier_prerequisite_preserved=true
+unrelated_control_plane_and_vm_resources_preserved=true

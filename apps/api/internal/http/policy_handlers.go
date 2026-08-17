@@ -31,6 +31,8 @@ type policyPort interface {
 	UpdateResource(ctx context.Context, orgID, resourceID uuid.UUID, in policyspec.ResourceInput, label *string) (sqlc.Resource, error)
 	DeleteResource(ctx context.Context, orgID, resourceID uuid.UUID) error
 	ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.PolicyRule, error)
+	AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]bool, error)
+	AgentAccessManagedRules(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 	CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in policyspec.RuleInput, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.PolicyRule, error)
 	// PolicyRuleCidrWarnings returns per-rule-id the S8.7 cidr_outside_org_ranges warning (a src_kind='cidr'
 	// rule that places nowhere — no containing site with a bound gateway). Read-time derived; takes the
@@ -70,9 +72,24 @@ func (s apiServer) ListGroups(ctx context.Context, req api.ListGroupsRequestObje
 	if err != nil {
 		return nil, err
 	}
+	var managedAgentCounts map[uuid.UUID]int64
+	if _, manageErr := authorize(ctx, req.OrgId, rbac.PermPolicyManage); manageErr == nil {
+		if s.devices == nil {
+			return nil, apierr.New(http.StatusInternalServerError, "agent_service_unavailable", "agent service unavailable")
+		}
+		managedAgentCounts, err = s.devices.AgentManagingGroupCounts(ctx, req.OrgId)
+		if err != nil {
+			return nil, err
+		}
+	}
 	out := make([]api.UserGroup, 0, len(gs))
 	for _, g := range gs {
-		out = append(out, toAPIGroup(g))
+		item := toAPIGroup(g)
+		if managedAgentCounts != nil {
+			count := int(managedAgentCounts[g.ID])
+			item.ManagedAgentCount = &count
+		}
+		out = append(out, item)
 	}
 	return api.ListGroups200JSONResponse{Body: out, Headers: api.ListGroups200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -242,6 +259,29 @@ func (s apiServer) DeleteResource(ctx context.Context, req api.DeleteResourceReq
 
 // ── rules ───────────────────────────────────────────────────────────────────────
 
+// requireAgentGrantForExistingRule adds F06's second gate only when the
+// already-authorized policy mutation targets an agent-source rule. Ordinary
+// group/user/site/CIDR rules retain their existing policy:manage boundary.
+func (s apiServer) requireAgentGrantForExistingRule(ctx context.Context, orgID, ruleID uuid.UUID) error {
+	rules, err := s.policy.ListPolicyRules(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		if rule.ID != ruleID {
+			continue
+		}
+		if rule.SrcKind != "agent" {
+			return nil
+		}
+		_, err := authorize(ctx, orgID, rbac.PermAgentGrantAccess)
+		return err
+	}
+	// Preserve the existing service's normalized not-found response; this
+	// helper must not invent a second existence oracle.
+	return nil
+}
+
 func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesRequestObject) (api.ListPolicyRulesResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyView); err != nil {
 		return nil, err
@@ -253,6 +293,16 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 	if err != nil {
 		return nil, err
 	}
+	_, mayViewAgentTemplates := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage)
+	if mayViewAgentTemplates != nil {
+		filtered := rs[:0]
+		for _, rule := range rs {
+			if rule.SrcKind != "agent_group" {
+				filtered = append(filtered, rule)
+			}
+		}
+		rs = filtered
+	}
 	warn, err := s.policy.PolicyRuleCidrWarnings(ctx, req.OrgId, rs) // S8.7 read-time warn (D1); reuse the fetched rules ([15])
 	if err != nil {
 		return nil, err
@@ -261,9 +311,22 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 	if err != nil {
 		return nil, err
 	}
+	templateManaged := map[uuid.UUID]bool{}
+	if mayViewAgentTemplates == nil {
+		templateManaged, err = s.policy.AgentTemplateManagedRuleIDs(ctx, req.OrgId)
+		if err != nil {
+			return nil, err
+		}
+	}
+	jitManaged, err := s.policy.AgentAccessManagedRules(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]api.PolicyRule, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, toAPIRule(r, warn[r.ID], vanished[r.ID]))
+		out = append(out, toAPIRule(r, warn[r.ID], vanished[r.ID], policyRuleOwnership{
+			agentTemplate: templateManaged[r.ID], agentAccessRequestID: jitManaged[r.ID],
+		}))
 	}
 	return api.ListPolicyRules200JSONResponse{Body: out, Headers: api.ListPolicyRules200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -271,6 +334,11 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRuleRequestObject) (api.CreatePolicyRuleResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
 		return nil, err
+	}
+	if req.Body != nil && req.Body.SrcKind != nil && string(*req.Body.SrcKind) == "agent" {
+		if _, err := authorize(ctx, req.OrgId, rbac.PermAgentGrantAccess); err != nil {
+			return nil, err
+		}
 	}
 	if s.policy == nil {
 		return nil, policyEditionRequired()
@@ -319,6 +387,9 @@ func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRul
 	if s.policy == nil {
 		return nil, policyEditionRequired()
 	}
+	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+		return nil, err
+	}
 	uid, sys, cause := auditActor(ctx)
 	if err := s.policy.DeletePolicyRule(ctx, req.OrgId, req.RuleId, uid, sys, cause); err != nil {
 		return nil, err
@@ -333,6 +404,9 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 	}
 	if s.policy == nil {
 		return nil, policyEditionRequired()
+	}
+	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+		return nil, err
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -360,6 +434,9 @@ func (s apiServer) SetPolicyRuleEnabled(ctx context.Context, req api.SetPolicyRu
 	}
 	if s.policy == nil {
 		return nil, policyEditionRequired()
+	}
+	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+		return nil, err
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -483,14 +560,28 @@ func (s apiServer) k8sVanishedMap(ctx context.Context, orgID uuid.UUID, rules []
 	return out, nil
 }
 
-func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool) api.PolicyRule {
+type policyRuleOwnership struct {
+	agentTemplate        bool
+	agentAccessRequestID uuid.UUID
+}
+
+func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...policyRuleOwnership) api.PolicyRule {
+	var owner policyRuleOwnership
+	if len(ownership) != 0 {
+		owner = ownership[0]
+	}
 	out := api.PolicyRule{
 		Id: r.ID, OrgId: r.OrgID, SrcKind: api.PolicyRuleSrcKind(r.SrcKind),
 		DstKind: api.PolicyRuleDstKind(r.DstKind), CreatedAt: r.CreatedAt,
-		CidrOutsideOrgRanges:  cidrOutside,              // S8.7 warn-not-refuse (D1); always false for non-cidr sources
-		DstK8sServiceVanished: k8sVanished,              // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
-		Enabled:               !r.Disabled,              // F3: positive framing — a rule is enabled unless disabled
-		ManagedByOperator:     r.ManagedByMachine.Valid, // S10.2 D2 cond 1: GitOps-managed → badge + warn-on-edit
+		CidrOutsideOrgRanges:   cidrOutside,              // S8.7 warn-not-refuse (D1); always false for non-cidr sources
+		DstK8sServiceVanished:  k8sVanished,              // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
+		Enabled:                !r.Disabled,              // F3: positive framing — a rule is enabled unless disabled
+		ManagedByOperator:      r.ManagedByMachine.Valid, // S10.2 D2 cond 1: GitOps-managed → badge + warn-on-edit
+		ManagedByAgentTemplate: owner.agentTemplate,
+		ManagedByAgentAccess:   owner.agentAccessRequestID != uuid.Nil,
+	}
+	if owner.agentAccessRequestID != uuid.Nil {
+		out.AgentAccessRequestId = &owner.agentAccessRequestID
 	}
 	if r.SrcGroupID.Valid {
 		u := uuid.UUID(r.SrcGroupID.Bytes)
@@ -507,6 +598,10 @@ func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool) api.PolicyRule 
 	if r.SrcDeviceID.Valid { // S15.3: src_kind=agent
 		n := uuid.UUID(r.SrcDeviceID.Bytes)
 		out.SrcDeviceId = &n
+	}
+	if r.SrcAgentGroupID.Valid {
+		u := uuid.UUID(r.SrcAgentGroupID.Bytes)
+		out.SrcAgentGroupId = &u
 	}
 	if r.SrcCidr != nil { // S8.7: src_kind=cidr
 		out.SrcCidr = r.SrcCidr

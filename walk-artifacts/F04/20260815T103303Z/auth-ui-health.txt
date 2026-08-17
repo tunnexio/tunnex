@@ -1,0 +1,10 @@
+F04 AUTHORIZATION AND HEALTH PROJECTION (REDACTED)
+owner_status=http-200 desired=2 applied=2 attempted=2 connected ready stale=false
+plain_member_status=http-403
+plain_member_runtime_fields=absent
+released_owner_route=/agents
+released_owner_ready_dom=desired-2 applied-2 attempted-2 connected Ready Fresh-report
+forced_stale_api=http-200 desired=2 applied=2 attempted=2 disconnected last_good stale=true
+forced_stale_dom=Last-good-configuration Stale-report
+restored_api=http-200 desired=2 applied=2 attempted=2 connected ready stale=false
+local_released_route_permission_suite=green

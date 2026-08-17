@@ -30,21 +30,23 @@ var walkBodies = map[string]string{
 	// ⛔ THE CROSS-TENANT SURFACE (S12.11). The walk CAUGHT these: both routes answered 400 to a sessionless
 	// caller, so an unauthenticated stranger was being told about request-body validation on the one surface
 	// that edits privileges in organizations the caller is not in.
-	"adminsetorgrole":       `{"role":"member"}`,
-	"adminsetcpadmin":       `{"granted":true}`,
-	"updategatewayendpoint": `{"url":"https://agent.example.com:8443"}`,
-	"createorganization":    `{"name":"Walk","slug":"walk-test"}`,
-	"updateorganization":    `{"name":"Walk"}`,
-	"setssoconfig":          `{"client_id":"x","client_secret":"y","enabled":true}`,
-	"createinvitation":      `{"email":"walk@example.com","role":"member"}`,
-	"changememberrole":      `{"role":"member"}`,
-	"resizepool":            `{"cidr":"10.0.0.0/24"}`,
-	"resendinvitation":      `{"email":"walk@example.com"}`,
-	"revokeinvitation":      `{"email":"walk@example.com"}`,
-	"issuejointoken":        `{"node_name":"walk-node"}`,
-	"createdevice":          `{"name":"walk-device","node_id":"00000000-0000-0000-0000-000000000000"}`,
-	"exportovpnprofile":     `{"name":"walk-ovpn","node_id":"00000000-0000-0000-0000-000000000000"}`,
-	"setovpnenabled":        `{"enabled":true}`,
+	"adminsetorgrole":          `{"role":"member"}`,
+	"adminsetcpadmin":          `{"granted":true}`,
+	"updategatewayendpoint":    `{"url":"https://agent.example.com:8443"}`,
+	"createorganization":       `{"name":"Walk","slug":"walk-test"}`,
+	"updateorganization":       `{"name":"Walk"}`,
+	"setssoconfig":             `{"client_id":"x","client_secret":"y","enabled":true}`,
+	"createinvitation":         `{"email":"walk@example.com","role":"member"}`,
+	"changememberrole":         `{"role":"member"}`,
+	"resizepool":               `{"cidr":"10.0.0.0/24"}`,
+	"resendinvitation":         `{"email":"walk@example.com"}`,
+	"revokeinvitation":         `{"email":"walk@example.com"}`,
+	"issuejointoken":           `{"node_name":"walk-node"}`,
+	"issueagentbootstraptoken": `{"name":"walk-agent","gateway_id":"00000000-0000-0000-0000-000000000000"}`,
+	"updateagentprofile":       `{"environment":"walk"}`,
+	"createdevice":             `{"name":"walk-device","node_id":"00000000-0000-0000-0000-000000000000"}`,
+	"exportovpnprofile":        `{"name":"walk-ovpn","node_id":"00000000-0000-0000-0000-000000000000"}`,
+	"setovpnenabled":           `{"enabled":true}`,
 	// S13.1 Slice 7: the operator restore is device:restore-gated and still 401s sessionless.
 	"restorenodedevices":  `{"target_node_id":"00000000-0000-0000-0000-000000000000"}`,
 	"transfernodedevices": `{"target_node_id":"00000000-0000-0000-0000-000000000000"}`,
@@ -90,6 +92,32 @@ var walkBodies = map[string]string{
 	// S7.5.3 device health gated ops (enterprise; each still 401s sessionless).
 	"puthealthcheck":     `{"mode":"warn"}`,
 	"reportdevicehealth": `{"platform":"macos","os_version":"14.0","disk_encrypted":true}`,
+	// F09 reusable agent policy templates. Valid inert bodies ensure the walk reaches authentication.
+	"setorganizationagentpolicytemplatesenabled": `{"enabled":true}`,
+	"createagentgroup":                           `{"name":"Walk"}`,
+	"updateagentgroup":                           `{"name":"Walk"}`,
+	"addagentgroupmember":                        `{"device_id":"00000000-0000-0000-0000-000000000000"}`,
+	"createagentpolicytemplate":                  `{"name":"Walk"}`,
+	"updateagentpolicytemplate":                  `{"name":"Walk"}`,
+	"createagentpolicytemplateversion":           `{"items":[{"destination_kind":"resource","destination_id":"00000000-0000-0000-0000-000000000000"}]}`,
+	"previewagentpolicytemplate":                 `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000"}`,
+	"applyagentpolicytemplate":                   `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000","preview_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","idempotency_key":"walk"}`,
+	// F10 JIT agent access. Keep these structurally valid so the spec-driven
+	// walk measures authentication rather than request validation.
+	"setorganizationagentjitaccessenabled": `{"enabled":true}`,
+	"createagentaccessrequest":             `{"device_id":"00000000-0000-0000-0000-000000000000","destination_kind":"resource","destination_id":"00000000-0000-0000-0000-000000000000","duration_seconds":300,"reason":"walk","idempotency_key":"walk-create"}`,
+	"approveagentaccessrequest":            `{"idempotency_key":"walk-approve"}`,
+	"rejectagentaccessrequest":             `{"reason":"walk","idempotency_key":"walk-reject"}`,
+	"cancelagentaccessrequest":             `{"idempotency_key":"walk-cancel"}`,
+	"revokeagentaccessrequest":             `{"idempotency_key":"walk-revoke"}`,
+}
+
+// Required query tuples serve the same purpose as walkBodies: make the request
+// structurally valid so this walk measures authentication rather than the
+// generated parameter validator. Keep values inert and non-secret.
+var walkQueries = map[string]string{
+	"testagentaccess":                         "?destination=192.0.2.10&protocol=tcp&port=443",
+	"getagentpolicytemplatedestinationimpact": "?destination_kind=resource&destination_id=00000000-0000-0000-0000-000000000000",
 }
 
 // TestSessionlessMutationsAre401 walks EVERY operation in the OpenAPI spec and
@@ -130,10 +158,16 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{clusterId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{serviceId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
+			reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
 
 			var body io.Reader
 			if b, ok := walkBodies[strings.ToLower(op.OperationID)]; ok {
 				body = bytes.NewBufferString(b)
+			}
+			if query, ok := walkQueries[strings.ToLower(op.OperationID)]; ok {
+				reqPath += query
 			}
 			req, err := http.NewRequest(method, srv.URL+reqPath, body)
 			if err != nil {

@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"regexp"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
@@ -455,6 +457,23 @@ func (s *Service) UnexposeService(ctx context.Context, actorUserID uuid.UUID, ac
 		if e != nil {
 			return apierr.NotFound("service_not_found", "no such exposed Service in this organization")
 		}
+		if _, e := agentaccessguard.LockDestination(ctx, q, orgID, "k8s_service", serviceID); e != nil {
+			return e
+		}
+		live, e := agentaccessguard.LiveDestinationRequests(ctx, q, orgID, "k8s_service", serviceID)
+		if e != nil {
+			return e
+		}
+		if live != 0 {
+			return apierr.Conflict("agent_access_destination_in_use", fmt.Sprintf("%d pending or approved agent access requests reference this Service", live))
+		}
+		templateVersions, e := q.CountAgentPolicyTemplateK8sServiceReferences(ctx, sqlc.CountAgentPolicyTemplateK8sServiceReferencesParams{OrgID: orgID, DstK8sServiceID: pgtype.UUID{Bytes: serviceID, Valid: true}})
+		if e != nil {
+			return e
+		}
+		if templateVersions != 0 {
+			return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this Service", templateVersions))
+		}
 		if e := q.SoftDeleteK8sService(ctx, sqlc.SoftDeleteK8sServiceParams{OrgID: orgID, ID: serviceID}); e != nil {
 			return e
 		}
@@ -477,6 +496,16 @@ func (s *Service) DeregisterCluster(ctx context.Context, actorUserID uuid.UUID, 
 		cluster, e := q.GetK8sCluster(ctx, sqlc.GetK8sClusterParams{OrgID: orgID, ID: clusterID})
 		if e != nil {
 			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
+		}
+		if e := agentaccessguard.LockK8sClusterDestinations(ctx, q, orgID, clusterID); e != nil {
+			return e
+		}
+		live, e := agentaccessguard.LiveK8sClusterRequests(ctx, q, orgID, clusterID)
+		if e != nil {
+			return e
+		}
+		if live != 0 {
+			return apierr.Conflict("agent_access_destination_in_use", fmt.Sprintf("%d pending or approved agent access requests reference Services in this cluster", live))
 		}
 		// H2: capture the cascade counts BEFORE the delete — the FK cascade hard-deletes the cluster's Services
 		// AND every enterprise grant referencing one, so the audit must name what vanished (the DeleteSite

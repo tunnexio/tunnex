@@ -72,12 +72,6 @@ type Manager struct {
 	runIP   func(ctx context.Context, args ...string) error
 	// log surfaces K8s VIP resolution outcomes (WF-K-OBS-1). nil = silent (tests). Set via SetLogger.
 	log *slog.Logger
-	// deviceByIP is the src /32 -> device_id map (S7.5.4 v3), rebuilt atomically on each
-	// SetPolicy from the applied Allow set. It is the AUTHORITATIVE /32->device mapping
-	// the CP compiled (the same snapshot that assigned the /32) — the flow-log stamper
-	// consults it so a flow event carries device identity WITHOUT any src_ip->device DB
-	// guess (the forbidden racy IP-map). Observability only; never touches enforcement.
-	deviceByIP atomic.Pointer[map[string]string]
 	// policyReceived distinguishes "no policy fetched YET" (cold start, before the first
 	// desired-state delivery) from "policy fetched, value nil = legacy mesh". THREE states
 	// (finding #2): (a) received + mesh/nil -> blanket; (b) received + enforcing -> grants;
@@ -139,6 +133,10 @@ type Manager struct {
 	// plane (decision 4b / staleness-visible, chunk-1 status field).
 	appliedVersion int
 	appliedHash    string
+	// appliedSubjects belongs to the same LAST SUCCESSFUL apply as appliedHash.
+	// It changes only after the atomic nft transaction succeeds, so a failed
+	// candidate can never stamp next-policy identity beside a last-good hash.
+	appliedSubjects map[string]nodepolicy.SubjectAttribution
 	// appliedEnforcing is whether the policy CURRENTLY IN FORCE (last successful apply) is
 	// an ENFORCING one. It distinguishes the two non-enforcing apply-failure cases
 	// (finding #B): a gateway that was enforcing and FAILS to apply the new mesh/off
@@ -270,27 +268,47 @@ func (m *Manager) SetPolicy(p *nodepolicy.Compiled) {
 	m.refusedVersion.Store(0)
 	m.policy.Store(p)
 	m.policyReceived.Store(true)
-	// Rebuild the src /32 -> device_id map (v3 flow-log attribution). Every device with
-	// any grant appears as a source /32 in Allow, so this is the full authoritative map.
-	byIP := map[string]string{}
-	if p != nil {
-		for _, e := range p.Allow {
-			if e.SrcIP != "" && e.SrcDeviceID != "" {
-				byIP[e.SrcIP] = e.SrcDeviceID
-			}
-		}
-	}
-	m.deviceByIP.Store(&byIP)
 }
 
-// DeviceForIP returns the source device's uuid for a flow's src /32, from the APPLIED
-// artifact map (S7.5.4 v3). "" when the src has no grant (default-deny source) or no
-// policy has been received — reported as unresolved, never guessed. Cheap map read.
-func (m *Manager) DeviceForIP(srcIP string) string {
-	if mp := m.deviceByIP.Load(); mp != nil {
-		return (*mp)[srcIP]
+// FlowAttribution returns one locked snapshot of the successfully applied
+// policy hash/version and subject metadata. Missing subjects stay empty; the
+// caller must never infer them from the source address.
+func (m *Manager) FlowAttribution(srcIP string) flowlog.Attribution {
+	// An unsupported artifact forces a synthetic deny-all interlock. That ruleset
+	// is not the last-good artifact and has no canonical policy hash/subject
+	// snapshot of its own, so carrying last-good attribution would rewrite the
+	// refusal as an ordinary policy decision. Absence is the truthful record.
+	if m.refusedVersion.Load() != 0 {
+		return flowlog.Attribution{}
 	}
-	return ""
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.appliedSubjects[srcIP]
+	return flowlog.Attribution{
+		PolicyHash: m.appliedHash, PolicyVersion: m.appliedVersion,
+		SrcDeviceID: s.DeviceID, SrcDeviceKind: s.Kind,
+		ConfigRevision: s.ConfigRevision,
+	}
+}
+
+// DeviceForIP preserves the existing narrow helper for callers/tests while
+// reading the successfully applied subject map.
+func (m *Manager) DeviceForIP(srcIP string) string {
+	return m.FlowAttribution(srcIP).SrcDeviceID
+}
+
+// installAppliedSubjects must be called with m.mu held after a successful
+// policy apply. The map is complete and grant-independent.
+func (m *Manager) installAppliedSubjects(pol *nodepolicy.Compiled) {
+	m.appliedSubjects = map[string]nodepolicy.SubjectAttribution{}
+	if pol == nil {
+		return
+	}
+	for _, s := range pol.Subjects {
+		if s.SrcIP != "" && s.DeviceID != "" {
+			m.appliedSubjects[s.SrcIP] = s
+		}
+	}
 }
 
 // AppliedStatus reports the version + canonical hash of the policy CURRENTLY IN FORCE
@@ -779,6 +797,7 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 			// Applied cleanly: mesh/off is now in force. Clear all policy status.
 			m.appliedVersion = 0
 			m.appliedHash = nodepolicy.CanonicalHash(pol) // "" for nil, mesh hash otherwise
+			m.installAppliedSubjects(pol)
 			m.appliedEnforcing = false
 			m.applyErr = nil
 			m.failingSince = time.Time{}
@@ -817,6 +836,7 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	}
 	m.appliedVersion = pol.Version
 	m.appliedHash = nodepolicy.CanonicalHash(pol)
+	m.installAppliedSubjects(pol)
 	m.appliedEnforcing = true
 	m.applyErr = nil
 	m.failingSince = time.Time{} // apply succeeded -> no mismatch -> not stale

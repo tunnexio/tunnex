@@ -27,23 +27,49 @@ const (
 	VerdictTerminated Verdict = "terminated"
 )
 
+// Reason is the bounded enforcement-owned explanation for a verdict. It is
+// stamped from the kernel grant/default-deny prefix (or an explicit
+// terminated/gap constructor), never reconstructed from a packet tuple.
+type Reason string
+
+const (
+	ReasonMatchedGrant    Reason = "matched_grant"
+	ReasonNoMatchingGrant Reason = "no_matching_grant"
+	ReasonGrantRevoked    Reason = "grant_revoked"
+	ReasonEventsDropped   Reason = "events_dropped"
+)
+
+// Attribution is the event-time metadata installed with the last successfully
+// applied policy artifact. A nil ConfigRevision means the artifact did not
+// record an agent runtime revision.
+type Attribution struct {
+	PolicyHash     string
+	PolicyVersion  int
+	SrcDeviceID    string
+	SrcDeviceKind  string
+	ConfigRevision *int64
+}
+
 // Event is ONE flow observation the agent ships to the control plane. The agent stamps
 // RuleID (kernel-carried via the nft log prefix — attribution rides the grant the kernel
 // matched, NOT a userspace re-derivation) and PolicyHash (the applied artifact hash at
-// observation). NOTE (fold-2 #2): PolicyHash is carried on the wire but the CP does NOT yet
-// consume it — per-flow skew detection is a DEFERRED enhancement; the working policy-skew
-// signal is the node-status desync path (policy_desync_since/reported_at, 0021/0022). The
+// observation). F07 persists PolicyHash + PolicyVersion as event-time facts; the existing
+// node-status desync path remains the live health signal. The
 // agent ships IP-level facts. DEVICE identity (S7.5.4 v3) is now agent-STAMPED from the
 // applied artifact's /32->device map (SrcDeviceID) — still NOT an src_ip->device DB guess;
 // the CP joins device->user server-side. Resource enrichment stays CP-side at ingest.
 type Event struct {
-	OccurredAt  time.Time `json:"occurred_at"`
-	Verdict     Verdict   `json:"verdict"`
-	RuleID      string    `json:"rule_id,omitempty"` // "" = default-deny / no matching rule
-	PolicyHash  string    `json:"policy_hash"`       // applied CanonicalHash at observation (CP consumption deferred, fold-2 #2)
-	SrcIP       string    `json:"src_ip"`
-	SrcDeviceID string    `json:"src_device_id,omitempty"` // v3: source device uuid from the artifact map ("" = unresolved src)
-	DstIP       string    `json:"dst_ip"`
-	Protocol    string    `json:"protocol"`
-	DstPort     int       `json:"dst_port,omitempty"`
+	OccurredAt        time.Time `json:"occurred_at"`
+	Verdict           Verdict   `json:"verdict"`
+	RuleID            string    `json:"rule_id,omitempty"` // "" = default-deny / no matching rule
+	PolicyHash        string    `json:"policy_hash"`       // applied CanonicalHash at observation
+	PolicyVersion     int       `json:"policy_version,omitempty"`
+	SrcIP             string    `json:"src_ip"`
+	SrcDeviceID       string    `json:"src_device_id,omitempty"` // v3: source device uuid from the artifact map ("" = unresolved src)
+	SrcDeviceKind     string    `json:"src_device_kind,omitempty"`
+	SrcConfigRevision *int64    `json:"src_config_revision,omitempty"`
+	DstIP             string    `json:"dst_ip"`
+	Protocol          string    `json:"protocol"`
+	DstPort           int       `json:"dst_port,omitempty"`
+	Reason            Reason    `json:"reason"`
 }

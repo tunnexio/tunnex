@@ -44,6 +44,12 @@ func setup(t *testing.T) (*sqlc.Queries, context.Context, []byte) {
 		t.Fatalf("begin: %v", err)
 	}
 	t.Cleanup(func() { _ = tx.Rollback(ctx) })
+	// The CA is platform-global, so a shared integration database may contain
+	// ciphertext sealed with another test's random key. Remove only the row in
+	// this transaction; rollback restores the shared fixture after the test.
+	if _, err := tx.Exec(ctx, "DELETE FROM platform_secrets WHERE name = 'agent_ca'"); err != nil {
+		t.Fatalf("clear test CA: %v", err)
+	}
 	key := make([]byte, crypto.KeySize)
 	_, _ = rand.Read(key)
 	return sqlc.New(tx), ctx, key

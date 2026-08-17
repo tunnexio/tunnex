@@ -27,6 +27,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/bootstrap"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
@@ -353,6 +354,7 @@ func main() {
 		WithCRLRebuilder(ovpnCRLRebuilder{ovpnSvc})
 	idpSyncPort := apphttp.NewIdpSyncPort(pool, sealer, membersSvc, deviceSvc, licenceMgr, logger)
 	var releaseStatus *release.Status
+	var releaseBootstrap *release.BootstrapRelease
 	currentRelease := release.Current{Sequence: cfg.ReleaseSequence, Version: cfg.ReleaseVersion, SourceSHA: cfg.ReleaseSourceSHA, Protocol: policyspec.ProtocolVersion}
 	if cfg.ReleaseManifestPath != "" {
 		signed, loadErr := release.Load(cfg.ReleaseManifestPath, cfg.ReleasePublicKey)
@@ -372,6 +374,11 @@ func main() {
 				ApprovalMode:   "host_command_only",
 			}
 		} else {
+			if metadata, metadataErr := release.BootstrapReleaseFromSigned(signed, cfg.ReleaseManifestURL); metadataErr == nil {
+				releaseBootstrap = &metadata
+			} else {
+				logger.Warn("bootstrap_release_metadata_unavailable", slog.String("error", metadataErr.Error()))
+			}
 			// The installed descriptor is itself the authoritative provenance for a
 			// fresh install. Do not rely on optional dotenv copies of those fields.
 			currentRelease.Sequence = signed.Manifest.Sequence
@@ -408,8 +415,13 @@ func main() {
 		}()
 	}
 
+	systemQueries := sqlc.New(pool)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
-		System:                sqlc.New(pool),
+		System: systemQueries,
+		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
+			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
+		}),
+		AgentRuntimeNotify:    pushHub,
 		Licence:               licenceMgr,
 		Orgs:                  tenancy.NewService(pool).WithLicence(licenceMgr),
 		CliAuth:               cliAuthSvc,
@@ -426,6 +438,8 @@ func main() {
 		Mfa:                   mfaSvc,
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPort(pool, pushHub),
+		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
+		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),
 		IdpSync:               idpSyncPort,
 		DeviceApprovalEnabled: apphttp.NewDeviceApprovalEdition(),
@@ -436,6 +450,7 @@ func main() {
 		GatewayControlURL:     cfg.GatewayControlURL,
 		NodeAgentImage:        cfg.NodeAgentImage,
 		ReleaseStatus:         releaseStatus,
+		ReleaseBootstrap:      releaseBootstrap,
 		ReleaseStatusProvider: releaseStatusProvider,
 		SMTPConfigured:        mail.Configured(mail.Config{Host: cfg.SMTP.Host}),
 		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
@@ -612,6 +627,10 @@ func main() {
 	// a lapsed temporary grant's /32 is pushed off every org gateway promptly. Shares
 	// pollCtx (cancelled on shutdown).
 	apphttp.StartPolicyGrantSweeper(pollCtx, pool, pushHub, mayTick)
+	// F10 JIT approvals own their request-bound rule expiry. The generic policy
+	// sweeper intentionally excludes those rows; the elected writer advances the
+	// workflow, audit and gateway push atomically here.
+	apphttp.StartAgentAccessSweeper(pollCtx, pool, deviceSvc, mayTick)
 	// S7.5.3 device-health staleness sweep (enterprise only): a stale report is
 	// ABSENCE, and absence never blocks — clears health_blocked past the TTL and
 	// pushes the affected orgs. Shares pollCtx (cancelled on shutdown).

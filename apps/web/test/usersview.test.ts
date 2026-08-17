@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deactivationImpactCopy,
   deviceCountFor,
   deviceCountLabel,
   filterMembers,
@@ -130,6 +131,7 @@ type UnaccountedMemberField = Exclude<
   // breaks. Listing it here is the tripwire working as designed — a new Member field must be claimed by
   // something, or it is a projection nobody renders.
   | "machine_credentials"
+  | "managed_agent_delegations"
 >;
 const _memberHasNoAuthField: UnaccountedMemberField extends never
   ? true
@@ -139,6 +141,39 @@ describe("the AUTH column has no producer", () => {
   it("⛔ the tripwire is a TYPE assert; this test only keeps it referenced", () => {
     // Without a reference the const is dead code a linter may strip, taking the tripwire with it.
     expect(_memberHasNoAuthField).toBe(true);
+  });
+});
+
+describe("deactivationImpactCopy — server-owned affected authority", () => {
+  const member = (overrides: Partial<Member>): Member =>
+    ({
+      user_id: "user-1",
+      email: "member@example.com",
+      name: "Member",
+      role: "member",
+      status: "active",
+      email_verified: true,
+      joined_at: "2026-08-16T00:00:00Z",
+      ...overrides,
+    }) as Member;
+
+  it("is silent only when the server reports no affected credentials or delegations", () => {
+    expect(
+      deactivationImpactCopy([
+        member({ machine_credentials: 0, managed_agent_delegations: 0 }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("names both impact classes without claiming team assignments are deleted", () => {
+    const copy = deactivationImpactCopy([
+      member({ machine_credentials: 2, managed_agent_delegations: 3 }),
+    ]);
+    expect(copy).toMatch(/2 machine credentials will stop working/i);
+    expect(copy).toMatch(/3 managed-agent delegations will be withdrawn/i);
+    expect(copy).toMatch(/team assignment/i);
+    expect(copy).toMatch(/loses authority/i);
+    expect(copy).not.toMatch(/assignment.*deleted/i);
   });
 });
 

@@ -83,6 +83,23 @@ func TestPreTierKeyReadsAsCommunity(t *testing.T) {
 	}
 }
 
+// The approved disposable descriptor carries band=trial but no tier claim. The
+// band is a gateway ceiling; it is not a substitute for the signed entitlement
+// tier. Preserve the fail-closed reading until the issuer supplies a corrected
+// signed payload with tier=trial.
+func TestPreTierTrialBandReadsAsCommunity(t *testing.T) {
+	m := &Manager{}
+	m.claims = &Claims{
+		Version:   1,
+		Tier:      "",
+		Band:      "trial",
+		ExpiresAt: time.Unix(4_000_000_000, 0).Unix(),
+	}
+	if got := m.Evaluate(time.Unix(2_000_000_000, 0)).Tier; got != TierCommunity {
+		t.Fatalf("a trial-band key without a tier must read as Community, got %v", got)
+	}
+}
+
 func TestCeilingsFollowTheTier(t *testing.T) {
 	now := time.Unix(2_000_000_000, 0)
 	exp := time.Unix(4_000_000_000, 0)

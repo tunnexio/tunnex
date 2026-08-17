@@ -1,0 +1,24 @@
+F04 RESILIENCE AND OFFBOARD (REDACTED)
+transient_outage_duration=35s
+outage_scope=dedicated-agent-VM egress only
+last_good_config_unchanged=true
+applied_revision_during_outage=2
+service_during_outage=active
+wireguard_peer_during_outage=present
+firewall_cleanup=complete
+post_outage_status=connected ready stale=false
+
+The first bb7a406 exact walk found a real re-enable defect: terminal opt-out
+removed the interface but retained applied revision 2, so restart treated an
+absent interface as current. That run was not accepted.
+
+fix_source=09d9848ea5121ca08b3348fc29ef2a4ce2949326
+fix=successful terminal offboard persists applied revision zero
+signed_fix_runtime_installed=true
+fixed_opt_out_ui=disabled refetched
+fixed_machine_refusal=http-401 uniform unauthenticated
+fixed_offboard=service-inactive interface-absent applied=0
+fixed_reenable_ui=enabled refetched
+fixed_restart=service-active interface-present applied=2 real-handshake-present
+fixed_owner_status=http-200 desired=2 applied=2 attempted=2 connected ready stale=false
+org_toggle_audit=owner-attributed disable=false then enable=true

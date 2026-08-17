@@ -6,6 +6,7 @@ import {
   decisionLabel,
   decisionTone,
   destinationFor,
+  eventTimeline,
   isLastPage,
   nextCursor,
   retentionNote,
@@ -90,16 +91,33 @@ describe("causeFor", () => {
   });
 });
 
-// ⛔ SOURCE IS AN ADDRESS, NOT A PERSON — a refused inference, not missing data.
 describe("sourceFor + ATTRIBUTION_NOTE", () => {
-  it("renders only what the server attributed", () => {
+  it("renders a stamped agent name and address, but never invents human identity", () => {
     expect(sourceFor(ev())).toBe("100.90.4.11");
+    expect(sourceFor(ev({ src_agent_id: "agent-12345678" }), "build-bot")).toBe(
+      "build-bot (current name) · 100.90.4.11",
+    );
   });
 
-  it("explains WHY there is no name", () => {
-    expect(ATTRIBUTION_NOTE).toMatch(/not to a person/i);
-    expect(ATTRIBUTION_NOTE).toMatch(/lease that may since have moved/i);
-    expect(ATTRIBUTION_NOTE).toMatch(/wrong name/i);
+  it("explains the applied-artifact boundary", () => {
+    expect(ATTRIBUTION_NOTE).toMatch(/successfully applied gateway policy/i);
+    expect(ATTRIBUTION_NOTE).toMatch(/not inferred/i);
+  });
+
+  it("builds a truthful policy/config/reason timeline", () => {
+    expect(eventTimeline(ev({
+      decision: "deny",
+      decision_reason: "no_matching_grant",
+      src_agent_id: "a",
+      policy_hash: "abcdef123456",
+      policy_version: 7,
+      src_config_revision: 4,
+    }))).toEqual([
+      "Source agent a · configuration revision 4",
+      "Gateway not recorded · applied policy v7 · abcdef123456",
+      "100.90.4.11 → 10.2.0.9 · TCP · rule no matching grant",
+      "DENY · no matching grant · ingest sequence 1 at 2026-08-03T14:22:41.208Z",
+    ]);
   });
 });
 

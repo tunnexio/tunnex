@@ -1,0 +1,84 @@
+F03 managed bootstrap/runtime live walk — redacted DEV evidence
+run_utc=2026-08-15T07:09:32Z
+source_sha=bd8efbcaccdba8b299e91be127fa2d5380f223a1
+release_kid=f04-dev-cp-test
+runtime_amd64_sha256=5cb0d80347f5048894d96c25db2332ef985f91d9ce85cc8c05b014fe334903c7
+runtime_unit_sha256=29dd5518d31f60a2ddca9b116113a32054335fbddf2996da8131a29cfae093a6
+
+Fresh disposable control-plane resources
+gateway_id=01a00441-2321-7f75-b822-f6e8706f277c
+gateway_name=f03-nnp-gw-20260815T070932Z
+agent_name=f03-nnp-agent-20260815T070932Z
+bootstrap_issue_http=201
+device_pre_approval_status=pending
+device_approval_http=204
+device_post_approval_status=active
+
+Released installer and runtime
+installer_exit=0
+service_initial=active,enabled
+installed_unit_hash_match=yes
+NoNewPrivileges=no
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
+ProtectSystem=strict
+CapabilityBoundingSet=cap_net_admin
+AmbientCapabilities=cap_net_admin
+DeviceAllow=/dev/net/tun rw
+config_credential_state_modes=600,600,600
+runtime_interface=present
+runtime_handshake_nonzero=yes
+apparmor_no_new_privs_denials=0
+netlink_address_family_refusals=0
+
+Control-plane convergence
+desired_revision=1
+last_attempted_revision=1
+applied_revision=1
+last_error_code=<empty>
+
+Restart persistence
+service_after_restart=active,enabled
+runtime_interface_after_restart=present
+applied_revision_before=1
+applied_revision_after=1
+handshake_before_nonzero=yes
+handshake_after_nonzero=yes
+unexpected_restart_count=0
+
+One-time replay / preservation
+replay_http=401
+replay_code=invalid_bootstrap_token
+device_count_before=1
+device_count_after=1
+config_hash_before_after=c2e83de0d0cee99612c2b312c4841043d3cf57efcfa1795a5d0dea293d18ffa3
+credential_hash_before_after=a98af3a326172255b1948775ca233bec70d3a2aef693ea861e97b5c3727f07be
+state_hash_before_after=abc121049b98be8e492c78733f9589ee3b25fe6f57226f0a4e2d8cb3aa1bc189
+
+Revoke / held lifecycle finding
+device_revoke_http=204
+device_status=revoked
+runtime_interface_after_poll=absent
+service_after_terminal_401=failed,enabled
+restart_attempts_before_start_limit=7
+finding=terminal unauthorized exits nonzero, so Restart=on-failure retries to the start limit instead of leaving the service inactive
+disposition=HELD; data-plane offboarding passed, systemd terminal lifecycle requires user disposition
+
+Cleanup
+device_remove_http=204
+gateway_revoke_http=204
+managed_paths_remaining=0
+runtime_interface_remaining=absent
+disposable_gateway_interface_remaining=absent
+service_after_cleanup=inactive,not-found
+host_prerequisites_preserved=yes
+
+Local focused gates
+cli_runtime_tests=pass
+runtime_container_service_contract=pass
+runtime_release_contract=pass
+agentview_and_census_tests=56/56 pass
+web_typecheck=pass
+web_production_build=pass
+git_diff_check=pass
+
+No bootstrap token, runtime credential, private key, cookie, or raw config is recorded here.

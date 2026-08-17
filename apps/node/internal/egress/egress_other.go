@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
@@ -24,6 +25,10 @@ func (m *Manager) SetPolicy(_ *nodepolicy.Compiled) {}
 
 // DeviceForIP off Linux resolves nothing (no flow logging off Linux).
 func (m *Manager) DeviceForIP(_ string) string { return "" }
+
+// FlowAttribution off Linux records nothing because no gateway policy is
+// applied and no flow collector exists.
+func (m *Manager) FlowAttribution(_ string) flowlog.Attribution { return flowlog.Attribution{} }
 
 // SetFlowLogGroup is a no-op off Linux (nflog is Linux-only; the agent runs on Linux
 // gateways — this only keeps non-Linux builds compiling).

@@ -721,7 +721,7 @@ func TestRoutedChannelIncludesK8s(t *testing.T) {
 		t.Fatal(e)
 	}
 	connID := uuid.New()
-	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,$3,$4)`, connID, org, "k8s-connector-"+connID.String()[:8], connID.String()); e != nil {
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,site_id,name,cert_serial) VALUES ($1,$2,$3,$4,$5)`, connID, org, site, "k8s-connector-"+connID.String()[:8], connID.String()); e != nil {
 		t.Fatal(e)
 	}
 	// A registered cluster with a VIP range + reserved DNS VIP (.2, inside the range).

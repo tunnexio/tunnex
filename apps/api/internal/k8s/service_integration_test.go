@@ -210,6 +210,27 @@ func TestUnexposeServiceSweeps(t *testing.T) {
 	if len(live) != 1 {
 		t.Fatalf("exposed Service must be in the live resolution, got %d", len(live))
 	}
+	// F09 immutable template history protects even this soft-delete path. The
+	// FK alone cannot see a soft delete, so the owning service must refuse it.
+	templateID, versionID := uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')`, org, actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_policy_templates (id,org_id,name) VALUES ($1,$2,'k8s immutable')`, templateID, org); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_policy_template_versions (id,org_id,template_id,version,created_by_user_id) VALUES ($1,$2,$3,1,$4)`, versionID, org, templateID, actor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO agent_policy_template_version_items (org_id,template_version_id,ordinal,dst_kind,dst_k8s_service_id) VALUES ($1,$2,1,'k8s_service',$3)`, org, versionID, s1.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UnexposeService(ctx, actor, "", "", org, s1.ID); err == nil || !strings.Contains(err.Error(), "immutable") {
+		t.Fatalf("immutable template destination must block soft unexpose, got %v", err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM agent_policy_template_version_items WHERE template_version_id=$1`, versionID); err != nil {
+		t.Fatal(err)
+	}
 	// Unexpose → gone from the resolution.
 	if err := svc.UnexposeService(ctx, actor, "", "", org, s1.ID); err != nil {
 		t.Fatalf("unexpose: %v", err)

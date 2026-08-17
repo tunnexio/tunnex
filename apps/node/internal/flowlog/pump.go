@@ -30,23 +30,22 @@ type Source interface {
 }
 
 // Pump reads records from a Source, STAMPS each into an Event (rule_id from the prefix +
-// the applied PolicyHash, carried on the wire; CP-side skew consumption is deferred, fold-2
-// #2), and buffers it. It is best-effort + async:
+// the applied PolicyHash/version and source subject snapshot, carried through CP persistence
+// by F07), and buffers it. It is best-effort + async:
 // nothing here is on the forward-chain apply path (enforcement isolation), and the buffer
 // never blocks.
 type Pump struct {
-	src         Source
-	buf         *Buffer
-	hashFn      func() string
-	deviceFn    func(srcIP string) string // v3: src /32 -> device_id from the applied artifact ("" = unresolved)
-	lastOverrun int64
+	src           Source
+	buf           *Buffer
+	attributionFn func(srcIP string) Attribution
+	lastOverrun   int64
 }
 
-// NewPump wires a Source to a Buffer. hashFn returns the CURRENTLY-applied policy hash to
-// stamp per event (nil → empty hash). deviceFn resolves a flow's src /32 to its device_id
-// from the applied artifact (nil → no device stamping).
-func NewPump(src Source, buf *Buffer, hashFn func() string, deviceFn func(srcIP string) string) *Pump {
-	return &Pump{src: src, buf: buf, hashFn: hashFn, deviceFn: deviceFn}
+// NewPump wires a Source to a Buffer. attributionFn returns one atomic view of
+// the currently applied policy and its source subject map. nil means no
+// attribution was recorded, never permission to infer from the address.
+func NewPump(src Source, buf *Buffer, attributionFn func(srcIP string) Attribution) *Pump {
+	return &Pump{src: src, buf: buf, attributionFn: attributionFn}
 }
 
 // Run pumps records into the buffer until ctx is cancelled or the source closes.
@@ -74,20 +73,21 @@ func (p *Pump) stamp(rec Record) (Event, bool) {
 		return Event{}, false
 	}
 	verdict := VerdictAllow
+	reason := ReasonMatchedGrant
 	if deny {
 		verdict = VerdictDeny
+		reason = ReasonNoMatchingGrant
 	}
-	h := ""
-	if p.hashFn != nil {
-		h = p.hashFn()
-	}
-	dev := ""
-	if p.deviceFn != nil {
-		dev = p.deviceFn(rec.SrcIP) // "" when the src has no grant — unresolved, never guessed
+	a := Attribution{}
+	if p.attributionFn != nil {
+		a = p.attributionFn(rec.SrcIP)
 	}
 	return Event{
-		OccurredAt: rec.At, Verdict: verdict, RuleID: ruleID, PolicyHash: h,
-		SrcIP: rec.SrcIP, SrcDeviceID: dev, DstIP: rec.DstIP, Protocol: rec.Protocol, DstPort: rec.DstPort,
+		OccurredAt: rec.At, Verdict: verdict, RuleID: ruleID,
+		PolicyHash: a.PolicyHash, PolicyVersion: a.PolicyVersion,
+		SrcIP: rec.SrcIP, SrcDeviceID: a.SrcDeviceID, SrcDeviceKind: a.SrcDeviceKind,
+		SrcConfigRevision: a.ConfigRevision,
+		DstIP:             rec.DstIP, Protocol: rec.Protocol, DstPort: rec.DstPort, Reason: reason,
 	}, true
 }
 

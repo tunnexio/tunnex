@@ -79,6 +79,15 @@ func TestCanonicalHashRuleIDIsObservabilityOnly(t *testing.T) {
 	}
 }
 
+func TestCanonicalHashSubjectsAreObservabilityOnly(t *testing.T) {
+	base := &nodepolicy.Compiled{Version: 1, Mode: nodepolicy.ModeEnforcing}
+	with := *base
+	with.Subjects = []nodepolicy.SubjectAttribution{{SrcIP: "10.99.0.9", DeviceID: "agent-1", Kind: "agent"}}
+	if nodepolicy.CanonicalHash(base) != nodepolicy.CanonicalHash(&with) {
+		t.Fatal("Subjects must be hash-blind observability metadata")
+	}
+}
+
 // TestCanonicalHashDNSForwardsBlind — S8.4 D5 (agent side): DNSForwards is convenience plumbing, out of
 // the hash, so the agent's applied hash matches the CP's pushed hash whether or not DNS is configured
 // (no false silent_desync from a DNS-only change). Mirror of policyspec's guard.

@@ -9,11 +9,13 @@
 INSERT INTO access_events (
     id, org_id, seq, node_id, occurred_at, decision, rule_id,
     src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id,
-    protocol, dst_port, deny_count, window_end, created_at
+    protocol, dst_port, deny_count, window_end, created_at,
+    policy_hash, policy_version, src_config_revision, src_kind, decision_reason
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13,
-    $14, $15, $16, $17, $18
+    $14, $15, $16, $17, $18,
+    $19, $20, $21, $22, $23
 );
 
 -- name: InsertAccessEventBatch :batchexec
@@ -24,11 +26,13 @@ INSERT INTO access_events (
 INSERT INTO access_events (
     id, org_id, seq, node_id, occurred_at, decision, rule_id,
     src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id,
-    protocol, dst_port, deny_count, window_end, created_at
+    protocol, dst_port, deny_count, window_end, created_at,
+    policy_hash, policy_version, src_config_revision, src_kind, decision_reason
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13,
-    $14, $15, $16, $17, $18
+    $14, $15, $16, $17, $18,
+    $19, $20, $21, $22, $23
 );
 
 -- name: BumpOrgFlowSeq :one
@@ -62,10 +66,31 @@ WHERE org_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit);
 
+-- name: ListAccessEventsByAgent :many
+SELECT * FROM access_events
+WHERE org_id = $1
+  AND src_kind = 'agent'
+  AND src_device_id = sqlc.arg(src_agent_id)
+  AND (created_at < sqlc.arg(before_created_at)
+       OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_limit);
+
 -- name: ListAccessDenies :many
 -- The security-focused feed: deny + deny_aggregate + terminated only, same keyset shape.
 SELECT * FROM access_events
 WHERE org_id = $1
+  AND decision <> 'allow'
+  AND (created_at < sqlc.arg(before_created_at)
+       OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListAccessDeniesByAgent :many
+SELECT * FROM access_events
+WHERE org_id = $1
+  AND src_kind = 'agent'
+  AND src_device_id = sqlc.arg(src_agent_id)
   AND decision <> 'allow'
   AND (created_at < sqlc.arg(before_created_at)
        OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))

@@ -1,0 +1,14 @@
+device_approval_mode=on
+agent_status_before_approval=pending
+installer_service_before_approval=active
+main_pid_before_approval=32489
+main_pid_after_12_seconds_pending=32489
+main_pid_unchanged_while_pending=true
+restarts_while_pending=0
+applied_revision_while_pending=0
+runtime_interface_while_pending=absent
+approve_http=204
+manual_service_start_after_approval=false
+main_pid_after_approval=32489
+main_pid_unchanged_after_approval=true
+restarts_after_approval=0

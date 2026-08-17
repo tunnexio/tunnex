@@ -605,6 +605,7 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 		}
 	}
 	peers := make([]Peer, 0, len(rows))
+	peerKeys := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
 		// Keyless (OVPN) devices are excluded AT THE SOURCE now (ListActiveWireGuardPeersForNode's format
 		// check — the single owner of the D-S9.4-MODEL invariant). This stays as a cheap subordinate
@@ -624,7 +625,16 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 			}
 		}
 		peers = append(peers, p)
+		peerKeys[r.PublicKey] = struct{}{}
 	}
+	// F05.2 warm stage. The old canonical peer above remains the only peer
+	// owning the agent address. The candidate has empty AllowedIPs until this
+	// gateway reports its nonzero handshake and the CP commits the key.
+	stagedRows, err := s.q.ListPreparedAgentWireGuardPeersForNode(ctx, node.ID)
+	if err != nil {
+		return DesiredState{}, err
+	}
+	peers = appendWarmWireGuardCandidates(peers, peerKeys, stagedRows)
 	// The interface address is the pool gateway (first usable host) with the
 	// pool's prefix, so the server has an on-link route to the whole pool and can
 	// route peer traffic. Derived from the org pool (S3.5). If the org row is
@@ -745,7 +755,12 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 			if werr != nil {
 				return DesiredState{}, werr // DesiredState-ATOMIC: a widening query fault fails the whole fetch
 			}
-			ds.Peers = wp // REPLACE the node's own /32 device peers with the union (site-link peers append below)
+			// REPLACE the node's own /32 device peers with the union (site-link peers
+			// append below), then restore this node's F05 warm candidates. Widening is
+			// intentionally authoritative for canonical peers, but it must not erase a
+			// prepared candidate before the reporter can acknowledge its empty-
+			// AllowedIPs stage.
+			ds.Peers = widenedPeersWithWarmCandidates(wp, stagedRows)
 			// WF-OVPN-9: widen the OVPN roster (CCD) across the SAME members so a multi-remote .ovpn reaches an
 			// accepting gateway whichever it fails over to — the OpenVPN twin of the WG peer widening above,
 			// reading the same activeHubMembers authority. REPLACES the node's own per-node roster.
@@ -810,6 +825,28 @@ func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 		ds.Policy = s.finalizeArtifact(topo, node, ds.Policy)
 	}
 	return ds, nil
+}
+
+func appendWarmWireGuardCandidates(peers []Peer, seen map[string]struct{}, candidates []sqlc.ListPreparedAgentWireGuardPeersForNodeRow) []Peer {
+	for _, candidate := range candidates {
+		if candidate.CandidatePublicKey == nil {
+			continue
+		}
+		if _, duplicate := seen[*candidate.CandidatePublicKey]; duplicate {
+			continue
+		}
+		peers = append(peers, Peer{PublicKey: *candidate.CandidatePublicKey, AllowedIPs: []string{}})
+		seen[*candidate.CandidatePublicKey] = struct{}{}
+	}
+	return peers
+}
+
+func widenedPeersWithWarmCandidates(peers []Peer, candidates []sqlc.ListPreparedAgentWireGuardPeersForNodeRow) []Peer {
+	seen := make(map[string]struct{}, len(peers))
+	for _, peer := range peers {
+		seen[peer.PublicKey] = struct{}{}
+	}
+	return appendWarmWireGuardCandidates(peers, seen, candidates)
 }
 
 // widenedDevicePeers is WF-A D-WFA-5b's device-peer hosting: the UNION of device peers across all hub-set
@@ -1832,6 +1869,35 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 	// direction: it nulls a previously-valid handshake (fake-offline is a
 	// tolerable degradation; fake-online would be a lie).
 	maxHS := time.Now().Add(2 * time.Minute).Unix()
+	committedWGKey := false
+	if err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		for _, st := range stats {
+			publicKey := st.PublicKey
+			if _, err := q.StageAgentWireGuardCandidate(ctx, sqlc.StageAgentWireGuardCandidateParams{
+				NodeID: node.ID, PublicKey: &publicKey,
+			}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			if st.LastHandshake <= 0 || st.LastHandshake > maxHS {
+				continue
+			}
+			if _, err := q.CommitAgentWireGuardCandidate(ctx, sqlc.CommitAgentWireGuardCandidateParams{
+				NodeID: node.ID, PublicKey: &publicKey,
+				LastHandshakeAt: time.Unix(st.LastHandshake, 0).UTC(),
+				RxBytes:         st.RxBytes, TxBytes: st.TxBytes,
+			}); err == nil {
+				committedWGKey = true
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if committedWGKey && s.pushOrg != nil {
+		s.pushOrg(ctx, node.OrgID)
+	}
 	params := make([]sqlc.UpsertDeviceStatusParams, 0, len(stats))
 	peerParams := make([]sqlc.UpsertNodePeerStatusParams, 0, len(stats)) // S8.6: the gateway-peer sibling
 	for _, st := range stats {
@@ -2107,6 +2173,12 @@ const zeroTrustOff = "off"
 type PolicyHealth struct {
 	Degraded bool
 	Kind     PolicyDegradedKind
+	// PushKnown/PushedHash/AppliedHash are the exact finalized comparison
+	// already computed for health. F08 consumes these secret-free facts rather
+	// than rebuilding a route-less hash in a parallel diagnostic path.
+	PushKnown   bool
+	PushedHash  string
+	AppliedHash string
 	// WF-B: the SUBORDINATE site-link note — INDEPENDENT of the headline Kind (D-WFB-2/D-WFB-3). Set when a
 	// DEMOTED hub member's link is dead WHILE transit rides the active primary (healthy): the site's
 	// headline stays its real state, and this names the demoted-dead peer as a distinct line item
@@ -2169,6 +2241,35 @@ func (s *Service) LoadSiteTopoBatch(ctx context.Context, orgID uuid.UUID, nodes 
 		}
 	}
 	return b
+}
+
+// EvaluateAgentAccess evaluates one selected agent tuple against the exact
+// FINALIZED artifact used by this gateway. It reuses the same topology batch,
+// active-hub choice and finalizeArtifact seam as DesiredState/PolicyHealth, so
+// diagnostics cannot invent a second hash or route model. It is read-only.
+func (s *Service) EvaluateAgentAccess(ctx context.Context, orgID, deviceID uuid.UUID, node sqlc.Node, sourceIP, destination, protocol string, port int, pre ...SiteTopoBatch) (policyspec.AccessEvaluation, []string, error) {
+	if s == nil || s.policy == nil || node.ID == uuid.Nil || node.OrgID != orgID {
+		return policyspec.AccessEvaluation{}, nil, errors.New("agent policy unavailable")
+	}
+	b := s.siteTopoBatchFor(ctx, orgID, []sqlc.Node{node}, pre)
+	if !b.ok {
+		return policyspec.AccessEvaluation{}, nil, errors.New("agent policy topology unavailable")
+	}
+	artifacts, err := s.policy.CompiledArtifactsForNodes(ctx, orgID, []uuid.UUID{node.ID}, b.hubID)
+	if err != nil {
+		return policyspec.AccessEvaluation{}, nil, err
+	}
+	final := s.finalizeArtifact(b.topo, node, artifacts[node.ID])
+	if final == nil {
+		// Off-mode mesh is intentionally nil on the wire. For explanation it is
+		// permitted-without-enforcement, not a missing grant.
+		return policyspec.AccessEvaluation{Allowed: true, Mode: "off"}, nil, nil
+	}
+	routes := make([]string, 0, len(final.Routes))
+	for _, route := range final.Routes {
+		routes = append(routes, route.DstCIDR)
+	}
+	return policyspec.EvaluateAccess(final, deviceID, sourceIP, destination, protocol, port), routes, nil
 }
 
 // fillSiteLinkVerdict derives the ORG-LEVEL site-link health (WF-B) from THE ONE liveness derivation
@@ -2457,7 +2558,10 @@ func (s *Service) PolicyHealthForNodes(ctx context.Context, orgID uuid.UUID, nod
 				CertExpired:                 certExpired,                   // S11 WF-S11-6 — ranked first inside degradedKind too
 			})
 		}
-		ph := PolicyHealth{Degraded: deg, Kind: kind}
+		ph := PolicyHealth{Degraded: deg, Kind: kind, PushKnown: pushKnown, AppliedHash: caps.PolicyHash}
+		if pushKnown {
+			ph.PushedHash = pushed[n.ID]
+		}
 		// WF-B subordinate note: a DEMOTED member is dead while transit rides the active primary. Attach the
 		// named line to every OTHER site gateway (not the dead peer itself — it renders offline), and NEVER
 		// when this node's own headline is site_link_down (the inverse-red guard: a real transit failure gets

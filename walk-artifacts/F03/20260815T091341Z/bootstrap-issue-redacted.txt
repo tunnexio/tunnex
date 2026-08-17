@@ -1,0 +1,8 @@
+gateway_join_issue_http=201
+gateway_reporter_binary_sha256=33e743aeab5e8e2501c844235202a0c5bf6e063ce5213d02999391f2f9dff2dc
+gateway_reporter_active=true
+gateway_join_secret_removed_after_enrollment=true
+managed_bootstrap_issue_http=201
+bootstrap_response_shape=one-time token plus signed immutable release metadata
+bootstrap_token_recorded=false
+roster_row_created_at_issue=false

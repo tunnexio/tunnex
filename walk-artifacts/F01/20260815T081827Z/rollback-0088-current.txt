@@ -1,0 +1,54 @@
+F01 current migration 0088 isolated PostgreSQL rollback proof
+run_id=20260815T081827Z
+source_sha=bd8efbcaccdba8b299e91be127fa2d5380f223a1
+database=PostgreSQL 16.15, dedicated disposable Colima profile/container
+scope=three isolated synthetic databases; no control-plane or product state used
+
+Common setup
+- Current embedded migrations applied from empty database to 93|dirty=false.
+- Each F01 database was rolled down through 0093..0089 to 88|dirty=false.
+- Each case contained one synthetic organization, user, gateway, agent device,
+  and agent profile. IDs below are synthetic and contain no customer data.
+
+Case 1: default profile rollback and up-again
+command shape:
+  docker --context colima-f01-f03-closure exec -e DATABASE_URL=<redacted-disposable-dsn> \
+    tunnex-f01-f03-closure-pg /usr/local/bin/tunnex-migrate down
+result:
+  exit=0
+  migrate_down_complete version=87 dirty=false
+  device=1|active|agent
+  agent_profiles table absent=true
+
+up-again command used the same current embedded migration binary.
+result:
+  exit=0
+  migrate_up_complete version=93 dirty=false
+  device=1|active|agent
+  profile=1|||{}
+
+Case 2: non-default metadata refusal and preservation
+fixture profile before down:
+  environment=prod
+  runtime=python
+  labels={"team":"sec"}
+result:
+  exit=1
+  error=0088 rollback refused: non-default agent profile metadata would be lost
+  schema_migrations=87|dirty=true
+  device=1|active|agent
+  profile=1|prod|python|{"team": "sec"}
+
+Case 3: suspended agent refusal and preservation
+result:
+  exit=1
+  error=0088 rollback refused: suspended agent/device rows must be resumed or revoked first
+  schema_migrations=87|dirty=true
+  device=1|suspended|agent
+  profile=1|||{}
+
+Verdict=PASS
+- Current 0088 default rollback is reversible and up-again compatible.
+- Both destructive refusal guards run before profile/device value loss.
+- A refused golang-migrate down records version 87 dirty=true by runner design;
+  the guarded 0088 schema and rows remain present.

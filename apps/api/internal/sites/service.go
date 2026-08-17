@@ -8,6 +8,7 @@ package sites
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
 	"github.com/tunnexio/tunnex/apps/api/internal/subnetguard"
@@ -252,6 +254,23 @@ func (s *Service) DeleteSite(ctx context.Context, actor, orgID, siteID uuid.UUID
 		return err
 	}
 	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := agentaccessguard.LockDestination(ctx, q, orgID, "site", siteID); err != nil {
+			return err
+		}
+		live, err := agentaccessguard.LiveDestinationRequests(ctx, q, orgID, "site", siteID)
+		if err != nil {
+			return err
+		}
+		if live != 0 {
+			return apierr.Conflict("agent_access_destination_in_use", fmt.Sprintf("%d pending or approved agent access requests reference this site", live))
+		}
+		versions, err := q.CountAgentPolicyTemplateSiteReferences(ctx, sqlc.CountAgentPolicyTemplateSiteReferencesParams{OrgID: orgID, DstSiteID: pgtype.UUID{Bytes: siteID, Valid: true}})
+		if err != nil {
+			return err
+		}
+		if versions != 0 {
+			return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this site", versions))
+		}
 		n, err := q.DeleteSite(ctx, sqlc.DeleteSiteParams{ID: siteID, OrgID: orgID})
 		if err != nil {
 			return err

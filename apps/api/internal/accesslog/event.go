@@ -14,6 +14,8 @@ import (
 // Decision is the fate the gateway recorded for a flow.
 type Decision string
 
+type DecisionReason string
+
 const (
 	DecisionAllow Decision = "allow"
 	DecisionDeny  Decision = "deny"
@@ -29,6 +31,13 @@ const (
 	// events (buffer overflow or kernel nflog overrun). DenyCount carries N ("N events
 	// dropped here") so a hole in the audit trail is visible, never inferred.
 	DecisionGap Decision = "gap"
+)
+
+const (
+	ReasonMatchedGrant    DecisionReason = "matched_grant"
+	ReasonNoMatchingGrant DecisionReason = "no_matching_grant"
+	ReasonGrantRevoked    DecisionReason = "grant_revoked"
+	ReasonEventsDropped   DecisionReason = "events_dropped"
 )
 
 // Retention + rotation defaults (D3/D4) — NAMED so a POC never silently fills the
@@ -51,21 +60,26 @@ type Event struct {
 	ID uuid.UUID `json:"id"`
 	// CreatedAt is the CP INGEST time — the keyset-pagination + retention clock (NOT the
 	// agent-clock OccurredAt). Set at ingest so PG and the JSONL line agree.
-	CreatedAt     time.Time  `json:"created_at"`
-	Seq           int64      `json:"seq"`
-	OrgID         uuid.UUID  `json:"org_id"`
-	NodeID        *uuid.UUID `json:"node_id,omitempty"` // observing gateway
-	OccurredAt    time.Time  `json:"occurred_at"`       // agent clock (flow observation)
-	Decision      Decision   `json:"decision"`
-	RuleID        *uuid.UUID `json:"rule_id,omitempty"` // the grant (nil = default-deny / no match)
-	SrcDeviceID   *uuid.UUID `json:"src_device_id,omitempty"`
-	SrcUserID     *uuid.UUID `json:"src_user_id,omitempty"`
-	SrcIP         string     `json:"src_ip"`
-	DstIP         string     `json:"dst_ip"`
-	DstResourceID *uuid.UUID `json:"dst_resource_id,omitempty"`
-	DstGroupID    *uuid.UUID `json:"dst_group_id,omitempty"`
-	Protocol      string     `json:"protocol"`
-	DstPort       int        `json:"dst_port,omitempty"`
-	DenyCount     int        `json:"deny_count,omitempty"` // >1 only for deny_aggregate
-	WindowEnd     *time.Time `json:"window_end,omitempty"` // deny_aggregate: end of the collapse window
+	CreatedAt         time.Time      `json:"created_at"`
+	Seq               int64          `json:"seq"`
+	OrgID             uuid.UUID      `json:"org_id"`
+	NodeID            *uuid.UUID     `json:"node_id,omitempty"` // observing gateway
+	OccurredAt        time.Time      `json:"occurred_at"`       // agent clock (flow observation)
+	Decision          Decision       `json:"decision"`
+	RuleID            *uuid.UUID     `json:"rule_id,omitempty"` // the grant (nil = default-deny / no match)
+	PolicyHash        string         `json:"policy_hash,omitempty"`
+	PolicyVersion     int            `json:"policy_version,omitempty"`
+	SrcDeviceID       *uuid.UUID     `json:"src_device_id,omitempty"`
+	SrcUserID         *uuid.UUID     `json:"src_user_id,omitempty"`
+	SrcConfigRevision *int64         `json:"src_config_revision,omitempty"`
+	SrcKind           string         `json:"src_kind,omitempty"`
+	DecisionReason    DecisionReason `json:"decision_reason,omitempty"`
+	SrcIP             string         `json:"src_ip"`
+	DstIP             string         `json:"dst_ip"`
+	DstResourceID     *uuid.UUID     `json:"dst_resource_id,omitempty"`
+	DstGroupID        *uuid.UUID     `json:"dst_group_id,omitempty"`
+	Protocol          string         `json:"protocol"`
+	DstPort           int            `json:"dst_port,omitempty"`
+	DenyCount         int            `json:"deny_count,omitempty"` // >1 only for deny_aggregate
+	WindowEnd         *time.Time     `json:"window_end,omitempty"` // deny_aggregate: end of the collapse window
 }

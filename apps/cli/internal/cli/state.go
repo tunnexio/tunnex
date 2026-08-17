@@ -21,6 +21,10 @@ type Credential struct {
 	ExpiresAt   time.Time `json:"expires_at"`
 }
 
+// ManagedAgentState is the local handoff from one-time F03 bootstrap to the
+// steady-state F04 runtime. The credential is a secret and the file is always
+// written 0600; the applied revision is only a restart optimization.
+
 // StateDir resolves the CLI state directory (~/.config/tunnex, XDG-aware).
 func StateDir() (string, error) {
 	if v := os.Getenv("TUNNEX_STATE_DIR"); v != "" {

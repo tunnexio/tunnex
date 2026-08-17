@@ -17,7 +17,7 @@ import (
 // build → the endpoints return 403 edition_required (the established precedent). The query
 // itself is DB-neutral; the gate is the product boundary (visibility = enterprise).
 type accessLogPort interface {
-	List(ctx context.Context, orgID uuid.UUID, deniesOnly bool, cursorTS time.Time, cursorID uuid.UUID, limit int32) ([]accesslog.Event, error)
+	List(ctx context.Context, orgID uuid.UUID, agentID *uuid.UUID, deniesOnly bool, cursorTS time.Time, cursorID uuid.UUID, limit int32) ([]accesslog.Event, error)
 	Health() accesslog.Snapshot
 }
 
@@ -46,7 +46,12 @@ func (s apiServer) ListAccessEvents(ctx context.Context, req api.ListAccessEvent
 	if req.Params.Limit != nil {
 		limit = int32(*req.Params.Limit)
 	}
-	events, err := s.accessLog.List(ctx, req.OrgId, deniesOnly, cursorTS, cursorID, limit)
+	var agentID *uuid.UUID
+	if req.Params.SrcAgentId != nil {
+		id := uuid.UUID(*req.Params.SrcAgentId)
+		agentID = &id
+	}
+	events, err := s.accessLog.List(ctx, req.OrgId, agentID, deniesOnly, cursorTS, cursorID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -85,19 +90,32 @@ func (s apiServer) GetAccessLogHealth(ctx context.Context, req api.GetAccessLogH
 
 func toAPIAccessEvent(e accesslog.Event) api.AccessEvent {
 	out := api.AccessEvent{
-		Id:         e.ID,
-		CreatedAt:  e.CreatedAt,
-		Seq:        e.Seq,
-		OccurredAt: e.OccurredAt,
-		Decision:   api.AccessEventDecision(e.Decision),
-		SrcIp:      e.SrcIP,
-		DstIp:      e.DstIP,
-		Protocol:   e.Protocol,
-		RuleId:     optUUID(e.RuleID),
-		NodeId:     optUUID(e.NodeID),
-		// GRANT-level attribution only; device/user are deferred (never set from src_ip).
+		Id:            e.ID,
+		CreatedAt:     e.CreatedAt,
+		Seq:           e.Seq,
+		OccurredAt:    e.OccurredAt,
+		Decision:      api.AccessEventDecision(e.Decision),
+		SrcIp:         e.SrcIP,
+		DstIp:         e.DstIP,
+		Protocol:      e.Protocol,
+		RuleId:        optUUID(e.RuleID),
+		NodeId:        optUUID(e.NodeID),
 		DstResourceId: optUUID(e.DstResourceID),
 		DstGroupId:    optUUID(e.DstGroupID),
+	}
+	if e.SrcKind == "agent" {
+		out.SrcAgentId = optUUID(e.SrcDeviceID)
+	}
+	if e.PolicyHash != "" {
+		out.PolicyHash = &e.PolicyHash
+	}
+	if e.PolicyVersion > 0 {
+		out.PolicyVersion = &e.PolicyVersion
+	}
+	out.SrcConfigRevision = e.SrcConfigRevision
+	if e.DecisionReason != "" {
+		r := api.AccessEventDecisionReason(e.DecisionReason)
+		out.DecisionReason = &r
 	}
 	if e.DstPort != 0 {
 		p := e.DstPort

@@ -58,6 +58,11 @@ func seedRekeyFixture(t *testing.T) *rekeyFixture {
 	}
 	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
 	q := sqlc.New(tx)
+	// The CA is deployment-global. Keep this fixture transaction-scoped so a
+	// ciphertext sealed with its throwaway key cannot poison later tests.
+	if _, err := tx.Exec(ctx, "DELETE FROM platform_secrets WHERE name = 'agent_ca'"); err != nil {
+		t.Fatalf("clear test CA: %v", err)
+	}
 
 	key := make([]byte, tcrypto.KeySize)
 	_, _ = rand.Read(key)

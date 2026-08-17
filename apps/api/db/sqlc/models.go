@@ -13,24 +13,223 @@ import (
 )
 
 type AccessEvent struct {
-	ID            uuid.UUID          `json:"id"`
-	OrgID         uuid.UUID          `json:"org_id"`
-	Seq           int64              `json:"seq"`
-	NodeID        pgtype.UUID        `json:"node_id"`
-	OccurredAt    time.Time          `json:"occurred_at"`
-	Decision      string             `json:"decision"`
-	RuleID        pgtype.UUID        `json:"rule_id"`
-	SrcDeviceID   pgtype.UUID        `json:"src_device_id"`
-	SrcUserID     pgtype.UUID        `json:"src_user_id"`
-	SrcIp         string             `json:"src_ip"`
-	DstIp         string             `json:"dst_ip"`
-	DstResourceID pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID    pgtype.UUID        `json:"dst_group_id"`
-	Protocol      string             `json:"protocol"`
-	DstPort       *int32             `json:"dst_port"`
-	DenyCount     int32              `json:"deny_count"`
-	WindowEnd     pgtype.Timestamptz `json:"window_end"`
-	CreatedAt     time.Time          `json:"created_at"`
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	Seq               int64              `json:"seq"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	OccurredAt        time.Time          `json:"occurred_at"`
+	Decision          string             `json:"decision"`
+	RuleID            pgtype.UUID        `json:"rule_id"`
+	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
+	SrcUserID         pgtype.UUID        `json:"src_user_id"`
+	SrcIp             string             `json:"src_ip"`
+	DstIp             string             `json:"dst_ip"`
+	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
+	Protocol          string             `json:"protocol"`
+	DstPort           *int32             `json:"dst_port"`
+	DenyCount         int32              `json:"deny_count"`
+	WindowEnd         pgtype.Timestamptz `json:"window_end"`
+	CreatedAt         time.Time          `json:"created_at"`
+	PolicyHash        *string            `json:"policy_hash"`
+	PolicyVersion     *int32             `json:"policy_version"`
+	SrcConfigRevision *int64             `json:"src_config_revision"`
+	SrcKind           *string            `json:"src_kind"`
+	DecisionReason    *string            `json:"decision_reason"`
+}
+
+type AgentAccessRequest struct {
+	ID                       uuid.UUID          `json:"id"`
+	OrgID                    uuid.UUID          `json:"org_id"`
+	DeviceID                 uuid.UUID          `json:"device_id"`
+	DstKind                  string             `json:"dst_kind"`
+	DstResourceID            pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID               pgtype.UUID        `json:"dst_group_id"`
+	DstSiteID                pgtype.UUID        `json:"dst_site_id"`
+	DstK8sServiceID          pgtype.UUID        `json:"dst_k8s_service_id"`
+	DstName                  string             `json:"dst_name"`
+	Reason                   string             `json:"reason"`
+	RequestedDurationSeconds int32              `json:"requested_duration_seconds"`
+	State                    string             `json:"state"`
+	RequestedByUserID        uuid.UUID          `json:"requested_by_user_id"`
+	RequestedAt              time.Time          `json:"requested_at"`
+	ApprovedByUserID         pgtype.UUID        `json:"approved_by_user_id"`
+	ApprovedAt               pgtype.Timestamptz `json:"approved_at"`
+	ApprovedExpiresAt        pgtype.Timestamptz `json:"approved_expires_at"`
+	RejectedByUserID         pgtype.UUID        `json:"rejected_by_user_id"`
+	RejectedAt               pgtype.Timestamptz `json:"rejected_at"`
+	RejectionReason          *string            `json:"rejection_reason"`
+	CancelledByUserID        pgtype.UUID        `json:"cancelled_by_user_id"`
+	CancelledAt              pgtype.Timestamptz `json:"cancelled_at"`
+	RevokedByUserID          pgtype.UUID        `json:"revoked_by_user_id"`
+	RevokedAt                pgtype.Timestamptz `json:"revoked_at"`
+	PolicyRuleID             pgtype.UUID        `json:"policy_rule_id"`
+	UpdatedAt                time.Time          `json:"updated_at"`
+}
+
+type AgentAccessRequestEvent struct {
+	ID          uuid.UUID   `json:"id"`
+	OrgID       uuid.UUID   `json:"org_id"`
+	RequestID   uuid.UUID   `json:"request_id"`
+	State       string      `json:"state"`
+	ActorUserID pgtype.UUID `json:"actor_user_id"`
+	ActorSystem *string     `json:"actor_system"`
+	Metadata    []byte      `json:"metadata"`
+	CreatedAt   time.Time   `json:"created_at"`
+}
+
+type AgentAccessRequestOperation struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	RequestID      uuid.UUID `json:"request_id"`
+	Operation      string    `json:"operation"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	ParameterHash  string    `json:"parameter_hash"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type AgentBootstrapToken struct {
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	GatewayNodeID    uuid.UUID          `json:"gateway_node_id"`
+	AgentName        string             `json:"agent_name"`
+	TokenHash        []byte             `json:"token_hash"`
+	ExpiresAt        time.Time          `json:"expires_at"`
+	ConsumedAt       pgtype.Timestamptz `json:"consumed_at"`
+	ConsumedDeviceID pgtype.UUID        `json:"consumed_device_id"`
+	IssuedBy         pgtype.UUID        `json:"issued_by"`
+	CreatedAt        time.Time          `json:"created_at"`
+}
+
+type AgentGroup struct {
+	ID          uuid.UUID          `json:"id"`
+	OrgID       uuid.UUID          `json:"org_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+type AgentGroupMember struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	AgentGroupID    uuid.UUID `json:"agent_group_id"`
+	DeviceID        uuid.UUID `json:"device_id"`
+	CreatedByUserID uuid.UUID `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type AgentPolicyTemplate struct {
+	ID          uuid.UUID          `json:"id"`
+	OrgID       uuid.UUID          `json:"org_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+type AgentPolicyTemplateAssignment struct {
+	ID                   uuid.UUID          `json:"id"`
+	OrgID                uuid.UUID          `json:"org_id"`
+	AgentGroupID         uuid.UUID          `json:"agent_group_id"`
+	TemplateID           uuid.UUID          `json:"template_id"`
+	TemplateVersionID    uuid.UUID          `json:"template_version_id"`
+	State                string             `json:"state"`
+	PreviewDigest        string             `json:"preview_digest"`
+	IdempotencyKey       string             `json:"idempotency_key"`
+	AppliedByUserID      uuid.UUID          `json:"applied_by_user_id"`
+	PreviousAssignmentID pgtype.UUID        `json:"previous_assignment_id"`
+	AppliedAt            time.Time          `json:"applied_at"`
+	EndedAt              pgtype.Timestamptz `json:"ended_at"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+}
+
+type AgentPolicyTemplateRuleBinding struct {
+	OrgID                 uuid.UUID `json:"org_id"`
+	AssignmentID          uuid.UUID `json:"assignment_id"`
+	TemplateVersionItemID uuid.UUID `json:"template_version_item_id"`
+	PolicyRuleID          uuid.UUID `json:"policy_rule_id"`
+	CreatedAt             time.Time `json:"created_at"`
+}
+
+type AgentPolicyTemplateVersion struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	TemplateID      uuid.UUID `json:"template_id"`
+	Version         int32     `json:"version"`
+	CreatedByUserID uuid.UUID `json:"created_by_user_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type AgentPolicyTemplateVersionItem struct {
+	ID                uuid.UUID   `json:"id"`
+	OrgID             uuid.UUID   `json:"org_id"`
+	TemplateVersionID uuid.UUID   `json:"template_version_id"`
+	Ordinal           int32       `json:"ordinal"`
+	DstKind           string      `json:"dst_kind"`
+	DstResourceID     pgtype.UUID `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID `json:"dst_group_id"`
+	DstSiteID         pgtype.UUID `json:"dst_site_id"`
+	DstK8sServiceID   pgtype.UUID `json:"dst_k8s_service_id"`
+	CreatedAt         time.Time   `json:"created_at"`
+}
+
+// F01 metadata keyed by the canonical agent device; owner/status/telemetry are deliberately not duplicated here.
+type AgentProfile struct {
+	DeviceID    uuid.UUID `json:"device_id"`
+	Environment string    `json:"environment"`
+	Runtime     string    `json:"runtime"`
+	Labels      []byte    `json:"labels"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	// Optional existing organization group whose current members may view and manage this agent; not an ownership or policy grant.
+	ManagingGroupID pgtype.UUID `json:"managing_group_id"`
+}
+
+type AgentRuntimeCredential struct {
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	TokenHash           []byte             `json:"token_hash"`
+	CreatedAt           time.Time          `json:"created_at"`
+	RevokedAt           pgtype.Timestamptz `json:"revoked_at"`
+	Revision            int64              `json:"revision"`
+	State               string             `json:"state"`
+	CandidateExpiresAt  pgtype.Timestamptz `json:"candidate_expires_at"`
+	ActivatedAt         pgtype.Timestamptz `json:"activated_at"`
+	TerminalAt          pgtype.Timestamptz `json:"terminal_at"`
+	RotationRequestedAt pgtype.Timestamptz `json:"rotation_requested_at"`
+	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
+	RotationRequestedBy pgtype.UUID        `json:"rotation_requested_by"`
+}
+
+// F04 managed-agent desired/applied revision and bounded runtime health; never credential or private-key material.
+type AgentRuntimeState struct {
+	DeviceID              uuid.UUID          `json:"device_id"`
+	DesiredRevision       int64              `json:"desired_revision"`
+	AppliedRevision       int64              `json:"applied_revision"`
+	LastAttemptedRevision int64              `json:"last_attempted_revision"`
+	ClientVersion         string             `json:"client_version"`
+	LastSeenAt            pgtype.Timestamptz `json:"last_seen_at"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorRevision     *int64             `json:"last_error_revision"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+}
+
+type AgentWireguardRotation struct {
+	DeviceID           uuid.UUID          `json:"device_id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	CurrentRevision    int64              `json:"current_revision"`
+	RequestedRevision  *int64             `json:"requested_revision"`
+	State              string             `json:"state"`
+	CandidatePublicKey *string            `json:"candidate_public_key"`
+	RequestedAt        pgtype.Timestamptz `json:"requested_at"`
+	Deadline           pgtype.Timestamptz `json:"deadline"`
+	RequestedBy        pgtype.UUID        `json:"requested_by"`
+	StagedAt           pgtype.Timestamptz `json:"staged_at"`
+	CompletedAt        pgtype.Timestamptz `json:"completed_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
 type AuditLog struct {
@@ -202,6 +401,171 @@ type K8sCluster struct {
 	DnsVip           *netip.Addr  `json:"dns_vip"`
 	ManagedByMachine pgtype.UUID  `json:"managed_by_machine"`
 	ConnectorNodeID  pgtype.UUID  `json:"connector_node_id"`
+	ConnectorPoolID  pgtype.UUID  `json:"connector_pool_id"`
+}
+
+type K8sClusterScopeGrant struct {
+	RuleID                uuid.UUID `json:"rule_id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	ClusterID             uuid.UUID `json:"cluster_id"`
+	CreatedByUserID       uuid.UUID `json:"created_by_user_id"`
+	InitialCandidateCount int32     `json:"initial_candidate_count"`
+	Active                bool      `json:"active"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+type K8sClusterScopeMembership struct {
+	RuleID          uuid.UUID          `json:"rule_id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	ClusterID       uuid.UUID          `json:"cluster_id"`
+	ServiceChildID  uuid.UUID          `json:"service_child_id"`
+	Namespace       string             `json:"namespace"`
+	ServiceUid      string             `json:"service_uid"`
+	Protocol        string             `json:"protocol"`
+	PortLow         int32              `json:"port_low"`
+	PortHigh        int32              `json:"port_high"`
+	Status          string             `json:"status"`
+	DecidedByUserID pgtype.UUID        `json:"decided_by_user_id"`
+	DecidedAt       pgtype.Timestamptz `json:"decided_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+	Origin          *string            `json:"origin"`
+}
+
+type K8sConnectorHandoffOperation struct {
+	ID                                    uuid.UUID          `json:"id"`
+	OrgID                                 uuid.UUID          `json:"org_id"`
+	SiteID                                uuid.UUID          `json:"site_id"`
+	PoolID                                uuid.UUID          `json:"pool_id"`
+	ClusterID                             uuid.UUID          `json:"cluster_id"`
+	OldNodeID                             uuid.UUID          `json:"old_node_id"`
+	NewNodeID                             uuid.UUID          `json:"new_node_id"`
+	ExpectedGeneration                    int64              `json:"expected_generation"`
+	TargetGeneration                      int64              `json:"target_generation"`
+	OldServingManifestIdentity            string             `json:"old_serving_manifest_identity"`
+	CandidatePreparedManifestIdentity     string             `json:"candidate_prepared_manifest_identity"`
+	OldWithdrawalManifestIdentity         string             `json:"old_withdrawal_manifest_identity"`
+	NewServingManifestIdentity            string             `json:"new_serving_manifest_identity"`
+	OldServingManifestRevision            int64              `json:"old_serving_manifest_revision"`
+	CandidatePreparedManifestRevision     int64              `json:"candidate_prepared_manifest_revision"`
+	OldWithdrawalManifestRevision         int64              `json:"old_withdrawal_manifest_revision"`
+	NewServingManifestRevision            int64              `json:"new_serving_manifest_revision"`
+	OldServingExpectedRouteDigest         string             `json:"old_serving_expected_route_digest"`
+	OldServingExpectedVipMapDigest        string             `json:"old_serving_expected_vip_map_digest"`
+	CandidatePreparedExpectedRouteDigest  string             `json:"candidate_prepared_expected_route_digest"`
+	CandidatePreparedExpectedVipMapDigest string             `json:"candidate_prepared_expected_vip_map_digest"`
+	OldWithdrawalExpectedRouteDigest      string             `json:"old_withdrawal_expected_route_digest"`
+	OldWithdrawalExpectedVipMapDigest     string             `json:"old_withdrawal_expected_vip_map_digest"`
+	NewServingExpectedRouteDigest         string             `json:"new_serving_expected_route_digest"`
+	NewServingExpectedVipMapDigest        string             `json:"new_serving_expected_vip_map_digest"`
+	OldLeaseIdentity                      string             `json:"old_lease_identity"`
+	TargetLeaseIdentity                   string             `json:"target_lease_identity"`
+	OldLeaseEpoch                         int64              `json:"old_lease_epoch"`
+	TargetLeaseEpoch                      int64              `json:"target_lease_epoch"`
+	OldLeaseExpiresAt                     time.Time          `json:"old_lease_expires_at"`
+	TargetLeaseExpiresAt                  time.Time          `json:"target_lease_expires_at"`
+	ObservedMembershipEpoch               *int64             `json:"observed_membership_epoch"`
+	DecisionTransition                    string             `json:"decision_transition"`
+	OldServingRole                        string             `json:"old_serving_role"`
+	CandidatePreparedRole                 string             `json:"candidate_prepared_role"`
+	OldWithdrawalRole                     string             `json:"old_withdrawal_role"`
+	NewServingRole                        string             `json:"new_serving_role"`
+	Phase                                 string             `json:"phase"`
+	PreparedAckReceivedAt                 pgtype.Timestamptz `json:"prepared_ack_received_at"`
+	WithdrawalAckReceivedAt               pgtype.Timestamptz `json:"withdrawal_ack_received_at"`
+	WithdrawalExpiryReceivedAt            pgtype.Timestamptz `json:"withdrawal_expiry_received_at"`
+	ServingAckReceivedAt                  pgtype.Timestamptz `json:"serving_ack_received_at"`
+	CasReceiptAt                          pgtype.Timestamptz `json:"cas_receipt_at"`
+	CasAuditID                            pgtype.UUID        `json:"cas_audit_id"`
+	CasAuditApplied                       bool               `json:"cas_audit_applied"`
+	FailureReason                         *string            `json:"failure_reason"`
+	CreatedAt                             time.Time          `json:"created_at"`
+	UpdatedAt                             time.Time          `json:"updated_at"`
+}
+
+type K8sConnectorPool struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	SiteID          uuid.UUID `json:"site_id"`
+	ClusterID       uuid.UUID `json:"cluster_id"`
+	PreferredNodeID uuid.UUID `json:"preferred_node_id"`
+	ActiveNodeID    uuid.UUID `json:"active_node_id"`
+	Generation      int64     `json:"generation"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type K8sConnectorPoolHealthCandidateTick struct {
+	StateID      uuid.UUID `json:"state_id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	SiteID       uuid.UUID `json:"site_id"`
+	ClusterID    uuid.UUID `json:"cluster_id"`
+	PoolID       uuid.UUID `json:"pool_id"`
+	NodeID       uuid.UUID `json:"node_id"`
+	HealthyTicks int32     `json:"healthy_ticks"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type K8sConnectorPoolHealthState struct {
+	ID                       uuid.UUID          `json:"id"`
+	OrgID                    uuid.UUID          `json:"org_id"`
+	SiteID                   uuid.UUID          `json:"site_id"`
+	ClusterID                uuid.UUID          `json:"cluster_id"`
+	PoolID                   uuid.UUID          `json:"pool_id"`
+	MembershipEpoch          int64              `json:"membership_epoch"`
+	ObservedActiveNodeID     uuid.UUID          `json:"observed_active_node_id"`
+	ObservedGeneration       int64              `json:"observed_generation"`
+	StaleTicks               int32              `json:"stale_ticks"`
+	PreferredFreshTicks      int32              `json:"preferred_fresh_ticks"`
+	LastTransition           string             `json:"last_transition"`
+	LastTransitionFromNodeID pgtype.UUID        `json:"last_transition_from_node_id"`
+	LastTransitionToNodeID   pgtype.UUID        `json:"last_transition_to_node_id"`
+	LastObservationKey       *string            `json:"last_observation_key"`
+	LastObservationAt        pgtype.Timestamptz `json:"last_observation_at"`
+	CreatedAt                time.Time          `json:"created_at"`
+	UpdatedAt                time.Time          `json:"updated_at"`
+}
+
+type K8sConnectorPoolMember struct {
+	PoolID        uuid.UUID `json:"pool_id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	SiteID        uuid.UUID `json:"site_id"`
+	NodeID        uuid.UUID `json:"node_id"`
+	AdminPriority int32     `json:"admin_priority"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type K8sPoolOwnershipV2Capability struct {
+	OrgID         uuid.UUID `json:"org_id"`
+	SiteID        uuid.UUID `json:"site_id"`
+	ClusterID     uuid.UUID `json:"cluster_id"`
+	PoolID        uuid.UUID `json:"pool_id"`
+	NodeID        uuid.UUID `json:"node_id"`
+	WireVersion   int32     `json:"wire_version"`
+	DeliveryRowID uuid.UUID `json:"delivery_row_id"`
+	ReceiptTime   time.Time `json:"receipt_time"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type K8sPoolServiceUidProvenance struct {
+	OrgID               uuid.UUID `json:"org_id"`
+	SiteID              uuid.UUID `json:"site_id"`
+	ClusterID           uuid.UUID `json:"cluster_id"`
+	PoolID              uuid.UUID `json:"pool_id"`
+	ActiveNodeID        uuid.UUID `json:"active_node_id"`
+	PromotionGeneration int64     `json:"promotion_generation"`
+	LedgerID            uuid.UUID `json:"ledger_id"`
+	Namespace           string    `json:"namespace"`
+	Service             string    `json:"service"`
+	ServiceUid          string    `json:"service_uid"`
+	ObservationRevision int64     `json:"observation_revision"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 type K8sService struct {
@@ -218,6 +582,73 @@ type K8sService struct {
 	UpdatedAt        time.Time          `json:"updated_at"`
 	DeletedAt        pgtype.Timestamptz `json:"deleted_at"`
 	ManagedByMachine pgtype.UUID        `json:"managed_by_machine"`
+	IdentityID       pgtype.UUID        `json:"identity_id"`
+}
+
+type K8sServiceIdentity struct {
+	ID        uuid.UUID          `json:"id"`
+	OrgID     uuid.UUID          `json:"org_id"`
+	ClusterID uuid.UUID          `json:"cluster_id"`
+	Name      string             `json:"name"`
+	Namespace string             `json:"namespace"`
+	Vip       netip.Addr         `json:"vip"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+}
+
+type K8sServiceUidObservationCurrent struct {
+	LedgerID       uuid.UUID `json:"ledger_id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	Namespace      string    `json:"namespace"`
+	Service        string    `json:"service"`
+	Uid            string    `json:"uid"`
+	State          string    `json:"state"`
+	ReplaySequence int64     `json:"replay_sequence"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type K8sServiceUidObservationLedger struct {
+	ID            uuid.UUID `json:"id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	SiteID        uuid.UUID `json:"site_id"`
+	ClusterID     uuid.UUID `json:"cluster_id"`
+	ScopeIdentity string    `json:"scope_identity"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type K8sServiceUidObservationReceipt struct {
+	ID            uuid.UUID `json:"id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	ReplayStateID uuid.UUID `json:"replay_state_id"`
+	Sequence      int64     `json:"sequence"`
+	Digest        string    `json:"digest"`
+	ReceiptTime   time.Time `json:"receipt_time"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type K8sServiceUidObservationReplayState struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	SiteID          uuid.UUID `json:"site_id"`
+	ClusterID       uuid.UUID `json:"cluster_id"`
+	ConnectorNodeID uuid.UUID `json:"connector_node_id"`
+	ScopeIdentity   string    `json:"scope_identity"`
+	Sequence        int64     `json:"sequence"`
+	Digest          string    `json:"digest"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type K8sServiceUidObservationRetired struct {
+	LedgerID              uuid.UUID `json:"ledger_id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	Namespace             string    `json:"namespace"`
+	Service               string    `json:"service"`
+	Uid                   string    `json:"uid"`
+	RetiredReplaySequence int64     `json:"retired_replay_sequence"`
+	RetiredAt             time.Time `json:"retired_at"`
 }
 
 type MachineCredential struct {
@@ -355,18 +786,22 @@ type OrgMfa struct {
 }
 
 type Organization struct {
-	ID                uuid.UUID          `json:"id"`
-	Name              string             `json:"name"`
-	Slug              string             `json:"slug"`
-	CreatedAt         time.Time          `json:"created_at"`
-	UpdatedAt         time.Time          `json:"updated_at"`
-	DeletedAt         pgtype.Timestamptz `json:"deleted_at"`
-	MaxDevicesPerUser int32              `json:"max_devices_per_user"`
-	PoolCidr          string             `json:"pool_cidr"`
-	ZeroTrustMode     string             `json:"zero_trust_mode"`
-	DeviceApproval    string             `json:"device_approval"`
-	FlowSeq           int64              `json:"flow_seq"`
-	OvpnEnabled       bool               `json:"ovpn_enabled"`
+	ID                          uuid.UUID          `json:"id"`
+	Name                        string             `json:"name"`
+	Slug                        string             `json:"slug"`
+	CreatedAt                   time.Time          `json:"created_at"`
+	UpdatedAt                   time.Time          `json:"updated_at"`
+	DeletedAt                   pgtype.Timestamptz `json:"deleted_at"`
+	MaxDevicesPerUser           int32              `json:"max_devices_per_user"`
+	PoolCidr                    string             `json:"pool_cidr"`
+	ZeroTrustMode               string             `json:"zero_trust_mode"`
+	DeviceApproval              string             `json:"device_approval"`
+	FlowSeq                     int64              `json:"flow_seq"`
+	OvpnEnabled                 bool               `json:"ovpn_enabled"`
+	MaxAgentIdentities          *int32             `json:"max_agent_identities"`
+	ManagedAgentRuntimeEnabled  bool               `json:"managed_agent_runtime_enabled"`
+	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
+	AgentJitAccessEnabled       bool               `json:"agent_jit_access_enabled"`
 }
 
 type OvpnClientCert struct {
@@ -426,6 +861,119 @@ type PolicyRule struct {
 	DstK8sServiceID  pgtype.UUID        `json:"dst_k8s_service_id"`
 	ManagedByMachine pgtype.UUID        `json:"managed_by_machine"`
 	SrcDeviceID      pgtype.UUID        `json:"src_device_id"`
+	DstK8sClusterID  pgtype.UUID        `json:"dst_k8s_cluster_id"`
+	SrcAgentGroupID  pgtype.UUID        `json:"src_agent_group_id"`
+}
+
+type PoolVipOwnershipDelivery struct {
+	ID                   uuid.UUID `json:"id"`
+	OrgID                uuid.UUID `json:"org_id"`
+	SiteID               uuid.UUID `json:"site_id"`
+	ClusterID            uuid.UUID `json:"cluster_id"`
+	PoolID               uuid.UUID `json:"pool_id"`
+	ConnectorNodeID      uuid.UUID `json:"connector_node_id"`
+	TargetNodeID         uuid.UUID `json:"target_node_id"`
+	OperationID          uuid.UUID `json:"operation_id"`
+	WireVersion          int32     `json:"wire_version"`
+	ManifestIdentity     string    `json:"manifest_identity"`
+	Role                 string    `json:"role"`
+	PromotionGeneration  int64     `json:"promotion_generation"`
+	ManifestRevision     int64     `json:"manifest_revision"`
+	LeaseEpoch           int64     `json:"lease_epoch"`
+	DeliveryPhase        string    `json:"delivery_phase"`
+	DeliveryID           uuid.UUID `json:"delivery_id"`
+	DeliveryNonce        string    `json:"delivery_nonce"`
+	OwnedRoutes          []byte    `json:"owned_routes"`
+	ExpectedRouteDigest  string    `json:"expected_route_digest"`
+	ExpectedVipMapDigest string    `json:"expected_vip_map_digest"`
+	PriorLeaseEpoch      int64     `json:"prior_lease_epoch"`
+	ExpiresAt            time.Time `json:"expires_at"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
+type PoolVipOwnershipDeliveryAckReceipt struct {
+	ID                         uuid.UUID `json:"id"`
+	OrgID                      uuid.UUID `json:"org_id"`
+	DeliveryRowID              uuid.UUID `json:"delivery_row_id"`
+	StateID                    uuid.UUID `json:"state_id"`
+	Fingerprint                string    `json:"fingerprint"`
+	ReceiptTime                time.Time `json:"receipt_time"`
+	AppliedRole                *string   `json:"applied_role"`
+	AppliedManifestIdentity    *string   `json:"applied_manifest_identity"`
+	AppliedPromotionGeneration *int64    `json:"applied_promotion_generation"`
+	AppliedManifestRevision    *int64    `json:"applied_manifest_revision"`
+	AppliedLeaseEpoch          *int64    `json:"applied_lease_epoch"`
+	OwnedRouteDigest           *string   `json:"owned_route_digest"`
+	VipMapDigest               *string   `json:"vip_map_digest"`
+	CreatedAt                  time.Time `json:"created_at"`
+}
+
+type PoolVipOwnershipDeliveryState struct {
+	ID                  uuid.UUID `json:"id"`
+	OrgID               uuid.UUID `json:"org_id"`
+	SiteID              uuid.UUID `json:"site_id"`
+	ClusterID           uuid.UUID `json:"cluster_id"`
+	PoolID              uuid.UUID `json:"pool_id"`
+	ConnectorNodeID     uuid.UUID `json:"connector_node_id"`
+	ScopeIdentity       string    `json:"scope_identity"`
+	PromotionGeneration int64     `json:"promotion_generation"`
+	ManifestRevision    int64     `json:"manifest_revision"`
+	LeaseEpoch          int64     `json:"lease_epoch"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+type PoolVipOwnershipHandoffProvenance struct {
+	OperationID            uuid.UUID   `json:"operation_id"`
+	OrgID                  uuid.UUID   `json:"org_id"`
+	SiteID                 uuid.UUID   `json:"site_id"`
+	ClusterID              uuid.UUID   `json:"cluster_id"`
+	PoolID                 uuid.UUID   `json:"pool_id"`
+	OldNodeID              uuid.UUID   `json:"old_node_id"`
+	NewNodeID              uuid.UUID   `json:"new_node_id"`
+	ExpectedGeneration     int64       `json:"expected_generation"`
+	TargetGeneration       int64       `json:"target_generation"`
+	DecisionTransition     string      `json:"decision_transition"`
+	OldLeaseIdentity       string      `json:"old_lease_identity"`
+	TargetLeaseIdentity    string      `json:"target_lease_identity"`
+	MembershipSnapshot     []uuid.UUID `json:"membership_snapshot"`
+	OldServingEnvelope     []byte      `json:"old_serving_envelope"`
+	NewPreparedEnvelope    []byte      `json:"new_prepared_envelope"`
+	OldWithdrawalEnvelope  []byte      `json:"old_withdrawal_envelope"`
+	NewServingEnvelope     []byte      `json:"new_serving_envelope"`
+	OldServingExpiresAt    time.Time   `json:"old_serving_expires_at"`
+	NewPreparedExpiresAt   time.Time   `json:"new_prepared_expires_at"`
+	OldWithdrawalExpiresAt time.Time   `json:"old_withdrawal_expires_at"`
+	NewServingExpiresAt    time.Time   `json:"new_serving_expires_at"`
+	CreatedAt              time.Time   `json:"created_at"`
+}
+
+type PoolVipOwnershipHandoffProvenanceCapability struct {
+	OperationID   uuid.UUID `json:"operation_id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	SiteID        uuid.UUID `json:"site_id"`
+	ClusterID     uuid.UUID `json:"cluster_id"`
+	PoolID        uuid.UUID `json:"pool_id"`
+	NodeID        uuid.UUID `json:"node_id"`
+	WireVersion   int32     `json:"wire_version"`
+	DeliveryRowID uuid.UUID `json:"delivery_row_id"`
+	ReceiptTime   time.Time `json:"receipt_time"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+type PoolVipOwnershipHandoffProvenanceServiceUid struct {
+	OperationID         uuid.UUID `json:"operation_id"`
+	OrgID               uuid.UUID `json:"org_id"`
+	SiteID              uuid.UUID `json:"site_id"`
+	ClusterID           uuid.UUID `json:"cluster_id"`
+	PoolID              uuid.UUID `json:"pool_id"`
+	ActiveNodeID        uuid.UUID `json:"active_node_id"`
+	PromotionGeneration int64     `json:"promotion_generation"`
+	Namespace           string    `json:"namespace"`
+	Service             string    `json:"service"`
+	ServiceUid          string    `json:"service_uid"`
+	ObservationRevision int64     `json:"observation_revision"`
 }
 
 type Resource struct {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 
 // SLICE 6 — Settings. Second SHEDDER, and the consequence here is different in kind from every screen before it.
 //
@@ -41,6 +41,8 @@ let ssoFail = false; // docs/laws.md — no globals/setup file, so auto-cleanup 
 
 let edition: "open" | "enterprise" = "enterprise";
 let ovpnEnabled = false;
+let agentTemplatesEnabled = false;
+let jitAccessEnabled = false;
 
 vi.mock("../src/lib/api", async () => {
   const actual =
@@ -61,9 +63,28 @@ vi.mock("../src/lib/api", async () => {
                 id: "org-1",
                 name: "Acme",
                 ovpn_enabled: ovpnEnabled,
+                agent_policy_templates_enabled: agentTemplatesEnabled,
+                mfa_required: false,
+              },
+              {
+                id: "org-2",
+                name: "Beta",
+                ovpn_enabled: false,
+                agent_policy_templates_enabled: false,
                 mfa_required: false,
               },
             ],
+          };
+        }
+        if (path === "/api/v1/organizations/{orgId}") {
+          return {
+            data: {
+              id: "org-1",
+              name: "Acme",
+              ovpn_enabled: ovpnEnabled,
+              agent_policy_templates_enabled: agentTemplatesEnabled,
+              mfa_required: false,
+            },
           };
         }
         if (path.endsWith("/members"))
@@ -80,16 +101,24 @@ vi.mock("../src/lib/api", async () => {
                 data: undefined,
                 error: { error: { code: "sso_not_configured" } },
               };
+        if (path.endsWith("/agent-jit-access-settings"))
+          return { data: { enabled: jitAccessEnabled, pending_requests: 0, approved_requests: 0 } };
         return { data: [] };
       }),
-      PUT: vi.fn(async () => ({ data: { enabled: true } })),
+      PUT: vi.fn(async (path: string, request: { body?: { enabled?: boolean } }) => {
+        if (path.endsWith("/agent-policy-template-settings"))
+          agentTemplatesEnabled = request.body?.enabled === true;
+        if (path.endsWith("/agent-jit-access-settings"))
+          jitAccessEnabled = request.body?.enabled === true;
+        return { data: { enabled: request.body?.enabled ?? true } };
+      }),
       POST: vi.fn(async () => ({ data: {} })),
       DELETE: vi.fn(async () => ({ data: {} })),
     },
   };
 });
 
-import { OrgProvider } from "../src/lib/useOrg";
+import { OrgProvider, useOrg } from "../src/lib/useOrg";
 import Settings from "../src/pages/Settings";
 import { AuthProvider } from "../src/lib/auth";
 
@@ -104,15 +133,83 @@ const withAuth = (ui: React.ReactElement) =>
     </AuthProvider>,
   );
 
+function SwitchOrganization() {
+  const { orgs, setOrg } = useOrg();
+  return <button onClick={() => orgs[1] && setOrg(orgs[1].id)}>Switch organization</button>;
+}
+
+const withAuthAndSwitch = () => render(
+  <AuthProvider>
+    <OrgProvider><SwitchOrganization /><Settings /></OrgProvider>
+  </AuthProvider>,
+);
+
 beforeEach(() => {
+  if (typeof window.localStorage.removeItem === "function") {
+    window.localStorage.removeItem("tunnex.currentOrg");
+  }
   __cleaned = false;
   __lateGets = [];
   edition = "enterprise";
   ovpnEnabled = false;
+  agentTemplatesEnabled = false;
+  jitAccessEnabled = false;
   // ⛔ EVERY mock-controlling global must be reset here. `ssoFail` was added without one, so a test that set
   // it leaked into the next file-order test — and the symptom was a query "not finding" text that a DOM dump
   // showed present, because the component under assertion had loaded the OTHER arm.
   ssoFail = false;
+});
+
+describe("Settings — F10 unlock then explicit opt-in", () => {
+  it("renders default-off truth, writes once, and refetches persisted state", async () => {
+    withAuth(<Settings />);
+    const enable = await screen.findByRole("button", { name: "Enable JIT agent access" });
+    expect(screen.getByText("0 pending · 0 approved")).toBeTruthy();
+    fireEvent.click(enable);
+    await screen.findByRole("button", { name: "Disable JIT agent access" });
+    expect(jitAccessEnabled).toBe(true);
+  });
+
+  it("renders persisted enabled state without defaulting it off", async () => {
+    jitAccessEnabled = true;
+    withAuth(<Settings />);
+    await screen.findByRole("button", { name: "Disable JIT agent access" });
+    expect(screen.queryByRole("button", { name: "Enable JIT agent access" })).toBeNull();
+  });
+
+  it("withdraws prior-organization JIT settings synchronously", async () => {
+    withAuthAndSwitch();
+    await screen.findByRole("button", { name: "Enable JIT agent access" });
+    fireEvent.click(screen.getByRole("button", { name: "Switch organization" }));
+    expect(screen.queryByRole("button", { name: "Enable JIT agent access" })).toBeNull();
+    expect(screen.getByText("Loading settings…")).toBeTruthy();
+  });
+});
+
+describe("Settings — F09 unlock then explicit opt-in", () => {
+  it("renders default-off truth and refetches the persisted enabled state", async () => {
+    agentTemplatesEnabled = false;
+    withAuth(<Settings />);
+    const enable = await screen.findByRole("button", {
+      name: "Enable agent policy templates",
+    });
+    fireEvent.click(enable);
+    await screen.findByRole("button", {
+      name: "Disable agent policy templates",
+    });
+    expect(agentTemplatesEnabled).toBe(true);
+  });
+
+  it("renders persisted enabled state without defaulting it off", async () => {
+    agentTemplatesEnabled = true;
+    withAuth(<Settings />);
+    await screen.findByRole("button", {
+      name: "Disable agent policy templates",
+    });
+    expect(
+      screen.queryByRole("button", { name: "Enable agent policy templates" }),
+    ).toBeNull();
+  });
 });
 
 describe("Settings — wiring: the control must reflect the ORG'S state, not a default (destination: `settings`)", () => {

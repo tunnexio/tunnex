@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -22,8 +22,18 @@ import {
   type Device,
   type HealthCheck,
   type CreatePolicyRuleRequest,
+  type AgentAccessDiagnostic,
+  type AgentAccessDestination,
+  type AgentAccessRequest,
+  type AgentGroup,
+  type AgentGroupMember,
+  type AgentPolicyTemplate,
+  type AgentPolicyTemplateVersion,
+  type AgentPolicyTemplatePreview,
+  type AgentPolicyTemplateAssignment,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { can } from "../lib/rbac";
 import { portLabel } from "../lib/k8sview";
 import {
   Button,
@@ -59,6 +69,7 @@ import {
   flowLayout,
   cascadeConfirmCopy,
   cascadeConfirmSatisfied,
+  groupMemberRemovalCopy,
   srcGroupEmptyWarn,
   srcGroupEmptyBadge,
   srcGroupEmptyExplain,
@@ -79,6 +90,7 @@ import {
   destinationOptions,
   ruleEffectSummary,
   ruleEffectCaution,
+  ruleSourceReady,
 } from "../lib/policyview";
 import {
   DIRECTORY_MANAGED_BADGE,
@@ -124,32 +136,48 @@ export default function Access() {
   // symptom (patching the disabled expression would leave the stale copy feeding the rule modal too).
   const [subjectsRev, setSubjectsRev] = useState(0);
   const [roleResolved, setRoleResolved] = useState(false);
+  const reloadEpoch = useRef(0);
+  const selectedOrgId = useRef<string | null>(currentOrg?.id ?? null);
+  selectedOrgId.current = currentOrg?.id ?? null;
 
   const reload = useCallback(async () => {
+    const epoch = ++reloadEpoch.current;
+    const target = currentOrg;
+    const isCurrent = () =>
+      reloadEpoch.current === epoch &&
+      selectedOrgId.current === (target?.id ?? null);
     setLoadError(null);
     setFatal(null);
     setRoleError(null);
     setRoleResolved(false);
+    setMeta(null);
+    setOrg(null);
+    setMyRole(undefined);
+    if (orgLoading) return;
+    if (!target) {
+      if (isCurrent()) {
+        setFatal(
+          orgFailed
+            ? "Could not load your organizations."
+            : "You are not a member of any organization yet.",
+        );
+      }
+      return;
+    }
     const mRes = await loadOne(() => api.GET("/api/v1/meta"));
+    if (!isCurrent()) return;
     if (!mRes.ok) return setLoadError(mRes.error); // [67]: surface loadOne's (human) message
     setMeta(mRes.data as Meta);
     // ⛔ THE ORG COMES FROM THE SEAM, NOT FROM INDEX ZERO (S12.5).
     // ⛔ LOADING IS NOT ABSENCE (S12.5). See the note in Dashboard.tsx — three states, not two: still
     // loading (say nothing), the read failed (say THAT), genuinely no membership (say that).
-    if (orgLoading) return;
-    const first = currentOrg;
-    if (!first)
-      return setFatal(
-        orgFailed
-          ? "Could not load your organizations."
-          : "You are not a member of any organization yet.",
-      );
-    setOrg(first);
+    setOrg(target);
     const memRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/members", {
-        params: { path: { orgId: first.id } },
+        params: { path: { orgId: target.id } },
       }),
     )) as Loaded<Member[]>;
+    if (!isCurrent()) return;
     const resolved = roleFromMembers(memRes, myId);
     if (resolved.failed)
       return setRoleError(
@@ -160,9 +188,12 @@ export default function Access() {
     // ⚠ currentOrg IS A DEPENDENCY, AND THAT IS THE HALF THAT MAKES THE SWITCHER WORK. Without it the
     // page keeps rendering the org it mounted with — the control moves, the data does not, and the user is
     // looking at one tenant's screen labelled with another's name.
-  }, [currentOrg, myId]);
+  }, [currentOrg, myId, orgFailed, orgLoading]);
   useEffect(() => {
     reload();
+    return () => {
+      reloadEpoch.current += 1;
+    };
   }, [reload]);
 
   const gate = policyGate({
@@ -180,6 +211,17 @@ export default function Access() {
     canView: gate.canView,
     role: myRole,
   });
+
+  // The shell switches currentOrg synchronously, while this page deliberately reloads
+  // meta + membership before accepting the next org into page state. Do not render one
+  // tenant's rules or agent names under another tenant's shell during that interval.
+  if (currentOrg && org?.id !== currentOrg.id) {
+    return (
+      <Card className="mt-6">
+        <p className="text-sm text-slate-500">Loading access policies…</p>
+      </Card>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -231,12 +273,34 @@ export default function Access() {
         </Card>
       )}
 
+      {org && gate.isEnterprise && roleResolved && (
+        <TestAccessSection key={org.id} orgId={org.id} />
+      )}
+
+      {org && gate.isEnterprise && roleResolved && (
+        <AgentJITAccessSection
+          key={`f10-${org.id}`}
+          orgId={org.id}
+          enabled={org.agent_jit_access_enabled}
+          canApprove={can(myRole, "agent_access:approve")}
+          currentUserId={myId}
+        />
+      )}
+
       {view === "admin_body" && org && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {org.agent_policy_templates_enabled && gate.canManageAgentTemplates && (
+            <AgentPolicyTemplatesSection
+              key={`f09-${org.id}`}
+              orgId={org.id}
+              onApplied={() => setSubjectsRev((v) => v + 1)}
+            />
+          )}
           <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
           <RulesSection
             orgId={org.id}
             canManage={gate.canManagePolicy}
+            canManageAgentTemplates={gate.canManageAgentTemplates}
             subjectsRev={subjectsRev}
           />
           <GroupsResourcesSection
@@ -254,6 +318,774 @@ export default function Access() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function AgentPolicyTemplatesSection({
+  orgId,
+  onApplied,
+}: {
+  orgId: string;
+  onApplied: () => void;
+}) {
+  const [groups, setGroups] = useState<AgentGroup[] | null>(null);
+  const [templates, setTemplates] = useState<AgentPolicyTemplate[] | null>(null);
+  const [agents, setAgents] = useState<Array<{ device_id: string; name: string }> | null>(null);
+  const [resources, setResources] = useState<Resource[] | null>(null);
+  const [members, setMembers] = useState<AgentGroupMember[] | null>(null);
+  const [versions, setVersions] = useState<AgentPolicyTemplateVersion[] | null>(null);
+  const [assignments, setAssignments] = useState<AgentPolicyTemplateAssignment[] | null>(null);
+  const [groupId, setGroupId] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [versionId, setVersionId] = useState("");
+  const [agentId, setAgentId] = useState("");
+  const [resourceId, setResourceId] = useState("");
+  const [groupName, setGroupName] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const [selectedGroupName, setSelectedGroupName] = useState("");
+  const [selectedTemplateName, setSelectedTemplateName] = useState("");
+  const [preview, setPreview] = useState<AgentPolicyTemplatePreview | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const epoch = useRef(0);
+
+  const loadBase = useCallback(async () => {
+    const current = ++epoch.current;
+    setErr(null);
+    const [gs, ts, as, rs, xs] = await Promise.all([
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/resources", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-template-assignments", { params: { path: { orgId } } })),
+    ]);
+    if (current !== epoch.current) return;
+    if (!gs.ok || !ts.ok || !as.ok || !rs.ok || !xs.ok) {
+      setGroups(null);
+      setTemplates(null);
+      setAgents(null);
+      setResources(null);
+      setAssignments(null);
+      return setErr("Could not load agent groups and policy templates. Refresh to retry.");
+    }
+    setGroups(gs.data);
+    setTemplates(ts.data);
+    setAgents(as.data.map((agent) => ({ device_id: agent.device_id, name: agent.name })));
+    setResources(rs.data);
+    setAssignments(xs.data);
+    setGroupId((value) => gs.data.some((g) => g.id === value) ? value : (gs.data[0]?.id ?? ""));
+    setTemplateId((value) => ts.data.some((t) => t.id === value) ? value : (ts.data[0]?.id ?? ""));
+    setAgentId((value) => as.data.some((a) => a.device_id === value) ? value : (as.data[0]?.device_id ?? ""));
+    setResourceId((value) => rs.data.some((r) => r.id === value) ? value : (rs.data[0]?.id ?? ""));
+  }, [orgId]);
+
+  useEffect(() => {
+    setSelectedGroupName(groups?.find((group) => group.id === groupId)?.name ?? "");
+  }, [groups, groupId]);
+
+  useEffect(() => {
+    setSelectedTemplateName(templates?.find((template) => template.id === templateId)?.name ?? "");
+  }, [templates, templateId]);
+
+  useEffect(() => {
+    void loadBase();
+    return () => { epoch.current += 1; };
+  }, [loadBase]);
+
+  useEffect(() => {
+    let off = false;
+    setMembers(null);
+    setPreview(null);
+    if (!groupId) return () => { off = true; };
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }))
+      .then((result) => {
+        if (off) return;
+        if (!result.ok) return setErr(result.error);
+        setMembers(result.data);
+      });
+    return () => { off = true; };
+  }, [orgId, groupId]);
+
+  useEffect(() => {
+    let off = false;
+    setVersions(null);
+    setVersionId("");
+    setPreview(null);
+    if (!templateId) return () => { off = true; };
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", { params: { path: { orgId, templateId } } }))
+      .then((result) => {
+        if (off) return;
+        if (!result.ok) return setErr(result.error);
+        setVersions(result.data);
+        setVersionId(result.data[0]?.id ?? "");
+      });
+    return () => { off = true; };
+  }, [orgId, templateId]);
+
+  async function mutate(call: () => Promise<{ error?: unknown }>, fallback: string) {
+    setBusy(true);
+    setErr(null);
+    setNotice(null);
+    try {
+      const result = await call();
+      if (result.error) {
+        setErr(apiErrorMessage(result.error, fallback));
+        return false;
+      }
+      return true;
+    } catch {
+      setErr("Could not reach the API.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createGroup() {
+    if (!groupName.trim()) return;
+    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId } }, body: { name: groupName.trim() } }), "Could not create the agent group."))) return;
+    setGroupName("");
+    await loadBase();
+  }
+
+  async function addMember() {
+    if (!groupId || !agentId) return;
+    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } }, body: { device_id: agentId } }), "Could not add the agent."))) return;
+    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }));
+    if (result.ok) setMembers(result.data); else setErr(result.error);
+  }
+
+  async function removeMember(member: AgentGroupMember) {
+    if (!groupId) return;
+    const groupAssignments = (assignments ?? []).filter((assignment) => assignment.group_id === groupId);
+    const rules = groupAssignments.reduce((sum, assignment) => sum + assignment.rule_count, 0);
+    if (!window.confirm(`Remove ${member.name} from this group? ${groupAssignments.length} assignments and ${rules} generated rules remain; only this agent's compiled access is withdrawn.`)) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const result = await api.DELETE("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members/{deviceId}", { params: { path: { orgId, groupId, deviceId: member.device_id } } });
+      if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not remove the agent."));
+      const refetch = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }));
+      if (!refetch.ok) return setErr(refetch.error);
+      setMembers(refetch.data);
+      setNotice(`Removed ${member.name}: ${result.data.withdrawn_tuples} compiled tuples withdrawn across ${result.data.changed_gateways} gateways; ${result.data.generated_rules} generated rules preserved.`);
+      onApplied();
+    } catch {
+      setErr("Could not reach the API.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateGroup() {
+    if (!groupId || !selectedGroupName.trim()) return;
+    if (!(await mutate(() => api.PATCH("/api/v1/organizations/{orgId}/agent-groups/{groupId}", { params: { path: { orgId, groupId } }, body: { name: selectedGroupName.trim() } }), "Could not update the group."))) return;
+    await loadBase();
+  }
+
+  async function archiveGroup() {
+    if (!groupId) return;
+    const active = (assignments ?? []).filter((assignment) => assignment.group_id === groupId);
+    const ruleCount = active.reduce((sum, assignment) => sum + assignment.rule_count, 0);
+    if (!window.confirm(`Archive this group? It currently has ${(members ?? []).length} members, ${active.length} active assignments, and ${ruleCount} generated rules. All must be zero.`)) return;
+    if (!(await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/agent-groups/{groupId}", { params: { path: { orgId, groupId } } }), "Could not archive the group."))) return;
+    setMembers(null);
+    await loadBase();
+  }
+
+  async function createTemplate() {
+    if (!templateName.trim()) return;
+    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-policy-templates", { params: { path: { orgId } }, body: { name: templateName.trim() } }), "Could not create the template."))) return;
+    setTemplateName("");
+    await loadBase();
+  }
+
+  async function updateTemplate() {
+    if (!templateId || !selectedTemplateName.trim()) return;
+    if (!(await mutate(() => api.PATCH("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}", { params: { path: { orgId, templateId } }, body: { name: selectedTemplateName.trim() } }), "Could not update the template."))) return;
+    await loadBase();
+  }
+
+  async function archiveTemplate() {
+    if (!templateId) return;
+    const active = (assignments ?? []).filter((assignment) => assignment.template_id === templateId);
+    if (!window.confirm(`Archive this template? ${active.length} live assignments remain unchanged; remove them separately to withdraw access.`)) return;
+    if (!(await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}", { params: { path: { orgId, templateId } } }), "Could not archive the template."))) return;
+    setVersions(null);
+    await loadBase();
+  }
+
+  async function createVersion() {
+    if (!templateId || !resourceId) return;
+    setBusy(true);
+    setErr(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", {
+      params: { path: { orgId, templateId } },
+      body: { items: [{ destination_kind: "resource", destination_id: resourceId }] },
+    });
+    setBusy(false);
+    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not create the immutable version."));
+    const refetch = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", { params: { path: { orgId, templateId } } }));
+    if (!refetch.ok) return setErr(refetch.error);
+    setVersions(refetch.data);
+    setVersionId(result.data.id);
+    setPreview(null);
+  }
+
+  async function previewApply() {
+    if (!groupId || !versionId) return;
+    setBusy(true);
+    setErr(null);
+    setNotice(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-template-preview", {
+      params: { path: { orgId } }, body: { group_id: groupId, template_version_id: versionId },
+    });
+    setBusy(false);
+    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not preview the policy change."));
+    setPreview(result.data);
+  }
+
+  async function apply() {
+    if (!preview || !groupId || !versionId) return;
+    setBusy(true);
+    setErr(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-template-assignments", {
+      params: { path: { orgId } },
+      body: { group_id: groupId, template_version_id: versionId, preview_digest: preview.digest, idempotency_key: crypto.randomUUID() },
+    });
+    setBusy(false);
+    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not apply the template."));
+    await loadBase();
+    setPreview(null);
+    setNotice(`Applied to ${result.data.preview.affected_agents} agents; ${result.data.preview.changed_gateways} gateway artifacts changed.`);
+    onApplied();
+  }
+
+  async function removeAssignment(assignment: AgentPolicyTemplateAssignment) {
+    if (!window.confirm(`Remove ${assignment.template_name} v${assignment.version} from ${assignment.group_name}? ${assignment.rule_count} assignment-owned rules may be withdrawn; shared rules are preserved.`)) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const result = await api.DELETE("/api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}", { params: { path: { orgId, assignmentId: assignment.id } } });
+      if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not remove the assignment."));
+      await loadBase();
+      setPreview(null);
+      setNotice(`Assignment removed: ${result.data.generated_rules} orphaned rules deleted and ${result.data.withdrawn_tuples} compiled tuples withdrawn across ${result.data.changed_gateways} gateways.`);
+      onApplied();
+    } catch {
+      setErr("Could not reach the API.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (groups === null || templates === null || agents === null || resources === null || assignments === null) {
+    return <Card><h2 className="text-sm font-semibold text-slate-300">Agent groups &amp; templates</h2><ErrorText>{err}</ErrorText>{!err && <p className="mt-2 text-xs text-slate-500">Loading…</p>}</Card>;
+  }
+
+  const memberIds = new Set((members ?? []).map((member) => member.device_id));
+  return (
+    <Card data-testid="agent-policy-templates">
+      <h2 className="text-sm font-semibold text-slate-300">Agent groups &amp; templates</h2>
+      <p className="mt-1 text-xs text-slate-500">Build one immutable policy version, preview its exact compiled impact, then apply it through the ordinary policy engine.</p>
+      <ErrorText>{err}</ErrorText>
+      {notice && <p className="mt-2 text-xs text-emerald-400">{notice}</p>}
+      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <div className="space-y-2 rounded-card border border-white/10 p-3">
+          <h3 className="text-xs font-semibold text-slate-300">1. Agent group</h3>
+          <div className="flex gap-2"><Input aria-label="New agent group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Group name" /><Button disabled={busy || !groupName.trim()} onClick={createGroup}>Create group</Button></div>
+          <Select aria-label="Agent group" value={groupId} onChange={(e) => setGroupId(e.target.value)}><option value="">Select group</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select>
+          {groupId && <div className="flex gap-2"><Input aria-label="Selected agent group name" value={selectedGroupName} onChange={(e) => setSelectedGroupName(e.target.value)} /><Button disabled={busy || !selectedGroupName.trim()} onClick={updateGroup}>Save name</Button><Button disabled={busy} onClick={archiveGroup}>Archive</Button></div>}
+          <div className="flex gap-2"><Select aria-label="Agent to add" value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">Select agent</option>{agents.map((a) => <option key={a.device_id} value={a.device_id}>{a.name}</option>)}</Select><Button disabled={busy || !groupId || !agentId || memberIds.has(agentId)} onClick={addMember}>Add agent</Button></div>
+          {members && <div className="space-y-1 text-xs text-slate-400"><p>Members: {members.length || "none"}</p>{members.map((member) => <div className="flex items-center justify-between gap-2" key={member.device_id}><span>{member.name} · {member.status}</span><Button disabled={busy} onClick={() => removeMember(member)}>Remove</Button></div>)}</div>}
+        </div>
+        <div className="space-y-2 rounded-card border border-white/10 p-3">
+          <h3 className="text-xs font-semibold text-slate-300">2. Immutable template version</h3>
+          <div className="flex gap-2"><Input aria-label="New agent policy template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" /><Button disabled={busy || !templateName.trim()} onClick={createTemplate}>Create template</Button></div>
+          <Select aria-label="Agent policy template" value={templateId} onChange={(e) => setTemplateId(e.target.value)}><option value="">Select template</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
+          {templateId && <div className="flex gap-2"><Input aria-label="Selected agent policy template name" value={selectedTemplateName} onChange={(e) => setSelectedTemplateName(e.target.value)} /><Button disabled={busy || !selectedTemplateName.trim()} onClick={updateTemplate}>Save name</Button><Button disabled={busy} onClick={archiveTemplate}>Archive</Button></div>}
+          <div className="flex gap-2"><Select aria-label="Template destination resource" value={resourceId} onChange={(e) => setResourceId(e.target.value)}><option value="">Select resource</option>{resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select><Button disabled={busy || !templateId || !resourceId} onClick={createVersion}>Create version</Button></div>
+          <Select aria-label="Template version" value={versionId} onChange={(e) => { setVersionId(e.target.value); setPreview(null); }}><option value="">Select version</option>{(versions ?? []).map((v) => <option key={v.id} value={v.id}>v{v.version}</option>)}</Select>
+        </div>
+      </div>
+      <div className="mt-3 flex gap-2"><Button disabled={busy || !groupId || !versionId} onClick={previewApply}>Preview impact</Button>{preview && <Button disabled={busy} onClick={apply}>Apply preview</Button>}</div>
+      {preview && <div className="mt-3 rounded-card border border-white/10 p-3 text-xs text-slate-300" data-testid="agent-policy-template-preview"><p>{preview.affected_agents} agents · {preview.created_rules} rules created · {preview.reused_rules} reused · {preview.removed_rules} removed · {preview.changed_gateways} gateways changed</p><p className="mt-1 font-mono text-[10px] text-slate-500">Digest {preview.digest}</p></div>}
+      <div className="mt-4 space-y-2" data-testid="agent-policy-template-assignments">
+        <h3 className="text-xs font-semibold text-slate-300">Current assignments</h3>
+        {assignments.length === 0 ? <p className="text-xs text-slate-500">No template assignments.</p> : assignments.map((assignment) => <div className="flex items-center justify-between gap-3 rounded-card border border-white/10 p-3 text-xs" key={assignment.id}><div><p className="text-slate-300">{assignment.group_name} → {assignment.template_name} v{assignment.version}</p><p className="text-slate-500">{assignment.rule_count} assignment-owned rules · applied {relativeAge(assignment.applied_at)}</p></div><Button disabled={busy} onClick={() => removeAssignment(assignment)}>Remove assignment</Button></div>)}
+      </div>
+    </Card>
+  );
+}
+
+type TestableAgent = { device_id: string; name: string };
+
+// F08 read-only evaluator. The section first proves scoped privileged access by
+// loading each agent profile; an unrelated member therefore gets no Test Access
+// DOM at all. The keyed parent remount plus request epoch prevent tenant/input
+// results from committing after an org or tuple switch.
+function AgentJITAccessSection({
+  orgId,
+  enabled,
+  canApprove,
+  currentUserId,
+}: {
+  orgId: string;
+  enabled: boolean;
+  canApprove: boolean;
+  currentUserId: string;
+}) {
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [agents, setAgents] = useState<Array<{ device_id: string; name: string }>>([]);
+  const [destinations, setDestinations] = useState<AgentAccessDestination[]>([]);
+  const [requests, setRequests] = useState<AgentAccessRequest[]>([]);
+  const [agentId, setAgentId] = useState("");
+  const [destinationKey, setDestinationKey] = useState("");
+  const [reason, setReason] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState("3600");
+  const [history, setHistory] = useState<Record<string, string[]>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loadEpoch = useRef(0);
+
+  const load = useCallback(async () => {
+    const epoch = ++loadEpoch.current;
+    setError(null);
+    setHistory({});
+    const agentResult = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agents", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    if (!agentResult.ok) {
+      if (canApprove) setError(agentResult.error);
+      else setAuthorized(false);
+      return;
+    }
+    const visible = await Promise.all(
+      agentResult.data.map(async (agent) => {
+        const profile = await loadOne(() =>
+          api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+            params: { path: { orgId, deviceId: agent.device_id } },
+          }),
+        );
+        return profile.ok ? { device_id: agent.device_id, name: agent.name } : null;
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    const scoped = visible.filter(
+      (agent): agent is { device_id: string; name: string } => agent != null,
+    );
+    const requestResult = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agent-access-requests", {
+        params: { path: { orgId }, query: { page_size: 50 } },
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    if (!requestResult.ok) {
+      if (!canApprove && scoped.length === 0) setAuthorized(false);
+      else {
+        setAuthorized(true);
+        setError(requestResult.error);
+      }
+      return;
+    }
+    // A rolling upgrade can briefly return the pre-F10 list shape here. Fail
+    // the optional panel visibly; never fabricate an empty history and never
+    // crash the whole Access page.
+    if (!Array.isArray(requestResult.data?.items)) {
+      setAuthorized(true);
+      setError("Could not load request history.");
+      return;
+    }
+    const requestItems = requestResult.data.items;
+    if (scoped.length === 0) {
+      setAuthorized(true);
+      setAgents([]);
+      setDestinations([]);
+      setRequests(requestItems);
+      return;
+    }
+    const destinationResult = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agent-access-destinations", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (epoch !== loadEpoch.current) return;
+    if (!destinationResult.ok) {
+      setAuthorized(true);
+      setError(destinationResult.error);
+      return;
+    }
+    if (!Array.isArray(destinationResult.data)) {
+      setAuthorized(true);
+      setError("Could not load access destinations.");
+      return;
+    }
+    const destinationItems = destinationResult.data;
+    setAuthorized(true);
+    setAgents(scoped);
+    setDestinations(destinationItems);
+    setRequests(requestItems);
+    setAgentId((current) =>
+      scoped.some((agent) => agent.device_id === current)
+        ? current
+        : (scoped[0]?.device_id ?? ""),
+    );
+    setDestinationKey((current) =>
+      destinationItems.some(
+        (destination) => `${destination.kind}:${destination.id}` === current,
+      )
+        ? current
+        : destinationItems[0]
+          ? `${destinationItems[0].kind}:${destinationItems[0].id}`
+          : "",
+    );
+  }, [canApprove, orgId]);
+
+  useEffect(() => {
+    void load();
+    return () => {
+      loadEpoch.current += 1;
+    };
+  }, [load]);
+
+  async function submitRequest() {
+    const destination = destinations.find(
+      (item) => `${item.kind}:${item.id}` === destinationKey,
+    );
+    if (!destination || !agentId || !reason.trim()) return;
+    setBusy(true);
+    setError(null);
+    const response = await api.POST(
+      "/api/v1/organizations/{orgId}/agent-access-requests",
+      {
+        params: { path: { orgId } },
+        body: {
+          device_id: agentId,
+          destination_kind: destination.kind,
+          destination_id: destination.id,
+          reason: reason.trim(),
+          duration_seconds: Number(durationSeconds),
+          idempotency_key: `web-create-${crypto.randomUUID()}`,
+        },
+      },
+    );
+    setBusy(false);
+    if (response.error) {
+      return setError(
+        apiErrorMessage(response.error, "Could not request temporary access."),
+      );
+    }
+    setReason("");
+    await load();
+  }
+
+  async function transition(
+    request: AgentAccessRequest,
+    action: "approve" | "reject" | "cancel" | "revoke",
+  ) {
+    setBusy(true);
+    setError(null);
+    const key = `web-${action}-${crypto.randomUUID()}`;
+    let response;
+    if (action === "approve") {
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/approve",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
+      );
+    } else if (action === "reject") {
+      const rejection = window.prompt("Why is this request being rejected?")?.trim();
+      if (!rejection) {
+        setBusy(false);
+        return;
+      }
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/reject",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key, reason: rejection } },
+      );
+    } else if (action === "cancel") {
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/cancel",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
+      );
+    } else {
+      response = await api.POST(
+        "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}/revoke",
+        { params: { path: { orgId, requestId: request.id } }, body: { idempotency_key: key } },
+      );
+    }
+    setBusy(false);
+    if (response.error) {
+      return setError(
+        apiErrorMessage(response.error, `Could not ${action} the request.`),
+      );
+    }
+    await load();
+  }
+
+  async function showHistory(requestId: string) {
+    const response = await api.GET(
+      "/api/v1/organizations/{orgId}/agent-access-requests/{requestId}",
+      { params: { path: { orgId, requestId } } },
+    );
+    if (response.error || !response.data) {
+      return setError(apiErrorMessage(response.error, "Could not load request history."));
+    }
+    setHistory((current) => ({
+      ...current,
+      [requestId]: response.data.events.map((event) => event.state),
+    }));
+  }
+
+  if (authorized === false) return null;
+  if (authorized == null) return null;
+
+  return (
+    <Card data-testid="agent-jit-access-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-200">
+            Just-in-time agent access
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Request one expiring destination grant. Pending requests change no policy.
+          </p>
+        </div>
+        <Button disabled={busy} onClick={() => void load()}>Refresh</Button>
+      </div>
+      {!enabled && (
+        <p className="mt-3 text-xs text-amber-300">
+          JIT agent access is off. An owner or admin can enable it in Org Settings.
+        </p>
+      )}
+      {enabled && agents.length > 0 && destinations.length > 0 && (
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <Field label="Agent">
+            <Select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
+              {agents.map((agent) => <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Destination">
+            <Select value={destinationKey} onChange={(event) => setDestinationKey(event.target.value)}>
+              {destinations.map((destination) => (
+                <option key={`${destination.kind}:${destination.id}`} value={`${destination.kind}:${destination.id}`}>
+                  {destination.name} · {destination.kind.replace("_", " ")}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Reason">
+            <Input value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder="Why is access needed?" />
+          </Field>
+          <Field label="Duration">
+            <Select value={durationSeconds} onChange={(event) => setDurationSeconds(event.target.value)}>
+              <option value="900">15 minutes</option>
+              <option value="3600">1 hour</option>
+              <option value="14400">4 hours</option>
+              <option value="86400">24 hours</option>
+            </Select>
+            <p className="mt-1 text-[10px] text-slate-500">
+              Requested window; exact expiry is calculated when approved.
+            </p>
+          </Field>
+          <div className="flex items-end">
+            <Button disabled={busy || !reason.trim()} onClick={() => void submitRequest()}>
+              {busy ? "Saving…" : "Request access"}
+            </Button>
+          </div>
+        </div>
+      )}
+      {enabled && (agents.length === 0 || destinations.length === 0) && (
+        <p className="mt-3 text-xs text-slate-500">
+          {agents.length === 0 ? "No manageable agents are available." : "No access destinations are configured."}
+        </p>
+      )}
+      <ErrorText>{error}</ErrorText>
+      {requests.length > 0 && (
+        <div className="mt-5 space-y-2">
+          {requests.map((request) => (
+            <div key={request.id} id={`jit-request-${request.id}`} className="rounded border border-slate-800 px-3 py-3" data-testid={`jit-request-${request.id}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm text-slate-300">{request.agent_name} → {request.destination_name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{request.reason} · {request.state} · requested {relativeAge(request.requested_at)}</p>
+                  {request.approved_expires_at && <p className="mt-1 text-xs text-amber-300">Expires {relativeAge(request.approved_expires_at)}</p>}
+                  {history[request.id] && <p className="mt-1 font-mono text-[10px] text-slate-500">{history[request.id].join(" → ")}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void showHistory(request.id)}>History</Button>
+                  {canApprove && request.state === "pending" && (
+                    <><Button disabled={busy} onClick={() => void transition(request, "approve")}>Approve</Button><Button disabled={busy} onClick={() => void transition(request, "reject")}>Reject</Button></>
+                  )}
+                  {!canApprove && request.state === "pending" && request.requested_by_user_id === currentUserId && (
+                    <Button disabled={busy} onClick={() => void transition(request, "cancel")}>Cancel</Button>
+                  )}
+                  {canApprove && request.state === "approved" && (
+                    <Button disabled={busy} onClick={() => void transition(request, "revoke")}>Revoke</Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TestAccessSection({ orgId }: { orgId: string }) {
+  const [agents, setAgents] = useState<TestableAgent[] | null>(null);
+  const [agentId, setAgentId] = useState("");
+  const [destination, setDestination] = useState("");
+  const [protocol, setProtocol] = useState<"tcp" | "udp">("tcp");
+  const [port, setPort] = useState("443");
+  const [result, setResult] = useState<AgentAccessDiagnostic | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const loadEpoch = useRef(0);
+  const runEpoch = useRef(0);
+  const tupleKey = `${orgId}\u0000${agentId}\u0000${destination.trim()}\u0000${protocol}\u0000${port}`;
+  const tupleKeyRef = useRef(tupleKey);
+  tupleKeyRef.current = tupleKey;
+
+  useEffect(() => {
+    const epoch = ++loadEpoch.current;
+    setAgents(null);
+    setAgentId("");
+    setResult(null);
+    setError(null);
+    void (async () => {
+      const listed = await loadOne(() =>
+        api.GET("/api/v1/organizations/{orgId}/agents", {
+          params: { path: { orgId } },
+        }),
+      );
+      if (epoch !== loadEpoch.current || !listed.ok) return;
+      const visible = await Promise.all(
+        listed.data.map(async (agent) => {
+          const profile = await loadOne(() =>
+            api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
+              params: { path: { orgId, deviceId: agent.device_id } },
+            }),
+          );
+          if (!profile.ok) return null;
+          return { device_id: agent.device_id, name: agent.name };
+        }),
+      );
+      if (epoch !== loadEpoch.current) return;
+      const scoped = visible.filter((v): v is TestableAgent => v != null);
+      setAgents(scoped);
+      setAgentId(scoped[0]?.device_id ?? "");
+    })();
+    return () => {
+      loadEpoch.current += 1;
+      runEpoch.current += 1;
+    };
+  }, [orgId]);
+
+  useEffect(() => {
+    runEpoch.current += 1;
+    setBusy(false);
+    setResult(null);
+    setError(null);
+  }, [orgId, agentId, destination, protocol, port]);
+
+  if (!agents || agents.length === 0) return null;
+
+  const numericPort = Number(port);
+  const runnable =
+    agentId !== "" && destination.trim() !== "" && Number.isInteger(numericPort) && numericPort >= 1 && numericPort <= 65535;
+
+  async function run() {
+    if (!runnable) return;
+    const epoch = ++runEpoch.current;
+    const requestedTupleKey = tupleKey;
+    const tuple = { agentId, destination: destination.trim(), protocol, port: numericPort };
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      const response = await api.GET(
+        "/api/v1/organizations/{orgId}/agents/{deviceId}/test-access",
+        {
+          params: {
+            path: { orgId, deviceId: tuple.agentId },
+            query: { destination: tuple.destination, protocol: tuple.protocol, port: tuple.port },
+          },
+        },
+      );
+      if (epoch !== runEpoch.current || requestedTupleKey !== tupleKeyRef.current) return;
+      if (response.error || !response.data) setError(apiErrorMessage(response.error, "Could not test access."));
+      else setResult(response.data);
+    } catch {
+      if (epoch === runEpoch.current) setError("Could not reach the API.");
+    } finally {
+      if (epoch === runEpoch.current) setBusy(false);
+    }
+  }
+
+  return (
+    <div data-testid="test-access-panel">
+      <Card>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-52 flex-1">
+          <h2 className="text-sm font-semibold text-slate-200">Test access</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Explain current control-plane intent. No packet, DNS query, or policy change is sent.
+          </p>
+        </div>
+        <Field label="Agent">
+          <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+            {agents.map((agent) => (
+              <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Destination IP or hostname">
+          <Input value={destination} placeholder="10.20.0.15" onChange={(e) => setDestination(e.target.value)} />
+        </Field>
+        <Field label="Protocol">
+          <Select value={protocol} onChange={(e) => setProtocol(e.target.value as "tcp" | "udp")}>
+            <option value="tcp">TCP</option><option value="udp">UDP</option>
+          </Select>
+        </Field>
+        <Field label="Port">
+          <Input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
+        </Field>
+        <Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Test access"}</Button>
+      </div>
+      <ErrorText>{error}</ErrorText>
+      {result && (
+        <div className="mt-4" data-testid="test-access-result">
+          <p className="text-sm font-medium text-slate-200">
+            {result.overall === "allowed" ? "Allowed by current Tunnex intent" : result.overall === "denied" ? "Blocked by current Tunnex intent" : "Inconclusive from current evidence"}
+          </p>
+          {result.first_blocker && <p className="mt-1 text-xs text-amber-300">First blocker: {result.first_blocker}</p>}
+          <ol className="mt-3 space-y-2">
+            {result.checks.map((check, index) => (
+              <li key={`${index}-${check.code}`} className="rounded border border-slate-800 px-3 py-2">
+                <div className="flex gap-2 text-xs">
+                  <span aria-hidden="true">{check.status === "pass" ? "✓" : check.status === "fail" ? "×" : "?"}</span>
+                  <span className="font-medium text-slate-300">{check.code}</span>
+                  <span className="text-slate-500">{check.message}</span>
+                </div>
+                {check.facts && Object.keys(check.facts).length > 0 && (
+                  <dl className="mt-2 grid gap-1 font-mono text-[10px] text-slate-500 sm:grid-cols-2">
+                    {Object.entries(check.facts).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => (
+                      <div key={key} className="flex gap-1"><dt>{key}:</dt><dd className="break-all text-slate-400">{value}</dd></div>
+                    ))}
+                  </dl>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      </Card>
     </div>
   );
 }
@@ -404,10 +1236,12 @@ function ModeSection({
 function RulesSection({
   orgId,
   canManage,
+  canManageAgentTemplates,
   subjectsRev,
 }: {
   orgId: string;
   canManage: boolean;
+  canManageAgentTemplates: boolean;
   subjectsRev: number;
 }) {
   const [rules, setRules] = useState<PolicyRule[]>([]);
@@ -416,6 +1250,10 @@ function RulesSection({
   const [members, setMembers] = useState<Member[]>([]);
   const [sites, setSites] = useState<Site[]>([]); // S8.2c D5: site rule subjects
   const [services, setServices] = useState<K8sService[]>([]); // S10.3: k8s_service dst subjects
+  const [agents, setAgents] = useState<
+    Array<{ device_id: string; name: string; gateway_name: string }>
+  >([]);
+  const [agentsOrgId, setAgentsOrgId] = useState("");
   const [loaded, setLoaded] = useState<LoadState>({
     groupsLoaded: false,
     resourcesLoaded: false,
@@ -455,7 +1293,13 @@ function RulesSection({
 
   const load = useCallback(async () => {
     setErr(null); // [310]: never carry a stale partial-load/mutation error into a fresh load
-    const [rr, gr, resr, mr, mo, sr, ksr] = await Promise.all([
+    setAgentsOrgId("");
+    setLoaded((previous) => ({
+      ...previous,
+      agentsLoaded: false,
+      agents: [],
+    }));
+    const [rr, gr, resr, mr, mo, sr, ksr, ar, agr] = await Promise.all([
       loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/policies", {
           params: { path: { orgId } },
@@ -491,6 +1335,18 @@ function RulesSection({
           params: { path: { orgId } },
         }),
       ), // S10.3: k8s_service dst subjects
+      loadOne(() =>
+        api.GET("/api/v1/organizations/{orgId}/agents", {
+          params: { path: { orgId } },
+        }),
+      ),
+      canManageAgentTemplates
+        ? loadOne(() =>
+            api.GET("/api/v1/organizations/{orgId}/agent-groups", {
+              params: { path: { orgId } },
+            }),
+          )
+        : Promise.resolve({ ok: true as const, data: [] as AgentGroup[] }),
     ]);
     // Summary inputs — set from the SAME results (a rules-load failure → summary shows "failed", never 0).
     setRulesResult(
@@ -531,6 +1387,15 @@ function RulesSection({
     setMembers((mr.ok ? (mr.data as Member[]) : []) as Member[]);
     setSites((sr.ok ? (sr.data as Site[]) : []) as Site[]); // D5
     setServices((ksr.ok ? (ksr.data as K8sService[]) : []) as K8sService[]); // S10.3: k8s_service dst subjects
+    const loadedAgents = ar.ok
+      ? (ar.data as Array<{
+          device_id: string;
+          name: string;
+          gateway_name: string;
+        }>)
+      : [];
+    setAgents(loadedAgents);
+    setAgentsOrgId(orgId);
     // D-a6 loaded flags come from the SAME source: a set that FAILED to load → its refs are
     // "unresolved", not "deleted".
     setLoaded({
@@ -539,21 +1404,26 @@ function RulesSection({
       membersLoaded: mr.ok,
       sitesLoaded: sr.ok,
       k8sServicesLoaded: ksr.ok,
+      agentsLoaded: ar.ok,
+      agents: loadedAgents,
+      agentGroupsLoaded: agr.ok,
+      agentGroups: agr.ok ? (agr.data as AgentGroup[]) : [],
     }); // sitesLoaded → WF-8; k8sServicesLoaded → S10.3
     setErr(
-      gr.ok && resr.ok && mr.ok && sr.ok && ksr.ok
+      gr.ok && resr.ok && mr.ok && sr.ok && ksr.ok && ar.ok && agr.ok
         ? null
-        : "Some groups/resources/members/sites/services failed to load. names may show as unresolved. Refresh.",
+        : "Some groups/resources/members/sites/services/agents failed to load. names may show as unresolved. Refresh.",
     ); // ksr.ok: a services-load failure must raise the banner too
     // The ONLY clear path (amendment A: gated on this successful load): drop stale ids no
     // longer present, keep the rest (B).
     setStaleRuleIds((prev) => pruneStaleRuleIds(prev, true, freshRules));
-  }, [orgId]);
+  }, [canManageAgentTemplates, orgId]);
   useEffect(() => {
     load();
   }, [load, subjectsRev]); // S8.5: re-load when a sibling section mutates groups/resources (stale-button fix)
 
   const notice = staleNoticeText(staleRuleIds); // DERIVED — no notice state
+  const visibleAgents = agentsOrgId === orgId ? agents : [];
 
   async function del(id: string) {
     const { error } = await api.DELETE(
@@ -602,7 +1472,11 @@ function RulesSection({
           <ComposeGate surface="Access rules">
             <Button
               onClick={() => setCreating(true)}
-              disabled={groups.length === 0 && sites.length === 0}
+              disabled={
+                groups.length === 0 &&
+                sites.length === 0 &&
+                visibleAgents.length === 0
+              }
             >
               Add rule
             </Button>
@@ -643,10 +1517,13 @@ function RulesSection({
 
       {view.showContent && (
         <>
-          {groups.length === 0 && sites.length === 0 && loaded.groupsLoaded && (
+          {groups.length === 0 &&
+            sites.length === 0 &&
+            visibleAgents.length === 0 &&
+            loaded.groupsLoaded && (
             <p className="mt-2 text-xs text-slate-500">
-              Create a group of users or register a site (site-to-site source)
-              to add a rule.
+              Create a group of users, register a site, or enrol an agent to add
+              a rule.
             </p>
           )}
           {/* ── ACCESS FLOW ({{ polFlow }}) — built from the handoff's buildPolicyFlow(), not from a screenshot.
@@ -1127,6 +2004,10 @@ function RulesSection({
                       loaded,
                       services,
                     );
+                    if (row.managedByAgentAccess)
+                      return "managed by jit access";
+                    if (row.managedByAgentTemplate)
+                      return "managed by agent template";
                     if (row.managedByOperator) return "managed by gitops";
                     return grantExpiry(r, Date.now()).state === "permanent"
                       ? "standard"
@@ -1144,6 +2025,18 @@ function RulesSection({
                     );
                     /* S10.2 D2 cond 1: a GitOps-managed grant is badged; its mutation controls are
                        withheld in the actions column. */
+                    if (row.managedByAgentAccess)
+                      return (
+                        <a href={row.agentAccessRequestId ? `#jit-request-${row.agentAccessRequestId}` : undefined} className="rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-300">
+                          JIT access
+                        </a>
+                      );
+                    if (row.managedByAgentTemplate)
+                      return (
+                        <span className="rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-300">
+                          Managed by agent template
+                        </span>
+                      );
                     if (row.managedByOperator) return <ManagedBadge />;
                     const exp = grantExpiry(r, Date.now());
                     return exp.state === "permanent" ? (
@@ -1268,6 +2161,7 @@ function RulesSection({
           members={activeMembers(members)}
           sites={sites}
           services={services}
+          agents={visibleAgents}
           editing={editing}
           onClose={() => {
             setCreating(false);
@@ -1514,6 +2408,7 @@ function RuleFormModal({
   members,
   sites,
   services,
+  agents,
   editing,
   onClose,
   onDone,
@@ -1524,6 +2419,7 @@ function RuleFormModal({
   members: Member[];
   sites: Site[];
   services: K8sService[];
+  agents: Array<{ device_id: string; name: string; gateway_name: string }>;
   editing: PolicyRule | null;
   onClose: () => void;
   onDone: (staleRuleId?: string) => void;
@@ -1538,33 +2434,10 @@ function RuleFormModal({
   // ⛔ S15.3 — agents enrolled in this org, offered as a policy SOURCE. Without this the AI-agents screen
   // says an agent "reaches only what it is granted" and nothing could grant it anything: a capability the
   // product had and the operator could not reach.
-  const [agents, setAgents] = useState<
-    Array<{ device_id: string; name: string; gateway_name: string }>
-  >([]);
-  const [srcAgent, setSrcAgent] = useState("");
-  // ⚠ Enterprise-only endpoint: a 403 is a SUCCESSFUL refusal, so the list simply stays empty and the
-  // "AI agent" option is never offered. It must not surface as an error in a rule dialog.
-  useEffect(() => {
-    let cancelled = false;
-    void api
-      .GET("/api/v1/organizations/{orgId}/agents", {
-        params: { path: { orgId } },
-      })
-      .then(({ data, error }) => {
-        if (cancelled || error || !data) return;
-        setAgents(
-          data as Array<{
-            device_id: string;
-            name: string;
-            gateway_name: string;
-          }>,
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
+  const [srcAgent, setSrcAgent] = useState(
+    editing?.src_device_id ?? agents[0]?.device_id ?? "",
+  );
+  const visibleAgents = agents;
   const [srcKind, setSrcKind] = useState<
     "group" | "user" | "site" | "cidr" | "agent"
   >(
@@ -1576,9 +2449,12 @@ function RuleFormModal({
             ? "site"
             : editing?.src_kind === "cidr"
               ? "cidr"
-              : undefined,
+              : editing?.src_kind === "agent"
+                ? "agent"
+                : undefined,
       hasGroups,
       hasSites: sites.length > 0,
+      hasAgents: agents.length > 0,
     }),
   );
   const [src, setSrc] = useState(editing?.src_group_id ?? groups[0]?.id ?? "");
@@ -1702,13 +2578,14 @@ function RuleFormModal({
           <Button
             disabled={
               busy ||
-              (srcKind === "group"
-                ? !src
-                : srcKind === "user"
-                  ? !srcUser
-                  : srcKind === "cidr"
-                    ? !srcCidr.trim()
-                    : !srcSite) ||
+              !ruleSourceReady({
+                kind: srcKind,
+                group: src,
+                user: srcUser,
+                site: srcSite,
+                cidr: srcCidr,
+                agent: srcAgent,
+              }) ||
               (dstKind === "group"
                 ? !dstGroup
                 : dstKind === "resource"
@@ -1754,7 +2631,7 @@ function RuleFormModal({
             groups,
             members,
             sites,
-            agents,
+            agents: visibleAgents,
             dstKind,
             dstSite,
           })}
@@ -1809,7 +2686,7 @@ function RuleFormModal({
               groups,
               members,
               sites,
-              agents,
+              agents: visibleAgents,
               dstKind,
               dstSite,
             }).find(
@@ -2107,11 +2984,23 @@ function GroupsResourcesSection({
       )}
       {deletingGroups.length > 0 && (
         <CascadeDeleteModal
+          orgId={orgId}
           kind="group"
+          destinationIds={deletingGroups.map((group) => group.id)}
           name={
             deletingGroups.length === 1
               ? deletingGroups[0].name
               : `${deletingGroups.length} groups`
+          }
+          managedAgentCount={
+            deletingGroups.every(
+              (group) => group.managed_agent_count !== undefined,
+            )
+              ? deletingGroups.reduce(
+                  (sum, group) => sum + (group.managed_agent_count ?? 0),
+                  0,
+                )
+              : undefined
           }
           onCancel={() => setDeletingGroups([])}
           onConfirm={() => {
@@ -2470,7 +3359,9 @@ function GroupsResourcesSection({
       </div>
       {confirmRes && (
         <CascadeDeleteModal
+          orgId={orgId}
           kind="resource"
+          destinationIds={[confirmRes.id]}
           name={confirmRes.name}
           onCancel={() => setConfirmRes(null)}
           onConfirm={() => {
@@ -2904,19 +3795,62 @@ function PostureChecksSection({
 // (ON DELETE CASCADE on src_group_id / dst_group_id / dst_resource_id) and the SAME silence (a 204 with no
 // body), so they get the same guard rather than two that can drift apart.
 function CascadeDeleteModal({
+  orgId,
   kind,
   name,
+  destinationIds,
+  managedAgentCount,
   onCancel,
   onConfirm,
 }: {
+  orgId: string;
   kind: "group" | "resource";
   name: string;
+  destinationIds: string[];
+  managedAgentCount?: number;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const [typed, setTyped] = useState("");
-  const copy = cascadeConfirmCopy(kind, name);
-  const ok = cascadeConfirmSatisfied(typed, name);
+  const [templateVersionCount, setTemplateVersionCount] = useState<number>();
+  useEffect(() => {
+    let cancelled = false;
+    setTemplateVersionCount(undefined);
+    Promise.all(
+      destinationIds.map((destinationId) =>
+        api.GET(
+          "/api/v1/organizations/{orgId}/agent-policy-template-destination-impact",
+          {
+            params: {
+              path: { orgId },
+              query: {
+                destination_kind: kind,
+                destination_id: destinationId,
+              },
+            },
+          },
+        ),
+      ),
+    ).then((results) => {
+      if (cancelled || results.some((result) => result.error || !result.data)) return;
+      setTemplateVersionCount(
+        results.reduce((sum, result) => sum + (result.data?.version_count ?? 0), 0),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [destinationIds.join(","), kind, orgId]);
+  const copy = cascadeConfirmCopy(
+    kind,
+    name,
+    managedAgentCount,
+    templateVersionCount,
+  );
+  const ok =
+    copy.impactKnown &&
+    !copy.blocked &&
+    cascadeConfirmSatisfied(typed, name);
   return (
     <Modal
       title={copy.title}
@@ -2989,6 +3923,7 @@ function GroupMembersPanel({
   // THREE ARMS, as everywhere else: null = not asked, {ok:false} = asked and failed, {ok:true} = the answer.
   const [loaded, setLoaded] = useState<Loaded<GroupMember[]> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
 
   const fetchMembers = useCallback(async () => {
     const r = (await loadOne(() =>
@@ -3023,9 +3958,57 @@ function GroupMembersPanel({
   const rows = loaded?.ok ? loaded.data : [];
   const inGroup = new Set(rows.map((m) => m.user_id));
   const addable = members.filter((m) => !inGroup.has(m.user_id));
+  const removalCopy = removingMember
+    ? groupMemberRemovalCopy(
+        removingMember.name || removingMember.email,
+        group.name,
+        group.managed_agent_count,
+      )
+    : null;
 
   return (
-    <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
+    <>
+      {removingMember && removalCopy && (
+        <Modal
+          title="Remove group member?"
+          danger
+          onDismiss={() => setRemovingMember(null)}
+          actions={
+            <>
+              <Button variant="ghost" onClick={() => setRemovingMember(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                disabled={busy || !removalCopy.impactKnown}
+                onClick={() => {
+                  const member = removingMember;
+                  setRemovingMember(null);
+                  void mutateMembership(() =>
+                    api.DELETE(
+                      "/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}",
+                      {
+                        params: {
+                          path: {
+                            orgId,
+                            groupId: group.id,
+                            userId: member.user_id,
+                          },
+                        },
+                      },
+                    ),
+                  );
+                }}
+              >
+                Remove member
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-slate-300">{removalCopy.body}</p>
+        </Modal>
+      )}
+      <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
       {/* ⚠ THE PANEL NAMES ITSELF. Expanded content that opens with a bare list of emails leaves the
           operator to infer what they are looking at and what they may do to it. */}
       <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wide text-ink-tertiary">
@@ -3056,22 +4039,7 @@ function GroupMembersPanel({
                   <Button
                     variant="ghost"
                     disabled={busy}
-                    onClick={() =>
-                      mutateMembership(() =>
-                        api.DELETE(
-                          "/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}",
-                          {
-                            params: {
-                              path: {
-                                orgId,
-                                groupId: group.id,
-                                userId: m.user_id,
-                              },
-                            },
-                          },
-                        ),
-                      )
-                    }
+                    onClick={() => setRemovingMember(m)}
                   >
                     Remove
                   </Button>
@@ -3116,7 +4084,8 @@ function GroupMembersPanel({
           )}
         </div>
       }
-    </div>
+      </div>
+    </>
   );
 }
 

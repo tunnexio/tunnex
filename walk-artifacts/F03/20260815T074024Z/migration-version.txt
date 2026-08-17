@@ -1,0 +1,6 @@
+environment=authorized AWS development control plane
+edition=Enterprise/Scale
+schema=93
+source_sha=bd8efbcaccdba8b299e91be127fa2d5380f223a1
+control_plane_host=redacted
+linux_host=disposable Ubuntu 26.04 x86_64

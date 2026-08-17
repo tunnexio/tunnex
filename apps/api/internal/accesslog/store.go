@@ -23,7 +23,8 @@ func InsertParams(e Event) sqlc.InsertAccessEventParams {
 		RuleID: pgUUID(e.RuleID), SrcDeviceID: pgUUID(e.SrcDeviceID), SrcUserID: pgUUID(e.SrcUserID),
 		SrcIp: e.SrcIP, DstIp: e.DstIP, DstResourceID: pgUUID(e.DstResourceID), DstGroupID: pgUUID(e.DstGroupID),
 		Protocol: e.Protocol, DstPort: i32Ptr(e.DstPort), DenyCount: dc, WindowEnd: pgTS(e.WindowEnd),
-		CreatedAt: e.CreatedAt,
+		CreatedAt: e.CreatedAt, PolicyHash: strPtr(e.PolicyHash), PolicyVersion: i32Ptr(e.PolicyVersion),
+		SrcConfigRevision: e.SrcConfigRevision, SrcKind: strPtr(e.SrcKind), DecisionReason: strPtr(string(e.DecisionReason)),
 	}
 }
 
@@ -34,6 +35,19 @@ func FromRow(r sqlc.AccessEvent) Event {
 		Decision: Decision(r.Decision), RuleID: uuidPtr(r.RuleID), SrcDeviceID: uuidPtr(r.SrcDeviceID),
 		SrcUserID: uuidPtr(r.SrcUserID), SrcIP: r.SrcIp, DstIP: r.DstIp, DstResourceID: uuidPtr(r.DstResourceID),
 		DstGroupID: uuidPtr(r.DstGroupID), Protocol: r.Protocol, DenyCount: int(r.DenyCount),
+	}
+	if r.PolicyHash != nil {
+		e.PolicyHash = *r.PolicyHash
+	}
+	if r.PolicyVersion != nil {
+		e.PolicyVersion = int(*r.PolicyVersion)
+	}
+	e.SrcConfigRevision = r.SrcConfigRevision
+	if r.SrcKind != nil {
+		e.SrcKind = *r.SrcKind
+	}
+	if r.DecisionReason != nil {
+		e.DecisionReason = DecisionReason(*r.DecisionReason)
 	}
 	if r.DstPort != nil {
 		e.DstPort = int(*r.DstPort)
@@ -104,4 +118,11 @@ func i32Ptr(v int) *int32 {
 	}
 	x := int32(v)
 	return &x
+}
+
+func strPtr(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
 }

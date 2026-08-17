@@ -10,6 +10,7 @@ import {
   type Site,
   type K8sCluster,
   type K8sService,
+  type AgentPolicyTemplateDestinationImpact,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
@@ -177,11 +178,39 @@ export default function Kubernetes() {
   const [deregisterFor, setDeregisterFor] = useState<ClusterCard | null>(null);
   const [rowErr, setRowErr] = useState<string | null>(null);
 
-  async function unexpose(serviceId: string) {
+  async function unexpose(service: Pick<K8sService, "id" | "name">) {
     setRowErr(null);
+    const impact = (await loadOne(() =>
+      api.GET(
+        "/api/v1/organizations/{orgId}/agent-policy-template-destination-impact",
+        {
+          params: {
+            path: { orgId: orgId ?? "" },
+            query: {
+              destination_kind: "k8s_service",
+              destination_id: service.id,
+            },
+          },
+        },
+      ),
+    )) as Loaded<AgentPolicyTemplateDestinationImpact>;
+    if (!impact.ok)
+      return setRowErr(
+        "Could not read immutable template impact; the Service was not unexposed.",
+      );
+    if (impact.data.version_count > 0)
+      return setRowErr(
+        `${impact.data.version_count} immutable agent policy template ${impact.data.version_count === 1 ? "version references" : "versions reference"} ${service.name}; unexpose is blocked.`,
+      );
+    if (
+      !window.confirm(
+        `Unexpose ${service.name}? No immutable agent policy template version references it. Its VIP and DNS answer will be withdrawn.`,
+      )
+    )
+      return;
     const { error } = await api.DELETE(
       "/api/v1/organizations/{orgId}/k8s/services/{serviceId}",
-      { params: { path: { orgId: orgId ?? "", serviceId } } },
+      { params: { path: { orgId: orgId ?? "", serviceId: service.id } } },
     );
     if (error)
       return setRowErr(
@@ -377,7 +406,7 @@ export default function Kubernetes() {
             edit the CR, not here
           </span>
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => unexpose(r.id)}>
+          <Button size="sm" variant="ghost" onClick={() => unexpose(r)}>
             Unexpose
           </Button>
         ),

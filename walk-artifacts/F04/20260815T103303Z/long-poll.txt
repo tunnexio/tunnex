@@ -1,0 +1,8 @@
+F04 BOUNDED LONG-POLL (REDACTED)
+no_change_1=http-204 bytes=0 duration=30.005584221s
+no_change_2=http-204 bytes=0 duration=30.003931707s
+change_setup=service-stopped applied=1 wait_seconds=30
+scoped_row_bump=desired_revision 1->2 update_count=1
+change_result=http-200 revision=2 duration=27.136887s before hold expiry
+post_change=service-active applied=2 real-handshake-present
+credential_material_retained=false

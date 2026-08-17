@@ -10,6 +10,9 @@ package devices
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
@@ -76,6 +80,107 @@ type Service struct {
 	// the edition line inverted. Wired from apphttp.NewDeviceApprovalEdition(); default false (open):
 	// devices enroll ACTIVE regardless of the org's stored approval mode (downgrade-release by construction).
 	approvalEnforced bool
+}
+
+type AgentCredentialRotationStatus struct {
+	DeviceID                   uuid.UUID
+	CurrentRevision            int64
+	State                      string
+	RequestedRevision          *int64
+	Deadline                   *time.Time
+	WireGuardCurrentRevision   int64
+	WireGuardState             string
+	WireGuardRequestedRevision *int64
+}
+
+func credentialRotationStatus(row sqlc.GetAgentRuntimeCredentialRotationRow) AgentCredentialRotationStatus {
+	state := "current"
+	var requested *int64
+	var deadline *time.Time
+	if row.RotationRequestedAt.Valid && row.RotationDeadline.Valid && row.RotationDeadline.Time.After(time.Now()) {
+		next := row.Revision + 1
+		requested = &next
+		d := row.RotationDeadline.Time
+		deadline = &d
+		state = "requested"
+		if row.CandidatePending {
+			state = "candidate"
+		}
+	}
+	return AgentCredentialRotationStatus{DeviceID: row.DeviceID, CurrentRevision: row.Revision, State: state, RequestedRevision: requested, Deadline: deadline,
+		WireGuardCurrentRevision: 1, WireGuardState: "current"}
+}
+
+func (s *Service) GetAgentCredentialRotation(ctx context.Context, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
+	if err := s.q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
+		return AgentCredentialRotationStatus{}, err
+	}
+	row, err := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentCredentialRotationStatus{}, apierr.NotFound("agent_not_found", "agent not found")
+	}
+	if err != nil {
+		return AgentCredentialRotationStatus{}, err
+	}
+	status := credentialRotationStatus(row)
+	if wg, wgErr := s.q.GetAgentWireGuardRotation(ctx, sqlc.GetAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); wgErr == nil {
+		status.WireGuardCurrentRevision = wg.CurrentRevision
+		status.WireGuardState = wg.State
+		if wg.State != "current" && wg.RequestedRevision != nil && wg.Deadline.Valid && wg.Deadline.Time.After(time.Now()) {
+			status.WireGuardRequestedRevision = wg.RequestedRevision
+			if status.Deadline == nil {
+				d := wg.Deadline.Time
+				status.Deadline = &d
+			}
+		}
+	} else if !errors.Is(wgErr, pgx.ErrNoRows) {
+		return AgentCredentialRotationStatus{}, wgErr
+	}
+	return status, nil
+}
+
+func (s *Service) RequestAgentCredentialRotation(ctx context.Context, actorID, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
+	var result AgentCredentialRotationStatus
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.ExpireAgentRuntimeCredentialRotation(ctx, sqlc.ExpireAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
+			return err
+		}
+		if err := q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
+			return err
+		}
+		deadline := pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}
+		actor := pgtype.UUID{Bytes: actorID, Valid: true}
+		row, err := q.RequestAgentRuntimeCredentialRotation(ctx, sqlc.RequestAgentRuntimeCredentialRotationParams{
+			OrgID: orgID, DeviceID: deviceID,
+			RotationDeadline: deadline, RotationRequestedBy: actor,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.Conflict("agent_credential_rotation_unavailable", "credential rotation requires one active agent with no pending candidate")
+		}
+		if err != nil {
+			return err
+		}
+		wg, err := q.RequestAgentWireGuardRotation(ctx, sqlc.RequestAgentWireGuardRotationParams{
+			OrgID: orgID, ID: deviceID, Deadline: deadline, RequestedBy: actor,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.Conflict("agent_credential_rotation_unavailable", "credential rotation requires one active agent with no pending candidate")
+		}
+		if err != nil {
+			return err
+		}
+		result = AgentCredentialRotationStatus{DeviceID: row.DeviceID, CurrentRevision: row.Revision, State: "requested",
+			WireGuardCurrentRevision: wg.CurrentRevision, WireGuardState: wg.State,
+			WireGuardRequestedRevision: wg.RequestedRevision}
+		next := row.Revision + 1
+		result.RequestedRevision = &next
+		if row.RotationDeadline.Valid {
+			d := row.RotationDeadline.Time
+			result.Deadline = &d
+		}
+		return audit(ctx, q, orgID, &actorID, "agent.credential_rotation_requested", "device", deviceID.String(), map[string]any{"revision": next})
+	})
+	return result, err
 }
 
 // SetApprovalEnforced wires the edition's device-approval enforcement (WF-OVPN-6). Called from the server
@@ -157,6 +262,9 @@ type CreateInput struct {
 	// download/QR ceremony sets "static"; the Tunnex client leaves it managed. Recorded on the
 	// device as an immutable provisioning fact (for the stale-profile surface), not a live flag.
 	Provisioning string
+	// BootstrapToken is accepted only by the public managed-agent redemption path.
+	// It is never persisted; only its hash is looked up.
+	BootstrapToken string
 }
 
 // CreateResult is the created device plus, only for the server-generated flow,
@@ -169,8 +277,41 @@ type CreateResult struct {
 	// PendingApproval is true when the org requires device approval (S7.3): the device
 	// is enrolled but BLOCKED (no tunnel) until an admin approves. The client shows a
 	// stable "awaiting approval" state — never an error loop (the spine).
-	PendingApproval bool
+	PendingApproval   bool
+	RuntimeCredential string
 }
+
+// IssueAgentBootstrapToken creates a short-lived, single-use credential bound
+// to one org gateway. The raw value is returned exactly once.
+func (s *Service) IssueAgentBootstrapToken(ctx context.Context, actor, orgID, gatewayID uuid.UUID, name string) (string, error) {
+	if name == "" {
+		return "", apierr.BadRequest("invalid_request", "agent name is required")
+	}
+	rawBytes := make([]byte, 32)
+	if _, err := rand.Read(rawBytes); err != nil {
+		return "", err
+	}
+	raw := "tnx_agent_" + base64.RawURLEncoding.EncodeToString(rawBytes)
+	h := sha256.Sum256([]byte(raw))
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		n, err := q.GetOrgNode(ctx, sqlc.GetOrgNodeParams{ID: gatewayID, OrgID: orgID})
+		if err != nil {
+			return apierr.NotFound("gateway_not_found", "no such active gateway in this organization")
+		}
+		if n.Status != "active" {
+			return apierr.Conflict("gateway_not_ready", "the gateway is not active")
+		}
+		_, err = q.CreateAgentBootstrapToken(ctx, sqlc.CreateAgentBootstrapTokenParams{OrgID: orgID, GatewayNodeID: gatewayID, AgentName: name, TokenHash: h[:], ExpiresAt: time.Now().Add(time.Hour), IssuedBy: pgtype.UUID{Bytes: actor, Valid: actor != uuid.Nil}})
+		return err
+	})
+	returnIfErr := err
+	if returnIfErr != nil {
+		return "", returnIfErr
+	}
+	return raw, nil
+}
+
+func hashBootstrapToken(raw string) []byte { h := sha256.Sum256([]byte(raw)); return h[:] }
 
 // ModeConfig is the mutable portion of a managed device configuration. It deliberately
 // excludes the private key: the API never stores or re-issues that secret.
@@ -293,6 +434,27 @@ func (s *Service) UpdateMode(ctx context.Context, actorID, orgID, deviceID uuid.
 // membership check + cap check + insert + audit run in ONE transaction under a
 // per-user advisory lock, so the cap cannot be raced past.
 func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, error) {
+	var bootstrapHash []byte
+	var runtimeCredential string
+	if in.BootstrapToken != "" {
+		if in.PublicKey == "" || !wgkey.Valid(in.PublicKey) {
+			return CreateResult{}, apierr.BadRequest("invalid_wg_key", "public_key must be a 32-byte base64 WireGuard key")
+		}
+		bootstrapHash = hashBootstrapToken(in.BootstrapToken)
+		tok, err := s.q.GetAgentBootstrapToken(ctx, bootstrapHash)
+		if err != nil {
+			return CreateResult{}, apierr.New(401, "invalid_bootstrap_token", "the bootstrap token is invalid, used, or expired")
+		}
+		in.OrgID, in.NodeID, in.OwnerID = tok.OrgID, tok.GatewayNodeID, uuid.UUID(tok.IssuedBy.Bytes)
+		if !tok.IssuedBy.Valid {
+			return CreateResult{}, apierr.New(401, "invalid_bootstrap_token", "the bootstrap token has no issuer")
+		}
+		in.ActorID = uuid.UUID(tok.IssuedBy.Bytes)
+		in.Name, in.Kind, in.Provisioning = tok.AgentName, "agent", "static"
+	}
+	// Bootstrap redemption derives the name from the issuer-bound token before
+	// reaching the common name validation. Ordinary creates retain the same
+	// early name_required behavior.
 	if in.Name == "" {
 		return CreateResult{}, apierr.BadRequest("name_required", "a device name is required")
 	}
@@ -367,6 +529,14 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 		return CreateResult{}, apierr.Conflict("invalid_ipv6_pool", poolErr.Error())
 	}
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if len(bootstrapHash) > 0 {
+			if e := q.LockDeviceKey(ctx, "agent-bootstrap:"+fmt.Sprintf("%x", bootstrapHash)); e != nil {
+				return e
+			}
+			if _, e := q.GetAgentBootstrapToken(ctx, bootstrapHash); e != nil {
+				return apierr.New(401, "invalid_bootstrap_token", "the bootstrap token is invalid, used, or expired")
+			}
+		}
 		// Take the user AND org advisory locks (in sorted order -> no deadlock) so
 		// the per-user cap check and the org-wide IP allocation are both atomic
 		// against concurrent creates.
@@ -429,6 +599,15 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			return e
 		}
 		poolCIDR = org.PoolCidr
+		if in.Kind == "agent" && org.MaxAgentIdentities != nil {
+			count, ce := q.CountAgentIdentitiesForQuota(ctx, in.OrgID)
+			if ce != nil {
+				return ce
+			}
+			if count >= int64(*org.MaxAgentIdentities) {
+				return apierr.Conflict("agent_quota_exceeded", "the organization managed-agent identity quota has been reached")
+			}
+		}
 		// S7.3 device posture: when the org requires approval, the device enrolls as
 		// PENDING (blocked — excluded from every status='active' reader, so no peer + no
 		// grants) until an admin approves. Default 'off' -> 'active', zero behavior change.
@@ -516,6 +695,13 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			return e
 		}
 		dev = created
+		if in.Kind == "agent" {
+			// The profile is created in the same transaction. The device row remains
+			// the lifecycle authority: pending means enrolled/awaiting approval.
+			if e := q.EnsureAgentProfile(ctx, dev.ID); e != nil {
+				return e
+			}
+		}
 		// S9.1 Part-2: record the STATIC provisioning fact + the ranges snapshot baked in, so the
 		// stale-profile surface can later flag "a subnet was added — re-export". Immutable record, in
 		// the same tx as the create (a static device is never silently indistinguishable from managed).
@@ -543,6 +729,20 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 		dev.ProvisionedRanges = rj
 		dev.ProvisionedIp = dev.AssignedIp
 		dev.ProvisionedNodeID = nodeSnap
+		if len(bootstrapHash) > 0 {
+			raw := make([]byte, 32)
+			if _, e := rand.Read(raw); e != nil {
+				return e
+			}
+			runtimeCredential = "tnx_runtime_" + base64.RawURLEncoding.EncodeToString(raw)
+			rh := sha256.Sum256([]byte(runtimeCredential))
+			if _, e := q.CreateAgentRuntimeCredential(ctx, sqlc.CreateAgentRuntimeCredentialParams{OrgID: in.OrgID, DeviceID: dev.ID, TokenHash: rh[:]}); e != nil {
+				return e
+			}
+			if _, e := q.ConsumeAgentBootstrapToken(ctx, sqlc.ConsumeAgentBootstrapTokenParams{TokenHash: bootstrapHash, ConsumedDeviceID: pgtype.UUID{Bytes: dev.ID, Valid: true}}); e != nil {
+				return e
+			}
+		}
 		keySource := "client"
 		if oneTimePriv != "" {
 			keySource = "server"
@@ -567,7 +767,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 	res := CreateResult{Device: dev, PrivateKeyOneTime: oneTimePriv, PendingApproval: dev.Status == "pending"}
 	// Only the server-generated flow can produce a complete config (it holds the
 	// one-time private key); the client-generated flow assembles its own.
-	if oneTimePriv != "" {
+	if oneTimePriv != "" || len(bootstrapHash) > 0 {
 		// WF-A D-WFA-6: a NEW device on a hub-set member dials the ACTIVE HUB (the widening hosts it there),
 		// not its arbitrary assigned gateway — so the config points at the re-home target from the first
 		// handshake. derived=false / a resolver error → keep the assigned node's endpoint (spoke-device case,
@@ -609,8 +809,243 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 			allowedIPs:   allowed,
 			dns:          dns,
 		})
+		if len(bootstrapHash) > 0 {
+			res.RuntimeCredential = runtimeCredential
+			res.Config = strings.Replace(res.Config, "PrivateKey = \n", "PrivateKey = __TUNNEX_PRIVATE_KEY__\n", 1)
+		}
 	}
 	return res, nil
+}
+
+// AgentLifecycleTransition is the only legal F01 lifecycle graph. In particular,
+// revoked is terminal and suspension/resumption must not be smuggled through the
+// generic device status helpers.
+func AgentLifecycleTransition(from, to string) bool {
+	switch from {
+	case "active":
+		return to == "suspended"
+	case "suspended":
+		return to == "active"
+	default:
+		return false
+	}
+}
+
+type AgentProfile struct {
+	DeviceID          uuid.UUID
+	Name              string
+	Environment       string
+	Runtime           string
+	Labels            []byte
+	OwnerID           uuid.UUID
+	OwnerEmail        string
+	ManagingGroupID   *uuid.UUID
+	ManagingGroupName *string
+	Status            string
+	LastHandshakeAt   *time.Time
+	RxBytes           *int64
+	TxBytes           *int64
+}
+
+func (s *Service) GetAgentProfile(ctx context.Context, orgID, deviceID uuid.UUID) (AgentProfile, error) {
+	r, err := s.q.GetAgentProfileForOrg(ctx, sqlc.GetAgentProfileForOrgParams{DeviceID: deviceID, OrgID: orgID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentProfile{}, apierr.NotFound("agent_not_found", "agent not found")
+	}
+	if err != nil {
+		return AgentProfile{}, err
+	}
+	var managingGroupID *uuid.UUID
+	if r.ManagingGroupID.Valid {
+		v := uuid.UUID(r.ManagingGroupID.Bytes)
+		managingGroupID = &v
+	}
+	return AgentProfile{DeviceID: r.DeviceID, Name: r.Name, Environment: r.Environment, Runtime: r.Runtime,
+		Labels: r.Labels, OwnerID: r.UserID, OwnerEmail: r.OwnerEmail, Status: r.Status,
+		ManagingGroupID: managingGroupID, ManagingGroupName: r.ManagingGroupName,
+		LastHandshakeAt: tsPtr(r.LastHandshakeAt), RxBytes: r.RxBytes, TxBytes: r.TxBytes}, nil
+}
+
+type AgentScopedAuthority struct {
+	Owner   bool
+	Manager bool
+}
+
+// AgentManagingGroupCounts returns the server-owned destructive-impact count
+// for every managing group in an organization. Missing groups have zero
+// assignments. The web uses this only when presenting a group/member removal
+// confirmation; it never derives the count from separately loaded agents.
+func (s *Service) AgentManagingGroupCounts(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]int64, error) {
+	rows, err := s.q.ListAgentManagingGroupCounts(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]int64, len(rows))
+	for _, row := range rows {
+		if row.ManagingGroupID.Valid {
+			out[row.ManagingGroupID.Bytes] = row.ManagedAgentCount
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) AgentScopedAuthority(ctx context.Context, orgID, deviceID, userID uuid.UUID) (AgentScopedAuthority, error) {
+	if s.pool == nil {
+		p, err := s.GetAgentProfile(ctx, orgID, deviceID)
+		return AgentScopedAuthority{Owner: err == nil && p.OwnerID == userID}, err
+	}
+	r, err := s.q.GetAgentScopedAuthority(ctx, sqlc.GetAgentScopedAuthorityParams{DeviceID: deviceID, OrgID: orgID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentScopedAuthority{}, nil
+	}
+	return AgentScopedAuthority{Owner: r.IsOwner, Manager: r.IsManager}, err
+}
+
+// IsAgentOwner deliberately returns only an authorization fact. Callers use it
+// before loading the profile so a member cannot learn another agent's metadata.
+func (s *Service) IsAgentOwner(ctx context.Context, orgID, deviceID, userID uuid.UUID) (bool, error) {
+	if s.pool == nil {
+		p, err := s.GetAgentProfile(ctx, orgID, deviceID)
+		return err == nil && p.OwnerID == userID, err
+	}
+	var exists bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM devices WHERE id = $1 AND org_id = $2 AND user_id = $3 AND kind = 'agent' AND deleted_at IS NULL
+	)`, deviceID, orgID, userID).Scan(&exists)
+	return exists, err
+}
+
+func (s *Service) UpdateAgentProfile(ctx context.Context, actorID, orgID, deviceID uuid.UUID, environment, runtime string, labels []byte) (AgentProfile, error) {
+	return s.UpdateAgentProfileWithLifecycle(ctx, actorID, orgID, deviceID, environment, runtime, labels, nil)
+}
+
+// UpdateAgentProfileWithLifecycle is atomic: a rejected lifecycle transition
+// rolls back the metadata update in the same transaction.
+func (s *Service) UpdateAgentProfileWithLifecycle(ctx context.Context, actorID, orgID, deviceID uuid.UUID, environment, runtime string, labels []byte, status *string) (AgentProfile, error) {
+	return s.UpdateAgentProfileWithLifecycleAndGovernance(ctx, actorID, orgID, deviceID, environment, runtime, labels, status, AgentGovernanceUpdate{ProfileUpdateRequested: true})
+}
+
+type AgentGovernanceUpdate struct {
+	OwnerID                *uuid.UUID
+	ManagingGroupSet       bool
+	ManagingGroupID        *uuid.UUID
+	ProfileUpdateRequested bool
+}
+
+func (s *Service) UpdateAgentProfileWithLifecycleAndGovernance(ctx context.Context, actorID, orgID, deviceID uuid.UUID, environment, runtime string, labels []byte, status *string, governance AgentGovernanceUpdate) (AgentProfile, error) {
+	jitClosed := false
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		current, err := q.GetAgentProfileForOrg(ctx, sqlc.GetAgentProfileForOrgParams{DeviceID: deviceID, OrgID: orgID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.NotFound("agent_not_found", "agent not found")
+		}
+		if err != nil {
+			return err
+		}
+		if status != nil && !AgentLifecycleTransition(current.Status, *status) {
+			return apierr.Conflict("invalid_agent_transition", "agent lifecycle transition is not allowed")
+		}
+		locked, err := q.GetAgentGovernanceForUpdate(ctx, sqlc.GetAgentGovernanceForUpdateParams{DeviceID: deviceID, OrgID: orgID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.NotFound("agent_not_found", "agent not found")
+		}
+		if err != nil {
+			return err
+		}
+		if governance.OwnerID != nil {
+			if _, err := q.GetCurrentAgentOwnerCandidate(ctx, sqlc.GetCurrentAgentOwnerCandidateParams{OrgID: orgID, UserID: *governance.OwnerID}); errors.Is(err, pgx.ErrNoRows) {
+				return apierr.BadRequest("invalid_agent_owner", "agent owner must be a current organization member")
+			} else if err != nil {
+				return err
+			}
+		}
+		if governance.ManagingGroupSet && governance.ManagingGroupID != nil {
+			if _, err := q.GetUserGroup(ctx, sqlc.GetUserGroupParams{ID: *governance.ManagingGroupID, OrgID: orgID}); errors.Is(err, pgx.ErrNoRows) {
+				return apierr.BadRequest("invalid_agent_managing_group", "managing group must belong to the organization")
+			} else if err != nil {
+				return err
+			}
+		}
+		if governance.ProfileUpdateRequested {
+			if _, err := q.UpdateAgentProfile(ctx, sqlc.UpdateAgentProfileParams{DeviceID: deviceID, Environment: environment, Runtime: runtime, Labels: labels, OrgID: orgID}); err != nil {
+				return err
+			}
+		}
+		if governance.ProfileUpdateRequested && status != nil {
+			if _, err := q.UpdateAgentLifecycle(ctx, sqlc.UpdateAgentLifecycleParams{ID: deviceID, OrgID: orgID, Status: *status, Status_2: current.Status}); errors.Is(err, pgx.ErrNoRows) {
+				return apierr.Conflict("agent_lifecycle_changed", "agent lifecycle changed; retry the update")
+			} else if err != nil {
+				return err
+			}
+			if *status == "suspended" {
+				n, err := agentaccess.CloseForDeviceTx(ctx, q, orgID, deviceID, actorID, "agent_suspended")
+				if err != nil {
+					return err
+				}
+				jitClosed = n != 0
+			}
+		}
+		assignmentChanged := false
+		if governance.OwnerID != nil && *governance.OwnerID != locked.UserID {
+			if _, err := q.SetAgentOwner(ctx, sqlc.SetAgentOwnerParams{ID: deviceID, OrgID: orgID, UserID: *governance.OwnerID}); err != nil {
+				return err
+			}
+			assignmentChanged = true
+		}
+		oldGroup := (*uuid.UUID)(nil)
+		if locked.ManagingGroupID.Valid {
+			v := uuid.UUID(locked.ManagingGroupID.Bytes)
+			oldGroup = &v
+		}
+		if governance.ManagingGroupSet && !sameOptionalUUID(oldGroup, governance.ManagingGroupID) {
+			group := pgtype.UUID{}
+			if governance.ManagingGroupID != nil {
+				group = pgtype.UUID{Bytes: *governance.ManagingGroupID, Valid: true}
+			}
+			if _, err := q.SetAgentManagingGroup(ctx, sqlc.SetAgentManagingGroupParams{DeviceID: deviceID, ManagingGroupID: group, OrgID: orgID}); err != nil {
+				return err
+			}
+			assignmentChanged = true
+		}
+		if governance.ProfileUpdateRequested {
+			meta := map[string]any{}
+			if status != nil {
+				meta["from"], meta["to"] = current.Status, *status
+			}
+			if err := audit(ctx, q, orgID, &actorID, "agent.profile_updated", "device", deviceID.String(), meta); err != nil {
+				return err
+			}
+		}
+		if assignmentChanged {
+			newOwner := locked.UserID
+			if governance.OwnerID != nil {
+				newOwner = *governance.OwnerID
+			}
+			newGroup := oldGroup
+			if governance.ManagingGroupSet {
+				newGroup = governance.ManagingGroupID
+			}
+			return audit(ctx, q, orgID, &actorID, "agent.assignment_updated", "device", deviceID.String(), map[string]any{
+				"old_owner_id": locked.UserID, "new_owner_id": newOwner,
+				"old_managing_group_id": oldGroup, "new_managing_group_id": newGroup,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return AgentProfile{}, err
+	}
+	if jitClosed {
+		s.PushOrgNodes(ctx, orgID)
+	}
+	return s.GetAgentProfile(ctx, orgID, deviceID)
+}
+
+func sameOptionalUUID(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // sortedKeys returns a and b in ascending order, so multiple advisory locks are
@@ -856,6 +1291,9 @@ func (s *Service) Get(ctx context.Context, orgID, deviceID uuid.UUID) (sqlc.Devi
 // a no-op is how an operator concludes a device is gone when it is still on the roster.
 func (s *Service) RemoveRevoked(ctx context.Context, orgID, actorID, deviceID uuid.UUID) error {
 	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := agentaccess.CloseForDeviceTx(ctx, q, orgID, deviceID, actorID, "agent_removed"); err != nil {
+			return err
+		}
 		n, err := q.SoftDeleteRevokedDevice(ctx, sqlc.SoftDeleteRevokedDeviceParams{ID: deviceID, OrgID: orgID})
 		if err != nil {
 			return err
@@ -893,6 +1331,9 @@ func (s *Service) Revoke(ctx context.Context, orgID, actorID, deviceID uuid.UUID
 		} else if e != nil {
 			return e
 		}
+		if _, e := agentaccess.CloseForDeviceTx(ctx, q, orgID, deviceID, actorID, "agent_revoked"); e != nil {
+			return e
+		}
 		// Release the device's live status so a revoked device can't report stale
 		// online/handshake via the API.
 		if e := q.DeleteDeviceStatus(ctx, deviceID); e != nil {
@@ -904,11 +1345,19 @@ func (s *Service) Revoke(ctx context.Context, orgID, actorID, deviceID uuid.UUID
 		if _, e := q.RevokeOVPNClientCertsForDevice(ctx, deviceID); e != nil {
 			return e
 		}
+		removedAgentGroups, e := q.RemoveAgentGroupMembershipsForDevice(ctx, sqlc.RemoveAgentGroupMembershipsForDeviceParams{
+			OrgID: orgID, DeviceID: deviceID,
+		})
+		if e != nil {
+			return e
+		}
 		action := "device.revoked"
 		if prior.Status == "pending" {
 			action = "device.cancelled" // owner withdrew a pending enrollment
 		}
-		return audit(ctx, q, orgID, &actorID, action, "device", deviceID.String(), map[string]any{})
+		return audit(ctx, q, orgID, &actorID, action, "device", deviceID.String(), map[string]any{
+			"removed_agent_group_memberships": removedAgentGroups,
+		})
 	})
 	if err != nil {
 		return err

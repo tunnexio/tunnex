@@ -1,5 +1,15 @@
 {
   "admin": [
+    "agent:enroll",
+    "agent:grant_access",
+    "agent:manage",
+    "agent:revoke",
+    "agent:view_privileged",
+    "agent_access:approve",
+    "agent_access:request",
+    "agent_credential:rotate",
+    "agent_runtime:manage",
+    "agent_template:manage",
     "device:approve",
     "device:restore",
     "device:transfer",
@@ -23,6 +33,7 @@
     "org:view"
   ],
   "operator": [
+    "agent:grant_access",
     "k8s:manage",
     "member:list",
     "org:view",
@@ -30,6 +41,16 @@
     "policy:view"
   ],
   "owner": [
+    "agent:enroll",
+    "agent:grant_access",
+    "agent:manage",
+    "agent:revoke",
+    "agent:view_privileged",
+    "agent_access:approve",
+    "agent_access:request",
+    "agent_credential:rotate",
+    "agent_runtime:manage",
+    "agent_template:manage",
     "device:approve",
     "device:restore",
     "device:transfer",

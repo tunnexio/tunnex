@@ -62,6 +62,14 @@ RETURNING *;
 -- name: GetK8sService :one
 SELECT * FROM k8s_services WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL;
 
+-- Immutable F09 template versions retain their destination identity. A soft
+-- unexpose must refuse before it would turn a reusable template into a silent
+-- no-op; the released confirmation reads the same server-owned count.
+-- name: CountAgentPolicyTemplateK8sServiceReferences :one
+SELECT count(DISTINCT template_version_id)
+FROM agent_policy_template_version_items
+WHERE org_id = $1 AND dst_k8s_service_id = $2;
+
 -- ListUsedVIPsInCluster returns the LIVE VIPs in a cluster (the used-set ipalloc allocates around).
 -- org_id-scoped for tenant isolation (defence-in-depth; the caller already authorized the cluster).
 -- name: ListUsedVIPsInCluster :many

@@ -117,6 +117,13 @@ func TestServerGeneratedKeyNeverStored(t *testing.T) {
 	}
 }
 
+func TestCreateOrdinaryFlowRequiresName(t *testing.T) {
+	_, err := (&Service{}).Create(context.Background(), CreateInput{})
+	if code(err) != "name_required" {
+		t.Fatalf("empty ordinary create error code = %q, want name_required", code(err))
+	}
+}
+
 // TestClientGeneratedKeyAccepted: a client-supplied public key is stored and no
 // private key is ever returned.
 func TestClientGeneratedKeyAccepted(t *testing.T) {
@@ -191,6 +198,43 @@ func TestRevokeRemovesPeer(t *testing.T) {
 	}
 	if code(svc.Revoke(ctx, org, user, res.Device.ID)) != "already_revoked" {
 		t.Fatal("second revoke should conflict")
+	}
+}
+
+func TestRevokeAgentDropsTemplateGroupMemberships(t *testing.T) {
+	ctx, tx := txOrSkip(t)
+	svc, org, user, node := setup(t, tx, 10)
+	agent, group := uuid.New(), uuid.New()
+	if _, err := tx.Exec(ctx, `INSERT INTO devices
+		(id,org_id,user_id,node_id,name,public_key,assigned_ip,status,kind)
+		VALUES ($1,$2,$3,$4,'f09-agent',$5,'10.99.0.22','active','agent')`,
+		agent, org, user, node, "f09-agent-"+agent.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO agent_groups (id,org_id,name) VALUES ($1,$2,'workers')`, group, org); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO agent_group_members (org_id,agent_group_id,device_id,created_by_user_id)
+		VALUES ($1,$2,$3,$4)`, org, group, agent, user); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Revoke(ctx, org, user, agent); err != nil {
+		t.Fatal(err)
+	}
+	var memberships int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM agent_group_members WHERE org_id=$1 AND device_id=$2`, org, agent).Scan(&memberships); err != nil {
+		t.Fatal(err)
+	}
+	if memberships != 0 {
+		t.Fatalf("revoked agent retained %d group memberships", memberships)
+	}
+	var auditCount int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM audit_logs
+		WHERE org_id=$1 AND target_id=$2 AND metadata->>'removed_agent_group_memberships'='1'`, org, agent.String()).Scan(&auditCount); err != nil {
+		t.Fatal(err)
+	}
+	if auditCount != 1 {
+		t.Fatalf("revoke must audit one removed F09 membership, rows=%d", auditCount)
 	}
 }
 

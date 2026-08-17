@@ -346,14 +346,20 @@ jobs:
         run: |
           set -euo pipefail
           go test ./...
-          mkdir -p ../../cli-artifacts
+          mkdir -p ../../cli-artifacts ../../runtime-artifacts
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
               go build -trimpath -buildvcs=false -ldflags='-s -w' \
               -o "../../cli-artifacts/tnx-linux-$arch" ./cmd/tunnex
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+              go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${GITHUB_REF_NAME:-dev}" \
+              -o "../../runtime-artifacts/tunnex-agent-runtime-linux-$arch" ./cmd/tunnex-agent-runtime
           done
+          cp ../../deploy/systemd/tunnex-agent-runtime.service ../../runtime-artifacts/tunnex-agent-runtime.service
           test -x ../../cli-artifacts/tnx-linux-amd64
           test -s ../../cli-artifacts/tnx-linux-arm64
+          test -x ../../runtime-artifacts/tunnex-agent-runtime-linux-amd64
+          test -s ../../runtime-artifacts/tunnex-agent-runtime-linux-arm64
           ../../cli-artifacts/tnx-linux-amd64 help 2>&1 | grep -F 'tunnex login'
       - name: Upload Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
@@ -363,6 +369,16 @@ jobs:
           path: |
             cli-artifacts/tnx-linux-amd64
             cli-artifacts/tnx-linux-arm64
+          if-no-files-found: error
+      - name: Upload Linux managed-agent runtime artifacts
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: tunnex-linux-agent-runtime
+          path: |
+            runtime-artifacts/tunnex-agent-runtime-linux-amd64
+            runtime-artifacts/tunnex-agent-runtime-linux-arm64
+            runtime-artifacts/tunnex-agent-runtime.service
           if-no-files-found: error
 
   # Full stack + Playwright. BLOCKING as of EPIC 11 / S11-1 (was opportunistic).
@@ -668,6 +684,12 @@ jobs:
         with:
           name: tunnex-linux-cli
           path: cli-artifacts
+      - name: Download Linux managed-agent runtime artifacts
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: actions/download-artifact@v4
+        with:
+          name: tunnex-linux-agent-runtime
+          path: runtime-artifacts
       - name: Checksum install.sh (bare filename so `sha256sum -c` works in the download dir)
         working-directory: deploy
         run: sha256sum install.sh > install.sh.sha256
@@ -690,6 +712,15 @@ jobs:
             IMAGE_TAG="$RELEASE_VERSION"
             RELEASE_TAG="tunnex-build-${SOURCE_SHA}"
           fi
+          runtime_amd64="runtime-artifacts/tunnex-agent-runtime-linux-amd64"
+          runtime_arm64="runtime-artifacts/tunnex-agent-runtime-linux-arm64"
+          runtime_unit="runtime-artifacts/tunnex-agent-runtime.service"
+          test -s "$runtime_amd64"
+          test -s "$runtime_arm64"
+          test -s "$runtime_unit"
+          runtime_amd64_sha=$(sha256sum "$runtime_amd64" | awk '{print $1}')
+          runtime_arm64_sha=$(sha256sum "$runtime_arm64" | awk '{print $1}')
+          runtime_unit_sha=$(sha256sum "$runtime_unit" | awk '{print $1}')
           digest() {
             local image="$1" arch="$2"
             docker buildx imagetools inspect --raw "$image:$IMAGE_TAG" |
@@ -709,7 +740,9 @@ jobs:
             --arg api_amd64 "$api_amd64" --arg api_arm64 "$api_arm64" --arg web_amd64 "$web_amd64" --arg web_arm64 "$web_arm64" \
             --arg nginx_amd64 "$nginx_amd64" --arg nginx_arm64 "$nginx_arm64" --arg node_amd64 "$node_amd64" --arg node_arm64 "$node_arm64" \
             --arg migrate_amd64 "$migrate_amd64" --arg migrate_arm64 "$migrate_arm64" \
-            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64}}}' > release-unsigned.json
+            --arg runtime_amd64_sha "$runtime_amd64_sha" --arg runtime_arm64_sha "$runtime_arm64_sha" \
+            --arg runtime_unit_sha "$runtime_unit_sha" \
+            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
           (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
           rm release-unsigned.json
           sha256sum release.json > release.json.sha256
@@ -768,6 +801,22 @@ jobs:
           sha256sum "$amd64" "$arm64" > cli-artifacts/Tunnex-CLI-SHA256SUMS
           gh release upload "$GITHUB_REF_NAME" \
             "$amd64" "$arm64" cli-artifacts/Tunnex-CLI-SHA256SUMS --clobber
+      - name: Attach Linux managed-agent runtime binaries + checksum to tagged release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          amd64="runtime-artifacts/tunnex-agent-runtime-linux-amd64"
+          arm64="runtime-artifacts/tunnex-agent-runtime-linux-arm64"
+          unit="runtime-artifacts/tunnex-agent-runtime.service"
+          test -s "$amd64"
+          test -s "$arm64"
+          test -s "$unit"
+          sha256sum "$amd64" "$arm64" "$unit" > runtime-artifacts/Tunnex-Agent-Runtime-SHA256SUMS
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then RELEASE_TAG="$GITHUB_REF_NAME"; else RELEASE_TAG="tunnex-build-${GITHUB_SHA}"; fi
+          gh release upload "$RELEASE_TAG" \
+            "$amd64" "$arm64" "$unit" runtime-artifacts/Tunnex-Agent-Runtime-SHA256SUMS --clobber
       - name: Mark completed versioned release as latest
         if: startsWith(github.ref, 'refs/tags/v')
         env:

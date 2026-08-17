@@ -70,33 +70,40 @@ const insertAccessEvent = `-- name: InsertAccessEvent :exec
 INSERT INTO access_events (
     id, org_id, seq, node_id, occurred_at, decision, rule_id,
     src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id,
-    protocol, dst_port, deny_count, window_end, created_at
+    protocol, dst_port, deny_count, window_end, created_at,
+    policy_hash, policy_version, src_config_revision, src_kind, decision_reason
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13,
-    $14, $15, $16, $17, $18
+    $14, $15, $16, $17, $18,
+    $19, $20, $21, $22, $23
 )
 `
 
 type InsertAccessEventParams struct {
-	ID            uuid.UUID          `json:"id"`
-	OrgID         uuid.UUID          `json:"org_id"`
-	Seq           int64              `json:"seq"`
-	NodeID        pgtype.UUID        `json:"node_id"`
-	OccurredAt    time.Time          `json:"occurred_at"`
-	Decision      string             `json:"decision"`
-	RuleID        pgtype.UUID        `json:"rule_id"`
-	SrcDeviceID   pgtype.UUID        `json:"src_device_id"`
-	SrcUserID     pgtype.UUID        `json:"src_user_id"`
-	SrcIp         string             `json:"src_ip"`
-	DstIp         string             `json:"dst_ip"`
-	DstResourceID pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID    pgtype.UUID        `json:"dst_group_id"`
-	Protocol      string             `json:"protocol"`
-	DstPort       *int32             `json:"dst_port"`
-	DenyCount     int32              `json:"deny_count"`
-	WindowEnd     pgtype.Timestamptz `json:"window_end"`
-	CreatedAt     time.Time          `json:"created_at"`
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	Seq               int64              `json:"seq"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	OccurredAt        time.Time          `json:"occurred_at"`
+	Decision          string             `json:"decision"`
+	RuleID            pgtype.UUID        `json:"rule_id"`
+	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
+	SrcUserID         pgtype.UUID        `json:"src_user_id"`
+	SrcIp             string             `json:"src_ip"`
+	DstIp             string             `json:"dst_ip"`
+	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
+	Protocol          string             `json:"protocol"`
+	DstPort           *int32             `json:"dst_port"`
+	DenyCount         int32              `json:"deny_count"`
+	WindowEnd         pgtype.Timestamptz `json:"window_end"`
+	CreatedAt         time.Time          `json:"created_at"`
+	PolicyHash        *string            `json:"policy_hash"`
+	PolicyVersion     *int32             `json:"policy_version"`
+	SrcConfigRevision *int64             `json:"src_config_revision"`
+	SrcKind           *string            `json:"src_kind"`
+	DecisionReason    *string            `json:"decision_reason"`
 }
 
 // The id is app-generated (uuid v7) so the SAME id identifies the row in BOTH the PG
@@ -126,12 +133,17 @@ func (q *Queries) InsertAccessEvent(ctx context.Context, arg InsertAccessEventPa
 		arg.DenyCount,
 		arg.WindowEnd,
 		arg.CreatedAt,
+		arg.PolicyHash,
+		arg.PolicyVersion,
+		arg.SrcConfigRevision,
+		arg.SrcKind,
+		arg.DecisionReason,
 	)
 	return err
 }
 
 const listAccessDenies = `-- name: ListAccessDenies :many
-SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at FROM access_events
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
 WHERE org_id = $1
   AND decision <> 'allow'
   AND (created_at < $2
@@ -181,6 +193,81 @@ func (q *Queries) ListAccessDenies(ctx context.Context, arg ListAccessDeniesPara
 			&i.DenyCount,
 			&i.WindowEnd,
 			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccessDeniesByAgent = `-- name: ListAccessDeniesByAgent :many
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
+WHERE org_id = $1
+  AND src_kind = 'agent'
+  AND src_device_id = $2
+  AND decision <> 'allow'
+  AND (created_at < $3
+       OR (created_at = $3 AND id < $4))
+ORDER BY created_at DESC, id DESC
+LIMIT $5
+`
+
+type ListAccessDeniesByAgentParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	SrcAgentID      pgtype.UUID `json:"src_agent_id"`
+	BeforeCreatedAt time.Time   `json:"before_created_at"`
+	BeforeID        uuid.UUID   `json:"before_id"`
+	PageLimit       int32       `json:"page_limit"`
+}
+
+func (q *Queries) ListAccessDeniesByAgent(ctx context.Context, arg ListAccessDeniesByAgentParams) ([]AccessEvent, error) {
+	rows, err := q.db.Query(ctx, listAccessDeniesByAgent,
+		arg.OrgID,
+		arg.SrcAgentID,
+		arg.BeforeCreatedAt,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccessEvent{}
+	for rows.Next() {
+		var i AccessEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Seq,
+			&i.NodeID,
+			&i.OccurredAt,
+			&i.Decision,
+			&i.RuleID,
+			&i.SrcDeviceID,
+			&i.SrcUserID,
+			&i.SrcIp,
+			&i.DstIp,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.Protocol,
+			&i.DstPort,
+			&i.DenyCount,
+			&i.WindowEnd,
+			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
 		); err != nil {
 			return nil, err
 		}
@@ -193,7 +280,7 @@ func (q *Queries) ListAccessDenies(ctx context.Context, arg ListAccessDeniesPara
 }
 
 const listAccessEvents = `-- name: ListAccessEvents :many
-SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at FROM access_events
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
 WHERE org_id = $1
   AND (created_at < $2
        OR (created_at = $2 AND id < $3))
@@ -245,6 +332,80 @@ func (q *Queries) ListAccessEvents(ctx context.Context, arg ListAccessEventsPara
 			&i.DenyCount,
 			&i.WindowEnd,
 			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccessEventsByAgent = `-- name: ListAccessEventsByAgent :many
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
+WHERE org_id = $1
+  AND src_kind = 'agent'
+  AND src_device_id = $2
+  AND (created_at < $3
+       OR (created_at = $3 AND id < $4))
+ORDER BY created_at DESC, id DESC
+LIMIT $5
+`
+
+type ListAccessEventsByAgentParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	SrcAgentID      pgtype.UUID `json:"src_agent_id"`
+	BeforeCreatedAt time.Time   `json:"before_created_at"`
+	BeforeID        uuid.UUID   `json:"before_id"`
+	PageLimit       int32       `json:"page_limit"`
+}
+
+func (q *Queries) ListAccessEventsByAgent(ctx context.Context, arg ListAccessEventsByAgentParams) ([]AccessEvent, error) {
+	rows, err := q.db.Query(ctx, listAccessEventsByAgent,
+		arg.OrgID,
+		arg.SrcAgentID,
+		arg.BeforeCreatedAt,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccessEvent{}
+	for rows.Next() {
+		var i AccessEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Seq,
+			&i.NodeID,
+			&i.OccurredAt,
+			&i.Decision,
+			&i.RuleID,
+			&i.SrcDeviceID,
+			&i.SrcUserID,
+			&i.SrcIp,
+			&i.DstIp,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.Protocol,
+			&i.DstPort,
+			&i.DenyCount,
+			&i.WindowEnd,
+			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
 		); err != nil {
 			return nil, err
 		}

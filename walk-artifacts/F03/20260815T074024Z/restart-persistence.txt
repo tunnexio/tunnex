@@ -1,0 +1,6 @@
+runtime_service_after_restart=active
+gateway_reporter_after_restart=active
+gateway_ready_after_restart=200
+applied_revision_after_restart=1
+handshake_reestablished_after_keepalive=true
+runtime_and_gateway_handshake_epochs_equal=true

@@ -353,6 +353,59 @@ func (s *Service) UpdateOrganization(ctx context.Context, id uuid.UUID, name str
 	return org, nil
 }
 
+// SetAgentQuota sets the nullable organization-wide managed-agent identity
+// quota. nil means unlimited; the device service enforces it under the org
+// allocation lock, so this setting never returns a client-inferred remainder.
+func (s *Service) SetAgentQuota(ctx context.Context, id uuid.UUID, max *int32) (sqlc.Organization, error) {
+	var org sqlc.Organization
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		before, e := q.GetOrganizationByID(ctx, id)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return orgNotFound()
+		}
+		if e != nil {
+			return e
+		}
+		org, e = q.UpdateOrganizationAgentQuota(ctx, sqlc.UpdateOrganizationAgentQuotaParams{ID: id, MaxAgentIdentities: max})
+		if e != nil {
+			return e
+		}
+		metadata := map[string]any{"max_agent_identities": map[string]any{"from": before.MaxAgentIdentities, "to": max}}
+		return writeAudit(ctx, q, id, actorFromCtx(ctx), "org.agent_quota_updated", "organization", id.String(), metadata)
+	})
+	if err != nil {
+		return sqlc.Organization{}, err
+	}
+	return org, nil
+}
+
+// SetAgentRuntimeEnabled records the F04 organization opt-in atomically with
+// its audit event. A licence unlock alone never calls this method.
+func (s *Service) SetAgentRuntimeEnabled(ctx context.Context, id uuid.UUID, enabled bool) (sqlc.Organization, error) {
+	var org sqlc.Organization
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		var e error
+		org, e = q.SetOrganizationAgentRuntimeEnabled(ctx, sqlc.SetOrganizationAgentRuntimeEnabledParams{
+			ID: id, ManagedAgentRuntimeEnabled: enabled,
+		})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return orgNotFound()
+		}
+		if e != nil {
+			return e
+		}
+		action := "org.agent_runtime_disabled"
+		if enabled {
+			action = "org.agent_runtime_enabled"
+		}
+		return writeAudit(ctx, q, id, actorFromCtx(ctx), action, "organization", id.String(), map[string]any{"enabled": enabled})
+	})
+	if err != nil {
+		return sqlc.Organization{}, err
+	}
+	return org, nil
+}
+
 // OrgResources is what an organization still owns. Zero everywhere is the only state in which it may be
 // deleted.
 type OrgResources struct {

@@ -50,7 +50,8 @@ ORDER BY u.email;
 -- Compiler input: every (group, user) pair in the org.
 SELECT group_id, user_id
 FROM group_members
-WHERE org_id = $1;
+WHERE org_id = $1
+ORDER BY group_id, user_id;
 
 -- ── resources (static destinations) ─────────────────────────────────────────────
 -- name: CreateResource :one
@@ -101,7 +102,7 @@ ORDER BY created_at;
 -- pure compiler stays clockless; this query applies now() at snapshot-build time.
 SELECT * FROM policy_rules
 WHERE org_id = $1 AND (expires_at IS NULL OR expires_at > now())
-ORDER BY created_at;
+ORDER BY created_at, id;
 
 -- name: DeletePolicyRule :execrows
 DELETE FROM policy_rules
@@ -136,6 +137,12 @@ RETURNING *;
 -- extend rescued (expires_at moved to the future) no longer matches expires_at <= now().
 DELETE FROM policy_rules
 WHERE expires_at IS NOT NULL AND expires_at <= now()
+  AND NOT EXISTS (
+      SELECT 1 FROM agent_access_requests ar
+      WHERE ar.org_id=policy_rules.org_id
+        AND ar.policy_rule_id=policy_rules.id
+        AND ar.state='approved'
+  )
 RETURNING id, org_id;
 
 -- ── compiler inputs ─────────────────────────────────────────────────────────────
@@ -146,10 +153,12 @@ RETURNING id, org_id;
 -- must not participate in policy (as a source OR a destination) even if the device
 -- itself was never revoked. NOT health_blocked (S7.5.3): a health-blocked device's
 -- /32 leaves the compiled allow-sets (source AND destination) the same way.
-SELECT d.id, d.user_id, d.node_id, d.assigned_ip, d.kind
+SELECT d.id, d.user_id, d.node_id, d.assigned_ip, d.kind,
+       ars.applied_revision AS agent_config_revision
 FROM devices d
 JOIN users u ON u.id = d.user_id
 JOIN memberships mem ON mem.org_id = d.org_id AND mem.user_id = d.user_id
+LEFT JOIN agent_runtime_state ars ON ars.device_id = d.id AND d.kind = 'agent'
 WHERE d.org_id = $1
   AND d.status = 'active' AND NOT d.health_blocked AND d.deleted_at IS NULL
   AND u.status = 'active' AND u.deleted_at IS NULL

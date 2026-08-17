@@ -1,5 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  fireEvent,
+  within,
+} from "@testing-library/react";
 
 // SLICE 4 — Access. Last of the four ranked screens, and the only one whose case is CONSEQUENCE-based rather
 // than finding-based. So the consequence is stated here, because it is the decision under test:
@@ -54,6 +61,20 @@ const RULES = [
     expires_at: "2099-01-01T00:00:00Z",
   },
 ];
+let rulesForTest: Array<Record<string, unknown>> = RULES;
+let groupsForTest = [
+  { id: "g1", name: "Engineering" },
+  { id: "g2", name: "Operations" },
+];
+let resourcesForTest = [{ id: "res1", name: "10.0.0.0/24" }];
+let sitesForTest: Array<{ id: string; name: string }> = [];
+let agentsForTest: Array<{
+  device_id: string;
+  name: string;
+  gateway_name: string;
+}> = [];
+let postedBodies: unknown[] = [];
+let agentReads = 0;
 
 vi.mock("../src/lib/api", async () => {
   const actual =
@@ -79,11 +100,21 @@ vi.mock("../src/lib/api", async () => {
               data: undefined,
               error: { error: { code: "boom", message: "nope" } },
             };
-          return { data: RULES };
+          return { data: rulesForTest };
+        }
+        if (path.endsWith("/groups")) return { data: groupsForTest };
+        if (path.endsWith("/resources")) return { data: resourcesForTest };
+        if (path.endsWith("/sites")) return { data: sitesForTest };
+        if (path.endsWith("/agents")) {
+          agentReads += 1;
+          return { data: agentsForTest };
         }
         return { data: [] };
       }),
-      POST: vi.fn(async () => ({ data: {} })),
+      POST: vi.fn(async (_path: string, request?: { body?: unknown }) => {
+        postedBodies.push(request?.body);
+        return { data: { id: `created-${postedBodies.length}` } };
+      }),
       PATCH: vi.fn(async () => ({ data: {} })),
       DELETE: vi.fn(async () => ({ data: {} })),
     },
@@ -109,6 +140,78 @@ const withAuth = (ui: React.ReactElement) =>
 beforeEach(() => {
   mode = "enforcing";
   rulesFail = false;
+  rulesForTest = RULES;
+  groupsForTest = [
+    { id: "g1", name: "Engineering" },
+    { id: "g2", name: "Operations" },
+  ];
+  resourcesForTest = [{ id: "res1", name: "10.0.0.0/24" }];
+  sitesForTest = [];
+  agentsForTest = [];
+  postedBodies = [];
+  agentReads = 0;
+});
+
+describe("Access — F06 agent sources are first-class", () => {
+  const agentRule = {
+    id: "r-agent",
+    enabled: true,
+    src_kind: "agent",
+    src_device_id: "agent-1",
+    dst_kind: "resource",
+    dst_resource_id: "res1",
+  };
+
+  function arrangeAgentOnlyOrg() {
+    rulesForTest = [agentRule];
+    groupsForTest = [];
+    sitesForTest = [];
+    agentsForTest = [
+      { device_id: "agent-1", name: "build-bot", gateway_name: "aws-gw" },
+    ];
+  }
+
+  it("creates and refetches an agent grant in an org with no group or site", async () => {
+    arrangeAgentOnlyOrg();
+    withAuth(<Access />);
+    await waitFor(() =>
+      expect(screen.getAllByText("build-bot").length).toBeGreaterThan(0),
+    );
+    const add = screen.getByRole("button", { name: "Add rule" });
+    expect((add as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(add);
+    const createDialog = screen.getByRole("dialog", { name: "Add rule" });
+    const create = within(createDialog).getByRole("button", { name: "Create" });
+    expect((create as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(create);
+    await waitFor(() => expect(postedBodies).toHaveLength(1));
+    expect(postedBodies[0]).toMatchObject({
+      src_kind: "agent",
+      src_device_id: "agent-1",
+      dst_kind: "resource",
+      dst_resource_id: "res1",
+    });
+    await waitFor(() => expect(agentReads).toBeGreaterThan(1));
+  });
+
+  it("hydrates Edit from the existing agent source and preserves it on Save", async () => {
+    arrangeAgentOnlyOrg();
+    withAuth(<Access />);
+    const select = await screen.findByRole("checkbox", {
+      name: "Select build-bot",
+    });
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const editDialog = screen.getByRole("dialog", { name: "Edit rule" });
+    const save = within(editDialog).getByRole("button", { name: "Save" });
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(postedBodies).toHaveLength(1));
+    expect(postedBodies[0]).toMatchObject({
+      src_kind: "agent",
+      src_device_id: "agent-1",
+    });
+  });
 });
 
 describe("Access — wiring: the screen must not claim enforcement it does not have", () => {

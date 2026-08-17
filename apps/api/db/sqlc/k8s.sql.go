@@ -13,6 +13,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAgentPolicyTemplateK8sServiceReferences = `-- name: CountAgentPolicyTemplateK8sServiceReferences :one
+SELECT count(DISTINCT template_version_id)
+FROM agent_policy_template_version_items
+WHERE org_id = $1 AND dst_k8s_service_id = $2
+`
+
+type CountAgentPolicyTemplateK8sServiceReferencesParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	DstK8sServiceID pgtype.UUID `json:"dst_k8s_service_id"`
+}
+
+// Immutable F09 template versions retain their destination identity. A soft
+// unexpose must refuse before it would turn a reusable template into a silent
+// no-op; the released confirmation reads the same server-owned count.
+func (q *Queries) CountAgentPolicyTemplateK8sServiceReferences(ctx context.Context, arg CountAgentPolicyTemplateK8sServiceReferencesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAgentPolicyTemplateK8sServiceReferences, arg.OrgID, arg.DstK8sServiceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countClusterCascade = `-- name: CountClusterCascade :one
 SELECT
   (SELECT count(*) FROM k8s_services s WHERE s.cluster_id = $2 AND s.org_id = $1 AND s.deleted_at IS NULL) AS service_count,
@@ -44,7 +65,7 @@ const createK8sCluster = `-- name: CreateK8sCluster :one
 
 INSERT INTO k8s_clusters (org_id, site_id, connector_node_id, name, vip_range, service_cidr, dns_zone, dns_vip, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id
+RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
 `
 
 type CreateK8sClusterParams struct {
@@ -86,6 +107,7 @@ func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterPara
 		&i.DnsVip,
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
 	)
 	return i, err
 }
@@ -93,7 +115,7 @@ func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterPara
 const createK8sService = `-- name: CreateK8sService :one
 INSERT INTO k8s_services (org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine
+RETURNING id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine, identity_id
 `
 
 type CreateK8sServiceParams struct {
@@ -135,6 +157,7 @@ func (q *Queries) CreateK8sService(ctx context.Context, arg CreateK8sServicePara
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ManagedByMachine,
+		&i.IdentityID,
 	)
 	return i, err
 }
@@ -154,7 +177,7 @@ func (q *Queries) DeleteK8sCluster(ctx context.Context, arg DeleteK8sClusterPara
 }
 
 const getK8sCluster = `-- name: GetK8sCluster :one
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id FROM k8s_clusters WHERE org_id = $1 AND id = $2
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id FROM k8s_clusters WHERE org_id = $1 AND id = $2
 `
 
 type GetK8sClusterParams struct {
@@ -178,12 +201,13 @@ func (q *Queries) GetK8sCluster(ctx context.Context, arg GetK8sClusterParams) (K
 		&i.DnsVip,
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
 	)
 	return i, err
 }
 
 const getK8sService = `-- name: GetK8sService :one
-SELECT id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine FROM k8s_services WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL
+SELECT id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, created_at, updated_at, deleted_at, managed_by_machine, identity_id FROM k8s_services WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL
 `
 
 type GetK8sServiceParams struct {
@@ -208,6 +232,7 @@ func (q *Queries) GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ManagedByMachine,
+		&i.IdentityID,
 	)
 	return i, err
 }
@@ -313,7 +338,7 @@ func (q *Queries) ListK8sClusterZonesForOrg(ctx context.Context, orgID uuid.UUID
 }
 
 const listK8sClustersForOrg = `-- name: ListK8sClustersForOrg :many
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id FROM k8s_clusters WHERE org_id = $1 ORDER BY name
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id FROM k8s_clusters WHERE org_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([]K8sCluster, error) {
@@ -338,6 +363,7 @@ func (q *Queries) ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([
 			&i.DnsVip,
 			&i.ManagedByMachine,
 			&i.ConnectorNodeID,
+			&i.ConnectorPoolID,
 		); err != nil {
 			return nil, err
 		}

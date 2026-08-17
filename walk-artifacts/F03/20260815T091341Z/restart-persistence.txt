@@ -1,0 +1,9 @@
+manual_runtime_restart=pass
+service_active_after_restart=true
+systemd_nrestarts=0
+applied_revision_after_restart=1
+runtime_interface_after_restart=present
+wireguard_handshake_advanced_after_restart=true
+control_plane_desired_attempted_applied_after_restart=1/1/1
+released_agents_online_after_restart=true
+roster_count_for_disposable_agent=1

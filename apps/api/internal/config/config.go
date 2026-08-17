@@ -58,6 +58,7 @@ type Config struct {
 	// Release metadata is an operator-provided, signed descriptor. Empty path means
 	// the upgrade center is unavailable rather than guessing from a mutable tag.
 	ReleaseManifestPath string
+	ReleaseManifestURL  string
 	ReleasePublicKey    string
 	ReleaseSequence     int64
 	ReleaseVersion      string
@@ -153,6 +154,7 @@ func Load() Config {
 		AdminEmail:          getenv("TUNNEX_ADMIN_EMAIL", ""),
 		NodeAgentImage:      getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
 		ReleaseManifestPath: getenv("TUNNEX_RELEASE_MANIFEST_PATH", ""),
+		ReleaseManifestURL:  getenv("TUNNEX_RELEASE_MANIFEST_URL", ""),
 		ReleasePublicKey:    getenv("TUNNEX_RELEASE_PUBLIC_KEY", ""),
 		ReleaseSequence:     getint64("TUNNEX_RELEASE_SEQUENCE", 0),
 		ReleaseVersion:      getenv("TUNNEX_RELEASE_VERSION", ""),

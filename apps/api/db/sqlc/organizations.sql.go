@@ -152,7 +152,7 @@ func (q *Queries) CountOrganizationsEver(ctx context.Context) (int64, error) {
 const createOrganization = `-- name: CreateOrganization :one
 INSERT INTO organizations (name, slug)
 VALUES ($1, $2)
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
 `
 
 type CreateOrganizationParams struct {
@@ -176,12 +176,16 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }
 
 const getOrganizationByID = `-- name: GetOrganizationByID :one
-SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled FROM organizations
+SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled FROM organizations
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -201,12 +205,16 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organi
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }
 
 const getOrganizationBySlug = `-- name: GetOrganizationBySlug :one
-SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled FROM organizations
+SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled FROM organizations
 WHERE slug = $1 AND deleted_at IS NULL
 `
 
@@ -226,6 +234,10 @@ func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organ
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }
@@ -257,7 +269,7 @@ func (q *Queries) ListOVPNEnabledOrgs(ctx context.Context) ([]uuid.UUID, error) 
 }
 
 const listOrganizations = `-- name: ListOrganizations :many
-SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled FROM organizations
+SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled FROM organizations
 WHERE deleted_at IS NULL
 ORDER BY created_at
 `
@@ -286,6 +298,10 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error)
 			&i.DeviceApproval,
 			&i.FlowSeq,
 			&i.OvpnEnabled,
+			&i.MaxAgentIdentities,
+			&i.ManagedAgentRuntimeEnabled,
+			&i.AgentPolicyTemplatesEnabled,
+			&i.AgentJitAccessEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -298,7 +314,7 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error)
 }
 
 const listOrganizationsForUser = `-- name: ListOrganizationsForUser :many
-SELECT o.id, o.name, o.slug, o.created_at, o.updated_at, o.deleted_at, o.max_devices_per_user, o.pool_cidr, o.zero_trust_mode, o.device_approval, o.flow_seq, o.ovpn_enabled FROM organizations o
+SELECT o.id, o.name, o.slug, o.created_at, o.updated_at, o.deleted_at, o.max_devices_per_user, o.pool_cidr, o.zero_trust_mode, o.device_approval, o.flow_seq, o.ovpn_enabled, o.max_agent_identities, o.managed_agent_runtime_enabled, o.agent_policy_templates_enabled, o.agent_jit_access_enabled FROM organizations o
 JOIN memberships m ON m.org_id = o.id
 WHERE m.user_id = $1 AND o.deleted_at IS NULL
 ORDER BY o.created_at
@@ -326,6 +342,10 @@ func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID
 			&i.DeviceApproval,
 			&i.FlowSeq,
 			&i.OvpnEnabled,
+			&i.MaxAgentIdentities,
+			&i.ManagedAgentRuntimeEnabled,
+			&i.AgentPolicyTemplatesEnabled,
+			&i.AgentJitAccessEnabled,
 		); err != nil {
 			return nil, err
 		}
@@ -340,7 +360,7 @@ func (q *Queries) ListOrganizationsForUser(ctx context.Context, userID uuid.UUID
 const setOrgOVPNEnabled = `-- name: SetOrgOVPNEnabled :one
 UPDATE organizations SET ovpn_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
 `
 
 type SetOrgOVPNEnabledParams struct {
@@ -367,6 +387,125 @@ func (q *Queries) SetOrgOVPNEnabled(ctx context.Context, arg SetOrgOVPNEnabledPa
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
+	)
+	return i, err
+}
+
+const setOrganizationAgentJITAccessEnabled = `-- name: SetOrganizationAgentJITAccessEnabled :one
+UPDATE organizations
+SET agent_jit_access_enabled = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
+`
+
+type SetOrganizationAgentJITAccessEnabledParams struct {
+	ID                    uuid.UUID `json:"id"`
+	AgentJitAccessEnabled bool      `json:"agent_jit_access_enabled"`
+}
+
+// F10 unlock-then-opt-in. The JIT service refuses disable while pending or
+// approved requests exist.
+func (q *Queries) SetOrganizationAgentJITAccessEnabled(ctx context.Context, arg SetOrganizationAgentJITAccessEnabledParams) (Organization, error) {
+	row := q.db.QueryRow(ctx, setOrganizationAgentJITAccessEnabled, arg.ID, arg.AgentJitAccessEnabled)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.MaxDevicesPerUser,
+		&i.PoolCidr,
+		&i.ZeroTrustMode,
+		&i.DeviceApproval,
+		&i.FlowSeq,
+		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
+	)
+	return i, err
+}
+
+const setOrganizationAgentPolicyTemplatesEnabled = `-- name: SetOrganizationAgentPolicyTemplatesEnabled :one
+UPDATE organizations
+SET agent_policy_templates_enabled = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
+`
+
+type SetOrganizationAgentPolicyTemplatesEnabledParams struct {
+	ID                          uuid.UUID `json:"id"`
+	AgentPolicyTemplatesEnabled bool      `json:"agent_policy_templates_enabled"`
+}
+
+// F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
+// which refuses while a live assignment exists.
+func (q *Queries) SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (Organization, error) {
+	row := q.db.QueryRow(ctx, setOrganizationAgentPolicyTemplatesEnabled, arg.ID, arg.AgentPolicyTemplatesEnabled)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.MaxDevicesPerUser,
+		&i.PoolCidr,
+		&i.ZeroTrustMode,
+		&i.DeviceApproval,
+		&i.FlowSeq,
+		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
+	)
+	return i, err
+}
+
+const setOrganizationAgentRuntimeEnabled = `-- name: SetOrganizationAgentRuntimeEnabled :one
+UPDATE organizations
+SET managed_agent_runtime_enabled = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
+`
+
+type SetOrganizationAgentRuntimeEnabledParams struct {
+	ID                         uuid.UUID `json:"id"`
+	ManagedAgentRuntimeEnabled bool      `json:"managed_agent_runtime_enabled"`
+}
+
+// F04 unlock-then-opt-in: the paid licence only unlocks this setting. The
+// organization must explicitly enable runtime synchronization, and disabling
+// it immediately withdraws the poll/report/status surface.
+func (q *Queries) SetOrganizationAgentRuntimeEnabled(ctx context.Context, arg SetOrganizationAgentRuntimeEnabledParams) (Organization, error) {
+	row := q.db.QueryRow(ctx, setOrganizationAgentRuntimeEnabled, arg.ID, arg.ManagedAgentRuntimeEnabled)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.MaxDevicesPerUser,
+		&i.PoolCidr,
+		&i.ZeroTrustMode,
+		&i.DeviceApproval,
+		&i.FlowSeq,
+		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }
@@ -389,7 +528,7 @@ const updateOrgPoolCidr = `-- name: UpdateOrgPoolCidr :one
 UPDATE organizations
 SET pool_cidr = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
 `
 
 type UpdateOrgPoolCidrParams struct {
@@ -415,6 +554,48 @@ func (q *Queries) UpdateOrgPoolCidr(ctx context.Context, arg UpdateOrgPoolCidrPa
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
+	)
+	return i, err
+}
+
+const updateOrganizationAgentQuota = `-- name: UpdateOrganizationAgentQuota :one
+UPDATE organizations
+SET max_agent_identities = $2
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
+`
+
+type UpdateOrganizationAgentQuotaParams struct {
+	ID                 uuid.UUID `json:"id"`
+	MaxAgentIdentities *int32    `json:"max_agent_identities"`
+}
+
+// NULL is explicit unlimited. The dedicated endpoint avoids conflating an
+// omitted field in the legacy name PATCH with clearing the quota.
+func (q *Queries) UpdateOrganizationAgentQuota(ctx context.Context, arg UpdateOrganizationAgentQuotaParams) (Organization, error) {
+	row := q.db.QueryRow(ctx, updateOrganizationAgentQuota, arg.ID, arg.MaxAgentIdentities)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.MaxDevicesPerUser,
+		&i.PoolCidr,
+		&i.ZeroTrustMode,
+		&i.DeviceApproval,
+		&i.FlowSeq,
+		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }
@@ -423,7 +604,7 @@ const updateOrganizationName = `-- name: UpdateOrganizationName :one
 UPDATE organizations
 SET name = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
 `
 
 type UpdateOrganizationNameParams struct {
@@ -448,6 +629,10 @@ func (q *Queries) UpdateOrganizationName(ctx context.Context, arg UpdateOrganiza
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }
@@ -457,7 +642,7 @@ INSERT INTO organizations (id, name, slug)
 VALUES ($1, $2, $3)
 ON CONFLICT (id) DO UPDATE
     SET name = EXCLUDED.name, slug = EXCLUDED.slug, deleted_at = NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled
 `
 
 type UpsertOrganizationParams struct {
@@ -484,6 +669,10 @@ func (q *Queries) UpsertOrganization(ctx context.Context, arg UpsertOrganization
 		&i.DeviceApproval,
 		&i.FlowSeq,
 		&i.OvpnEnabled,
+		&i.MaxAgentIdentities,
+		&i.ManagedAgentRuntimeEnabled,
+		&i.AgentPolicyTemplatesEnabled,
+		&i.AgentJitAccessEnabled,
 	)
 	return i, err
 }

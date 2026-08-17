@@ -13,6 +13,7 @@ export type Node = components["schemas"]["Node"];
 export type HubSet = components["schemas"]["HubSet"];
 export type HubMember = components["schemas"]["HubMember"];
 export type Device = components["schemas"]["Device"];
+export type BootstrapRelease = components["schemas"]["AgentBootstrapRelease"];
 export type OrgOverview = components["schemas"]["OrgOverview"];
 export type Member = components["schemas"]["Member"];
 export type MachineCredential = components["schemas"]["MachineCredential"];
@@ -20,11 +21,30 @@ export type Role = Member["role"];
 export type SsoConfigView = components["schemas"]["SsoConfigView"];
 export type ResizeConflict = components["schemas"]["ResizeConflict"];
 export type AuditLogEntry = components["schemas"]["AuditLogEntry"];
+export type AccessEvent = components["schemas"]["AccessEvent"];
 // S7.4a — Zero Trust admin UI DTOs.
 export type UserGroup = components["schemas"]["UserGroup"];
 export type GroupMember = components["schemas"]["GroupMember"];
 export type Resource = components["schemas"]["Resource"];
 export type PolicyRule = components["schemas"]["PolicyRule"];
+export type AgentAccessDiagnostic =
+  components["schemas"]["AgentAccessDiagnostic"];
+export type AgentAccessCheck = components["schemas"]["AgentAccessCheck"];
+export type AgentAccessDestination =
+  components["schemas"]["AgentAccessDestination"];
+export type AgentAccessRequest = components["schemas"]["AgentAccessRequest"];
+export type AgentAccessRequestPage =
+  components["schemas"]["AgentAccessRequestPage"];
+export type AgentJITAccessSetting =
+  components["schemas"]["AgentJITAccessSetting"];
+export type AgentGroup = components["schemas"]["AgentGroup"];
+export type AgentGroupMember = components["schemas"]["AgentGroupMember"];
+export type AgentPolicyTemplate = components["schemas"]["AgentPolicyTemplate"];
+export type AgentPolicyTemplateVersion = components["schemas"]["AgentPolicyTemplateVersion"];
+export type AgentPolicyTemplatePreview = components["schemas"]["AgentPolicyTemplatePreview"];
+export type AgentPolicyTemplateAssignment = components["schemas"]["AgentPolicyTemplateAssignment"];
+export type AgentPolicyTemplateRemovalImpact = components["schemas"]["AgentPolicyTemplateRemovalImpact"];
+export type AgentPolicyTemplateDestinationImpact = components["schemas"]["AgentPolicyTemplateDestinationImpact"];
 export type ZeroTrustMode = components["schemas"]["ZeroTrustMode"];
 export type AffectedDevice = components["schemas"]["AffectedDevice"];
 // S7.5.4 — per-user + temporary grants.

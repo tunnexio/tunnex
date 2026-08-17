@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"regexp"
 	"sort"
 	"sync"
 	"time"
@@ -29,18 +30,24 @@ const (
 // (legitimate volume); a src at or under the threshold keeps its individual denies.
 const DenyAggregateThreshold = 5
 
+var policyHashRE = regexp.MustCompile(`^[0-9a-f]{12}$`)
+
 // WireEvent is the agent→CP flow-event shape (mirrors node flowlog.Event). Defined here so
 // the api module never imports the node module. Verdict is "allow" | "deny".
 type WireEvent struct {
-	OccurredAt  time.Time `json:"occurred_at"`
-	Verdict     string    `json:"verdict"`
-	RuleID      string    `json:"rule_id,omitempty"`
-	PolicyHash  string    `json:"policy_hash"`
-	SrcIP       string    `json:"src_ip"`
-	SrcDeviceID string    `json:"src_device_id,omitempty"` // v3: agent-stamped from the artifact ("" = unresolved)
-	DstIP       string    `json:"dst_ip"`
-	Protocol    string    `json:"protocol"`
-	DstPort     int       `json:"dst_port,omitempty"`
+	OccurredAt        time.Time `json:"occurred_at"`
+	Verdict           string    `json:"verdict"`
+	RuleID            string    `json:"rule_id,omitempty"`
+	PolicyHash        string    `json:"policy_hash"`
+	PolicyVersion     int       `json:"policy_version,omitempty"`
+	SrcIP             string    `json:"src_ip"`
+	SrcDeviceID       string    `json:"src_device_id,omitempty"` // v3: agent-stamped from the artifact ("" = unresolved)
+	SrcDeviceKind     string    `json:"src_device_kind,omitempty"`
+	SrcConfigRevision *int64    `json:"src_config_revision,omitempty"`
+	Reason            string    `json:"reason,omitempty"`
+	DstIP             string    `json:"dst_ip"`
+	Protocol          string    `json:"protocol"`
+	DstPort           int       `json:"dst_port,omitempty"`
 }
 
 // GrantResolver maps a kernel-stamped rule_id to the grant's destination, captured AT EVENT
@@ -58,7 +65,7 @@ type GrantResolver interface {
 // to this org — the event drops BOTH device + user to unattributed (an unverifiable id is not
 // persisted; [9] cross-tenant-seed guard).
 type DeviceResolver interface {
-	ResolveUser(ctx context.Context, orgID, deviceID uuid.UUID) (userID *uuid.UUID, ok bool)
+	Resolve(ctx context.Context, orgID, deviceID uuid.UUID) (userID *uuid.UUID, kind string, ok bool)
 }
 
 // SQLDeviceResolver is the production DeviceResolver: src_device_id → owning user via the
@@ -66,13 +73,13 @@ type DeviceResolver interface {
 // attributes its user). Mirrors SQLGrantResolver.
 type SQLDeviceResolver struct{ Q *sqlc.Queries }
 
-// ResolveUser implements DeviceResolver.
-func (r SQLDeviceResolver) ResolveUser(ctx context.Context, orgID, deviceID uuid.UUID) (*uuid.UUID, bool) {
-	uid, err := r.Q.GetDeviceUserForOrg(ctx, sqlc.GetDeviceUserForOrgParams{ID: deviceID, OrgID: orgID})
+// Resolve implements DeviceResolver.
+func (r SQLDeviceResolver) Resolve(ctx context.Context, orgID, deviceID uuid.UUID) (*uuid.UUID, string, bool) {
+	row, err := r.Q.GetDeviceAttributionForOrg(ctx, sqlc.GetDeviceAttributionForOrgParams{ID: deviceID, OrgID: orgID})
 	if err != nil {
-		return nil, false
+		return nil, "", false
 	}
-	return &uid, true
+	return &row.UserID, row.Kind, true
 }
 
 // SQLGrantResolver is the production GrantResolver: rule_id → the grant's destination via
@@ -132,7 +139,7 @@ func (i *Ingester) IngestBatch(ctx context.Context, orgID, nodeID uuid.UUID, wir
 		// The gap marker sits in-stream where the loss occurred (an auditor sees it).
 		events = append(events, Event{
 			OrgID: orgID, NodeID: &nodeID, OccurredAt: i.now().UTC(),
-			Decision: DecisionGap, DenyCount: int(dropped),
+			Decision: DecisionGap, DecisionReason: ReasonEventsDropped, DenyCount: int(dropped),
 		})
 	}
 	if len(events) == 0 {
@@ -236,7 +243,25 @@ type deviceCache struct {
 
 type deviceHit struct {
 	user *uuid.UUID
+	kind string
 	ok   bool // the device id belongs to THIS org (an org-scoped resolve confirmed it)
+}
+
+type denyGroupKey struct {
+	srcIP, policyHash, deviceID, deviceKind string
+	policyVersion, configRevision           int64
+	hasConfigRevision                       bool
+}
+
+func denyKey(w WireEvent) denyGroupKey {
+	k := denyGroupKey{
+		srcIP: w.SrcIP, policyHash: w.PolicyHash, deviceID: w.SrcDeviceID,
+		deviceKind: w.SrcDeviceKind, policyVersion: int64(w.PolicyVersion),
+	}
+	if w.SrcConfigRevision != nil {
+		k.configRevision, k.hasConfigRevision = *w.SrcConfigRevision, true
+	}
+	return k
 }
 
 // resolve returns the owning user AND whether the device id is a VERIFIED org device. An
@@ -244,16 +269,16 @@ type deviceHit struct {
 // the caller drops it to unattributed (an unverifiable id is ABSENT, never persisted as if
 // authoritative; the S7.5.3 no-guess law) rather than seeding the immutable log with a
 // foreign/forged device id (the [9] cross-tenant-seed the story-end review flagged).
-func (c *deviceCache) resolve(ctx context.Context, orgID, deviceID uuid.UUID) (*uuid.UUID, bool) {
+func (c *deviceCache) resolve(ctx context.Context, orgID, deviceID uuid.UUID) (*uuid.UUID, string, bool) {
 	if c == nil || c.r == nil {
-		return nil, false
+		return nil, "", false
 	}
 	if h, seen := c.seen[deviceID]; seen {
-		return h.user, h.ok
+		return h.user, h.kind, h.ok
 	}
-	u, ok := c.r.ResolveUser(ctx, orgID, deviceID)
-	c.seen[deviceID] = deviceHit{user: u, ok: ok}
-	return u, ok
+	u, kind, ok := c.r.Resolve(ctx, orgID, deviceID)
+	c.seen[deviceID] = deviceHit{user: u, kind: kind, ok: ok}
+	return u, kind, ok
 }
 
 // aggregate enriches each wire event (grant-only) and collapses per-source deny floods.
@@ -261,27 +286,52 @@ func (i *Ingester) aggregate(ctx context.Context, orgID, nodeID uuid.UUID, wire 
 	out := make([]Event, 0, len(wire))
 	gc := &grantCache{r: i.grants, seen: map[uuid.UUID]grantHit{}}    // one grant lookup per distinct rule_id per batch
 	dc := &deviceCache{r: i.devices, seen: map[uuid.UUID]deviceHit{}} // one device→user lookup per distinct device per batch
-	denyBySrc := map[string][]WireEvent{}
+	// Never collapse observations from different applied artifact/configuration
+	// snapshots into one historical row. A batch can straddle a policy apply;
+	// grouping by source alone would put the first observation clock beside the
+	// last event's attribution metadata.
+	denyGroups := map[denyGroupKey][]WireEvent{}
 	for _, w := range wire {
 		switch w.Verdict {
+		case wireAllow:
+			out = append(out, i.enrich(ctx, gc, dc, orgID, nodeID, w, DecisionAllow))
 		case wireDeny:
-			denyBySrc[w.SrcIP] = append(denyBySrc[w.SrcIP], w)
+			k := denyKey(w)
+			denyGroups[k] = append(denyGroups[k], w)
 		case wireTerminated:
 			// A flow torn down by a rule-revoke — enriched on the REVOKED grant's rule_id (the
 			// carried binding), NEVER aggregated (each termination is a distinct event).
 			out = append(out, i.enrich(ctx, gc, dc, orgID, nodeID, w, DecisionTerminated))
-		default: // allow
-			out = append(out, i.enrich(ctx, gc, dc, orgID, nodeID, w, DecisionAllow))
+		default:
+			slog.Warn("flow_event_unknown_verdict", slog.String("org_id", orgID.String()), slog.String("node_id", nodeID.String()))
 		}
 	}
 	// Deterministic order: aggregate/emit denies by src.
-	srcs := make([]string, 0, len(denyBySrc))
-	for s := range denyBySrc {
-		srcs = append(srcs, s)
+	keys := make([]denyGroupKey, 0, len(denyGroups))
+	for k := range denyGroups {
+		keys = append(keys, k)
 	}
-	sort.Strings(srcs)
-	for _, s := range srcs {
-		ds := denyBySrc[s]
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := keys[i], keys[j]
+		if a.srcIP != b.srcIP {
+			return a.srcIP < b.srcIP
+		}
+		if a.policyHash != b.policyHash {
+			return a.policyHash < b.policyHash
+		}
+		if a.policyVersion != b.policyVersion {
+			return a.policyVersion < b.policyVersion
+		}
+		if a.deviceID != b.deviceID {
+			return a.deviceID < b.deviceID
+		}
+		if a.hasConfigRevision != b.hasConfigRevision {
+			return !a.hasConfigRevision
+		}
+		return a.configRevision < b.configRevision
+	})
+	for _, k := range keys {
+		ds := denyGroups[k]
 		if len(ds) > DenyAggregateThreshold {
 			// Collapse: one deny_aggregate carrying the src (via enrich), the count, and the
 			// full window BOUNDS — OccurredAt = first deny seen, WindowEnd = last — so a SIEM
@@ -311,6 +361,10 @@ func (i *Ingester) enrich(ctx context.Context, gc *grantCache, dc *deviceCache, 
 	e := Event{
 		OrgID: orgID, NodeID: &nodeID, OccurredAt: w.OccurredAt.UTC(), Decision: d,
 		SrcIP: w.SrcIP, DstIP: w.DstIP, Protocol: w.Protocol, DstPort: w.DstPort,
+		DecisionReason: reasonForDecision(d),
+	}
+	if policyHashRE.MatchString(w.PolicyHash) && w.PolicyVersion > 0 {
+		e.PolicyHash, e.PolicyVersion = w.PolicyHash, w.PolicyVersion
 	}
 	if rid, err := uuid.Parse(w.RuleID); err == nil {
 		e.RuleID = &rid
@@ -325,9 +379,14 @@ func (i *Ingester) enrich(ctx context.Context, gc *grantCache, dc *deviceCache, 
 	// immutable log where a viewer could later surface a foreign device (cross-tenant seed).
 	// The mismatch is LOGGED (a compromise/bug signal), not silently swallowed.
 	if did, err := uuid.Parse(w.SrcDeviceID); err == nil {
-		if user, ok := dc.resolve(ctx, orgID, did); ok {
+		if user, kind, ok := dc.resolve(ctx, orgID, did); ok {
 			e.SrcDeviceID = &did
 			e.SrcUserID = user
+			e.SrcKind = kind
+			if kind == "agent" && w.SrcConfigRevision != nil && *w.SrcConfigRevision >= 0 {
+				r := *w.SrcConfigRevision
+				e.SrcConfigRevision = &r
+			}
 		} else {
 			slog.Warn("flow_event_unverified_device_id",
 				slog.String("org_id", orgID.String()), slog.String("node_id", nodeID.String()),
@@ -335,4 +394,17 @@ func (i *Ingester) enrich(ctx context.Context, gc *grantCache, dc *deviceCache, 
 		}
 	}
 	return e
+}
+
+func reasonForDecision(d Decision) DecisionReason {
+	switch d {
+	case DecisionAllow:
+		return ReasonMatchedGrant
+	case DecisionTerminated:
+		return ReasonGrantRevoked
+	case DecisionGap:
+		return ReasonEventsDropped
+	default:
+		return ReasonNoMatchingGrant
+	}
 }

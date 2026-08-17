@@ -24,6 +24,7 @@ import {
   flowTag,
   cascadeConfirmCopy,
   cascadeConfirmSatisfied,
+  groupMemberRemovalCopy,
   srcGroupEmptyWarn,
   srcGroupEmptyBadge,
   srcGroupEmptyExplain,
@@ -154,6 +155,25 @@ describe("D-a6 rule label — NEVER omit; DELETED ≠ UNRESOLVED", () => {
     expect(
       ruleRow(human, groups, resources, [], [], LOADED).managedByOperator,
     ).toBeFalsy();
+  });
+
+  it("resolves an agent source from the org-scoped agent roster", () => {
+    const rule = {
+      id: "agent-rule",
+      src_kind: "agent",
+      src_device_id: "agent-1",
+      dst_kind: "resource",
+      dst_resource_id: "r-net",
+    } as PolicyRule;
+    const row = ruleRow(rule, groups, resources, [], [], {
+      ...LOADED,
+      agentsLoaded: true,
+      agents: [
+        { device_id: "agent-1", name: "build-bot", gateway_name: "aws-gw" },
+      ],
+    });
+    expect(row.src).toEqual({ id: "agent-1", label: "build-bot", state: "ok" });
+    expect(row.broken).toBe(false);
   });
 
   it("WF-8: site rules resolve to NAMES, and two UUIDv7-prefix-sharing sites render distinguishably", () => {
@@ -893,7 +913,11 @@ describe("ruleRow — a site-dst rule renders as a site, NEVER a broken 'deleted
   });
 });
 
-import { defaultDstKind, defaultSrcKind } from "../src/lib/policyview";
+import {
+  defaultDstKind,
+  defaultSrcKind,
+  ruleSourceReady,
+} from "../src/lib/policyview";
 
 describe("defaultSrcKind / defaultDstKind — the modal opens on a kind that HAS options (re-review #4)", () => {
   it("an editing rule's kind always wins", () => {
@@ -908,6 +932,14 @@ describe("defaultSrcKind / defaultDstKind — the modal opens on a kind that HAS
     expect(
       defaultSrcKind({ editingKind: "user", hasGroups: true, hasSites: true }),
     ).toBe("user");
+    expect(
+      defaultSrcKind({
+        editingKind: "agent",
+        hasGroups: true,
+        hasSites: true,
+        hasAgents: true,
+      }),
+    ).toBe("agent");
   });
   it("groups present → groups is the primary default (both sides)", () => {
     expect(
@@ -928,6 +960,37 @@ describe("defaultSrcKind / defaultDstKind — the modal opens on a kind that HAS
       defaultDstKind({ hasGroups: false, hasResources: false, hasSites: true }),
     ).toBe("site");
     expect(defaultSrcKind({ hasGroups: false, hasSites: true })).toBe("site");
+  });
+  it("a no-group, no-site org with an agent defaults to the agent source", () => {
+    expect(
+      defaultSrcKind({
+        hasGroups: false,
+        hasSites: false,
+        hasAgents: true,
+      }),
+    ).toBe("agent");
+  });
+  it("agent validity is tied to the selected agent, never to site state", () => {
+    expect(
+      ruleSourceReady({
+        kind: "agent",
+        group: "",
+        user: "",
+        site: "",
+        cidr: "",
+        agent: "agent-1",
+      }),
+    ).toBe(true);
+    expect(
+      ruleSourceReady({
+        kind: "agent",
+        group: "",
+        user: "",
+        site: "site-1",
+        cidr: "",
+        agent: "",
+      }),
+    ).toBe(false);
   });
 });
 
@@ -967,7 +1030,45 @@ describe("resPortsValid (Feature 1 — resource port scope, client UX gate; serv
 describe("grantControls — the withhold decision (M3)", () => {
   it("withholds every mutation on a managed grant, offers them otherwise", () => {
     expect(grantControls({ managedByOperator: true }).withheld).toBe(true);
+    expect(
+      grantControls({
+        managedByOperator: false,
+        managedByAgentTemplate: true,
+      }).withheld,
+    ).toBe(true);
     expect(grantControls({ managedByOperator: false }).withheld).toBe(false);
+  });
+
+  it("resolves and labels an assignment-owned agent-group source without exposing an edit path", () => {
+    const row = ruleRow(
+      {
+        id: "rule-f09",
+        org_id: "org-a",
+        src_kind: "agent_group",
+        src_agent_group_id: "group-a",
+        dst_kind: "resource",
+        dst_resource_id: "resource-a",
+        created_at: new Date().toISOString(),
+        enabled: true,
+        managed_by_operator: false,
+        managed_by_agent_template: true,
+        cidr_outside_org_ranges: false,
+        dst_k8s_service_vanished: false,
+      } as PolicyRule,
+      [],
+      [R("resource-a", "database")],
+      [],
+      [],
+      {
+        groupsLoaded: true,
+        resourcesLoaded: true,
+        agentGroupsLoaded: true,
+        agentGroups: [{ id: "group-a", name: "workers" }],
+      },
+    );
+    expect(row.src.label).toBe("workers");
+    expect(row.managedByAgentTemplate).toBe(true);
+    expect(grantControls(row).withheld).toBe(true);
   });
 });
 
@@ -1387,28 +1488,49 @@ describe("srcGroupEmptyWarn — the fourth warn kind, admitted by the test that 
   });
 });
 
-describe("cascadeConfirmCopy — names the risk, never a count we do not own", () => {
-  it("⛔ states that rules are DELETED, and never asserts a number", () => {
-    const c = cascadeConfirmCopy("group", "Interns");
+describe("cascadeConfirmCopy — names only server-owned impact", () => {
+  it("states that rules are deleted and names the server-owned agent count", () => {
+    const c = cascadeConfirmCopy("group", "Interns", 2, 0);
     expect(c.body).toMatch(/deletes every access rule/i);
+    expect(c.body).toMatch(/delegated management for 2 managed agents/i);
     expect(c.body).toMatch(/cannot be undone/i);
-    // NO cascade-preview endpoint exists; a client-computed count would be a second source of truth about
-    // what the server is about to do.
-    expect(c.body).not.toMatch(/\d+ rule/);
+    expect(c.impactKnown).toBe(true);
+  });
+
+  it("blocks a group delete when the server-owned delegation count is absent", () => {
+    const c = cascadeConfirmCopy("group", "Interns", undefined, 0);
+    expect(c.body).toMatch(/could not be read/i);
+    expect(c.impactKnown).toBe(false);
   });
 
   it("says rules VANISH rather than becoming reviewable-broken — the measured behaviour", () => {
     // ON DELETE CASCADE: the rows go. An operator who expects orphaned-but-visible rules is wrong.
-    expect(cascadeConfirmCopy("group", "X").body).toMatch(/do not remain/i);
+    expect(cascadeConfirmCopy("group", "X", 0, 0).body).toMatch(/do not remain/i);
   });
 
   it("group and resource differ in the ROLE they name", () => {
-    expect(cascadeConfirmCopy("group", "X").body).toMatch(
+    expect(cascadeConfirmCopy("group", "X", 0, 0).body).toMatch(
       /source or destination/,
     );
-    expect(cascadeConfirmCopy("resource", "X").body).toMatch(
+    expect(cascadeConfirmCopy("resource", "X", undefined, 0).body).toMatch(
       /rule destination/,
     );
+  });
+
+  it("blocks a destination referenced by immutable template versions", () => {
+    const c = cascadeConfirmCopy("resource", "DB", undefined, 2);
+    expect(c.body).toMatch(/2 immutable agent policy template versions reference/i);
+    expect(c.blocked).toBe(true);
+  });
+
+  it("names member-removal policy and delegation impact and blocks unknown impact", () => {
+    const known = groupMemberRemovalCopy("Rajan", "Agent managers", 1);
+    expect(known.body).toMatch(/lose this group’s policy access/i);
+    expect(known.body).toMatch(/delegated management of 1 managed agent/i);
+    expect(known.impactKnown).toBe(true);
+    expect(
+      groupMemberRemovalCopy("Rajan", "Agent managers").impactKnown,
+    ).toBe(false);
   });
 
   it("⛔ the typed guard requires an EXACT name — both directions", () => {

@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { accessSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { readGeneratedFile } from "./support/source";
+import { join } from "node:path";
 import {
   agentConnectCommand,
   agentSummary,
@@ -8,8 +14,27 @@ import {
   agentLiveness,
   livenessLabel,
   formatTraffic,
+  agentBootstrapCommand as buildAgentBootstrapCommand,
   type AgentRow,
 } from "../src/lib/agentview";
+import type { BootstrapRelease } from "../src/lib/api";
+
+const release: BootstrapRelease = {
+  tag: "v0.4.0",
+  source_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  manifest_url: "https://github.com/tunnexio/tunnex/releases/download/v0.4.0/release.json",
+  verifier_key_id: "release-2026-01",
+  runtime: {
+    binary: "tunnex-agent-runtime",
+    version: "v0.4.0",
+    linux_amd64: { name: "tunnex-agent-runtime-linux-amd64", sha256: "3".repeat(64), source_sha: "a".repeat(40) },
+    linux_arm64: { name: "tunnex-agent-runtime-linux-arm64", sha256: "4".repeat(64), source_sha: "a".repeat(40) },
+    unit: { name: "tunnex-agent-runtime.service", sha256: "5".repeat(64), source_sha: "a".repeat(40) },
+  },
+};
+
+const agentBootstrapCommand = (token: string, apiURL = "https://cp.example") =>
+  buildAgentBootstrapCommand(token, release, apiURL);
 
 describe("the agent surface — S15.3", () => {
   const row = (o: Partial<AgentRow> = {}): AgentRow => ({
@@ -148,6 +173,334 @@ describe("the connect command — S15.3", () => {
 
   it("⚠ the config is chmod 600 — a private key must not be world-readable", () => {
     expect(agentConnectCommand(conf)).toMatch(/chmod 600/);
+  });
+});
+
+describe("the managed bootstrap command — F03", () => {
+  it("shell-quotes token and API URL and never embeds a private key", () => {
+    const cmd = agentBootstrapCommand("tok'$danger", "https://cp.example/one path");
+    expect(cmd).toContain("--rawfile token");
+    expect(cmd).toContain("'\\''");
+    expect(cmd).toContain("https://cp.example/one path/api/v1/agent/bootstrap");
+    expect(cmd).toContain("wg genkey");
+    expect(cmd).not.toContain("PrivateKey =");
+    expect(cmd).not.toContain("private_key");
+  });
+
+  it("validates before installation, uses atomic temp files, and cleans failures", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    expect(cmd).toContain("command -v resolvconf");
+    expect(cmd).toContain("mktemp -d");
+    expect(cmd).toContain("jq -e");
+    expect(cmd).toContain('runtime_credential | type == "string" and length > 0');
+    expect(cmd).toMatch(/install -o root -g root -m 600/);
+    expect(cmd).toContain("trap cleanup EXIT");
+    expect(cmd).toContain("systemctl disable --now tunnex-agent-runtime.service");
+    expect(cmd).not.toContain("/etc/wireguard/tunnex.conf");
+    expect(cmd).not.toContain("/etc/tunnex-agent-credential");
+  });
+
+  it("executes the generated command and substitutes a valid config byte-for-byte", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tunnex-bootstrap-exec-"));
+    const bin = join(dir, "bin");
+    const captured = join(dir, "captured");
+    const ephemeral = join(dir, "ephemeral");
+    const runtime = join(dir, "runtime");
+    const unit = join(dir, "tunnex-agent-runtime.service");
+    const response = join(dir, "response.json");
+    const manifest = join(dir, "release.json");
+    const curlArgs = join(dir, "curl.args");
+    const systemctlCalls = join(dir, "systemctl.calls");
+    const privateKey = "private+key/keeps$dollar=";
+    const runtimeCredential = "tnx_runtime_test_secret";
+    const config = [
+      "[Interface]",
+      "PrivateKey = __TUNNEX_PRIVATE_KEY__",
+      "Address = 10.99.0.7/32",
+      "",
+    ].join("\n");
+    const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+    const runtimeBytes = "runtime-bytes\n";
+    const unitBytes = "[Service]\nExecStart=/usr/local/bin/tunnex-agent-runtime\n";
+    const executable = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/bin/sh\nset -eu\n${body}\n`, { mode: 0o700 });
+
+    mkdirSync(bin);
+    mkdirSync(join(captured, "usr/local/bin"), { recursive: true });
+    symlinkSync(execFileSync("which", ["jq"]).toString().trim(), join(bin, "jq"));
+    writeFileSync(runtime, runtimeBytes);
+    writeFileSync(unit, unitBytes);
+    writeFileSync(manifest, "{}\n");
+    writeFileSync(response, JSON.stringify({ config, runtime_credential: runtimeCredential }));
+
+    executable("mktemp", `mkdir -p "$MOCK_EPHEMERAL"; printf '%s\\n' "$MOCK_EPHEMERAL"`);
+    executable("wg", `
+case "\${1:-}" in
+  show) exit 1 ;;
+  genkey) printf '%s\\n' "$MOCK_PRIVATE_KEY" ;;
+  pubkey) cat >/dev/null; printf '%s\\n' 'public-key=' ;;
+esac`);
+    executable("wg-quick", "exit 0");
+    executable("resolvconf", "exit 0");
+    executable("uname", "printf '%s\\n' x86_64");
+    executable("systemctl", `printf '%s\n' "$*" >> "$MOCK_SYSTEMCTL_CALLS"
+case "\${1:-}" in
+  is-active|is-enabled) exit 1 ;;
+  enable) [ "\${MOCK_START_FAIL:-0}" = 1 ] && exit 42 || exit 0 ;;
+  *) exit 0 ;;
+esac`);
+    executable("releaseverify", `
+printf '%s\\n' \\
+  'TUNNEX_AGENT_RUNTIME_BINARY=tunnex-agent-runtime' \\
+  'TUNNEX_AGENT_RUNTIME_VERSION=v0.4.0' \\
+  'TUNNEX_AGENT_RUNTIME_UNIT_NAME=tunnex-agent-runtime.service' \\
+  "TUNNEX_AGENT_RUNTIME_UNIT_SHA256=$MOCK_UNIT_SHA" \\
+  'TUNNEX_AGENT_RUNTIME_UNIT_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'`);
+    executable("curl", `
+printf '%s\n' "$*" >> "$MOCK_CURL_ARGS"
+out=; url=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -H|--data-binary) shift 2 ;;
+    -*) shift ;;
+    *) url=$1; shift ;;
+  esac
+done
+case "$url" in
+  */api/v1/agent/bootstrap) cat >/dev/null; cat "$MOCK_RESPONSE" ;;
+  */release.json) [ "$out" = /dev/null ] || cp "$MOCK_MANIFEST" "$out" ;;
+  *tunnex-agent-runtime-linux-amd64) cp "$MOCK_RUNTIME" "$out" ;;
+  *tunnex-agent-runtime.service) cp "$MOCK_UNIT" "$out" ;;
+  *) exit 64 ;;
+esac`);
+    executable("sudo", `
+cmd=$1; shift
+map_path() { case "$1" in /etc|/etc/*|/usr/local|/usr/local/*|/var/lib/tunnex-agent|/var/lib/tunnex-agent/*) printf '%s%s' "$MOCK_CAPTURE" "$1" ;; *) printf '%s' "$1" ;; esac; }
+case "$cmd" in
+  wg|wg-quick|systemctl) exec "$cmd" "$@" ;;
+  test)
+    op=$1; path=$(map_path "$2"); exec test "$op" "$path" ;;
+  rm)
+    args=; for arg in "$@"; do case "$arg" in -*) args="$args $arg" ;; *) args="$args $(map_path "$arg")" ;; esac; done
+    exec sh -c "rm $args" ;;
+  install)
+    args=; skip=0
+    for arg in "$@"; do
+      if [ "$skip" = 1 ]; then skip=0; continue; fi
+      case "$arg" in -o|-g) skip=1 ;; /*) args="$args $(map_path "$arg")" ;; *) args="$args $arg" ;; esac
+    done
+    exec sh -c "install $args" ;;
+  cp) exec cp "$@" ;;
+  *) exec "$cmd" "$@" ;;
+esac`);
+
+    const executableRelease: BootstrapRelease = {
+      ...release,
+      runtime: {
+        ...release.runtime,
+        linux_amd64: { ...release.runtime.linux_amd64, sha256: sha(runtimeBytes) },
+        unit: { ...release.runtime.unit, sha256: sha(unitBytes) },
+      },
+    };
+
+    try {
+      const generated = buildAgentBootstrapCommand("TKN", executableRelease, "https://cp.example");
+      expect(generated).toMatch(/^sh <<'TUNNEX_BOOTSTRAP'/);
+      expect(generated).not.toContain("sh -c");
+      const execute = (startFails: boolean) =>
+        execFileSync("/bin/sh", [], {
+          input: generated,
+          env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH ?? ""}`,
+          MOCK_CAPTURE: captured,
+          MOCK_CURL_ARGS: curlArgs,
+          MOCK_EPHEMERAL: ephemeral,
+          MOCK_MANIFEST: manifest,
+          MOCK_PRIVATE_KEY: privateKey,
+          MOCK_RESPONSE: response,
+          MOCK_RUNTIME: runtime,
+          MOCK_START_FAIL: startFails ? "1" : "0",
+          MOCK_SYSTEMCTL_CALLS: systemctlCalls,
+          MOCK_UNIT: unit,
+          MOCK_UNIT_SHA: sha(unitBytes),
+          TUNNEX_RELEASE_PUBLIC_KEY: "trusted-public-key",
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+        }).toString();
+
+      expect(() => execute(true)).toThrow();
+      expect(() => accessSync(join(captured, "etc/wireguard/runtime.conf"))).toThrow();
+      expect(() => accessSync(join(captured, "etc/tunnex-agent/runtime-credential"))).toThrow();
+      expect(() => accessSync(ephemeral)).toThrow();
+      expect(readGeneratedFile(systemctlCalls, dir)).toContain("daemon-reload");
+
+      const stdout = execute(false);
+
+      expect(readGeneratedFile(join(captured, "etc/wireguard/runtime.conf"), captured)).toBe(
+        config.replace("__TUNNEX_PRIVATE_KEY__", privateKey),
+      );
+      expect(readGeneratedFile(join(captured, "etc/tunnex-agent/runtime-credential"), captured)).toBe(`${runtimeCredential}\n`);
+      expect(stdout).not.toContain(privateKey);
+      expect(stdout).not.toContain(runtimeCredential);
+      expect(readGeneratedFile(curlArgs, dir)).not.toContain("TKN");
+      expect(() => readGeneratedFile(join(process.cwd(), "src/lib/agentview.ts"), dir)).toThrow(/escaped/);
+      expect(() => accessSync(ephemeral)).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a missing resolver before key generation, redemption, or file writes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tunnex-bootstrap-prereq-"));
+    const calls = join(dir, "calls");
+    try {
+      symlinkSync("/bin/sh", join(dir, "sh"));
+      for (const name of ["wg", "wg-quick", "curl", "jq"]) {
+        writeFileSync(join(dir, name), `#!/bin/sh\nprintf '%s\\n' "$0 $*" >> ${JSON.stringify(calls)}\nexit 99\n`, { mode: 0o700 });
+      }
+      const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+      let failure: { stderr?: Buffer } | undefined;
+      try {
+        execFileSync("/bin/sh", ["-c", cmd], {
+          env: { PATH: dir, CALLS: calls },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (err) {
+        failure = err as { stderr?: Buffer };
+      }
+      expect(failure).toBeTruthy();
+      expect(failure?.stderr?.toString()).toMatch(/resolvconf\/openresolv is required/);
+      expect(() => accessSync(calls)).toThrow();
+      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("umask 077"));
+      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("wg genkey"));
+      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("/api/v1/agent/bootstrap"));
+      expect(cmd.indexOf("command -v resolvconf")).toBeLessThan(cmd.indexOf("install -o root -g root -m 600"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("installs the pinned same-release managed runtime service contract", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    // F04's approved package contract is asserted here so F03 cannot invent a
+    // second runtime binary, unit, or state layout.
+    expect(cmd).toContain("tunnex-agent-runtime");
+    expect(cmd).toContain("tunnex-agent-runtime.service");
+    expect(cmd).toMatch(/TUNNEX_(RELEASE|VERSION)|release\.json/i);
+    expect(cmd).toContain("/etc/wireguard/runtime.conf");
+    expect(cmd).not.toContain("/etc/tunnex-agent/runtime.conf");
+    expect(cmd).toContain("/etc/tunnex-agent/runtime-credential");
+    expect(cmd).toContain("/var/lib/tunnex-agent/runtime-state.json");
+    expect(cmd).toMatch(/install[^;]*(?:-o root|-u root)[^;]*(?:-g root|-g 0)[^;]*-m 600/i);
+  });
+
+  it("installs root-owned 0600 runtime files for the approved root service", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const rootOwned0600 = cmd.match(/install -o root -g root -m 600[^;]+\$runtime_(?:cfg|cred|state)/g) ?? [];
+    expect(rootOwned0600.length).toBe(3);
+  });
+
+  it("keeps bootstrap/runtime secrets and private keys out of process args and command output", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    // The approved hygiene boundary keeps secrets in temporary files and rawfile
+    // inputs rather than process arguments or command output.
+    expect(cmd).not.toMatch(/--arg\s+token\b/i);
+    expect(cmd).not.toMatch(/--arg\s+p\b/i);
+    expect(cmd).not.toMatch(/(?:echo|printf)[^;]*(?:runtime_credential|private_key|token_hash)/i);
+    expect(cmd).not.toMatch(/(?:echo|printf)[^;]*\$r\b/i);
+  });
+
+  it("atomically hands off startup and revoke/offboarding to the service", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    expect(cmd).toMatch(/mktemp -d/);
+    expect(cmd).toMatch(/trap/);
+    expect(cmd).toMatch(/systemctl\s+(?:enable\s+--now|start)\s+tunnex-agent-runtime\.service/);
+    expect(cmd).toMatch(/systemctl\s+(?:disable\s+--now|stop)\s+tunnex-agent-runtime\.service/);
+    expect(cmd).toMatch(/(?:revoke|offboard)/i);
+    expect(cmd).toMatch(/runtime-(?:credential|state)/);
+  });
+
+  it("requires the signed runtime descriptor and binds the selected asset to its source release", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    expect(cmd).toContain("releaseverify");
+    expect(cmd).toMatch(/-manifest\s+[^ ]*release\.json/);
+    expect(cmd).toMatch(/-public-key/);
+    expect(cmd).toMatch(/-expected-source-sha/);
+    expect(cmd).toMatch(/-platform/);
+    expect(cmd).toContain(release.tag);
+    expect(cmd).toContain(release.source_sha);
+    expect(cmd).toContain(release.manifest_url);
+    expect(cmd).toContain(release.verifier_key_id);
+    expect(cmd).toContain(release.runtime.linux_amd64.name);
+    expect(cmd).toContain(release.runtime.linux_amd64.sha256);
+    expect(cmd).toContain(release.runtime.linux_arm64.name);
+    expect(cmd).toContain(release.runtime.linux_arm64.sha256);
+    expect(cmd).toContain(release.runtime.unit.name);
+    expect(cmd).toContain(release.runtime.unit.sha256);
+    expect(cmd).toContain('runtime_name="$expected_amd64_name"');
+  });
+
+  it("verifies runtime bytes before install and rejects unsigned or mutable fallbacks", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    expect(cmd).toMatch(/sha256sum/);
+    expect(cmd).toContain("expected_amd64_digest");
+    expect(cmd).toContain("expected_arm64_digest");
+    expect(cmd).toMatch(/\[\s+"\$actual_digest"\s+=\s+"\$runtime_digest"\s+\]/);
+    expect(cmd).toMatch(/sha256sum[^;]*[\s\S]*install/);
+    expect(cmd).not.toMatch(/(?:latest|docker\s+(?:pull|run)|Tunnex-Agent-Runtime-SHA256SUMS)/i);
+  });
+
+  it("requires the systemd unit to be a signed, digest-verified runtime asset", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    expect(cmd).toContain("TUNNEX_AGENT_RUNTIME_UNIT_NAME");
+    expect(cmd).toContain("TUNNEX_AGENT_RUNTIME_UNIT_SHA256");
+    expect(cmd).toContain("TUNNEX_AGENT_RUNTIME_UNIT_SOURCE_SHA");
+    expect(cmd).toContain("unit_source_sha");
+    expect(cmd).toMatch(/releaseverify[\s\S]*TUNNEX_AGENT_RUNTIME_UNIT_NAME/);
+    expect(cmd).toMatch(/unit_name.*tunnex-agent-runtime\.service/);
+    expect(cmd).toMatch(/sha256sum[^;]*unit[\s\S]*actual_unit_digest/);
+    expect(cmd).toMatch(/\[\s+\"\$actual_unit_digest\"\s+=\s+\"\$unit_digest\"\s+\]/);
+    expect(cmd).toMatch(/unit_name[\s\S]*curl[^;]*\$unit_name/);
+    expect(cmd).toMatch(/(?:unit|signature)[\s\S]*(?:refused|invalid|missing)/i);
+    expect(cmd.indexOf("actual_unit_digest")).toBeLessThan(cmd.indexOf('install -o root -g root -m 644 "$d/unit"'));
+    expect(cmd).toContain("{server:$server,applied_revision:0,client_version:$client}");
+    expect(cmd).not.toMatch(/jq -n --arg server[^;]*--rawfile credential/);
+    expect(cmd).not.toMatch(/jq -n --arg server[^;]*runtime_credential/);
+  });
+
+  it("fails closed on malformed signatures, missing architectures, and unsupported hosts", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    expect(cmd).toMatch(/set -e/);
+    expect(cmd).toMatch(/(?:amd64|x86_64)/);
+    expect(cmd).toMatch(/(?:arm64|aarch64)/);
+    expect(cmd).toMatch(/unsupported|refus|invalid|missing/i);
+    expect(cmd).toMatch(/releaseverify[\s\S]*(?:\|\||exit|return)/i);
+  });
+
+  it("preserves runtime files and service state when verification or startup fails", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    expect(cmd).toMatch(/(?:runtime|agent-runtime)/i);
+    expect(cmd).toMatch(/(?:backup|restore|preserve|already exists|\.bak|snapshot)/i);
+    expect(cmd).toMatch(/(?:systemctl\s+is-active|was-active|service state|restore.*service)/i);
+    expect(cmd).toMatch(/trap[\s\S]*(?:rm -rf|cleanup)/i);
+    expect(cmd).toMatch(/(?:verify|sha256sum|releaseverify)[\s\S]*install/);
+  });
+
+  it("refuses existing managed targets before changing config or credential bytes", () => {
+    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    // Refusal occurs before token redemption, key generation, download, writes,
+    // service mutation, or cleanup of an existing managed installation.
+    expect(cmd).toMatch(/existing managed (?:runtime interface|installation) refused/i);
+    expect(cmd).toContain('for target in "$runtime_bin" "$runtime_unit"');
+    expect(cmd.indexOf('for target in "$runtime_bin"')).toBeLessThan(cmd.indexOf("trap cleanup EXIT"));
+    expect(cmd).toContain("wg show runtime");
+    expect(cmd.indexOf("wg show runtime")).toBeLessThan(cmd.indexOf("trap cleanup EXIT"));
+    expect(cmd).not.toContain("wg show tunnex");
+    expect(cmd).not.toContain("wg-quick up tunnex");
+    expect(cmd).not.toContain("/etc/wireguard/tunnex.conf");
+    expect(cmd).not.toContain("/etc/tunnex-agent-credential");
   });
 });
 
