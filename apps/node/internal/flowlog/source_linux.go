@@ -5,6 +5,7 @@ package flowlog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,9 @@ type NflogSource struct {
 // NewNflogSource opens the nflog group and begins delivering records. sockBuf<=0 uses the
 // default. Requires CAP_NET_ADMIN. Cancel ctx (or Close) to stop.
 func NewNflogSource(ctx context.Context, group, sockBuf int) (*NflogSource, error) {
+	if group < 0 || group > 0xffff {
+		return nil, fmt.Errorf("flowlog: nflog group %d out of range (0-65535)", group)
+	}
 	if sockBuf <= 0 {
 		sockBuf = DefaultNflogSockBuf
 	}

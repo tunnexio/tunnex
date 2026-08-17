@@ -1,5 +1,5 @@
 # The managed runtime is a separate release artifact from tunnex-node.
-FROM golang:1.25.13 AS build
+FROM golang:1.25.13-alpine AS build
 ARG TUNNEX_VERSION=dev
 WORKDIR /src
 COPY apps/cli/go.mod apps/cli/go.sum ./apps/cli/
