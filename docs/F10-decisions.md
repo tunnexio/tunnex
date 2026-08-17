@@ -1,6 +1,6 @@
 # F10 — Just-in-time agent access decisions
 
-Status: **In progress — decisions locked; workflow model and core service implemented**.
+Status: **Done — exact local gates and the combined AWS DEV walk satisfy F10**.
 
 ## Customer outcome
 
