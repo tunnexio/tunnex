@@ -303,6 +303,201 @@ export function Panel({
 }
 
 /**
+ * A titled group that IS page structure, rather than a pane sitting on it.
+ *
+ * ⛔ DELIBERATELY NOT `GLASS`. `Panel` is a surface — a thing floating on the page. A settings group is
+ * the page's own skeleton, and giving it a border + shadow + blur says "object" about what is really an
+ * outline. Eleven bordered boxes down one column is eleven times the chrome and zero times the meaning.
+ *
+ * ⚠ AND IT MUST NOT BECOME A `variant` ON `Panel`/`GLASS`. `Card` once gained `backdrop-filter` and thereby
+ * became the containing block for `position: fixed`, silently clipping five modals across four screens
+ * (docs/laws.md). A `Section` that never touches the glass recipe cannot repeat that class of bug.
+ *
+ * Accessibility is `Panel`'s, verbatim: a real `<section>` named by its own heading.
+ */
+export function Section({
+  title,
+  description,
+  actions,
+  className = "",
+  children,
+}: {
+  title: string;
+  /** One line on what this group is for. Capped to a readable measure, never the full page width. */
+  description?: string;
+  actions?: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className={`flex flex-col gap-1.5 ${className}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id={id} className="text-title font-semibold text-ink-heading">
+            {title}
+          </h2>
+          {description && (
+            <p className="mt-0.5 max-w-prose text-cell text-ink-tertiary">
+              {description}
+            </p>
+          )}
+        </div>
+        {actions}
+      </div>
+      {/* Hairlines BETWEEN rows, no rule around them: the group is bounded by its heading and its
+          whitespace, which is what a reader already uses to find it. */}
+      <div className="divide-y divide-line-row">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * One setting: what it is on the left, the control that changes it on the right.
+ *
+ * ⛔ THIS IS THE PRIMITIVE WHOSE ABSENCE CAUSED THE SETTINGS PAGE. With only `Card` available every single
+ * setting became a card, ~15 cards then needed a packing strategy, and three were tried in turn — fixed
+ * `grid-cols-3` (too wide), auto-fill grid (holes under short cards), multi-column masonry (column-major
+ * reading order, and no full-width child possible). All three accept the premise that these are cards of
+ * varying height. They are ROWS of uniform height: stacked in one column there is nothing to pack.
+ */
+export function SettingRow({
+  label,
+  description,
+  className = "",
+  children,
+}: {
+  label: string;
+  description?: string;
+  className?: string;
+  /** The control. Borrows the row's label as its accessible name unless it already carries one. */
+  children: ReactNode;
+}) {
+  const labelId = useId();
+  // The same association idea as `Field`, one level up. The ROW owns the visible label, so the control
+  // must borrow it rather than restate it — a switch whose accessible name is "Enabled" tells a screen
+  // reader that something is enabled without ever saying what.
+  const control =
+    isValidElement(children) &&
+    !(children.props as { "aria-label"?: string })["aria-label"] &&
+    !(children.props as { "aria-labelledby"?: string })["aria-labelledby"]
+      ? cloneElement(
+          children as ReactElement<{ "aria-labelledby"?: string }>,
+          { "aria-labelledby": labelId },
+        )
+      : children;
+  return (
+    // `basis` + `flex-wrap` so a narrow column drops the control under the text instead of crushing both.
+    <div
+      className={`flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-3 ${className}`}
+    >
+      <div className="min-w-0 flex-1 basis-[20rem]">
+        <p id={labelId} className="text-cell font-medium text-ink-body">
+          {label}
+        </p>
+        {description && (
+          <p className="mt-1 max-w-prose text-cell text-ink-tertiary">
+            {description}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">{control}</div>
+    </div>
+  );
+}
+
+/**
+ * An on/off state the operator owns.
+ *
+ * ⛔ A SWITCH, NOT A BUTTON, AND NOT A CHECKBOX — because the product currently uses BOTH for the same
+ * idea. SSO providers render `☑ Enabled`; OpenVPN and the agent toggles render a BUTTON reading "Enable
+ * OpenVPN". A button promises an action is about to happen; a checkbox belongs to a form you submit.
+ * These are neither: they are org-level opt-ins (unlock-then-opt-in, default OFF) that take effect on
+ * flip. `role="switch"` is the one control that says exactly that, and there was none in the app.
+ *
+ * A `<button>` underneath, so Space and Enter both work and focus behaves, with no key handling of ours.
+ */
+export function Switch({
+  checked,
+  onChange,
+  disabled = false,
+  label,
+  "aria-labelledby": ariaLabelledBy,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  /** Accessible name when the switch stands alone. Inside a `SettingRow` the row supplies it instead. */
+  label?: string;
+  "aria-labelledby"?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      // An EXPLICIT `label` wins over a borrowed one. `SettingRow` cannot see through this component's
+      // props API — it looks for `aria-label`, finds a `label` it does not recognise, and lends its own
+      // name over the top. Precedence is decided here, where both are visible, rather than by teaching
+      // the row about every control's prop names.
+      aria-label={label}
+      aria-labelledby={label ? undefined : ariaLabelledBy}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-pill border transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50 ${
+        checked ? "border-accent bg-accent" : "border-line bg-surface-inset"
+      }`}
+    >
+      {/* The knob inverts against its track: dark on the light accent, light on the dark inset. One colour
+          for both states leaves it invisible in one of them. */}
+      <span
+        aria-hidden
+        className={`h-3.5 w-3.5 rounded-pill transition-transform duration-fast ${
+          checked
+            ? "translate-x-[18px] bg-ink-900"
+            : "translate-x-[3px] bg-ink-tertiary"
+        }`}
+      />
+    </button>
+  );
+}
+
+/**
+ * The page title block.
+ *
+ * ⛔ ONE DIALECT, REPLACING THREE. Pages hand-rolled this and drifted: the S14 pages use
+ * `text-[22px] text-ink-heading`, the older ones `text-xl text-white`, and `Devices.tsx` an inline style
+ * object with a hardcoded `#F5F5F5` and the font `Instrument Sans` — which is not in the token set at all.
+ *
+ * ⚠ `text-[22px]` IS RAW ON PURPOSE. The generated fontSize scale jumps `title` 13.5px → `stat` 26px with
+ * nothing between, so every page title in the app is already an arbitrary value. Centralising it here makes
+ * that one gap one decision instead of thirteen; adding a token is a tokens.ts change, not a page change.
+ */
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-[22px] font-semibold leading-tight text-ink-heading">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="mt-1 text-cell text-ink-tertiary">{subtitle}</p>
+        )}
+      </div>
+      {actions}
+    </div>
+  );
+}
+
+/**
  * A status badge.
  *
  * ⛔ THE TEXT IS THE STATUS; THE COLOUR IS AN ACCELERANT. A badge that says its state only in colour is
