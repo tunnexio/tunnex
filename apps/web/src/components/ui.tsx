@@ -499,16 +499,16 @@ export function SettingGroup({
       // Named by its own heading rather than by its tab: the heading is the more specific label, and it is
       // the one a reader sees.
       aria-labelledby={headingId}
-      className={`${GLASS} scroll-mt-6 px-4 py-3 ${className}`}
+      className={`rounded-2xl border border-white/[0.08] bg-[#121215]/95 p-6 shadow-xl backdrop-blur-xl scroll-mt-6 ${className}`}
     >
       <h2
         id={headingId}
-        className="text-[15px] font-semibold leading-tight text-ink-heading"
+        className="text-base font-semibold leading-tight text-white mb-3"
       >
         {title}
       </h2>
       {/* Hairlines between rows; the card's own border bounds the group. */}
-      <div className="mt-1 divide-y divide-line-row">{children}</div>
+      <div className="mt-1 divide-y divide-white/[0.06]">{children}</div>
     </section>
   );
 }

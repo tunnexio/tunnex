@@ -20,6 +20,7 @@ import {
 import { hubSetView } from "../lib/hubsetview";
 import { mergeOrgForwards, type OrgForwardsView } from "../lib/dnsview";
 import { useAuth } from "../lib/auth";
+import { toast } from "../components/Toasts";
 import {
   Badge,
   Button,
@@ -1281,8 +1282,13 @@ function RegisterSiteModal({
       body: { name },
     });
     setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not register the site."));
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not register the site.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(`Site "${name}" registered successfully`);
     onClose();
     onDone();
   }
@@ -1339,8 +1345,13 @@ function AddSubnetModal({
       },
     );
     setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not advertise the subnet."));
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not advertise the subnet.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(`Subnet ${cidr} advertised`);
     onClose();
     onDone();
   }
@@ -1405,8 +1416,13 @@ function BindGatewayModal({
       },
     );
     setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not bind the gateway."));
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not bind the gateway.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success("Gateway bound to site");
     onClose();
     onDone();
   }
@@ -1468,8 +1484,13 @@ function UnbindConfirm({
       },
     );
     setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not unbind the gateway."));
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not unbind the gateway.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success("Gateway unbound from site");
     onClose();
     onDone();
   }
@@ -1554,8 +1575,13 @@ function RemoveSubnetConfirm({
       },
     );
     setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not remove the subnet."));
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not remove the subnet.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(`Subnet ${subnet.cidr} removed`);
     onClose();
     onDone();
   }
@@ -1648,11 +1674,16 @@ function DNSForwardSection({
       },
     );
     setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not add the forward.")); // verbatim typed refusal — no JS re-check
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not add the forward.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(`DNS forward added for ${domain.trim()}`);
     setDomain("");
     setResolverIp("");
-    load().catch(() => {}); // F10: await/.catch parity with the mount load — a transient reload can't strand an unhandled rejection
+    load().catch(() => {});
   }
   async function remove(d: string) {
     setErr(null);
@@ -1662,9 +1693,14 @@ function DNSForwardSection({
         params: { path: { orgId, siteId, domain: d } },
       },
     );
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not remove the forward."));
-    load().catch(() => {}); // F10: same parity
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not remove the forward.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(`DNS forward removed for ${d}`);
+    load().catch(() => {});
   }
   return (
     <details className="mt-3 rounded-lg border border-white/5 bg-ink-900/60 px-3 py-2 text-xs text-slate-400">
@@ -1784,8 +1820,13 @@ function DeleteSiteModal({
       { params: { path: { orgId, siteId: site.id } } },
     );
     setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not delete the site."));
+    if (error) {
+      const msg = apiErrorMessage(error, "Could not delete the site.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(`Site "${site.name}" deleted`);
     onClose();
     onDone();
   }

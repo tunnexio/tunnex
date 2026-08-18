@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   NAV_WIDTH,
   navShows,
@@ -15,7 +15,6 @@ import { useResendVerification } from "../lib/useResendVerification";
 import { Button } from "./ui";
 import { HealthStatus } from "./HealthStatus";
 import { IdentityBadges } from "./IdentityBadges";
-import { OrgSwitcher } from "./OrgSwitcher";
 import { useLayoutCapability } from "./ComposeGate";
 import { CommandPalette } from "./CommandPalette";
 import { useNavCounts } from "../lib/useNavCounts";
@@ -199,7 +198,110 @@ function NavGroups({
  * contract asserts: it clicks the menu button at `triage` and compares the set. A destination dropped from the
  * narrow build fails there.
  */
-function SidebarNav() {
+function SidebarFooterProfile({
+  email,
+  collapsed,
+  onLogout,
+}: {
+  email: string;
+  collapsed: boolean;
+  onLogout: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const initials = useMemo(() => {
+    if (!email) return "DA";
+    const namePart = email.split("@")[0] || "";
+    const parts = namePart.split(/[._-]/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return namePart.slice(0, 2).toUpperCase();
+  }, [email]);
+
+  const displayName = useMemo(() => {
+    if (!email) return "Demo Admin";
+    const namePart = email.split("@")[0] || "";
+    return namePart
+      .split(/[._-]/)
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join(" ");
+  }, [email]);
+
+  return (
+    <div className="relative mt-auto border-t border-line/60 pt-2.5">
+      {/* Expandable Popover Menu */}
+      {open && (
+        <div className="absolute bottom-full left-0 mb-2 w-full min-w-[210px] rounded-xl border border-white/10 bg-[#121215] p-3 shadow-2xl backdrop-blur-xl z-50">
+          <div className="mb-2 pb-2 border-b border-white/10">
+            <p className="text-xs font-semibold text-white truncate">
+              {displayName}
+            </p>
+            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+              {email}
+            </p>
+            <div className="mt-2 flex items-center gap-1.5">
+              <IdentityBadges />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-rose-400 transition-colors hover:bg-rose-500/10"
+          >
+            <Icon name="log-out" size={14} />
+            <span>Log out</span>
+          </button>
+        </div>
+      )}
+
+      {/* Main Profile Card Button */}
+      {collapsed ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            title={`Signed in as ${email}`}
+            aria-label={`Signed in as ${email}`}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 border border-white/10 text-xs font-bold text-white transition-transform hover:scale-105"
+          >
+            {initials}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label="User profile menu"
+          className="flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-left transition-colors hover:bg-white/[0.06]"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 border border-white/10 font-mono text-xs font-bold text-white shadow-sm">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-white leading-tight">
+              {displayName}
+            </p>
+            <p className="truncate text-[11px] text-slate-400 leading-tight mt-0.5">
+              {email}
+            </p>
+          </div>
+          <span className="text-slate-400 shrink-0 text-[10px]">
+            {open ? "▲" : "▼"}
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SidebarNav({
+  email,
+  onLogout,
+}: {
+  email?: string;
+  onLogout?: () => void;
+}) {
   const { navMode } = useLayoutCapability();
   const counts = useNavCounts();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -238,9 +340,16 @@ function SidebarNav() {
           id="main-nav"
           aria-label="Main"
           hidden={!drawerOpen}
-          className="absolute inset-y-0 left-0 z-20 w-[228px] border-r border-line bg-bg p-2.5"
+          className="absolute inset-y-0 left-0 z-20 flex w-[228px] flex-col justify-between border-r border-line bg-bg p-2.5"
         >
           <NavGroups onNavigate={() => setDrawerOpen(false)} counts={counts} />
+          {email && onLogout && (
+            <SidebarFooterProfile
+              email={email}
+              collapsed={false}
+              onLogout={onLogout}
+            />
+          )}
         </nav>
       </>
     );
@@ -265,7 +374,11 @@ function SidebarNav() {
           One combined click-target would have to pick one, and whichever it picked would surprise
           half the people who clicked it. Collapsed, only the mark remains — and it is still the
           toggle, which is the only way back out. */}
-      <div className="mb-3 flex items-center gap-2.5 px-1">
+      <div
+        className={`mb-3 flex items-center ${
+          collapsed ? "justify-center" : "gap-2.5 px-1"
+        }`}
+      >
         <button
           type="button"
           onClick={toggle}
@@ -302,6 +415,14 @@ function SidebarNav() {
       >
         <NavGroups counts={counts} collapsed={collapsed} />
       </nav>
+
+      {email && onLogout && (
+        <SidebarFooterProfile
+          email={email}
+          collapsed={collapsed}
+          onLogout={onLogout}
+        />
+      )}
     </div>
   );
 }
@@ -349,27 +470,13 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-transparent">
+    <div className="flex h-screen max-h-screen flex-col overflow-hidden bg-transparent">
       {/* Mounted on the SHELL, not per screen: ⌘K must work wherever the user is. */}
       <CommandPalette />
-      {/* README: TOP BAR, h:56px — search (opens the palette), spacer, then identity. */}
-      {/* README: TOP BAR, h:56px. `min-w-0` on both children and `truncate` on the email are load-bearing:
-          without them a long address (owner@demo.tunnex.local) pushes the row past the viewport and the whole
-          PAGE scrolls sideways — the overflow the viewport leg caught at 390px, 65px wide and constant.
-          Flex items default to `min-width: auto`, so they refuse to shrink below their content. That is the
-          single most common cause of horizontal overflow in a flex row, and it is invisible until something
-          inside is long enough. */}
-
-      {/* ⛔ TWO LOGOS, AND THE LAYOUT WAS THE REASON. The topbar spanned the FULL WIDTH — above the
-          sidebar — and carried its own <Logo>, so once the sidebar gained the brand there were two
-          marks stacked in the same corner.
-          The design has the sidebar FULL-HEIGHT with the topbar beside it, which is why it has one:
-          there is only one place the brand can sit. Removing the duplicate without moving the
-          topbar would have left a blank 56px strip above the sidebar instead. */}
-      <div className="relative flex min-h-0 flex-1">
-        <SidebarNav />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-[56px] shrink-0 items-center justify-end gap-2 border-b border-line px-4">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <SidebarNav email={email} onLogout={onLogout} />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <header className="flex h-[56px] shrink-0 items-center justify-between gap-2 border-b border-line px-4">
             <div className="flex min-w-0 items-center gap-3">
               {/* The search field IS the command-palette affordance (S14.3 built the palette; this is its
               discoverable entry point, since a shortcut nobody sees is a shortcut nobody uses). */}
@@ -392,19 +499,6 @@ export function AppShell() {
                   ⌘K
                 </span>
               </button>
-              {/* Badges and the address are IDENTITY CONTEXT, not controls. Below `sm` the row belongs to the
-              action, so they step aside rather than squeezing it — the destination is never removed, only the
-              decoration around it (S14.2's rule, applied to the top bar). */}
-              <OrgSwitcher />
-              <span className="hidden sm:flex">
-                <IdentityBadges />
-              </span>
-              <span className="hidden min-w-0 truncate text-cell text-ink-body sm:block">
-                {email}
-              </span>
-              <Button variant="ghost" className="shrink-0" onClick={onLogout}>
-                Log out
-              </Button>
             </div>
           </header>
 
@@ -413,7 +507,7 @@ export function AppShell() {
             computed, asserted, and never consumable — dormant machinery in our own new code (docs/laws.md).
             Padding and gap are the README's: 20px 24px 28px, flex column, gap 14. */}
           <main
-            className="tnx-page flex flex-1 flex-col gap-3.5 px-6 pb-[30px] pt-[34px]"
+            className="tnx-page flex min-h-0 flex-1 flex-col gap-3.5 px-6 pb-[30px] pt-[34px] overflow-y-auto"
             data-columns={columns}
           >
             {/* data-columns publishes the column BUDGET so a page grid can consume it — which nothing could do
@@ -428,7 +522,7 @@ export function AppShell() {
 
       {navMode === "drawer" && <TriageBar />}
 
-      <footer className="flex items-center justify-between border-t border-white/5 px-6 py-3 text-xs text-slate-600">
+      <footer className="flex shrink-0 items-center justify-between border-t border-white/5 px-6 py-3 text-xs text-slate-600">
         <HealthStatus />
         <span>{PRODUCT_TAGLINE}</span>
       </footer>

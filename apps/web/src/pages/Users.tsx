@@ -28,6 +28,7 @@ import {
   PageHeader,
 } from "../components/ui";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
+import { toast } from "../components/Toasts";
 import {
   REVOKED_CAUSE_NOTE,
   canResend,
@@ -213,11 +214,18 @@ export default function Users() {
   async function mutate(
     fn: () => Promise<{ error?: unknown }>,
     fallback: string,
+    successMsg?: string,
   ) {
     if (!org) return;
     setError(null);
     const { error } = await fn();
-    if (error) setError(apiErrorMessage(error, fallback));
+    if (error) {
+      const msg = apiErrorMessage(error, fallback);
+      setError(msg);
+      toast.error(msg);
+    } else if (successMsg) {
+      toast.success(successMsg);
+    }
     // Always refetch: on success to reflect the change, on error (esp. 409
     // last_owner) so the disabled-control state self-corrects if the roster
     // changed underneath us.
@@ -232,6 +240,7 @@ export default function Users() {
           body: { role },
         }),
       "Could not change the role.",
+      `Role updated to ${role}`,
     );
 
   /**
@@ -263,6 +272,7 @@ export default function Users() {
       activate
         ? "Could not reactivate the member."
         : "Could not deactivate the member.",
+      activate ? "Member reactivated" : "Member deactivated",
     );
   };
 
@@ -296,7 +306,17 @@ export default function Users() {
       body: { email },
     });
     setInviteBusy(null);
-    if (error) return setInviteErr(inviteErrorCopy(apiErrorCode(error)));
+    if (error) {
+      const errText = inviteErrorCopy(apiErrorCode(error));
+      setInviteErr(errText);
+      toast.error(errText);
+      return;
+    }
+    toast.success(
+      kind === "resend"
+        ? `Invitation resent to ${email}`
+        : `Invitation revoked for ${email}`,
+    );
     await loadInvites();
   }
 
@@ -923,8 +943,13 @@ function InviteForm({
       },
     );
     setBusy(false);
-    if (error || !data)
-      return setErr(apiErrorMessage(error, "Could not create the invitation."));
+    if (error || !data) {
+      const msg = apiErrorMessage(error, "Could not create the invitation.");
+      setErr(msg);
+      toast.error(msg);
+      return;
+    }
+    toast.success(`Invitation sent to ${email}`);
     setEmail("");
     // Build the accept link from THIS origin (correct host regardless of the API's
     // APP_BASE_URL) and show it once for the admin to copy + hand to the invitee —

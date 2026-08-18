@@ -14,6 +14,7 @@ import {
   type AgentJITAccessSetting,
 } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
+import { OrgSwitcher } from "../components/OrgSwitcher";
 import { relativeAge } from "../lib/format";
 import { can } from "../lib/rbac";
 import {
@@ -222,6 +223,12 @@ export default function Settings() {
               canEdit={emailVerified}
               onSaved={(o) => setOrg(o)}
             />
+            <SettingRow
+              label="Switch organization & add tenant"
+              description="Switch between active organizations or add a new organization."
+            >
+              <OrgSwitcher />
+            </SettingRow>
           </SettingGroup>
         )}
 
@@ -1473,45 +1480,45 @@ const RAIL: ReadonlyArray<{
     id: "organization",
     needsOrg: true,
     label: "Organization",
-    hint: "Identity and preferences for this tenant.",
+    hint: "Manage your organization information and preferences.",
     adminOnly: true,
   },
   {
     id: "network",
     needsOrg: true,
     label: "Network",
-    hint: "Address space devices draw from.",
+    hint: "Configure network settings and address pools.",
     adminOnly: true,
   },
   {
     id: "authentication",
     label: "Authentication",
-    hint: "How members prove who they are.",
+    hint: "Manage how members sign in and access your resources.",
   },
   {
     id: "directory",
     needsOrg: true,
     label: "Directory sync",
-    hint: "Users and groups from your identity provider.",
+    hint: "Sync users and groups from your identity provider.",
   },
   {
     id: "features",
     needsOrg: true,
     label: "Features",
-    hint: "Capabilities to unlock, each off by default.",
+    hint: "Enable and configure advanced capabilities.",
     adminOnly: true,
   },
   {
     id: "licence",
     needsOrg: true,
     label: "Licence & plan",
-    hint: "Entitlements and machine credentials.",
+    hint: "Manage your licence and subscription.",
   },
   {
     id: "danger",
     needsOrg: true,
     label: "Danger zone",
-    hint: "Irreversible actions.",
+    hint: "Irreversible and destructive actions for your organization.",
     danger: true,
   },
 ];
@@ -1531,7 +1538,7 @@ function SettingsRail({
       role="tablist"
       aria-orientation="vertical"
       aria-label="Settings sections"
-      className="flex gap-2 overflow-x-auto lg:sticky lg:top-6 lg:flex-col lg:gap-5 lg:overflow-visible"
+      className="flex gap-2 overflow-x-auto lg:sticky lg:top-6 lg:flex-col lg:gap-4 lg:overflow-visible"
     >
       {sections.map((s) => {
         const on = s.id === active;
@@ -1550,23 +1557,31 @@ function SettingsRail({
             onClick={() => onSelect(s.id)}
             /* The left rule is the design's active marker. `border-l-2` is always present and merely
                transparent when inactive, so selecting a tab never shifts the text by two pixels. */
-            className={`shrink-0 border-l-2 pl-3 text-left transition-colors duration-fast ${
-              on ? "border-ok" : "border-transparent hover:border-line"
+            className={`group shrink-0 border-l-2 pl-3.5 text-left transition-colors duration-fast focus:outline-none ${
+              on ? "border-[#B03A45]" : "border-transparent hover:border-white/20"
             }`}
           >
             <span
-              className={`block font-mono text-micro font-semibold uppercase tracking-[.16em] ${
+              className={`block font-mono text-xs font-semibold uppercase tracking-[0.14em] transition-colors ${
                 s.danger
-                  ? "text-danger"
+                  ? on
+                    ? "text-rose-400 font-bold"
+                    : "text-rose-500/80 hover:text-rose-400"
                   : on
-                    ? "text-ink-heading"
-                    : "text-ink-secondary"
+                    ? "text-white font-bold"
+                    : "text-slate-400 group-hover:text-slate-200"
               }`}
             >
               {s.label}
             </span>
             {/* The hint is for choosing between sections, so it is only worth space in the vertical rail. */}
-            <span className="mt-1 hidden text-cell text-ink-faint lg:block">
+            <span
+              className={`mt-1 hidden text-xs leading-relaxed transition-colors lg:block ${
+                on
+                  ? "text-slate-300 font-normal"
+                  : "text-slate-500 group-hover:text-slate-400 font-normal"
+              }`}
+            >
               {s.hint}
             </span>
           </button>

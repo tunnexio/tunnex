@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useInRouterContext } from "react-router-dom";
 
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
@@ -20,7 +20,8 @@ import { useOrg } from "../lib/useOrg";
 export function OrgSwitcher() {
   const { orgs, org, setOrg } = useOrg();
   const { state } = useAuth();
-  const navigate = useNavigate();
+  const inRouter = useInRouterContext();
+  const navigate = inRouter ? useNavigate() : () => {};
   // ⛔ THE CAPABILITY, NOT A ROLE. `cp_admin` is deployment-scoped — the only such field this
   // product has — because a permission granted inside org A cannot license creating org B.
   //
