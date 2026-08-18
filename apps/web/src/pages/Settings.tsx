@@ -1875,6 +1875,10 @@ function SsoProvider({
       }
       actionLabel={configured ? "Replace config" : "Configure"}
       dialogTitle={`${providerName} single sign-on`}
+      /* ⚠ A STABLE SEAM, BECAUSE THIS ROW EXISTS TWICE BY CONSTRUCTION. The e2e spec used to reach Google's
+         config by "the first Client ID field", relying on PROVIDERS order — which silently becomes the wrong
+         row the moment both providers are configured and both offer the same action label. */
+      data-testid={`sso-row-${provider}`}
       disabled={!canEdit}
       error={err}
       actions={(close) => (

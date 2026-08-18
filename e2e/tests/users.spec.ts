@@ -21,7 +21,7 @@ const UNVERIFIED_ADMIN = {
 async function loginAs(page: Page, who: { email: string; pass: string }) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(who.email);
-  await page.getByLabel("Password").fill(who.pass);
+  await page.getByLabel("Password", { exact: true }).fill(who.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Users & Roles" }).click();

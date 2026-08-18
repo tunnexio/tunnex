@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, OWNER, ORG } from "./helpers";
+import { login, openRowDialog, openSection, OWNER, ORG } from "./helpers";
 
 // S4.5 + S4.5b — the REAL assertions, run ONLY against the enterprise edition
 // (seed-enterprise laid down on top of seed: a sealed SSO config + a device
@@ -13,6 +13,16 @@ import { login, OWNER, ORG } from "./helpers";
 //     TestGetSsoConfigPayloadCarriesNoSecret, which gates in `make test-editions`).
 //   - S4.5b: there the 409 orphan list is a page.route MOCK; HERE a live shrink
 //     strands the seeded device and the REAL 409 body renders.
+//
+// ⛔ THESE TESTS HAVE BEEN SKIPPING ON CI, AND THE JOB REPORTED GREEN. The `e2e-enterprise` job's stack has
+// no licence installed, so /meta answers edition=open, both tests skip, and the run prints "2 skipped" under
+// a passing check. The gate below was introduced to remove a false-green from a typo'd env var and replaced
+// it with a quieter one: the STACK is not enterprise, and nothing says so.
+//
+// ⚠ THE FIRST REAL EXECUTION (locally, against a licensed stack) FAILED IMMEDIATELY — it was asserting
+// Google's client id against Microsoft's empty input, for two years of green. Registered: make the
+// e2e-enterprise stack actually enterprise (install a licence in the job), or assert the skip is not
+// silent. Until then this file's coverage is nominal, not real.
 //
 // EDITION GATE — self-detected from /meta, NOT an env var. On the OPEN stack /meta
 // reports edition=open and both tests skip; on the ENTERPRISE stack they run. This
@@ -39,14 +49,29 @@ test("S4.5 — the SSO config payload surfaces the fingerprint and NO client sec
 }) => {
   await login(page, OWNER);
 
+  // SSO lives in the Authentication section, and its config is behind the row's action — one section at a
+  // time, form behind an explicit open.
+  await openSection(page, "Authentication");
   // The enterprise edition serves the real SSO config form (not the gate note).
   await expect(page.getByText(/Tunnex Enterprise feature/i)).toHaveCount(0);
+  // ⛔ SCOPED TO GOOGLE'S ROW, NOT TO THE FIRST MATCHING CONTROL. This spec used to reach the config by
+  // "the first Client ID field", which relied on PROVIDERS order and quietly becomes the WRONG provider as
+  // soon as both are configured and both offer the same action label — a spec that would have kept passing
+  // while asserting Microsoft's payload under Google's name.
+  await page
+    .getByTestId("sso-row-google")
+    .getByRole("button", { name: /Replace config|Configure/ })
+    .click();
   // The seeded google config renders its client id and the proof-of-storage
-  // fingerprint — and NOTHING that is or contains the secret. Providers render in
-  // order [google, microsoft], so the first Client ID field is google's.
-  await expect(page.getByLabel("Client ID").first()).toHaveValue(
-    SEEDED_CLIENT_ID,
-  );
+  // fingerprint — and NOTHING that is or contains the secret.
+  // ⛔ NO CLIENT-ID ASSERTION HERE, AND ITS REMOVAL IS THE POINT. This read
+  // `getByLabel("Client ID").first()`, and Google's row renders NO client-id field at all — the field is
+  // gated to `provider === "microsoft"` (unchanged on main). getByLabel is a case-insensitive SUBSTRING, so
+  // `.first()` was silently resolving to MICROSOFT's "Microsoft client ID" input and asserting Google's
+  // seeded value against it. It never ran on CI to notice: see the vacuity note at the top of this file.
+  //
+  // What Google's row actually proves is what this test is named for — the fingerprint is shown and the
+  // secret is not.
   await expect(page.getByText(/stored secret fingerprint:/i)).toBeVisible();
   await expect(page.getByText(SEEDED_SECRET)).toHaveCount(0);
 
@@ -68,7 +93,9 @@ test("S4.5b — a live shrink strands the seeded device and renders the REAL 409
 }) => {
   await login(page, OWNER);
 
-  await expect(page.getByText("Address pool")).toBeVisible();
+  await openSection(page, "Network");
+  await expect(page.getByText("Address pool", { exact: true })).toBeVisible();
+  await openRowDialog(page, "Resize");
   await expect(page.getByLabel("Pool CIDR")).toHaveValue(BASE_CIDR);
 
   // Precondition: the strandable device fixture MUST exist, else the shrink below

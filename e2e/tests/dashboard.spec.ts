@@ -9,7 +9,7 @@ const OWNER_PASS = "tunnex-demo-password";
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(OWNER_EMAIL);
-  await page.getByLabel("Password").fill(OWNER_PASS);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER_PASS);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 }

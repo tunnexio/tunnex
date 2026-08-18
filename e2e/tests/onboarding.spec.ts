@@ -51,7 +51,7 @@ const ORGS_URL = /\/api\/v1\/organizations(\?.*)?$/;
 async function signIn(page: Page, who: { email: string; pass: string }) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(who.email);
-  await page.getByLabel("Password").fill(who.pass);
+  await page.getByLabel("Password", { exact: true }).fill(who.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
@@ -182,12 +182,17 @@ test("a successful create routes the fresh user into the dashboard", async ({
   await expect(page.getByLabel("Slug")).toHaveValue("funnel-org"); // auto-derived
   await page.getByRole("button", { name: "Create organization" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  // ⛔ THE SWITCHER, NOT A BARE TEXT MATCH. S12.5 renders the org name in the header too, so
-  // getByText("Funnel Org") now resolves to two elements and trips strict mode — and the switcher is the
-  // stronger assertion anyway: the newly created org is the one SELECTED, not merely mentioned.
+  // ⛔ THE SWITCHER, NOT A BARE TEXT MATCH — and it MOVED. S12.5 renders the org name in the header too, so
+  // getByText("Funnel Org") resolves to two elements and trips strict mode; the switcher is the stronger
+  // assertion anyway, because it proves the newly created org is the one SELECTED rather than merely
+  // mentioned. The switcher is no longer in the app header: its only render site is the Organization section
+  // of Settings, so the assertion is read from where the control now lives.
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Organization" })).toHaveValue(
     ORG,
   );
+  await page.goBack();
   await expect(page).toHaveURL(/\/dashboard$/);
 });
 

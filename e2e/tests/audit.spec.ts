@@ -26,7 +26,7 @@ const GRANTEE = "01900000-0000-7000-8000-000000000023"; // seeddata.DemoGranteeU
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(OWNER.email);
-  await page.getByLabel("Password").fill(OWNER.pass);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
@@ -161,7 +161,7 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   //    the funnel holds them at /create-org — and that is precisely the account this surface is for.
   await page.goto("/login");
   await page.getByLabel("Email").fill(CP_ADMIN.email);
-  await page.getByLabel("Password").fill(CP_ADMIN.pass);
+  await page.getByLabel("Password", { exact: true }).fill(CP_ADMIN.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/create-org$/);
 
@@ -182,7 +182,7 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("Email").fill(SANDBOX_OWNER.email);
-  await page.getByLabel("Password").fill(SANDBOX_OWNER.pass);
+  await page.getByLabel("Password", { exact: true }).fill(SANDBOX_OWNER.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();
@@ -209,7 +209,7 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByLabel("Email").fill(OWNER.email);
-  await page.getByLabel("Password").fill(OWNER.pass);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByRole("link", { name: "Audit Log" }).click();

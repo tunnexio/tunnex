@@ -33,7 +33,7 @@ test("login succeeds with a stale session cookie present, and replaces it", asyn
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(OWNER.email);
-  await page.getByLabel("Password").fill(OWNER.pass);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // Pre-fix this surfaced "missing X-Tunnex-CSRF header on a state-changing
