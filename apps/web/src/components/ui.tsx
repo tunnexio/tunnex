@@ -432,6 +432,73 @@ export function SettingRow({
 }
 
 /**
+ * A setting whose value takes a FORM to change: the row states what it is now, and editing happens in a
+ * dialog that closes on save.
+ *
+ * ⛔ COLLAPSED BY DEFAULT IS THE WHOLE POINT. A settings page that renders every form inline is a page where
+ * the reader must skim past five text inputs they are not here to change in order to find the one they are.
+ * The row shows the current value — which is what most visits come to read — and the form appears only when
+ * asked for.
+ *
+ * `children` and `actions` are render props taking `close`, so a save can dismiss the dialog itself. The
+ * caller keeps its own submit/error handling; this owns nothing but the open/closed state.
+ */
+export function SettingDialogRow({
+  label,
+  description,
+  value,
+  actionLabel = "Edit",
+  dialogTitle,
+  disabled = false,
+  error,
+  "data-testid": testId,
+  children,
+  actions,
+}: {
+  label: string;
+  description?: string;
+  /** What the setting is set to right now, shown on the row. */
+  value?: ReactNode;
+  actionLabel?: string;
+  /** Defaults to the row's label — the dialog should be named the thing it edits. */
+  dialogTitle?: string;
+  disabled?: boolean;
+  error?: string | null;
+  "data-testid"?: string;
+  children: (close: () => void) => ReactNode;
+  actions: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  return (
+    <SettingRow
+      label={label}
+      description={description}
+      error={error}
+      data-testid={testId}
+    >
+      <div className="flex items-center gap-3">
+        {value != null && (
+          <span className="text-cell text-ink-secondary">{value}</span>
+        )}
+        <Button variant="ghost" disabled={disabled} onClick={() => setOpen(true)}>
+          {actionLabel}
+        </Button>
+      </div>
+      {open && (
+        <Modal
+          title={dialogTitle ?? label}
+          onDismiss={close}
+          actions={actions(close)}
+        >
+          {children(close)}
+        </Modal>
+      )}
+    </SettingRow>
+  );
+}
+
+/**
  * An on/off state the operator owns.
  *
  * ⛔ A SWITCH, NOT A BUTTON, AND NOT A CHECKBOX — because the product currently uses BOTH for the same

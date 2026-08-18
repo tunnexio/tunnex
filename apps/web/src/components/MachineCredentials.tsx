@@ -8,7 +8,14 @@ import {
   type Member,
 } from "../lib/api";
 import { endSentence, relativeAge } from "../lib/format";
-import { Button, Card, DataTable, ErrorText, Field, Input } from "./ui";
+import {
+  Button,
+  DataTable,
+  ErrorText,
+  Field,
+  Input,
+  SettingDialogRow,
+} from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
 
 // MachineCredentials (S10.2) — the owner-only Settings panel to mint / list / revoke the GitOps operator's
@@ -121,16 +128,33 @@ export function MachineCredentials({
   }
 
   return (
-    <Card>
-      <h2 className="text-sm font-semibold text-slate-300">
-        GitOps operator credentials
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        A machine credential the Tunnex Kubernetes operator uses to manage this
-        organization over the API. It authenticates as a system actor — audited
-        as <span className="font-mono">operator:&lt;name&gt;</span>, never a
-        user. The token is shown once at mint; if lost, revoke and re-mint.
-      </p>
+    // ⛔ THE TABLE IS A COLLECTION AND STAYS A TABLE — it just lives inside the dialog now. The row states
+    // how many credentials exist, which is the question a settings page is asked; minting and revoking are
+    // transactions, and they belong behind an explicit open rather than permanently on the page.
+    <SettingDialogRow
+      label="GitOps operator credentials"
+      description="A machine credential the Tunnex Kubernetes operator uses to manage this organization over the API. It authenticates as a system actor — audited as operator:<name>, never a user. The token is shown once at mint; if lost, revoke and re-mint."
+      value={
+        // ⚠ THREE STATES. `null` is not-loaded and a failed read is not "0 credentials" — a count is a
+        // claim, and claiming zero over an unread list is the same class of lie as an off switch over an
+        // unknown setting.
+        creds === null
+          ? "…"
+          : !creds.ok
+            ? "unknown"
+            : `${creds.data.length} credential${creds.data.length === 1 ? "" : "s"}`
+      }
+      actionLabel={canManage ? "Manage" : "View"}
+      dialogTitle="GitOps operator credentials"
+      error={err}
+      actions={(close) => (
+        <Button variant="ghost" onClick={close}>
+          Close
+        </Button>
+      )}
+    >
+      {() => (
+        <div className="space-y-3">
       <ErrorText>{err}</ErrorText>
 
       {canManage && (
@@ -385,6 +409,8 @@ export function MachineCredentials({
           onDismiss={() => setSecret(null)}
         />
       )}
-    </Card>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }

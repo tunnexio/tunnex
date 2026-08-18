@@ -50,6 +50,7 @@ import {
   Input,
   PageHeader,
   Section,
+  SettingDialogRow,
   SettingRow,
   Switch,
 } from "../components/ui";
@@ -217,8 +218,10 @@ export default function Settings() {
           title="Authentication"
           description="How people prove who they are when they sign in."
         >
-          <div className="flex flex-col gap-3.5">
-            <MfaSettings />
+          {/* ⚠ DIRECT CHILDREN, NOT A WRAPPER. Section draws hairlines BETWEEN its children with
+              `divide-y`; a wrapping div collapses all of them into one child and every divider vanishes,
+              which is what made these rows float with no separation. */}
+          <MfaSettings />
 
             {org && isAdmin && meta?.edition === "enterprise" && (
               <SsoSettings orgId={org.id} canEdit={emailVerified} />
@@ -269,7 +272,6 @@ export default function Settings() {
                   canEdit={emailVerified}
                 />
               ))}
-          </div>
         </Section>
 
         {org && isAdmin && (
@@ -557,8 +559,8 @@ function DangerZone({
     );
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
     const { error } = await api.DELETE("/api/v1/organizations/{orgId}", {
@@ -579,15 +581,40 @@ function DangerZone({
 
   const blocked = pre !== null && !pre.deletable;
   return (
-    <Card className="border-danger/40">
-      <h2 className="text-sm font-semibold text-danger">
-        Delete this organization
-      </h2>
-      <p className="mt-2 text-sm text-slate-400">
-        This cannot be undone. Members lose access to it immediately; the
-        organization stops appearing in the switcher.
-      </p>
-
+    // ⛔ THE CONFIRMATION MOVES INTO A DIALOG, AND THE FRICTION IS UNCHANGED. The slug still has to be
+    // typed; it is simply not sitting permanently open on a settings page, where a stray Enter in a
+    // focused field is one keystroke from deleting a tenant.
+    <SettingDialogRow
+      label="Delete this organization"
+      description="This cannot be undone. Members lose access immediately; the organization stops appearing in the switcher."
+      actionLabel="Delete organization…"
+      dialogTitle={`Delete ${org.slug}`}
+      error={err}
+      actions={(close) => (
+        <>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setConfirm("");
+              setErr(null);
+              close();
+            }}
+          >
+            Cancel
+          </Button>
+          {/* No `close` on success: the handler navigates away from the org entirely. */}
+          <Button
+            variant="danger"
+            disabled={busy || blocked || confirm !== org.slug}
+            onClick={() => void submit()}
+          >
+            {busy ? "Deleting…" : "Delete organization"}
+          </Button>
+        </>
+      )}
+    >
+      {() => (
+        <div className="flex flex-col gap-3">
       {/* ⛔ THE BLOCKERS ARE SHOWN BEFORE THE CONFIRMATION FIELD, NOT AFTER THE ATTEMPT. A refusal that
           arrives only once someone has typed the organization's name to confirm is a refusal met at the
           most dangerous moment — with their attention on getting past it. */}
@@ -606,7 +633,6 @@ function DangerZone({
         </div>
       )}
 
-      <form onSubmit={submit} className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-[14rem] flex-1">
           {/* ⚠ TYPE THE SLUG, NOT "DELETE". The slug is the one string that differs between the org you
               mean and the one you are looking at — and with a switcher in the header, looking at the wrong
@@ -620,16 +646,9 @@ function DangerZone({
             />
           </Field>
         </div>
-        <Button
-          type="submit"
-          variant="danger"
-          disabled={busy || blocked || confirm !== org.slug}
-        >
-          {busy ? "Deleting…" : "Delete organization"}
-        </Button>
-      </form>
-      <ErrorText>{err}</ErrorText>
-    </Card>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }
 
@@ -682,44 +701,24 @@ function OrgMfaEnforce({
   }
 
   return (
-    <Card>
-      <h2 className="text-sm font-semibold text-slate-300">
-        Require two-factor authentication
-      </h2>
-      <p className="mt-1 text-xs text-slate-400">
-        When on, members who sign in with a password must have 2FA — anyone
-        without it is prompted to set it up at their next sign-in (no one is
-        locked out). SSO sign-ins are governed by your identity provider.
-      </p>
-      {/* D8 honesty: enforcement is a forward gate, not retroactive. */}
-      <p className="mt-1 text-xs text-slate-500">
-        Enforcement applies at sign-in, not to sessions already open —
-        pre-existing sessions remain valid until they expire naturally. To end
-        current sessions immediately, deactivate the member.
-      </p>
-      {error && (
-        <div className="mt-2">
-          <ErrorText>{error}</ErrorText>
-        </div>
+    <SettingRow
+      label="Require two-factor authentication"
+      description="When on, members who sign in with a password must have 2FA — anyone without it is prompted to set it up at their next sign-in (no one is locked out). SSO sign-ins are governed by your identity provider. Enforcement applies at sign-in, not to sessions already open: pre-existing sessions remain valid until they expire naturally. To end current sessions immediately, deactivate the member."
+      error={error}
+    >
+      {/* ⚠ `null` is NOT "off" — it is "not read yet". Rendering an off switch for an unknown value would
+          state, in the one place an admin checks, that enforcement is disabled when it may well be on. */}
+      {enforce === null ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : (
+        <Switch
+          label="Require two-factor authentication"
+          checked={enforce}
+          disabled={busy || !canEdit}
+          onChange={(next) => toggle(next)}
+        />
       )}
-      <div className="mt-3">
-        {enforce === null ? (
-          <p className="text-xs text-slate-500">Loading…</p>
-        ) : (
-          <Button
-            variant="ghost"
-            disabled={busy || !canEdit}
-            onClick={() => toggle(!enforce)}
-          >
-            {busy
-              ? "Saving…"
-              : enforce
-                ? "Disable requirement"
-                : "Require MFA for password sign-ins"}
-          </Button>
-        )}
-      </div>
-    </Card>
+    </SettingRow>
   );
 }
 
@@ -799,8 +798,13 @@ function PoolSection({
   const [conflict, setConflict] = useState<ResizeConflict | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  // ⛔ THE POOL DIALOG DOES NOT CLOSE ON SAVE, AND THAT IS THE EXCEPTION THAT PROVES THE RULE.
+  // A successful resize returns a consequence the operator MUST read — existing devices keep their old
+  // addresses and their configs are one-time, so reaching the new range means re-issuing them. Closing on
+  // success would dismiss the only place that is ever said. A shrink refusal likewise returns the device
+  // list that blocks it. The dialog stays open and Cancel becomes Close.
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
     setConflict(null);
@@ -827,36 +831,52 @@ function PoolSection({
   }
 
   return (
-    <form onSubmit={submit} className="mt-4">
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-300">Address pool</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          The WireGuard address range devices are assigned from. Grow to add
-          capacity; shrink only within the current range.
-        </p>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-[12rem] flex-1">
-            <Field label="Pool CIDR">
-              <Input
-                value={cidr}
-                onChange={(e) => {
-                  setCidr(e.target.value);
-                  setDone(false);
-                  setConflict(null);
-                }}
-                required
-                disabled={!canEdit}
-                placeholder="10.0.0.0/24"
-              />
-            </Field>
-          </div>
+    <SettingDialogRow
+      label="Address pool"
+      description="The WireGuard address range devices are assigned from. Grow to add capacity; shrink only within the current range."
+      value={<span className="font-mono">{org.pool_cidr}</span>}
+      actionLabel="Resize"
+      dialogTitle="Resize address pool"
+      disabled={!canEdit}
+      error={err}
+      actions={(close) => (
+        <>
           <Button
-            type="submit"
+            variant="ghost"
+            onClick={() => {
+              setCidr(org.pool_cidr ?? "");
+              setConflict(null);
+              setDone(false);
+              setErr(null);
+              close();
+            }}
+          >
+            {done ? "Close" : "Cancel"}
+          </Button>
+          <Button
             disabled={busy || !canEdit || cidr === org.pool_cidr}
+            onClick={() => void submit()}
           >
             {busy ? "Resizing…" : "Resize pool"}
           </Button>
-        </div>
+        </>
+      )}
+    >
+      {() => (
+        <div className="flex flex-col gap-3">
+          <Field label="Pool CIDR">
+            <Input
+              value={cidr}
+              onChange={(e) => {
+                setCidr(e.target.value);
+                setDone(false);
+                setConflict(null);
+              }}
+              required
+              disabled={!canEdit}
+              placeholder="10.0.0.0/24"
+            />
+          </Field>
 
         {/* Accept-and-surface (S4.5b decision e): the resize succeeds, but existing
             configs embed the old range and are one-time — they can't be re-served. */}
@@ -904,9 +924,10 @@ function PoolSection({
             )}
           </div>
         )}
-        <ErrorText>{err}</ErrorText>
-      </Card>
-    </form>
+          <ErrorText>{err}</ErrorText>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }
 
@@ -1073,12 +1094,15 @@ function IdpSyncSection({
   const copy = tier ? tierCopy(tier) : null;
 
   return (
-    <Card>
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-sm font-semibold text-slate-300">
-          Directory sync — {providerLabel(provider)}
-        </h2>
-        {copy && (
+    // ⛔ A ROW THAT OPENS A CONSOLE, NOT ONE THAT OPENS A FORM. Directory sync is health + sync-now +
+    // credential replacement + group mapping — several independent transactions, not one value with a
+    // Save. So the dialog's only action is Close; every control inside keeps its own confirmation, and
+    // nothing pretends the panel is a single form that can be "saved".
+    <SettingDialogRow
+      label={`Directory sync — ${providerLabel(provider)}`}
+      description="Sync directory groups into Tunnex groups so access follows your identity provider."
+      value={
+        copy ? (
           <span
             data-testid={`idp-tier-${provider}`}
             className={
@@ -1092,8 +1116,21 @@ function IdpSyncSection({
           >
             {copy.label}
           </span>
-        )}
-      </div>
+        ) : (
+          "not configured"
+        )
+      }
+      actionLabel={state.kind === "configured" ? "Manage" : "Configure"}
+      dialogTitle={`Directory sync — ${providerLabel(provider)}`}
+      error={err}
+      actions={(close) => (
+        <Button variant="ghost" onClick={close}>
+          Close
+        </Button>
+      )}
+    >
+      {() => (
+        <div className="space-y-3">
 
       {/* ⛔ THE FOURTH ARM, and only the SERVED payload revealed it: the spec enum lists google
           for every idp-sync path, but the server answers 400 provider_not_supported. Rendering a
@@ -1367,7 +1404,9 @@ function IdpSyncSection({
       )}
 
       <ErrorText>{err}</ErrorText>
-    </Card>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }
 
@@ -1386,14 +1425,14 @@ function OrgSection({
 }) {
   const [name, setName] = useState(org.name);
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  // ⛔ THE DIALOG CLOSES ONLY ON SUCCESS. Closing on click would hide the error the operator needs to read,
+  // and leave them believing a rename landed that did not. `onDone` is called after the save is confirmed.
+  async function submit(e: FormEvent | undefined, onDone?: () => void) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
-    setSaved(false);
     const { data, error } = await api.PATCH("/api/v1/organizations/{orgId}", {
       params: { path: { orgId: org.id } },
       body: { name },
@@ -1401,59 +1440,70 @@ function OrgSection({
     setBusy(false);
     if (error || !data)
       return setErr(apiErrorMessage(error, "Could not save."));
-    setSaved(true);
     onSaved(data);
+    onDone?.();
   }
 
   return (
-    <form onSubmit={submit} className="mt-6">
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-300">Organization</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-[14rem] flex-1">
-            <Field label="Name">
-              <Input
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setSaved(false);
-                }}
-                required
-                disabled={!canEdit}
-              />
-            </Field>
-          </div>
+    <SettingDialogRow
+      label="Organization name"
+      description="Shown throughout the app and in invitations. The slug is the immutable identity and cannot change."
+      value={org.name}
+      actionLabel="Edit"
+      dialogTitle="Rename organization"
+      disabled={!canEdit}
+      error={err}
+      actions={(close) => (
+        <>
           <Button
-            type="submit"
+            variant="ghost"
+            onClick={() => {
+              setName(org.name);
+              setErr(null);
+              close();
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
             disabled={busy || !canEdit || name === org.name}
+            onClick={() => void submit(undefined, close)}
           >
             {busy ? "Saving…" : "Save"}
           </Button>
+        </>
+      )}
+    >
+      {() => (
+        <div className="flex flex-col gap-3">
+          <Field label="Name">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={!canEdit}
+            />
+          </Field>
+          {/* Slug is immutable (identity); shown read-only. */}
+          <p className="font-mono text-xs text-slate-500">slug: {org.slug}</p>
+          <ErrorText>{err}</ErrorText>
         </div>
-        {/* Slug is immutable (identity); shown read-only. */}
-        <p className="mt-2 font-mono text-xs text-slate-500">
-          slug: {org.slug}
-        </p>
-        {saved && <p className="mt-2 text-xs text-accent-400">Saved.</p>}
-        <ErrorText>{err}</ErrorText>
-      </Card>
-    </form>
+      )}
+    </SettingDialogRow>
   );
 }
 
 function SsoSettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
+  // ⚠ THE "SINGLE SIGN-ON" SUB-LABEL IS GONE, AND ITS REASON WENT WITH IT. It existed because this block
+  // rendered two CARDS floating on the page background with nothing naming the pair. They are rows inside a
+  // named Authentication section now, so the label was a third heading level naming nothing — and each row
+  // already says which provider it is.
   return (
-    // ⚠ A SECTION LABEL, NOT A LOOSE HEADING. This block renders TWO provider cards, so the heading names
-    // the pair — but outside a card it read as text floating on the page background, which is what the
-    // founder saw. Given its own muted, uppercase treatment it reads as a label for the cards beneath it.
-    <div className="space-y-3">
-      <h2 className="px-1 font-mono text-[10px] uppercase tracking-wide text-ink-tertiary">
-        Single sign-on
-      </h2>
+    <>
       {PROVIDERS.map((p) => (
         <SsoProvider key={p} orgId={orgId} provider={p} canEdit={canEdit} />
       ))}
-    </div>
+    </>
   );
 }
 
@@ -1477,7 +1527,6 @@ function SsoProvider({
   const [tenantId, setTenantId] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   // load fetches the current (non-secret) config. sso_not_configured (404) is the
@@ -1552,11 +1601,10 @@ function SsoProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, provider]);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(e?: FormEvent, onDone?: () => void) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
-    setSaved(false);
     const { error } = await api.PUT(
       "/api/v1/organizations/{orgId}/sso/{provider}",
       {
@@ -1573,8 +1621,8 @@ function SsoProvider({
     if (error)
       return setErr(apiErrorMessage(error, "Could not save the SSO config."));
     setClientSecret(""); // never keep the secret in page state after save
-    setSaved(true);
     await load(() => false); // refresh to pick up the new fingerprint
+    onDone?.();
   }
 
   // Display name for the provider — also the label prefix that keeps each provider's fields uniquely named.
@@ -1631,20 +1679,46 @@ function SsoProvider({
     );
 
   return (
-    <form onSubmit={submit}>
-      <Card>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white capitalize">
-            {provider}
-          </h3>
-          {configured && view && (
-            <span className="text-xs text-slate-500">
-              {view.enabled ? "enabled" : "disabled"} · updated{" "}
-              {relativeAge(view.updated_at)}
-            </span>
-          )}
-        </div>
-        <div className="mt-3 space-y-3">
+    <SettingDialogRow
+      label={providerName}
+      description={
+        provider === "microsoft"
+          ? "Client ID, secret and Entra tenant for Microsoft sign-in."
+          : "Google Workspace sign-in for this organization."
+      }
+      value={
+        configured && view ? (
+          <>
+            {view.enabled ? "enabled" : "disabled"} · updated{" "}
+            {relativeAge(view.updated_at)}
+          </>
+        ) : (
+          "not configured"
+        )
+      }
+      actionLabel={configured ? "Replace config" : "Configure"}
+      dialogTitle={`${providerName} single sign-on`}
+      disabled={!canEdit}
+      error={err}
+      actions={(close) => (
+        <>
+          <Button variant="ghost" onClick={close}>
+            Cancel
+          </Button>
+          {/* ⛔ CLOSES ONLY AFTER THE SAVE IS CONFIRMED. The secret is write-only — it is cleared from page
+              state on success and can never be re-read — so a dialog that closed optimistically and then
+              failed would leave the operator with nothing to retype and no error to explain why. */}
+          <Button
+            disabled={busy || !canEdit}
+            onClick={() => void submit(undefined, close)}
+          >
+            {busy ? "Saving…" : configured ? "Replace config" : "Configure"}
+          </Button>
+        </>
+      )}
+    >
+      {() => (
+        <div className="space-y-3">
           {/* Labels are PROVIDER-SCOPED (S11-1 class): SsoProvider renders once per provider, so a bare
               "Client ID" would put two controls with the SAME accessible name on the Settings page — a
               screen reader announces them identically and a label-navigating user cannot tell them apart. */}
@@ -1724,14 +1798,7 @@ function SsoProvider({
             {enabledLabel(configured)}
           </label>
         </div>
-        <div className="mt-4 flex items-center gap-3">
-          <Button type="submit" disabled={busy || !canEdit}>
-            {busy ? "Saving…" : configured ? "Replace config" : "Configure"}
-          </Button>
-          {saved && <span className="text-xs text-accent-400">Saved.</span>}
-        </div>
-        <ErrorText>{err}</ErrorText>
-      </Card>
-    </form>
+      )}
+    </SettingDialogRow>
   );
 }

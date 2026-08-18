@@ -1,5 +1,11 @@
 import { describe, expect, it, afterEach, vi, beforeEach } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MachineCredentials } from "../src/components/MachineCredentials";
 import * as apiMod from "../src/lib/api";
 
@@ -49,6 +55,17 @@ function stubGet(byPath: Record<string, unknown>) {
 }
 
 beforeEach(() => vi.restoreAllMocks());
+/**
+ * ⛔ THE PANEL IS COLLAPSED BY DEFAULT NOW, so every assertion about its CONTENTS has to open it first —
+ * the same click a person makes. This is not a weakening of these tests: the distinction they exist to
+ * protect (none / failed-to-load / all-owned) is also stated on the row itself as "0 credentials" /
+ * "unknown" / a count, and the detail lives behind the open.
+ */
+async function open() {
+  const btn = await screen.findByRole("button", { name: /Manage|View/ });
+  fireEvent.click(btn);
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -61,6 +78,7 @@ describe("⛔ the three empty states are distinguishable", () => {
   it("NONE — no credentials exist, and it says there is nothing to assign", async () => {
     stubGet({ [LIST]: [], [MEMBERS]: [] });
     render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     await waitFor(() =>
       expect(screen.getByText(/no machine credentials exist/i)).toBeTruthy(),
     );
@@ -70,6 +88,7 @@ describe("⛔ the three empty states are distinguishable", () => {
   it("⛔ FAILED TO LOAD is NOT 'none' — the state this screen exists to keep apart", async () => {
     stubGet({ [LIST]: "REJECT", [MEMBERS]: [] });
     render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     await waitFor(() =>
       expect(
         document.querySelector('[data-state="load-failed"]'),
@@ -92,17 +111,18 @@ describe("⛔ the three empty states are distinguishable", () => {
       [LIST]: [cred({ id: "c1", owner_user_id: "u1" })],
       [MEMBERS]: [],
     });
-    const { container } = render(<MachineCredentials orgId={ORG} canManage />);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     await waitFor(() =>
       expect(
-        container.querySelector('[data-state="all-owned"]'),
+        document.body.querySelector('[data-state="all-owned"]'),
       ).not.toBeNull(),
     );
     // ⚠ ORDER IS THE ASSERTION. A qualifier under a list is read after the list is already believed.
-    const banner = container.querySelector('[data-state="all-owned"]')!;
+    const banner = document.body.querySelector('[data-state="all-owned"]')!;
     // ⚠ The panel is a DataTable now, not a <ul>. The claim is unchanged — the refusal banner sits ABOVE
     // the rows — only the element carrying "the rows" is different.
-    const list = container.querySelector("table")!;
+    const list = document.body.querySelector("table")!;
     expect(
       banner.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -128,11 +148,12 @@ describe("⛔ the three empty states are distinguishable", () => {
       [LIST]: [cred({ id: "c1", owner_user_id: "u1" }), cred({ id: "c2" })],
       [MEMBERS]: [],
     });
-    const { container } = render(<MachineCredentials orgId={ORG} canManage />);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     await waitFor(() =>
-      expect(container.querySelectorAll("tbody tr").length).toBe(2),
+      expect(document.body.querySelectorAll("tbody tr").length).toBe(2),
     );
-    expect(container.querySelector('[data-state="all-owned"]')).toBeNull();
+    expect(document.body.querySelector('[data-state="all-owned"]')).toBeNull();
   });
 });
 
@@ -152,13 +173,14 @@ describe("the row tells the truth about what it knows", () => {
         },
       ],
     });
-    const { container } = render(<MachineCredentials orgId={ORG} canManage />);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     await waitFor(() =>
-      expect(container.querySelectorAll("tbody tr").length).toBe(2),
+      expect(document.body.querySelectorAll("tbody tr").length).toBe(2),
     );
     // Asserting only the unowned row would make this a test about a constant.
-    expect(container.querySelector('tr[data-owned="yes"]')).not.toBeNull();
-    expect(container.querySelector('tr[data-owned="no"]')).not.toBeNull();
+    expect(document.body.querySelector('tr[data-owned="yes"]')).not.toBeNull();
+    expect(document.body.querySelector('tr[data-owned="no"]')).not.toBeNull();
     // The picker exists for the unassigned one only.
     expect(
       screen.getByRole("combobox", { name: /owner for orphan/i }),
@@ -184,9 +206,10 @@ describe("the row tells the truth about what it knows", () => {
         },
       ],
     });
-    const { container } = render(<MachineCredentials orgId={ORG} canManage />);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     const row = await waitFor(() => {
-      const li = container.querySelector('tr[data-owned="yes"]');
+      const li = document.body.querySelector('tr[data-owned="yes"]');
       expect(li).not.toBeNull();
       return li as HTMLElement;
     });
@@ -210,9 +233,10 @@ describe("the row tells the truth about what it knows", () => {
       ],
       [MEMBERS]: [],
     });
-    const { container } = render(<MachineCredentials orgId={ORG} canManage />);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     const row = await waitFor(() => {
-      const li = container.querySelector('tr[data-owned="yes"]');
+      const li = document.body.querySelector('tr[data-owned="yes"]');
       expect(li).not.toBeNull();
       return li as HTMLElement;
     });
@@ -238,9 +262,10 @@ describe("the row tells the truth about what it knows", () => {
         },
       ],
     });
-    const { container } = render(<MachineCredentials orgId={ORG} canManage />);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     const banner = await waitFor(() => {
-      const p = container.querySelector('[data-state="some-refused"]');
+      const p = document.body.querySelector('[data-state="some-refused"]');
       expect(p).not.toBeNull();
       return p as HTMLElement;
     });
@@ -251,7 +276,7 @@ describe("the row tells the truth about what it knows", () => {
     expect(banner.textContent).toMatch(/cannot authenticate/i);
     // ⚠ The badge itself must carry the consequence. "unassigned" alone reads as metadata, and an
     // operator whose GitOps runner is dead would learn it from the runner rather than from this screen.
-    const badge = container.querySelector(
+    const badge = document.body.querySelector(
       '[data-badge="refused"]',
     ) as HTMLElement;
     expect(badge.textContent).toMatch(/refused/i);
@@ -274,12 +299,13 @@ describe("the row tells the truth about what it knows", () => {
         },
       ],
     });
-    const { container } = render(<MachineCredentials orgId={ORG} canManage />);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     await waitFor(() =>
-      expect(container.querySelectorAll("tbody tr").length).toBe(2),
+      expect(document.body.querySelectorAll("tbody tr").length).toBe(2),
     );
-    expect(container.querySelector('[data-state="some-refused"]')).toBeNull();
-    expect(container.querySelector('[data-badge="refused"]')).toBeNull();
+    expect(document.body.querySelector('[data-state="some-refused"]')).toBeNull();
+    expect(document.body.querySelector('[data-badge="refused"]')).toBeNull();
   });
 
   it("⛔ THE PICKER OFFERS VERIFIED ACCOUNTS ONLY — and still offers the verified ones (D21)", async () => {
@@ -303,6 +329,7 @@ describe("the row tells the truth about what it knows", () => {
       ],
     });
     render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     const sel = (await screen.findByRole("combobox", {
       name: /owner for orphan/i,
     })) as HTMLSelectElement;
@@ -325,6 +352,7 @@ describe("the row tells the truth about what it knows", () => {
       ],
     });
     render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     const sel = (await screen.findByRole("combobox", {
       name: /owner for orphan/i,
     })) as HTMLSelectElement;
@@ -347,6 +375,7 @@ describe("the row tells the truth about what it knows", () => {
       [MEMBERS]: [],
     });
     render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
     await waitFor(() => expect(screen.getByText(/last seen/i)).toBeTruthy());
     // It is LAST AUTHENTICATED AT. A credential idle for a day may be an hourly reconcile or abandoned.
     for (const banned of [

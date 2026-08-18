@@ -2,7 +2,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { Button, ErrorText, Field, Input, StatusDot } from "./ui";
+import {
+  Button,
+  Field,
+  Input,
+  Modal,
+  SettingRow,
+  StatusDot,
+} from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
 
 /**
@@ -16,6 +23,8 @@ export function MfaSettings() {
   const [enrolled, setEnrolled] = useState<boolean | null>(null); // null = loading
   const [remaining, setRemaining] = useState<number | undefined>(undefined);
   const [phase, setPhase] = useState<"idle" | "enrolling">("idle");
+  // The manage dialog is separate from `phase`: enrolment and management are different transactions.
+  const [managing, setManaging] = useState(false);
   const [otpauth, setOtpauth] = useState("");
   const [manualKey, setManualKey] = useState("");
   const [showKey, setShowKey] = useState(false);
@@ -102,36 +111,51 @@ export function MfaSettings() {
   }
 
   return (
-    <section className="rounded-xl border border-ink-700 bg-ink-800/40 p-5">
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-slate-300">
-          Two-factor authentication
-        </h2>
-        {enrolled === true && <StatusDot tone="on" />}
+    // ⛔ THE ROW STATES WHETHER 2FA IS ON; THE WIZARD LIVES IN A DIALOG. This was a bordered card sitting
+    // among rows, permanently showing a setup flow most visits are not here to run. `enrolled === null` is
+    // "not read yet", NOT "off" — rendering "Off" for an unknown value would tell someone their account is
+    // unprotected when it may not be.
+    <SettingRow
+      label="Two-factor authentication"
+      description="A time-based one-time code (TOTP) from an authenticator app, required at sign-in. Available on every plan."
+      error={error}
+    >
+      <div className="flex items-center gap-3">
+        {enrolled === null ? (
+          <span className="text-cell text-ink-tertiary">…</span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-cell text-ink-secondary">
+            {enrolled === true && <StatusDot tone="on" />}
+            {enrolled ? "On" : "Off"}
+          </span>
+        )}
+        {enrolled === false && (
+          <Button variant="ghost" onClick={start} disabled={busy}>
+            {busy ? "Starting…" : "Set up"}
+          </Button>
+        )}
+        {enrolled === true && (
+          <Button
+            variant="ghost"
+            onClick={() => setManaging(true)}
+            disabled={busy}
+          >
+            Manage
+          </Button>
+        )}
       </div>
-      <p className="mt-1 text-xs text-slate-400">
-        A time-based one-time code (TOTP) from an authenticator app, required at
-        sign-in. Available on every plan.
-      </p>
-
-      {error && (
-        <div className="mt-3">
-          <ErrorText>{error}</ErrorText>
-        </div>
-      )}
-
-      {enrolled === null && (
-        <p className="mt-4 text-xs text-slate-500">Loading…</p>
-      )}
-
-      {enrolled === false && phase === "idle" && (
-        <Button className="mt-4" onClick={start} disabled={busy}>
-          {busy ? "Starting…" : "Set up two-factor authentication"}
-        </Button>
-      )}
 
       {phase === "enrolling" && (
-        <div className="mt-4 space-y-4">
+        <Modal
+          title="Set up two-factor authentication"
+          onDismiss={() => setPhase("idle")}
+          actions={
+            <Button variant="ghost" onClick={() => setPhase("idle")}>
+              Cancel
+            </Button>
+          }
+        >
+        <div className="space-y-4">
           <p className="text-xs text-slate-400">
             Scan this with your authenticator app, then enter the 6-digit code
             it shows to finish.
@@ -166,19 +190,31 @@ export function MfaSettings() {
             <Button type="submit" disabled={busy}>
               {busy ? "Verifying…" : "Verify & turn on"}
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setPhase("idle")}
-            >
-              Cancel
-            </Button>
           </form>
         </div>
+        </Modal>
       )}
 
-      {enrolled === true && phase === "idle" && (
-        <div className="mt-4 space-y-3">
+      {enrolled === true && phase === "idle" && managing && (
+        <Modal
+          title="Two-factor authentication"
+          onDismiss={() => {
+            setManaging(false);
+            setConfirmDisable(false);
+          }}
+          actions={
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setManaging(false);
+                setConfirmDisable(false);
+              }}
+            >
+              Close
+            </Button>
+          }
+        >
+        <div className="space-y-3">
           <p className="text-xs text-emerald-400">
             Two-factor authentication is on.
           </p>
@@ -207,6 +243,7 @@ export function MfaSettings() {
             </div>
           )}
         </div>
+        </Modal>
       )}
 
       {recovery && (
@@ -226,6 +263,6 @@ export function MfaSettings() {
           }}
         />
       )}
-    </section>
+    </SettingRow>
   );
 }

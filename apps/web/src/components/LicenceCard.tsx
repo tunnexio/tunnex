@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { Button, Card, ErrorText, Input } from "./ui";
+import {
+  Button,
+  ErrorText,
+  Input,
+  SettingDialogRow,
+} from "./ui";
 
 type Status = {
   state: "unlicensed" | "valid" | "expired" | "lapsed";
@@ -44,8 +49,10 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
     })();
   }, []);
 
-  async function install(e: React.FormEvent) {
-    e.preventDefault();
+  // Closes only after the install is confirmed — a licence that failed to apply must leave the key and
+  // the reason on screen, not vanish behind a closed dialog.
+  async function install(e?: React.FormEvent, onDone?: () => void) {
+    e?.preventDefault();
     setBusy(true);
     setError(null);
     const { data, error: err } = await api.POST("/api/v1/license", {
@@ -64,6 +71,7 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
     if (data) {
       setStatus(data as Status);
       setKey("");
+      onDone?.();
     }
   }
 
@@ -94,9 +102,34 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
         : null;
 
   return (
-    <Card>
-      <h2 className="text-title font-semibold text-ink-heading">Licence</h2>
-
+    // ⛔ THE TIER IS THE ANSWER MOST VISITS COME FOR; the ceilings, expiry and state copy are what you
+    // read when that answer is surprising. So the row states the tier and the dialog holds the rest —
+    // including the key field, which is the one control here and is owner-only.
+    <SettingDialogRow
+      label="Licence key"
+      description="Install or replace the key. Takes effect immediately — no restart."
+      value={status ? status.tier : "…"}
+      actionLabel={canManage ? "Install licence" : "View"}
+      dialogTitle="Licence"
+      error={error}
+      actions={(close) => (
+        <>
+          <Button variant="ghost" onClick={close}>
+            {canManage ? "Cancel" : "Close"}
+          </Button>
+          {canManage && (
+            <Button
+              disabled={busy || !key.trim()}
+              onClick={() => void install(undefined, close)}
+            >
+              {busy ? "Installing…" : "Install licence"}
+            </Button>
+          )}
+        </>
+      )}
+    >
+      {() => (
+        <div className="flex flex-col gap-1">
       {storeNote && (
         <p
           className={`mt-2 text-cell ${
@@ -158,7 +191,7 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
       )}
 
       {canManage && (
-        <form onSubmit={install} className="mt-4 flex flex-col gap-2">
+        <div className="mt-4 flex flex-col gap-2">
           <Input
             aria-label="Licence key"
             placeholder="tnxl_…"
@@ -170,11 +203,10 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
           <p className="text-explainer text-ink-tertiary">
             Takes effect immediately. No restart.
           </p>
-          <Button type="submit" disabled={busy || !key.trim()}>
-            {busy ? "Installing…" : "Install licence"}
-          </Button>
-        </form>
+        </div>
       )}
-    </Card>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }
