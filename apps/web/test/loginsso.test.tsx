@@ -48,6 +48,14 @@ function metaThen(...starts: unknown[]) {
     if (path === "/api/v1/meta") {
       return { data: { sso_providers: ["google", "microsoft"] } };
     }
+    // ⛔ /healthz MUST BE ROUTED, NOT LEFT TO THE QUEUE. AuthLayout renders HealthStatus, which GETs
+    // /healthz on mount — so an unrouted path fell through to `starts[i++]` and ATE the SSO response the
+    // test had queued. The click then saw a health payload, and four tests failed for a reason that had
+    // nothing to do with SSO. Routing by path is the whole point of this stub; every path the page actually
+    // calls has to be named.
+    if (path === "/healthz") {
+      return { data: { status: "ok" } };
+    }
     return starts[i++] ?? { error: { error: { code: "unexpected_extra_call" } } };
   });
 }
