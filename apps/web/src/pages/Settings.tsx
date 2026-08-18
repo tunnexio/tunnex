@@ -42,7 +42,14 @@ import {
   orphanTail,
 } from "../lib/poolview";
 import { useAuth } from "../lib/auth";
-import { Button, Card, ErrorText, Field, Input } from "../components/ui";
+import {
+  Button,
+  Card,
+  ErrorText,
+  Field,
+  Input,
+  PageHeader,
+} from "../components/ui";
 import { LicenceCard } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
 import { MachineCredentials } from "../components/MachineCredentials";
@@ -135,8 +142,7 @@ export default function Settings() {
     // 2000px wide to hold a slug and a checkbox — the text line-length collapses into something unreadable
     // and the eye has to travel the full width for each field. A maximum turns extra viewport into MARGIN.
     <div className="mx-auto max-w-[110rem]">
-      <h1 className="text-xl font-semibold text-white">Settings</h1>
-      <p className="text-sm text-slate-400">{org ? org.name : "…"}</p>
+      <PageHeader title="Settings" subtitle={org ? org.name : "…"} />
       <ErrorText>{error}</ErrorText>
 
       {/* Desktop-only: server connection + sign-out for THIS client (renders nothing

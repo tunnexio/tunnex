@@ -1,7 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useOrg } from "../lib/useOrg";
 import { Icon, type IconName } from "../components/Icon";
-import { GLASS } from "../components/ui";
+import {
+  GLASS,
+  PageHeader,
+} from "../components/ui";
 import { isEnterprise, type Edition } from "../lib/edition";
 import { hubSetView } from "../lib/hubsetview";
 import { assembleTopology, meshFrom } from "../lib/sitesview";
@@ -256,12 +259,7 @@ export default function Dashboard() {
     // applied to exactly one element. Every screen root must therefore repeat this — see docs/S14.4.
     <div className="flex flex-col gap-3.5">
       {/* README: PAGE HEADER = title + subtitle, its own block above the body. */}
-      <div>
-        <h1 className="text-[22px] font-semibold leading-tight text-ink-heading">
-          Overview
-        </h1>
-        <p className="mt-1 text-cell text-ink-secondary">{orgName || "…"}</p>
-      </div>
+      <PageHeader title="Overview" subtitle={orgName || "…"} />
       <ErrorText>{error}</ErrorText>
       <UpgradeCenter />
 

@@ -10,7 +10,12 @@ import {
   type SiteSubnet,
 } from "../lib/api";
 import { LoadRetry } from "../components/LoadRetry";
-import { DataTable, EmptyState, Panel } from "../components/ui";
+import {
+  DataTable,
+  EmptyState,
+  PageHeader,
+  Panel,
+} from "../components/ui";
 import { AddressSpaceMap, MAP_LIST_MAX } from "../components/viz";
 import { useMotionPreference } from "../components/MotionProvider";
 import { motionAllowed } from "../lib/motion";
@@ -310,14 +315,7 @@ export default function RoutedRangesPage() {
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold text-ink-heading">
-            Routed ranges
-          </h1>
-          <p className="text-cell text-ink-tertiary">{org ? org.name : "…"}</p>
-        </div>
-      </div>
+      <PageHeader title="Routed ranges" subtitle={org ? org.name : "…"} />
 
       {loadError && <LoadRetry error={loadError} onRetry={reload} />}
       {loading && <p className="text-cell text-ink-faint">Loading…</p>}

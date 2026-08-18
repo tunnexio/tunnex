@@ -22,6 +22,7 @@ import {
   DataTable,
   Field,
   Input,
+  PageHeader,
   Select,
   StatusDot,
 } from "../components/ui";
@@ -631,13 +632,10 @@ export default function Agents() {
   return (
     <div className="flex flex-col gap-3.5">
       <div>
-        <h1 className="text-[22px] font-semibold text-ink-heading">
-          AI agents
-        </h1>
-        <p className="text-cell text-ink-tertiary">
-          An agent connects to a gateway over the tunnel and reaches only what
-          it is granted.
-        </p>
+        <PageHeader
+          title="AI agents"
+          subtitle="An agent connects to a gateway over the tunnel and reaches only what it is granted."
+        />
       </div>
 
       {orgId && (

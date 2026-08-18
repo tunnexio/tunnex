@@ -18,11 +18,12 @@ import {
 import {
   Badge,
   Button,
-  Modal,
   DataTable,
   ErrorText,
   Field,
   Input,
+  Modal,
+  PageHeader,
   StatusDot,
 } from "../components/ui";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
@@ -362,15 +363,9 @@ export default function Devices() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap: "14px" }}>
-        <div>
-          <h1 style={{ font: "700 22px 'Instrument Sans'", color: "#F5F5F5" }}>
-            Devices
-          </h1>
-          <div style={{ font: "400 12px 'Instrument Sans'", color: "#6E6E6B" }}>
-            {org ? org.name : "…"}
-          </div>
+        <div style={{ flex: 1 }}>
+          <PageHeader title="Devices" subtitle={org ? org.name : "…"} />
         </div>
-        <div style={{ flex: 1 }}></div>
         {/* ⛔ THE CREATE FORM MOVES INTO A MODAL, matching Add rule. Inline, it was a permanently-open
             four-control card sitting between the page title and the roster — the roster is what this screen
             is FOR, and it began below a form most visits do not use. A trigger costs one click on the rare

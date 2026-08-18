@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "../lib/useOrg";
 import { api, apiErrorMessage, type Org } from "../lib/api";
 import { relativeAge } from "../lib/format";
-import { Button, Card, DataTable, ErrorText } from "../components/ui";
+import {
+  Button,
+  Card,
+  DataTable,
+  ErrorText,
+  PageHeader,
+} from "../components/ui";
 import { isEnterprise, type Edition } from "../lib/edition";
 import {
   ATTRIBUTION_NOTE,
@@ -128,7 +134,7 @@ export default function AccessEvents() {
   if (!isEnterprise(edition)) {
     return (
       <div>
-        <h1 className="text-xl font-semibold text-white">Access events</h1>
+        <PageHeader title="Access events" />
         <Card className="mt-4">
           <p className="text-sm text-slate-400">
             The Zero Trust flow log is a Tunnex Enterprise feature.
@@ -143,8 +149,7 @@ export default function AccessEvents() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white">Access events</h1>
-      <p className="text-sm text-slate-400">{org ? org.name : "…"}</p>
+      <PageHeader title="Access events" subtitle={org ? org.name : "…"} />
       <ErrorText>{error}</ErrorText>
 
       <Card className="mt-4">

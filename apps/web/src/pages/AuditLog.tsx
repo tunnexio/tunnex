@@ -21,6 +21,7 @@ import {
   ErrorText,
   Field,
   Input,
+  PageHeader,
 } from "../components/ui";
 
 const PAGE = 50;
@@ -163,8 +164,7 @@ export default function AuditLog() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white">Audit log</h1>
-      <p className="text-sm text-slate-400">{org ? org.name : "…"}</p>
+      <PageHeader title="Audit log" subtitle={org ? org.name : "…"} />
       {memberScoped && (
         <p className="mt-1 text-sm text-slate-400">
           Showing your activity only. Organization-wide activity is visible to admins and owners.

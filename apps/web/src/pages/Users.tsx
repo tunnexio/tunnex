@@ -25,6 +25,7 @@ import {
   Field,
   Input,
   Modal,
+  PageHeader,
 } from "../components/ui";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import {
@@ -326,8 +327,7 @@ export default function Users() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-white">Users</h1>
-      <p className="text-sm text-slate-400">{org ? org.name : "…"}</p>
+      <PageHeader title="Users" subtitle={org ? org.name : "…"} />
       <ErrorText>{error}</ErrorText>
 
       {/* ⛔ THE ROSTER COMES FIRST. It was FOURTH — below invitations, below a posture panel, below the

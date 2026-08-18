@@ -22,6 +22,7 @@ import {
   Field,
   Input,
   Modal,
+  PageHeader,
   Panel,
   Select,
 } from "../components/ui";
@@ -423,13 +424,10 @@ export default function Kubernetes() {
     <div className="flex flex-col gap-3.5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold text-ink-heading">
-            Kubernetes
-          </h1>
-          <p className="text-cell text-ink-tertiary">
-            Clusters, exposed Services and the VIPs clients reach them at. A
-            Service is reached by name over the tunnel, never by its ClusterIP.
-          </p>
+          <PageHeader
+            title="Kubernetes"
+            subtitle="Clusters, exposed Services and the VIPs clients reach them at. A Service is reached by name over the tunnel, never by its ClusterIP."
+          />
         </div>
         {raw && gate.canManage && raw.sites.length > 0 && (
           <Button onClick={() => setRegistering(true)}>Register cluster</Button>

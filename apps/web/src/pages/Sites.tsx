@@ -30,6 +30,7 @@ import {
   Field,
   Input,
   Modal,
+  PageHeader,
   Panel,
   Select,
 } from "../components/ui";
@@ -215,12 +216,11 @@ export default function Sites() {
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold text-ink-heading">Sites</h1>
-          <p className="text-cell text-ink-tertiary">{org ? org.name : "…"}</p>
-        </div>
-        {view === "body" && gate.canManage && (
+      <PageHeader
+        title="Sites"
+        subtitle={org ? org.name : "…"}
+        actions={
+          view === "body" && gate.canManage ? (
           <div className="flex items-center gap-2.5">
             {unboundNodes.length > 0 && (
               <Button variant="ghost" onClick={() => setRoutingLan(true)}>
@@ -229,8 +229,9 @@ export default function Sites() {
             )}
             <Button onClick={() => setRegistering(true)}>Add site</Button>
           </div>
-        )}
-      </div>
+          ) : null
+        }
+      />
 
       {view === "load_retry" && (
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />

@@ -105,9 +105,7 @@ export default function VisualGallery() {
 
   return (
     <div className="tnx-page flex flex-col gap-3.5 p-6" data-visual-gallery>
-      <h1 className="text-[22px] font-semibold text-ink-heading">
-        Visual gallery
-      </h1>
+      <PageHeader title="Visual gallery" />
 
       <GalleryGroup title="Buttons">
         {(["primary", "ghost", "danger"] as const).map((v) => (
