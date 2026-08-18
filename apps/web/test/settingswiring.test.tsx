@@ -163,25 +163,38 @@ beforeEach(() => {
 describe("Settings — F10 unlock then explicit opt-in", () => {
   it("renders default-off truth, writes once, and refetches persisted state", async () => {
     withAuth(<Settings />);
-    const enable = await screen.findByRole("button", { name: "Enable JIT agent access" });
+    const sw = await screen.findByRole("switch", {
+      name: "Just-in-time agent access",
+    });
+    expect(sw.getAttribute("aria-checked")).toBe("false");
     expect(screen.getByText("0 pending · 0 approved")).toBeTruthy();
-    fireEvent.click(enable);
-    await screen.findByRole("button", { name: "Disable JIT agent access" });
+    fireEvent.click(sw);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("switch", { name: "Just-in-time agent access" })
+          .getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
     expect(jitAccessEnabled).toBe(true);
   });
 
   it("renders persisted enabled state without defaulting it off", async () => {
     jitAccessEnabled = true;
     withAuth(<Settings />);
-    await screen.findByRole("button", { name: "Disable JIT agent access" });
-    expect(screen.queryByRole("button", { name: "Enable JIT agent access" })).toBeNull();
+    const sw = await screen.findByRole("switch", {
+      name: "Just-in-time agent access",
+    });
+    expect(sw.getAttribute("aria-checked")).toBe("true");
   });
 
   it("withdraws prior-organization JIT settings synchronously", async () => {
     withAuthAndSwitch();
-    await screen.findByRole("button", { name: "Enable JIT agent access" });
+    await screen.findByRole("switch", { name: "Just-in-time agent access" });
     fireEvent.click(screen.getByRole("button", { name: "Switch organization" }));
-    expect(screen.queryByRole("button", { name: "Enable JIT agent access" })).toBeNull();
+    expect(
+      screen.queryByRole("switch", { name: "Just-in-time agent access" }),
+    ).toBeNull();
     expect(screen.getByText("Loading settings…")).toBeTruthy();
   });
 });
@@ -190,54 +203,56 @@ describe("Settings — F09 unlock then explicit opt-in", () => {
   it("renders default-off truth and refetches the persisted enabled state", async () => {
     agentTemplatesEnabled = false;
     withAuth(<Settings />);
-    const enable = await screen.findByRole("button", {
-      name: "Enable agent policy templates",
+    const sw = await screen.findByRole("switch", {
+      name: "Agent groups & policy templates",
     });
-    fireEvent.click(enable);
-    await screen.findByRole("button", {
-      name: "Disable agent policy templates",
-    });
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(sw);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("switch", { name: "Agent groups & policy templates" })
+          .getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
     expect(agentTemplatesEnabled).toBe(true);
   });
 
   it("renders persisted enabled state without defaulting it off", async () => {
     agentTemplatesEnabled = true;
     withAuth(<Settings />);
-    await screen.findByRole("button", {
-      name: "Disable agent policy templates",
+    const sw = await screen.findByRole("switch", {
+      name: "Agent groups & policy templates",
     });
-    expect(
-      screen.queryByRole("button", { name: "Enable agent policy templates" }),
-    ).toBeNull();
+    expect(sw.getAttribute("aria-checked")).toBe("true");
   });
 });
 
 describe("Settings — wiring: the control must reflect the ORG'S state, not a default (destination: `settings`)", () => {
-  // THE MISCONFIGURE DECISION. The button's LABEL is the affordance's meaning: "Enable OpenVPN" on an org that
-  // already has it enabled invites an admin to turn ON what is already on — and the click writes the opposite
-  // of what they intended. The label is not decoration; it IS the decision.
-  it("an org with OpenVPN OFF offers ENABLE", async () => {
+  // THE MISCONFIGURE DECISION, AND THE CONTROL THAT MAKES IT HARDER TO GET WRONG. This used to read the
+  // BUTTON'S LABEL, because a button labelled "Enable OpenVPN" on an org that already has it enabled invites
+  // an admin to turn ON what is already on. That reasoning was right and is why the control is now a SWITCH:
+  // a button can only say what will happen NEXT, so the state had to be inferred from the verb. `aria-checked`
+  // states what is TRUE, and is what a screen reader announces. The property under test is unchanged — the two
+  // cases assert opposite values, so a hardcoded default still cannot satisfy both.
+  it("an org with OpenVPN OFF renders the switch OFF", async () => {
     ovpnEnabled = false;
     withAuth(<Settings />);
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Enable OpenVPN" }),
-      ).toBeTruthy(),
+        screen.getByRole("switch", { name: "OpenVPN" }).getAttribute("aria-checked"),
+      ).toBe("false"),
     );
-    expect(
-      screen.queryByRole("button", { name: "Disable OpenVPN" }),
-    ).toBeNull();
   });
 
-  it("an org with OpenVPN ON offers DISABLE — the inverse, so a default cannot satisfy both", async () => {
+  it("an org with OpenVPN ON renders the switch ON — the inverse, so a default cannot satisfy both", async () => {
     ovpnEnabled = true;
     withAuth(<Settings />);
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Disable OpenVPN" }),
-      ).toBeTruthy(),
+        screen.getByRole("switch", { name: "OpenVPN" }).getAttribute("aria-checked"),
+      ).toBe("true"),
     );
-    expect(screen.queryByRole("button", { name: "Enable OpenVPN" })).toBeNull();
   });
 });
 

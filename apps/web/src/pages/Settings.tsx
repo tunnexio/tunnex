@@ -50,6 +50,8 @@ import {
   Input,
   PageHeader,
   Section,
+  SettingRow,
+  Switch,
 } from "../components/ui";
 import { LicenceCard } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
@@ -392,23 +394,16 @@ function AgentPolicyTemplatesToggle({
   }
 
   return (
-    <Card data-testid="agent-policy-template-settings">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Agent groups &amp; policy templates
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Off by default. Enabling unlocks reusable agent-group policy authoring;
-        it creates no access until an authorized operator previews and applies a template.
-      </p>
-      <Button className="mt-3" disabled={!canEdit || busy} onClick={toggle}>
-        {busy
-          ? "Saving…"
-          : enabled
-            ? "Disable agent policy templates"
-            : "Enable agent policy templates"}
-      </Button>
-      <ErrorText>{err}</ErrorText>
-    </Card>
+    // data-testid stays ON THE ROW: it is the settings seam the F09 tests address, and moving it to the
+    // switch would quietly narrow what those tests can reach.
+    <SettingRow
+      label="Agent groups & policy templates"
+      description="Off by default. Enabling unlocks reusable agent-group policy authoring; it creates no access until an authorized operator previews and applies a template."
+      data-testid="agent-policy-template-settings"
+      error={err}
+    >
+      <Switch checked={enabled} disabled={!canEdit || busy} onChange={toggle} />
+    </SettingRow>
   );
 }
 
@@ -462,37 +457,36 @@ function AgentJITAccessToggle({
   }
 
   return (
-    <Card data-testid="agent-jit-access-settings">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Just-in-time agent access
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Off by default. Requests require human approval and create one expiring
-        ordinary access rule. Disabling is refused while requests are pending or approved.
-      </p>
+    <SettingRow
+      label="Just-in-time agent access"
+      description="Off by default. Requests require human approval and create one expiring ordinary access rule. Disabling is refused while requests are pending or approved."
+      data-testid="agent-jit-access-settings"
+    >
+      {/* ⚠ THREE STATES, NOT TWO. A failed load must NOT render a switch: an off-looking switch would be a
+          confident claim about a setting we could not read. Retry, loading and the control stay distinct. */}
       {loadError ? (
-        <div className="mt-3">
+        <div className="flex flex-col items-end gap-1">
           <ErrorText>{loadError}</ErrorText>
           <Button onClick={() => void load()}>Retry</Button>
         </div>
       ) : setting ? (
-        <>
-          <p className="mt-2 text-xs text-slate-500">
-            {setting.pending_requests} pending · {setting.approved_requests} approved
+        <div className="flex flex-col items-end gap-1">
+          <Switch
+            label="Just-in-time agent access"
+            checked={setting.enabled}
+            disabled={!canEdit || busy}
+            onChange={toggle}
+          />
+          <p className="text-xs text-slate-500">
+            {setting.pending_requests} pending · {setting.approved_requests}{" "}
+            approved
           </p>
-          <Button className="mt-3" disabled={!canEdit || busy} onClick={toggle}>
-            {busy
-              ? "Saving…"
-              : setting.enabled
-                ? "Disable JIT agent access"
-                : "Enable JIT agent access"}
-          </Button>
-        </>
+          <ErrorText>{err}</ErrorText>
+        </div>
       ) : (
-        <p className="mt-3 text-xs text-slate-500">Loading…</p>
+        <p className="text-xs text-slate-500">Loading…</p>
       )}
-      <ErrorText>{err}</ErrorText>
-    </Card>
+    </SettingRow>
   );
 }
 
@@ -765,34 +759,20 @@ function OrgOVPNToggle({
   }
 
   return (
-    <Card>
-      <h2 className="text-sm font-semibold text-slate-300">OpenVPN</h2>
-      <p className="mt-1 text-xs text-slate-400">
-        OpenVPN is <span className="text-slate-300">off by default</span>.
-        Enable it where you&rsquo;re migrating an existing OpenVPN fleet —
-        devices can then be exported as standard{" "}
-        <code className="text-slate-300">.ovpn</code> profiles for the official
-        OpenVPN clients. WireGuard is unaffected.
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        Turning it off stops the OpenVPN servers on your gateways; issued client
-        profiles are not revoked and work again if you re-enable.
-      </p>
-      {error && (
-        <div className="mt-2">
-          <ErrorText>{error}</ErrorText>
-        </div>
-      )}
-      <div className="mt-3">
-        <Button
-          variant="ghost"
-          disabled={busy || !canEdit}
-          onClick={() => toggle(!enabled)}
-        >
-          {busy ? "Saving…" : enabled ? "Disable OpenVPN" : "Enable OpenVPN"}
-        </Button>
-      </div>
-    </Card>
+    // ⛔ A ROW WITH A SWITCH, NOT A CARD WITH A BUTTON. The state is what the operator cares about, and a
+    // button labelled "Enable OpenVPN" makes them read the LABEL to infer the STATE — the button says what
+    // will happen next, never what is true now. The switch shows the state and changes it in one control.
+    <SettingRow
+      label="OpenVPN"
+      description="Off by default. Enable it where you're migrating an existing OpenVPN fleet — devices can then be exported as standard .ovpn profiles for the official OpenVPN clients. WireGuard is unaffected. Turning it off stops the OpenVPN servers on your gateways; issued client profiles are not revoked and work again if you re-enable."
+      error={error}
+    >
+      <Switch
+        checked={enabled}
+        disabled={busy || !canEdit}
+        onChange={(next) => toggle(next)}
+      />
+    </SettingRow>
   );
 }
 

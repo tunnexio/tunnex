@@ -334,7 +334,14 @@ export function Section({
     <section aria-labelledby={id} className={`flex flex-col gap-1.5 ${className}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 id={id} className="text-title font-semibold text-ink-heading">
+          {/* ⛔ A GROUP HEADING MUST OUTRANK WHAT IT CONTAINS. At `text-title` (13.5px) this sat BELOW the
+              `text-sm` titles of the cards inside it — the section read as a caption on its own contents.
+              15px is the smallest step that reads as the parent; the scale has no token between `title`
+              13.5 and `stat` 26, which is the same gap PageHeader documents. */}
+          <h2
+            id={id}
+            className="text-[15px] font-semibold leading-tight text-ink-heading"
+          >
             {title}
           </h2>
           {description && (
@@ -364,12 +371,26 @@ export function Section({
 export function SettingRow({
   label,
   description,
+  error,
   className = "",
+  "data-testid": testId,
   children,
 }: {
   label: string;
   description?: string;
+  /**
+   * Failure from the last attempt to change this setting, rendered under the control.
+   *
+   * ⚠ A SLOT RATHER THAN THE CALLER WRAPPING ITS OWN DIV, and that is not tidiness. Label-lending clones
+   * the DIRECT child; a caller who wraps its control to sit an error beside it gets the label attached to
+   * the WRAPPER, and the switch renders with no accessible name at all. Every one of the first three
+   * conversions hit exactly that, and it is invisible on screen — the row still reads correctly to a
+   * sighted user while announcing nothing to a screen reader.
+   */
+  error?: string | null;
   className?: string;
+  /** Test seam for callers whose suites already address the setting by id. */
+  "data-testid"?: string;
   /** The control. Borrows the row's label as its accessible name unless it already carries one. */
   children: ReactNode;
 }) {
@@ -389,6 +410,7 @@ export function SettingRow({
   return (
     // `basis` + `flex-wrap` so a narrow column drops the control under the text instead of crushing both.
     <div
+      data-testid={testId}
       className={`flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-3 ${className}`}
     >
       <div className="min-w-0 flex-1 basis-[20rem]">
@@ -401,7 +423,10 @@ export function SettingRow({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-2">{control}</div>
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="flex items-center gap-2">{control}</div>
+        <ErrorText>{error}</ErrorText>
+      </div>
     </div>
   );
 }
