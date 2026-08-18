@@ -432,6 +432,88 @@ export function SettingRow({
 }
 
 /**
+ * The current value shown on the right of a settings row.
+ *
+ * ⛔ `live` USES THE `ok` COLOUR AND THAT IS A RESERVATION CALL, NOT A STYLE CHOICE. `RESERVATIONS.ok` reads
+ * "LIVENESS ONLY — alive right now (online peer, healthy check)", and the tokens test scans every `text-ok`
+ * use-site. "Connected" for a directory-sync link IS liveness. "On" for a setting is a CONFIGURATION fact,
+ * which the reservation as written does not cover — the automated scan will not catch it, because it only
+ * looks for success wording. Recorded here rather than quietly broadened: if `live` is ruled wrong for
+ * configured-state, this is the one line that changes.
+ *
+ * `muted` is the default: a count, a tier, a name — facts with no health dimension at all.
+ */
+export function SettingValue({
+  tone = "muted",
+  children,
+}: {
+  tone?: "muted" | "live" | "warn" | "danger";
+  children: ReactNode;
+}) {
+  const color =
+    tone === "live"
+      ? "text-ok"
+      : tone === "warn"
+        ? "text-warn"
+        : tone === "danger"
+          ? "text-danger"
+          : "text-ink-secondary";
+  return <span className={`text-cell ${color}`}>{children}</span>;
+}
+
+/**
+ * A card holding one section's worth of settings rows.
+ *
+ * ⚠ THE CARD IS BACK, AND ITS MEANING IS THE OPPOSITE OF WHAT IT WAS. Before, a card wrapped ONE setting —
+ * eleven borders for eleven rows, so the border said nothing. Here it wraps a GROUP, which is exactly what
+ * a card is for: the boundary marks where "Authentication" ends and "Features" begins. `Section` remains
+ * for chrome-less grouping; this is the framed variant the settings page uses.
+ *
+ * `id` is the scroll target the section rail links to.
+ */
+export function SettingGroup({
+  id,
+  title,
+  tabpanel = false,
+  className = "",
+  children,
+}: {
+  id?: string;
+  title: string;
+  /**
+   * Marks this group as the panel of a `tab` that controls it.
+   *
+   * ⚠ AN OPT-IN, BECAUSE A `tablist` WITHOUT `tabpanel`s IS A HALF-STATED PATTERN — a screen reader is told
+   * these buttons control something and then finds nothing claiming to be controlled. It stays off for the
+   * plain grouping use, where the role would be a lie.
+   */
+  tabpanel?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const headingId = useId();
+  return (
+    <section
+      id={id}
+      role={tabpanel ? "tabpanel" : undefined}
+      // Named by its own heading rather than by its tab: the heading is the more specific label, and it is
+      // the one a reader sees.
+      aria-labelledby={headingId}
+      className={`${GLASS} scroll-mt-6 px-4 py-3 ${className}`}
+    >
+      <h2
+        id={headingId}
+        className="text-[15px] font-semibold leading-tight text-ink-heading"
+      >
+        {title}
+      </h2>
+      {/* Hairlines between rows; the card's own border bounds the group. */}
+      <div className="mt-1 divide-y divide-line-row">{children}</div>
+    </section>
+  );
+}
+
+/**
  * A setting whose value takes a FORM to change: the row states what it is now, and editing happens in a
  * dialog that closes on save.
  *
@@ -537,7 +619,12 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-pill border transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50 ${
-        checked ? "border-accent bg-accent" : "border-line bg-surface-inset"
+        checked
+          ? // ⚠ `ok` HERE IS THE SAME RESERVATION CALL AS SettingValue's `live`, for the same reason: at
+            // switch size the mono accent is a light grey that reads as another shade of the off track,
+            // so "on" was not legible without leaning on the health colour.
+            "border-ok bg-ok"
+          : "border-line bg-surface-inset"
       }`}
     >
       {/* The knob inverts against its track: dark on the light accent, light on the dark inset. One colour

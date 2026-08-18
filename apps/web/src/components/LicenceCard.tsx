@@ -5,6 +5,7 @@ import {
   ErrorText,
   Input,
   SettingDialogRow,
+  SettingValue,
 } from "./ui";
 
 type Status = {
@@ -108,7 +109,24 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
     <SettingDialogRow
       label="Licence key"
       description="Install or replace the key. Takes effect immediately — no restart."
-      value={status ? status.tier : "…"}
+      value={
+        status ? (
+          // A lapsed licence is not an "active" one, and the row is where that difference is cheapest to see.
+          <SettingValue
+            tone={
+              status.state === "lapsed"
+                ? "warn"
+                : status.state === "unlicensed"
+                  ? "muted"
+                  : "live"
+            }
+          >
+            {status.tier}
+          </SettingValue>
+        ) : (
+          <SettingValue>…</SettingValue>
+        )
+      }
       actionLabel={canManage ? "Install licence" : "View"}
       dialogTitle="Licence"
       error={error}

@@ -160,9 +160,18 @@ beforeEach(() => {
   ssoFail = false;
 });
 
+/**
+ * Selects a settings section. The page shows ONE section at a time now, so a test that asserts on a
+ * control has to open the section holding it — the same click a person makes.
+ */
+async function openSection(name: RegExp) {
+  fireEvent.click(await screen.findByRole("tab", { name }));
+}
+
 describe("Settings — F10 unlock then explicit opt-in", () => {
   it("renders default-off truth, writes once, and refetches persisted state", async () => {
     withAuth(<Settings />);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Just-in-time agent access",
     });
@@ -182,6 +191,7 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
   it("renders persisted enabled state without defaulting it off", async () => {
     jitAccessEnabled = true;
     withAuth(<Settings />);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Just-in-time agent access",
     });
@@ -190,6 +200,7 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
 
   it("withdraws prior-organization JIT settings synchronously", async () => {
     withAuthAndSwitch();
+    await openSection(/Features/);
     await screen.findByRole("switch", { name: "Just-in-time agent access" });
     fireEvent.click(screen.getByRole("button", { name: "Switch organization" }));
     expect(
@@ -203,6 +214,7 @@ describe("Settings — F09 unlock then explicit opt-in", () => {
   it("renders default-off truth and refetches the persisted enabled state", async () => {
     agentTemplatesEnabled = false;
     withAuth(<Settings />);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Agent groups & policy templates",
     });
@@ -221,6 +233,7 @@ describe("Settings — F09 unlock then explicit opt-in", () => {
   it("renders persisted enabled state without defaulting it off", async () => {
     agentTemplatesEnabled = true;
     withAuth(<Settings />);
+    await openSection(/Features/);
     const sw = await screen.findByRole("switch", {
       name: "Agent groups & policy templates",
     });
@@ -238,6 +251,7 @@ describe("Settings — wiring: the control must reflect the ORG'S state, not a d
   it("an org with OpenVPN OFF renders the switch OFF", async () => {
     ovpnEnabled = false;
     withAuth(<Settings />);
+    await openSection(/Features/);
     await waitFor(() =>
       expect(
         screen.getByRole("switch", { name: "OpenVPN" }).getAttribute("aria-checked"),
@@ -248,6 +262,7 @@ describe("Settings — wiring: the control must reflect the ORG'S state, not a d
   it("an org with OpenVPN ON renders the switch ON — the inverse, so a default cannot satisfy both", async () => {
     ovpnEnabled = true;
     withAuth(<Settings />);
+    await openSection(/Features/);
     await waitFor(() =>
       expect(
         screen.getByRole("switch", { name: "OpenVPN" }).getAttribute("aria-checked"),
@@ -263,6 +278,7 @@ describe("Settings — wiring: edition gating (destination: `license`)", () => {
   it("SSO configuration is absent in the OPEN edition", async () => {
     edition = "open";
     withAuth(<Settings />);
+    await openSection(/Authentication/);
     // ⚠ RE-POINTED IN S12.5. This waited on `/Organization/i`, which became AMBIGUOUS once the licence
     // card added an "Organizations" ceiling row — `getByText` throws on multiple matches, so the barrier
     // started failing on a page that had rendered perfectly.
@@ -288,23 +304,44 @@ describe("Settings — wiring: edition gating (destination: `license`)", () => {
     //
     // So: await the thing that must APPEAR, and only then assert the things that must be ABSENT.
     // Asserting absence first would pass trivially before anything had rendered at all.
-    expect(
-      (await screen.findAllByText(/Tunnex Enterprise|Enterprise feature/i))
-        .length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByLabelText(/client ID/i)).toBeNull();
-    expect(screen.queryByLabelText(/client secret/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Configure$/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Sync now/i })).toBeNull();
+    // ⛔ SWEEP EVERY SECTION, because the page shows one at a time now — and that change revealed this
+    // matcher had ALREADY drifted. The positive barrier was satisfied by the DIRECTORY-SYNC panel's
+    // Enterprise sentence while the test believed it was reading SSO's; splitting the two into separate
+    // tabs took that text off the screen and the test failed on unchanged product code.
+    //
+    // Asserting across all tabs is what the decide-item actually rules — no enterprise CONFIGURATION
+    // SURFACE anywhere in the open edition — and it cannot be satisfied by copy from a section the test
+    // was not thinking about.
+    let sawEnterpriseCopy = 0;
+    for (const tab of await screen.findAllByRole("tab")) {
+      fireEvent.click(tab);
+      sawEnterpriseCopy += screen.queryAllByText(
+        /Tunnex Enterprise|Enterprise feature/i,
+      ).length;
+      expect(screen.queryByLabelText(/client ID/i)).toBeNull();
+      expect(screen.queryByLabelText(/client secret/i)).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Configure$/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Sync now/i })).toBeNull();
+    }
+    expect(sawEnterpriseCopy).toBeGreaterThan(0);
   });
 
   it("SSO configuration is present in ENTERPRISE — the gate must not be a blanket hide", async () => {
     edition = "enterprise";
     withAuth(<Settings />);
-    // The negative half. Without it, "hide everything always" satisfies the test above.
+    await openSection(/Authentication/);
+    // The negative half. Without it, "hide everything always" satisfies the test above. Swept across tabs
+    // for the same reason: which section names a provider is a layout decision, and this assertion is not
+    // about layout.
     await waitFor(() =>
-      expect(screen.queryAllByText(/Entra|Google/i).length).toBeGreaterThan(0),
+      expect(screen.queryAllByRole("tab").length).toBeGreaterThan(0),
     );
+    let sawProvider = 0;
+    for (const tab of screen.getAllByRole("tab")) {
+      fireEvent.click(tab);
+      sawProvider += screen.queryAllByText(/Entra|Google/i).length;
+    }
+    expect(sawProvider).toBeGreaterThan(0);
   });
 });
 
@@ -383,4 +420,56 @@ describe("SSO config — a failed read is not 'not configured'", () => {
       expect(screen.queryByText(/status unknown/i)).toBeNull();
     },
   );
+});
+
+describe("Settings — one section at a time", () => {
+  // ⛔ THE ASSERTION IS ABSENCE. "Only the selected section shows" is not provable by finding the selected
+  // one — it was there before this change too. Every OTHER panel must be gone from the DOM.
+  //
+  // ⚠ AND IT READS THE RAIL RATHER THAN NAMING SECTIONS. Which tabs exist depends on role and on whether an
+  // org has resolved; a test that hardcoded "Network" was asserting the fixture, and passed or failed for
+  // reasons that had nothing to do with the behaviour.
+  it("shows exactly one panel, and it is the selected tab's", async () => {
+    withAuth(<Settings />);
+    const tabs = await screen.findAllByRole("tab");
+    // ⚠ NOT `> 1`. Which tabs exist depends on role and on whether an org resolved; a single tab is the
+    // correct rail for a member before an org loads, and asserting two was asserting the fixture.
+    expect(tabs.length).toBeGreaterThan(0);
+
+    for (const tab of tabs) {
+      const label = tab.getAttribute("aria-label")!;
+      fireEvent.click(tab);
+      const panels = screen.getAllByRole("tabpanel");
+      // Every tab leads somewhere: three of these opened NOTHING before the rail read the same gate as the
+      // panel, because six of seven panels also require a loaded org and the rail only checked the role.
+      expect(panels, `tab "${label}" opened no panel`).toHaveLength(1);
+      expect(panels[0].getAttribute("aria-labelledby")).toBeTruthy();
+    }
+  });
+
+  it("marks exactly one tab selected, before and after a change", async () => {
+    withAuth(<Settings />);
+    const tabs = await screen.findAllByRole("tab");
+    const selectedCount = () =>
+      screen
+        .getAllByRole("tab")
+        .filter((t) => t.getAttribute("aria-selected") === "true").length;
+
+    expect(selectedCount()).toBe(1);
+    fireEvent.click(tabs[tabs.length - 1]);
+    expect(selectedCount()).toBe(1);
+    expect(
+      tabs[tabs.length - 1].getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  // The hint under each label is decoration; the tab must announce as the section, not as a paragraph.
+  it("names each tab by its section alone", async () => {
+    withAuth(<Settings />);
+    for (const tab of await screen.findAllByRole("tab")) {
+      const name = tab.getAttribute("aria-label")!;
+      expect(name.length).toBeLessThan(20);
+      expect(tab.textContent!.startsWith(name)).toBe(true);
+    }
+  });
 });

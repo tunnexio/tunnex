@@ -15,6 +15,7 @@ import {
   Field,
   Input,
   SettingDialogRow,
+  SettingValue,
 } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
 
@@ -133,16 +134,20 @@ export function MachineCredentials({
     // transactions, and they belong behind an explicit open rather than permanently on the page.
     <SettingDialogRow
       label="GitOps operator credentials"
-      description="A machine credential the Tunnex Kubernetes operator uses to manage this organization over the API. It authenticates as a system actor — audited as operator:<name>, never a user. The token is shown once at mint; if lost, revoke and re-mint."
+      description="Credentials for the Tunnex Kubernetes operator. Shown once at mint."
       value={
         // ⚠ THREE STATES. `null` is not-loaded and a failed read is not "0 credentials" — a count is a
         // claim, and claiming zero over an unread list is the same class of lie as an off switch over an
         // unknown setting.
-        creds === null
-          ? "…"
-          : !creds.ok
-            ? "unknown"
-            : `${creds.data.length} credential${creds.data.length === 1 ? "" : "s"}`
+        creds === null ? (
+          <SettingValue>…</SettingValue>
+        ) : !creds.ok ? (
+          <SettingValue tone="warn">unknown</SettingValue>
+        ) : (
+          <SettingValue>
+            {creds.data.length} credential{creds.data.length === 1 ? "" : "s"}
+          </SettingValue>
+        )
       }
       actionLabel={canManage ? "Manage" : "View"}
       dialogTitle="GitOps operator credentials"

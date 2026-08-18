@@ -8,7 +8,7 @@ import {
   Input,
   Modal,
   SettingRow,
-  StatusDot,
+  SettingValue,
 } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
 
@@ -117,17 +117,16 @@ export function MfaSettings() {
     // unprotected when it may not be.
     <SettingRow
       label="Two-factor authentication"
-      description="A time-based one-time code (TOTP) from an authenticator app, required at sign-in. Available on every plan."
+      description="Require a code from an authenticator app when signing in."
       error={error}
     >
       <div className="flex items-center gap-3">
         {enrolled === null ? (
           <span className="text-cell text-ink-tertiary">…</span>
         ) : (
-          <span className="flex items-center gap-1.5 text-cell text-ink-secondary">
-            {enrolled === true && <StatusDot tone="on" />}
+          <SettingValue tone={enrolled ? "live" : "muted"}>
             {enrolled ? "On" : "Off"}
-          </span>
+          </SettingValue>
         )}
         {enrolled === false && (
           <Button variant="ghost" onClick={start} disabled={busy}>

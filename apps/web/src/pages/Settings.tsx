@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   api,
   apiErrorCode,
@@ -49,9 +49,10 @@ import {
   Field,
   Input,
   PageHeader,
-  Section,
   SettingDialogRow,
+  SettingGroup,
   SettingRow,
+  SettingValue,
   Switch,
 } from "../components/ui";
 import { LicenceCard } from "../components/LicenceCard";
@@ -135,6 +136,22 @@ export default function Settings() {
   }, [myId, currentOrg, orgFailed, orgLoading]);
 
   const isAdmin = can(myRole, "org:update");
+  // ⛔ A TAB WHOSE PANEL WOULD BE EMPTY IS NOT RENDERED. "CUT MEANS ABSENT, NOT HIDDEN" (S14.4): a member who
+  // clicks Network and gets a blank card learns only that the product is broken. The gate that decides the
+  // panel decides the tab, from one expression, so the two cannot drift.
+  const shown = useMemo(
+    () =>
+      RAIL.filter(
+        (r) => (!r.adminOnly || isAdmin) && (!r.needsOrg || org !== null),
+      ),
+    [isAdmin, org],
+  );
+  const [section, setSection] = useState<string>(RAIL[0].id);
+  // ⚠ FALL BACK WHEN THE SELECTION STOPS EXISTING. Switching to an org where you are a plain member must not
+  // leave a tab selected that is no longer in the rail — the panel would vanish and nothing would be active.
+  const active = shown.some((r) => r.id === section)
+    ? section
+    : (shown[0]?.id ?? "");
   const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
 
   if (currentOrg && org?.id !== currentOrg.id) {
@@ -142,17 +159,19 @@ export default function Settings() {
   }
 
   return (
-    // ⛔ CAPPED, AND THE CAP IS STILL THE POINT — but 110rem was never a cap. On a 32" display an uncapped
-    // settings page stretches every field to 2000px to hold a slug and a checkbox; a maximum turns extra
-    // viewport into MARGIN. 110rem is 1760px, which is wider than the content box ever gets, so it capped
-    // nothing and instead OVERFLOWED: 1760 + 48px padding + the 228px sidebar is 2036px of demand against a
+    // ⛔ NO CAP, AND THAT IS THE FIX RATHER THAN A SMALLER ONE. `max-w-[110rem]` was here to stop fields
+    // stretching on a 32" display, but 1760px is wider than the content box ever gets, so it capped nothing
+    // and instead OVERFLOWED — 1760 + 48px padding + the 228px sidebar is 2036px of demand against a
     // ~1999px viewport, and `mx-auto` cannot centre what does not fit, so the right edge was shaved off.
-    // The page was budgeting width as though it owned the viewport.
     //
-    // ⚠ A CAP MUST BE SIZED FOR THE CONTENT, NOT THE SCREEN. One column of settings wants a readable
-    // measure; 72rem holds the credentials table without truncation and still leaves margin at 1999px.
-    <div className="mx-auto max-w-[72rem]">
-      <PageHeader title="Settings" subtitle={org ? org.name : "…"} />
+    // ⚠ THE WORRY IT ENCODED WAS A ONE-COLUMN WORRY. The rail track is fixed and the content track takes
+    // what is left, so a wide screen buys a wider VALUE column, not a 2000px input — and AppShell's stated
+    // law is that page bodies fill available width (its own comment records what capping one cost before).
+    <div>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your organization, security, and integrations."
+      />
       <ErrorText>{error}</ErrorText>
 
       {/* Desktop-only: server connection + sign-out for THIS client (renders nothing
@@ -183,41 +202,47 @@ export default function Settings() {
           ⚠ The reading order is now the one the sections are written in, so that order is a decision:
           Organization → Network → Authentication → Features → Licence, roughly what an operator sets up
           first to what they revisit least. */}
-      <div className="mt-6 flex flex-col gap-7">
-        {org && isAdmin && (
-          <Section
-            title="Organization"
-            description="Who this tenant is. The slug appears in invite links and CLI output."
-          >
+      {/* ⛔ THE RAIL IS A SECOND TRACK, NOT A SIDEBAR. `minmax(0,…)` on BOTH columns because a grid item
+          defaults to `min-width:auto` — a long CIDR or credential name in the right track would otherwise
+          push it wider than its share, which is the class of bug that shaved this page's right edge off
+          before. Below `lg` the rail is dropped rather than stacked: six labels above the content is six
+          rows of chrome before the thing you came for. */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+        <SettingsRail
+          sections={shown}
+          active={active}
+          onSelect={setSection}
+        />
+        <div className="flex min-w-0 flex-col gap-3.5">
+        {org && isAdmin && active === "organization" && (
+          <SettingGroup id="organization" title="Organization"
+            tabpanel>
             <OrgSection
               org={org}
               canEdit={emailVerified}
               onSaved={(o) => setOrg(o)}
             />
-          </Section>
+          </SettingGroup>
         )}
 
-        {org && isAdmin && (
-          <Section
-            title="Network"
-            description="The address space devices are assigned from."
-          >
+        {org && isAdmin && active === "network" && (
+          <SettingGroup id="network" title="Network"
+            tabpanel>
             <PoolSection
               org={org}
               canEdit={emailVerified}
               onResized={(o) => setOrg(o)}
             />
-          </Section>
+          </SettingGroup>
         )}
 
         {/* ⚠ MIXED GATES, DELIBERATELY IN ONE SECTION. Personal 2FA is per-USER and shows for everyone;
             SSO and enforcement are org-admin; directory sync answers to `idpGate`, its own permission,
             NOT to `org:update` — see the note below. Grouping by SUBJECT is what a reader is looking for;
             each child keeps whatever gate it already had. */}
-        <Section
-          title="Authentication"
-          description="How people prove who they are when they sign in."
-        >
+        {active === "authentication" && (
+        <SettingGroup id="authentication" title="Authentication"
+            tabpanel>
           {/* ⚠ DIRECT CHILDREN, NOT A WRAPPER. Section draws hairlines BETWEEN its children with
               `divide-y`; a wrapping div collapses all of them into one child and every divider vanishes,
               which is what made these rows float with no separation. */}
@@ -261,24 +286,28 @@ export default function Settings() {
               It is out here so the panel is governed by ONE gate — its own, matching the server —
               rather than silently ANDed with a different permission that merely happens to coincide.
               `idpGate` is the authority; a test pins the coincidence so a divergence is loud. */}
-            {org &&
-              PROVIDERS.map((pv) => (
-                <IdpSyncSection
-                  key={pv}
-                  orgId={org.id}
-                  provider={pv}
-                  role={myRole}
-                  isEnterprise={meta?.edition === "enterprise"}
-                  canEdit={emailVerified}
-                />
-              ))}
-        </Section>
+        </SettingGroup>
+        )}
 
-        {org && isAdmin && (
-          <Section
-            title="Features"
-            description="Off by default. Unlocking a capability never turns enforcement on — enabling one here is the opt-in."
-          >
+        {org && active === "directory" && (
+          <SettingGroup id="directory" title="Directory sync"
+            tabpanel>
+            {PROVIDERS.map((pv) => (
+              <IdpSyncSection
+                key={pv}
+                orgId={org.id}
+                provider={pv}
+                role={myRole}
+                isEnterprise={meta?.edition === "enterprise"}
+                canEdit={emailVerified}
+              />
+            ))}
+          </SettingGroup>
+        )}
+
+        {org && isAdmin && active === "features" && (
+          <SettingGroup id="features" title="Features"
+            tabpanel>
             <div className="flex flex-col gap-3.5">
               {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
               <OrgOVPNToggle
@@ -301,18 +330,19 @@ export default function Settings() {
                 />
               )}
             </div>
-          </Section>
+          </SettingGroup>
         )}
 
         {/* ⚠ Owner-only to INSTALL; every member sees the entitlement, because a user who hits a ceiling
             needs to know why without asking an owner. */}
-        {org && (
-          <Section
-            title="Licence"
-            description="What this deployment is entitled to run."
-          >
+        {org && active === "licence" && (
+          <SettingGroup id="licence" title="Licence &amp; plan"
+            tabpanel>
             <LicenceCard canManage={myRole === "owner"} />
-          </Section>
+            {isAdmin && canMachines && (
+              <MachineCredentials orgId={org.id} canManage={canMachines} />
+            )}
+          </SettingGroup>
         )}
 
         {org && !isAdmin && (
@@ -322,33 +352,25 @@ export default function Settings() {
             </p>
           </Card>
         )}
+
+        {/* ⛔ THE CAPABILITY EXISTED AND NOTHING COULD REACH IT. `DELETE /organizations/{id}` has shipped
+            since S1 with `org:delete` on it and NO CALL SITE anywhere in the web — one of the 12 genuinely
+            unreachable mutating operations the S14.12 census counted. An owner could not delete an
+            organization they created by mistake without curl.
+            ⚠ ITS OWN GROUP, AND LAST: a destructive verb does not belong beside the name field, where a
+            mis-click lands among routine edits. */}
+        {org && active === "danger" && (
+          <SettingGroup id="danger" title="Danger zone"
+            tabpanel>
+            <DangerZone
+              org={org}
+              canDelete={can(myRole, "org:delete")}
+              role={myRole}
+            />
+          </SettingGroup>
+        )}
+        </div>
       </div>
-
-      {/* ⛔ OUTSIDE THE COLUMNS, BECAUSE A TABLE CANNOT LIVE IN ONE. Multi-column flow has no equivalent of
-          `col-span-full` — a wide child inside a column region is simply a child of one column, so the table
-          would be squeezed to a third of the page with every column truncated. It sits below, full width,
-          which is also where the mockup puts it. */}
-      {org && isAdmin && canMachines && (
-        <div className="mt-3.5">
-          <MachineCredentials orgId={org.id} canManage={canMachines} />
-        </div>
-      )}
-
-      {/* ⛔ THE CAPABILITY EXISTED AND NOTHING COULD REACH IT. `DELETE /organizations/{id}` has shipped
-          since S1 with `org:delete` on it and NO CALL SITE anywhere in the web — one of the 12 genuinely
-          unreachable mutating operations the S14.12 census counted. An owner could not delete an
-          organization they created by mistake without curl.
-          ⚠ OUTSIDE THE COLUMNS AND LAST, deliberately: a destructive verb does not belong beside the name
-          field, where a mis-click lands next to routine edits. */}
-      {org && (
-        <div className="mt-3.5">
-          <DangerZone
-            org={org}
-            canDelete={can(myRole, "org:delete")}
-            role={myRole}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -400,7 +422,7 @@ function AgentPolicyTemplatesToggle({
     // switch would quietly narrow what those tests can reach.
     <SettingRow
       label="Agent groups & policy templates"
-      description="Off by default. Enabling unlocks reusable agent-group policy authoring; it creates no access until an authorized operator previews and applies a template."
+      description="Reusable agent-group policy authoring. Creates no access until a template is applied."
       data-testid="agent-policy-template-settings"
       error={err}
     >
@@ -461,7 +483,7 @@ function AgentJITAccessToggle({
   return (
     <SettingRow
       label="Just-in-time agent access"
-      description="Off by default. Requests require human approval and create one expiring ordinary access rule. Disabling is refused while requests are pending or approved."
+      description="Requests need human approval and create one expiring access rule."
       data-testid="agent-jit-access-settings"
     >
       {/* ⚠ THREE STATES, NOT TWO. A failed load must NOT render a switch: an off-looking switch would be a
@@ -703,7 +725,7 @@ function OrgMfaEnforce({
   return (
     <SettingRow
       label="Require two-factor authentication"
-      description="When on, members who sign in with a password must have 2FA — anyone without it is prompted to set it up at their next sign-in (no one is locked out). SSO sign-ins are governed by your identity provider. Enforcement applies at sign-in, not to sessions already open: pre-existing sessions remain valid until they expire naturally. To end current sessions immediately, deactivate the member."
+      description="Password sign-ins must have 2FA. Applies at sign-in — open sessions stay valid until they expire."
       error={error}
     >
       {/* ⚠ `null` is NOT "off" — it is "not read yet". Rendering an off switch for an unknown value would
@@ -763,7 +785,7 @@ function OrgOVPNToggle({
     // will happen next, never what is true now. The switch shows the state and changes it in one control.
     <SettingRow
       label="OpenVPN"
-      description="Off by default. Enable it where you're migrating an existing OpenVPN fleet — devices can then be exported as standard .ovpn profiles for the official OpenVPN clients. WireGuard is unaffected. Turning it off stops the OpenVPN servers on your gateways; issued client profiles are not revoked and work again if you re-enable."
+      description="Export devices as .ovpn profiles for official OpenVPN clients. WireGuard is unaffected; turning it off does not revoke issued profiles."
       error={error}
     >
       <Switch
@@ -833,8 +855,12 @@ function PoolSection({
   return (
     <SettingDialogRow
       label="Address pool"
-      description="The WireGuard address range devices are assigned from. Grow to add capacity; shrink only within the current range."
-      value={<span className="font-mono">{org.pool_cidr}</span>}
+      description="The WireGuard address range assigned to devices."
+      value={
+        <SettingValue>
+          <span className="font-mono">{org.pool_cidr}</span>
+        </SettingValue>
+      }
       actionLabel="Resize"
       dialogTitle="Resize address pool"
       disabled={!canEdit}
@@ -1099,25 +1125,23 @@ function IdpSyncSection({
     // Save. So the dialog's only action is Close; every control inside keeps its own confirmation, and
     // nothing pretends the panel is a single form that can be "saved".
     <SettingDialogRow
-      label={`Directory sync — ${providerLabel(provider)}`}
-      description="Sync directory groups into Tunnex groups so access follows your identity provider."
+      label={providerLabel(provider)}
+      description={`Sync groups for access using ${providerLabel(provider)}.`}
       value={
         copy ? (
-          <span
-            data-testid={`idp-tier-${provider}`}
-            className={
-              "rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold " +
-              (tier === "ok"
-                ? "border-accent-500/40 bg-accent-500/10 text-accent-400"
-                : tier === "degraded"
-                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                  : "border-danger/50 bg-danger/10 text-danger")
-            }
-          >
-            {copy.label}
+          // ⚠ THE TESTID STAYS PUT. `idp-tier-<provider>` is the seam S14.14's tests read to prove the three
+          // health tiers are distinguishable; a pill became plain text, and the seam is unchanged.
+          <span data-testid={`idp-tier-${provider}`}>
+            <SettingValue
+              tone={
+                tier === "ok" ? "live" : tier === "degraded" ? "warn" : "danger"
+              }
+            >
+              {copy.label}
+            </SettingValue>
           </span>
         ) : (
-          "not configured"
+          <SettingValue>Not configured</SettingValue>
         )
       }
       actionLabel={state.kind === "configured" ? "Manage" : "Configure"}
@@ -1414,6 +1438,144 @@ function providerLabel(p: string): string {
   return p === "microsoft" ? "Microsoft Entra" : "Google Workspace";
 }
 
+/**
+ * The section rail — one section at a time.
+ *
+ * ⛔ SELECTING A SECTION SHOWS ONLY THAT SECTION (founder-directed). The whole page rendered at once was
+ * seven cards deep and every visit scrolled past six groups to reach one; this makes the rail the navigation
+ * it already looked like.
+ *
+ * ⚠ THE ACTIVE STATE IS REAL STATE, WHICH IS WHY IT EXISTS AT ALL. The previous version deliberately had NO
+ * highlight, because indicating "which section am I looking at" from scroll position needs a layout jsdom
+ * cannot render (docs/laws.md: a responsive assertion there asserts nothing). Selection is a value, so the
+ * indicator is now checkable — the design's highlight arrives on the mechanism that earns it.
+ *
+ * A vertical `tablist`, matching the tab pattern already in Access.tsx.
+ */
+const RAIL: ReadonlyArray<{
+  id: string;
+  label: string;
+  hint: string;
+  /** Needs `org:update`; the panel and the tab read this same flag. */
+  adminOnly?: boolean;
+  /**
+   * Panel renders only with a loaded org.
+   *
+   * ⛔ THIS FIELD IS A BUG FIX. The rail filtered on `adminOnly` alone while six of the seven panels are
+   * ALSO `org &&` gated, so before an org resolved, Directory sync / Licence / Danger zone rendered a tab
+   * that opened NOTHING — three dead tabs, found by the test written to assert every tab leads somewhere.
+   * Both gates now live on the entry, which is the only way the rail and the panel cannot drift.
+   */
+  needsOrg?: boolean;
+  danger?: boolean;
+}> = [
+  {
+    id: "organization",
+    needsOrg: true,
+    label: "Organization",
+    hint: "Identity and preferences for this tenant.",
+    adminOnly: true,
+  },
+  {
+    id: "network",
+    needsOrg: true,
+    label: "Network",
+    hint: "Address space devices draw from.",
+    adminOnly: true,
+  },
+  {
+    id: "authentication",
+    label: "Authentication",
+    hint: "How members prove who they are.",
+  },
+  {
+    id: "directory",
+    needsOrg: true,
+    label: "Directory sync",
+    hint: "Users and groups from your identity provider.",
+  },
+  {
+    id: "features",
+    needsOrg: true,
+    label: "Features",
+    hint: "Capabilities to unlock, each off by default.",
+    adminOnly: true,
+  },
+  {
+    id: "licence",
+    needsOrg: true,
+    label: "Licence & plan",
+    hint: "Entitlements and machine credentials.",
+  },
+  {
+    id: "danger",
+    needsOrg: true,
+    label: "Danger zone",
+    hint: "Irreversible actions.",
+    danger: true,
+  },
+];
+
+function SettingsRail({
+  sections,
+  active,
+  onSelect,
+}: {
+  /** Only the sections this role can actually reach — an empty panel is worse than an absent tab. */
+  sections: ReadonlyArray<(typeof RAIL)[number]>;
+  active: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-orientation="vertical"
+      aria-label="Settings sections"
+      className="flex gap-2 overflow-x-auto lg:sticky lg:top-6 lg:flex-col lg:gap-5 lg:overflow-visible"
+    >
+      {sections.map((s) => {
+        const on = s.id === active;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            role="tab"
+            id={`${s.id}-tab`}
+            /* ⛔ THE HINT IS VISUAL ONLY. Without this the accessible name concatenated both, so the tab
+               announced as "NetworkAddress space devices draw from." — a label a screen-reader user has to
+               listen through, and one no test could address by the name a person would call it. */
+            aria-label={s.label}
+            aria-selected={on}
+            aria-controls={s.id}
+            onClick={() => onSelect(s.id)}
+            /* The left rule is the design's active marker. `border-l-2` is always present and merely
+               transparent when inactive, so selecting a tab never shifts the text by two pixels. */
+            className={`shrink-0 border-l-2 pl-3 text-left transition-colors duration-fast ${
+              on ? "border-ok" : "border-transparent hover:border-line"
+            }`}
+          >
+            <span
+              className={`block font-mono text-micro font-semibold uppercase tracking-[.16em] ${
+                s.danger
+                  ? "text-danger"
+                  : on
+                    ? "text-ink-heading"
+                    : "text-ink-secondary"
+              }`}
+            >
+              {s.label}
+            </span>
+            {/* The hint is for choosing between sections, so it is only worth space in the vertical rail. */}
+            <span className="mt-1 hidden text-cell text-ink-faint lg:block">
+              {s.hint}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function OrgSection({
   org,
   canEdit,
@@ -1447,8 +1609,8 @@ function OrgSection({
   return (
     <SettingDialogRow
       label="Organization name"
-      description="Shown throughout the app and in invitations. The slug is the immutable identity and cannot change."
-      value={org.name}
+      description="Displayed in the app and in invitations."
+      value={<SettingValue>{org.name}</SettingValue>}
       actionLabel="Edit"
       dialogTitle="Rename organization"
       disabled={!canEdit}
@@ -1688,12 +1850,12 @@ function SsoProvider({
       }
       value={
         configured && view ? (
-          <>
-            {view.enabled ? "enabled" : "disabled"} · updated{" "}
+          <SettingValue tone={view.enabled ? "live" : "muted"}>
+            {view.enabled ? "Enabled" : "Disabled"} ·{" "}
             {relativeAge(view.updated_at)}
-          </>
+          </SettingValue>
         ) : (
-          "not configured"
+          <SettingValue>Not configured</SettingValue>
         )
       }
       actionLabel={configured ? "Replace config" : "Configure"}
