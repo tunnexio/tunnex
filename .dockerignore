@@ -1,0 +1,17 @@
+# ⛔ THE BUILD CONTEXT MUST NOT CARRY THE HOST'S node_modules.
+#
+# web.Dockerfile installs workspace deps into the image FIRST (for layer caching) and only then
+# does `COPY apps/web/ apps/web/`. With no ignore file that COPY overwrote the container's freshly
+# installed `apps/web/node_modules` with whatever the host happened to have — a partial, pnpm-hoisted
+# tree with no `typescript` at that level — and the build died on:
+#
+#     Error: Cannot find module '/app/apps/web/node_modules/typescript/bin/tsc'
+#
+# So `make up` failed on any machine that had ever run `pnpm install`, and succeeded on CI, which
+# never had. Host state leaking into an image build is the whole failure mode a build context is
+# supposed to prevent.
+#
+# ⚠ DELIBERATELY NARROW. Nothing else is excluded — not `.git`, not `dist` — because this file
+# applies to EVERY image (api, node, migrate, operator, web) and a broader ignore risks silently
+# starving a build that legitimately reads those paths. Add entries one at a time, with a reason.
+**/node_modules
