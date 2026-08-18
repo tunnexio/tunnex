@@ -69,6 +69,36 @@ func (q *Queries) GetSSOConfig(ctx context.Context, arg GetSSOConfigParams) (Sso
 	return i, err
 }
 
+const listEnabledSSOOrgsByProvider = `-- name: ListEnabledSSOOrgsByProvider :many
+SELECT org_id FROM sso_configs
+WHERE provider = $1 AND enabled = true
+LIMIT 2
+`
+
+// lint:cross-org — SSO start has NO org context: the login page must not ask a human to
+// type their tenant, so an omitted slug resolves the SOLE org with this provider enabled.
+// ⛔ LIMIT 2, NEVER `ORDER BY ... LIMIT 1`. One row is the answer; two rows are AMBIGUITY and
+// the caller REJECTS. A LIMIT 1 here would silently pick one tenant's IdP for another's user.
+func (q *Queries) ListEnabledSSOOrgsByProvider(ctx context.Context, provider string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listEnabledSSOOrgsByProvider, provider)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var org_id uuid.UUID
+		if err := rows.Scan(&org_id); err != nil {
+			return nil, err
+		}
+		items = append(items, org_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertSSOConfig = `-- name: UpsertSSOConfig :one
 INSERT INTO sso_configs (org_id, provider, client_id, client_secret_sealed, secret_fingerprint, tenant_id, enabled)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

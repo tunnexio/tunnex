@@ -345,6 +345,30 @@ seed-enterprise: ## Seed the ENTERPRISE fixtures (SSO config + strandable device
 	  -e DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
 	  $(GO_IMAGE) go run ./cmd/seed-enterprise
 
+.PHONY: dev-sso-config
+dev-sso-config: ## Point the LOCAL stack at a REAL IdP (dev only — see cmd/dev-sso-config)
+	@# ⛔ APP_BASE_URL IS READ FROM .env, NOT PASSED THROUGH FROM THE CALLER'S SHELL. A bare
+	@# `-e APP_BASE_URL` picked up nothing (nobody exports it), so config.Load() fell back to its
+	@# default and the tool PRINTED `http://localhost/...` as the redirect_uri to go register — while
+	@# the API container, which does read .env, was using the real one. A tool that reports a different
+	@# URI than the server sends is worse than one that says nothing: it sends you off to edit the IdP.
+	@#
+	@# ⛔ THE SECRET IS FORWARDED FROM THE CALLER'S ENVIRONMENT, NEVER WRITTEN HERE OR INTO .env.
+	@# `-e VAR` (no value) passes it through without it ever appearing in this file, in `make -n`
+	@# output, or in the recipe echo — a secret spelled out in a Makefile is a secret in git.
+	@#
+	@#   TUNNEX_SSO_ORG_SLUG=demo TUNNEX_SSO_PROVIDER=microsoft \
+	@#   TUNNEX_SSO_CLIENT_ID=... TUNNEX_SSO_CLIENT_SECRET=... TUNNEX_SSO_TENANT_ID=... \
+	@#   make dev-sso-config
+	@test -n "$$TUNNEX_SSO_CLIENT_SECRET" || { echo "TUNNEX_SSO_CLIENT_SECRET is not set in your environment"; exit 1; }
+	docker run --rm --network $(NET) -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly \
+	  -v $(SECRETS_VOL):/var/lib/tunnex/secrets -e TUNNEX_SECRETS_DIR=/var/lib/tunnex/secrets \
+	  -e DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
+	  -e APP_BASE_URL="$(shell sed -n 's/^APP_BASE_URL=//p' .env)" \
+	  -e TUNNEX_SSO_ORG_SLUG -e TUNNEX_SSO_PROVIDER \
+	  -e TUNNEX_SSO_CLIENT_ID -e TUNNEX_SSO_CLIENT_SECRET -e TUNNEX_SSO_TENANT_ID \
+	  $(GO_IMAGE) go run ./cmd/dev-sso-config
+
 .PHONY: seed-fixtures
 seed-fixtures: ## Seed the DEMO FIXTURES (populated network for UI review) ON TOP of `seed` (S14.5)
 	@echo '>> demo fixtures: 5 gateways, 4 sites, 6 subnets, 5 devices, 12 audit entries (run after: make seed)'

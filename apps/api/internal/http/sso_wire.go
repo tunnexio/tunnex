@@ -35,12 +35,60 @@ func NewSSOPort(pool *pgxpool.Pool, sealer *crypto.Sealer, rdb *redis.Client, ba
 	return &ssoAdapter{pool: pool, svc: svc}
 }
 
+// StartLogin resolves the org whose IdP credentials build the redirect. An EMPTY slug is the
+// normal browser case, not an error: the login page asks for an email and a provider and nothing
+// else, so the tenant has to be derived rather than typed.
 func (a *ssoAdapter) StartLogin(ctx context.Context, orgSlug, provider string) (string, error) {
-	org, err := sqlc.New(a.pool).GetOrganizationBySlug(ctx, orgSlug)
+	q := sqlc.New(a.pool)
+	if orgSlug == "" {
+		orgID, err := soleSSOOrg(ctx, q, provider)
+		if err != nil {
+			return "", err
+		}
+		return a.svc.StartLogin(ctx, orgID, provider)
+	}
+	org, err := q.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return "", apierr.NotFound("org_not_found", "organization not found")
 	}
 	return a.svc.StartLogin(ctx, org.ID, provider)
+}
+
+// enabledSSOOrgLister is the single query soleSSOOrg needs; *sqlc.Queries satisfies it.
+type enabledSSOOrgLister interface {
+	ListEnabledSSOOrgsByProvider(ctx context.Context, provider string) ([]uuid.UUID, error)
+}
+
+// soleSSOOrg derives the org for a slug-less SSO start: the ONE org with this provider enabled.
+//
+// ⛔ FAILS CLOSED IN BOTH DIRECTIONS. Zero configured orgs rejects, and so does two-or-more —
+// picking either of two tenants would hand one org's user to another org's identity provider,
+// and "first row" is not a security decision anyone made. Ambiguity sends the caller back to
+// supplying the slug explicitly, which is what the query param is still there for.
+//
+// ⚠ The two codes are distinguishable to an unauthenticated caller, and that is deliberate: both
+// state deployment-level facts (`/api/v1/meta` already advertises which providers exist), and a
+// login page that cannot tell "nobody configured this" from "say which tenant" cannot guide anyone.
+// Neither code names an org.
+//
+// Takes the ONE query it uses rather than *sqlc.Queries, so the three-way fail-closed decision is
+// testable without a database — a decision reachable only through a live pool is a decision nobody
+// re-checks after the next edit.
+func soleSSOOrg(ctx context.Context, q enabledSSOOrgLister, provider string) (uuid.UUID, error) {
+	orgs, err := q.ListEnabledSSOOrgsByProvider(ctx, provider)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	switch len(orgs) {
+	case 1:
+		return orgs[0], nil
+	case 0:
+		return uuid.Nil, apierr.NotFound("sso_not_configured",
+			"single sign-on is not configured for this provider")
+	default:
+		return uuid.Nil, apierr.BadRequest("sso_org_ambiguous",
+			"more than one organization uses this provider — specify your organization to continue")
+	}
 }
 
 func (a *ssoAdapter) HandleCallback(ctx context.Context, provider, code, state string) (uuid.UUID, error) {

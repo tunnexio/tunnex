@@ -359,8 +359,13 @@ paths:
           schema: { type: string, enum: [google, microsoft] }
         - name: org
           in: query
-          required: true
-          description: Organization slug whose SSO config to use.
+          required: false
+          description: >-
+            Organization slug whose SSO config to use. OMIT IT and the server resolves the
+            SOLE organization with this provider enabled — the login page must not ask a
+            human to type their tenant. Resolution FAILS CLOSED: zero configured orgs and
+            two-or-more both reject (sso_not_configured / sso_org_ambiguous) rather than
+            guessing, and the caller then supplies the slug explicitly.
           schema: { type: string }
       responses:
         "200":

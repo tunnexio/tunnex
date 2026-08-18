@@ -2677,8 +2677,8 @@ type SsoCallbackParamsProvider string
 
 // StartSsoLoginParams defines parameters for StartSsoLogin.
 type StartSsoLoginParams struct {
-	// Org Organization slug whose SSO config to use.
-	Org string `form:"org" json:"org"`
+	// Org Organization slug whose SSO config to use. OMIT IT and the server resolves the SOLE organization with this provider enabled — the login page must not ask a human to type their tenant. Resolution FAILS CLOSED: zero configured orgs and two-or-more both reject (sso_not_configured / sso_org_ambiguous) rather than guessing, and the caller then supplies the slug explicitly.
+	Org *string `form:"org,omitempty" json:"org,omitempty"`
 }
 
 // StartSsoLoginParamsProvider defines parameters for StartSsoLogin.
@@ -8273,16 +8273,20 @@ func NewStartSsoLoginRequest(server string, provider StartSsoLoginParamsProvider
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "org", runtime.ParamLocationQuery, params.Org); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
+		if params.Org != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "org", runtime.ParamLocationQuery, *params.Org); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
 				}
 			}
+
 		}
 
 		queryURL.RawQuery = queryValues.Encode()

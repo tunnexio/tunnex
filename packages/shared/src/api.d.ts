@@ -5130,9 +5130,9 @@ export interface operations {
     };
     startSsoLogin: {
         parameters: {
-            query: {
-                /** @description Organization slug whose SSO config to use. */
-                org: string;
+            query?: {
+                /** @description Organization slug whose SSO config to use. OMIT IT and the server resolves the SOLE organization with this provider enabled — the login page must not ask a human to type their tenant. Resolution FAILS CLOSED: zero configured orgs and two-or-more both reject (sso_not_configured / sso_org_ambiguous) rather than guessing, and the caller then supplies the slug explicitly. */
+                org?: string;
             };
             header?: never;
             path: {
