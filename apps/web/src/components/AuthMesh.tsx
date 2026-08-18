@@ -70,157 +70,170 @@ export function AuthMesh() {
         style={{ width: "100%", height: "100%", overflow: "visible" }}
       >
         <defs>
+          {/* Enhanced ambient radial glows */}
           <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#8A8A86" stopOpacity=".55" />
-            <stop offset="60%" stopColor="#C9C9C4" stopOpacity=".14" />
-            <stop offset="100%" stopColor="#C9C9C4" stopOpacity="0" />
+            <stop offset="0%" stopColor="#E11D48" stopOpacity=".35" />
+            <stop offset="45%" stopColor="#991B1B" stopOpacity=".15" />
+            <stop offset="100%" stopColor="#0F172A" stopOpacity="0" />
           </radialGradient>
-          <linearGradient id="spoke" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#C9C9C4" stopOpacity=".15" />
-            <stop offset="100%" stopColor="#CFCFCA" stopOpacity=".85" />
+          <radialGradient id="hubAura" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#38BDF8" stopOpacity=".20" />
+            <stop offset="70%" stopColor="#1E293B" stopOpacity="0" />
+          </radialGradient>
+
+          {/* Dual-layer glowing spoke gradient */}
+          <linearGradient id="spokeBase" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#334155" stopOpacity=".25" />
+            <stop offset="50%" stopColor="#475569" stopOpacity=".45" />
+            <stop offset="100%" stopColor="#64748B" stopOpacity=".30" />
+          </linearGradient>
+          <linearGradient id="spokeStream" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#38BDF8" stopOpacity=".1" />
+            <stop offset="50%" stopColor="#F43F5E" stopOpacity=".9" />
+            <stop offset="100%" stopColor="#38BDF8" stopOpacity=".2" />
+          </linearGradient>
+
+          {/* Glass node gradient */}
+          <linearGradient id="nodeCardBg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(30, 41, 59, 0.92)" />
+            <stop offset="100%" stopColor="rgba(15, 23, 42, 0.96)" />
           </linearGradient>
         </defs>
+
+        {/* Ambient hub light aura */}
         <circle
           cx="240"
           cy="150"
-          r="118"
+          r="128"
           fill="url(#hubGlow)"
           className="tnx-aglow"
         />
-        {/* ⛔ SPOKES ARE TRIMMED TO BOTH CIRCLE EDGES. The design's paths ran from a point BEYOND the
-          node to the hub's exact CENTRE, so each line showed a stub sticking out past its node and
-          another buried under the hub tile — visible as a ragged tail beside every mark. Each path
-          now starts at the node's rim and stops at the hub's, so the line reads as a connection
-          BETWEEN two things rather than a stroke drawn across them. The packets ride these paths,
-          so they inherit the same bounds and no longer disappear under the artwork. */}
-        {/* spokes */}
-        <g fill="none" stroke="url(#spoke)" strokeWidth="1.3">
-          <path
-            id="tnxSp0"
-            d="M55.4 48.0 Q 121.0 110.2 208.5 132.6"
-            className="tnx-edge"
-          />
-          <path
-            id="tnxSp1"
-            d="M365.0 53.1 Q 306.0 76.7 268.4 127.9"
-            className="tnx-edge"
-            style={{ animationDelay: "-.5s" }}
-          />
-          <path
-            id="tnxSp2"
-            d="M44.5 148.2 Q 124.1 170.1 204.0 149.7"
-            className="tnx-edge"
-            style={{ animationDelay: "-1s" }}
-          />
-          <path
-            id="tnxSp3"
-            d="M375.5 149.1 Q 325.6 134.2 276.0 149.8"
-            className="tnx-edge"
-            style={{ animationDelay: "-1.5s" }}
-          />
-          <path
-            id="tnxSp4"
-            d="M76.2 247.6 Q 153.2 225.8 209.1 168.4"
-            className="tnx-edge"
-            style={{ animationDelay: "-.8s" }}
-          />
-          <path
-            id="tnxSp5"
-            d="M345.7 245.0 Q 316.9 197.7 266.8 174.1"
-            className="tnx-edge"
-            style={{ animationDelay: "-.2s" }}
-          />
-        </g>
-        {/* packets converging on hub (GSAP-driven) */}
-        <g fill="#E6E6E2">
-          <circle className="tnx-pkt" data-sp="0" r="2.6" cx="72" cy="44" />
-          <circle className="tnx-pkt" data-sp="1" r="2.6" cx="408" cy="44" />
-          <circle className="tnx-pkt" data-sp="2" r="2.6" cx="56" cy="150" />
-          <circle className="tnx-pkt" data-sp="3" r="2.6" cx="424" cy="150" />
-          <circle className="tnx-pkt" data-sp="4" r="2.6" cx="92" cy="256" />
-          <circle className="tnx-pkt" data-sp="5" r="2.6" cx="388" cy="256" />
-          <circle className="tnx-pkt" data-sp="6" r="2.6" cx="240" cy="282" />
-        </g>
-        {/* hub */}
         <circle
           cx="240"
           cy="150"
-          r="46"
+          r="80"
+          fill="url(#hubAura)"
+          className="tnx-aglow"
+        />
+
+        {/* ── BASE SPOKES ────────────────────────────────────────────────────────── */}
+        <g fill="none" stroke="url(#spokeBase)" strokeWidth="1.2">
+          <path id="tnxSp0_base" d="M55.4 48.0 Q 121.0 110.2 208.5 132.6" />
+          <path id="tnxSp1_base" d="M365.0 53.1 Q 306.0 76.7 268.4 127.9" />
+          <path id="tnxSp2_base" d="M44.5 148.2 Q 124.1 170.1 204.0 149.7" />
+          <path id="tnxSp3_base" d="M375.5 149.1 Q 325.6 134.2 276.0 149.8" />
+          <path id="tnxSp4_base" d="M76.2 247.6 Q 153.2 225.8 209.1 168.4" />
+          <path id="tnxSp5_base" d="M345.7 245.0 Q 316.9 197.7 266.8 174.1" />
+          <path id="tnxSp6_base" d="M240.0 265.5 Q 253.2 225.8 240.0 186.0" />
+        </g>
+
+        {/* ── FLOWING TUNNEL ENCRYPTED DATA STREAMS ────────────────────────────────── */}
+        <g fill="none" stroke="url(#spokeStream)" strokeWidth="1.8">
+          <path id="tnxSp0" d="M55.4 48.0 Q 121.0 110.2 208.5 132.6" className="tnx-edge tnx-stream-edge" />
+          <path id="tnxSp1" d="M365.0 53.1 Q 306.0 76.7 268.4 127.9" className="tnx-edge tnx-stream-edge" style={{ animationDelay: "-.5s" }} />
+          <path id="tnxSp2" d="M44.5 148.2 Q 124.1 170.1 204.0 149.7" className="tnx-edge tnx-stream-edge" style={{ animationDelay: "-1s" }} />
+          <path id="tnxSp3" d="M375.5 149.1 Q 325.6 134.2 276.0 149.8" className="tnx-edge tnx-stream-edge" style={{ animationDelay: "-1.5s" }} />
+          <path id="tnxSp4" d="M76.2 247.6 Q 153.2 225.8 209.1 168.4" className="tnx-edge tnx-stream-edge" style={{ animationDelay: "-.8s" }} />
+          <path id="tnxSp5" d="M345.7 245.0 Q 316.9 197.7 266.8 174.1" className="tnx-edge tnx-stream-edge" style={{ animationDelay: "-.2s" }} />
+          <path id="tnxSp6" d="M240.0 265.5 Q 253.2 225.8 240.0 186.0" className="tnx-edge tnx-stream-edge" style={{ animationDelay: "-2s" }} />
+        </g>
+
+        {/* High-speed packet pulses */}
+        <g fill="#F43F5E">
+          <circle className="tnx-pkt" data-sp="0" r="2.2" cx="72" cy="44" />
+          <circle className="tnx-pkt" data-sp="1" r="2.2" cx="408" cy="44" />
+          <circle className="tnx-pkt" data-sp="2" r="2.2" cx="56" cy="150" />
+          <circle className="tnx-pkt" data-sp="3" r="2.2" cx="424" cy="150" />
+          <circle className="tnx-pkt" data-sp="4" r="2.2" cx="92" cy="256" />
+          <circle className="tnx-pkt" data-sp="5" r="2.2" cx="388" cy="256" />
+          <circle className="tnx-pkt" data-sp="6" r="2.2" cx="240" cy="282" />
+        </g>
+
+        {/* ── ZERO TRUST HUB CORE ─────────────────────────────────────────────────── */}
+        {/* Outer radar perimeter */}
+        <circle
+          cx="240"
+          cy="150"
+          r="54"
           fill="none"
-          stroke="#C9C9C4"
+          stroke="#475569"
           strokeWidth="1"
-          strokeDasharray="3 7"
-          opacity=".5"
+          strokeDasharray="4 8"
+          opacity=".6"
           className="tnx-orbit"
         />
+        {/* Pulsing signal rings */}
         <circle
           cx="240"
           cy="150"
-          r="30"
+          r="32"
           fill="none"
-          stroke="#8A8A86"
-          strokeWidth="1"
+          stroke="#F43F5E"
+          strokeWidth="1.5"
           className="tnx-aring"
         />
         <circle
           cx="240"
           cy="150"
-          r="30"
+          r="32"
           fill="none"
-          stroke="#C9C9C4"
+          stroke="#38BDF8"
           strokeWidth="1"
           className="tnx-aring2"
         />
-        {/* ⛔ THE HUB MARK. The design puts the Tunnex tile at the centre of the mesh — the whole
-          picture is "everything joins HERE", and without it the hub was an anonymous dot. The
-          wireframe layers it as HTML over the SVG; embedded here instead so it scales with the
-          viewBox and cannot drift from the rings at any container size. */}
-        {/* ⛔ THE HUB TILE. `slice` CROPPED THE MARK — the asset is 577x551 with the glyph filling
-          its frame, so slicing a square out of it cuts the edges off, which is exactly what the
-          rounded corners were eating. `meet` fits the whole mark, and the tile is drawn separately
-          so the mark has PADDING inside it rather than bleeding to the corner radius. */}
+
+        {/* Hub Tile Card */}
         <rect
-          x="216"
-          y="126"
-          width="48"
-          height="48"
-          rx="12"
-          fill="#0A0A0A"
-          stroke="rgba(255,255,255,0.10)"
+          x="214"
+          y="124"
+          width="52"
+          height="52"
+          rx="14"
+          fill="#0F172A"
+          stroke="rgba(244, 63, 94, 0.4)"
+          strokeWidth="1.5"
+          style={{
+            filter: "drop-shadow(0 0 16px rgba(225, 29, 72, 0.35))",
+          }}
+        />
+        <rect
+          x="215"
+          y="125"
+          width="50"
+          height="50"
+          rx="13"
+          fill="none"
+          stroke="rgba(255, 255, 255, 0.15)"
           strokeWidth="1"
         />
         <image
           href={logoUrl}
-          x="224"
-          y="134"
-          width="32"
-          height="32"
+          x="222"
+          y="132"
+          width="36"
+          height="36"
           preserveAspectRatio="xMidYMid meet"
         />
-        {/* ⛔ THE SEVENTH NODE — MCP SERVER. Added deliberately, not transcribed: the design predates
-          EPIC 15, and an MCP server is exactly the thing the product is about to treat as a
-          first-class destination. Bottom-centre is the one free spoke direction in the design's
-          own geometry, so nothing had to move. */}
-        <path
-          id="tnxSp6"
-          d="M240.0 265.5 Q 253.2 225.8 240.0 186.0"
-          className="tnx-edge"
-          style={{ animationDelay: "-2s" }}
-          fill="none"
-          stroke="url(#spoke)"
-          strokeWidth="1.3"
-        />
-        {/* nodes */}
-        <g className="tnx-node tnx-afloat">
-          <circle
-            cx="41"
-            cy="40"
-            r="15"
-            fill="rgba(26,26,26,.95)"
-            stroke="rgba(255,255,255,0.14)"
+
+        {/* Active zero-trust status pulse ring around hub */}
+        <circle cx="258" cy="130" r="3.5" fill="#10B981" />
+        <circle cx="258" cy="130" r="6" fill="none" stroke="#10B981" strokeWidth="1" opacity="0.6" className="tnx-aring" />
+
+        {/* ── STABLE GLASSMORPHIC NODE CARDS ────────────────────────────────────── */}
+        {/* Node 1: AWS VPC */}
+        <g className="tnx-node tnx-node-pulse">
+          <rect
+            x="24"
+            y="22"
+            width="104"
+            height="36"
+            rx="18"
+            fill="url(#nodeCardBg)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="1"
           />
-          <g transform="translate(33,35)">
+          <circle cx="42" cy="40" r="11" fill="rgba(255, 153, 0, 0.12)" />
+          <g transform="translate(34,35) scale(0.9)">
             <path
               d="M0 5 Q 8 11 16 5"
               fill="none"
@@ -230,26 +243,33 @@ export function AuthMesh() {
             />
             <path d="M12.5 3.6 L17.4 5 L13 8.2 Z" fill="#FF9900" />
           </g>
+          <circle cx="57" cy="40" r="2" fill="#10B981" />
           <text
-            x="58"
-            y="49"
-            fill="#E4E4E1"
-            fontFamily="Instrument Sans"
-            fontSize="12"
+            x="64"
+            y="44"
+            fill="#F8FAFC"
+            fontFamily="Inter, var(--font-sans), sans-serif"
+            fontSize="11"
             fontWeight="600"
+            letterSpacing="0.02em"
           >
             AWS VPC
           </text>
         </g>
-        <g className="tnx-node tnx-afloat2">
-          <circle
-            cx="378"
-            cy="43"
-            r="15"
-            fill="rgba(26,26,26,.95)"
-            stroke="rgba(255,255,255,0.14)"
+
+        {/* Node 2: Azure */}
+        <g className="tnx-node tnx-node-pulse-alt">
+          <rect
+            x="360"
+            y="25"
+            width="96"
+            height="36"
+            rx="18"
+            fill="url(#nodeCardBg)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="1"
           />
+          <circle cx="378" cy="43" r="11" fill="rgba(53, 193, 241, 0.12)" />
           <g transform="translate(370,35) scale(.62)">
             <path
               fill="#35C1F1"
@@ -257,59 +277,72 @@ export function AuthMesh() {
             />
             <path fill="#0078D4" d="M13.23 2.7L6.98 7.98 0 19.966h5.626z" />
           </g>
+          <circle cx="393" cy="43" r="2" fill="#10B981" />
           <text
-            x="394"
-            y="49"
-            fill="#E4E4E1"
-            fontFamily="Instrument Sans"
-            fontSize="12"
+            x="400"
+            y="47"
+            fill="#F8FAFC"
+            fontFamily="Inter, var(--font-sans), sans-serif"
+            fontSize="11"
             fontWeight="600"
+            letterSpacing="0.02em"
           >
             Azure
           </text>
         </g>
-        <g className="tnx-node tnx-afloat">
-          <circle
-            cx="28"
-            cy="148"
-            r="15"
-            fill="rgba(26,26,26,.95)"
-            stroke="rgba(255,255,255,0.14)"
+
+        {/* Node 3: On-prem */}
+        <g className="tnx-node tnx-node-pulse">
+          <rect
+            x="12"
+            y="130"
+            width="106"
+            height="36"
+            rx="18"
+            fill="url(#nodeCardBg)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="1"
           />
+          <circle cx="30" cy="148" r="11" fill="rgba(148, 163, 184, 0.12)" />
           <g
-            transform="translate(20,141)"
+            transform="translate(22,141)"
             fill="none"
-            stroke="#CFCFCA"
+            stroke="#CBD5E1"
             strokeWidth="1.4"
           >
             <rect x="0" y="0" width="15" height="5" rx="1.5" />
             <rect x="0" y="8" width="15" height="5" rx="1.5" />
-            <circle cx="3" cy="2.5" r=".6" fill="#CFCFCA" />
-            <circle cx="3" cy="10.5" r=".6" fill="#CFCFCA" />
+            <circle cx="3" cy="2.5" r=".6" fill="#CBD5E1" />
+            <circle cx="3" cy="10.5" r=".6" fill="#CBD5E1" />
           </g>
+          <circle cx="45" cy="148" r="2" fill="#10B981" />
           <text
-            x="44"
-            y="155"
-            fill="#E4E4E1"
-            fontFamily="Instrument Sans"
-            fontSize="12"
+            x="52"
+            y="152"
+            fill="#F8FAFC"
+            fontFamily="Inter, var(--font-sans), sans-serif"
+            fontSize="11"
             fontWeight="600"
+            letterSpacing="0.02em"
           >
             On-prem
           </text>
         </g>
-        <g className="tnx-node tnx-afloat2">
-          <circle
-            cx="392"
-            cy="149"
-            r="15"
-            fill="rgba(26,26,26,.95)"
-            stroke="rgba(255,255,255,0.14)"
+
+        {/* Node 4: GCP */}
+        <g className="tnx-node tnx-node-pulse-alt">
+          <rect
+            x="374"
+            y="131"
+            width="90"
+            height="36"
+            rx="18"
+            fill="url(#nodeCardBg)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="1"
           />
+          <circle cx="392" cy="149" r="11" fill="rgba(234, 67, 53, 0.12)" />
           <g transform="translate(384,141)">
-            {/* Google Cloud's mark — the consumer G is a different product's logo and reads as "sign in with Google", which is the button below, not the cloud this node stands for. */}
             <path
               d="M9.7 4.6 L12.4 4.6 L14.9 2.1 L14.8 1.1 A7.6 7.6 0 0 0 2.4 4.8 A0.9 0.9 0 0 1 3 4.7 Z"
               fill="#EA4335"
@@ -327,26 +360,33 @@ export function AuthMesh() {
               fill="#34A853"
             />
           </g>
+          <circle cx="407" cy="149" r="2" fill="#10B981" />
           <text
-            x="408"
-            y="155"
-            fill="#E4E4E1"
-            fontFamily="Instrument Sans"
-            fontSize="12"
+            x="414"
+            y="153"
+            fill="#F8FAFC"
+            fontFamily="Inter, var(--font-sans), sans-serif"
+            fontSize="11"
             fontWeight="600"
+            letterSpacing="0.02em"
           >
             GCP
           </text>
         </g>
-        <g className="tnx-node tnx-afloat">
-          <circle
-            cx="62"
-            cy="256"
-            r="15"
-            fill="rgba(26,26,26,.95)"
-            stroke="rgba(255,255,255,0.14)"
+
+        {/* Node 5: Kubernetes */}
+        <g className="tnx-node tnx-node-pulse">
+          <rect
+            x="44"
+            y="238"
+            width="122"
+            height="36"
+            rx="18"
+            fill="url(#nodeCardBg)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="1"
           />
+          <circle cx="62" cy="256" r="11" fill="rgba(50, 108, 229, 0.12)" />
           <g transform="translate(54,248)">
             <polygon
               points="8,0 14.9,3.9 14.9,11.1 8,15 1.1,11.1 1.1,3.9"
@@ -372,30 +412,37 @@ export function AuthMesh() {
               <line x1="3.8" y1="5.1" x2="5.9" y2="6.3" />
             </g>
           </g>
+          <circle cx="77" cy="256" r="2" fill="#10B981" />
           <text
-            x="78"
-            y="261"
-            fill="#E4E4E1"
-            fontFamily="Instrument Sans"
-            fontSize="12"
+            x="84"
+            y="260"
+            fill="#F8FAFC"
+            fontFamily="Inter, var(--font-sans), sans-serif"
+            fontSize="11"
             fontWeight="600"
+            letterSpacing="0.02em"
           >
             Kubernetes
           </text>
         </g>
-        <g className="tnx-node tnx-afloat2">
-          <circle
-            cx="358"
-            cy="256"
-            r="15"
-            fill="rgba(26,26,26,.95)"
-            stroke="rgba(255,255,255,0.14)"
+
+        {/* Node 6: Remote */}
+        <g className="tnx-node tnx-node-pulse-alt">
+          <rect
+            x="340"
+            y="238"
+            width="104"
+            height="36"
+            rx="18"
+            fill="url(#nodeCardBg)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="1"
           />
+          <circle cx="358" cy="256" r="11" fill="rgba(203, 213, 225, 0.12)" />
           <g
             transform="translate(350,248)"
             fill="none"
-            stroke="#CFCFCA"
+            stroke="#CBD5E1"
             strokeWidth="1.4"
             strokeLinejoin="round"
           >
@@ -403,32 +450,37 @@ export function AuthMesh() {
             <line x1="5" y1="14" x2="10" y2="14" />
             <line x1="7.5" y1="10" x2="7.5" y2="14" />
           </g>
+          <circle cx="373" cy="256" r="2" fill="#10B981" />
           <text
-            x="374"
-            y="261"
-            fill="#E4E4E1"
-            fontFamily="Instrument Sans"
-            fontSize="12"
+            x="380"
+            y="260"
+            fill="#F8FAFC"
+            fontFamily="Inter, var(--font-sans), sans-serif"
+            fontSize="11"
             fontWeight="600"
+            letterSpacing="0.02em"
           >
             Remote
           </text>
         </g>
-        <g className="tnx-node tnx-afloat">
-          <circle
-            cx="240"
-            cy="282"
-            r="15"
-            fill="rgba(26,26,26,.95)"
-            stroke="rgba(255,255,255,0.14)"
+
+        {/* Node 7: MCP Server */}
+        <g className="tnx-node tnx-node-pulse">
+          <rect
+            x="180"
+            y="264"
+            width="120"
+            height="34"
+            rx="17"
+            fill="url(#nodeCardBg)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="1"
           />
-          {/* MCP's mark: the two stacked chevrons over a rule, drawn rather than fetched — the login
-            page makes no third-party request before authentication. */}
+          <circle cx="196" cy="281" r="10" fill="rgba(56, 189, 248, 0.12)" />
           <g
-            transform="translate(232,274)"
+            transform="translate(191,275)"
             fill="none"
-            stroke="#E4E4E1"
+            stroke="#38BDF8"
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -436,13 +488,15 @@ export function AuthMesh() {
             <path d="M1 7 L5.5 2.5 L10 7" />
             <path d="M6 12 L10.5 7.5 L15 12" />
           </g>
+          <circle cx="211" cy="281" r="2" fill="#10B981" />
           <text
-            x="258"
-            y="288"
-            fill="#E4E4E1"
-            fontFamily="Instrument Sans"
-            fontSize="12"
+            x="218"
+            y="285"
+            fill="#F8FAFC"
+            fontFamily="Inter, var(--font-sans), sans-serif"
+            fontSize="11"
             fontWeight="600"
+            letterSpacing="0.02em"
           >
             MCP server
           </text>
