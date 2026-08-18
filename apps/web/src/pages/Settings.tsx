@@ -49,6 +49,7 @@ import {
   Field,
   Input,
   PageHeader,
+  Section,
 } from "../components/ui";
 import { LicenceCard } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
@@ -138,10 +139,16 @@ export default function Settings() {
   }
 
   return (
-    // ⛔ CAPPED, AND THE CAP IS THE POINT. On a 32" display an uncapped settings page stretches every card to
-    // 2000px wide to hold a slug and a checkbox — the text line-length collapses into something unreadable
-    // and the eye has to travel the full width for each field. A maximum turns extra viewport into MARGIN.
-    <div className="mx-auto max-w-[110rem]">
+    // ⛔ CAPPED, AND THE CAP IS STILL THE POINT — but 110rem was never a cap. On a 32" display an uncapped
+    // settings page stretches every field to 2000px to hold a slug and a checkbox; a maximum turns extra
+    // viewport into MARGIN. 110rem is 1760px, which is wider than the content box ever gets, so it capped
+    // nothing and instead OVERFLOWED: 1760 + 48px padding + the 228px sidebar is 2036px of demand against a
+    // ~1999px viewport, and `mx-auto` cannot centre what does not fit, so the right edge was shaved off.
+    // The page was budgeting width as though it owned the viewport.
+    //
+    // ⚠ A CAP MUST BE SIZED FOR THE CONTENT, NOT THE SCREEN. One column of settings wants a readable
+    // measure; 72rem holds the credentials table without truncation and still leaves margin at 1999px.
+    <div className="mx-auto max-w-[72rem]">
       <PageHeader title="Settings" subtitle={org ? org.name : "…"} />
       <ErrorText>{error}</ErrorText>
 
@@ -158,144 +165,158 @@ export default function Settings() {
 
           ⚠ THE CARDS ARE `items-start`, NOT STRETCHED TO THE TALLEST IN THE ROW. A three-line card padded
           to the height of a twenty-line neighbour reads as a card with something missing from it. */}
-      {/* ⛔ COLUMNS, NOT A GRID — and the previous attempt is why. A CSS grid ALIGNS ROWS: put the
-          twenty-line Entra card beside the three-line 2FA card and every short card in that row is followed
-          by a hole the height of the tallest one. The screen filled with vertical gaps.
+      {/* ⛔ ONE COLUMN OF SECTIONS, AND THE PACKING PROBLEM IS GONE RATHER THAN SOLVED.
+          Three layouts were tried here in turn — fixed `grid-cols-3` (every card stretched to a third of
+          the screen), an auto-fill grid (a grid ALIGNS ROWS, so every short card was followed by a hole the
+          height of its tallest neighbour), then multi-column masonry (no holes, but column-major reading
+          order, and NO full-width child possible — the credentials table had to be lifted out of the flow
+          entirely).
 
-          Multi-column flow packs each card under the previous one in its column and never aligns across
-          columns, so height differences cost nothing. It also answers the original constraint the same way
-          the grid was meant to: more width adds a COLUMN, it does not widen a card.
+          All three accept the same premise: that these are cards of varying height which must be packed.
+          They are ROWS AND GROUPS of settings. Stacked in one column there is nothing to pack, no holes to
+          avoid, no `break-inside-avoid` to remember, and a table can simply sit in the flow. The masonry was
+          not a bad answer — it was a good answer to a question the page should never have been asking.
 
-          ⚠ EVERY CHILD NEEDS `break-inside-avoid`, or the browser will split a card down the middle across
-          a column boundary — which looks exactly like a rendering bug and is the one hazard this layout has.
-          The wrapper carries it so no section has to remember. */}
-      <div className="mt-6 columns-1 gap-3.5 lg:columns-2 2xl:columns-3">
-        {/* ⚠ Owner-only to INSTALL; every member sees the entitlement, because a user who hits a ceiling
-            needs to know why without asking an owner. */}
-        {org && (
-          <div className="mb-3.5 break-inside-avoid">
-            <LicenceCard canManage={myRole === "owner"} />
-          </div>
+          ⚠ The reading order is now the one the sections are written in, so that order is a decision:
+          Organization → Network → Authentication → Features → Licence, roughly what an operator sets up
+          first to what they revisit least. */}
+      <div className="mt-6 flex flex-col gap-7">
+        {org && isAdmin && (
+          <Section
+            title="Organization"
+            description="Who this tenant is. The slug appears in invite links and CLI output."
+          >
+            <OrgSection
+              org={org}
+              canEdit={emailVerified}
+              onSaved={(o) => setOrg(o)}
+            />
+          </Section>
         )}
-        <div className="mb-3.5 break-inside-avoid">
-          <MfaSettings />
-        </div>
 
-        {/* Directory sync renders OUTSIDE the `isAdmin` block, on purpose but NOT because of a
-          live defect — the honest version, after a mutation survivor sent me to measure.
-          Settings gates its org panels on `org:update`; every idp-sync handler gates on
-          `policy:manage`. Today those are held by the same user-assignable roles (owner, admin),
-          so nesting would change nothing observable. `operator` holds policy:manage WITHOUT
-          org:update but is MACHINE-ONLY — `memberships` CHECKs role IN (owner, admin, member),
-          so it never renders a UI and cannot make the difference visible.
-          It is out here so the panel is governed by ONE gate — its own, matching the server —
-          rather than silently ANDed with a different permission that merely happens to coincide.
-          `idpGate` is the authority; a test pins the coincidence so a divergence is loud. */}
-        {org && (
-          <>
-            {PROVIDERS.map((pv) => (
-              <div key={pv} className="mb-3.5 break-inside-avoid">
+        {org && isAdmin && (
+          <Section
+            title="Network"
+            description="The address space devices are assigned from."
+          >
+            <PoolSection
+              org={org}
+              canEdit={emailVerified}
+              onResized={(o) => setOrg(o)}
+            />
+          </Section>
+        )}
+
+        {/* ⚠ MIXED GATES, DELIBERATELY IN ONE SECTION. Personal 2FA is per-USER and shows for everyone;
+            SSO and enforcement are org-admin; directory sync answers to `idpGate`, its own permission,
+            NOT to `org:update` — see the note below. Grouping by SUBJECT is what a reader is looking for;
+            each child keeps whatever gate it already had. */}
+        <Section
+          title="Authentication"
+          description="How people prove who they are when they sign in."
+        >
+          <div className="flex flex-col gap-3.5">
+            <MfaSettings />
+
+            {org && isAdmin && meta?.edition === "enterprise" && (
+              <SsoSettings orgId={org.id} canEdit={emailVerified} />
+            )}
+            {org && isAdmin && meta?.edition !== "enterprise" && (
+              <Card>
+                <h3 className="text-sm font-semibold text-slate-300">
+                  Single sign-on
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  SSO (Google / Microsoft) is a Tunnex Enterprise feature.
+                </p>
+              </Card>
+            )}
+
+            {org && isAdmin && meta?.edition === "enterprise" && (
+              <OrgMfaEnforce orgId={org.id} canEdit={emailVerified} />
+            )}
+            {org && isAdmin && meta?.edition !== "enterprise" && (
+              <Card>
+                <h3 className="text-sm font-semibold text-slate-300">
+                  Require two-factor authentication
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Org-wide MFA enforcement is a Tunnex Enterprise feature.
+                </p>
+              </Card>
+            )}
+
+            {/* Directory sync renders OUTSIDE the `isAdmin` gate, on purpose but NOT because of a
+              live defect — the honest version, after a mutation survivor sent me to measure.
+              Settings gates its org panels on `org:update`; every idp-sync handler gates on
+              `policy:manage`. Today those are held by the same user-assignable roles (owner, admin),
+              so nesting would change nothing observable. `operator` holds policy:manage WITHOUT
+              org:update but is MACHINE-ONLY — `memberships` CHECKs role IN (owner, admin, member),
+              so it never renders a UI and cannot make the difference visible.
+              It is out here so the panel is governed by ONE gate — its own, matching the server —
+              rather than silently ANDed with a different permission that merely happens to coincide.
+              `idpGate` is the authority; a test pins the coincidence so a divergence is loud. */}
+            {org &&
+              PROVIDERS.map((pv) => (
                 <IdpSyncSection
+                  key={pv}
                   orgId={org.id}
                   provider={pv}
                   role={myRole}
                   isEnterprise={meta?.edition === "enterprise"}
                   canEdit={emailVerified}
                 />
-              </div>
-            ))}
-          </>
-        )}
-
-        {org && !isAdmin && (
-          <Card className="mt-6">
-            <p className="text-sm text-slate-400">
-              Organization settings are managed by owners and admins.
-            </p>
-          </Card>
-        )}
+              ))}
+          </div>
+        </Section>
 
         {org && isAdmin && (
-          <>
-            <div className="mb-3.5 break-inside-avoid">
-              <OrgSection
-                org={org}
-                canEdit={emailVerified}
-                onSaved={(o) => setOrg(o)}
-              />
-            </div>
-            <div className="mb-3.5 break-inside-avoid">
-              <PoolSection
-                org={org}
-                canEdit={emailVerified}
-                onResized={(o) => setOrg(o)}
-              />
-            </div>
-            {/* SSO config is enterprise-only; hidden in the open edition per /meta
-              (watch-item b), with a muted note rather than a dead form. */}
-            {meta?.edition === "enterprise" ? (
-              <div className="mb-3.5 break-inside-avoid">
-                <SsoSettings orgId={org.id} canEdit={emailVerified} />
-              </div>
-            ) : (
-              <div className="mb-3.5 break-inside-avoid">
-                <Card>
-                  <h2 className="text-sm font-semibold text-slate-300">
-                    Single sign-on
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    SSO (Google / Microsoft) is a Tunnex Enterprise feature.
-                  </p>
-                </Card>
-              </div>
-            )}
-            {meta?.edition === "enterprise" ? (
-              <div className="mb-3.5 break-inside-avoid">
-                <OrgMfaEnforce orgId={org.id} canEdit={emailVerified} />
-              </div>
-            ) : (
-              <div className="mb-3.5 break-inside-avoid">
-                <Card>
-                  <h2 className="text-sm font-semibold text-slate-300">
-                    Require two-factor authentication
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Org-wide MFA enforcement is a Tunnex Enterprise feature.
-                  </p>
-                </Card>
-              </div>
-            )}
-            {meta?.edition === "enterprise" && (
-              <div className="mb-3.5 break-inside-avoid">
-                <AgentPolicyTemplatesToggle
-                  org={org}
-                  canEdit={emailVerified}
-                  onSaved={(o) => setOrg(o)}
-                />
-              </div>
-            )}
-            {meta?.edition === "enterprise" && (
-              <div className="mb-3.5 break-inside-avoid">
-                <AgentJITAccessToggle
-                  key={org.id}
-                  orgId={org.id}
-                  canEdit={emailVerified}
-                />
-              </div>
-            )}
-            {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
-            <div className="mb-3.5 break-inside-avoid">
+          <Section
+            title="Features"
+            description="Off by default. Unlocking a capability never turns enforcement on — enabling one here is the opt-in."
+          >
+            <div className="flex flex-col gap-3.5">
+              {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
               <OrgOVPNToggle
                 org={org}
                 canEdit={emailVerified}
                 onSaved={(o) => setOrg(o)}
               />
+              {meta?.edition === "enterprise" && (
+                <AgentPolicyTemplatesToggle
+                  org={org}
+                  canEdit={emailVerified}
+                  onSaved={(o) => setOrg(o)}
+                />
+              )}
+              {meta?.edition === "enterprise" && (
+                <AgentJITAccessToggle
+                  key={org.id}
+                  orgId={org.id}
+                  canEdit={emailVerified}
+                />
+              )}
             </div>
-            {/* ⛔ FULL WIDTH, BECAUSE IT CONTAINS A TABLE. A data table in a 24rem column is a data table with
-              every column truncated — the one section whose content genuinely needs the row. `col-span-full`
-              keeps it in the same grid rather than breaking it out into a second layout that would then
-              drift from this one. */}
-          </>
+          </Section>
+        )}
+
+        {/* ⚠ Owner-only to INSTALL; every member sees the entitlement, because a user who hits a ceiling
+            needs to know why without asking an owner. */}
+        {org && (
+          <Section
+            title="Licence"
+            description="What this deployment is entitled to run."
+          >
+            <LicenceCard canManage={myRole === "owner"} />
+          </Section>
+        )}
+
+        {org && !isAdmin && (
+          <Card>
+            <p className="text-sm text-slate-400">
+              Organization settings are managed by owners and admins.
+            </p>
+          </Card>
         )}
       </div>
 
@@ -1374,212 +1395,6 @@ function providerLabel(p: string): string {
   return p === "microsoft" ? "Microsoft Entra" : "Google Workspace";
 }
 
-/* Domain Capture was removed from the product. The old implementation is retained only in this
-   comment temporarily so the surrounding Settings layout remains easy to review; it is not compiled,
-   rendered, or reachable. */
-/*
-//
-// ⛔ THE PANEL RENDERS A STATE THE SERVER WILL NOT SERVE BACK. There is no GET for domain
-// claims (openapi.yaml:1793/:1817), so everything below `unknown` is knowledge this session
-// created. WRITE_ONLY_NOTE says that out loud rather than letting a reload quietly reset a
-// verified domain to "never claimed". See domainview.ts's header for the full disposition.
-function DomainSection({
-  orgId,
-  role,
-  isEnterprise,
-  canEdit,
-  myEmail,
-}: {
-  orgId: string;
-  role: Role | undefined;
-  isEnterprise: boolean;
-  canEdit: boolean;
-  myEmail: string;
-}) {
-  const gate = domainGate({ role: role ?? null, isEnterprise });
-  const ownDomain = normalizeDomain(myEmail.split("@").pop() ?? "");
-  const [domain, setDomain] = useState(ownDomain);
-  const [claim, setClaim] = useState<DomainClaimState>({ kind: "unknown" });
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  if (gate.kind === "hidden") return null;
-  if (gate.kind === "upsell")
-    return (
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-300">Domain capture</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Capturing an email domain so new signups auto-join this organization
-          is a Tunnex Enterprise feature.
-        </p>
-      </Card>
-    );
-
-  const typed = normalizeDomain(domain);
-  // Predicted client-side from the SERVER'S rule, so the operator is told before the
-  // round-trip — not a second source of truth: the server still refuses if we are wrong.
-  const ownershipBlocked = typed !== "" && typed !== ownDomain;
-  const step = domainStepIndex(claim);
-
-  async function submitClaim(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    const { data, error } = await api.POST(
-      "/api/v1/organizations/{orgId}/domains",
-      { params: { path: { orgId } }, body: { domain: typed } },
-    );
-    setBusy(false);
-    if (error || !data) return setErr(domainErrorCopy(apiErrorCode(error)));
-    setClaim({
-      kind: "pending",
-      domain: typed,
-      // The server returns the COMPLETE record value; we never assemble it, so this
-      // instruction cannot drift from txtHasToken's exact-equality comparison.
-      txt: txtInstruction(typed, data.txt_record),
-    });
-  }
-
-  async function submitVerify() {
-    setBusy(true);
-    setErr(null);
-    const { error } = await api.POST(
-      "/api/v1/organizations/{orgId}/domains/verify",
-      { params: { path: { orgId } }, body: { domain: typed } },
-    );
-    setBusy(false);
-    if (error) return setErr(domainErrorCopy(apiErrorCode(error)));
-    setClaim({ kind: "verified", domain: typed });
-  }
-
-  return (
-    <Card>
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-sm font-semibold text-slate-300">Domain capture</h2>
-        {/* ⛔ EXACTLY ONE CHIP IS EVER "CURRENT". Three equal chips are a legend with no
-            subject — which is what shipped, because `i <= step` gave only two tiers and at
-            `unknown` (step -1) every chip fell into the same one. `unknown` is the DEFAULT
-            state here (there is no GET), so that was the common render, not an edge case.
-            It now has its own leading chip and anchors the chain. * /}
-        <div className="flex items-center gap-1.5">
-          {[...(step < 0 ? [NO_CLAIM_CHIP] : []), ...DOMAIN_STEPS].map(
-            (label, idx) => {
-              // The prepended chip occupies the current slot; the real steps shift by one.
-              const i = step < 0 ? idx - 1 : idx;
-              const tone = chipTone(i, step);
-              return (
-                <span key={label} className="flex items-center gap-1.5">
-                  {idx > 0 && <span className="text-slate-700">›</span>}
-                  <span
-                    data-testid={`domain-step-${i}`}
-                    data-tone={tone}
-                    aria-current={tone === "current" ? "step" : undefined}
-                    className={
-                      "rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold " +
-                      (tone === "done"
-                        ? "border-accent-500/30 bg-accent-500/5 text-accent-400/70"
-                        : tone === "current"
-                          ? "border-accent-400 bg-accent-500/20 text-accent-400 ring-1 ring-accent-400/50"
-                          : "border-slate-800 bg-slate-900 text-slate-600")
-                    }
-                  >
-                    {/* Non-colour cue: the design encodes the whole distinction in tone, which
-                        a colour-blind operator cannot read. * /}
-                    {tone === "done" ? "✓ " : ""}
-                    {label}
-                  </span>
-                </span>
-              );
-            },
-          )}
-        </div>
-      </div>
-
-      <p className="mt-1 text-xs text-slate-500">{CAPTURE_EFFECT}</p>
-
-      <form
-        onSubmit={submitClaim}
-        className="mt-3 flex flex-wrap items-end gap-3"
-      >
-        <div className="min-w-[12rem] flex-1">
-          <Field label="Domain">
-            <Input
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              required
-              disabled={!canEdit || busy}
-              placeholder="acme.io"
-            />
-          </Field>
-        </div>
-        <Button type="submit" disabled={busy || !canEdit || ownershipBlocked}>
-          {busy ? "Working…" : "Claim domain"}
-        </Button>
-      </form>
-
-      {/* The ownership inversion guard, stated BEFORE the attempt (domain.go:100). * /}
-      {ownershipBlocked && (
-        <p className="mt-2 text-xs text-amber-400">
-          You can only claim the domain of your own verified address (
-          <span className="font-mono">{ownDomain || "none"}</span>). Claiming{" "}
-          <span className="font-mono">{typed}</span> would be refused.
-        </p>
-      )}
-
-      {claim.kind === "pending" && (
-        <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-          <p className="text-xs text-slate-400">
-            Publish this DNS record, then verify. It is a TXT record on the
-            domain itself — not on a <span className="font-mono">_tunnex</span>{" "}
-            subdomain.
-          </p>
-          <dl className="mt-2 space-y-1 text-xs">
-            <div className="flex gap-2">
-              <dt className="w-16 text-slate-600">NAME</dt>
-              <dd className="font-mono text-slate-300">{claim.txt.name}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="w-16 text-slate-600">TYPE</dt>
-              <dd className="font-mono text-slate-300">TXT</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="w-16 text-slate-600">VALUE</dt>
-              <dd className="break-all font-mono text-slate-300">
-                {claim.txt.value}
-              </dd>
-            </div>
-          </dl>
-          <Button
-            type="button"
-            className="mt-3"
-            onClick={submitVerify}
-            disabled={busy}
-          >
-            {busy ? "Checking DNS…" : "Verify domain"}
-          </Button>
-        </div>
-      )}
-
-      {claim.kind === "verified" && (
-        <p className="mt-3 text-xs text-accent-400">
-          <span className="font-mono">{claim.domain}</span> is verified. New
-          signups on this domain now auto-join this organization.
-        </p>
-      )}
-
-      <ErrorText>{err}</ErrorText>
-
-      {/* The two facts the wireframe's pill chain cannot carry: the state is not readable
-          back, and VERIFIED is not terminal. * /}
-      <p className="mt-3 text-xs text-slate-600">{WRITE_ONLY_NOTE}</p>
-      {claim.kind !== "unknown" && (
-        <p className="mt-1 text-xs text-slate-600">{KEEP_RECORD_NOTE}</p>
-      )}
-    </Card>
-  );
-}
-
-*/
 function OrgSection({
   org,
   canEdit,
