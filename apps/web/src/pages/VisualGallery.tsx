@@ -11,9 +11,13 @@ import {
   ListItem,
   Loading,
   Modal,
+  PageHeader,
   Panel,
+  Section,
   Select,
+  SettingRow,
   StatusDot,
+  Switch,
 } from "../components/ui";
 import { AreaChart, Donut, Histogram, NodeLink } from "../components/viz";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
@@ -56,7 +60,7 @@ import { Icon, ICON_PATHS, type IconName } from "../components/Icon";
 // asserts the production bundle does not contain it — an unshipped surface must be PROVEN unshipped, not
 // assumed (see apps/web/test/visualgallery.test.ts).
 
-function Section({
+function GalleryGroup({
   title,
   children,
 }: {
@@ -96,14 +100,14 @@ export default function VisualGallery() {
   // `[role="dialog"]` — which IS the full-viewport overlay — and produced a baseline that was ENTIRELY
   // magenta. A solid rectangle would have passed forever with no subject inside it.
   const [showModal, setShowModal] = useState(true);
+  // Live so the gallery shows a switch that actually moves — a static one hides the state it exists to show.
+  const [galleryOvpn, setGalleryOvpn] = useState(false);
 
   return (
     <div className="tnx-page flex flex-col gap-3.5 p-6" data-visual-gallery>
-      <h1 className="text-[22px] font-semibold text-ink-heading">
-        Visual gallery
-      </h1>
+      <PageHeader title="Visual gallery" />
 
-      <Section title="Buttons">
+      <GalleryGroup title="Buttons">
         {(["primary", "ghost", "danger"] as const).map((v) => (
           <span key={v} className="flex gap-2">
             <Button variant={v}>{v}</Button>
@@ -112,9 +116,9 @@ export default function VisualGallery() {
             </Button>
           </span>
         ))}
-      </Section>
+      </GalleryGroup>
 
-      <Section title="Badges and status">
+      <GalleryGroup title="Badges and status">
         {(["ok", "warn", "danger", "neutral"] as const).map((t) => (
           <Badge key={t} tone={t}>
             {t}
@@ -123,9 +127,9 @@ export default function VisualGallery() {
         {(["on", "off", "warn"] as const).map((t) => (
           <StatusDot key={t} tone={t} />
         ))}
-      </Section>
+      </GalleryGroup>
 
-      <Section title="Fields">
+      <GalleryGroup title="Fields">
         <div className="w-64">
           <Field label="Device name">
             <Input placeholder="laptop-anna" />
@@ -138,11 +142,11 @@ export default function VisualGallery() {
             </Select>
           </Field>
         </div>
-      </Section>
+      </GalleryGroup>
 
       {/* ⛔ COMBINATION 1: a table in ALL THREE of its states, side by side. The failed and empty renderings
           are the ones that historically diverge, and they are only comparable when adjacent. */}
-      <Section title="DataTable — populated / empty / failed">
+      <GalleryGroup title="DataTable — populated / empty / failed">
         <div className="w-80">
           <Panel title="Populated">
             <DataTable
@@ -179,9 +183,9 @@ export default function VisualGallery() {
             />
           </Panel>
         </div>
-      </Section>
+      </GalleryGroup>
 
-      <Section title="Empty / loading">
+      <GalleryGroup title="Empty / loading">
         <div className="w-80">
           <Panel title="Empty state">
             <EmptyState>No devices enrolled yet.</EmptyState>
@@ -200,11 +204,11 @@ export default function VisualGallery() {
             </List>
           </Panel>
         </div>
-      </Section>
+      </GalleryGroup>
 
       {/* ⛔ COMBINATION 2: a donut INSIDE a panel INSIDE the page grid — the nesting where the 24px-vs-96px
           sizing defect actually lived. A donut rendered alone would have looked fine at any size. */}
-      <Section title="Visualisations in situ">
+      <GalleryGroup title="Visualisations in situ">
         <div className="w-80">
           <Panel title="Donut">
             <Donut
@@ -318,7 +322,7 @@ export default function VisualGallery() {
             />
           </Panel>
         </div>
-      </Section>
+      </GalleryGroup>
 
       {/* ⛔ COMBINATION 3 — THE ONE THAT EARNED THIS FILE.
           A MODAL RENDERED OPEN, FROM INSIDE A CARD. `Card` carries `backdrop-filter`, which makes it the
@@ -326,7 +330,7 @@ export default function VisualGallery() {
           the overlay to the card and put the card's body over the modal's buttons.
           The modals are portalled now, so the snapshot shows them centred on the VIEWPORT. If a future change
           re-introduces the trap, this image moves and nothing else does. */}
-      <Section title="Overlays, open, from inside a Card">
+      <GalleryGroup title="Overlays, open, from inside a Card">
         <Card className="w-80">
           <p className="text-cell text-ink-body">
             A card containing an open modal.
@@ -341,7 +345,7 @@ export default function VisualGallery() {
             </Modal>
           )}
         </Card>
-      </Section>
+      </GalleryGroup>
 
       {/* ⛔ FULL COLUMN WIDTH — THE HARNESS IS PART OF THE SPECIMEN.
           ════════════════════════════════════════════════════════════════════════════════════════════════
@@ -476,13 +480,49 @@ export default function VisualGallery() {
         </Panel>
       </section>
 
-      <Section title="Icons">
+      {/* The settings vocabulary: a chrome-less group of rows, each lending its label to its control.
+          Shown beside Panel above so the difference is visible — Panel is a surface, Section is structure. */}
+      <GalleryGroup title="Settings vocabulary">
+        <div className="w-full max-w-[46rem]">
+          <PageHeader title="Settings" subtitle="Demo Organization" />
+          <div className="mt-4">
+            <Section
+              title="Features"
+              description="Off by default. Enabling one never grants access on its own."
+            >
+              <SettingRow
+                label="OpenVPN"
+                description="Serve OpenVPN profiles alongside WireGuard."
+              >
+                <Switch checked={galleryOvpn} onChange={setGalleryOvpn} />
+              </SettingRow>
+              <SettingRow
+                label="Agent groups & policy templates"
+                description="Reusable templates for agent access."
+              >
+                <Switch checked={false} onChange={() => {}} />
+              </SettingRow>
+              <SettingRow
+                label="Just-in-time agent access"
+                description="Requests require human approval."
+              >
+                <Switch checked disabled onChange={() => {}} />
+              </SettingRow>
+              <SettingRow label="Address pool" description="10.99.0.0/24">
+                <Button variant="ghost">Resize pool</Button>
+              </SettingRow>
+            </Section>
+          </div>
+        </div>
+      </GalleryGroup>
+
+      <GalleryGroup title="Icons">
         <div className="flex flex-wrap gap-3">
           {(Object.keys(ICON_PATHS) as IconName[]).map((n) => (
             <Icon key={n} name={n} size={16} className="text-ink-body" />
           ))}
         </div>
-      </Section>
+      </GalleryGroup>
     </div>
   );
 }

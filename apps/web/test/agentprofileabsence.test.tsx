@@ -28,6 +28,25 @@ vi.mock("../src/components/ui", () => {
     ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) =>
       createElement(tag, props, children);
   return {
+    // The page header is a real component now, not markup each page hand-rolls. Mocked to an h1 so the
+    // route's heading stays assertable — a `primitive("header")` would spread `title` onto the DOM node
+    // and the text would vanish from the tree.
+    PageHeader: ({
+      title,
+      subtitle,
+      actions,
+    }: {
+      title: string;
+      subtitle?: ReactNode;
+      actions?: ReactNode;
+    }) =>
+      createElement(
+        "header",
+        null,
+        createElement("h1", null, title),
+        subtitle ?? null,
+        actions ?? null,
+      ),
     Badge: primitive("span"),
     Button: primitive("button"),
     Card: primitive("section"),

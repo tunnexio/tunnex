@@ -20,7 +20,7 @@ test("signup is closed, and refuses a new and an existing email identically (no 
   const refusal = async (email: string) => {
     await page.goto("/signup");
     await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill("a-strong-passphrase-123");
+    await page.getByLabel("Password", { exact: true }).fill("a-strong-passphrase-123");
     await page.getByRole("button", { name: "Create account" }).click();
     // The server's own words, surfaced by the page — never "that account already exists".
     await expect(page.getByText(/invitation/i)).toBeVisible();
@@ -45,7 +45,7 @@ test("login shows a generic invalid-credentials message (no account enumeration)
 }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(EXISTING_EMAIL);
-  await page.getByLabel("Password").fill("definitely-the-wrong-password");
+  await page.getByLabel("Password", { exact: true }).fill("definitely-the-wrong-password");
   await page.getByRole("button", { name: "Sign in" }).click();
   // Server keeps this generic ("invalid email or password") — never "wrong password".
   await expect(page.getByText(/invalid email or password/i)).toBeVisible();

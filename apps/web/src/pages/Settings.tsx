@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   api,
   apiErrorCode,
@@ -14,6 +14,7 @@ import {
   type AgentJITAccessSetting,
 } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
+import { OrgSwitcher } from "../components/OrgSwitcher";
 import { relativeAge } from "../lib/format";
 import { can } from "../lib/rbac";
 import {
@@ -42,7 +43,19 @@ import {
   orphanTail,
 } from "../lib/poolview";
 import { useAuth } from "../lib/auth";
-import { Button, Card, ErrorText, Field, Input } from "../components/ui";
+import {
+  Button,
+  Card,
+  ErrorText,
+  Field,
+  Input,
+  PageHeader,
+  SettingDialogRow,
+  SettingGroup,
+  SettingRow,
+  SettingValue,
+  Switch,
+} from "../components/ui";
 import { LicenceCard } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
 import { MachineCredentials } from "../components/MachineCredentials";
@@ -124,6 +137,22 @@ export default function Settings() {
   }, [myId, currentOrg, orgFailed, orgLoading]);
 
   const isAdmin = can(myRole, "org:update");
+  // ⛔ A TAB WHOSE PANEL WOULD BE EMPTY IS NOT RENDERED. "CUT MEANS ABSENT, NOT HIDDEN" (S14.4): a member who
+  // clicks Network and gets a blank card learns only that the product is broken. The gate that decides the
+  // panel decides the tab, from one expression, so the two cannot drift.
+  const shown = useMemo(
+    () =>
+      RAIL.filter(
+        (r) => (!r.adminOnly || isAdmin) && (!r.needsOrg || org !== null),
+      ),
+    [isAdmin, org],
+  );
+  const [section, setSection] = useState<string>(RAIL[0].id);
+  // ⚠ FALL BACK WHEN THE SELECTION STOPS EXISTING. Switching to an org where you are a plain member must not
+  // leave a tab selected that is no longer in the rail — the panel would vanish and nothing would be active.
+  const active = shown.some((r) => r.id === section)
+    ? section
+    : (shown[0]?.id ?? "");
   const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
 
   if (currentOrg && org?.id !== currentOrg.id) {
@@ -131,12 +160,19 @@ export default function Settings() {
   }
 
   return (
-    // ⛔ CAPPED, AND THE CAP IS THE POINT. On a 32" display an uncapped settings page stretches every card to
-    // 2000px wide to hold a slug and a checkbox — the text line-length collapses into something unreadable
-    // and the eye has to travel the full width for each field. A maximum turns extra viewport into MARGIN.
-    <div className="mx-auto max-w-[110rem]">
-      <h1 className="text-xl font-semibold text-white">Settings</h1>
-      <p className="text-sm text-slate-400">{org ? org.name : "…"}</p>
+    // ⛔ NO CAP, AND THAT IS THE FIX RATHER THAN A SMALLER ONE. `max-w-[110rem]` was here to stop fields
+    // stretching on a 32" display, but 1760px is wider than the content box ever gets, so it capped nothing
+    // and instead OVERFLOWED — 1760 + 48px padding + the 228px sidebar is 2036px of demand against a
+    // ~1999px viewport, and `mx-auto` cannot centre what does not fit, so the right edge was shaved off.
+    //
+    // ⚠ THE WORRY IT ENCODED WAS A ONE-COLUMN WORRY. The rail track is fixed and the content track takes
+    // what is left, so a wide screen buys a wider VALUE column, not a 2000px input — and AppShell's stated
+    // law is that page bodies fill available width (its own comment records what capping one cost before).
+    <div>
+      <PageHeader
+        title="Settings"
+        subtitle="Manage your organization, security, and integrations."
+      />
       <ErrorText>{error}</ErrorText>
 
       {/* Desktop-only: server connection + sign-out for THIS client (renders nothing
@@ -152,172 +188,196 @@ export default function Settings() {
 
           ⚠ THE CARDS ARE `items-start`, NOT STRETCHED TO THE TALLEST IN THE ROW. A three-line card padded
           to the height of a twenty-line neighbour reads as a card with something missing from it. */}
-      {/* ⛔ COLUMNS, NOT A GRID — and the previous attempt is why. A CSS grid ALIGNS ROWS: put the
-          twenty-line Entra card beside the three-line 2FA card and every short card in that row is followed
-          by a hole the height of the tallest one. The screen filled with vertical gaps.
+      {/* ⛔ ONE COLUMN OF SECTIONS, AND THE PACKING PROBLEM IS GONE RATHER THAN SOLVED.
+          Three layouts were tried here in turn — fixed `grid-cols-3` (every card stretched to a third of
+          the screen), an auto-fill grid (a grid ALIGNS ROWS, so every short card was followed by a hole the
+          height of its tallest neighbour), then multi-column masonry (no holes, but column-major reading
+          order, and NO full-width child possible — the credentials table had to be lifted out of the flow
+          entirely).
 
-          Multi-column flow packs each card under the previous one in its column and never aligns across
-          columns, so height differences cost nothing. It also answers the original constraint the same way
-          the grid was meant to: more width adds a COLUMN, it does not widen a card.
+          All three accept the same premise: that these are cards of varying height which must be packed.
+          They are ROWS AND GROUPS of settings. Stacked in one column there is nothing to pack, no holes to
+          avoid, no `break-inside-avoid` to remember, and a table can simply sit in the flow. The masonry was
+          not a bad answer — it was a good answer to a question the page should never have been asking.
 
-          ⚠ EVERY CHILD NEEDS `break-inside-avoid`, or the browser will split a card down the middle across
-          a column boundary — which looks exactly like a rendering bug and is the one hazard this layout has.
-          The wrapper carries it so no section has to remember. */}
-      <div className="mt-6 columns-1 gap-3.5 lg:columns-2 2xl:columns-3">
-        {/* ⚠ Owner-only to INSTALL; every member sees the entitlement, because a user who hits a ceiling
-            needs to know why without asking an owner. */}
-        {org && (
-          <div className="mb-3.5 break-inside-avoid">
-            <LicenceCard canManage={myRole === "owner"} />
-          </div>
+          ⚠ The reading order is now the one the sections are written in, so that order is a decision:
+          Organization → Network → Authentication → Features → Licence, roughly what an operator sets up
+          first to what they revisit least. */}
+      {/* ⛔ THE RAIL IS A SECOND TRACK, NOT A SIDEBAR. `minmax(0,…)` on BOTH columns because a grid item
+          defaults to `min-width:auto` — a long CIDR or credential name in the right track would otherwise
+          push it wider than its share, which is the class of bug that shaved this page's right edge off
+          before. Below `lg` the rail is dropped rather than stacked: six labels above the content is six
+          rows of chrome before the thing you came for. */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+        <SettingsRail
+          sections={shown}
+          active={active}
+          onSelect={setSection}
+        />
+        <div className="flex min-w-0 flex-col gap-3.5">
+        {org && isAdmin && active === "organization" && (
+          <SettingGroup id="organization" title="Organization"
+            tabpanel>
+            <OrgSection
+              org={org}
+              canEdit={emailVerified}
+              onSaved={(o) => setOrg(o)}
+            />
+            <SettingRow
+              label="Switch organization & add tenant"
+              description="Switch between active organizations or add a new organization."
+            >
+              <OrgSwitcher />
+            </SettingRow>
+          </SettingGroup>
         )}
-        <div className="mb-3.5 break-inside-avoid">
-          <MfaSettings />
-        </div>
 
-        {/* Directory sync renders OUTSIDE the `isAdmin` block, on purpose but NOT because of a
-          live defect — the honest version, after a mutation survivor sent me to measure.
-          Settings gates its org panels on `org:update`; every idp-sync handler gates on
-          `policy:manage`. Today those are held by the same user-assignable roles (owner, admin),
-          so nesting would change nothing observable. `operator` holds policy:manage WITHOUT
-          org:update but is MACHINE-ONLY — `memberships` CHECKs role IN (owner, admin, member),
-          so it never renders a UI and cannot make the difference visible.
-          It is out here so the panel is governed by ONE gate — its own, matching the server —
-          rather than silently ANDed with a different permission that merely happens to coincide.
-          `idpGate` is the authority; a test pins the coincidence so a divergence is loud. */}
-        {org && (
-          <>
+        {org && isAdmin && active === "network" && (
+          <SettingGroup id="network" title="Network"
+            tabpanel>
+            <PoolSection
+              org={org}
+              canEdit={emailVerified}
+              onResized={(o) => setOrg(o)}
+            />
+          </SettingGroup>
+        )}
+
+        {/* ⚠ MIXED GATES, DELIBERATELY IN ONE SECTION. Personal 2FA is per-USER and shows for everyone;
+            SSO and enforcement are org-admin; directory sync answers to `idpGate`, its own permission,
+            NOT to `org:update` — see the note below. Grouping by SUBJECT is what a reader is looking for;
+            each child keeps whatever gate it already had. */}
+        {active === "authentication" && (
+        <SettingGroup id="authentication" title="Authentication"
+            tabpanel>
+          {/* ⚠ DIRECT CHILDREN, NOT A WRAPPER. Section draws hairlines BETWEEN its children with
+              `divide-y`; a wrapping div collapses all of them into one child and every divider vanishes,
+              which is what made these rows float with no separation. */}
+          <MfaSettings />
+
+            {org && isAdmin && meta?.edition === "enterprise" && (
+              <SsoSettings orgId={org.id} canEdit={emailVerified} />
+            )}
+            {org && isAdmin && meta?.edition !== "enterprise" && (
+              <Card>
+                <h3 className="text-sm font-semibold text-slate-300">
+                  Single sign-on
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  SSO (Google / Microsoft) is a Tunnex Enterprise feature.
+                </p>
+              </Card>
+            )}
+
+            {org && isAdmin && meta?.edition === "enterprise" && (
+              <OrgMfaEnforce orgId={org.id} canEdit={emailVerified} />
+            )}
+            {org && isAdmin && meta?.edition !== "enterprise" && (
+              <Card>
+                <h3 className="text-sm font-semibold text-slate-300">
+                  Require two-factor authentication
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Org-wide MFA enforcement is a Tunnex Enterprise feature.
+                </p>
+              </Card>
+            )}
+
+            {/* Directory sync renders OUTSIDE the `isAdmin` gate, on purpose but NOT because of a
+              live defect — the honest version, after a mutation survivor sent me to measure.
+              Settings gates its org panels on `org:update`; every idp-sync handler gates on
+              `policy:manage`. Today those are held by the same user-assignable roles (owner, admin),
+              so nesting would change nothing observable. `operator` holds policy:manage WITHOUT
+              org:update but is MACHINE-ONLY — `memberships` CHECKs role IN (owner, admin, member),
+              so it never renders a UI and cannot make the difference visible.
+              It is out here so the panel is governed by ONE gate — its own, matching the server —
+              rather than silently ANDed with a different permission that merely happens to coincide.
+              `idpGate` is the authority; a test pins the coincidence so a divergence is loud. */}
+        </SettingGroup>
+        )}
+
+        {org && active === "directory" && (
+          <SettingGroup id="directory" title="Directory sync"
+            tabpanel>
             {PROVIDERS.map((pv) => (
-              <div key={pv} className="mb-3.5 break-inside-avoid">
-                <IdpSyncSection
+              <IdpSyncSection
+                key={pv}
+                orgId={org.id}
+                provider={pv}
+                role={myRole}
+                isEnterprise={meta?.edition === "enterprise"}
+                canEdit={emailVerified}
+              />
+            ))}
+          </SettingGroup>
+        )}
+
+        {org && isAdmin && active === "features" && (
+          <SettingGroup id="features" title="Features"
+            tabpanel>
+            <div className="flex flex-col gap-3.5">
+              {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
+              <OrgOVPNToggle
+                org={org}
+                canEdit={emailVerified}
+                onSaved={(o) => setOrg(o)}
+              />
+              {meta?.edition === "enterprise" && (
+                <AgentPolicyTemplatesToggle
+                  org={org}
+                  canEdit={emailVerified}
+                  onSaved={(o) => setOrg(o)}
+                />
+              )}
+              {meta?.edition === "enterprise" && (
+                <AgentJITAccessToggle
+                  key={org.id}
                   orgId={org.id}
-                  provider={pv}
-                  role={myRole}
-                  isEnterprise={meta?.edition === "enterprise"}
                   canEdit={emailVerified}
                 />
-              </div>
-            ))}
-          </>
+              )}
+            </div>
+          </SettingGroup>
+        )}
+
+        {/* ⚠ Owner-only to INSTALL; every member sees the entitlement, because a user who hits a ceiling
+            needs to know why without asking an owner. */}
+        {org && active === "licence" && (
+          <SettingGroup id="licence" title="Licence &amp; plan"
+            tabpanel>
+            <LicenceCard canManage={myRole === "owner"} />
+            {isAdmin && canMachines && (
+              <MachineCredentials orgId={org.id} canManage={canMachines} />
+            )}
+          </SettingGroup>
         )}
 
         {org && !isAdmin && (
-          <Card className="mt-6">
+          <Card>
             <p className="text-sm text-slate-400">
               Organization settings are managed by owners and admins.
             </p>
           </Card>
         )}
 
-        {org && isAdmin && (
-          <>
-            <div className="mb-3.5 break-inside-avoid">
-              <OrgSection
-                org={org}
-                canEdit={emailVerified}
-                onSaved={(o) => setOrg(o)}
-              />
-            </div>
-            <div className="mb-3.5 break-inside-avoid">
-              <PoolSection
-                org={org}
-                canEdit={emailVerified}
-                onResized={(o) => setOrg(o)}
-              />
-            </div>
-            {/* SSO config is enterprise-only; hidden in the open edition per /meta
-              (watch-item b), with a muted note rather than a dead form. */}
-            {meta?.edition === "enterprise" ? (
-              <div className="mb-3.5 break-inside-avoid">
-                <SsoSettings orgId={org.id} canEdit={emailVerified} />
-              </div>
-            ) : (
-              <div className="mb-3.5 break-inside-avoid">
-                <Card>
-                  <h2 className="text-sm font-semibold text-slate-300">
-                    Single sign-on
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    SSO (Google / Microsoft) is a Tunnex Enterprise feature.
-                  </p>
-                </Card>
-              </div>
-            )}
-            {meta?.edition === "enterprise" ? (
-              <div className="mb-3.5 break-inside-avoid">
-                <OrgMfaEnforce orgId={org.id} canEdit={emailVerified} />
-              </div>
-            ) : (
-              <div className="mb-3.5 break-inside-avoid">
-                <Card>
-                  <h2 className="text-sm font-semibold text-slate-300">
-                    Require two-factor authentication
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Org-wide MFA enforcement is a Tunnex Enterprise feature.
-                  </p>
-                </Card>
-              </div>
-            )}
-            {meta?.edition === "enterprise" && (
-              <div className="mb-3.5 break-inside-avoid">
-                <AgentPolicyTemplatesToggle
-                  org={org}
-                  canEdit={emailVerified}
-                  onSaved={(o) => setOrg(o)}
-                />
-              </div>
-            )}
-            {meta?.edition === "enterprise" && (
-              <div className="mb-3.5 break-inside-avoid">
-                <AgentJITAccessToggle
-                  key={org.id}
-                  orgId={org.id}
-                  canEdit={emailVerified}
-                />
-              </div>
-            )}
-            {/* OpenVPN is OPEN (every edition) but OFF by default — unlock-then-opt-in (D-S9.5-OPTIN). */}
-            <div className="mb-3.5 break-inside-avoid">
-              <OrgOVPNToggle
-                org={org}
-                canEdit={emailVerified}
-                onSaved={(o) => setOrg(o)}
-              />
-            </div>
-            {/* ⛔ FULL WIDTH, BECAUSE IT CONTAINS A TABLE. A data table in a 24rem column is a data table with
-              every column truncated — the one section whose content genuinely needs the row. `col-span-full`
-              keeps it in the same grid rather than breaking it out into a second layout that would then
-              drift from this one. */}
-          </>
+        {/* ⛔ THE CAPABILITY EXISTED AND NOTHING COULD REACH IT. `DELETE /organizations/{id}` has shipped
+            since S1 with `org:delete` on it and NO CALL SITE anywhere in the web — one of the 12 genuinely
+            unreachable mutating operations the S14.12 census counted. An owner could not delete an
+            organization they created by mistake without curl.
+            ⚠ ITS OWN GROUP, AND LAST: a destructive verb does not belong beside the name field, where a
+            mis-click lands among routine edits. */}
+        {org && active === "danger" && (
+          <SettingGroup id="danger" title="Danger zone"
+            tabpanel>
+            <DangerZone
+              org={org}
+              canDelete={can(myRole, "org:delete")}
+              role={myRole}
+            />
+          </SettingGroup>
         )}
+        </div>
       </div>
-
-      {/* ⛔ OUTSIDE THE COLUMNS, BECAUSE A TABLE CANNOT LIVE IN ONE. Multi-column flow has no equivalent of
-          `col-span-full` — a wide child inside a column region is simply a child of one column, so the table
-          would be squeezed to a third of the page with every column truncated. It sits below, full width,
-          which is also where the mockup puts it. */}
-      {org && isAdmin && canMachines && (
-        <div className="mt-3.5">
-          <MachineCredentials orgId={org.id} canManage={canMachines} />
-        </div>
-      )}
-
-      {/* ⛔ THE CAPABILITY EXISTED AND NOTHING COULD REACH IT. `DELETE /organizations/{id}` has shipped
-          since S1 with `org:delete` on it and NO CALL SITE anywhere in the web — one of the 12 genuinely
-          unreachable mutating operations the S14.12 census counted. An owner could not delete an
-          organization they created by mistake without curl.
-          ⚠ OUTSIDE THE COLUMNS AND LAST, deliberately: a destructive verb does not belong beside the name
-          field, where a mis-click lands next to routine edits. */}
-      {org && (
-        <div className="mt-3.5">
-          <DangerZone
-            org={org}
-            canDelete={can(myRole, "org:delete")}
-            role={myRole}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -365,23 +425,16 @@ function AgentPolicyTemplatesToggle({
   }
 
   return (
-    <Card data-testid="agent-policy-template-settings">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Agent groups &amp; policy templates
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Off by default. Enabling unlocks reusable agent-group policy authoring;
-        it creates no access until an authorized operator previews and applies a template.
-      </p>
-      <Button className="mt-3" disabled={!canEdit || busy} onClick={toggle}>
-        {busy
-          ? "Saving…"
-          : enabled
-            ? "Disable agent policy templates"
-            : "Enable agent policy templates"}
-      </Button>
-      <ErrorText>{err}</ErrorText>
-    </Card>
+    // data-testid stays ON THE ROW: it is the settings seam the F09 tests address, and moving it to the
+    // switch would quietly narrow what those tests can reach.
+    <SettingRow
+      label="Agent groups & policy templates"
+      description="Reusable agent-group policy authoring. Creates no access until a template is applied."
+      data-testid="agent-policy-template-settings"
+      error={err}
+    >
+      <Switch checked={enabled} disabled={!canEdit || busy} onChange={toggle} />
+    </SettingRow>
   );
 }
 
@@ -435,37 +488,36 @@ function AgentJITAccessToggle({
   }
 
   return (
-    <Card data-testid="agent-jit-access-settings">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Just-in-time agent access
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Off by default. Requests require human approval and create one expiring
-        ordinary access rule. Disabling is refused while requests are pending or approved.
-      </p>
+    <SettingRow
+      label="Just-in-time agent access"
+      description="Requests need human approval and create one expiring access rule."
+      data-testid="agent-jit-access-settings"
+    >
+      {/* ⚠ THREE STATES, NOT TWO. A failed load must NOT render a switch: an off-looking switch would be a
+          confident claim about a setting we could not read. Retry, loading and the control stay distinct. */}
       {loadError ? (
-        <div className="mt-3">
+        <div className="flex flex-col items-end gap-1">
           <ErrorText>{loadError}</ErrorText>
           <Button onClick={() => void load()}>Retry</Button>
         </div>
       ) : setting ? (
-        <>
-          <p className="mt-2 text-xs text-slate-500">
-            {setting.pending_requests} pending · {setting.approved_requests} approved
+        <div className="flex flex-col items-end gap-1">
+          <Switch
+            label="Just-in-time agent access"
+            checked={setting.enabled}
+            disabled={!canEdit || busy}
+            onChange={toggle}
+          />
+          <p className="text-xs text-slate-500">
+            {setting.pending_requests} pending · {setting.approved_requests}{" "}
+            approved
           </p>
-          <Button className="mt-3" disabled={!canEdit || busy} onClick={toggle}>
-            {busy
-              ? "Saving…"
-              : setting.enabled
-                ? "Disable JIT agent access"
-                : "Enable JIT agent access"}
-          </Button>
-        </>
+          <ErrorText>{err}</ErrorText>
+        </div>
       ) : (
-        <p className="mt-3 text-xs text-slate-500">Loading…</p>
+        <p className="text-xs text-slate-500">Loading…</p>
       )}
-      <ErrorText>{err}</ErrorText>
-    </Card>
+    </SettingRow>
   );
 }
 
@@ -536,8 +588,8 @@ function DangerZone({
     );
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
     const { error } = await api.DELETE("/api/v1/organizations/{orgId}", {
@@ -558,15 +610,40 @@ function DangerZone({
 
   const blocked = pre !== null && !pre.deletable;
   return (
-    <Card className="border-danger/40">
-      <h2 className="text-sm font-semibold text-danger">
-        Delete this organization
-      </h2>
-      <p className="mt-2 text-sm text-slate-400">
-        This cannot be undone. Members lose access to it immediately; the
-        organization stops appearing in the switcher.
-      </p>
-
+    // ⛔ THE CONFIRMATION MOVES INTO A DIALOG, AND THE FRICTION IS UNCHANGED. The slug still has to be
+    // typed; it is simply not sitting permanently open on a settings page, where a stray Enter in a
+    // focused field is one keystroke from deleting a tenant.
+    <SettingDialogRow
+      label="Delete this organization"
+      description="This cannot be undone. Members lose access immediately; the organization stops appearing in the switcher."
+      actionLabel="Delete organization…"
+      dialogTitle={`Delete ${org.slug}`}
+      error={err}
+      actions={(close) => (
+        <>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setConfirm("");
+              setErr(null);
+              close();
+            }}
+          >
+            Cancel
+          </Button>
+          {/* No `close` on success: the handler navigates away from the org entirely. */}
+          <Button
+            variant="danger"
+            disabled={busy || blocked || confirm !== org.slug}
+            onClick={() => void submit()}
+          >
+            {busy ? "Deleting…" : "Delete organization"}
+          </Button>
+        </>
+      )}
+    >
+      {() => (
+        <div className="flex flex-col gap-3">
       {/* ⛔ THE BLOCKERS ARE SHOWN BEFORE THE CONFIRMATION FIELD, NOT AFTER THE ATTEMPT. A refusal that
           arrives only once someone has typed the organization's name to confirm is a refusal met at the
           most dangerous moment — with their attention on getting past it. */}
@@ -585,7 +662,6 @@ function DangerZone({
         </div>
       )}
 
-      <form onSubmit={submit} className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-[14rem] flex-1">
           {/* ⚠ TYPE THE SLUG, NOT "DELETE". The slug is the one string that differs between the org you
               mean and the one you are looking at — and with a switcher in the header, looking at the wrong
@@ -599,16 +675,9 @@ function DangerZone({
             />
           </Field>
         </div>
-        <Button
-          type="submit"
-          variant="danger"
-          disabled={busy || blocked || confirm !== org.slug}
-        >
-          {busy ? "Deleting…" : "Delete organization"}
-        </Button>
-      </form>
-      <ErrorText>{err}</ErrorText>
-    </Card>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }
 
@@ -661,44 +730,24 @@ function OrgMfaEnforce({
   }
 
   return (
-    <Card>
-      <h2 className="text-sm font-semibold text-slate-300">
-        Require two-factor authentication
-      </h2>
-      <p className="mt-1 text-xs text-slate-400">
-        When on, members who sign in with a password must have 2FA — anyone
-        without it is prompted to set it up at their next sign-in (no one is
-        locked out). SSO sign-ins are governed by your identity provider.
-      </p>
-      {/* D8 honesty: enforcement is a forward gate, not retroactive. */}
-      <p className="mt-1 text-xs text-slate-500">
-        Enforcement applies at sign-in, not to sessions already open —
-        pre-existing sessions remain valid until they expire naturally. To end
-        current sessions immediately, deactivate the member.
-      </p>
-      {error && (
-        <div className="mt-2">
-          <ErrorText>{error}</ErrorText>
-        </div>
+    <SettingRow
+      label="Require two-factor authentication"
+      description="Password sign-ins must have 2FA. Applies at sign-in — open sessions stay valid until they expire."
+      error={error}
+    >
+      {/* ⚠ `null` is NOT "off" — it is "not read yet". Rendering an off switch for an unknown value would
+          state, in the one place an admin checks, that enforcement is disabled when it may well be on. */}
+      {enforce === null ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : (
+        <Switch
+          label="Require two-factor authentication"
+          checked={enforce}
+          disabled={busy || !canEdit}
+          onChange={(next) => toggle(next)}
+        />
       )}
-      <div className="mt-3">
-        {enforce === null ? (
-          <p className="text-xs text-slate-500">Loading…</p>
-        ) : (
-          <Button
-            variant="ghost"
-            disabled={busy || !canEdit}
-            onClick={() => toggle(!enforce)}
-          >
-            {busy
-              ? "Saving…"
-              : enforce
-                ? "Disable requirement"
-                : "Require MFA for password sign-ins"}
-          </Button>
-        )}
-      </div>
-    </Card>
+    </SettingRow>
   );
 }
 
@@ -738,34 +787,20 @@ function OrgOVPNToggle({
   }
 
   return (
-    <Card>
-      <h2 className="text-sm font-semibold text-slate-300">OpenVPN</h2>
-      <p className="mt-1 text-xs text-slate-400">
-        OpenVPN is <span className="text-slate-300">off by default</span>.
-        Enable it where you&rsquo;re migrating an existing OpenVPN fleet —
-        devices can then be exported as standard{" "}
-        <code className="text-slate-300">.ovpn</code> profiles for the official
-        OpenVPN clients. WireGuard is unaffected.
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        Turning it off stops the OpenVPN servers on your gateways; issued client
-        profiles are not revoked and work again if you re-enable.
-      </p>
-      {error && (
-        <div className="mt-2">
-          <ErrorText>{error}</ErrorText>
-        </div>
-      )}
-      <div className="mt-3">
-        <Button
-          variant="ghost"
-          disabled={busy || !canEdit}
-          onClick={() => toggle(!enabled)}
-        >
-          {busy ? "Saving…" : enabled ? "Disable OpenVPN" : "Enable OpenVPN"}
-        </Button>
-      </div>
-    </Card>
+    // ⛔ A ROW WITH A SWITCH, NOT A CARD WITH A BUTTON. The state is what the operator cares about, and a
+    // button labelled "Enable OpenVPN" makes them read the LABEL to infer the STATE — the button says what
+    // will happen next, never what is true now. The switch shows the state and changes it in one control.
+    <SettingRow
+      label="OpenVPN"
+      description="Export devices as .ovpn profiles for official OpenVPN clients. WireGuard is unaffected; turning it off does not revoke issued profiles."
+      error={error}
+    >
+      <Switch
+        checked={enabled}
+        disabled={busy || !canEdit}
+        onChange={(next) => toggle(next)}
+      />
+    </SettingRow>
   );
 }
 
@@ -792,8 +827,13 @@ function PoolSection({
   const [conflict, setConflict] = useState<ResizeConflict | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  // ⛔ THE POOL DIALOG DOES NOT CLOSE ON SAVE, AND THAT IS THE EXCEPTION THAT PROVES THE RULE.
+  // A successful resize returns a consequence the operator MUST read — existing devices keep their old
+  // addresses and their configs are one-time, so reaching the new range means re-issuing them. Closing on
+  // success would dismiss the only place that is ever said. A shrink refusal likewise returns the device
+  // list that blocks it. The dialog stays open and Cancel becomes Close.
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
     setConflict(null);
@@ -820,36 +860,56 @@ function PoolSection({
   }
 
   return (
-    <form onSubmit={submit} className="mt-4">
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-300">Address pool</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          The WireGuard address range devices are assigned from. Grow to add
-          capacity; shrink only within the current range.
-        </p>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-[12rem] flex-1">
-            <Field label="Pool CIDR">
-              <Input
-                value={cidr}
-                onChange={(e) => {
-                  setCidr(e.target.value);
-                  setDone(false);
-                  setConflict(null);
-                }}
-                required
-                disabled={!canEdit}
-                placeholder="10.0.0.0/24"
-              />
-            </Field>
-          </div>
+    <SettingDialogRow
+      label="Address pool"
+      description="The WireGuard address range assigned to devices."
+      value={
+        <SettingValue>
+          <span className="font-mono">{org.pool_cidr}</span>
+        </SettingValue>
+      }
+      actionLabel="Resize"
+      dialogTitle="Resize address pool"
+      disabled={!canEdit}
+      error={err}
+      actions={(close) => (
+        <>
           <Button
-            type="submit"
+            variant="ghost"
+            onClick={() => {
+              setCidr(org.pool_cidr ?? "");
+              setConflict(null);
+              setDone(false);
+              setErr(null);
+              close();
+            }}
+          >
+            {done ? "Close" : "Cancel"}
+          </Button>
+          <Button
             disabled={busy || !canEdit || cidr === org.pool_cidr}
+            onClick={() => void submit()}
           >
             {busy ? "Resizing…" : "Resize pool"}
           </Button>
-        </div>
+        </>
+      )}
+    >
+      {() => (
+        <div className="flex flex-col gap-3">
+          <Field label="Pool CIDR">
+            <Input
+              value={cidr}
+              onChange={(e) => {
+                setCidr(e.target.value);
+                setDone(false);
+                setConflict(null);
+              }}
+              required
+              disabled={!canEdit}
+              placeholder="10.0.0.0/24"
+            />
+          </Field>
 
         {/* Accept-and-surface (S4.5b decision e): the resize succeeds, but existing
             configs embed the old range and are one-time — they can't be re-served. */}
@@ -897,9 +957,10 @@ function PoolSection({
             )}
           </div>
         )}
-        <ErrorText>{err}</ErrorText>
-      </Card>
-    </form>
+          <ErrorText>{err}</ErrorText>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }
 
@@ -1066,27 +1127,41 @@ function IdpSyncSection({
   const copy = tier ? tierCopy(tier) : null;
 
   return (
-    <Card>
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-sm font-semibold text-slate-300">
-          Directory sync — {providerLabel(provider)}
-        </h2>
-        {copy && (
-          <span
-            data-testid={`idp-tier-${provider}`}
-            className={
-              "rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold " +
-              (tier === "ok"
-                ? "border-accent-500/40 bg-accent-500/10 text-accent-400"
-                : tier === "degraded"
-                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                  : "border-danger/50 bg-danger/10 text-danger")
-            }
-          >
-            {copy.label}
+    // ⛔ A ROW THAT OPENS A CONSOLE, NOT ONE THAT OPENS A FORM. Directory sync is health + sync-now +
+    // credential replacement + group mapping — several independent transactions, not one value with a
+    // Save. So the dialog's only action is Close; every control inside keeps its own confirmation, and
+    // nothing pretends the panel is a single form that can be "saved".
+    <SettingDialogRow
+      label={providerLabel(provider)}
+      description={`Sync groups for access using ${providerLabel(provider)}.`}
+      value={
+        copy ? (
+          // ⚠ THE TESTID STAYS PUT. `idp-tier-<provider>` is the seam S14.14's tests read to prove the three
+          // health tiers are distinguishable; a pill became plain text, and the seam is unchanged.
+          <span data-testid={`idp-tier-${provider}`}>
+            <SettingValue
+              tone={
+                tier === "ok" ? "live" : tier === "degraded" ? "warn" : "danger"
+              }
+            >
+              {copy.label}
+            </SettingValue>
           </span>
-        )}
-      </div>
+        ) : (
+          <SettingValue>Not configured</SettingValue>
+        )
+      }
+      actionLabel={state.kind === "configured" ? "Manage" : "Configure"}
+      dialogTitle={`Directory sync — ${providerLabel(provider)}`}
+      error={err}
+      actions={(close) => (
+        <Button variant="ghost" onClick={close}>
+          Close
+        </Button>
+      )}
+    >
+      {() => (
+        <div className="space-y-3">
 
       {/* ⛔ THE FOURTH ARM, and only the SERVED payload revealed it: the spec enum lists google
           for every idp-sync path, but the server answers 400 provider_not_supported. Rendering a
@@ -1360,7 +1435,9 @@ function IdpSyncSection({
       )}
 
       <ErrorText>{err}</ErrorText>
-    </Card>
+        </div>
+      )}
+    </SettingDialogRow>
   );
 }
 
@@ -1368,212 +1445,152 @@ function providerLabel(p: string): string {
   return p === "microsoft" ? "Microsoft Entra" : "Google Workspace";
 }
 
-/* Domain Capture was removed from the product. The old implementation is retained only in this
-   comment temporarily so the surrounding Settings layout remains easy to review; it is not compiled,
-   rendered, or reachable. */
-/*
-//
-// ⛔ THE PANEL RENDERS A STATE THE SERVER WILL NOT SERVE BACK. There is no GET for domain
-// claims (openapi.yaml:1793/:1817), so everything below `unknown` is knowledge this session
-// created. WRITE_ONLY_NOTE says that out loud rather than letting a reload quietly reset a
-// verified domain to "never claimed". See domainview.ts's header for the full disposition.
-function DomainSection({
-  orgId,
-  role,
-  isEnterprise,
-  canEdit,
-  myEmail,
+/**
+ * The section rail — one section at a time.
+ *
+ * ⛔ SELECTING A SECTION SHOWS ONLY THAT SECTION (founder-directed). The whole page rendered at once was
+ * seven cards deep and every visit scrolled past six groups to reach one; this makes the rail the navigation
+ * it already looked like.
+ *
+ * ⚠ THE ACTIVE STATE IS REAL STATE, WHICH IS WHY IT EXISTS AT ALL. The previous version deliberately had NO
+ * highlight, because indicating "which section am I looking at" from scroll position needs a layout jsdom
+ * cannot render (docs/laws.md: a responsive assertion there asserts nothing). Selection is a value, so the
+ * indicator is now checkable — the design's highlight arrives on the mechanism that earns it.
+ *
+ * A vertical `tablist`, matching the tab pattern already in Access.tsx.
+ */
+const RAIL: ReadonlyArray<{
+  id: string;
+  label: string;
+  hint: string;
+  /** Needs `org:update`; the panel and the tab read this same flag. */
+  adminOnly?: boolean;
+  /**
+   * Panel renders only with a loaded org.
+   *
+   * ⛔ THIS FIELD IS A BUG FIX. The rail filtered on `adminOnly` alone while six of the seven panels are
+   * ALSO `org &&` gated, so before an org resolved, Directory sync / Licence / Danger zone rendered a tab
+   * that opened NOTHING — three dead tabs, found by the test written to assert every tab leads somewhere.
+   * Both gates now live on the entry, which is the only way the rail and the panel cannot drift.
+   */
+  needsOrg?: boolean;
+  danger?: boolean;
+}> = [
+  {
+    id: "organization",
+    needsOrg: true,
+    label: "Organization",
+    hint: "Manage your organization information and preferences.",
+    adminOnly: true,
+  },
+  {
+    id: "network",
+    needsOrg: true,
+    label: "Network",
+    hint: "Configure network settings and address pools.",
+    adminOnly: true,
+  },
+  {
+    id: "authentication",
+    label: "Authentication",
+    hint: "Manage how members sign in and access your resources.",
+  },
+  {
+    id: "directory",
+    needsOrg: true,
+    label: "Directory sync",
+    hint: "Sync users and groups from your identity provider.",
+  },
+  {
+    id: "features",
+    needsOrg: true,
+    label: "Features",
+    hint: "Enable and configure advanced capabilities.",
+    adminOnly: true,
+  },
+  {
+    id: "licence",
+    needsOrg: true,
+    label: "Licence & plan",
+    hint: "Manage your licence and subscription.",
+  },
+  {
+    id: "danger",
+    needsOrg: true,
+    label: "Danger zone",
+    hint: "Irreversible and destructive actions for your organization.",
+    danger: true,
+  },
+];
+
+function SettingsRail({
+  sections,
+  active,
+  onSelect,
 }: {
-  orgId: string;
-  role: Role | undefined;
-  isEnterprise: boolean;
-  canEdit: boolean;
-  myEmail: string;
+  /** Only the sections this role can actually reach — an empty panel is worse than an absent tab. */
+  sections: ReadonlyArray<(typeof RAIL)[number]>;
+  active: string;
+  onSelect: (id: string) => void;
 }) {
-  const gate = domainGate({ role: role ?? null, isEnterprise });
-  const ownDomain = normalizeDomain(myEmail.split("@").pop() ?? "");
-  const [domain, setDomain] = useState(ownDomain);
-  const [claim, setClaim] = useState<DomainClaimState>({ kind: "unknown" });
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  if (gate.kind === "hidden") return null;
-  if (gate.kind === "upsell")
-    return (
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-300">Domain capture</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Capturing an email domain so new signups auto-join this organization
-          is a Tunnex Enterprise feature.
-        </p>
-      </Card>
-    );
-
-  const typed = normalizeDomain(domain);
-  // Predicted client-side from the SERVER'S rule, so the operator is told before the
-  // round-trip — not a second source of truth: the server still refuses if we are wrong.
-  const ownershipBlocked = typed !== "" && typed !== ownDomain;
-  const step = domainStepIndex(claim);
-
-  async function submitClaim(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    const { data, error } = await api.POST(
-      "/api/v1/organizations/{orgId}/domains",
-      { params: { path: { orgId } }, body: { domain: typed } },
-    );
-    setBusy(false);
-    if (error || !data) return setErr(domainErrorCopy(apiErrorCode(error)));
-    setClaim({
-      kind: "pending",
-      domain: typed,
-      // The server returns the COMPLETE record value; we never assemble it, so this
-      // instruction cannot drift from txtHasToken's exact-equality comparison.
-      txt: txtInstruction(typed, data.txt_record),
-    });
-  }
-
-  async function submitVerify() {
-    setBusy(true);
-    setErr(null);
-    const { error } = await api.POST(
-      "/api/v1/organizations/{orgId}/domains/verify",
-      { params: { path: { orgId } }, body: { domain: typed } },
-    );
-    setBusy(false);
-    if (error) return setErr(domainErrorCopy(apiErrorCode(error)));
-    setClaim({ kind: "verified", domain: typed });
-  }
-
   return (
-    <Card>
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-sm font-semibold text-slate-300">Domain capture</h2>
-        {/* ⛔ EXACTLY ONE CHIP IS EVER "CURRENT". Three equal chips are a legend with no
-            subject — which is what shipped, because `i <= step` gave only two tiers and at
-            `unknown` (step -1) every chip fell into the same one. `unknown` is the DEFAULT
-            state here (there is no GET), so that was the common render, not an edge case.
-            It now has its own leading chip and anchors the chain. * /}
-        <div className="flex items-center gap-1.5">
-          {[...(step < 0 ? [NO_CLAIM_CHIP] : []), ...DOMAIN_STEPS].map(
-            (label, idx) => {
-              // The prepended chip occupies the current slot; the real steps shift by one.
-              const i = step < 0 ? idx - 1 : idx;
-              const tone = chipTone(i, step);
-              return (
-                <span key={label} className="flex items-center gap-1.5">
-                  {idx > 0 && <span className="text-slate-700">›</span>}
-                  <span
-                    data-testid={`domain-step-${i}`}
-                    data-tone={tone}
-                    aria-current={tone === "current" ? "step" : undefined}
-                    className={
-                      "rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold " +
-                      (tone === "done"
-                        ? "border-accent-500/30 bg-accent-500/5 text-accent-400/70"
-                        : tone === "current"
-                          ? "border-accent-400 bg-accent-500/20 text-accent-400 ring-1 ring-accent-400/50"
-                          : "border-slate-800 bg-slate-900 text-slate-600")
-                    }
-                  >
-                    {/* Non-colour cue: the design encodes the whole distinction in tone, which
-                        a colour-blind operator cannot read. * /}
-                    {tone === "done" ? "✓ " : ""}
-                    {label}
-                  </span>
-                </span>
-              );
-            },
-          )}
-        </div>
-      </div>
-
-      <p className="mt-1 text-xs text-slate-500">{CAPTURE_EFFECT}</p>
-
-      <form
-        onSubmit={submitClaim}
-        className="mt-3 flex flex-wrap items-end gap-3"
-      >
-        <div className="min-w-[12rem] flex-1">
-          <Field label="Domain">
-            <Input
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              required
-              disabled={!canEdit || busy}
-              placeholder="acme.io"
-            />
-          </Field>
-        </div>
-        <Button type="submit" disabled={busy || !canEdit || ownershipBlocked}>
-          {busy ? "Working…" : "Claim domain"}
-        </Button>
-      </form>
-
-      {/* The ownership inversion guard, stated BEFORE the attempt (domain.go:100). * /}
-      {ownershipBlocked && (
-        <p className="mt-2 text-xs text-amber-400">
-          You can only claim the domain of your own verified address (
-          <span className="font-mono">{ownDomain || "none"}</span>). Claiming{" "}
-          <span className="font-mono">{typed}</span> would be refused.
-        </p>
-      )}
-
-      {claim.kind === "pending" && (
-        <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-          <p className="text-xs text-slate-400">
-            Publish this DNS record, then verify. It is a TXT record on the
-            domain itself — not on a <span className="font-mono">_tunnex</span>{" "}
-            subdomain.
-          </p>
-          <dl className="mt-2 space-y-1 text-xs">
-            <div className="flex gap-2">
-              <dt className="w-16 text-slate-600">NAME</dt>
-              <dd className="font-mono text-slate-300">{claim.txt.name}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="w-16 text-slate-600">TYPE</dt>
-              <dd className="font-mono text-slate-300">TXT</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt className="w-16 text-slate-600">VALUE</dt>
-              <dd className="break-all font-mono text-slate-300">
-                {claim.txt.value}
-              </dd>
-            </div>
-          </dl>
-          <Button
+    <div
+      role="tablist"
+      aria-orientation="vertical"
+      aria-label="Settings sections"
+      className="flex gap-2 overflow-x-auto lg:sticky lg:top-6 lg:flex-col lg:gap-4 lg:overflow-visible"
+    >
+      {sections.map((s) => {
+        const on = s.id === active;
+        return (
+          <button
+            key={s.id}
             type="button"
-            className="mt-3"
-            onClick={submitVerify}
-            disabled={busy}
+            role="tab"
+            id={`${s.id}-tab`}
+            /* ⛔ THE HINT IS VISUAL ONLY. Without this the accessible name concatenated both, so the tab
+               announced as "NetworkAddress space devices draw from." — a label a screen-reader user has to
+               listen through, and one no test could address by the name a person would call it. */
+            aria-label={s.label}
+            aria-selected={on}
+            aria-controls={s.id}
+            onClick={() => onSelect(s.id)}
+            /* The left rule is the design's active marker. `border-l-2` is always present and merely
+               transparent when inactive, so selecting a tab never shifts the text by two pixels. */
+            className={`group shrink-0 border-l-2 pl-3.5 text-left transition-colors duration-fast focus:outline-none ${
+              on ? "border-[#B03A45]" : "border-transparent hover:border-white/20"
+            }`}
           >
-            {busy ? "Checking DNS…" : "Verify domain"}
-          </Button>
-        </div>
-      )}
-
-      {claim.kind === "verified" && (
-        <p className="mt-3 text-xs text-accent-400">
-          <span className="font-mono">{claim.domain}</span> is verified. New
-          signups on this domain now auto-join this organization.
-        </p>
-      )}
-
-      <ErrorText>{err}</ErrorText>
-
-      {/* The two facts the wireframe's pill chain cannot carry: the state is not readable
-          back, and VERIFIED is not terminal. * /}
-      <p className="mt-3 text-xs text-slate-600">{WRITE_ONLY_NOTE}</p>
-      {claim.kind !== "unknown" && (
-        <p className="mt-1 text-xs text-slate-600">{KEEP_RECORD_NOTE}</p>
-      )}
-    </Card>
+            <span
+              className={`block font-mono text-xs font-semibold uppercase tracking-[0.14em] transition-colors ${
+                s.danger
+                  ? on
+                    ? "text-rose-400 font-bold"
+                    : "text-rose-500/80 hover:text-rose-400"
+                  : on
+                    ? "text-white font-bold"
+                    : "text-slate-400 group-hover:text-slate-200"
+              }`}
+            >
+              {s.label}
+            </span>
+            {/* The hint is for choosing between sections, so it is only worth space in the vertical rail. */}
+            <span
+              className={`mt-1 hidden text-xs leading-relaxed transition-colors lg:block ${
+                on
+                  ? "text-slate-300 font-normal"
+                  : "text-slate-500 group-hover:text-slate-400 font-normal"
+              }`}
+            >
+              {s.hint}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-*/
 function OrgSection({
   org,
   canEdit,
@@ -1585,14 +1602,14 @@ function OrgSection({
 }) {
   const [name, setName] = useState(org.name);
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  // ⛔ THE DIALOG CLOSES ONLY ON SUCCESS. Closing on click would hide the error the operator needs to read,
+  // and leave them believing a rename landed that did not. `onDone` is called after the save is confirmed.
+  async function submit(e: FormEvent | undefined, onDone?: () => void) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
-    setSaved(false);
     const { data, error } = await api.PATCH("/api/v1/organizations/{orgId}", {
       params: { path: { orgId: org.id } },
       body: { name },
@@ -1600,59 +1617,70 @@ function OrgSection({
     setBusy(false);
     if (error || !data)
       return setErr(apiErrorMessage(error, "Could not save."));
-    setSaved(true);
     onSaved(data);
+    onDone?.();
   }
 
   return (
-    <form onSubmit={submit} className="mt-6">
-      <Card>
-        <h2 className="text-sm font-semibold text-slate-300">Organization</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-[14rem] flex-1">
-            <Field label="Name">
-              <Input
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setSaved(false);
-                }}
-                required
-                disabled={!canEdit}
-              />
-            </Field>
-          </div>
+    <SettingDialogRow
+      label="Organization name"
+      description="Displayed in the app and in invitations."
+      value={<SettingValue>{org.name}</SettingValue>}
+      actionLabel="Edit"
+      dialogTitle="Rename organization"
+      disabled={!canEdit}
+      error={err}
+      actions={(close) => (
+        <>
           <Button
-            type="submit"
+            variant="ghost"
+            onClick={() => {
+              setName(org.name);
+              setErr(null);
+              close();
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
             disabled={busy || !canEdit || name === org.name}
+            onClick={() => void submit(undefined, close)}
           >
             {busy ? "Saving…" : "Save"}
           </Button>
+        </>
+      )}
+    >
+      {() => (
+        <div className="flex flex-col gap-3">
+          <Field label="Name">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={!canEdit}
+            />
+          </Field>
+          {/* Slug is immutable (identity); shown read-only. */}
+          <p className="font-mono text-xs text-slate-500">slug: {org.slug}</p>
+          <ErrorText>{err}</ErrorText>
         </div>
-        {/* Slug is immutable (identity); shown read-only. */}
-        <p className="mt-2 font-mono text-xs text-slate-500">
-          slug: {org.slug}
-        </p>
-        {saved && <p className="mt-2 text-xs text-accent-400">Saved.</p>}
-        <ErrorText>{err}</ErrorText>
-      </Card>
-    </form>
+      )}
+    </SettingDialogRow>
   );
 }
 
 function SsoSettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
+  // ⚠ THE "SINGLE SIGN-ON" SUB-LABEL IS GONE, AND ITS REASON WENT WITH IT. It existed because this block
+  // rendered two CARDS floating on the page background with nothing naming the pair. They are rows inside a
+  // named Authentication section now, so the label was a third heading level naming nothing — and each row
+  // already says which provider it is.
   return (
-    // ⚠ A SECTION LABEL, NOT A LOOSE HEADING. This block renders TWO provider cards, so the heading names
-    // the pair — but outside a card it read as text floating on the page background, which is what the
-    // founder saw. Given its own muted, uppercase treatment it reads as a label for the cards beneath it.
-    <div className="space-y-3">
-      <h2 className="px-1 font-mono text-[10px] uppercase tracking-wide text-ink-tertiary">
-        Single sign-on
-      </h2>
+    <>
       {PROVIDERS.map((p) => (
         <SsoProvider key={p} orgId={orgId} provider={p} canEdit={canEdit} />
       ))}
-    </div>
+    </>
   );
 }
 
@@ -1676,7 +1704,6 @@ function SsoProvider({
   const [tenantId, setTenantId] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   // load fetches the current (non-secret) config. sso_not_configured (404) is the
@@ -1751,11 +1778,10 @@ function SsoProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, provider]);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(e?: FormEvent, onDone?: () => void) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
-    setSaved(false);
     const { error } = await api.PUT(
       "/api/v1/organizations/{orgId}/sso/{provider}",
       {
@@ -1772,8 +1798,8 @@ function SsoProvider({
     if (error)
       return setErr(apiErrorMessage(error, "Could not save the SSO config."));
     setClientSecret(""); // never keep the secret in page state after save
-    setSaved(true);
     await load(() => false); // refresh to pick up the new fingerprint
+    onDone?.();
   }
 
   // Display name for the provider — also the label prefix that keeps each provider's fields uniquely named.
@@ -1830,20 +1856,50 @@ function SsoProvider({
     );
 
   return (
-    <form onSubmit={submit}>
-      <Card>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white capitalize">
-            {provider}
-          </h3>
-          {configured && view && (
-            <span className="text-xs text-slate-500">
-              {view.enabled ? "enabled" : "disabled"} · updated{" "}
-              {relativeAge(view.updated_at)}
-            </span>
-          )}
-        </div>
-        <div className="mt-3 space-y-3">
+    <SettingDialogRow
+      label={providerName}
+      description={
+        provider === "microsoft"
+          ? "Client ID, secret and Entra tenant for Microsoft sign-in."
+          : "Google Workspace sign-in for this organization."
+      }
+      value={
+        configured && view ? (
+          <SettingValue tone={view.enabled ? "live" : "muted"}>
+            {view.enabled ? "Enabled" : "Disabled"} ·{" "}
+            {relativeAge(view.updated_at)}
+          </SettingValue>
+        ) : (
+          <SettingValue>Not configured</SettingValue>
+        )
+      }
+      actionLabel={configured ? "Replace config" : "Configure"}
+      dialogTitle={`${providerName} single sign-on`}
+      /* ⚠ A STABLE SEAM, BECAUSE THIS ROW EXISTS TWICE BY CONSTRUCTION. The e2e spec used to reach Google's
+         config by "the first Client ID field", relying on PROVIDERS order — which silently becomes the wrong
+         row the moment both providers are configured and both offer the same action label. */
+      data-testid={`sso-row-${provider}`}
+      disabled={!canEdit}
+      error={err}
+      actions={(close) => (
+        <>
+          <Button variant="ghost" onClick={close}>
+            Cancel
+          </Button>
+          {/* ⛔ CLOSES ONLY AFTER THE SAVE IS CONFIRMED. The secret is write-only — it is cleared from page
+              state on success and can never be re-read — so a dialog that closed optimistically and then
+              failed would leave the operator with nothing to retype and no error to explain why. */}
+          <Button
+            disabled={busy || !canEdit}
+            onClick={() => void submit(undefined, close)}
+          >
+            {busy ? "Saving…" : configured ? "Replace config" : "Configure"}
+          </Button>
+        </>
+      )}
+    >
+      {() => (
+        <div className="space-y-3">
           {/* Labels are PROVIDER-SCOPED (S11-1 class): SsoProvider renders once per provider, so a bare
               "Client ID" would put two controls with the SAME accessible name on the Settings page — a
               screen reader announces them identically and a label-navigating user cannot tell them apart. */}
@@ -1923,14 +1979,7 @@ function SsoProvider({
             {enabledLabel(configured)}
           </label>
         </div>
-        <div className="mt-4 flex items-center gap-3">
-          <Button type="submit" disabled={busy || !canEdit}>
-            {busy ? "Saving…" : configured ? "Replace config" : "Configure"}
-          </Button>
-          {saved && <span className="text-xs text-accent-400">Saved.</span>}
-        </div>
-        <ErrorText>{err}</ErrorText>
-      </Card>
-    </form>
+      )}
+    </SettingDialogRow>
   );
 }

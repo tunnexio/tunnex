@@ -12,7 +12,13 @@ import {
 } from "../lib/api";
 import { Gateways as EnrolCeremony } from "../components/Gateways";
 import { LoadRetry } from "../components/LoadRetry";
-import { Badge, DataTable, EmptyState, Panel } from "../components/ui";
+import {
+  Badge,
+  DataTable,
+  EmptyState,
+  PageHeader,
+  Panel,
+} from "../components/ui";
 import { badgeClass } from "../lib/healthview";
 import { relativeAge } from "../lib/format";
 import { CeilingUpgrade, ceilingSentence } from "../components/CeilingUpgrade";
@@ -631,14 +637,7 @@ export default function GatewaysPage() {
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold text-ink-heading">
-            Gateways
-          </h1>
-          <p className="text-cell text-ink-tertiary">{org ? org.name : "…"}</p>
-        </div>
-      </div>
+      <PageHeader title="Gateways" subtitle={org ? org.name : "…"} />
 
       {/* ⛔ THE STANDING CEILING NOTICE. Shown whenever used >= ceiling, with NO refusal behind it.
           Gateways enrol by CLI/API — the 403 lands in a terminal on the customer's own server — so an

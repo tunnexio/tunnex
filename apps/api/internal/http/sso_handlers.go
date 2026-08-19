@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -75,7 +76,13 @@ func (s apiServer) StartSsoLogin(ctx context.Context, req api.StartSsoLoginReque
 	if s.sso == nil {
 		return nil, editionRequired()
 	}
-	url, err := s.sso.StartLogin(ctx, req.Params.Org, string(req.Provider))
+	// The slug is OPTIONAL now — omitted (or whitespace) means "derive the tenant", which the
+	// port fails closed on rather than guessing. Trimmed here so " " is the same request as none.
+	org := ""
+	if req.Params.Org != nil {
+		org = strings.TrimSpace(*req.Params.Org)
+	}
+	url, err := s.sso.StartLogin(ctx, org, string(req.Provider))
 	if err != nil {
 		return nil, err
 	}

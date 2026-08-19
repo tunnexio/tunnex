@@ -25,14 +25,14 @@ export function HealthStatus() {
   }, []);
   const label = {
     checking: "checking…",
-    up: "operational",
+    up: "v0.1.0",
     down: "unreachable",
   }[state];
   const tone = state === "up" ? "on" : state === "down" ? "warn" : "off";
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
       <StatusDot tone={tone} />
-      control plane {label}
+      {label}
     </span>
   );
 }

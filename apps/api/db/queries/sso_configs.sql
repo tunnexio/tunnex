@@ -13,6 +13,15 @@ RETURNING *;
 SELECT * FROM sso_configs
 WHERE org_id = $1 AND provider = $2;
 
+-- name: ListEnabledSSOOrgsByProvider :many
+-- lint:cross-org — SSO start has NO org context: the login page must not ask a human to
+-- type their tenant, so an omitted slug resolves the SOLE org with this provider enabled.
+-- ⛔ LIMIT 2, NEVER `ORDER BY ... LIMIT 1`. One row is the answer; two rows are AMBIGUITY and
+-- the caller REJECTS. A LIMIT 1 here would silently pick one tenant's IdP for another's user.
+SELECT org_id FROM sso_configs
+WHERE provider = $1 AND enabled = true
+LIMIT 2;
+
 -- name: GetEnabledSSOConfigByProvider :one
 -- lint:cross-org — SSO callback resolves the config by (provider, client_id)
 -- before an org context exists; org_id is a column on the returned row.

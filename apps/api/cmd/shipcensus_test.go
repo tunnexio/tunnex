@@ -19,7 +19,13 @@ var notShipped = map[string]string{
 	"seed":            "development fixture — seeding a production database is not a supported operation",
 	"seed-enterprise": "development fixture, same reason as seed",
 	"seed-fixtures":   "development fixture (S14.5) — a populated demo network for reviewing the redesigned screens; seeding a production database is not a supported operation",
-	"walk-bootstrap":  "box-walk rig setup; a test harness, not an operator tool",
+	// ⛔ MUST NOT SHIP, and not merely because it is a dev convenience. This tool writes a sealed SSO config
+	// while SKIPPING `requireSSOAdmin` — the entitlement gate the real endpoint enforces. That is acceptable
+	// on a laptop, where the gate is the only thing standing between an operator and walking the login flow
+	// on an unlicensed stack; in the production image it would be a gate-bypassing credential writer sitting
+	// next to the master key it seals with.
+	"dev-sso-config": "development tool (F-SSO) — writes a sealed per-org SSO config while bypassing the SSO entitlement gate; shipping a gate-bypassing credential writer into the runtime image is the opposite of the reason the gate exists",
+	"walk-bootstrap": "box-walk rig setup; a test harness, not an operator tool",
 }
 
 // TestEveryOperatorToolShipsInTheImage — the packaging tier of artifact-exists-≠-artifact-works.

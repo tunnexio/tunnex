@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { login, OWNER, MEMBER, ORG } from "./helpers";
+import {
+  login,
+  openRowDialog,
+  openSection,
+  OWNER,
+  MEMBER,
+  ORG,
+} from "./helpers";
 
 // ⛔ SKIPPED, NOT DELETED — AND THE REASON IS THAT THE PRODUCT CHANGED UNDER THEM, NOT THAT THEY ARE WRONG.
 //
@@ -30,16 +37,20 @@ test("owner sees org settings; SSO config is gated to the enterprise edition", a
   page,
 }) => {
   await login(page, OWNER);
-  // ⛔ THE HEADING, NOT THE TEXT. Also swept into the signup skip batch without touching signup: the S12.5
-  // org switcher carries an `sr-only` "Organization" label in the header, so a bare text match now resolves
-  // to two elements and trips strict mode. The section heading is what this spec means.
+  // Organization is the default section, so its group heading is present without selecting anything.
   await expect(
     page.getByRole("heading", { name: "Organization", exact: true }),
   ).toBeVisible();
+
+  // ⛔ THE SLUG MOVED INTO THE RENAME DIALOG, and that is the product decision, not a test workaround:
+  // the row states the NAME because that is what most visits come to read, and the immutable slug is
+  // detail you only need while renaming. So the spec opens the dialog, which is what a person does.
+  await openRowDialog(page, "Edit");
   await expect(page.getByText("slug: demo")).toBeVisible();
-  // Open edition: no SSO config form, just the edition-gated notes. S7.5.5 added a SECOND enterprise
-  // note (org-wide MFA enforcement) beside SSO, so assert EACH specifically — a bare /Tunnex Enterprise
-  // feature/ now matches both and trips Playwright strict mode.
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // The enterprise notes live in Authentication now — one section at a time (the settings rail).
+  await openSection(page, "Authentication");
   await expect(
     page.getByText(/SSO .*is a Tunnex Enterprise feature/i),
   ).toBeVisible();
@@ -59,9 +70,13 @@ test("editing the org name saves (and is reverted to keep the shared seed clean)
   page,
 }) => {
   await login(page, OWNER);
+
+  // The row states the current value; editing happens in a dialog.
+  await expect(page.getByText("Demo Organization").first()).toBeVisible();
+  await openRowDialog(page, "Edit");
+
   // exact: true — getByLabel is case-insensitive SUBSTRING by default, so a bare "Name" also matches the
-  // machine-credential panel's "Credential name" (S11-1). The accessible names are now distinct (the product
-  // fix); this makes the locator express its real intent — the ORG name field — and is STRICTER, not looser.
+  // machine-credential panel's "Credential name" (S11-1). This expresses the real intent: the ORG name.
   const name = page.getByLabel("Name", { exact: true });
   await expect(name).toHaveValue("Demo Organization");
   // Save is disabled until the name actually changes.
@@ -69,7 +84,14 @@ test("editing the org name saves (and is reverted to keep the shared seed clean)
   try {
     await name.fill("Demo Organization (edited)");
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByText("Saved.")).toBeVisible();
+
+    // ⛔ THE CONFIRMATION IS THE DIALOG CLOSING AND THE ROW UPDATING — there is no "Saved." text any more,
+    // and its removal was deliberate: a transient success message beside a field that still showed the old
+    // value was the weaker signal. This asserts the STATE, which a stale message could never prove.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await expect(
+      page.getByText("Demo Organization (edited)").first(),
+    ).toBeVisible();
   } finally {
     // ALWAYS restore the name via the API so a mid-test failure can't leave the
     // shared demo org renamed for other specs.
@@ -94,7 +116,14 @@ test("the address-pool section shows the current CIDR and gates Resize on a chan
   page,
 }) => {
   await login(page, OWNER);
-  await expect(page.getByText("Address pool")).toBeVisible();
+  await openSection(page, "Network");
+  // The row states the pool without opening anything — the common read.
+  // exact: true — getByText is case-insensitive SUBSTRING, and the rail's own hint for this section reads
+  // "…address pools.", so a loose match resolves to the tab AND the row. The row label is what this means.
+  await expect(page.getByText("Address pool", { exact: true })).toBeVisible();
+  await expect(page.getByText("10.99.0.0/24").first()).toBeVisible();
+
+  await openRowDialog(page, "Resize");
   await expect(page.getByLabel("Pool CIDR")).toHaveValue("10.99.0.0/24");
   await expect(
     page.getByRole("button", { name: "Resize pool" }),
@@ -119,8 +148,13 @@ test("a successful resize surfaces the re-issue-configs consequence (accept-and-
     }),
   );
   await login(page, OWNER);
+  await openSection(page, "Network");
+  await openRowDialog(page, "Resize");
   await page.getByLabel("Pool CIDR").fill("10.99.0.0/23");
   await page.getByRole("button", { name: "Resize pool" }).click();
+  // ⚠ THIS DIALOG STAYS OPEN ON SUCCESS, unlike the rename one, and that asymmetry is deliberate: a resize
+  // returns a consequence the operator must read (existing devices keep their old addresses and their
+  // configs are one-time), so closing would dismiss the only place it is ever said.
   await expect(page.getByText(/re-issue their configs/i)).toBeVisible();
   await expect(page.getByText(/revoke \+ recreate/i)).toBeVisible();
 });
@@ -152,6 +186,8 @@ test("a shrink that would strand devices renders the orphan list with names and 
     }),
   );
   await login(page, OWNER);
+  await openSection(page, "Network");
+  await openRowDialog(page, "Resize");
   await page.getByLabel("Pool CIDR").fill("10.99.0.0/25");
   await page.getByRole("button", { name: "Resize pool" }).click();
   // Actionable refusal: count, names, both reason phrasings, and the "N more" note.

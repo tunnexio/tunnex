@@ -892,6 +892,11 @@ type Querier interface {
 	// background poller iterates all tenants; each config is reconciled org-scoped downstream.
 	// lint:cross-org
 	ListEnabledIdpSyncConfigs(ctx context.Context) ([]IdpSyncConfig, error)
+	// lint:cross-org — SSO start has NO org context: the login page must not ask a human to
+	// type their tenant, so an omitted slug resolves the SOLE org with this provider enabled.
+	// ⛔ LIMIT 2, NEVER `ORDER BY ... LIMIT 1`. One row is the answer; two rows are AMBIGUITY and
+	// the caller REJECTS. A LIMIT 1 here would silently pick one tenant's IdP for another's user.
+	ListEnabledSSOOrgsByProvider(ctx context.Context, provider string) ([]uuid.UUID, error)
 	// lint:cross-org — CP-internal (the failover tick iterates every org). Orgs whose persisted hub set has
 	// MORE THAN ONE member — i.e. a pinned HA set with at least one standby; a single-hub org has nothing to
 	// fail over (S8.6 Slice 4). Reads the CONFIGURED membership (the intent) — the reduce's field rename.

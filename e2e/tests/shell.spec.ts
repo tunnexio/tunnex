@@ -20,14 +20,23 @@ test("signing in reaches the app shell and the dashboard, then navigates to devi
 }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(OWNER_EMAIL);
-  await page.getByLabel("Password").fill(OWNER_PASS);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER_PASS);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // Landed in the authenticated shell on the dashboard (the default authed route).
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  // ⛔ IDENTITY AND SIGN-OUT MOVED INTO THE SIDEBAR PROFILE MENU. They used to sit in the header; the
+  // expandable-profile change put both behind one control, so the spec opens it — the same click a person
+  // makes. The CAPABILITY is unchanged, which is why this is a re-point and not a deletion.
+  //
+  // ⚠ THE LABEL DEPENDS ON SIDEBAR WIDTH: expanded renders "User profile menu", collapsed renders
+  // "Signed in as <email>". Matching either keeps this spec from asserting a viewport by accident.
+  await page
+    .getByRole("button", { name: /User profile menu|Signed in as/ })
+    .click();
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
-  // The owner's email shows in the header.
-  await expect(page.getByText(OWNER_EMAIL)).toBeVisible();
+  // The owner's email shows in the profile menu.
+  await expect(page.getByText(OWNER_EMAIL).first()).toBeVisible();
 
   // The sidebar links to Devices, where a device can be created.
   // ⚠ THE FORM IS NO LONGER ON THE PAGE — it moved into an "Add device" modal. The CAPABILITY is unchanged
@@ -41,7 +50,11 @@ test("signing in reaches the app shell and the dashboard, then navigates to devi
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
-  // Logging out returns to the login screen.
+  // Logging out returns to the login screen — via the profile menu, which is where sign-out lives now.
+  // (Re-opened because navigating to /login and back closed it.)
+  await page
+    .getByRole("button", { name: /User profile menu|Signed in as/ })
+    .click();
   await page.getByRole("button", { name: "Log out" }).click();
   // S14.17: the login heading is the design's "Welcome back"; "Sign in" is the BUTTON.
   await expect(
@@ -63,9 +76,17 @@ test("the org switcher carries the create path for a capability holder", async (
 }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill(OWNER_EMAIL);
-  await page.getByLabel("Password").fill(OWNER_PASS);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER_PASS);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  // ⛔ THE ORG SWITCHER MOVED OUT OF THE APP HEADER INTO SETTINGS. On main it was rendered by AppShell;
+  // its only render site now is the Organization section of the settings page, so the create path is two
+  // navigations away rather than always on screen. Re-pointed, not deleted: this spec exists because the
+  // affordance once rendered and led NOWHERE (RequireNoOrg bounced a holder who already had an org), and
+  // that property is still worth holding wherever the control lives.
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
   const create = page.getByRole("button", { name: "+ New" });
   await expect(create).toBeVisible();
@@ -88,7 +109,7 @@ test("a member with one organization gets no switcher and no create path", async
 }) => {
   await page.goto("/login");
   await page.getByLabel("Email").fill("member@demo.tunnex.local");
-  await page.getByLabel("Password").fill(OWNER_PASS);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER_PASS);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 

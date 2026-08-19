@@ -38,12 +38,13 @@ import { portLabel } from "../lib/k8sview";
 import {
   Button,
   Card,
+  DataTable,
   ErrorText,
   Field,
   Input,
   Modal,
+  PageHeader,
   Select,
-  DataTable,
 } from "../components/ui";
 import { relativeAge } from "../lib/format";
 import { EntityPicker } from "../components/EntityPicker";
@@ -225,19 +226,18 @@ export default function Access() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: "14px" }}>
-        <div>
-          <div style={{ font: "700 22px 'Instrument Sans'", color: "#F5F5F5" }}>
-            Access policies
-          </div>
-          <div style={{ font: "400 12px 'Instrument Sans'", color: "#6E6E6B" }}>
+      {/* ⛔ THIS TITLE WAS A `<div>`, so the page had NO h1 at all — and its type/colour were an inline
+          style object using `Instrument Sans` and raw hex, neither of which is in the token set. */}
+      <PageHeader
+        title="Access policies"
+        subtitle={
+          <>
             {org ? org.name : "…"} ·{" "}
-            <span style={{ color: "#858582" }}>control plane</span>{" "}
-            <span style={{ color: "#A9A9A6" }}>● healthy</span>
-          </div>
-        </div>
-        <div style={{ flex: 1 }}></div>
-      </div>
+            <span className="text-ink-secondary">control plane</span>{" "}
+            <span className="text-ink-body">● healthy</span>
+          </>
+        }
+      />
 
       {view === "fatal" && <ErrorText>{fatal}</ErrorText>}
       {view === "load_retry" && (

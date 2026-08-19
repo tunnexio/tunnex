@@ -52,7 +52,7 @@ test("an invited user accepts and lands INSIDE the inviting org (real backend, n
     `/accept-invite?token=${encodeURIComponent(body.invite_token)}`,
   );
   await page.getByLabel("Your name").fill("Invited Person");
-  await page.getByLabel("Password").fill(INVITEE_PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(INVITEE_PASSWORD);
   await page.getByRole("button", { name: "Accept invitation" }).click();
   await expect(page.getByRole("heading", { name: "You're in" })).toBeVisible();
 
@@ -60,7 +60,7 @@ test("an invited user accepts and lands INSIDE the inviting org (real backend, n
   // explicitly — the same step a real invited user takes.
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(INVITEE_PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(INVITEE_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // ⛔ THE ASSERTION THE WHOLE SPEC EXISTS FOR: they are INSIDE the org, not in the funnel.

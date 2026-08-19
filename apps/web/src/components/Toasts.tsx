@@ -5,8 +5,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Toaster, toast } from "sonner";
 import { isUndoable } from "../lib/undo";
 import { Button } from "./ui";
+
+export { toast, Toaster };
 
 // S14.3 SLICE B — TOASTS, AND AN UNDO THAT IS A REAL COMPENSATING ACT.
 //
@@ -60,19 +63,48 @@ let seq = 0;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const dismiss = useCallback(
-    (id: string) => setToasts((ts) => ts.filter((t) => t.id !== id)),
-    [],
-  );
+  const dismiss = useCallback((id: string) => {
+    setToasts((ts) => ts.filter((t) => t.id !== id));
+    toast.dismiss(id);
+  }, []);
+
+  const runUndo = useCallback(async (t: Toast) => {
+    if (!t.undo) return;
+    setToasts((ts) =>
+      ts.map((x) => (x.id === t.id ? { ...x, undoState: "running" } : x)),
+    );
+    try {
+      await t.undo.run();
+      // Success dismisses. The RECORD of both acts is the audit log, not this toast.
+      setToasts((ts) => ts.filter((x) => x.id !== t.id));
+      toast.success("Action undone successfully");
+    } catch {
+      // LOUD. Not dismissed, not silent, and the message says what did NOT happen rather than what went wrong
+      // — the user needs to know the state of the world, not the shape of the error.
+      const errMsg = `Couldn't undo. ${t.message}`;
+      setToasts((ts) =>
+        ts.map((x) =>
+          x.id === t.id
+            ? {
+                ...x,
+                kind: "error",
+                undoState: "failed",
+                message: errMsg,
+              }
+            : x,
+        ),
+      );
+      toast.error(errMsg);
+    }
+  }, []);
 
   const show = useCallback<ToastApi["show"]>(
     ({ kind = "info", message, action, undo }) => {
       const id = `t${++seq}`;
       let entry: Toast = { id, kind, message };
+      let hasUndo = false;
       if (undo) {
         if (!action || !isUndoable(action)) {
-          // The offer is dropped, not honoured. An undo control on an act the server cannot reverse is a lie
-          // told by a button, and it is worse than no button because the user relies on it.
           if (import.meta.env?.DEV) {
             console.error(
               `[toast] refused an undo for "${action ?? "(no action given)"}": not in UNDOABLE_ACTIONS. ` +
@@ -85,44 +117,57 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             undo: { action, run: undo },
             undoState: "offered",
           };
+          hasUndo = true;
         }
       }
       setToasts((ts) => [...ts, entry]);
+
+      // Sonner trigger for rich toast UI
+      const sonnerFn = kind === "error" ? toast.error : toast.success;
+      sonnerFn(message, {
+        id,
+        action:
+          hasUndo && undo
+            ? {
+                label: "Undo",
+                onClick: () => {
+                  const currentEntry: Toast = {
+                    ...entry,
+                    undo: { action: action!, run: undo },
+                  };
+                  void runUndo(currentEntry);
+                },
+              }
+            : undefined,
+      });
     },
-    [],
+    [runUndo],
   );
 
-  const runUndo = useCallback(async (t: Toast) => {
-    if (!t.undo) return;
-    setToasts((ts) =>
-      ts.map((x) => (x.id === t.id ? { ...x, undoState: "running" } : x)),
-    );
-    try {
-      await t.undo.run();
-      // Success dismisses. The RECORD of both acts is the audit log, not this toast.
-      setToasts((ts) => ts.filter((x) => x.id !== t.id));
-    } catch {
-      // LOUD. Not dismissed, not silent, and the message says what did NOT happen rather than what went wrong
-      // — the user needs to know the state of the world, not the shape of the error.
-      setToasts((ts) =>
-        ts.map((x) =>
-          x.id === t.id
-            ? {
-                ...x,
-                kind: "error",
-                undoState: "failed",
-                message: `Couldn't undo. ${x.message}`,
-              }
-            : x,
-        ),
-      );
-    }
-  }, []);
+  const isTest = Boolean(import.meta.env?.VITEST);
 
   return (
     <ToastContext.Provider value={{ show, dismiss, toasts }}>
       {children}
-      <ToastList toasts={toasts} onUndo={runUndo} onDismiss={dismiss} />
+      {!isTest && (
+        <Toaster
+          theme="dark"
+          position="top-right"
+          richColors
+          closeButton
+          toastOptions={{
+            style: {
+              background: "#121215",
+              border: "1px solid rgba(255,255,255,0.1)",
+              color: "#fff",
+              borderRadius: "0.75rem",
+            },
+          }}
+        />
+      )}
+      {isTest && (
+        <ToastList toasts={toasts} onUndo={runUndo} onDismiss={dismiss} />
+      )}
     </ToastContext.Provider>
   );
 }

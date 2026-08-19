@@ -13,7 +13,7 @@ const OWNER = {
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(OWNER.email);
-  await page.getByLabel("Password").fill(OWNER.pass);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 }
@@ -120,7 +120,7 @@ test("a logged-out `tunnex login` returns to the consent page after sign-in (S5.
   await page.goto(CONSENT);
   await expect(page).toHaveURL(/\/login\?next=/);
   await page.getByLabel("Email").fill(OWNER.email);
-  await page.getByLabel("Password").fill(OWNER.pass);
+  await page.getByLabel("Password", { exact: true }).fill(OWNER.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(
     page.getByRole("heading", { name: "Authorize the Tunnex CLI" }),
