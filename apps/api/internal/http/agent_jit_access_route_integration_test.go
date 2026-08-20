@@ -45,7 +45,7 @@ func TestAgentJITAccessRoutesAuthorizationRefetchAndRuleOwnership(t *testing.T) 
 	})
 	fresh := *base
 	fresh.Path = "/" + databaseName
-	if err := db.MigrateTo(fresh.String(), 98); err != nil {
+	if err := db.MigrateTo(fresh.String(), 100); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, fresh.String())

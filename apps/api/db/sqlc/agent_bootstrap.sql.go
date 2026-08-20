@@ -193,6 +193,7 @@ WITH expired_candidate AS (
       terminal_at = COALESCE(terminal_at, now()), candidate_expires_at = NULL
   WHERE candidate.org_id = $1 AND candidate.device_id = $2
     AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= now()
+  RETURNING 1
 )
 SELECT count(*) FROM expired_candidate
 `
