@@ -186,8 +186,8 @@ credential exfiltration path through a read-only permission.
 F11 needs concrete condition boundaries; without them an alert producer either pages on a normal retry or
 never fires at all. The following fixed v1 boundaries are intentionally not a per-org tuning surface:
 
-- **`agent.offline`**: three minutes of gateway-reported absence for one managed agent. A silent gateway is
-  not attributed to the agent, so no agent-offline event is emitted while the gateway reporter itself is stale.
+- **`agent.offline`**: one minute without a managed-agent runtime report. This is the same heartbeat used by
+  the runtime-status UI; a live WireGuard handshake alone does not keep the managed runtime connected.
 - **`agent.denial_spike`**: twenty denied decisions in a rolling five-minute window for one agent.
 - **`agent.access_expiring`**: fifteen minutes before an approved JIT agent-access request expires.
 - **`agent.rotation_failed`**: only a terminal credential or WireGuard rotation failure/deadline expiry; retry
@@ -195,6 +195,47 @@ never fires at all. The following fixed v1 boundaries are intentionally not a pe
 
 These values were approved for the F11 walk on 2026-08-20. A future alert-policy story may expose tuning;
 F11 keeps them fixed so the event contract and cooldown semantics remain predictable.
+
+### D12 — Source model · **LOCKED: one organization alerting system, additive producers**
+
+Alert destinations, subscriptions, delivery history, retry and secret handling are shared
+infrastructure. They are **not** an AI-agent-only notification system. Every producer emits the
+same organization-scoped `alerts.Event` envelope, using its own typed event key and stable
+deduplication key; destinations choose the keys they receive.
+
+F11's first observable catalogue is deliberately AI-agent-focused because it is the active
+operational epic. The next producer additions are:
+
+- gateway lifecycle, reachability, certificate and reconciliation health;
+- site-link and routed-service health; and
+- Kubernetes connector, cluster and service-observation health.
+
+They reuse the existing outbox, SSRF guard, transports and owner-managed destination UI. They
+must not create per-source webhook tables, parallel retry workers, or a second settings page.
+Each source family is additive: it registers typed keys, defines its own honest threshold and
+no-oracle semantics, adds the subscription labels, and proves a real transition on the wire.
+
+Deferred to the next operations-alerting slice: the first customer request for gateway, site or
+Kubernetes notifications. This is a scope boundary, not a redesign of F11.
+
+### D13 — Destination management · **LOCKED: compact selection with bounded bulk actions**
+
+An owner manages destinations from a compact, selectable list rather than a full event-card per
+destination. Event subscriptions stay available behind an explicit per-row disclosure. **Test
+selected** reuses the existing one-destination test endpoint sequentially, avoiding a concurrent
+burst of provider traffic. **Archive selected** requires one count-based confirmation and then
+uses the existing archive endpoint for each selected destination. F11 adds no batch endpoint or
+new credential readback surface for this UI improvement.
+
+### D14 — SIEM wording · **LOCKED: F11 exports typed alerts; audit-stream export remains S7.5.1**
+
+F11's generic webhook is the SIEM integration for this story: it delivers the same signed,
+organization-scoped typed alert envelope that every other destination receives. It is not an
+unscoped dump of audit records.
+
+The roadmap's broader audit/access-event export stays with the already-registered S7.5.1 flow-log
+and SIEM-export work. That avoids inventing a second audit vocabulary or bypassing tenant-scoped
+access controls merely to satisfy a label in this story title.
 
 ---
 
@@ -222,14 +263,14 @@ Status vocabulary: `paper` · `todo` · `in progress` · `done` · `deferred`.
 | # · Slice | Status | UI changes | Backend changes |
 | --- | --- | --- | --- |
 | **1 · Commit-one paper** | **paper — this document** | none | none |
-| **2 · Schema, RBAC, event catalogue** | in progress | none (deliberately — the seam ships before any surface) | Migration: `alert_destinations` (sealed URL + fingerprint, kind, `allow_private`, cooldown, severity floor), `alert_subscriptions` (destination × event key), `alert_deliveries` (outbox), `organizations.alerting_enabled`. sqlc queries. `internal/alerts`: `EventKey` closed enum, `Event`, `Publish()` writing to a no-op sink. `rbac.PermAlertingManage` + grant table + `make generate-rbac` mirror. Census test: every `EventKey` has a producer |
-| **3 · SSRF-guarded HTTP client** | todo | none | `internal/alerts/safedial`: resolve-then-dial, IP-range denylist, `CheckRedirect` refusal, timeout, body cap, `allow_private` escape hatch. **Red tests are the deliverable**: `169.254.169.254`, a DNS-rebinding stub, a 302 to a private host, a slow-loris body — each must be refused |
-| **4 · Outbox + dispatcher** | todo | none | `alerts.Dispatcher` drained by a ticker on `mayTick()` (`main.go:624`); exponential backoff, bounded attempts, dead-letter to `failed`; per-condition cooldown + suppressed-count (D7). One transport (generic JSON) to prove the path end to end |
-| **5 · Transports: Slack family** | todo | none | Slack-compatible shaper reused by Slack, Discord, Google Chat, generic webhook. Message text derived once from `Event`, not per provider |
-| **6 · Transports: Teams, PagerDuty, Opsgenie, email** | todo | none | Adaptive Card shaper (Teams); Events-API shaper with `dedup_key`, trigger-only (D2); email via existing `mail.Mailer`, degrading honestly on `ErrNotConfigured` (`mail/mail.go:143-155`) |
-| **7 · Producers: infrastructure health** | todo | none | `alerts.Publish` on `PolicyDegradedKind` **transitions** (not on every tick) — hooked where `PolicyHealthForNodes` already projects (`nodes/service.go:2390`) and beside `hub_set.promotion` / `hub_set.failback` (`nodes/failover.go`). Licence and capacity thresholds |
-| **8 · Producers: security & access** | todo | none | `alerts.Publish` beside existing `audit()` calls for device revoke, JIT request/approve, MFA-enforce change, SSO/directory-sync config change, deprovision sweep. Additive only — no existing audit call changes (D3) |
-| **9 · UI: destinations, subscriptions, test-send, delivery log** | todo | New **Alerting** section in the org-settings rail. Rows via the existing `SettingRow` / `SettingDialogRow` / `Switch` vocabulary: master `Switch`; destination list; add/edit dialog (kind, URL/routing key, severity floor, cooldown, quiet hours, owner-only `allow_private`); **per-destination event picker**; **Test** button with the real result; delivery log showing failures and the dead-lettered | Handlers for destinations CRUD, subscriptions, test-send, delivery list. OpenAPI first (`openapi/openapi.yaml`), then `make generate`. URL never returned — host + fingerprint only (D10) |
+| **2 · Schema, RBAC, event catalogue** | **done** | none (deliberately — the seam ships before any surface) | Migration, sealed destination storage, subscriptions, retry/outbox tables, org opt-in, `alerting:manage`, typed AI-agent catalogue and producer census are implemented. |
+| **3 · SSRF-guarded HTTP client** | **done** | none | `internal/alerts/safedial` resolves then dials the checked address, denies unsafe ranges by default, refuses redirects, bounds time/body, and has the owner-only private-target escape hatch. |
+| **4 · Outbox + dispatcher** | **done** | none | Leader-gated retry dispatcher, bounded attempts, claim recovery, dead-letter state and condition cooldown/suppression are implemented. |
+| **5 · Transports: Slack family** | **done** | none | Slack, Discord, Google Chat and generic webhook formatters are implemented from the same event envelope. |
+| **6 · Transports: Teams, PagerDuty, Opsgenie, email** | **done** | none | Teams, trigger-only PagerDuty/Opsgenie and the existing mail seam are implemented; auto-resolve remains F11.1. |
+| **7 · Producers: infrastructure health** | **deferred — operations alerting slice** | none | Gateway/site/Kubernetes producer families reuse this completed engine when a customer needs them; they are deliberately outside F11's AI-agent-first catalogue (D12). |
+| **8 · Producers: security & access** | **deferred — audit/operations alerting slice** | none | Broad audit-source export remains out of F11 per D3/D14; no audit vocabulary refactor is folded here. |
+| **9 · UI: destinations, subscriptions, test-send, delivery log** | **done** | Owner opt-in, typed destinations, subscriptions, serial selected testing, selected archival and secret-free recent delivery outcomes are implemented. | OpenAPI-first HTTP handlers are implemented; URL/routing secrets are never returned. |
 
 Slices 2–8 ship no UI on purpose: the seam, the guard and the delivery path are provable by tests before
 there is a surface to mislead anyone with.

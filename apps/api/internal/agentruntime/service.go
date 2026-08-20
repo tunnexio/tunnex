@@ -464,10 +464,9 @@ func (s *Service) Status(ctx context.Context, orgID, deviceID uuid.UUID) (Status
 		LastSeenAt: seen, LastErrorCode: state.LastErrorCode, LastErrorRevision: state.LastErrorRevision}, nil
 }
 
-// RuntimeFreshnessWindow is six default 30-second runtime cycles. It reuses the
-// repository's established three-minute liveness window while keeping this
+// RuntimeFreshnessWindow is two default 30-second runtime cycles. It keeps the
 // machine channel's clock owned by its own reports.
-const RuntimeFreshnessWindow = 3 * time.Minute
+const RuntimeFreshnessWindow = time.Minute
 
 func deriveRuntimeHealth(now time.Time, seen *time.Time, desired, applied int64, lastError *string) (string, string, bool) {
 	stale := seen == nil || now.Sub(*seen) > RuntimeFreshnessWindow

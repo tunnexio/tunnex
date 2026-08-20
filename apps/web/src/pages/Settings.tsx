@@ -648,6 +648,7 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
   const [formError, setFormError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedDestinationIDs, setSelectedDestinationIDs] = useState<string[]>([]);
   const [kind, setKind] = useState<AlertDestinationKind>("webhook");
   const [name, setName] = useState("");
   const [endpoint, setEndpoint] = useState("");
@@ -670,6 +671,13 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
   useEffect(() => {
     void load();
   }, [orgId]);
+
+  const active = destinations?.filter((destination) => !destination.archived) ?? [];
+
+  useEffect(() => {
+    // A refetch after an archive must not leave an invisible destination selected.
+    setSelectedDestinationIDs((current) => current.filter((id) => active.some((destination) => destination.id === id)));
+  }, [destinations]);
 
   function toggleEvent(key: AlertEventKey) {
     setEvents((current) =>
@@ -725,36 +733,57 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
     close();
   }
 
-  async function archive(destinationId: string) {
+  async function archiveSelected() {
+    const selected = active.filter((destination) => selectedDestinationIDs.includes(destination.id));
+    if (selected.length === 0) return;
+    if (!window.confirm(`Archive ${selected.length} alert destination${selected.length === 1 ? "" : "s"}? Their provider credentials are retained only for delivery history; no further alerts will be sent.`)) return;
     setBusy(true);
     setFormError(null);
-    const response = await api.DELETE("/api/v1/organizations/{orgId}/alert-destinations/{destinationId}", {
-      params: { path: { orgId, destinationId } },
-    });
-    if (response.error) setFormError(apiErrorMessage(response.error, "Could not archive alert destination."));
+    const failed: string[] = [];
+    for (const destination of selected) {
+      const response = await api.DELETE("/api/v1/organizations/{orgId}/alert-destinations/{destinationId}", {
+        params: { path: { orgId, destinationId: destination.id } },
+      });
+      if (response.error) failed.push(destination.name);
+    }
+    if (failed.length > 0) setFormError(`Could not archive: ${failed.join(", ")}.`);
     await load();
     setBusy(false);
   }
 
-  async function test(destination: AlertDestination) {
+  async function testSelected() {
+    const selected = active.filter((destination) => selectedDestinationIDs.includes(destination.id));
+    if (selected.length === 0) return;
     setBusy(true);
     setFormError(null);
     setTestResult(null);
-    const response = await api.POST(
-      "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/test",
-      { params: { path: { orgId, destinationId: destination.id } } },
-    );
-    if (response.error || !response.data) {
-      setFormError(apiErrorMessage(response.error, "Could not test alert destination."));
-    } else if (response.data.delivered) {
-      setTestResult(`${destination.name}: test delivered`);
-    } else {
-      setTestResult(`${destination.name}: test failed${response.data.failure_code ? ` (${response.data.failure_code})` : ""}`);
+    const delivered: string[] = [];
+    const failed: string[] = [];
+    // Send serially: a large selection must not create a webhook storm.
+    for (const destination of selected) {
+      const response = await api.POST(
+        "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/test",
+        { params: { path: { orgId, destinationId: destination.id } } },
+      );
+      if (response.data?.delivered) delivered.push(destination.name);
+      else failed.push(destination.name);
     }
+    if (delivered.length > 0) setTestResult(`${delivered.length} destination${delivered.length === 1 ? "" : "s"}: test delivered`);
+    if (failed.length > 0) setFormError(`Test failed: ${failed.join(", ")}.`);
     setBusy(false);
   }
 
-  const active = destinations?.filter((destination) => !destination.archived) ?? [];
+  const allSelected = active.length > 0 && selectedDestinationIDs.length === active.length;
+  function toggleDestination(destinationID: string) {
+    setSelectedDestinationIDs((current) => current.includes(destinationID)
+      ? current.filter((id) => id !== destinationID)
+      : [...current, destinationID]);
+  }
+
+  function toggleAllDestinations() {
+    setSelectedDestinationIDs(allSelected ? [] : active.map((destination) => destination.id));
+  }
+
   const endpointInput = alertDestinationInput(kind);
   return (
     <SettingDialogRow
@@ -770,19 +799,30 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
     >
       {() => <div className="space-y-4">
         {loadError ? <ErrorText>{loadError}</ErrorText> : null}
+        {active.length > 0 ? <div className="flex flex-wrap items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] p-3" data-testid="alert-destination-bulk-actions">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input aria-label="Select all alert destinations" type="checkbox" checked={allSelected} onChange={toggleAllDestinations} disabled={!canEdit || busy} />
+            Select all
+          </label>
+          <span className="text-xs text-slate-500">{selectedDestinationIDs.length} selected</span>
+          <div className="ml-auto flex gap-2">
+            <Button disabled={!canEdit || busy || selectedDestinationIDs.length === 0} onClick={() => void testSelected()}>{busy ? "Working…" : `Test selected (${selectedDestinationIDs.length})`}</Button>
+            <Button variant="danger" disabled={!canEdit || busy || selectedDestinationIDs.length === 0} onClick={() => void archiveSelected()}>Archive selected ({selectedDestinationIDs.length})</Button>
+          </div>
+        </div> : null}
         {active.map((destination) => (
-          <div key={destination.id} className="space-y-3 rounded-md border border-white/10 p-3">
-            <div className="flex items-center justify-between gap-3">
+          <div key={destination.id} className="rounded-md border border-white/10" data-testid={`alert-destination-${destination.id}`}>
+            <div className="flex items-center gap-3 p-3">
+              <input aria-label={`Select ${destination.name}`} type="checkbox" checked={selectedDestinationIDs.includes(destination.id)} onChange={() => toggleDestination(destination.id)} disabled={!canEdit || busy} />
               <div className="min-w-0">
                 <p className="truncate text-sm text-white">{destination.name}</p>
                 <p className="truncate text-xs text-slate-500">{ALERT_DESTINATION_LABELS[destination.kind]} · {destination.endpoint_host} · {destination.severity_floor}</p>
               </div>
-              <div className="flex shrink-0 gap-2">
-                <Button disabled={!canEdit || busy} onClick={() => void test(destination)}>Test</Button>
-                <Button variant="danger" disabled={!canEdit || busy} onClick={() => void archive(destination.id)}>Archive</Button>
-              </div>
             </div>
-            <AlertDestinationSubscriptions orgId={orgId} destinationId={destination.id} canEdit={canEdit && !busy} />
+            <details className="border-t border-white/10 px-3 py-2">
+              <summary className="cursor-pointer text-xs text-slate-500">Manage subscribed events</summary>
+              <div className="pt-2"><AlertDestinationSubscriptions orgId={orgId} destinationId={destination.id} canEdit={canEdit && !busy} /></div>
+            </details>
           </div>
         ))}
         {testResult ? <p className="text-xs text-slate-400" role="status">{testResult}</p> : null}

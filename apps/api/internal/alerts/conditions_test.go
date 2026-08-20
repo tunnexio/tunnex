@@ -48,6 +48,10 @@ func TestConditionScannerPublishesEachBoundedCondition(t *testing.T) {
 			t.Fatalf("missing %s from %#v", key, keys)
 		}
 	}
+	offline := publisher.events[0]
+	if offline.Fields["threshold_seconds"] != "60" || offline.Subject != "Agent build-agent has been offline for at least one minute" {
+		t.Fatalf("offline event = %#v, want one-minute threshold", offline)
+	}
 }
 
 func TestConditionScannerIsNoopForEmptyObservations(t *testing.T) {

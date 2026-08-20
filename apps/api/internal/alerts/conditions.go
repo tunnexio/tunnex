@@ -14,8 +14,7 @@ import (
 // does not mutate an agent, policy, or rotation: durable outbox cooldowns own
 // notification de-duplication after a condition has been observed.
 const (
-	offlineAfter        = 3 * time.Minute
-	statusFreshFor      = 90 * time.Second
+	offlineAfter        = time.Minute
 	denialWindow        = 5 * time.Minute
 	denialSpikeMinimum  = 20
 	accessWarningBefore = 15 * time.Minute
@@ -85,7 +84,7 @@ func (s *ConditionScanner) RunOnce(ctx context.Context) error {
 func offlineEvent(c Condition) Event {
 	return Event{OrgID: c.OrgID, Key: EventAgentOffline, Severity: SeverityCritical,
 		DedupKey: "agent:" + c.DeviceID.String() + ":offline",
-		Subject:  "Agent " + c.Name + " has been offline for at least three minutes",
+		Subject:  "Agent " + c.Name + " has been offline for at least one minute",
 		Fields:   map[string]string{"agent_id": c.DeviceID.String(), "agent_name": c.Name, "threshold_seconds": strconv.Itoa(int(offlineAfter.Seconds()))}}
 }
 
@@ -118,13 +117,12 @@ func NewPostgresConditionStore(pool *pgxpool.Pool) *PostgresConditionStore {
 
 func (s *PostgresConditionStore) OfflineAgents(ctx context.Context) ([]Condition, error) {
 	return scanConditions(ctx, s.pool, `
-		SELECT d.org_id,d.id,d.name,0::bigint,ds.last_handshake_at,'offline'
+		SELECT d.org_id,d.id,d.name,0::bigint,ars.last_seen_at,'offline'
 		FROM devices d
-		JOIN device_status ds ON ds.device_id=d.id
+		JOIN agent_runtime_state ars ON ars.device_id=d.id
 		WHERE d.kind='agent' AND d.status='active' AND d.deleted_at IS NULL
-		  AND ds.updated_at > now() - ($1::bigint * interval '1 second')
-		  AND (ds.last_handshake_at IS NULL OR ds.last_handshake_at < now() - ($2::bigint * interval '1 second'))
-		  AND d.created_at < now() - ($2::bigint * interval '1 second')`, int64(statusFreshFor/time.Second), int64(offlineAfter/time.Second))
+		  AND (ars.last_seen_at IS NULL OR ars.last_seen_at < now() - ($1::bigint * interval '1 second'))
+		  AND ars.created_at < now() - ($1::bigint * interval '1 second')`, int64(offlineAfter/time.Second))
 }
 
 func (s *PostgresConditionStore) DenialSpikes(ctx context.Context) ([]Condition, error) {

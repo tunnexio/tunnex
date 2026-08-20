@@ -171,10 +171,11 @@ vi.mock("../src/lib/api", async () => {
           alertSubscriptions[id] = (alertSubscriptions[id] ?? []).filter((key) => key !== eventKey);
           return { data: {} };
         }
-        const match = path.match(/alert-destinations\/(.+)$/);
-        if (match)
+        const match = path.match(/alert-destinations\/([^/]+)$/);
+        const destinationId = request?.params?.path?.destinationId ?? match?.[1];
+        if (destinationId)
           alertDestinations = alertDestinations.map((destination) =>
-            destination.id === match[1] ? { ...destination, archived: true } : destination,
+            destination.id === destinationId ? { ...destination, archived: true } : destination,
           );
         return { data: {} };
       }),
@@ -311,8 +312,9 @@ describe("Settings — F11 alert delivery", () => {
     expect(screen.queryByText("Generic webhook · alerts.example.test · warning")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Manage" }));
     expect(screen.getByText("Generic webhook · alerts.example.test · warning")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Test" }));
-    expect((await screen.findByRole("status")).textContent).toContain("Operations: test delivered");
+    fireEvent.click(screen.getByLabelText("Select Operations"));
+    fireEvent.click(screen.getByRole("button", { name: "Test selected (1)" }));
+    expect((await screen.findByRole("status")).textContent).toContain("1 destination: test delivered");
     expect(api.POST).toHaveBeenCalledWith(
       "/api/v1/organizations/{orgId}/alert-destinations",
       expect.objectContaining({
@@ -331,6 +333,25 @@ describe("Settings — F11 alert delivery", () => {
       expect.objectContaining({ params: { path: { orgId: "org-1", destinationId: "destination-1" } } }),
     );
     expect(api.POST.mock.calls.filter(([path]) => String(path).endsWith("/subscriptions"))).toHaveLength(2);
+  });
+
+  it("uses selection and one explicit confirmation for bulk archive", async () => {
+    alertDestinations = [
+      { id: "destination-1", name: "Operations", kind: "webhook", endpoint_host: "alerts.example.test", severity_floor: "warning", archived: false },
+      { id: "destination-2", name: "On call", kind: "webhook", endpoint_host: "oncall.example.test", severity_floor: "critical", archived: false },
+    ];
+    const api = (await import("../src/lib/api")).api as unknown as { DELETE: ReturnType<typeof vi.fn> };
+    const confirmation = vi.spyOn(window, "confirm").mockReturnValue(true);
+    withAuth(<Settings />);
+    await openSection(/Features/);
+    fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    fireEvent.click(screen.getByLabelText("Select all alert destinations"));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Archive selected (2)" }));
+    await waitFor(() => expect(screen.getByText("No active alert destinations.")).toBeTruthy());
+    expect(confirmation).toHaveBeenCalledWith(expect.stringContaining("Archive 2 alert destinations?"));
+    expect(api.DELETE.mock.calls.filter(([path]) => String(path).includes("/alert-destinations/"))).toHaveLength(2);
+    confirmation.mockRestore();
   });
 
   it("exposes the private-network override only to the owner and sends it explicitly", async () => {

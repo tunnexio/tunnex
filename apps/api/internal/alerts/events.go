@@ -43,15 +43,15 @@ const (
 )
 
 type Event struct {
-	OrgID    uuid.UUID
-	Key      EventKey
-	Severity Severity
+	OrgID    uuid.UUID `json:"org_id"`
+	Key      EventKey  `json:"key"`
+	Severity Severity  `json:"severity"`
 	// DedupKey is scoped by the publisher to one persistent condition. The
 	// dispatcher will later enforce each destination's cooldown against it.
-	DedupKey string
+	DedupKey string `json:"dedup_key"`
 	// Subject and Fields are observability data, never a transport secret.
-	Subject string
-	Fields  map[string]string
+	Subject string            `json:"subject"`
+	Fields  map[string]string `json:"fields"`
 }
 
 func (e Event) Validate() error {
