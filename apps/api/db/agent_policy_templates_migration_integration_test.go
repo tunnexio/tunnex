@@ -82,10 +82,16 @@ func TestAgentPolicyTemplatesMigrationPostgres(t *testing.T) {
 		}
 		return policyspec.CanonicalHash(policy.Compile(snapshot)[legacyNode])
 	}
-	if err := db.MigrateTo(successDSN, 98); err != nil {
+	if err := db.MigrateTo(successDSN, 100); err != nil {
 		t.Fatal(err)
 	}
 	beforeHash := legacyHash()
+	if err := db.DownOne(successDSN); err != nil {
+		t.Fatalf("0100 empty rollback before 0097 proof: %v", err)
+	}
+	if err := db.DownOne(successDSN); err != nil {
+		t.Fatalf("0099 empty rollback before 0097 proof: %v", err)
+	}
 	if err := db.DownOne(successDSN); err != nil {
 		t.Fatalf("0098 empty rollback before 0097 proof: %v", err)
 	}
@@ -105,7 +111,7 @@ func TestAgentPolicyTemplatesMigrationPostgres(t *testing.T) {
 		legacyOrg, legacyGroup, legacyResource).Scan(&legacyRules); err != nil || legacyRules != 1 {
 		t.Fatalf("empty 0097 down changed the legacy rule row count=%d err=%v", legacyRules, err)
 	}
-	if err := db.MigrateTo(successDSN, 98); err != nil {
+	if err := db.MigrateTo(successDSN, 100); err != nil {
 		t.Fatalf("0097 reapply: %v", err)
 	}
 	if afterUp := legacyHash(); afterUp != beforeHash {
@@ -114,7 +120,7 @@ func TestAgentPolicyTemplatesMigrationPostgres(t *testing.T) {
 	proveAgentPolicyTemplateTenantInvariants(t, ctx, successPool)
 
 	refuseDSN, refusePool := newDB("refuse")
-	if err := db.MigrateTo(refuseDSN, 98); err != nil {
+	if err := db.MigrateTo(refuseDSN, 100); err != nil {
 		t.Fatal(err)
 	}
 	proveAgentPolicyTemplateTenantInvariants(t, ctx, refusePool)
@@ -135,6 +141,12 @@ func TestAgentPolicyTemplatesMigrationPostgres(t *testing.T) {
 	var beforeDigest, beforeIdempotency string
 	if err := refusePool.QueryRow(ctx, `SELECT preview_digest,idempotency_key FROM agent_policy_template_assignments ORDER BY id LIMIT 1`).Scan(&beforeDigest, &beforeIdempotency); err != nil {
 		t.Fatal(err)
+	}
+	if err := db.DownOne(refuseDSN); err != nil {
+		t.Fatalf("0100 empty rollback before 0097 refusal: %v", err)
+	}
+	if err := db.DownOne(refuseDSN); err != nil {
+		t.Fatalf("0099 empty rollback before 0097 refusal: %v", err)
 	}
 	if err := db.DownOne(refuseDSN); err != nil {
 		t.Fatalf("0098 empty rollback before 0097 refusal: %v", err)
