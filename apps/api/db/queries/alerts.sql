@@ -59,6 +59,40 @@ ORDER BY next_attempt_at, id
 LIMIT $2
 FOR UPDATE SKIP LOCKED;
 
+-- name: ClaimDueAlertDeliveries :many
+-- lint:cross-org — the leader-gated dispatcher claims only its bounded due
+-- batch, atomically moving each delivery out of the pending queue.
+WITH due AS (
+    SELECT alert_deliveries.id
+    FROM alert_deliveries
+    WHERE alert_deliveries.state = 'pending' AND alert_deliveries.next_attempt_at <= $1
+    ORDER BY alert_deliveries.next_attempt_at, alert_deliveries.id
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE alert_deliveries d
+SET state = 'delivering', attempts = d.attempts + 1
+FROM due
+WHERE d.id = due.id
+RETURNING d.*;
+
+-- name: GetAlertDestinationForDelivery :one
+SELECT d.*
+FROM alert_destinations d
+JOIN alert_deliveries l
+  ON l.org_id = d.org_id AND l.destination_id = d.id
+WHERE l.id = $1 AND l.org_id = $2 AND d.archived_at IS NULL;
+
+-- name: FinishAlertDelivery :one
+UPDATE alert_deliveries
+SET state = $3,
+    next_attempt_at = $4,
+    last_error = $5,
+    sent_at = CASE WHEN $3 = 'sent' THEN now() ELSE sent_at END,
+    failed_at = CASE WHEN $3 = 'failed' THEN now() ELSE failed_at END
+WHERE id = $1 AND org_id = $2 AND state = 'delivering'
+RETURNING *;
+
 -- name: CreateAlertDeliveryAttempt :one
 INSERT INTO alert_delivery_attempts (
     org_id, delivery_id, attempt, outcome, response_status, error

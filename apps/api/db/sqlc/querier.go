@@ -74,6 +74,9 @@ type Querier interface {
 	BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) (int64, error)
 	CancelAgentAccessRequest(ctx context.Context, arg CancelAgentAccessRequestParams) (AgentAccessRequest, error)
 	ChangeMemberRole(ctx context.Context, arg ChangeMemberRoleParams) (Membership, error)
+	// lint:cross-org — the leader-gated dispatcher claims only its bounded due
+	// batch, atomically moving each delivery out of the pending queue.
+	ClaimDueAlertDeliveries(ctx context.Context, arg ClaimDueAlertDeliveriesParams) ([]AlertDelivery, error)
 	// lint:cross-org — the DOWNGRADE-RELEASE sweep (the enforcement mirror of
 	// unlock-then-opt-in): when the device-health feature is OFF (open build), NO
 	// device may remain posture-blocked — disabling a feature must RELEASE its
@@ -470,6 +473,7 @@ type Querier interface {
 	// resolves to extended-OR-(0 rows -> 409 grant_lapsed), never torn. Only a TEMPORARY
 	// (expires_at NOT NULL), still-LIVE grant can be extended.
 	ExtendPolicyRule(ctx context.Context, arg ExtendPolicyRuleParams) (PolicyRule, error)
+	FinishAlertDelivery(ctx context.Context, arg FinishAlertDeliveryParams) (AlertDelivery, error)
 	// Returns a fresh time-ordered UUIDv7 from the database. Demonstrates the sqlc
 	// pipeline and the uuid override; callers may also generate v7 ids in Go.
 	GenerateID(ctx context.Context) (uuid.UUID, error)
@@ -496,6 +500,7 @@ type Querier interface {
 	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
 	GetAgentScopedAuthority(ctx context.Context, arg GetAgentScopedAuthorityParams) (GetAgentScopedAuthorityRow, error)
 	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
+	GetAlertDestinationForDelivery(ctx context.Context, arg GetAlertDestinationForDeliveryParams) (AlertDestination, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
 	// credential_expired UX line).
 	GetCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)

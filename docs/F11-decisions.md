@@ -126,6 +126,12 @@ leader gate — the same pattern as the flow-log retention sweep (`main.go:499-5
 At-least-once with exponential backoff and a bounded attempt count, then dead-letter to `failed` where the
 UI can see it.
 
+**Retry bound disposition — LOCKED:** one initial attempt plus four retries (five attempts total), with
+delays of **1 minute, 2 minutes, 4 minutes, and 8 minutes**. The fifth failed attempt is terminal
+`failed`; it is retained with its append-only attempt history for the delivery UI. This is intentionally
+fixed for F11 rather than a new per-org tuning surface: alerting needs a predictable, bounded recovery
+path before it needs delivery-policy administration.
+
 Rejected: Redis/NATS/river queue. New infrastructure for a workload measured in messages per hour.
 
 Rejected: fire-and-forget from the request goroutine. A webhook that is down during a deploy would lose
