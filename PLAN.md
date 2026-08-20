@@ -63,7 +63,7 @@ expected to be rewritten before merge.
 ## Story status (re-entry checkpoint)
 **Update this on every merge (one line) — a stale pointer re-enters a fresh session in the wrong epic.**
 
-**AUTHORITATIVE CURRENT (2026-08-17): F10 JUST-IN-TIME AGENT ACCESS — PR #18, content tip `f54a269` (`f54a269` pre-merge). Product code, exact local gates and the combined AWS DEV box-walk are complete; the story is awaiting exact required GitHub checks and explicit in-session merge sign-off.**
+**AUTHORITATIVE CURRENT (2026-08-20): F11 ALERTS, WEBHOOKS AND SIEM — PR #23, content tip `905ef66` (`905ef66` pre-merge). Product code, multi-finder review, targeted re-review, schema/build/web gates and the AWS DEV Slack + generic-webhook walk are complete. The real PagerDuty-key wire leg remains a NAMED SUBSTITUTE, never claimed satisfied; the story is awaiting exact required GitHub checks and explicit in-session merge sign-off.**
 
 **AUTHORITATIVE CURRENT (2026-08-13): PRIVATE KUBERNETES SERVICE HANDOFF — PR #127, content tip `ed657460` (`a5aff92b` pre-merge). Adds selected in-cluster connector handoff, private DNS/VIPs, direct ready-endpoint DNAT, CNI-safe forwarding, persistent connector identity, and the deterministic client return route proven by the rc31 EKS walk. Earlier `CURRENT` entries below are historical.**
 
