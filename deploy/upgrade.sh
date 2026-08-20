@@ -155,6 +155,46 @@ set_dotenv() {
   ' "$ENV_FILE" > "$_tmp"
   mv "$_tmp" "$ENV_FILE"
 }
+public_url_scheme() {
+  case "$1" in https://*) printf '%s' https ;; http://*) printf '%s' http ;; *) return 1 ;; esac
+}
+public_url_is_ip() {
+  _authority=${1#*://}
+  case "$_authority" in
+    \[*\]*) _host=${_authority%%]*}; _host="${_host}]" ;;
+    *) _host=${_authority%%:*} ;;
+  esac
+  case "$_host" in
+    \[*:*\]) return 0 ;;
+    *.*.*.*) case "$_host" in *[!0-9.]* | .* | *.) return 1 ;; esac; return 0 ;;
+  esac
+  return 1
+}
+ensure_edge_config() {
+  # Upgrading a pre-edge install must not fail Compose interpolation. Preserve
+  # an explicit operator choice; derive a conservative mode only when absent.
+  grep -Fq 'TUNNEX_EDGE_LISTEN' "$COMPOSE" || return 0
+  _base=$(dotenv_value APP_BASE_URL)
+  _mode=$(dotenv_value TUNNEX_TLS_MODE)
+  _scheme=$(public_url_scheme "$_base") || {
+    echo "error: upgrade blocked; APP_BASE_URL must be an http:// or https:// URL before the public edge can be configured" >&2
+    exit 13
+  }
+  if [ -z "$_mode" ]; then
+    case "$_scheme" in
+      http) _mode=http ;;
+      https) if public_url_is_ip "$_base"; then _mode=terminated; else _mode=direct; fi ;;
+    esac
+    set_dotenv TUNNEX_TLS_MODE "$_mode"
+  fi
+  case "$_mode" in
+    direct) _listen=$_base ;;
+    terminated|http) _listen=http://:80 ;;
+    *) echo "error: upgrade blocked; TUNNEX_TLS_MODE must be direct, terminated, or http" >&2; exit 13 ;;
+  esac
+  set_dotenv TUNNEX_EDGE_LISTEN "$_listen"
+  case "$_scheme" in https) set_dotenv TUNNEX_COOKIE_SECURE true ;; http) set_dotenv TUNNEX_COOKIE_SECURE false ;; esac
+}
 SOURCE_SHA=$(release_value TUNNEX_RELEASE_SOURCE_SHA)
 VERSION=$(release_value TUNNEX_RELEASE_VERSION)
 curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/tunnex.yml" -o "$TMPDIR/tunnex.yml" || {
@@ -183,6 +223,7 @@ mv "$TMPDIR/release.json" "$DIR/release.json"
 # leave it at 0600, but the API runs as an unprivileged container user and must be
 # able to verify this read-only bind mount at every boot.
 chmod 0644 "$DIR/release.json"
+ensure_edge_config
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
 compose pull
 compose up -d

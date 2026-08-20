@@ -50,6 +50,9 @@ services:
       # The public URL users + email links resolve. install.sh writes it (a reachable address —
       # never localhost) so verify/reset/invite links work off-box.
       APP_BASE_URL: ${APP_BASE_URL:?set by install.sh}
+      # Derived from APP_BASE_URL by the installer: HTTPS must not create a
+      # transport-insecure browser session cookie.
+      TUNNEX_COOKIE_SECURE: ${TUNNEX_COOKIE_SECURE:-false}
       TUNNEX_GATEWAY_CONTROL_URL: ${TUNNEX_GATEWAY_CONTROL_URL:-}
       TUNNEX_NODE_AGENT_IMAGE: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
       TUNNEX_IPV6_POOL_CIDR: ${TUNNEX_IPV6_POOL_CIDR:-}
@@ -91,13 +94,31 @@ services:
   nginx:
     image: ${TUNNEX_NGINX_IMAGE:-ghcr.io/tunnexio/tunnex-nginx:${TUNNEX_VERSION:-latest}}
     restart: unless-stopped
-    ports:
-      - "80:8080" # public HTTP (front a TLS terminator / reverse proxy for HTTPS in production)
     depends_on:
       api:
         condition: service_healthy
       web:
         condition: service_healthy
+
+  # Provider-neutral public edge. It owns host HTTP/HTTPS and proxies to the
+  # internal app edge. `direct` serves the configured public URL and manages
+  # its certificate; terminated/http modes deliberately listen only on HTTP.
+  caddy:
+    # Multi-architecture Caddy 2 Alpine manifest. Pin the external edge image
+    # just like the signed Tunnex images; a future `2-alpine` tag move must not
+    # silently change a customer's public TLS terminator.
+    image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    restart: unless-stopped
+    command: ["caddy", "reverse-proxy", "--from", "${TUNNEX_EDGE_LISTEN:?set by install.sh}", "--to", "nginx:8080"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      nginx:
+        condition: service_started
 
   node-agent:
     image: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
@@ -133,3 +154,5 @@ volumes:
   redis_data:
   tunnex_secrets:
   tunnex_node_state:
+  caddy_data:
+  caddy_config:

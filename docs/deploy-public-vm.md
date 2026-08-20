@@ -24,7 +24,7 @@ group is a separate layer.
 
 | Port | Proto | Why |
 |---|---|---|
-| 80 (and 443 if TLS) | TCP | dashboard + API + CLI login |
+| 80/tcp + 443/tcp (direct TLS) | TCP | dashboard + API + CLI login; Caddy obtains/renews the certificate |
 | **51820** | **UDP** | **WireGuard data plane — the tunnel itself** |
 
 The WireGuard port is **UDP**, not TCP — a TCP-only rule silently blocks every
@@ -44,9 +44,9 @@ Set these before first boot:
 # in the dashboard but never hands-shakes: the .conf points at an unreachable host.
 TUNNEX_NODE_ENDPOINT=YOUR_PUBLIC_IP:51820
 
-# Public base URL for the dashboard, emailed links, and the CLI. Use https once
-# TLS is on (below).
-APP_BASE_URL=http://YOUR_PUBLIC_IP
+# Public base URL for the dashboard, emailed links, and the CLI. The public
+# installer sets this and the edge mode for you.
+APP_BASE_URL=https://vpn.example.com
 
 # Real SMTP so verification / reset emails actually send.
 # SMTP_HOST=... SMTP_PORT=... SMTP_FROM=... SMTP_USERNAME=... SMTP_PASSWORD=...
@@ -70,12 +70,15 @@ token (next step).
 
 ## 4. TLS + secure cookies (before real use)
 
-For a throwaway test, `http://` works. For anything real:
+The public installer includes Caddy as the VM edge. For a direct DNS hostname
+with `https://`, it obtains and renews the origin certificate and sets secure
+cookies automatically. This works behind Cloudflare Full (strict) as well as
+without Cloudflare.
 
-- Terminate TLS at nginx (real cert; put the domain in `APP_BASE_URL=https://...`).
-- Set `TUNNEX_COOKIE_SECURE=true` so the session cookie is only sent over HTTPS.
-  Leaving it `false` on a public host means session cookies can traverse plain
-  HTTP — do not ship that.
+For AWS ALB/NLB or another proxy that terminates TLS before this VM, choose
+`TUNNEX_TLS_MODE=terminated`: the public URL remains HTTPS but the VM receives
+HTTP on port 80, so no redirect loop occurs. For a temporary public-IP test,
+use `http://YOUR_PUBLIC_IP`; direct `https://IP` is intentionally refused.
 
 ## 5. Create the org, enroll the gateway, connect
 
