@@ -149,6 +149,9 @@ func resolve(ctx context.Context, resolver Resolver, host string) ([]netip.Addr,
 	}
 	addrs, err := resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(addrs) == 0 {
+		if err != nil {
+			return nil, fmt.Errorf("%w: resolve destination: %w", ErrDestinationDNS, err)
+		}
 		return nil, fmt.Errorf("%w: resolve destination", ErrDestinationDNS)
 	}
 	for i := range addrs {

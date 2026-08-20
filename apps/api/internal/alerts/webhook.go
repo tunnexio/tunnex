@@ -47,12 +47,12 @@ func deliveryFailureCode(err error, status int32) string {
 	if errors.Is(err, safedial.ErrUnsafeDestination) {
 		return "blocked"
 	}
-	if errors.Is(err, safedial.ErrDestinationDNS) {
-		return "dns"
-	}
 	var networkError net.Error
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkError) && networkError.Timeout()) {
 		return "timeout"
+	}
+	if errors.Is(err, safedial.ErrDestinationDNS) {
+		return "dns"
 	}
 	return "network"
 }
@@ -116,7 +116,7 @@ func (s *WebhookSender) sendEmail(ctx context.Context, recipient string, payload
 	if err := s.mailer.Send(ctx, mail.Message{
 		To: recipient, Subject: "Tunnex alert", Text: message,
 	}); err != nil {
-		return 0, stableDeliveryError("network")
+		return 0, stableDeliveryError(deliveryFailureCode(err, 0))
 	}
 	return 0, nil
 }

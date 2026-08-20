@@ -632,7 +632,7 @@ func main() {
 	alertDispatcher := alerts.NewDispatcher(sqlc.New(pool), alerts.NewWebhookSender(sealer, mailer))
 	alertConditions := alerts.NewConditionScanner(alerts.NewPostgresConditionStore(pool), alertPublisher)
 	go func() {
-		t := time.NewTicker(30 * time.Second)
+		t := time.NewTicker(alerts.DispatchInterval)
 		defer t.Stop()
 		for {
 			select {

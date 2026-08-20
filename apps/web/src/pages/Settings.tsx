@@ -797,12 +797,12 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
       actionLabel="Manage"
       dialogTitle="Alert destinations"
       disabled={!canEdit || busy}
-      error={formError}
       data-testid="alert-destinations"
       actions={(close) => <Button disabled={!canEdit || busy} onClick={() => void create(close)}>{busy ? "Saving…" : "Add destination"}</Button>}
     >
       {() => <div className="space-y-4">
         {loadError ? <ErrorText>{loadError}</ErrorText> : null}
+		{formError ? <ErrorText>{formError}</ErrorText> : null}
         {active.length > 0 ? <div className="flex flex-wrap items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] p-3" data-testid="alert-destination-bulk-actions">
           <label className="flex items-center gap-2 text-sm text-slate-300">
             <input aria-label="Select all alert destinations" type="checkbox" checked={allSelected} onChange={toggleAllDestinations} disabled={!canEdit || busy} />

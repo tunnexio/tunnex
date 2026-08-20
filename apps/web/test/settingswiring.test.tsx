@@ -437,9 +437,10 @@ describe("Settings — F11 alert delivery", () => {
     withAuth(<Settings />);
     await openSection(/Features/);
     fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    const dialog = screen.getByRole("dialog", { name: "Alert destinations" });
     fireEvent.click(screen.getByLabelText("Select Operations"));
     fireEvent.click(screen.getByRole("button", { name: "Test selected (1)" }));
-    expect((await screen.findAllByText("Test failed: Operations (http_error, HTTP 503)." )).length).toBeGreaterThan(0);
+    expect(await within(dialog).findByText("Test failed: Operations (http_error, HTTP 503)." )).toBeTruthy();
     expect(screen.getByText(/Agent offline · failed · attempt 4/)).toBeTruthy();
   });
 });

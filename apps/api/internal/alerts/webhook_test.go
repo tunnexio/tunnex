@@ -12,11 +12,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts/safedial"
+	"github.com/tunnexio/tunnex/apps/api/internal/mail"
 )
 
 type opener string
 
 func (o opener) Open(_ string) ([]byte, error) { return []byte(o), nil }
+
+type timeoutMailer struct{}
+
+func (timeoutMailer) Send(context.Context, mail.Message) error { return context.DeadlineExceeded }
+func (timeoutMailer) Kind() string                             { return "timeout-test" }
 
 func TestWebhookSenderUsesSealedEndpointAndJSON(t *testing.T) {
 	t.Parallel()
@@ -125,5 +132,18 @@ func TestWebhookSenderNeverReturnsSecretURLOnNetworkFailure(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), secretURL) || strings.Contains(err.Error(), "secret-token") {
 		t.Fatalf("network error disclosed endpoint: %v", err)
+	}
+}
+
+func TestDeliveryTimeoutsKeepTheirStableClassification(t *testing.T) {
+	t.Parallel()
+	dnsTimeout := errors.Join(safedial.ErrDestinationDNS, context.DeadlineExceeded)
+	if got := deliveryFailureCode(dnsTimeout, 0); got != "timeout" {
+		t.Fatalf("DNS timeout classified as %q, want timeout", got)
+	}
+	sender := NewWebhookSender(opener("ops@example.test"), timeoutMailer{})
+	_, err := sender.Send(context.Background(), sqlc.AlertDestination{Kind: "email", EndpointSealed: []byte("sealed")}, []byte(`{}`))
+	if err == nil || err.Error() != "alert delivery timeout" {
+		t.Fatalf("email timeout error=%v, want stable timeout", err)
 	}
 }

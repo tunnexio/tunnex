@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	MaxAttempts = 5
-	BatchSize   = 1
-	ClaimLease  = time.Minute
+	MaxAttempts      = 5
+	BatchSize        = 1
+	ClaimLease       = time.Minute
+	DispatchInterval = time.Second
 )
 
 // RetryAfter returns the fixed F11 retry delays after a failed attempt. A
