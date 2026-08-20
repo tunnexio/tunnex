@@ -49,6 +49,9 @@ jobs:
       - name: Signed update catalog contract
         run: sh deploy/signed-main-release-contract_test.sh
 
+      - name: Host upgrade contract
+        run: sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
+
       - name: E2E heading locator contract
         run: node e2e/check-heading-locators.mjs
 

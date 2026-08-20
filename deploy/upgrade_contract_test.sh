@@ -38,12 +38,25 @@ cat >"$TMP/releaseverify" <<'EOF'
 [ "$1" = "-manifest" ]
 [ "$3" = "-public-key" ]
 [ "$4" = "from-installed-config" ]
+if [ "${5:-}" = "-print-env" ]; then
+  cat <<'ENV'
+TUNNEX_RELEASE_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+TUNNEX_RELEASE_VERSION=v9.9.9
+TUNNEX_RELEASE_SEQUENCE=99
+ENV
+fi
 EOF
 chmod 755 "$TMP/releaseverify"
 
 output=$(cd "$TMP/tunnex" && PATH="$TMP:$PATH" MOCK_CATALOG="$TMP/catalog.json" TUNNEX_RELEASEVERIFY="$TMP/releaseverify" ./upgrade.sh)
 printf '%s\n' "$output" | grep -Fq 'dry run: re-run with --apply'
 printf '%s\n' "$output" | grep -Fq 'release verified'
+
+if (cd "$TMP/tunnex" && PATH="$TMP:$PATH" MOCK_CATALOG="$TMP/catalog.json" TUNNEX_RELEASEVERIFY="$TMP/releaseverify" ./upgrade.sh --expected-source-sha bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) 2>"$TMP/pin-error"; then
+  echo 'expected an approved-release mismatch to fail' >&2
+  exit 1
+fi
+grep -Fq 'no longer matches the release approved in the UI' "$TMP/pin-error"
 
 if (cd "$TMP/tunnex" && PATH="$TMP:$PATH" MOCK_CATALOG="$TMP/catalog.json" TUNNEX_RELEASEVERIFY="$TMP/releaseverify" ./upgrade.sh --public-key '') 2>"$TMP/error"; then
   echo 'expected empty explicit key to fail' >&2

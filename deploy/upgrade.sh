@@ -42,20 +42,50 @@ PROJECT=${TUNNEX_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-}}
 VERIFY=${TUNNEX_RELEASEVERIFY:-}
 APPLY=false
 AIRGAP=
-usage() { echo "usage: upgrade.sh [--manifest FILE] [--public-key KEY] [--apply] [--airgap DIR]" >&2; exit 2; }
+EXPECTED_SOURCE_SHA=${TUNNEX_UPGRADE_EXPECTED_SOURCE_SHA:-}
+EXPECTED_SEQUENCE=${TUNNEX_UPGRADE_EXPECTED_SEQUENCE:-}
+STATUS_FILE=${TUNNEX_UPGRADE_STATUS_FILE:-}
+REQUEST_ID=${TUNNEX_UPGRADE_REQUEST_ID:-manual}
+TARGET_SOURCE_SHA=
+TARGET_VERSION=
+BACKUP_DUMP=
+BACKUP_MANIFEST=
+usage() { echo "usage: upgrade.sh [--manifest FILE] [--public-key KEY] [--apply] [--airgap DIR] [--expected-source-sha SHA] [--expected-sequence N]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --manifest) MANIFEST=${2:-}; MANIFEST_EXPLICIT=true; shift 2;;
     --public-key) PUBLIC_KEY=${2:-}; shift 2;;
     --airgap) AIRGAP=${2:-}; shift 2;;
+    --expected-source-sha) EXPECTED_SOURCE_SHA=${2:-}; shift 2;;
+    --expected-sequence) EXPECTED_SEQUENCE=${2:-}; shift 2;;
     --apply) APPLY=true; shift;;
     *) usage;;
   esac
 done
+case "$EXPECTED_SOURCE_SHA" in ''|*[!0-9a-f]*) [ -z "$EXPECTED_SOURCE_SHA" ] || usage ;; esac
+[ -z "$EXPECTED_SOURCE_SHA" ] || [ "${#EXPECTED_SOURCE_SHA}" -eq 40 ] || usage
+case "$EXPECTED_SEQUENCE" in ''|*[!0-9]*) [ -z "$EXPECTED_SEQUENCE" ] || usage ;; esac
 [ -n "$PUBLIC_KEY" ] || { echo "error: trusted release public key is not configured in the deployment environment" >&2; exit 1; }
 [ -f "$COMPOSE" ] && [ -f "$ENV_FILE" ] || { echo "error: deployment files not found" >&2; exit 1; }
 TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
+write_status() {
+  [ -n "$STATUS_FILE" ] || return 0
+  _state=$1 _reason=${2:-} _next="${STATUS_FILE}.next"
+  umask 077
+  {
+    printf 'request_id=%s\n' "$REQUEST_ID"
+    printf 'state=%s\n' "$_state"
+    printf 'target_source_sha=%s\n' "$TARGET_SOURCE_SHA"
+    printf 'target_version=%s\n' "$TARGET_VERSION"
+    printf 'backup_dump=%s\n' "$BACKUP_DUMP"
+    printf 'backup_manifest=%s\n' "$BACKUP_MANIFEST"
+    printf 'reason_code=%s\n' "$_reason"
+    printf 'updated_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  } >"$_next"
+  chmod 0644 "$_next"
+  mv "$_next" "$STATUS_FILE"
+}
 if [ "$MANIFEST_EXPLICIT" = true ]; then
   [ -n "$MANIFEST" ] && [ -r "$MANIFEST" ] || { echo "error: signed manifest is required" >&2; exit 1; }
 else
@@ -124,18 +154,6 @@ healthcheck() {
   }
 }
 verify_release
-if [ -n "$AIRGAP" ]; then
-  [ -d "$AIRGAP" ] || { echo "error: air-gap bundle directory not found" >&2; exit 1; }
-  for image in "$AIRGAP"/*.tar; do [ -f "$image" ] || continue; docker load -i "$image"; done
-fi
-echo "release verified; preflight and backup are required before mutation"
-compose_prefix="docker compose"
-[ -z "$PROJECT" ] || compose_prefix="$compose_prefix --project-name $PROJECT"
-echo "  $compose_prefix --env-file $ENV_FILE -f $COMPOSE exec -T api backupctl manifest pre-upgrade > pre-upgrade.manifest.json"
-echo "  $compose_prefix --env-file $ENV_FILE -f $COMPOSE exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight"
-[ "$APPLY" = true ] || { echo "dry run: re-run with --apply after reviewing the commands above"; exit 0; }
-compose exec -T api backupctl manifest pre-upgrade > pre-upgrade.manifest.json
-compose exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight
 RELEASE_ENV=$(verify_release_env)
 release_value() {
   _key=$1
@@ -143,6 +161,67 @@ release_value() {
   [ -n "$_value" ] || { echo "error: signed release verifier omitted ${_key}" >&2; exit 13; }
   printf '%s' "$_value"
 }
+TARGET_SOURCE_SHA=$(release_value TUNNEX_RELEASE_SOURCE_SHA)
+TARGET_VERSION=$(release_value TUNNEX_RELEASE_VERSION)
+TARGET_SEQUENCE=$(release_value TUNNEX_RELEASE_SEQUENCE)
+[ -z "$EXPECTED_SOURCE_SHA" ] || [ "$TARGET_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA" ] || {
+  write_status failed approved_release_changed
+  echo "error: update blocked; the signed release no longer matches the release approved in the UI" >&2
+  exit 13
+}
+[ -z "$EXPECTED_SEQUENCE" ] || [ "$TARGET_SEQUENCE" = "$EXPECTED_SEQUENCE" ] || {
+  write_status failed approved_release_changed
+  echo "error: update blocked; the signed release sequence no longer matches the release approved in the UI" >&2
+  exit 13
+}
+write_status verifying
+if [ -n "$AIRGAP" ]; then
+  [ -d "$AIRGAP" ] || { echo "error: air-gap bundle directory not found" >&2; exit 1; }
+  for image in "$AIRGAP"/*.tar; do [ -f "$image" ] || continue; docker load -i "$image"; done
+fi
+echo "release verified; preflight and backup are required before mutation"
+compose_prefix="docker compose"
+[ -z "$PROJECT" ] || compose_prefix="$compose_prefix --project-name $PROJECT"
+echo "  a PostgreSQL dump and matching key-bound manifest will be retained under $DIR/backups"
+echo "  $compose_prefix --env-file $ENV_FILE -f $COMPOSE exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight"
+[ "$APPLY" = true ] || { echo "dry run: re-run with --apply after reviewing the commands above"; exit 0; }
+BACKUP_DIR=${TUNNEX_UPGRADE_BACKUP_DIR:-$DIR/backups}
+umask 077
+mkdir -p "$BACKUP_DIR"
+chmod 0700 "$BACKUP_DIR"
+BACKUP_STAMP=$(date -u '+%Y%m%dT%H%M%SZ')
+BACKUP_BASE="tunnex-${BACKUP_STAMP}-${REQUEST_ID}"
+BACKUP_DUMP="$BACKUP_DIR/${BACKUP_BASE}.dump"
+BACKUP_MANIFEST="$BACKUP_DIR/${BACKUP_BASE}.manifest.json"
+write_status backing_up
+compose exec -T postgres sh -c 'pg_dump --format=custom --no-owner --username "$POSTGRES_USER" "$POSTGRES_DB"' >"${BACKUP_DUMP}.next" || {
+  rm -f "${BACKUP_DUMP}.next"
+  write_status failed backup_failed
+  echo "error: upgrade blocked; database backup failed" >&2
+  exit 13
+}
+[ -s "${BACKUP_DUMP}.next" ] || {
+  rm -f "${BACKUP_DUMP}.next"
+  write_status failed backup_failed
+  echo "error: upgrade blocked; database backup was empty" >&2
+  exit 13
+}
+mv "${BACKUP_DUMP}.next" "$BACKUP_DUMP"
+compose exec -T api backupctl manifest pre-upgrade >"${BACKUP_MANIFEST}.next" || {
+  rm -f "${BACKUP_MANIFEST}.next"
+  write_status failed backup_failed
+  echo "error: upgrade blocked; backup manifest creation failed" >&2
+  exit 13
+}
+compose exec -T api backupctl verify <"${BACKUP_MANIFEST}.next" >/dev/null || {
+  rm -f "${BACKUP_MANIFEST}.next"
+  write_status failed backup_verification_failed
+  echo "error: upgrade blocked; backup manifest verification failed" >&2
+  exit 13
+}
+mv "${BACKUP_MANIFEST}.next" "$BACKUP_MANIFEST"
+write_status preflight
+compose exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight
 set_dotenv() {
   _key=$1 _value=$2 _tmp="$ENV_FILE.next"
   # Values originate in a verified descriptor. Reject newlines anyway: dotenv is
@@ -225,12 +304,17 @@ mv "$TMPDIR/release.json" "$DIR/release.json"
 chmod 0644 "$DIR/release.json"
 ensure_edge_config
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
+write_status pulling
 compose pull
+write_status restarting
 compose up -d
 compose ps --all
+write_status health_check
 if ! healthcheck; then
+  write_status failed health_check_failed
   echo "error: upgrade health check failed; restore the verified pre-upgrade backup before retrying" >&2
   exit 14
 fi
+write_status healthy
 echo "upgrade health check passed"
 echo "upgrade applied; retain the backup manifest and dump for forward-only rollback"

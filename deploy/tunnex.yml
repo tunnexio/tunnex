@@ -79,6 +79,10 @@ services:
     volumes:
       - tunnex_secrets:/var/lib/tunnex/secrets # master key / JWT / session — auto-generated on first boot (S0.3)
       - ./release.json:/var/lib/tunnex/release.json:ro
+      # The API can request one fixed-purpose host upgrade and read sanitized
+      # progress. It never receives the Docker socket or a host command channel.
+      - ./upgrade-state/requests:/var/lib/tunnex/upgrade/requests
+      - ./upgrade-state/status:/var/lib/tunnex/upgrade/status:ro
     ports:
       - "8443:8443" # mTLS agent control channel (agents dial directly)
     depends_on:

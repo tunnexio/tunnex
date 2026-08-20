@@ -25,6 +25,9 @@ grep -Fq 'images pinned by digest' "$installer"
 grep -Fq 'chmod 0644 release.json' "$installer"
 grep -Fq 'deploy/upgrade.sh" -o upgrade.sh.next' "$installer"
 grep -Fq 'chmod 0755 upgrade.sh' "$installer"
+grep -Fq 'deploy/upgrade-runner.sh" -o upgrade-runner.sh.next' "$installer"
+grep -Fq 'chmod 0755 upgrade-runner.sh' "$installer"
+grep -Fq 'TUNNEX_COMPOSE_SHA256=$(file_sha256 tunnex.yml)' "$installer"
 
 for variable in TUNNEX_RELEASE_MANIFEST_PATH TUNNEX_RELEASE_PUBLIC_KEY TUNNEX_RELEASE_SEQUENCE TUNNEX_RELEASE_VERSION TUNNEX_RELEASE_SOURCE_SHA TUNNEX_RELEASE_CATALOG_URL TUNNEX_RELEASE_UPDATE_CHECK; do
   grep -Fq "${variable}: \${${variable}" "$ROOT/deploy/tunnex.yml"

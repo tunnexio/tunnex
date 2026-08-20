@@ -102,8 +102,13 @@ for required in \
 	'/commits/${VERSION}' \
 	'${RAW}/${SOURCE_REF}/deploy/tunnex.yml' \
 	'${RAW}/${SOURCE_REF}/deploy/upgrade.sh' \
+	'${RAW}/${SOURCE_REF}/deploy/upgrade-runner.sh' \
 	'sh -n upgrade.sh.next' \
+	'sh -n upgrade-runner.sh.next' \
 	'chmod 0755 upgrade.sh' \
+	'chmod 0755 upgrade-runner.sh' \
+	'systemctl enable --now tunnex-upgrade-runner.path' \
+	'TUNNEX_COMPOSE_SHA256=$(file_sha256 tunnex.yml)' \
 	'RELEASE_DESCRIPTOR_TAG="$VERSION"' \
 	'expected-source-sha "$SOURCE_REF"' \
 	'images pinned by digest' \
@@ -123,5 +128,9 @@ for variable in TUNNEX_ADMIN_EMAIL SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USERNAME S
 	grep -Fq "\${${variable}" "$ROOT/deploy/tunnex.yml" ||
 		fail "deploy/tunnex.yml does not consume ${variable}"
 done
+grep -Fq './upgrade-state/requests:/var/lib/tunnex/upgrade/requests' "$ROOT/deploy/tunnex.yml" ||
+	fail "compose does not mount the bounded upgrade request directory"
+grep -Fq './upgrade-state/status:/var/lib/tunnex/upgrade/status:ro' "$ROOT/deploy/tunnex.yml" ||
+	fail "compose does not mount upgrade status read-only"
 
 printf 'installer provenance contract: PASS\n'
