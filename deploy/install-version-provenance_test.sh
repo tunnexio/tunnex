@@ -21,6 +21,35 @@ extract_resolver "$ROOT/deploy/get.sh" >"$TMP/get.resolver"
 cmp -s "$TMP/install.resolver" "$TMP/get.resolver" ||
 	fail "install.sh and get.sh version resolvers drifted"
 
+# ⛔ THE DISPLAY RESOLVER IS DUPLICATED FOR THE SAME REASON THE VERSION RESOLVER IS — each installer must
+# be a single self-contained file an operator can read before running it — so it needs the same guard. An
+# unguarded copy is the one that drifts, and a drifted VERSION LABEL is worse than no label: two operators
+# comparing notes would be told different things about the same build.
+extract_display() {
+	sed -n '/^# BEGIN DISPLAY VERSION RESOLVER/,/^# END DISPLAY VERSION RESOLVER/p' "$1"
+}
+
+extract_display "$ROOT/deploy/install.sh" >"$TMP/install.display"
+extract_display "$ROOT/deploy/get.sh" >"$TMP/get.display"
+[ -s "$TMP/install.display" ] || fail "install.sh display-version block is missing"
+[ -s "$TMP/get.display" ] || fail "get.sh display-version block is missing"
+cmp -s "$TMP/install.display" "$TMP/get.display" ||
+	fail "install.sh and get.sh display-version resolvers drifted"
+
+# ⚠ DISPLAY MUST NOT DECIDE WHAT GETS PULLED. The label is cosmetic; the image tag is not. If the display
+# block ever assigns VERSION or SOURCE_REF, a cosmetic change silently becomes a change of which images an
+# install downloads — the exact confusion this split exists to prevent.
+grep -qE '^[[:space:]]*(VERSION|SOURCE_REF|SOURCE_COMMIT)=' "$TMP/get.display" &&
+	fail "the display-version block assigns VERSION/SOURCE_REF/SOURCE_COMMIT — it must be display-only"
+
+# And both installers must actually SHOW the human label rather than the raw image tag.
+for installer in "$ROOT/deploy/install.sh" "$ROOT/deploy/get.sh"; do
+	grep -Fq 'resolve_display_version' "$installer" ||
+		fail "$(basename "$installer") never calls resolve_display_version"
+	grep -Fq 'DISPLAY_VERSION' "$installer" ||
+		fail "$(basename "$installer") never displays DISPLAY_VERSION"
+done
+
 die() {
 	printf '%s\n' "$*" >&2
 	exit 1

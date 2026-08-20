@@ -77,6 +77,76 @@ resolve_install_version() {
 }
 # END INSTALL VERSION RESOLVER
 
+# BEGIN DISPLAY VERSION RESOLVER — kept byte-identical in install.sh and get.sh; the regression test
+# asserts they have not drifted, the same guard the version resolver above carries.
+# resolve_display_version computes a HUMAN version for the transcript. Display only — it never touches
+# VERSION, SOURCE_REF or VERSION_PROVENANCE.
+#
+# ⛔ AND THAT SEPARATION IS THE WHOLE DESIGN. `VERSION` is the IMAGE TAG: changing it changes which images
+# get pulled. The resolver above is also pinned by install-version-provenance_test.sh, which asserts its
+# exact output triple and forbids curl on the override paths. So this lives OUTSIDE the tested block, adds
+# a new variable, and mutates nothing.
+#
+# ⚠ IT DELIBERATELY DOES NOT RESOLVE TO A RELEASE. The resolver's own comment records why: binding installs
+# to GitHub's latest-release pointer once served July's v0.3.0-rc5 during an August install. We still
+# install the newest fully-published green main build — we just say WHERE it sits relative to the last
+# release. "v0.1.2+7" is the honest statement that this is seven commits past v0.1.2, not v0.1.2 itself.
+#
+# Fail-soft by construction: any failure leaves DISPLAY_VERSION as the image tag, so a rate-limited or
+# offline GitHub API degrades the label and never blocks an install.
+resolve_display_version() {
+	DISPLAY_VERSION="$VERSION"
+
+	# An operator override is already human ("v1.2.3"); only the auto-resolved sha- tag needs translating.
+	case "$VERSION" in sha-*) ;; *) return 0 ;; esac
+	[ -n "$SOURCE_COMMIT" ] || return 0
+
+	_tags="$(curl -fsSL "${API}/tags?per_page=20" 2>/dev/null || true)"
+	[ -n "$_tags" ] || return 0
+
+	# Split on JSON punctuation so multiple names can be extracted with POSIX sed (no grep -o, no jq).
+	_names="$(printf '%s' "$_tags" | tr '{},' '\n\n\n' |
+		sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\(v[0-9][^"]*\)".*/\1/p')"
+	[ -n "$_names" ] || return 0
+
+	# ⚠ CAPPED AT 5 COMPARES. This is `git describe` without a clone: the nearest ancestor tag is the one
+	# with the smallest ahead_by, which needs one API call per candidate. The unauthenticated GitHub API
+	# allows 60 requests/hour per IP and an install already spends several, so the walk is bounded rather
+	# than exhaustive — a wrong-but-close label is a far smaller cost than an install that cannot start.
+	_best_tag=""
+	_best_ahead=""
+	_checked=0
+	for _t in $_names; do
+		[ "$_checked" -lt 5 ] || break
+		_checked=$((_checked + 1))
+		_cmp="$(curl -fsSL "${API}/compare/${_t}...${SOURCE_COMMIT}" 2>/dev/null || true)"
+		[ -n "$_cmp" ] || continue
+		_status="$(printf '%s' "$_cmp" | tr '{},' '\n\n\n' |
+			sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' | head -1)"
+		_ahead="$(printf '%s' "$_cmp" | tr '{},' '\n\n\n' |
+			sed -n 's/.*"ahead_by"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)"
+
+		case "$_status" in
+		identical)
+			# The build IS this release. Say so plainly, with no +0 suffix.
+			DISPLAY_VERSION="$_t"
+			return 0
+			;;
+		ahead)
+			[ -n "$_ahead" ] || continue
+			if [ -z "$_best_ahead" ] || [ "$_ahead" -lt "$_best_ahead" ]; then
+				_best_ahead="$_ahead"
+				_best_tag="$_t"
+			fi
+			;;
+		esac
+	done
+
+	[ -n "$_best_tag" ] && DISPLAY_VERSION="${_best_tag}+${_best_ahead}"
+	return 0
+}
+# END DISPLAY VERSION RESOLVER
+
 # step/ok — a progress line OVERWRITTEN by its own result, so the transcript reads as a checklist rather
 # than a log. \033[K clears the rest of the line: without it the tail of a longer previous message survives
 # underneath a shorter one.
@@ -632,9 +702,10 @@ report_ports() {
 API="https://api.github.com/repos/tunnexio/tunnex"
 RAW="https://raw.githubusercontent.com/tunnexio/tunnex"
 resolve_install_version
+resolve_display_version
 
 
-printf '  \033[2mInstalling %s\033[0m\n' "$VERSION"
+printf '  \033[2mInstalling %s\033[0m\n' "$DISPLAY_VERSION"
 printf '  \033[2mProvenance: %s\033[0m\n' "$VERSION_PROVENANCE"
 
 [ "$HAVE_TTY" = "1" ] || [ "$ASSUME_YES" = "1" ] || no_tty_help
@@ -704,7 +775,8 @@ fi
 
 # ── 3. THE SUMMARY — the one moment the whole decision is visible before anything happens ───────
 printf '\n  \033[1mReady to install\033[0m\n'
-printf '    Version          %s\n' "$VERSION"
+printf '    Version          %s\n' "$DISPLAY_VERSION"
+printf '    Image tag        %s\n' "$VERSION"
 printf '    Source commit    %s\n' "$SOURCE_REF"
 	printf '    Public URL       %s\n' "$BASE_URL"
 	printf '    Dashboard        %s/\n' "$BASE_URL"

@@ -614,6 +614,90 @@ jobs:
   # successful main or version-tag build. The web repository turns this event
   # into a normal reviewable PR; it never accepts an arbitrary branch or
   # mutable latest tag.
+  # ⛔ A PUBLISH THAT CANNOT BE PULLED IS NOT A PUBLISH, AND CI CALLED IT GREEN FOR A DAY.
+  #
+  # PR #17 moved the runtime images from ghcr.io/iotunnex/* to ghcr.io/tunnexio/*. The old packages were
+  # public; GHCR packages created fresh by Actions are PRIVATE BY DEFAULT, and visibility is a per-package
+  # setting nobody flipped. So every publish job succeeded, `latest` and `sha-<short>` were pushed, the
+  # installer site synced the new paths — and `curl https://get.tunnex.io | sh` died on a customer's EC2
+  # box with `unauthorized`, because the images it names are unreadable to the anonymous world.
+  #
+  # ⚠ THIS MUST BE ITS OWN JOB ON A FRESH RUNNER, and that is the entire point. The publish job has
+  # already run docker/login-action, so ANY check inside it authenticates as the pusher and passes while
+  # the public still cannot pull. A check that shares credentials with the thing it audits proves nothing.
+  # No login step here, no GITHUB_TOKEN, no Authorization header — the same view a stranger gets.
+  publish-pullable:
+    name: published images must be anonymously pullable
+    needs: [publish]
+    if: needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Anonymous manifest fetch for every image and tag we just published
+        run: |
+          set -euo pipefail
+
+          # Mirrors the publish job: images are ghcr.io/<repo>-<name>, tagged `latest` plus
+          # `sha-<short>` on the default branch (docker/metadata-action type=sha,format=short).
+          # The installer PINS the sha- tag, so checking only `latest` would miss the tag that matters.
+          # ⚠ THE TAG SET DEPENDS ON THE EVENT, and getting that wrong makes this gate fail on exactly
+          # the builds that matter most. A branch push publishes `latest` + `sha-<short>`; a v* TAG push
+          # publishes `latest` + the version (`v0.1.2`) and NO sha- tag. Checking a fixed list would have
+          # red-flagged every release build for a tag that was never pushed.
+          IMAGES="api web nginx node-agent migrate"
+          TAGS="latest"
+          case "$GITHUB_REF" in
+            refs/tags/*) TAGS="$TAGS ${GITHUB_REF#refs/tags/}" ;;
+            *)           TAGS="$TAGS sha-${GITHUB_SHA::7}" ;;
+          esac
+          echo ">> checking tags: $TAGS"
+          FAILED=0
+
+          for name in $IMAGES; do
+            REPO="${GITHUB_REPOSITORY}-${name}"   # e.g. tunnexio/tunnex-api
+
+            # GHCR hands anonymous callers a pull token ONLY for public packages. No token is the
+            # cleanest possible signal that a package is private — it fails before any manifest request.
+            TOKEN="$(curl -fsSL "https://ghcr.io/token?scope=repository:${REPO}:pull&service=ghcr.io" \
+                     | python3 -c 'import sys,json; print(json.load(sys.stdin).get("token",""))' || true)"
+            if [ -z "$TOKEN" ]; then
+              echo "::error::ghcr.io/${REPO} is NOT publicly pullable — GHCR granted no anonymous token. Set the package to Public: https://github.com/orgs/${GITHUB_REPOSITORY_OWNER}/packages"
+              FAILED=1
+              continue
+            fi
+
+            for tag in $TAGS; do
+              # Retried: GHCR can lag a few seconds behind a push, and a flaky gate teaches people to
+              # re-run it rather than read it.
+              code=""
+              for attempt in 1 2 3 4 5; do
+                code="$(curl -s -o /dev/null -w '%{http_code}' \
+                  -H "Authorization: Bearer ${TOKEN}" \
+                  -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json' \
+                  "https://ghcr.io/v2/${REPO}/manifests/${tag}")"
+                [ "$code" = "200" ] && break
+                sleep 6
+              done
+              if [ "$code" = "200" ]; then
+                echo "  ok    ghcr.io/${REPO}:${tag}"
+              else
+                echo "::error::ghcr.io/${REPO}:${tag} is not anonymously pullable (HTTP ${code})"
+                FAILED=1
+              fi
+            done
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo ""
+            echo "One or more published images cannot be pulled by an anonymous client."
+            echo "The installer (deploy/get.sh) pulls exactly these references with no credentials,"
+            echo "so this is what a user's install would do. Fix the package visibility, not this check."
+            exit 1
+          fi
+          echo ""
+          echo "All published images are anonymously pullable."
+
+
   sync-installer-site:
     if: >-
       github.event_name == 'push' &&
