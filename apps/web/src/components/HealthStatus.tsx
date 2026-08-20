@@ -9,12 +9,26 @@ type State = "checking" | "up" | "down";
 
 export function HealthStatus() {
   const [state, setState] = useState<State>("checking");
+  const [version, setVersion] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     api
       .GET("/healthz")
       .then(({ data, error }) => {
-        if (!cancelled) setState(data && !error ? "up" : "down");
+        if (cancelled) return;
+        if (!data || error) {
+          setState("down");
+          return;
+        }
+        setState("up");
+        void api
+          .GET("/api/v1/meta")
+          .then(({ data: meta }) => {
+            if (!cancelled) {
+              setVersion(meta?.upgrade?.current_version?.trim() || null);
+            }
+          })
+          .catch(() => undefined);
       })
       .catch(() => {
         if (!cancelled) setState("down");
@@ -25,7 +39,7 @@ export function HealthStatus() {
   }, []);
   const label = {
     checking: "checking…",
-    up: "v0.1.0",
+    up: version ?? "online",
     down: "unreachable",
   }[state];
   const tone = state === "up" ? "on" : state === "down" ? "warn" : "off";
