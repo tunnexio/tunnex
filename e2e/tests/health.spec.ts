@@ -9,12 +9,10 @@ test("SPA loads and reports the API operational", async ({ page }) => {
   await expect(
     page.getByRole("img", { name: /tunnex/i }).first(),
   ).toBeVisible();
-  // ⚠ THE HEALTHY LABEL IS NOW THE VERSION, NOT THE WORD "operational" — the pill renders `v0.1.0` in its
-  // up state. Re-pointed rather than deleted, and deliberately NOT re-pointed at the literal "v0.1.0":
-  // pinning a version string here would turn every release into a failing e2e. The version only renders in
-  // the `up` state, so matching its SHAPE asserts exactly what this test is named for — the SPA reached the
-  // API and got a healthy answer. `checking…` and `unreachable` both fail this.
-  await expect(page.getByText(/^v\d+\.\d+\.\d+/)).toBeVisible();
+  // A verified install reports its real release version. The E2E stack deliberately has no signed release
+  // manifest, so its honest healthy fallback is `online`; it must never invent a version. Both labels are
+  // reachable only after /healthz succeeds, while `checking…` and `unreachable` still fail this assertion.
+  await expect(page.getByText(/^(?:v\d+\.\d+\.\d+|online)$/)).toBeVisible();
 });
 
 test("correlation chain: SPA -> API -> X-Request-Id is well-formed and matches body", async ({
