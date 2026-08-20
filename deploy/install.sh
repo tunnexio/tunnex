@@ -302,8 +302,14 @@ esac
 # ── 4. workspace + the VERSIONED compose (matches the pinned images) ─────────────────────────────
 mkdir -p "$DIR"
 cd "$DIR"
-trap 'rm -f .env.new 2>/dev/null' EXIT # never leave a half-written .env behind on failure
-curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o tunnex.yml || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
+trap 'rm -f .env.new tunnex.yml.next upgrade.sh.next release.json.next 2>/dev/null' EXIT # never leave a half-written managed file behind on failure
+
+# Fetch the complete host payload before replacing any managed file. The UI's
+# upgrade command is not usable when upgrade.sh is absent, so a partial download
+# must fail the install rather than leave a control plane that only looks ready.
+curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o tunnex.yml.next || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
+curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade.sh" -o upgrade.sh.next || die "could not download deploy/upgrade.sh at ${SOURCE_REF}"
+sh -n upgrade.sh.next || die "downloaded deploy/upgrade.sh is not valid shell"
 
 # Published releases carry a signed descriptor. Bind its semantic release tag
 # to the exact resolved source commit before starting any image.
@@ -313,7 +319,11 @@ case "$VERSION" in
 	*) die "a signed release descriptor is required for version ${VERSION}" ;;
 esac
 RELEASE_MANIFEST_URL="${TUNNEX_RELEASE_MANIFEST_URL:-https://github.com/tunnexio/tunnex/releases/download/${RELEASE_DESCRIPTOR_TAG}/release.json}"
-curl -fsSL "$RELEASE_MANIFEST_URL" -o release.json || die "could not download the signed release manifest for ${SOURCE_REF}; refusing an unverifiable install"
+curl -fsSL "$RELEASE_MANIFEST_URL" -o release.json.next || die "could not download the signed release manifest for ${SOURCE_REF}; refusing an unverifiable install"
+mv tunnex.yml.next tunnex.yml
+mv upgrade.sh.next upgrade.sh
+chmod 0755 upgrade.sh
+mv release.json.next release.json
 # Signed release metadata is mounted into the unprivileged API container. It is not
 # secret, so keep it world-readable while the bind mount itself stays read-only.
 chmod 0644 release.json

@@ -101,6 +101,9 @@ for required in \
 	'/releases/latest' \
 	'/commits/${VERSION}' \
 	'${RAW}/${SOURCE_REF}/deploy/tunnex.yml' \
+	'${RAW}/${SOURCE_REF}/deploy/upgrade.sh' \
+	'sh -n upgrade.sh.next' \
+	'chmod 0755 upgrade.sh' \
 	'RELEASE_DESCRIPTOR_TAG="$VERSION"' \
 	'expected-source-sha "$SOURCE_REF"' \
 	'images pinned by digest' \

@@ -23,6 +23,8 @@ grep -Fq -- '-expected-source-sha "$SOURCE_REF"' "$installer"
 grep -Fq -- '-print-env' "$installer"
 grep -Fq 'images pinned by digest' "$installer"
 grep -Fq 'chmod 0644 release.json' "$installer"
+grep -Fq 'deploy/upgrade.sh" -o upgrade.sh.next' "$installer"
+grep -Fq 'chmod 0755 upgrade.sh' "$installer"
 
 for variable in TUNNEX_RELEASE_MANIFEST_PATH TUNNEX_RELEASE_PUBLIC_KEY TUNNEX_RELEASE_SEQUENCE TUNNEX_RELEASE_VERSION TUNNEX_RELEASE_SOURCE_SHA TUNNEX_RELEASE_CATALOG_URL TUNNEX_RELEASE_UPDATE_CHECK; do
   grep -Fq "${variable}: \${${variable}" "$ROOT/deploy/tunnex.yml"
