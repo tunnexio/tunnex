@@ -156,6 +156,65 @@ public_base_url_host() {
 	*) printf '%s\n' "${_authority%%:*}" ;;
 	esac
 }
+public_base_url_scheme() {
+	case "$1" in https://*) printf '%s\n' https ;; http://*) printf '%s\n' http ;; *) return 1 ;; esac
+}
+public_base_url_is_ip() {
+	_host="$(public_base_url_host "$1")"
+	case "$_host" in
+	\[*:*\]) return 0 ;;
+	*.*.*.*) case "$_host" in *[!0-9.]* | .* | *.) return 1 ;; esac; return 0 ;;
+	esac
+	return 1
+}
+public_base_url_port() {
+	_authority=${1#*://}
+	case "$_authority" in
+	\[*\]:*) printf '%s\n' "${_authority##*:}" ;;
+	\[*\]) printf '%s\n' "" ;;
+	*:* ) printf '%s\n' "${_authority##*:}" ;;
+	*) printf '%s\n' "" ;;
+	esac
+}
+tls_mode_ok() {
+	case "$1" in direct | terminated | http) return 0 ;; *) return 1 ;; esac
+}
+public_base_url_tls_mode_ok() {
+	_mode=$1
+	_url=$2
+	_scheme="$(public_base_url_scheme "$_url")" || return 1
+	_port="$(public_base_url_port "$_url")"
+	case "$_mode" in
+	direct)
+		[ "$_scheme" = https ] && public_base_url_is_ip "$_url" && return 1
+		case "$_scheme:$_port" in https:|https:443|http:|http:80) return 0 ;; esac
+		;;
+	terminated) [ "$_scheme" = https ] && return 0 ;;
+	http) case "$_scheme:$_port" in http:|http:80) return 0 ;; esac ;;
+	esac
+	return 1
+}
+select_tls_mode() {
+	TLS_MODE="${TUNNEX_TLS_MODE:-}"
+	SCHEME="$(public_base_url_scheme "$BASE_URL")"
+	if [ -z "$TLS_MODE" ]; then
+		if [ "$SCHEME" = https ]; then
+			if have_tty; then
+				TLS_MODE="$(ask 'TLS mode [direct (this VM) / terminated (external load balancer)] [direct]: ')"
+				[ -n "$TLS_MODE" ] || TLS_MODE=direct
+			else
+				TLS_MODE=direct
+			fi
+		else
+			TLS_MODE=http
+		fi
+	fi
+	tls_mode_ok "$TLS_MODE" || die "TUNNEX_TLS_MODE must be direct, terminated, or http."
+	public_base_url_tls_mode_ok "$TLS_MODE" "$BASE_URL" ||
+		die "${BASE_URL} is incompatible with TLS mode ${TLS_MODE}. Direct HTTPS needs a DNS hostname on port 443; use http://<public-IP> for plain HTTP or TUNNEX_TLS_MODE=terminated behind an external TLS endpoint."
+	case "$TLS_MODE" in direct) EDGE_LISTEN="$BASE_URL" ;; *) EDGE_LISTEN="http://:80" ;; esac
+	[ "$SCHEME" = https ] && COOKIE_SECURE=true || COOKIE_SECURE=false
+}
 
 # ── 0. prerequisites — fail LOUD + actionable ────────────────────────────────────────────────────
 command -v docker >/dev/null 2>&1 || die "Docker is required. Install Docker Engine + the Compose plugin (https://docs.docker.com/engine/install/), then re-run."
@@ -184,6 +243,7 @@ else
     curl -fsSL ${RAW}/main/deploy/install.sh | TUNNEX_PUBLIC_BASE_URL=https://vpn.acme.com TUNNEX_SMTP=skip sh"
 fi
 ADDR="$(public_base_url_host "$BASE_URL")"
+select_tls_mode
 
 ADMIN_EMAIL="${TUNNEX_ADMIN_EMAIL:-admin@${ADDR}}"
 if have_tty && [ -z "${TUNNEX_ADMIN_EMAIL:-}" ]; then
@@ -288,6 +348,9 @@ TUNNEX_RELEASE_CATALOG_URL=${TUNNEX_RELEASE_CATALOG_URL:-https://github.com/tunn
 TUNNEX_RELEASE_UPDATE_CHECK=${TUNNEX_RELEASE_UPDATE_CHECK:-true}
 TUNNEX_LOG_LEVEL=info
 APP_BASE_URL=${BASE_URL}
+TUNNEX_TLS_MODE=${TLS_MODE}
+TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}
+TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}
 TUNNEX_NODE_ENDPOINT=${ADDR}:51820
 POSTGRES_USER=tunnex
 POSTGRES_PASSWORD=${PG_PASS}

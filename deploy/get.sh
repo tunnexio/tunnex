@@ -313,6 +313,70 @@ public_base_url_host() {
 	*) printf '%s\n' "${_authority%%:*}" ;;
 	esac
 }
+public_base_url_scheme() {
+	case "$1" in https://*) printf '%s\n' https ;; http://*) printf '%s\n' http ;; *) return 1 ;; esac
+}
+public_base_url_is_ip() {
+	_host="$(public_base_url_host "$1")"
+	case "$_host" in
+	\[*:*\]) return 0 ;;
+	*.*.*.*) case "$_host" in *[!0-9.]* | .* | *.) return 1 ;; esac; return 0 ;;
+	esac
+	return 1
+}
+public_base_url_port() {
+	_authority=${1#*://}
+	case "$_authority" in
+	\[*\]:*) printf '%s\n' "${_authority##*:}" ;;
+	\[*\]) printf '%s\n' "" ;;
+	*:* ) printf '%s\n' "${_authority##*:}" ;;
+	*) printf '%s\n' "" ;;
+	esac
+}
+tls_mode_ok() {
+	case "$1" in direct | terminated | http) return 0 ;; *) return 1 ;; esac
+}
+public_base_url_tls_mode_ok() {
+	_mode=$1
+	_url=$2
+	_scheme="$(public_base_url_scheme "$_url")" || return 1
+	_port="$(public_base_url_port "$_url")"
+	case "$_mode" in
+	direct)
+		[ "$_scheme" = https ] && public_base_url_is_ip "$_url" && return 1
+		case "$_scheme:$_port" in https:|https:443|http:|http:80) return 0 ;; esac
+		;;
+	terminated) [ "$_scheme" = https ] && return 0 ;;
+	http) case "$_scheme:$_port" in http:|http:80) return 0 ;; esac ;;
+	esac
+	return 1
+}
+select_tls_mode() {
+	TLS_MODE="${TUNNEX_TLS_MODE:-}"
+	SCHEME="$(public_base_url_scheme "$BASE_URL")"
+	if [ -z "$TLS_MODE" ]; then
+		if [ "$SCHEME" = https ]; then
+			if [ "$HAVE_TTY" = "1" ]; then
+				choose "Where does HTTPS terminate?" 1 \
+					"On this VM — automatically obtain and renew a certificate" \
+					"At an external load balancer or reverse proxy — it forwards HTTP here"
+				[ "$CHOICE" = "1" ] && TLS_MODE=direct || TLS_MODE=terminated
+			else
+				TLS_MODE=direct
+			fi
+		else
+			TLS_MODE=http
+		fi
+	fi
+	tls_mode_ok "$TLS_MODE" || die "TUNNEX_TLS_MODE must be direct, terminated, or http."
+	public_base_url_tls_mode_ok "$TLS_MODE" "$BASE_URL" ||
+		die "${BASE_URL} is incompatible with TLS mode ${TLS_MODE}. Direct HTTPS needs a DNS hostname on port 443; use http://<public-IP> for plain HTTP or TUNNEX_TLS_MODE=terminated behind an external TLS endpoint."
+	case "$TLS_MODE" in
+	direct) EDGE_LISTEN="$BASE_URL" ;;
+	terminated | http) EDGE_LISTEN="http://:80" ;;
+	esac
+	[ "$SCHEME" = https ] && COOKIE_SECURE=true || COOKIE_SECURE=false
+}
 hostname_ok() {
 	case "$1" in '' | *://* | */* | *[[:space:]]*) return 1 ;; esac
 	return 0
@@ -591,8 +655,13 @@ detect_cloud() {
 
 report_ports() {
 	printf '\n  \033[1mNetwork\033[0m\n'
-	printf '  \033[2mThese must be reachable from your users and gateways:\033[0m\n'
-	printf '      \033[1m80/tcp\033[0m     dashboard\n'
+	if [ "$TLS_MODE" = terminated ]; then
+		printf '  \033[2mYour TLS endpoint/load balancer must reach this VM on 80/tcp; gateways dial 8443/tcp:\033[0m\n'
+	else
+		printf '  \033[2mThese must be reachable from your users and gateways:\033[0m\n'
+	fi
+	printf '      \033[1m80/tcp\033[0m     dashboard%s\n' "$( [ "$TLS_MODE" = direct ] && printf ' + certificate validation' )"
+	[ "$TLS_MODE" = direct ] && printf '      \033[1m443/tcp\033[0m    dashboard HTTPS\n'
 	printf '      \033[1m8443/tcp\033[0m   agent control channel \033[2m(gateways dial this — often missed)\033[0m\n'
 	printf '      \033[1m51820/udp\033[0m  WireGuard\n'
 
@@ -606,15 +675,18 @@ report_ports() {
 
 	if [ -n "$_fw" ]; then
 		printf '\n  \033[33m%s is active on this machine and will block them.\033[0m\n' "$_fw"
-		choose "Open these ports in $_fw now?" 1 "Yes — open 80/tcp, 8443/tcp, 51820/udp" "No — I will do it myself"
+		if [ "$TLS_MODE" = direct ]; then _ports='80/tcp, 443/tcp, 8443/tcp, 51820/udp'; else _ports='80/tcp, 8443/tcp, 51820/udp'; fi
+		choose "Open these ports in $_fw now?" 1 "Yes — open $_ports" "No — I will do it myself"
 		if [ "$CHOICE" = "1" ]; then
 			step "opening ports in $_fw"
 			if [ "$_fw" = "ufw" ]; then
 				$SUDO ufw allow 80/tcp >/dev/null 2>&1 || true
+				[ "$TLS_MODE" != direct ] || $SUDO ufw allow 443/tcp >/dev/null 2>&1 || true
 				$SUDO ufw allow 8443/tcp >/dev/null 2>&1 || true
 				$SUDO ufw allow 51820/udp >/dev/null 2>&1 || true
 			else
 				$SUDO firewall-cmd --permanent --add-port=80/tcp >/dev/null 2>&1 || true
+				[ "$TLS_MODE" != direct ] || $SUDO firewall-cmd --permanent --add-port=443/tcp >/dev/null 2>&1 || true
 				$SUDO firewall-cmd --permanent --add-port=8443/tcp >/dev/null 2>&1 || true
 				$SUDO firewall-cmd --permanent --add-port=51820/udp >/dev/null 2>&1 || true
 				$SUDO firewall-cmd --reload >/dev/null 2>&1 || true
@@ -636,7 +708,7 @@ report_ports() {
 		printf '\n  \033[33m⚠ This looks like a Compute Engine instance.\033[0m VPC \033[1mfirewall rules\033[0m are separate\n'
 		printf '  from anything on this machine and will block those ports until you allow them:\n'
 		printf '      gcloud compute firewall-rules create tunnex \\\n'
-		printf '        --allow=tcp:80,tcp:8443,udp:51820 --target-tags=tunnex\n'
+		printf '        --allow=tcp:80%s,tcp:8443,udp:51820 --target-tags=tunnex\n' "$( [ "$TLS_MODE" = direct ] && printf ',tcp:443' )"
 		;;
 	azure)
 		printf '\n  \033[33m⚠ This looks like an Azure VM.\033[0m Its \033[1mnetwork security group\033[0m is separate from\n'
@@ -663,7 +735,6 @@ printf '  \033[2mProvenance: %s\033[0m\n' "$VERSION_PROVENANCE"
 [ "$HAVE_TTY" = "1" ] || [ "$ASSUME_YES" = "1" ] || no_tty_help
 
 ensure_docker
-report_ports
 
 # ── 2. EVERY QUESTION, BEFORE ANY WORK ──────────────────────────────────────────────────────────
 printf '  \033[1mDeployment\033[0m\n'
@@ -679,6 +750,8 @@ else
 	BASE_URL="$ANSWER"
 fi
 ADDR="$(public_base_url_host "$BASE_URL")"
+select_tls_mode
+report_ports
 
 # ⛔ THE POOL IS ASKED, NOT ASSUMED. It is the space every device gets a /32 from, and it must not collide
 # with any LAN you intend to route — a collision surfaces later, as traffic that silently goes elsewhere.
@@ -730,7 +803,8 @@ printf '\n  \033[1mReady to install\033[0m\n'
 printf '    Version          %s\n' "$DISPLAY_VERSION"
 printf '    Image tag        %s\n' "$VERSION"
 printf '    Source commit    %s\n' "$SOURCE_REF"
-	printf '    Public URL       %s\n' "$BASE_URL"
+printf '    Public URL       %s\n' "$BASE_URL"
+printf '    TLS mode         %s\n' "$TLS_MODE"
 	printf '    Dashboard        %s/\n' "$BASE_URL"
 printf '    Administrator    %s\n' "$ADMIN_EMAIL"
 printf '    Address pool     %s\n' "$POOL_CIDR"
@@ -774,6 +848,10 @@ esac
 RELEASE_MANIFEST_URL="${TUNNEX_RELEASE_MANIFEST_URL:-https://github.com/tunnexio/tunnex/releases/download/${RELEASE_DESCRIPTOR_TAG}/release.json}"
 curl -fsSL "$RELEASE_MANIFEST_URL" -o release.json 2>/dev/null ||
 	die "could not download the signed release manifest for ${SOURCE_REF}; refusing an unverifiable install"
+# A release tag is the customer-facing selector, while the signed descriptor
+# binds that tag to its immutable source commit. Read the expected commit from
+# the untrusted bytes only to give releaseverify a comparison target; signature
+# verification below still rejects any altered descriptor.
 # Signed release metadata is mounted into the unprivileged API container. It is not
 # secret, so keep it world-readable while the bind mount itself stays read-only.
 chmod 0644 release.json
@@ -819,6 +897,9 @@ TUNNEX_VERSION=${VERSION}
 TUNNEX_SOURCE_REF=${SOURCE_REF}
 TUNNEX_LOG_LEVEL=info
 APP_BASE_URL=${BASE_URL}
+TUNNEX_TLS_MODE=${TLS_MODE}
+TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}
+TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}
 # Release upgrades verify this value locally; it is not a telemetry or call-home credential.
 # The installer keeps it in the deployment config so the UI command never exposes it.
 TUNNEX_RELEASE_PUBLIC_KEY=${TUNNEX_RELEASE_PUBLIC_KEY:-$TRUSTED_RELEASE_PUBLIC_KEY}
