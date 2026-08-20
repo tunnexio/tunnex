@@ -24,6 +24,25 @@ SELECT * FROM alert_subscriptions
 WHERE org_id = $1 AND destination_id = $2
 ORDER BY event_key;
 
+-- name: ListAlertDestinationsForEvent :many
+SELECT d.*
+FROM alert_destinations d
+JOIN alert_subscriptions s
+  ON s.org_id = d.org_id AND s.destination_id = d.id
+WHERE d.org_id = $1
+  AND d.archived_at IS NULL
+  AND s.event_key = $2
+  AND CASE d.severity_floor
+        WHEN 'info' THEN 0
+        WHEN 'warning' THEN 1
+        WHEN 'critical' THEN 2
+      END <= CASE $3
+               WHEN 'info' THEN 0
+               WHEN 'warning' THEN 1
+               WHEN 'critical' THEN 2
+             END
+ORDER BY d.created_at, d.id;
+
 -- name: CreateAlertDelivery :one
 INSERT INTO alert_deliveries (
     org_id, destination_id, event_key, severity, dedup_key, payload,

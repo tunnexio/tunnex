@@ -849,6 +849,7 @@ type Querier interface {
 	// push has mentioned it yet has no `device_status` row at all.
 	ListAgentsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListAgentsForOrgRow, error)
 	ListAlertDestinations(ctx context.Context, orgID uuid.UUID) ([]AlertDestination, error)
+	ListAlertDestinationsForEvent(ctx context.Context, arg ListAlertDestinationsForEventParams) ([]AlertDestination, error)
 	ListAlertSubscriptions(ctx context.Context, arg ListAlertSubscriptionsParams) ([]AlertSubscription, error)
 	ListAlertingEnabledOrganizations(ctx context.Context) ([]uuid.UUID, error)
 	// Org-scoped audit feed with optional filters (actor / action / date range) and

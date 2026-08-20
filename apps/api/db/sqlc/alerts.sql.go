@@ -239,6 +239,70 @@ func (q *Queries) ListAlertDestinations(ctx context.Context, orgID uuid.UUID) ([
 	return items, nil
 }
 
+const listAlertDestinationsForEvent = `-- name: ListAlertDestinationsForEvent :many
+SELECT d.id, d.org_id, d.kind, d.name, d.endpoint_sealed, d.endpoint_fingerprint, d.endpoint_host, d.allow_private, d.severity_floor, d.cooldown_seconds, d.quiet_hours_start, d.quiet_hours_end, d.quiet_hours_timezone, d.archived_at, d.created_by_user_id, d.created_at, d.updated_at
+FROM alert_destinations d
+JOIN alert_subscriptions s
+  ON s.org_id = d.org_id AND s.destination_id = d.id
+WHERE d.org_id = $1
+  AND d.archived_at IS NULL
+  AND s.event_key = $2
+  AND CASE d.severity_floor
+        WHEN 'info' THEN 0
+        WHEN 'warning' THEN 1
+        WHEN 'critical' THEN 2
+      END <= CASE $3
+               WHEN 'info' THEN 0
+               WHEN 'warning' THEN 1
+               WHEN 'critical' THEN 2
+             END
+ORDER BY d.created_at, d.id
+`
+
+type ListAlertDestinationsForEventParams struct {
+	OrgID         uuid.UUID `json:"org_id"`
+	EventKey      string    `json:"event_key"`
+	SeverityFloor string    `json:"severity_floor"`
+}
+
+func (q *Queries) ListAlertDestinationsForEvent(ctx context.Context, arg ListAlertDestinationsForEventParams) ([]AlertDestination, error) {
+	rows, err := q.db.Query(ctx, listAlertDestinationsForEvent, arg.OrgID, arg.EventKey, arg.SeverityFloor)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AlertDestination{}
+	for rows.Next() {
+		var i AlertDestination
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Kind,
+			&i.Name,
+			&i.EndpointSealed,
+			&i.EndpointFingerprint,
+			&i.EndpointHost,
+			&i.AllowPrivate,
+			&i.SeverityFloor,
+			&i.CooldownSeconds,
+			&i.QuietHoursStart,
+			&i.QuietHoursEnd,
+			&i.QuietHoursTimezone,
+			&i.ArchivedAt,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAlertSubscriptions = `-- name: ListAlertSubscriptions :many
 SELECT org_id, destination_id, event_key, created_at FROM alert_subscriptions
 WHERE org_id = $1 AND destination_id = $2
