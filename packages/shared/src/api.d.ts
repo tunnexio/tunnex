@@ -1859,6 +1859,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the local host-upgrade runner state
+         * @description Requires `users.cp_admin`. Returns only bounded stage and backup filenames; raw host output, database contents, environment values, and Docker authority never cross this API.
+         */
+        get: operations["getHostUpgrade"];
+        put?: never;
+        /**
+         * Approve the exact signed release currently shown by the control plane
+         * @description Requires `users.cp_admin`. The server pins its current verified catalog source SHA and sequence; the client cannot supply a different target. Duplicate requests for that same active target are idempotent.
+         */
+        post: operations["requestHostUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/gateway-endpoint": {
         parameters: {
             query?: never;
@@ -4830,6 +4854,22 @@ export interface components {
             /** @enum {string} */
             approval_mode?: "host_command_only" | "host_updater";
         };
+        HostUpgradeStatus: {
+            available: boolean;
+            /** Format: uuid */
+            request_id?: string;
+            /** @enum {string} */
+            state: "idle" | "requested" | "verifying" | "backing_up" | "preflight" | "pulling" | "restarting" | "health_check" | "healthy" | "failed";
+            target_source_sha?: string;
+            target_version?: string;
+            /** @description Retained host filename only */
+            backup_dump?: string;
+            /** @description Retained host filename only */
+            backup_manifest?: string;
+            reason_code?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
         SignupRequest: {
             /** Format: email */
             email: string;
@@ -7789,6 +7829,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getHostUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current local runner state. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostUpgradeStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    requestHostUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upgrade request accepted or already active for this exact target. */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostUpgradeStatus"];
+                };
             };
             default: components["responses"]["Error"];
         };

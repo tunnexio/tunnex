@@ -29,19 +29,31 @@ Safe, but you will want to know: that is what preflight is for.
 
 ## Verified host upgrade (online or air-gapped)
 
-The read-only upgrade center never executes host commands. Operators can use the
-repository's `deploy/upgrade.sh` helper on the deployment host. It refuses to pull
-or restart anything until a signed descriptor is verified and the backup/preflight
-gates pass. The default is a dry run; `--apply` is an explicit approval.
+A single-host Docker deployment installed through `get.tunnex.io` includes a
+fixed-purpose local runner. A verified deployment administrator can approve the
+exact signed release shown on the dashboard and follow backup, preflight, restart,
+and health-check stages there. The browser and API never receive Docker or root
+authority: the API writes one bounded request file and the root-owned local runner
+invokes the same `upgrade.sh` helper described below.
+
+Older installations without the runner retain the copy-command fallback. Running
+the current public installer again repairs managed upgrade assets without applying
+an upgrade or replacing deployment secrets. The helper also remains the explicit
+path for recovery and air-gapped operation. It refuses to pull or restart anything
+until a signed descriptor is verified and the backup/preflight gates pass. The
+default is a dry run; `--apply` is an explicit approval.
 
 ```sh
 ./upgrade.sh
 ./upgrade.sh --apply
 ```
 
-The installer places `upgrade.sh` next to `tunnex.yml`, records the trusted release
-key and a baseline hash for that deployment file in `.env`, and the API image carries
-the verifier binary. The helper refuses an edited `tunnex.yml` before it reaches Docker.
+The installer keeps the operator-facing `upgrade.sh` next to `tunnex.yml` and
+installs the fixed-purpose runner plus its privileged helper under the root-owned
+`/usr/local/lib/tunnex` directory. It registers systemd path/service units, records the trusted release key and a
+baseline hash for that deployment file in `.env`, and the API image carries the
+verifier binary. Installation fails if any managed upgrade asset cannot be installed.
+The helper refuses an edited `tunnex.yml` before it reaches Docker.
 Every successful-main installer fetches the immutable signed `release.json`
 descriptor for its exact source SHA and mounts it into the API. Online deployments
 then fetch only the signed `tunnex-updates` discovery descriptor when the host
@@ -59,7 +71,13 @@ For an air-gapped host, place pre-pulled OCI archives in a bundle directory and
 pass `--airgap BUNDLE`; the helper loads those archives only after descriptor
 verification. Keep the backup dump and manifest together for the documented
 forward-only restore procedure. Downgrades are refused by the signed sequence
-check; there is no silent or browser-triggered upgrade.
+check. The UI action always requires an explicit deployment-administrator
+confirmation and cannot select a different target from the server-verified release.
+
+This does not add a phone-home channel. The browser talks only to its own control
+plane, and the API and runner communicate through host-local files. Disabling
+`TUNNEX_RELEASE_UPDATE_CHECK` keeps online discovery and the UI action unavailable;
+no telemetry, customer data, host logs, or upgrade callback is sent to Tunnex.
 
 `preflight` ships **inside the control-plane image** — it needs `DATABASE_URL`, and an operator running it
 before a roll should be reading the database the deployment actually uses, not one named on a laptop:

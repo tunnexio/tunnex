@@ -3,9 +3,11 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-grep -Fq 'const hostCommand = "./upgrade.sh --apply"' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'const repairCommand = "curl -fsSL https://get.tunnex.io | sh"' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
 grep -Fq 'Installed version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
-grep -Fq 'Available version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'Target version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'Upgrade control plane' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'api.POST("/api/v1/admin/upgrade")' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
 grep -Fq 'health check failed' "$ROOT/deploy/upgrade.sh"
 grep -Fq 'restore the verified pre-upgrade backup' "$ROOT/deploy/upgrade.sh"
 if grep -F 'const hostCommand' "$ROOT/apps/web/src/components/UpgradeCenter.tsx" | grep -Eq -- '--public-key|release\.json'; then

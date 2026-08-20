@@ -76,6 +76,8 @@ services:
       TUNNEX_RELEASE_SOURCE_SHA: ${TUNNEX_RELEASE_SOURCE_SHA:-}
       TUNNEX_RELEASE_CATALOG_URL: ${TUNNEX_RELEASE_CATALOG_URL:-}
       TUNNEX_RELEASE_UPDATE_CHECK: ${TUNNEX_RELEASE_UPDATE_CHECK:-true}
+      TUNNEX_HOST_UPGRADE_REQUEST_PATH: /var/lib/tunnex/upgrade/requests/request
+      TUNNEX_HOST_UPGRADE_STATUS_PATH: /var/lib/tunnex/upgrade/status/status
     volumes:
       - tunnex_secrets:/var/lib/tunnex/secrets # master key / JWT / session — auto-generated on first boot (S0.3)
       - ./release.json:/var/lib/tunnex/release.json:ro

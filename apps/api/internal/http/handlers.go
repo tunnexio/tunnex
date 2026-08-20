@@ -18,6 +18,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
@@ -224,6 +225,7 @@ type apiServer struct {
 	releaseStatus         *release.Status
 	releaseStatusProvider func() *release.Status
 	releaseBootstrap      *release.BootstrapRelease
+	hostUpgrade           *hostupgrade.Service
 	gatewayControlURL     string
 }
 

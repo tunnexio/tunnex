@@ -8,7 +8,8 @@ DIR=${TUNNEX_DIR:-$SCRIPT_DIR}
 STATE_DIR=${TUNNEX_UPGRADE_STATE_DIR:-$DIR/upgrade-state}
 REQUEST_FILE=${TUNNEX_UPGRADE_REQUEST_FILE:-$STATE_DIR/requests/request}
 STATUS_FILE=${TUNNEX_UPGRADE_STATUS_FILE:-$STATE_DIR/status/status}
-LOCK_DIR=$STATE_DIR/runner.lock
+WORK_DIR=${TUNNEX_UPGRADE_WORK_DIR:-$STATE_DIR/work}
+UPGRADE_HELPER=${TUNNEX_UPGRADE_HELPER:-$SCRIPT_DIR/upgrade.sh}
 
 write_failure() {
   _request_id=$1 _source=$2 _reason=$3 _next="${STATUS_FILE}.next"
@@ -28,23 +29,29 @@ write_failure() {
 }
 
 value() {
-  sed -n "s/^$1=//p" "$REQUEST_FILE" | head -1
+  sed -n "s/^$1=//p" "$SNAPSHOT" | head -1
 }
 
 [ -f "$REQUEST_FILE" ] || exit 0
-mkdir "$LOCK_DIR" 2>/dev/null || exit 0
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; rm -f "$REQUEST_FILE"' EXIT HUP INT TERM
+mkdir -p "$WORK_DIR"
+umask 077
+SNAPSHOT=$(mktemp "$WORK_DIR/request.XXXXXX")
+rm -f "$SNAPSHOT"
+# The API may write only REQUEST_FILE. Move it into this root-owned directory
+# before validation so every read below observes the one immutable snapshot.
+mv "$REQUEST_FILE" "$SNAPSHOT"
+trap 'rm -f "$SNAPSHOT"' EXIT HUP INT TERM
 
-size=$(wc -c <"$REQUEST_FILE" | tr -d ' ')
+size=$(wc -c <"$SNAPSHOT" | tr -d ' ')
 case "$size" in ''|*[!0-9]*|0) write_failure unknown '' invalid_request; exit 1 ;; esac
 [ "$size" -le 4096 ] || { write_failure unknown '' invalid_request; exit 1; }
 
-if grep -Ev '^(request_id|source_sha|sequence|requested_by|created_at)=[A-Za-z0-9:_.+Z-]*$' "$REQUEST_FILE" | grep -q .; then
+if grep -Ev '^(request_id|source_sha|target_version|sequence|requested_by|created_at)=[A-Za-z0-9:_.+Z-]*$' "$SNAPSHOT" | grep -q .; then
   write_failure unknown '' invalid_request
   exit 1
 fi
-for key in request_id source_sha sequence requested_by created_at; do
-  [ "$(grep -c "^${key}=" "$REQUEST_FILE")" -eq 1 ] || {
+for key in request_id source_sha target_version sequence requested_by created_at; do
+  [ "$(grep -c "^${key}=" "$SNAPSHOT")" -eq 1 ] || {
     write_failure unknown '' invalid_request
     exit 1
   }
@@ -59,8 +66,10 @@ case "$source_sha" in *[!0-9a-f]*) write_failure "$request_id" '' invalid_reques
 case "$sequence" in ''|*[!0-9]*) write_failure "$request_id" "$source_sha" invalid_request; exit 1 ;; esac
 
 if ! TUNNEX_UPGRADE_REQUEST_ID="$request_id" \
+  TUNNEX_UPGRADE_PRIVILEGED=1 \
+  TUNNEX_DIR="$DIR" \
   TUNNEX_UPGRADE_STATUS_FILE="$STATUS_FILE" \
-  "$DIR/upgrade.sh" --apply \
+  "$UPGRADE_HELPER" --apply \
     --expected-source-sha "$source_sha" \
     --expected-sequence "$sequence"; then
   # upgrade.sh writes specific failures once execution begins. Preserve those;

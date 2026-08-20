@@ -103,10 +103,16 @@ for required in \
 	'${RAW}/${SOURCE_REF}/deploy/tunnex.yml' \
 	'${RAW}/${SOURCE_REF}/deploy/upgrade.sh' \
 	'${RAW}/${SOURCE_REF}/deploy/upgrade-runner.sh' \
-	'sh -n upgrade.sh.next' \
-	'sh -n upgrade-runner.sh.next' \
+	'sh -n "$STAGE_DIR/upgrade.sh"' \
+	'sh -n "$STAGE_DIR/upgrade-runner.sh"' \
 	'chmod 0755 upgrade.sh' \
-	'chmod 0755 upgrade-runner.sh' \
+	'ROOT_UPGRADE_DIR=/usr/local/lib/tunnex' \
+	'as_root install -d -o root -g root -m 0755 "$ROOT_UPGRADE_DIR"' \
+	'as_root install -m 0755 -o root -g root "$STAGE_DIR/upgrade-runner.sh" "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next"' \
+	'ExecStart=${ROOT_UPGRADE_DIR}/upgrade-runner.sh' \
+	'Environment="TUNNEX_DIR=${INSTALL_DIR}"' \
+	'Verify the staged descriptor before publishing' \
+	'Preserving existing .env configuration' \
 	'systemctl enable --now tunnex-upgrade-runner.path' \
 	'TUNNEX_COMPOSE_SHA256=$(file_sha256 tunnex.yml)' \
 	'RELEASE_DESCRIPTOR_TAG="$VERSION"' \

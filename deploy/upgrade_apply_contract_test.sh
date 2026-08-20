@@ -57,14 +57,23 @@ fi
 SH
 chmod 0755 "$TMP/bin/releaseverify"
 
+cat >"$TMP/bin/pg_restore" <<'SH'
+#!/bin/sh
+set -eu
+[ "$1" = --list ]
+[ -s "$2" ]
+SH
+chmod 0755 "$TMP/bin/pg_restore"
+
 cat >"$TMP/bin/docker" <<'SH'
 #!/bin/sh
 set -eu
 printf '%s\n' "$*" >>"$MOCK_DOCKER_LOG"
 case "$*" in
+  *'api preflight'*) [ "${MOCK_FAIL_STAGE:-}" != preflight ] || exit 42 ;;
   *'exec -T postgres sh -c '*pg_dump*) printf 'PGDMP-test-backup' ;;
-  *'exec -T api backupctl manifest'*) printf '%s\n' '{"manifest":"test"}' ;;
-  *'exec -T api backupctl verify'*) cat >/dev/null ;;
+  *'api backupctl manifest'*) printf '%s\n' '{"manifest":"test"}' ;;
+  *'api backupctl verify'*) cat >/dev/null ;;
   *'exec -T api wget -qO-'*) printf '%s\n' ok ;;
 esac
 SH
@@ -90,10 +99,11 @@ grep -Fq 'backup_dump=' "$STATUS"
 grep -Fq 'backup_manifest=' "$STATUS"
 dump=$(sed -n 's/^backup_dump=//p' "$STATUS")
 manifest=$(sed -n 's/^backup_manifest=//p' "$STATUS")
-[ -s "$dump" ]
-[ -s "$manifest" ]
-grep -Fq 'PGDMP-test-backup' "$dump"
+[ -s "$TMP/tunnex/backups/$dump" ]
+[ -s "$TMP/tunnex/backups/$manifest" ]
+grep -Fq 'PGDMP-test-backup' "$TMP/tunnex/backups/$dump"
 grep -Fq 'exec -T api backupctl verify' "$TMP/docker.log"
+grep -Fq -- '--dump-sha256' "$TMP/docker.log"
 grep -Fq 'exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight' "$TMP/docker.log"
 grep -Fq 'pull' "$TMP/docker.log"
 grep -Fq 'up -d' "$TMP/docker.log"
@@ -105,5 +115,27 @@ pull_line=$(grep -n 'pull' "$TMP/docker.log" | cut -d: -f1 | tail -1)
   echo 'database backup did not precede image mutation' >&2
   exit 1
 }
+
+# Any command failure after a request is accepted must leave a terminal result,
+# not an intermediate state that makes subsequent UI requests ambiguous.
+rm -f "$STATUS"
+if (
+  cd "$TMP/tunnex"
+  PATH="$TMP/bin:$PATH" \
+    MOCK_CATALOG="$TMP/catalog.json" \
+    MOCK_DOCKER_LOG="$TMP/docker-failed.log" \
+    MOCK_FAIL_STAGE=preflight \
+    TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" \
+    TUNNEX_UPGRADE_STATUS_FILE="$STATUS" \
+    TUNNEX_UPGRADE_REQUEST_ID=12345678-1234-1234-1234-123456789abc \
+    ./upgrade.sh --apply \
+      --expected-source-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+      --expected-sequence 99
+); then
+  echo 'preflight failure unexpectedly succeeded' >&2
+  exit 1
+fi
+grep -Fq 'state=failed' "$STATUS"
+grep -Fq 'reason_code=preflight_failed' "$STATUS"
 
 echo 'upgrade apply contract passed'

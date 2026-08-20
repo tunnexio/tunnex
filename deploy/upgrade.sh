@@ -50,6 +50,8 @@ TARGET_SOURCE_SHA=
 TARGET_VERSION=
 BACKUP_DUMP=
 BACKUP_MANIFEST=
+CURRENT_STAGE=
+TERMINAL_STATUS=false
 usage() { echo "usage: upgrade.sh [--manifest FILE] [--public-key KEY] [--apply] [--airgap DIR] [--expected-source-sha SHA] [--expected-sequence N]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -67,6 +69,7 @@ case "$EXPECTED_SOURCE_SHA" in ''|*[!0-9a-f]*) [ -z "$EXPECTED_SOURCE_SHA" ] || 
 case "$EXPECTED_SEQUENCE" in ''|*[!0-9]*) [ -z "$EXPECTED_SEQUENCE" ] || usage ;; esac
 [ -n "$PUBLIC_KEY" ] || { echo "error: trusted release public key is not configured in the deployment environment" >&2; exit 1; }
 [ -f "$COMPOSE" ] && [ -f "$ENV_FILE" ] || { echo "error: deployment files not found" >&2; exit 1; }
+TARGET_SOURCE_SHA=$EXPECTED_SOURCE_SHA
 TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
 write_status() {
@@ -78,14 +81,29 @@ write_status() {
     printf 'state=%s\n' "$_state"
     printf 'target_source_sha=%s\n' "$TARGET_SOURCE_SHA"
     printf 'target_version=%s\n' "$TARGET_VERSION"
-    printf 'backup_dump=%s\n' "$BACKUP_DUMP"
-    printf 'backup_manifest=%s\n' "$BACKUP_MANIFEST"
+    printf 'backup_dump=%s\n' "${BACKUP_DUMP##*/}"
+    printf 'backup_manifest=%s\n' "${BACKUP_MANIFEST##*/}"
     printf 'reason_code=%s\n' "$_reason"
     printf 'updated_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   } >"$_next"
   chmod 0644 "$_next"
   mv "$_next" "$STATUS_FILE"
+  CURRENT_STAGE=$_state
+  case "$_state" in failed|healthy) TERMINAL_STATUS=true ;; esac
 }
+finish_upgrade() {
+  _status=$?
+  trap - EXIT INT TERM
+  rm -rf "$TMPDIR"
+  if [ "$_status" -ne 0 ] && [ "$APPLY" = true ] && [ "$TERMINAL_STATUS" = false ]; then
+    case "$CURRENT_STAGE" in
+      verifying|backing_up|preflight|pulling|restarting|health_check) write_status failed "${CURRENT_STAGE}_failed" ;;
+      *) write_status failed upgrade_failed ;;
+    esac
+  fi
+  exit "$_status"
+}
+trap finish_upgrade EXIT INT TERM
 if [ "$MANIFEST_EXPLICIT" = true ]; then
   [ -n "$MANIFEST" ] && [ -r "$MANIFEST" ] || { echo "error: signed manifest is required" >&2; exit 1; }
 else
@@ -207,13 +225,19 @@ compose exec -T postgres sh -c 'pg_dump --format=custom --no-owner --username "$
   exit 13
 }
 mv "${BACKUP_DUMP}.next" "$BACKUP_DUMP"
-compose exec -T api backupctl manifest pre-upgrade >"${BACKUP_MANIFEST}.next" || {
+pg_restore --list "$BACKUP_DUMP" >/dev/null 2>&1 || {
+  write_status failed backup_verification_failed
+  echo "error: upgrade blocked; database backup is not a valid PostgreSQL archive" >&2
+  exit 13
+}
+DUMP_SHA256=$(file_sha256 "$BACKUP_DUMP")
+compose exec -T -e TUNNEX_BACKUP_DUMP_SHA256="$DUMP_SHA256" api backupctl manifest pre-upgrade >"${BACKUP_MANIFEST}.next" || {
   rm -f "${BACKUP_MANIFEST}.next"
   write_status failed backup_failed
   echo "error: upgrade blocked; backup manifest creation failed" >&2
   exit 13
 }
-compose exec -T api backupctl verify <"${BACKUP_MANIFEST}.next" >/dev/null || {
+compose exec -T api backupctl verify --dump-sha256 "$DUMP_SHA256" <"${BACKUP_MANIFEST}.next" >/dev/null || {
   rm -f "${BACKUP_MANIFEST}.next"
   write_status failed backup_verification_failed
   echo "error: upgrade blocked; backup manifest verification failed" >&2
@@ -276,12 +300,32 @@ ensure_edge_config() {
 }
 SOURCE_SHA=$(release_value TUNNEX_RELEASE_SOURCE_SHA)
 VERSION=$(release_value TUNNEX_RELEASE_VERSION)
+write_status pulling
 curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/tunnex.yml" -o "$TMPDIR/tunnex.yml" || {
   echo "error: could not fetch the deployment manifest bound to the signed release" >&2; exit 13;
 }
 grep -q 'TUNNEX_ENV: production' "$TMPDIR/tunnex.yml" && ! grep -qi 'mailpit' "$TMPDIR/tunnex.yml" || {
   echo "error: signed release points to a non-production deployment manifest" >&2; exit 13;
 }
+if [ "${TUNNEX_UPGRADE_PRIVILEGED:-}" = 1 ]; then
+  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/upgrade.sh" -o "$TMPDIR/upgrade.sh" || {
+    echo "error: could not fetch the verified host upgrade helper" >&2; exit 13;
+  }
+  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/upgrade-runner.sh" -o "$TMPDIR/upgrade-runner.sh" || {
+    echo "error: could not fetch the verified host upgrade runner" >&2; exit 13;
+  }
+  sh -n "$TMPDIR/upgrade.sh" && sh -n "$TMPDIR/upgrade-runner.sh" || {
+    echo "error: verified host upgrade assets are not valid shell" >&2; exit 13;
+  }
+  ROOT_UPGRADE_DIR=${TUNNEX_ROOT_UPGRADE_DIR:-/usr/local/lib/tunnex}
+  install -d -o root -g root -m 0755 "$ROOT_UPGRADE_DIR"
+  install -m 0755 -o root -g root "$TMPDIR/upgrade.sh" "$ROOT_UPGRADE_DIR/upgrade.sh.next"
+  install -m 0755 -o root -g root "$TMPDIR/upgrade-runner.sh" "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next"
+  mv "$ROOT_UPGRADE_DIR/upgrade.sh.next" "$ROOT_UPGRADE_DIR/upgrade.sh"
+  mv "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next" "$ROOT_UPGRADE_DIR/upgrade-runner.sh"
+  install -m 0755 "$TMPDIR/upgrade.sh" "$DIR/upgrade.sh.next"
+  mv "$DIR/upgrade.sh.next" "$DIR/upgrade.sh"
+fi
 # Online catalog downloads already land at this destination. Avoid copying a
 # file onto itself; GNU cp exits non-zero for that case and would abort the
 # upgrade after the preflight/backup gate has passed.
@@ -304,7 +348,6 @@ mv "$TMPDIR/release.json" "$DIR/release.json"
 chmod 0644 "$DIR/release.json"
 ensure_edge_config
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
-write_status pulling
 compose pull
 write_status restarting
 compose up -d
