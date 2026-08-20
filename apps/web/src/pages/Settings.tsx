@@ -766,7 +766,11 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
         { params: { path: { orgId, destinationId: destination.id } } },
       );
       if (response.data?.delivered) delivered.push(destination.name);
-      else failed.push(destination.name);
+      else {
+        const code = response.data?.failure_code ?? "unknown failure";
+        const status = response.data?.status_code ? `, HTTP ${response.data.status_code}` : "";
+        failed.push(`${destination.name} (${code}${status})`);
+      }
     }
     if (delivered.length > 0) setTestResult(`${delivered.length} destination${delivered.length === 1 ? "" : "s"}: test delivered`);
     if (failed.length > 0) setFormError(`Test failed: ${failed.join(", ")}.`);
@@ -816,7 +820,7 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
               <input aria-label={`Select ${destination.name}`} type="checkbox" checked={selectedDestinationIDs.includes(destination.id)} onChange={() => toggleDestination(destination.id)} disabled={!canEdit || busy} />
               <div className="min-w-0">
                 <p className="truncate text-sm text-white">{destination.name}</p>
-                <p className="truncate text-xs text-slate-500">{ALERT_DESTINATION_LABELS[destination.kind]} · {destination.endpoint_host} · {destination.severity_floor}</p>
+                <p className="truncate text-xs text-slate-500">{ALERT_DESTINATION_LABELS[destination.kind]} · {destination.endpoint_host} · {destination.severity_floor} · fingerprint {destination.endpoint_fingerprint}</p>
               </div>
             </div>
             <details className="border-t border-white/10 px-3 py-2">
@@ -855,7 +859,6 @@ function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string;
             </label>
           ))}
         </fieldset>
-        <ErrorText>{formError}</ErrorText>
       </div>}
     </SettingDialogRow>
   );
@@ -949,8 +952,8 @@ function AlertDeliveryHistory({ orgId }: { orgId: string }) {
       ) : deliveries.length === 0 ? (
         <p className="text-xs text-slate-500">No delivery attempts yet.</p>
       ) : (
-        <div className="max-w-md space-y-1 text-right">
-          {deliveries.slice(0, 3).map((delivery) => (
+        <div className="max-h-72 max-w-md space-y-1 overflow-y-auto text-right">
+          {deliveries.map((delivery) => (
             <p key={delivery.id} className="text-xs text-slate-400">
               {ALERT_EVENT_LABELS[delivery.event_key]} · {delivery.state} · attempt {delivery.attempts}
               {delivery.last_error ? ` · ${delivery.last_error}` : ""}

@@ -49,6 +49,7 @@ let alertDestinations: Array<{
   name: string;
   kind: "webhook";
   endpoint_host: string;
+  endpoint_fingerprint: string;
   severity_floor: string;
   archived: boolean;
 }> = [];
@@ -60,6 +61,7 @@ let alertDeliveries: Array<{
   attempts: number;
   last_error: string;
 }> = [];
+let alertTestResult: { delivered: boolean; status_code?: number; failure_code?: string } = { delivered: true, status_code: 204 };
 
 vi.mock("../src/lib/api", async () => {
   const actual =
@@ -147,6 +149,7 @@ vi.mock("../src/lib/api", async () => {
             name: request.body?.name ?? "Webhook",
             kind: request.body?.kind ?? "webhook",
             endpoint_host: new URL(request.body?.endpoint ?? "https://alerts.example.test").host,
+            endpoint_fingerprint: "a1b2c3d4e5f6",
             severity_floor: request.body?.severity_floor ?? "warning",
             archived: false,
           };
@@ -159,8 +162,7 @@ vi.mock("../src/lib/api", async () => {
           alertSubscriptions[id] = [...new Set([...(alertSubscriptions[id] ?? []), request.body.event_key])];
           return { data: request.body.event_key };
         }
-        if (path.endsWith("/test"))
-          return { data: { delivered: true, status_code: 204 } };
+        if (path.endsWith("/test")) return { data: alertTestResult };
         return { data: {} };
       }),
       DELETE: vi.fn(async (path: string, request?: { params?: { path?: { destinationId?: string; eventKey?: string } } }) => {
@@ -223,6 +225,7 @@ beforeEach(() => {
   alertDestinations = [];
   alertSubscriptions = {};
   alertDeliveries = [];
+  alertTestResult = { delivered: true, status_code: 204 };
   // ⛔ EVERY mock-controlling global must be reset here. `ssoFail` was added without one, so a test that set
   // it leaked into the next file-order test — and the symptom was a query "not finding" text that a DOM dump
   // showed present, because the component under assertion had loaded the OTHER arm.
@@ -311,7 +314,7 @@ describe("Settings — F11 alert delivery", () => {
     expect(screen.getByText("1 active")).toBeTruthy();
     expect(screen.queryByText("Generic webhook · alerts.example.test · warning")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Manage" }));
-    expect(screen.getByText("Generic webhook · alerts.example.test · warning")).toBeTruthy();
+    expect(screen.getByText("Generic webhook · alerts.example.test · warning · fingerprint a1b2c3d4e5f6")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Select Operations"));
     fireEvent.click(screen.getByRole("button", { name: "Test selected (1)" }));
     expect((await screen.findByRole("status")).textContent).toContain("1 destination: test delivered");
@@ -337,8 +340,8 @@ describe("Settings — F11 alert delivery", () => {
 
   it("uses selection and one explicit confirmation for bulk archive", async () => {
     alertDestinations = [
-      { id: "destination-1", name: "Operations", kind: "webhook", endpoint_host: "alerts.example.test", severity_floor: "warning", archived: false },
-      { id: "destination-2", name: "On call", kind: "webhook", endpoint_host: "oncall.example.test", severity_floor: "critical", archived: false },
+      { id: "destination-1", name: "Operations", kind: "webhook", endpoint_host: "alerts.example.test", endpoint_fingerprint: "a1b2c3d4e5f6", severity_floor: "warning", archived: false },
+      { id: "destination-2", name: "On call", kind: "webhook", endpoint_host: "oncall.example.test", endpoint_fingerprint: "b1c2d3e4f5a6", severity_floor: "critical", archived: false },
     ];
     const api = (await import("../src/lib/api")).api as unknown as { DELETE: ReturnType<typeof vi.fn> };
     const confirmation = vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -378,6 +381,7 @@ describe("Settings — F11 alert delivery", () => {
       name: "Operations",
       kind: "webhook",
       endpoint_host: "alerts.example.test",
+      endpoint_fingerprint: "a1b2c3d4e5f6",
       severity_floor: "warning",
       archived: false,
     }];
@@ -418,6 +422,25 @@ describe("Settings — F11 alert delivery", () => {
     await openSection(/Features/);
     expect(await screen.findByText(/Agent offline · failed · attempt 5/)).toBeTruthy();
     expect(screen.queryByText("https://secret.example.test/hook")).toBeNull();
+  });
+
+  it("shows sanitized test failure evidence and the complete bounded delivery response", async () => {
+    alertDestinations = [{
+      id: "destination-1", name: "Operations", kind: "webhook", endpoint_host: "alerts.example.test",
+      endpoint_fingerprint: "a1b2c3d4e5f6", severity_floor: "warning", archived: false,
+    }];
+    alertTestResult = { delivered: false, status_code: 503, failure_code: "http_error" };
+    alertDeliveries = Array.from({ length: 4 }, (_, index) => ({
+      id: `delivery-${index + 1}`, event_key: "agent.offline" as const, state: "failed" as const,
+      attempts: index + 1, last_error: "alert delivery http_error",
+    }));
+    withAuth(<Settings />);
+    await openSection(/Features/);
+    fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    fireEvent.click(screen.getByLabelText("Select Operations"));
+    fireEvent.click(screen.getByRole("button", { name: "Test selected (1)" }));
+    expect((await screen.findAllByText("Test failed: Operations (http_error, HTTP 503)." )).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Agent offline · failed · attempt 4/)).toBeTruthy();
   });
 });
 

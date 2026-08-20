@@ -195,11 +195,14 @@ const (
 
 // Defines values for AlertTestResultFailureCode.
 const (
-	Blocked   AlertTestResultFailureCode = "blocked"
-	Dns       AlertTestResultFailureCode = "dns"
-	HttpError AlertTestResultFailureCode = "http_error"
-	Network   AlertTestResultFailureCode = "network"
-	Timeout   AlertTestResultFailureCode = "timeout"
+	Blocked       AlertTestResultFailureCode = "blocked"
+	Configuration AlertTestResultFailureCode = "configuration"
+	Credential    AlertTestResultFailureCode = "credential"
+	Dns           AlertTestResultFailureCode = "dns"
+	HttpError     AlertTestResultFailureCode = "http_error"
+	Network       AlertTestResultFailureCode = "network"
+	Response      AlertTestResultFailureCode = "response"
+	Timeout       AlertTestResultFailureCode = "timeout"
 )
 
 // Defines values for ChangeRoleRequestRole.
@@ -1382,7 +1385,7 @@ type CreateAlertDestinationRequest struct {
 	AllowPrivate    *bool `json:"allow_private,omitempty"`
 	CooldownSeconds *int  `json:"cooldown_seconds,omitempty"`
 
-	// Endpoint Write-only secret endpoint; never returned by the API.
+	// Endpoint Write-only provider credential. URL destinations use a URI; email, PagerDuty, and Opsgenie use their provider-issued address or key. Never returned by the API.
 	Endpoint      string               `json:"endpoint"`
 	Kind          AlertDestinationKind `json:"kind"`
 	Name          string               `json:"name"`

@@ -1,6 +1,6 @@
 import { createElement, useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const get = vi.fn();
 const put = vi.fn();
@@ -558,6 +558,38 @@ describe("released Agents route — F04 runtime facts", () => {
 
     releaseRuntime();
     await waitFor(() => expect(screen.getByText("disconnected")).toBeTruthy());
+  });
+
+  it("withdraws a stale connected label when the next runtime poll fails", async () => {
+    vi.useFakeTimers();
+    try {
+      currentOrg = { id: "org-a", name: "Enterprise A", max_agent_identities: null, managed_agent_runtime_enabled: true };
+      let runtimeCalls = 0;
+      get.mockImplementation(async (path: string) => {
+        if (path.endsWith("/nodes")) return { data: [{ id: "node-a", name: "gateway-a", status: "active", endpoint: "gw.example:51820" }] };
+        if (path.endsWith("/agents")) return { data: [agent], response: { status: 200 } };
+        if (path.endsWith("/agents/{deviceId}")) return { data: profile, response: { status: 200 } };
+        if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role: "owner" }], response: { status: 200 } };
+        if (path.endsWith("/runtime-status")) {
+          runtimeCalls += 1;
+          return runtimeCalls === 1
+            ? { data: runtime, response: { status: 200 } }
+            : { data: undefined, error: { error: { code: "unavailable" } }, response: { status: 503 } };
+        }
+        return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
+      });
+
+      const { default: Agents } = await import("../src/pages/Agents");
+      render(createElement(Agents));
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(screen.getByText("connected")).toBeTruthy();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      expect(screen.getByText("runtime unknown")).toBeTruthy();
+      expect(screen.queryByText("connected")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([

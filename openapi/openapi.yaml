@@ -4097,11 +4097,10 @@ components:
       required: [kind, name, endpoint]
       properties:
         kind: { $ref: "#/components/schemas/AlertDestinationKind" }
-        name: { type: string, minLength: 1, maxLength: 120 }
+        name: { type: string, minLength: 1, maxLength: 100 }
         endpoint:
           type: string
-          format: uri
-          description: Write-only secret endpoint; never returned by the API.
+          description: Write-only provider credential. URL destinations use a URI; email, PagerDuty, and Opsgenie use their provider-issued address or key. Never returned by the API.
         allow_private:
           type: boolean
           default: false
@@ -4154,7 +4153,7 @@ components:
       properties:
         delivered: { type: boolean }
         status_code: { type: integer, minimum: 100, maximum: 599, nullable: true }
-        failure_code: { type: string, enum: [blocked, timeout, dns, network, http_error], nullable: true }
+        failure_code: { type: string, enum: [blocked, timeout, dns, network, http_error, response, configuration, credential], nullable: true }
     AddAlertSubscriptionRequest:
       type: object
       additionalProperties: false

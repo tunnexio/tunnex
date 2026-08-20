@@ -3191,10 +3191,7 @@ export interface components {
         CreateAlertDestinationRequest: {
             kind: components["schemas"]["AlertDestinationKind"];
             name: string;
-            /**
-             * Format: uri
-             * @description Write-only secret endpoint; never returned by the API.
-             */
+            /** @description Write-only provider credential. URL destinations use a URI; email, PagerDuty, and Opsgenie use their provider-issued address or key. Never returned by the API. */
             endpoint: string;
             /**
              * @description Owner-only on-premises exception. Allows HTTP and private IP ranges.
@@ -3245,7 +3242,7 @@ export interface components {
             delivered: boolean;
             status_code?: number | null;
             /** @enum {string|null} */
-            failure_code?: "blocked" | "timeout" | "dns" | "network" | "http_error" | null;
+            failure_code?: "blocked" | "timeout" | "dns" | "network" | "http_error" | "response" | "configuration" | "credential" | null;
         };
         AddAlertSubscriptionRequest: {
             event_key: components["schemas"]["AlertEventKey"];

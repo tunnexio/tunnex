@@ -50,11 +50,19 @@ function agentStatusLabel(
 ) {
   const tunnel = livenessLabel(agent);
   if (!runtimeEnabled || agent.status !== "active") return tunnel;
-  if (!runtime) {
+  if (runtime === undefined) {
     return {
       label: "checking",
       tone: "unknown" as const,
       detail: "Checking the managed agent runtime's connectivity.",
+    };
+  }
+
+  if (runtime === null) {
+    return {
+      label: "runtime unknown",
+      tone: "unknown" as const,
+      detail: "The latest managed runtime connectivity check failed.",
     };
   }
 
@@ -505,8 +513,13 @@ export default function Agents() {
             "/api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status",
             { params: { path: { orgId: id, deviceId: agent.device_id } } },
           ).then((runtimeResult) => {
-            if (cancelled || runtimeResult.error || !runtimeResult.data) return;
-            setRuntimeStatus((previous) => ({ ...previous, [agent.device_id]: runtimeResult.data as AgentRuntimeStatus }));
+            if (cancelled) return;
+            setRuntimeStatus((previous) => ({
+              ...previous,
+              [agent.device_id]: runtimeResult.error || !runtimeResult.data
+                ? null
+                : runtimeResult.data as AgentRuntimeStatus,
+            }));
           });
           void api.GET(
             "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
@@ -534,8 +547,11 @@ export default function Agents() {
           "/api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status",
           { params: { path: { orgId: currentOrg.id, deviceId: agent.device_id } } },
         ).then((result) => {
-          if (cancelled || result.error || !result.data) return;
-          setRuntimeStatus((previous) => ({ ...previous, [agent.device_id]: result.data as AgentRuntimeStatus }));
+          if (cancelled) return;
+          setRuntimeStatus((previous) => ({
+            ...previous,
+            [agent.device_id]: result.error || !result.data ? null : result.data as AgentRuntimeStatus,
+          }));
         });
       }
     };
@@ -909,7 +925,7 @@ export default function Agents() {
                     // The liveness word carries its own explanation on hover — an operator seeing
                     // "liveness unknown" must be able to learn WHY without leaving the row.
                     return (
-                      <span title={live.detail}>
+                      <span title={live.detail} aria-label={`${live.label}. ${live.detail}`}>
                         <Badge tone={live.tone}>{live.label}</Badge>
                       </span>
                     );
