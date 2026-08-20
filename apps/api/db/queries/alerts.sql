@@ -1,10 +1,9 @@
 -- name: CreateAlertDestination :one
 INSERT INTO alert_destinations (
     org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host,
-    allow_private, severity_floor, cooldown_seconds, quiet_hours_start,
-    quiet_hours_end, quiet_hours_timezone, created_by_user_id
+    allow_private, severity_floor, cooldown_seconds, created_by_user_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
 RETURNING *;
 
@@ -112,36 +111,65 @@ FROM due
 WHERE d.id = due.id
 RETURNING d.*;
 
--- name: RecoverStaleAlertDeliveries :execrows
+-- name: RecoverStaleAlertDeliveries :one
 -- lint:cross-org — the leader-gated dispatcher requeues stale claims across
 -- every tenant; no human route can call this query.
 -- A delivery is claimed before outbound I/O. If that worker dies, a later
 -- leader requeues only claims older than the bounded dispatcher lease.
-UPDATE alert_deliveries
-SET state = 'pending', next_attempt_at = $1, last_error = 'delivery worker lease expired'
-WHERE state = 'delivering' AND updated_at < $2;
+WITH stale AS (
+    SELECT delivery.* FROM alert_deliveries delivery
+    WHERE delivery.state = 'delivering' AND delivery.updated_at < sqlc.arg(stale_before)
+    FOR UPDATE
+), recorded AS (
+    INSERT INTO alert_delivery_attempts (
+        org_id, delivery_id, attempt, outcome, error
+    )
+    SELECT stale.org_id, stale.id, stale.attempts,
+           CASE WHEN stale.attempts >= sqlc.arg(max_attempts)::integer
+                THEN 'terminal_failure' ELSE 'retryable_failure' END,
+           'delivery worker lease expired'
+    FROM stale
+    ON CONFLICT (delivery_id, attempt) DO NOTHING
+), recovered AS (
+    UPDATE alert_deliveries d
+    SET state = CASE WHEN stale.attempts >= sqlc.arg(max_attempts)::integer
+                     THEN 'failed' ELSE 'pending' END,
+        next_attempt_at = sqlc.arg(next_attempt_at),
+        last_error = 'delivery worker lease expired',
+        failed_at = CASE WHEN stale.attempts >= sqlc.arg(max_attempts)::integer
+                         THEN now() ELSE NULL END
+    FROM stale
+    WHERE d.id = stale.id AND d.org_id = stale.org_id
+    RETURNING d.id
+)
+SELECT count(*)::bigint FROM recovered;
 
 -- name: GetAlertDestinationForDelivery :one
 SELECT d.*
 FROM alert_destinations d
 JOIN alert_deliveries l
   ON l.org_id = d.org_id AND l.destination_id = d.id
+JOIN organizations o
+  ON o.id = d.org_id AND o.deleted_at IS NULL AND o.alerting_enabled
 WHERE l.id = $1 AND l.org_id = $2 AND d.archived_at IS NULL;
 
--- name: FinishAlertDelivery :one
-UPDATE alert_deliveries
-SET state = $3,
-    next_attempt_at = $4,
-    last_error = $5,
-    sent_at = CASE WHEN $3 = 'sent' THEN now() ELSE sent_at END,
-    failed_at = CASE WHEN $3 = 'failed' THEN now() ELSE failed_at END
-WHERE id = $1 AND org_id = $2 AND state = 'delivering'
-RETURNING *;
-
--- name: CreateAlertDeliveryAttempt :one
+-- name: FinishAlertDeliveryWithAttempt :one
+WITH finished AS (
+    UPDATE alert_deliveries delivery
+    SET state = sqlc.arg(delivery_state),
+        next_attempt_at = sqlc.arg(next_attempt_at),
+        last_error = sqlc.narg(last_error),
+        sent_at = CASE WHEN sqlc.arg(delivery_state) = 'sent' THEN now() ELSE delivery.sent_at END,
+        failed_at = CASE WHEN sqlc.arg(delivery_state) = 'failed' THEN now() ELSE delivery.failed_at END
+    WHERE delivery.id = sqlc.arg(delivery_id) AND delivery.org_id = sqlc.arg(org_id)
+      AND delivery.state = 'delivering'
+    RETURNING delivery.id, delivery.org_id
+)
 INSERT INTO alert_delivery_attempts (
     org_id, delivery_id, attempt, outcome, response_status, error
-) VALUES ($1, $2, $3, $4, $5, $6)
+) SELECT finished.org_id, finished.id, sqlc.arg(attempt), sqlc.arg(outcome),
+         sqlc.narg(response_status), sqlc.narg(last_error)
+  FROM finished
 RETURNING *;
 
 -- name: ListAlertDeliveries :many

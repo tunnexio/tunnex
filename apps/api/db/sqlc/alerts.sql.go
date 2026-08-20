@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addAlertSubscription = `-- name: AddAlertSubscription :one
@@ -169,45 +168,6 @@ func (q *Queries) CreateAlertDelivery(ctx context.Context, arg CreateAlertDelive
 	return i, err
 }
 
-const createAlertDeliveryAttempt = `-- name: CreateAlertDeliveryAttempt :one
-INSERT INTO alert_delivery_attempts (
-    org_id, delivery_id, attempt, outcome, response_status, error
-) VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, org_id, delivery_id, attempt, outcome, response_status, error, created_at
-`
-
-type CreateAlertDeliveryAttemptParams struct {
-	OrgID          uuid.UUID `json:"org_id"`
-	DeliveryID     uuid.UUID `json:"delivery_id"`
-	Attempt        int32     `json:"attempt"`
-	Outcome        string    `json:"outcome"`
-	ResponseStatus *int32    `json:"response_status"`
-	Error          *string   `json:"error"`
-}
-
-func (q *Queries) CreateAlertDeliveryAttempt(ctx context.Context, arg CreateAlertDeliveryAttemptParams) (AlertDeliveryAttempt, error) {
-	row := q.db.QueryRow(ctx, createAlertDeliveryAttempt,
-		arg.OrgID,
-		arg.DeliveryID,
-		arg.Attempt,
-		arg.Outcome,
-		arg.ResponseStatus,
-		arg.Error,
-	)
-	var i AlertDeliveryAttempt
-	err := row.Scan(
-		&i.ID,
-		&i.OrgID,
-		&i.DeliveryID,
-		&i.Attempt,
-		&i.Outcome,
-		&i.ResponseStatus,
-		&i.Error,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const createAlertDeliveryCooldown = `-- name: CreateAlertDeliveryCooldown :one
 INSERT INTO alert_delivery_cooldowns (
     org_id, destination_id, event_key, dedup_key, next_eligible_at
@@ -247,28 +207,24 @@ func (q *Queries) CreateAlertDeliveryCooldown(ctx context.Context, arg CreateAle
 const createAlertDestination = `-- name: CreateAlertDestination :one
 INSERT INTO alert_destinations (
     org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host,
-    allow_private, severity_floor, cooldown_seconds, quiet_hours_start,
-    quiet_hours_end, quiet_hours_timezone, created_by_user_id
+    allow_private, severity_floor, cooldown_seconds, created_by_user_id
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
-RETURNING id, org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host, allow_private, severity_floor, cooldown_seconds, quiet_hours_start, quiet_hours_end, quiet_hours_timezone, archived_at, created_by_user_id, created_at, updated_at
+RETURNING id, org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host, allow_private, severity_floor, cooldown_seconds, archived_at, created_by_user_id, created_at, updated_at
 `
 
 type CreateAlertDestinationParams struct {
-	OrgID               uuid.UUID   `json:"org_id"`
-	Kind                string      `json:"kind"`
-	Name                string      `json:"name"`
-	EndpointSealed      []byte      `json:"endpoint_sealed"`
-	EndpointFingerprint string      `json:"endpoint_fingerprint"`
-	EndpointHost        string      `json:"endpoint_host"`
-	AllowPrivate        bool        `json:"allow_private"`
-	SeverityFloor       string      `json:"severity_floor"`
-	CooldownSeconds     int32       `json:"cooldown_seconds"`
-	QuietHoursStart     pgtype.Time `json:"quiet_hours_start"`
-	QuietHoursEnd       pgtype.Time `json:"quiet_hours_end"`
-	QuietHoursTimezone  *string     `json:"quiet_hours_timezone"`
-	CreatedByUserID     uuid.UUID   `json:"created_by_user_id"`
+	OrgID               uuid.UUID `json:"org_id"`
+	Kind                string    `json:"kind"`
+	Name                string    `json:"name"`
+	EndpointSealed      []byte    `json:"endpoint_sealed"`
+	EndpointFingerprint string    `json:"endpoint_fingerprint"`
+	EndpointHost        string    `json:"endpoint_host"`
+	AllowPrivate        bool      `json:"allow_private"`
+	SeverityFloor       string    `json:"severity_floor"`
+	CooldownSeconds     int32     `json:"cooldown_seconds"`
+	CreatedByUserID     uuid.UUID `json:"created_by_user_id"`
 }
 
 func (q *Queries) CreateAlertDestination(ctx context.Context, arg CreateAlertDestinationParams) (AlertDestination, error) {
@@ -282,9 +238,6 @@ func (q *Queries) CreateAlertDestination(ctx context.Context, arg CreateAlertDes
 		arg.AllowPrivate,
 		arg.SeverityFloor,
 		arg.CooldownSeconds,
-		arg.QuietHoursStart,
-		arg.QuietHoursEnd,
-		arg.QuietHoursTimezone,
 		arg.CreatedByUserID,
 	)
 	var i AlertDestination
@@ -299,9 +252,6 @@ func (q *Queries) CreateAlertDestination(ctx context.Context, arg CreateAlertDes
 		&i.AllowPrivate,
 		&i.SeverityFloor,
 		&i.CooldownSeconds,
-		&i.QuietHoursStart,
-		&i.QuietHoursEnd,
-		&i.QuietHoursTimezone,
 		&i.ArchivedAt,
 		&i.CreatedByUserID,
 		&i.CreatedAt,
@@ -310,51 +260,58 @@ func (q *Queries) CreateAlertDestination(ctx context.Context, arg CreateAlertDes
 	return i, err
 }
 
-const finishAlertDelivery = `-- name: FinishAlertDelivery :one
-UPDATE alert_deliveries
-SET state = $3,
-    next_attempt_at = $4,
-    last_error = $5,
-    sent_at = CASE WHEN $3 = 'sent' THEN now() ELSE sent_at END,
-    failed_at = CASE WHEN $3 = 'failed' THEN now() ELSE failed_at END
-WHERE id = $1 AND org_id = $2 AND state = 'delivering'
-RETURNING id, org_id, destination_id, event_key, severity, dedup_key, payload, state, attempts, next_attempt_at, last_error, suppressed_count, sent_at, failed_at, created_at, updated_at
+const finishAlertDeliveryWithAttempt = `-- name: FinishAlertDeliveryWithAttempt :one
+WITH finished AS (
+    UPDATE alert_deliveries delivery
+    SET state = $5,
+        next_attempt_at = $6,
+        last_error = $4,
+        sent_at = CASE WHEN $5 = 'sent' THEN now() ELSE delivery.sent_at END,
+        failed_at = CASE WHEN $5 = 'failed' THEN now() ELSE delivery.failed_at END
+    WHERE delivery.id = $7 AND delivery.org_id = $8
+      AND delivery.state = 'delivering'
+    RETURNING delivery.id, delivery.org_id
+)
+INSERT INTO alert_delivery_attempts (
+    org_id, delivery_id, attempt, outcome, response_status, error
+) SELECT finished.org_id, finished.id, $1, $2,
+         $3, $4
+  FROM finished
+RETURNING id, org_id, delivery_id, attempt, outcome, response_status, error, created_at
 `
 
-type FinishAlertDeliveryParams struct {
-	ID            uuid.UUID `json:"id"`
-	OrgID         uuid.UUID `json:"org_id"`
-	State         string    `json:"state"`
-	NextAttemptAt time.Time `json:"next_attempt_at"`
-	LastError     *string   `json:"last_error"`
+type FinishAlertDeliveryWithAttemptParams struct {
+	Attempt        int32     `json:"attempt"`
+	Outcome        string    `json:"outcome"`
+	ResponseStatus *int32    `json:"response_status"`
+	LastError      *string   `json:"last_error"`
+	DeliveryState  string    `json:"delivery_state"`
+	NextAttemptAt  time.Time `json:"next_attempt_at"`
+	DeliveryID     uuid.UUID `json:"delivery_id"`
+	OrgID          uuid.UUID `json:"org_id"`
 }
 
-func (q *Queries) FinishAlertDelivery(ctx context.Context, arg FinishAlertDeliveryParams) (AlertDelivery, error) {
-	row := q.db.QueryRow(ctx, finishAlertDelivery,
-		arg.ID,
-		arg.OrgID,
-		arg.State,
-		arg.NextAttemptAt,
+func (q *Queries) FinishAlertDeliveryWithAttempt(ctx context.Context, arg FinishAlertDeliveryWithAttemptParams) (AlertDeliveryAttempt, error) {
+	row := q.db.QueryRow(ctx, finishAlertDeliveryWithAttempt,
+		arg.Attempt,
+		arg.Outcome,
+		arg.ResponseStatus,
 		arg.LastError,
+		arg.DeliveryState,
+		arg.NextAttemptAt,
+		arg.DeliveryID,
+		arg.OrgID,
 	)
-	var i AlertDelivery
+	var i AlertDeliveryAttempt
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
-		&i.DestinationID,
-		&i.EventKey,
-		&i.Severity,
-		&i.DedupKey,
-		&i.Payload,
-		&i.State,
-		&i.Attempts,
-		&i.NextAttemptAt,
-		&i.LastError,
-		&i.SuppressedCount,
-		&i.SentAt,
-		&i.FailedAt,
+		&i.DeliveryID,
+		&i.Attempt,
+		&i.Outcome,
+		&i.ResponseStatus,
+		&i.Error,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -393,7 +350,7 @@ func (q *Queries) GetAlertDeliveryCooldownForUpdate(ctx context.Context, arg Get
 }
 
 const getAlertDestination = `-- name: GetAlertDestination :one
-SELECT id, org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host, allow_private, severity_floor, cooldown_seconds, quiet_hours_start, quiet_hours_end, quiet_hours_timezone, archived_at, created_by_user_id, created_at, updated_at FROM alert_destinations
+SELECT id, org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host, allow_private, severity_floor, cooldown_seconds, archived_at, created_by_user_id, created_at, updated_at FROM alert_destinations
 WHERE org_id = $1 AND id = $2
 `
 
@@ -416,9 +373,6 @@ func (q *Queries) GetAlertDestination(ctx context.Context, arg GetAlertDestinati
 		&i.AllowPrivate,
 		&i.SeverityFloor,
 		&i.CooldownSeconds,
-		&i.QuietHoursStart,
-		&i.QuietHoursEnd,
-		&i.QuietHoursTimezone,
 		&i.ArchivedAt,
 		&i.CreatedByUserID,
 		&i.CreatedAt,
@@ -428,10 +382,12 @@ func (q *Queries) GetAlertDestination(ctx context.Context, arg GetAlertDestinati
 }
 
 const getAlertDestinationForDelivery = `-- name: GetAlertDestinationForDelivery :one
-SELECT d.id, d.org_id, d.kind, d.name, d.endpoint_sealed, d.endpoint_fingerprint, d.endpoint_host, d.allow_private, d.severity_floor, d.cooldown_seconds, d.quiet_hours_start, d.quiet_hours_end, d.quiet_hours_timezone, d.archived_at, d.created_by_user_id, d.created_at, d.updated_at
+SELECT d.id, d.org_id, d.kind, d.name, d.endpoint_sealed, d.endpoint_fingerprint, d.endpoint_host, d.allow_private, d.severity_floor, d.cooldown_seconds, d.archived_at, d.created_by_user_id, d.created_at, d.updated_at
 FROM alert_destinations d
 JOIN alert_deliveries l
   ON l.org_id = d.org_id AND l.destination_id = d.id
+JOIN organizations o
+  ON o.id = d.org_id AND o.deleted_at IS NULL AND o.alerting_enabled
 WHERE l.id = $1 AND l.org_id = $2 AND d.archived_at IS NULL
 `
 
@@ -454,9 +410,6 @@ func (q *Queries) GetAlertDestinationForDelivery(ctx context.Context, arg GetAle
 		&i.AllowPrivate,
 		&i.SeverityFloor,
 		&i.CooldownSeconds,
-		&i.QuietHoursStart,
-		&i.QuietHoursEnd,
-		&i.QuietHoursTimezone,
 		&i.ArchivedAt,
 		&i.CreatedByUserID,
 		&i.CreatedAt,
@@ -549,7 +502,7 @@ func (q *Queries) ListAlertDeliveries(ctx context.Context, arg ListAlertDeliveri
 }
 
 const listAlertDestinations = `-- name: ListAlertDestinations :many
-SELECT id, org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host, allow_private, severity_floor, cooldown_seconds, quiet_hours_start, quiet_hours_end, quiet_hours_timezone, archived_at, created_by_user_id, created_at, updated_at FROM alert_destinations
+SELECT id, org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host, allow_private, severity_floor, cooldown_seconds, archived_at, created_by_user_id, created_at, updated_at FROM alert_destinations
 WHERE org_id = $1
 ORDER BY archived_at NULLS FIRST, created_at, id
 `
@@ -574,9 +527,6 @@ func (q *Queries) ListAlertDestinations(ctx context.Context, orgID uuid.UUID) ([
 			&i.AllowPrivate,
 			&i.SeverityFloor,
 			&i.CooldownSeconds,
-			&i.QuietHoursStart,
-			&i.QuietHoursEnd,
-			&i.QuietHoursTimezone,
 			&i.ArchivedAt,
 			&i.CreatedByUserID,
 			&i.CreatedAt,
@@ -593,7 +543,7 @@ func (q *Queries) ListAlertDestinations(ctx context.Context, orgID uuid.UUID) ([
 }
 
 const listAlertDestinationsForEvent = `-- name: ListAlertDestinationsForEvent :many
-SELECT d.id, d.org_id, d.kind, d.name, d.endpoint_sealed, d.endpoint_fingerprint, d.endpoint_host, d.allow_private, d.severity_floor, d.cooldown_seconds, d.quiet_hours_start, d.quiet_hours_end, d.quiet_hours_timezone, d.archived_at, d.created_by_user_id, d.created_at, d.updated_at
+SELECT d.id, d.org_id, d.kind, d.name, d.endpoint_sealed, d.endpoint_fingerprint, d.endpoint_host, d.allow_private, d.severity_floor, d.cooldown_seconds, d.archived_at, d.created_by_user_id, d.created_at, d.updated_at
 FROM alert_destinations d
 JOIN alert_subscriptions s
   ON s.org_id = d.org_id AND s.destination_id = d.id
@@ -638,9 +588,6 @@ func (q *Queries) ListAlertDestinationsForEvent(ctx context.Context, arg ListAle
 			&i.AllowPrivate,
 			&i.SeverityFloor,
 			&i.CooldownSeconds,
-			&i.QuietHoursStart,
-			&i.QuietHoursEnd,
-			&i.QuietHoursTimezone,
 			&i.ArchivedAt,
 			&i.CreatedByUserID,
 			&i.CreatedAt,
@@ -744,15 +691,40 @@ func (q *Queries) ListDueAlertDeliveries(ctx context.Context, arg ListDueAlertDe
 	return items, nil
 }
 
-const recoverStaleAlertDeliveries = `-- name: RecoverStaleAlertDeliveries :execrows
-UPDATE alert_deliveries
-SET state = 'pending', next_attempt_at = $1, last_error = 'delivery worker lease expired'
-WHERE state = 'delivering' AND updated_at < $2
+const recoverStaleAlertDeliveries = `-- name: RecoverStaleAlertDeliveries :one
+WITH stale AS (
+    SELECT delivery.id, delivery.org_id, delivery.destination_id, delivery.event_key, delivery.severity, delivery.dedup_key, delivery.payload, delivery.state, delivery.attempts, delivery.next_attempt_at, delivery.last_error, delivery.suppressed_count, delivery.sent_at, delivery.failed_at, delivery.created_at, delivery.updated_at FROM alert_deliveries delivery
+    WHERE delivery.state = 'delivering' AND delivery.updated_at < $1
+    FOR UPDATE
+), recorded AS (
+    INSERT INTO alert_delivery_attempts (
+        org_id, delivery_id, attempt, outcome, error
+    )
+    SELECT stale.org_id, stale.id, stale.attempts,
+           CASE WHEN stale.attempts >= $2::integer
+                THEN 'terminal_failure' ELSE 'retryable_failure' END,
+           'delivery worker lease expired'
+    FROM stale
+    ON CONFLICT (delivery_id, attempt) DO NOTHING
+), recovered AS (
+    UPDATE alert_deliveries d
+    SET state = CASE WHEN stale.attempts >= $2::integer
+                     THEN 'failed' ELSE 'pending' END,
+        next_attempt_at = $3,
+        last_error = 'delivery worker lease expired',
+        failed_at = CASE WHEN stale.attempts >= $2::integer
+                         THEN now() ELSE NULL END
+    FROM stale
+    WHERE d.id = stale.id AND d.org_id = stale.org_id
+    RETURNING d.id
+)
+SELECT count(*)::bigint FROM recovered
 `
 
 type RecoverStaleAlertDeliveriesParams struct {
+	StaleBefore   time.Time `json:"stale_before"`
+	MaxAttempts   int32     `json:"max_attempts"`
 	NextAttemptAt time.Time `json:"next_attempt_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // lint:cross-org — the leader-gated dispatcher requeues stale claims across
@@ -760,11 +732,10 @@ type RecoverStaleAlertDeliveriesParams struct {
 // A delivery is claimed before outbound I/O. If that worker dies, a later
 // leader requeues only claims older than the bounded dispatcher lease.
 func (q *Queries) RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverStaleAlertDeliveriesParams) (int64, error) {
-	result, err := q.db.Exec(ctx, recoverStaleAlertDeliveries, arg.NextAttemptAt, arg.UpdatedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, recoverStaleAlertDeliveries, arg.StaleBefore, arg.MaxAttempts, arg.NextAttemptAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const removeAlertSubscription = `-- name: RemoveAlertSubscription :execrows

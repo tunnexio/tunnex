@@ -64,8 +64,8 @@ func (p *OutboxPublisher) Publish(ctx context.Context, event Event) error {
 }
 
 // PostgresOutbox keeps the cooldown reservation and delivery creation in one
-// serializable transaction. A concurrent publisher can either reserve the next
-// send or increment the same condition's counter, never enqueue a duplicate.
+// transaction. A transaction-scoped advisory lock serializes the first write
+// for one destination/condition key before the cooldown row exists.
 type PostgresOutbox struct {
 	pool *pgxpool.Pool
 	q    *sqlc.Queries
@@ -84,12 +84,16 @@ func (s *PostgresOutbox) ListAlertDestinationsForEvent(ctx context.Context, para
 }
 
 func (s *PostgresOutbox) Enqueue(ctx context.Context, destination sqlc.AlertDestination, event Event, payload []byte, now time.Time) error {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 	q := s.q.WithTx(tx)
+	lockKey := event.OrgID.String() + "|" + destination.ID.String() + "|" + string(event.Key) + "|" + event.DedupKey
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		return err
+	}
 	key := sqlc.GetAlertDeliveryCooldownForUpdateParams{
 		OrgID: event.OrgID, DestinationID: destination.ID, EventKey: string(event.Key), DedupKey: event.DedupKey,
 	}

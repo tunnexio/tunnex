@@ -7,11 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
-	"github.com/tunnexio/tunnex/apps/api/internal/alerts/safedial"
 )
 
 type opener string
@@ -108,7 +108,22 @@ func TestWebhookSenderRefusesPlainHTTPWithoutPrivateOptIn(t *testing.T) {
 	t.Parallel()
 	sender := NewWebhookSender(opener("http://hooks.example/alert"))
 	_, err := sender.Send(context.Background(), sqlc.AlertDestination{EndpointSealed: []byte("sealed")}, []byte(`{}`))
-	if !errors.Is(err, safedial.ErrUnsafeDestination) {
-		t.Fatalf("plain HTTP error=%v, want unsafe destination", err)
+	if testFailureCode(err, 0) != "blocked" || err.Error() != "alert delivery blocked" {
+		t.Fatalf("plain HTTP error=%v, want stable blocked failure", err)
+	}
+}
+
+func TestWebhookSenderNeverReturnsSecretURLOnNetworkFailure(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	secretURL := server.URL + "/secret-token"
+	server.Close()
+	sender := NewWebhookSender(opener(secretURL))
+	_, err := sender.Send(context.Background(), sqlc.AlertDestination{EndpointSealed: []byte("sealed"), AllowPrivate: true}, []byte(`{}`))
+	if err == nil || err.Error() != "alert delivery network" {
+		t.Fatalf("network error=%v, want stable network failure", err)
+	}
+	if strings.Contains(err.Error(), secretURL) || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("network error disclosed endpoint: %v", err)
 	}
 }

@@ -283,9 +283,6 @@ type AlertDestination struct {
 	AllowPrivate        bool               `json:"allow_private"`
 	SeverityFloor       string             `json:"severity_floor"`
 	CooldownSeconds     int32              `json:"cooldown_seconds"`
-	QuietHoursStart     pgtype.Time        `json:"quiet_hours_start"`
-	QuietHoursEnd       pgtype.Time        `json:"quiet_hours_end"`
-	QuietHoursTimezone  *string            `json:"quiet_hours_timezone"`
 	ArchivedAt          pgtype.Timestamptz `json:"archived_at"`
 	CreatedByUserID     uuid.UUID          `json:"created_by_user_id"`
 	CreatedAt           time.Time          `json:"created_at"`

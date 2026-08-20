@@ -5,12 +5,13 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 )
 
 const (
 	MaxAttempts = 5
-	BatchSize   = 50
+	BatchSize   = 1
 	ClaimLease  = time.Minute
 )
 
@@ -35,8 +36,7 @@ type DispatchStore interface {
 	RecoverStaleAlertDeliveries(context.Context, sqlc.RecoverStaleAlertDeliveriesParams) (int64, error)
 	ClaimDueAlertDeliveries(context.Context, sqlc.ClaimDueAlertDeliveriesParams) ([]sqlc.AlertDelivery, error)
 	GetAlertDestinationForDelivery(context.Context, sqlc.GetAlertDestinationForDeliveryParams) (sqlc.AlertDestination, error)
-	FinishAlertDelivery(context.Context, sqlc.FinishAlertDeliveryParams) (sqlc.AlertDelivery, error)
-	CreateAlertDeliveryAttempt(context.Context, sqlc.CreateAlertDeliveryAttemptParams) (sqlc.AlertDeliveryAttempt, error)
+	FinishAlertDeliveryWithAttempt(context.Context, sqlc.FinishAlertDeliveryWithAttemptParams) (sqlc.AlertDeliveryAttempt, error)
 }
 
 // Sender performs the only outbound operation in the dispatcher. Its concrete
@@ -66,7 +66,7 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	}
 	now := d.now().UTC()
 	if _, err := d.store.RecoverStaleAlertDeliveries(ctx, sqlc.RecoverStaleAlertDeliveriesParams{
-		NextAttemptAt: now, UpdatedAt: now.Add(-ClaimLease),
+		NextAttemptAt: now, StaleBefore: now.Add(-ClaimLease), MaxAttempts: MaxAttempts,
 	}); err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func (d *Dispatcher) deliverOne(ctx context.Context, delivery sqlc.AlertDelivery
 		if err == nil {
 			return d.finish(ctx, delivery, "sent", d.now().UTC(), nil, "sent", responseStatus)
 		}
-		message := err.Error()
+		message := "alert delivery " + deliveryFailureCode(err, status)
 		state := "pending"
 		next := d.now().UTC()
 		if after, retry := RetryAfter(delivery.Attempts); retry {
@@ -112,31 +112,18 @@ func (d *Dispatcher) deliverOne(ctx context.Context, delivery sqlc.AlertDelivery
 		}
 		return d.finish(ctx, delivery, state, next, &message, outcome, responseStatus)
 	}
-	message := err.Error()
-	state := "pending"
-	next := d.now().UTC()
-	if after, retry := RetryAfter(delivery.Attempts); retry {
-		next = next.Add(after)
-	} else {
-		state = "failed"
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err
 	}
-	outcome := "retryable_failure"
-	if state == "failed" {
-		outcome = "terminal_failure"
-	}
-	return d.finish(ctx, delivery, state, next, &message, outcome, nil)
+	message := "alert delivery unavailable"
+	return d.finish(ctx, delivery, "failed", d.now().UTC(), &message, "terminal_failure", nil)
 }
 
 func (d *Dispatcher) finish(ctx context.Context, delivery sqlc.AlertDelivery, state string, next time.Time, message *string, outcome string, responseStatus *int32) error {
-	if _, err := d.store.FinishAlertDelivery(ctx, sqlc.FinishAlertDeliveryParams{
-		ID: delivery.ID, OrgID: delivery.OrgID, State: state,
-		NextAttemptAt: next, LastError: message,
-	}); err != nil {
-		return err
-	}
-	_, err := d.store.CreateAlertDeliveryAttempt(ctx, sqlc.CreateAlertDeliveryAttemptParams{
-		OrgID: delivery.OrgID, DeliveryID: delivery.ID, Attempt: delivery.Attempts,
-		Outcome: outcome, ResponseStatus: responseStatus, Error: message,
+	_, err := d.store.FinishAlertDeliveryWithAttempt(ctx, sqlc.FinishAlertDeliveryWithAttemptParams{
+		DeliveryID: delivery.ID, OrgID: delivery.OrgID, DeliveryState: state,
+		NextAttemptAt: next, LastError: message, Attempt: delivery.Attempts,
+		Outcome: outcome, ResponseStatus: responseStatus,
 	})
 	return err
 }

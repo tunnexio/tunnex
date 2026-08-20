@@ -82,6 +82,8 @@ func (s *ConfigService) Create(ctx context.Context, orgID, actor uuid.UUID, in D
 	if s == nil || s.pool == nil || s.sealer == nil {
 		return sqlc.AlertDestination{}, fmt.Errorf("alert configuration is not configured")
 	}
+	in.Name = strings.TrimSpace(in.Name)
+	in.Endpoint = strings.TrimSpace(in.Endpoint)
 	if err := validateDestination(in); err != nil {
 		return sqlc.AlertDestination{}, err
 	}
@@ -97,7 +99,7 @@ func (s *ConfigService) Create(ctx context.Context, orgID, actor uuid.UUID, in D
 	err = withTx(ctx, s.pool, func(q *sqlc.Queries) error {
 		var e error
 		row, e = q.CreateAlertDestination(ctx, sqlc.CreateAlertDestinationParams{
-			OrgID: orgID, Kind: in.Kind, Name: strings.TrimSpace(in.Name), EndpointSealed: []byte(sealed),
+			OrgID: orgID, Kind: in.Kind, Name: in.Name, EndpointSealed: []byte(sealed),
 			EndpointFingerprint: s.sealer.Fingerprint([]byte(in.Endpoint)), EndpointHost: host,
 			AllowPrivate: in.AllowPrivate, SeverityFloor: defaultSeverity(in.SeverityFloor),
 			CooldownSeconds: defaultCooldown(in.CooldownSeconds), CreatedByUserID: actor,
@@ -205,23 +207,7 @@ func (s *ConfigService) Test(ctx context.Context, orgID, destinationID, actor uu
 }
 
 func testFailureCode(err error, status int32) string {
-	if err == nil {
-		return ""
-	}
-	if status >= 400 {
-		return "http_error"
-	}
-	message := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(message, "blocked") || strings.Contains(message, "private") || strings.Contains(message, "redirect"):
-		return "blocked"
-	case strings.Contains(message, "timeout") || strings.Contains(message, "deadline"):
-		return "timeout"
-	case strings.Contains(message, "lookup") || strings.Contains(message, "no such host"):
-		return "dns"
-	default:
-		return "network"
-	}
+	return deliveryFailureCode(err, status)
 }
 
 func (s *ConfigService) destination(ctx context.Context, orgID, destinationID uuid.UUID) (sqlc.AlertDestination, error) {

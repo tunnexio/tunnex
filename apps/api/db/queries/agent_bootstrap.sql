@@ -49,11 +49,7 @@ WITH expired_candidate AS (
   WHERE candidate.org_id = $1 AND candidate.device_id = $2
     AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= now()
 )
-UPDATE agent_runtime_credentials current
-SET rotation_requested_at = NULL, rotation_deadline = NULL,
-    rotation_requested_by = NULL
-WHERE current.org_id = $1 AND current.device_id = $2
-  AND current.state = 'current' AND current.rotation_deadline <= now();
+SELECT count(*) FROM expired_candidate;
 
 -- name: GetAgentRuntimeCredentialRotation :one
 SELECT current.device_id, current.revision,
@@ -83,7 +79,8 @@ SET requested_revision = agent_wireguard_rotations.current_revision + 1,
     requested_by = EXCLUDED.requested_by, staged_at = NULL,
     updated_at = now()
 WHERE agent_wireguard_rotations.org_id = EXCLUDED.org_id
-  AND agent_wireguard_rotations.state = 'current'
+  AND (agent_wireguard_rotations.state = 'current'
+       OR agent_wireguard_rotations.deadline <= now())
 RETURNING agent_wireguard_rotations.*;
 
 -- name: GetAgentWireGuardRotation :one

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -27,6 +29,36 @@ type WebhookSender struct {
 	timeout time.Duration
 }
 
+type deliveryError struct{ code string }
+
+func (e *deliveryError) Error() string { return "alert delivery " + e.code }
+
+func deliveryFailureCode(err error, status int32) string {
+	if err == nil {
+		return ""
+	}
+	if status >= 400 {
+		return "http_error"
+	}
+	var coded *deliveryError
+	if errors.As(err, &coded) {
+		return coded.code
+	}
+	if errors.Is(err, safedial.ErrUnsafeDestination) {
+		return "blocked"
+	}
+	if errors.Is(err, safedial.ErrDestinationDNS) {
+		return "dns"
+	}
+	var networkError net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkError) && networkError.Timeout()) {
+		return "timeout"
+	}
+	return "network"
+}
+
+func stableDeliveryError(code string) error { return &deliveryError{code: code} }
+
 func NewWebhookSender(opener SecretOpener, mailers ...mail.Mailer) *WebhookSender {
 	var mailer mail.Mailer
 	if len(mailers) > 0 {
@@ -37,26 +69,26 @@ func NewWebhookSender(opener SecretOpener, mailers ...mail.Mailer) *WebhookSende
 
 func (s *WebhookSender) Send(ctx context.Context, destination sqlc.AlertDestination, payload []byte) (int32, error) {
 	if s == nil || s.opener == nil {
-		return 0, fmt.Errorf("alert webhook sender is not configured")
+		return 0, stableDeliveryError("configuration")
 	}
 	endpoint, err := s.opener.Open(string(destination.EndpointSealed))
 	if err != nil {
-		return 0, fmt.Errorf("open alert destination: %w", err)
+		return 0, stableDeliveryError("credential")
 	}
 	if destination.Kind == "email" {
 		return s.sendEmail(ctx, string(endpoint), payload)
 	}
 	url, body, headers, err := transportRequest(destination.Kind, string(endpoint), payload)
 	if err != nil {
-		return 0, err
+		return 0, stableDeliveryError("configuration")
 	}
 	if _, err := safedial.ValidateURL(url, destination.AllowPrivate); err != nil {
-		return 0, err
+		return 0, stableDeliveryError(deliveryFailureCode(err, 0))
 	}
 	client := safedial.NewClient(safedial.Options{AllowPrivate: destination.AllowPrivate, Timeout: s.timeout})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return 0, fmt.Errorf("build alert request: %w", err)
+		return 0, stableDeliveryError("configuration")
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("User-Agent", "Tunnex-Alerting/1")
@@ -65,26 +97,26 @@ func (s *WebhookSender) Send(ctx context.Context, destination sqlc.AlertDestinat
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return 0, err
+		return 0, stableDeliveryError(deliveryFailureCode(err, 0))
 	}
 	if _, err := safedial.ReadBody(response, safedial.DefaultBodyLimit); err != nil {
-		return int32(response.StatusCode), fmt.Errorf("read alert response: %w", err)
+		return int32(response.StatusCode), stableDeliveryError("response")
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return int32(response.StatusCode), fmt.Errorf("alert destination returned HTTP %d", response.StatusCode)
+		return int32(response.StatusCode), stableDeliveryError("http_error")
 	}
 	return int32(response.StatusCode), nil
 }
 
 func (s *WebhookSender) sendEmail(ctx context.Context, recipient string, payload []byte) (int32, error) {
 	if s.mailer == nil {
-		return 0, fmt.Errorf("alert email sender is not configured")
+		return 0, stableDeliveryError("configuration")
 	}
 	message := alertText(payload)
 	if err := s.mailer.Send(ctx, mail.Message{
 		To: recipient, Subject: "Tunnex alert", Text: message,
 	}); err != nil {
-		return 0, err
+		return 0, stableDeliveryError("network")
 	}
 	return 0, nil
 }

@@ -251,9 +251,6 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 		next := credential.Revision + 1
 		rotationRevision = &next
 	}
-	if err := s.q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: id.OrgID, DeviceID: id.DeviceID}); err != nil {
-		return Config{}, false, ErrRuntimeStateMissing
-	}
 	wgCurrentRevision := int64(1)
 	var wgRotationRevision *int64
 	var wgRotationState *string

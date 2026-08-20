@@ -23,6 +23,7 @@ const (
 
 var (
 	ErrUnsafeDestination = errors.New("unsafe alert destination")
+	ErrDestinationDNS    = errors.New("alert destination DNS failure")
 	ErrResponseTooLarge  = errors.New("alert destination response exceeds limit")
 )
 
@@ -148,7 +149,7 @@ func resolve(ctx context.Context, resolver Resolver, host string) ([]netip.Addr,
 	}
 	addrs, err := resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil || len(addrs) == 0 {
-		return nil, fmt.Errorf("%w: resolve destination: %v", ErrUnsafeDestination, err)
+		return nil, fmt.Errorf("%w: resolve destination", ErrDestinationDNS)
 	}
 	for i := range addrs {
 		addrs[i] = addrs[i].Unmap()

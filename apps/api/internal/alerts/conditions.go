@@ -117,7 +117,7 @@ func NewPostgresConditionStore(pool *pgxpool.Pool) *PostgresConditionStore {
 
 func (s *PostgresConditionStore) OfflineAgents(ctx context.Context) ([]Condition, error) {
 	return scanConditions(ctx, s.pool, `
-		SELECT d.org_id,d.id,d.name,0::bigint,ars.last_seen_at,'offline'
+		SELECT d.org_id,d.id,d.name,0::bigint,COALESCE(ars.last_seen_at,ars.created_at),'offline'
 		FROM devices d
 		JOIN agent_runtime_state ars ON ars.device_id=d.id
 		WHERE d.kind='agent' AND d.status='active' AND d.deleted_at IS NULL
@@ -127,14 +127,14 @@ func (s *PostgresConditionStore) OfflineAgents(ctx context.Context) ([]Condition
 
 func (s *PostgresConditionStore) DenialSpikes(ctx context.Context) ([]Condition, error) {
 	return scanConditions(ctx, s.pool, `
-		SELECT e.org_id,d.id,d.name,count(*)::bigint,max(e.created_at),'denial-spike'
+		SELECT e.org_id,d.id,d.name,sum(e.deny_count)::bigint,max(e.created_at),'denial-spike'
 		FROM access_events e
 		JOIN devices d ON d.id=e.src_device_id AND d.org_id=e.org_id
 		WHERE e.src_kind='agent' AND e.decision <> 'allow'
 		  AND e.created_at >= now() - ($1::bigint * interval '1 second')
 		  AND d.kind='agent' AND d.status='active' AND d.deleted_at IS NULL
 		GROUP BY e.org_id,d.id,d.name
-		HAVING count(*) >= $2`, int64(denialWindow/time.Second), denialSpikeMinimum)
+		HAVING sum(e.deny_count) >= $2`, int64(denialWindow/time.Second), denialSpikeMinimum)
 }
 
 func (s *PostgresConditionStore) ExpiringAccess(ctx context.Context) ([]Condition, error) {

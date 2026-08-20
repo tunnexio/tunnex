@@ -8,14 +8,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 )
 
 type dispatchStore struct {
-	claimed  []sqlc.AlertDelivery
-	finished []sqlc.FinishAlertDeliveryParams
-	attempts []sqlc.CreateAlertDeliveryAttemptParams
-	recovery sqlc.RecoverStaleAlertDeliveriesParams
+	claimed   []sqlc.AlertDelivery
+	finished  []sqlc.FinishAlertDeliveryWithAttemptParams
+	recovery  sqlc.RecoverStaleAlertDeliveriesParams
+	lookupErr error
 }
 
 func (s *dispatchStore) RecoverStaleAlertDeliveries(_ context.Context, params sqlc.RecoverStaleAlertDeliveriesParams) (int64, error) {
@@ -28,16 +29,14 @@ func (s *dispatchStore) ClaimDueAlertDeliveries(_ context.Context, _ sqlc.ClaimD
 }
 
 func (s *dispatchStore) GetAlertDestinationForDelivery(_ context.Context, params sqlc.GetAlertDestinationForDeliveryParams) (sqlc.AlertDestination, error) {
+	if s.lookupErr != nil {
+		return sqlc.AlertDestination{}, s.lookupErr
+	}
 	return sqlc.AlertDestination{ID: params.ID, OrgID: params.OrgID, Kind: "webhook"}, nil
 }
 
-func (s *dispatchStore) FinishAlertDelivery(_ context.Context, params sqlc.FinishAlertDeliveryParams) (sqlc.AlertDelivery, error) {
+func (s *dispatchStore) FinishAlertDeliveryWithAttempt(_ context.Context, params sqlc.FinishAlertDeliveryWithAttemptParams) (sqlc.AlertDeliveryAttempt, error) {
 	s.finished = append(s.finished, params)
-	return sqlc.AlertDelivery{}, nil
-}
-
-func (s *dispatchStore) CreateAlertDeliveryAttempt(_ context.Context, params sqlc.CreateAlertDeliveryAttemptParams) (sqlc.AlertDeliveryAttempt, error) {
-	s.attempts = append(s.attempts, params)
 	return sqlc.AlertDeliveryAttempt{}, nil
 }
 
@@ -69,17 +68,17 @@ func TestDispatcherMarksSuccessfulDeliverySent(t *testing.T) {
 	if err := dispatcher.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.finished) != 1 || store.finished[0].State != "sent" || !store.finished[0].NextAttemptAt.Equal(now) {
+	if len(store.finished) != 1 || store.finished[0].DeliveryState != "sent" || !store.finished[0].NextAttemptAt.Equal(now) {
 		t.Fatalf("finished=%#v, want sent at now", store.finished)
 	}
-	if !store.recovery.NextAttemptAt.Equal(now) || !store.recovery.UpdatedAt.Equal(now.Add(-ClaimLease)) {
+	if !store.recovery.NextAttemptAt.Equal(now) || !store.recovery.StaleBefore.Equal(now.Add(-ClaimLease)) || store.recovery.MaxAttempts != MaxAttempts {
 		t.Fatalf("recovery=%#v, want one-minute stale claim lease", store.recovery)
 	}
-	if len(store.attempts) != 1 || store.attempts[0].Outcome != "sent" || store.attempts[0].Error != nil {
-		t.Fatalf("attempts=%#v, want successful history", store.attempts)
+	if store.finished[0].Outcome != "sent" || store.finished[0].LastError != nil {
+		t.Fatalf("finish=%#v, want successful history", store.finished[0])
 	}
-	if store.attempts[0].ResponseStatus == nil || *store.attempts[0].ResponseStatus != http.StatusAccepted {
-		t.Fatalf("attempt=%#v, want response status 202", store.attempts[0])
+	if store.finished[0].ResponseStatus == nil || *store.finished[0].ResponseStatus != http.StatusAccepted {
+		t.Fatalf("attempt=%#v, want response status 202", store.finished[0])
 	}
 }
 
@@ -102,17 +101,33 @@ func TestDispatcherSchedulesThenDeadLettersFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := store.finished[0]
-			if got.State != tc.state || !got.NextAttemptAt.Equal(tc.next) || got.LastError == nil {
+			if got.DeliveryState != tc.state || !got.NextAttemptAt.Equal(tc.next) || got.LastError == nil {
 				t.Fatalf("finish=%#v, want state=%s next=%s error", got, tc.state, tc.next)
 			}
 			wantOutcome := "retryable_failure"
 			if tc.state == "failed" {
 				wantOutcome = "terminal_failure"
 			}
-			if store.attempts[0].Outcome != wantOutcome || store.attempts[0].Attempt != tc.attempt {
-				t.Fatalf("attempt=%#v, want %s attempt %d", store.attempts[0], wantOutcome, tc.attempt)
+			if got.Outcome != wantOutcome || got.Attempt != tc.attempt {
+				t.Fatalf("attempt=%#v, want %s attempt %d", got, wantOutcome, tc.attempt)
+			}
+			if got.LastError == nil || *got.LastError != "alert delivery network" {
+				t.Fatalf("last_error=%v, want stable network code", got.LastError)
 			}
 		})
+	}
+}
+
+func TestDispatcherDeadLettersUnavailableDestination(t *testing.T) {
+	t.Parallel()
+	store := &dispatchStore{claimed: []sqlc.AlertDelivery{testDelivery(1)}, lookupErr: pgx.ErrNoRows}
+	dispatcher := NewDispatcher(store, sender{})
+	if err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := store.finished[0]
+	if got.DeliveryState != "failed" || got.Outcome != "terminal_failure" || got.LastError == nil || *got.LastError != "alert delivery unavailable" {
+		t.Fatalf("finish=%#v, want terminal unavailable outcome", got)
 	}
 }
 

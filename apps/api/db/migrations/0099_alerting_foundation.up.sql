@@ -16,20 +16,11 @@ CREATE TABLE alert_destinations (
     allow_private        boolean NOT NULL DEFAULT false,
     severity_floor       text NOT NULL DEFAULT 'warning' CHECK (severity_floor IN ('info', 'warning', 'critical')),
     cooldown_seconds     integer NOT NULL DEFAULT 900 CHECK (cooldown_seconds BETWEEN 60 AND 86400),
-    quiet_hours_start    time,
-    quiet_hours_end      time,
-    quiet_hours_timezone text,
     archived_at          timestamptz,
     created_by_user_id   uuid NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
     created_at           timestamptz NOT NULL DEFAULT now(),
     updated_at           timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (id, org_id),
-    CHECK (
-        (quiet_hours_start IS NULL AND quiet_hours_end IS NULL AND quiet_hours_timezone IS NULL)
-        OR
-        (quiet_hours_start IS NOT NULL AND quiet_hours_end IS NOT NULL
-         AND length(btrim(quiet_hours_timezone)) BETWEEN 1 AND 100)
-    )
+    UNIQUE (id, org_id)
 );
 CREATE UNIQUE INDEX alert_destinations_org_active_name_key
     ON alert_destinations (org_id, lower(name)) WHERE archived_at IS NULL;

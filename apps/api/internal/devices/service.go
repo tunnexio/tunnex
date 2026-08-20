@@ -112,9 +112,6 @@ func credentialRotationStatus(row sqlc.GetAgentRuntimeCredentialRotationRow) Age
 }
 
 func (s *Service) GetAgentCredentialRotation(ctx context.Context, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
-	if err := s.q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
-		return AgentCredentialRotationStatus{}, err
-	}
 	row, err := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AgentCredentialRotationStatus{}, apierr.NotFound("agent_not_found", "agent not found")
@@ -143,9 +140,6 @@ func (s *Service) RequestAgentCredentialRotation(ctx context.Context, actorID, o
 	var result AgentCredentialRotationStatus
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		if err := q.ExpireAgentRuntimeCredentialRotation(ctx, sqlc.ExpireAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
-			return err
-		}
-		if err := q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
 			return err
 		}
 		deadline := pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}

@@ -241,7 +241,8 @@ access controls merely to satisfy a label in this story title.
 
 ## Configurability — what an owner actually controls
 
-Every item is owner-settable; nothing is hardcoded policy.
+These are the bounded v1 controls. Producer thresholds remain the fixed D11
+defaults; they are not presented as per-org policy.
 
 | Control | Grain | Default |
 | --- | --- | --- |
@@ -250,7 +251,6 @@ Every item is owner-settable; nothing is hardcoded policy.
 | Which events go where | **per destination** (D4) | none selected |
 | Minimum severity | per destination | `warning` |
 | Cooldown window | per destination | 15 min |
-| Quiet hours | per destination | none |
 | Allow private-IP targets | per destination, **owner-only** | **off** (D5) |
 | Test send | per destination, any time | — |
 
@@ -283,8 +283,8 @@ there is a surface to mislead anyone with.
   `make build-editions`, web `typecheck && test && build`.
 - **Slice 3 is red-first.** The SSRF tests must fail against an unguarded client and pass against the
   guard. A green suite over a client that was never pointed at `169.254.169.254` proves nothing.
-- **Wire proof:** a real Slack incoming webhook and a real PagerDuty routing key on the local stack; force
-  a gateway into `site_link_down` and observe the message. Per ledger convention unit tests **substitute
+- **Wire proof:** a real Slack incoming webhook and a real PagerDuty routing key on the local stack; stop
+  one managed AI-agent runtime past the one-minute boundary and observe the message. Per ledger convention unit tests **substitute
   for** but never **satisfy** a wire proof.
 - Test-send is the operator-facing proof, and it must report the true failure (DNS, refused by guard,
   4xx from provider) rather than a generic "could not send".
@@ -298,3 +298,5 @@ there is a surface to mislead anyone with.
 - **Alert templating / custom message bodies** — deliberately out; a fixed shape per event keeps the
   producer census meaningful.
 - **Per-user (rather than per-org) subscriptions** — out; this is org infrastructure alerting.
+- **Quiet hours** — deferred until a customer needs destination-local schedules; correct delivery requires
+  an explicit timezone/DST contract, so F11 does not ship inert schema fields that imply enforcement.
