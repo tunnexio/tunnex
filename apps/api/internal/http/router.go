@@ -19,6 +19,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
@@ -54,6 +55,8 @@ type Deps struct {
 	Nodes              *nodes.Service
 	AgentRuntimeOptIn  agentruntime.OptInFunc
 	AgentRuntimeNotify agentruntime.Notifier
+	AlertPublisher     alerts.Publisher
+	AlertConfig        *alerts.ConfigService
 	Devices            *devices.Service
 	Ovpn               *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export. CA loads lazily (D-S9.5-OPTIN a)
 	Sites              *sites.Service
@@ -230,6 +233,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	// bodies.
 	agentRuntime := agentruntime.New(d.System, d.AgentRuntimeOptIn)
 	agentRuntime.SetNotifier(d.AgentRuntimeNotify)
+	agentRuntime.SetAlertPublisher(d.AlertPublisher)
 	r.Use(runtimeAuthMiddleware(agentRuntime))
 	r.Use(authBeforeAgentValidation)
 
@@ -250,7 +254,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		},
 	}))
 
-	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, sso: d.SSO, policy: d.Policy, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap}
+	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, sso: d.SSO, policy: d.Policy, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap}
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
 	// wraps every operation (self-arming — a new endpoint is gated by construction).
@@ -307,8 +311,14 @@ func validationErrorHandler(w http.ResponseWriter, message string, statusCode in
 
 func authBeforeAgentValidation(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method == http.MethodPut && strings.HasPrefix(req.URL.Path, "/api/v1/organizations/") &&
-			(strings.HasSuffix(req.URL.Path, "/agent-quota") || strings.HasSuffix(req.URL.Path, "/agent-runtime-settings")) {
+		orgPath := strings.HasPrefix(req.URL.Path, "/api/v1/organizations/")
+		protectedAgentMutation := req.Method == http.MethodPut &&
+			(strings.HasSuffix(req.URL.Path, "/agent-quota") || strings.HasSuffix(req.URL.Path, "/agent-runtime-settings"))
+		// Alerting carries write-only destination credentials. Authenticate before
+		// schema validation so an anonymous caller cannot use malformed bodies or
+		// a guessed destination identifier to probe the surface.
+		protectedAlerting := strings.Contains(req.URL.Path, "/alerting-settings") || strings.Contains(req.URL.Path, "/alert-destinations")
+		if orgPath && (protectedAgentMutation || protectedAlerting) {
 			if _, ok := authctx.PrincipalFrom(req.Context()); !ok {
 				apierr.Write(w, req, apierr.New(http.StatusUnauthorized, "unauthenticated", "authentication required"))
 				return

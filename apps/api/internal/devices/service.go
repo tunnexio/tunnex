@@ -111,10 +111,15 @@ func credentialRotationStatus(row sqlc.GetAgentRuntimeCredentialRotationRow) Age
 		WireGuardCurrentRevision: 1, WireGuardState: "current"}
 }
 
-func (s *Service) GetAgentCredentialRotation(ctx context.Context, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
-	if err := s.q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
-		return AgentCredentialRotationStatus{}, err
+func wireGuardRotationStatus(row sqlc.AgentWireguardRotation, now time.Time) (string, *int64, *time.Time) {
+	if row.State == "current" || row.RequestedRevision == nil || !row.Deadline.Valid || !row.Deadline.Time.After(now) {
+		return "current", nil, nil
 	}
+	deadline := row.Deadline.Time
+	return row.State, row.RequestedRevision, &deadline
+}
+
+func (s *Service) GetAgentCredentialRotation(ctx context.Context, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
 	row, err := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AgentCredentialRotationStatus{}, apierr.NotFound("agent_not_found", "agent not found")
@@ -125,13 +130,11 @@ func (s *Service) GetAgentCredentialRotation(ctx context.Context, orgID, deviceI
 	status := credentialRotationStatus(row)
 	if wg, wgErr := s.q.GetAgentWireGuardRotation(ctx, sqlc.GetAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); wgErr == nil {
 		status.WireGuardCurrentRevision = wg.CurrentRevision
-		status.WireGuardState = wg.State
-		if wg.State != "current" && wg.RequestedRevision != nil && wg.Deadline.Valid && wg.Deadline.Time.After(time.Now()) {
-			status.WireGuardRequestedRevision = wg.RequestedRevision
-			if status.Deadline == nil {
-				d := wg.Deadline.Time
-				status.Deadline = &d
-			}
+		wgState, wgRequested, wgDeadline := wireGuardRotationStatus(wg, time.Now())
+		status.WireGuardState = wgState
+		status.WireGuardRequestedRevision = wgRequested
+		if status.Deadline == nil && wgDeadline != nil {
+			status.Deadline = wgDeadline
 		}
 	} else if !errors.Is(wgErr, pgx.ErrNoRows) {
 		return AgentCredentialRotationStatus{}, wgErr
@@ -143,9 +146,6 @@ func (s *Service) RequestAgentCredentialRotation(ctx context.Context, actorID, o
 	var result AgentCredentialRotationStatus
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		if err := q.ExpireAgentRuntimeCredentialRotation(ctx, sqlc.ExpireAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
-			return err
-		}
-		if err := q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
 			return err
 		}
 		deadline := pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true}

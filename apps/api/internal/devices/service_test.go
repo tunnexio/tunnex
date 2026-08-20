@@ -8,9 +8,11 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
@@ -27,6 +29,25 @@ func code(err error) string {
 		return a.Code
 	}
 	return ""
+}
+
+func TestExpiredWireGuardRotationIsRetryableInStatus(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	next := int64(4)
+	state, requested, deadline := wireGuardRotationStatus(sqlc.AgentWireguardRotation{
+		State: "prepared", RequestedRevision: &next,
+		Deadline: pgtype.Timestamptz{Time: now.Add(-time.Second), Valid: true},
+	}, now)
+	if state != "current" || requested != nil || deadline != nil {
+		t.Fatalf("expired WireGuard rotation = (%q, %v, %v), want retryable current status", state, requested, deadline)
+	}
+	state, requested, deadline = wireGuardRotationStatus(sqlc.AgentWireguardRotation{
+		State: "prepared", RequestedRevision: &next,
+		Deadline: pgtype.Timestamptz{Time: now.Add(time.Minute), Valid: true},
+	}, now)
+	if state != "prepared" || requested == nil || *requested != next || deadline == nil {
+		t.Fatalf("active WireGuard rotation = (%q, %v, %v), want prepared revision %d", state, requested, deadline, next)
+	}
 }
 
 // setup returns a device Service bound to a rolled-back tx, plus seeded org/user/

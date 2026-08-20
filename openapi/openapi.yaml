@@ -2859,6 +2859,152 @@ paths:
               schema: { $ref: "#/components/schemas/AgentRuntimeSetting" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/alerting-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getOrganizationAlertingSetting
+      summary: Read the explicit organization alerting opt-in
+      tags: [alerting]
+      responses:
+        "200":
+          description: Persisted alerting setting.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AlertingSetting" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setOrganizationAlertingEnabled
+      summary: Enable or disable organization alert delivery
+      description: >-
+        Alerting is open-core but disabled by default. Requires alerting:manage; enabling never
+        happens implicitly because a destination authorizes outbound delivery on behalf of an organization.
+      tags: [alerting]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AlertingSetting" } } }
+      responses:
+        "200":
+          description: Persisted alerting setting.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AlertingSetting" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/alert-destinations:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAlertDestinations
+      summary: List alert destinations without their endpoint secrets
+      tags: [alerting]
+      responses:
+        "200":
+          description: Active and archived destination metadata. Endpoint URLs are never returned.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AlertDestination" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAlertDestination
+      summary: Create an outbound alert destination
+      description: >-
+        The endpoint is write-only and sealed at rest. allow_private is owner-only and is the sole
+        escape hatch for an on-premises HTTP or private-address receiver.
+      tags: [alerting]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAlertDestinationRequest" } } }
+      responses:
+        "201":
+          description: Created destination metadata; endpoint is omitted.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AlertDestination" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: destinationId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAlertDestinationSubscriptions
+      summary: List an alert destination's subscribed event types
+      tags: [alerting]
+      responses:
+        "200":
+          description: Current closed-vocabulary event subscriptions.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AlertEventKey" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: addAlertDestinationSubscription
+      summary: Subscribe an alert destination to one typed event
+      tags: [alerting]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AddAlertSubscriptionRequest" } } }
+      responses:
+        "201":
+          description: Subscription created or already present.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AlertEventKey" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/alert-destinations/{destinationId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: destinationId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: archiveAlertDestination
+      summary: Archive an alert destination without deleting delivery history
+      tags: [alerting]
+      responses:
+        "204":
+          description: Destination archived. Repeating the request is harmless while the destination remains in this organization.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/alert-destinations/{destinationId}/test:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: destinationId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: testAlertDestination
+      summary: Send one synthetic generic-webhook alert without enqueuing a production event
+      tags: [alerting]
+      responses:
+        "200":
+          description: Sanitized result of the attempted test delivery.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AlertTestResult" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions/{eventKey}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: destinationId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: eventKey, in: path, required: true, schema: { $ref: "#/components/schemas/AlertEventKey" } }
+    delete:
+      operationId: removeAlertDestinationSubscription
+      summary: Stop an alert destination receiving one typed event
+      tags: [alerting]
+      responses:
+        "204":
+          description: Subscription removed. Repeating the request is harmless.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/alert-deliveries:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAlertDeliveries
+      summary: List recent alert delivery outcomes without payloads or endpoint secrets
+      tags: [alerting]
+      responses:
+        "200":
+          description: The most recent bounded delivery history for the organization.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AlertDelivery" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/routed-ranges:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3929,6 +4075,91 @@ components:
         generated_rules: { type: integer, minimum: 0 }
         withdrawn_tuples: { type: integer, minimum: 0 }
         changed_gateways: { type: integer, minimum: 0 }
+
+    AlertingSetting:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+    AlertDestinationKind:
+      type: string
+      enum: [slack, teams, pagerduty, opsgenie, discord, google_chat, webhook, email]
+    AlertSeverity:
+      type: string
+      enum: [info, warning, critical]
+    AlertEventKey:
+      type: string
+      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift]
+    CreateAlertDestinationRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, name, endpoint]
+      properties:
+        kind: { $ref: "#/components/schemas/AlertDestinationKind" }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        endpoint:
+          type: string
+          description: Write-only provider credential. URL destinations use a URI; email, PagerDuty, and Opsgenie use their provider-issued address or key. Never returned by the API.
+        allow_private:
+          type: boolean
+          default: false
+          description: Owner-only on-premises exception. Allows HTTP and private IP ranges.
+        severity_floor:
+          $ref: "#/components/schemas/AlertSeverity"
+        cooldown_seconds:
+          type: integer
+          minimum: 60
+          maximum: 86400
+          default: 900
+    AlertDestination:
+      type: object
+      additionalProperties: false
+      required: [id, kind, name, endpoint_host, endpoint_fingerprint, allow_private, severity_floor, cooldown_seconds, archived, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/AlertDestinationKind" }
+        name: { type: string }
+        endpoint_host: { type: string }
+        endpoint_fingerprint:
+          type: string
+          description: Keyed proof of the write-only endpoint, not a raw hash.
+        allow_private: { type: boolean }
+        severity_floor: { $ref: "#/components/schemas/AlertSeverity" }
+        cooldown_seconds: { type: integer, minimum: 0 }
+        archived: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AlertDelivery:
+      type: object
+      additionalProperties: false
+      required: [id, destination_id, event_key, severity, state, attempts, suppressed_count, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        destination_id: { type: string, format: uuid }
+        event_key: { $ref: "#/components/schemas/AlertEventKey" }
+        severity: { $ref: "#/components/schemas/AlertSeverity" }
+        state: { type: string, enum: [pending, delivering, sent, failed] }
+        attempts: { type: integer, minimum: 0 }
+        suppressed_count: { type: integer, minimum: 0 }
+        last_error: { type: string }
+        sent_at: { type: string, format: date-time }
+        failed_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    AlertTestResult:
+      type: object
+      additionalProperties: false
+      required: [delivered]
+      properties:
+        delivered: { type: boolean }
+        status_code: { type: integer, minimum: 100, maximum: 599, nullable: true }
+        failure_code: { type: string, enum: [blocked, timeout, dns, network, http_error, response, configuration, credential], nullable: true }
+    AddAlertSubscriptionRequest:
+      type: object
+      additionalProperties: false
+      required: [event_key]
+      properties:
+        event_key: { $ref: "#/components/schemas/AlertEventKey" }
 
     AgentJITAccessSetting:
       type: object

@@ -406,6 +406,33 @@ func (s *Service) SetAgentRuntimeEnabled(ctx context.Context, id uuid.UUID, enab
 	return org, nil
 }
 
+// SetAlertingEnabled records the F11 opt-in atomically with its attributable
+// audit row. Alert destinations alone do not activate outbound delivery.
+func (s *Service) SetAlertingEnabled(ctx context.Context, id uuid.UUID, enabled bool) (sqlc.Organization, error) {
+	var org sqlc.Organization
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		var e error
+		org, e = q.SetOrganizationAlertingEnabled(ctx, sqlc.SetOrganizationAlertingEnabledParams{
+			ID: id, AlertingEnabled: enabled,
+		})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return orgNotFound()
+		}
+		if e != nil {
+			return e
+		}
+		action := "org.alerting_disabled"
+		if enabled {
+			action = "org.alerting_enabled"
+		}
+		return writeAudit(ctx, q, id, actorFromCtx(ctx), action, "organization", id.String(), map[string]any{"enabled": enabled})
+	})
+	if err != nil {
+		return sqlc.Organization{}, err
+	}
+	return org, nil
+}
+
 // OrgResources is what an organization still owns. Zero everywhere is the only state in which it may be
 // deleted.
 type OrgResources struct {

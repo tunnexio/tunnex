@@ -11,6 +11,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
@@ -188,6 +189,7 @@ type apiServer struct {
 	invites        *invites.Service
 	nodes          *nodes.Service
 	agentRuntime   *agentruntime.Service
+	alertConfig    *alerts.ConfigService
 	devices        *devices.Service
 	ovpn           *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export; nil in a stripped build
 	sites          *sites.Service

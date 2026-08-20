@@ -43,6 +43,50 @@ type Node = {
 type AgentRuntimeStatus = components["schemas"]["AgentRuntimeStatus"];
 type AgentCredentialRotationStatus = components["schemas"]["AgentCredentialRotationStatus"];
 
+function agentStatusLabel(
+  agent: AgentRow,
+  runtimeEnabled: boolean,
+  runtime: AgentRuntimeStatus | null | undefined,
+) {
+  const tunnel = livenessLabel(agent);
+  if (!runtimeEnabled || agent.status !== "active") return tunnel;
+  if (runtime === undefined) {
+    return {
+      label: "checking",
+      tone: "unknown" as const,
+      detail: "Checking the managed agent runtime's connectivity.",
+    };
+  }
+
+  if (runtime === null) {
+    return {
+      label: "runtime unknown",
+      tone: "unknown" as const,
+      detail: "The latest managed runtime connectivity check failed.",
+    };
+  }
+
+  if (runtime.connectivity === "connected") {
+    return {
+      label: "connected",
+      tone: "ok" as const,
+      detail: "The managed agent runtime reported to the control plane within the last minute.",
+    };
+  }
+  if (runtime.connectivity === "disconnected") {
+    return {
+      label: "disconnected",
+      tone: "warn" as const,
+      detail: "The managed agent runtime has not reported to the control plane within the last minute.",
+    };
+  }
+  return {
+    label: "runtime unknown",
+    tone: "unknown" as const,
+    detail: "The managed agent runtime has not reported yet, so its connectivity is unknown.",
+  };
+}
+
 function AgentRuntimePanel({ status }: { status: AgentRuntimeStatus }) {
   const healthLabel = status.health === "last_good"
     ? "Last-good configuration"
@@ -368,7 +412,9 @@ export default function Agents() {
   const [assignmentGroups, setAssignmentGroups] = useState<UserGroup[]>([]);
   const [gateways, setGateways] = useState<Node[]>([]);
   const [notEntitled, setNotEntitled] = useState(false);
-  const [runtimeEnabled, setRuntimeEnabled] = useState(false);
+  const [runtimeEnabled, setRuntimeEnabled] = useState(
+    currentOrg?.managed_agent_runtime_enabled === true,
+  );
 
   const [name, setName] = useState("");
   const [gw, setGw] = useState("");
@@ -467,8 +513,13 @@ export default function Agents() {
             "/api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status",
             { params: { path: { orgId: id, deviceId: agent.device_id } } },
           ).then((runtimeResult) => {
-            if (cancelled || runtimeResult.error || !runtimeResult.data) return;
-            setRuntimeStatus((previous) => ({ ...previous, [agent.device_id]: runtimeResult.data as AgentRuntimeStatus }));
+            if (cancelled) return;
+            setRuntimeStatus((previous) => ({
+              ...previous,
+              [agent.device_id]: runtimeResult.error || !runtimeResult.data
+                ? null
+                : runtimeResult.data as AgentRuntimeStatus,
+            }));
           });
           void api.GET(
             "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
@@ -486,6 +537,30 @@ export default function Agents() {
     // ⚠ currentOrg IS A DEPENDENCY — without it the switcher moves and the page keeps showing the org it
     // mounted with.
   }, [reload, currentOrg, currentUserId]);
+
+  useEffect(() => {
+    if (!currentOrg || !runtimeEnabled || !rows?.ok) return;
+    let cancelled = false;
+    const refresh = () => {
+      for (const agent of rows.data) {
+        void api.GET(
+          "/api/v1/organizations/{orgId}/agents/{deviceId}/runtime-status",
+          { params: { path: { orgId: currentOrg.id, deviceId: agent.device_id } } },
+        ).then((result) => {
+          if (cancelled) return;
+          setRuntimeStatus((previous) => ({
+            ...previous,
+            [agent.device_id]: result.error || !result.data ? null : result.data as AgentRuntimeStatus,
+          }));
+        });
+      }
+    };
+    const timer = window.setInterval(refresh, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentOrg, rows, runtimeEnabled]);
 
   async function saveProfileMetadata(agent: AgentRow, value: AgentProfileEditorValue) {
     if (!orgId) return;
@@ -770,7 +845,7 @@ export default function Agents() {
                   header: "Agent",
                   sortValue: (a) => a.name,
                   cell: (a, ctx) => {
-                    const live = livenessLabel(a);
+                    const live = agentStatusLabel(a, runtimeEnabled, runtimeStatus[a.device_id]);
                     return (
                       <button
                         type="button"
@@ -844,13 +919,13 @@ export default function Agents() {
                   header: "Status",
                   // ⛔ THE STATE AS TEXT, because the cell renders it as a Badge. Without this a search for
                   // "unknown" or "never" would miss every row whose badge says exactly that.
-                  sortValue: (a) => livenessLabel(a).label,
+                  sortValue: (a) => agentStatusLabel(a, runtimeEnabled, runtimeStatus[a.device_id]).label,
                   cell: (a) => {
-                    const live = livenessLabel(a);
+                    const live = agentStatusLabel(a, runtimeEnabled, runtimeStatus[a.device_id]);
                     // The liveness word carries its own explanation on hover — an operator seeing
                     // "liveness unknown" must be able to learn WHY without leaving the row.
                     return (
-                      <span title={live.detail}>
+                      <span title={live.detail} aria-label={`${live.label}. ${live.detail}`}>
                         <Badge tone={live.tone}>{live.label}</Badge>
                       </span>
                     );

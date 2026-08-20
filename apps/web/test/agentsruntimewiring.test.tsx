@@ -1,6 +1,6 @@
 import { createElement, useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const get = vi.fn();
 const put = vi.fn();
@@ -514,6 +514,7 @@ describe("released Agents route — F04 runtime facts", () => {
   );
 
   it("renders stale last-good server facts instead of hiding the runtime panel", async () => {
+    currentOrg = { id: "org-a", name: "Enterprise A", max_agent_identities: null, managed_agent_runtime_enabled: true };
     seedListResponses();
     get.mockImplementation(async (path: string) => {
       if (path.endsWith("/nodes")) return { data: [{ id: "node-a", name: "gateway-a", status: "active", endpoint: "gw.example:51820" }] };
@@ -525,12 +526,70 @@ describe("released Agents route — F04 runtime facts", () => {
     });
     const { default: Agents } = await import("../src/pages/Agents");
     render(createElement(Agents));
+    await waitFor(() => expect(screen.getByText("disconnected")).toBeTruthy());
     fireEvent.click(await screen.findByRole("button", { name: "Open builder-a" }));
     await waitFor(() => expect(screen.getByTestId("agent-runtime-status")).toBeTruthy());
     expect(screen.getByText("Last-good configuration")).toBeTruthy();
     expect(screen.getByText("Stale report")).toBeTruthy();
-    expect(screen.getByText("disconnected")).toBeTruthy();
+    expect(screen.getAllByText("disconnected")).toHaveLength(2);
     expect(screen.getByText("apply_failed")).toBeTruthy();
+  });
+
+  it("shows checking until managed runtime connectivity is confirmed", async () => {
+    currentOrg = { id: "org-a", name: "Enterprise A", max_agent_identities: null, managed_agent_runtime_enabled: true };
+    let releaseRuntime!: () => void;
+    const runtimePending = new Promise<void>((resolve) => { releaseRuntime = resolve; });
+    get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/nodes")) return { data: [{ id: "node-a", name: "gateway-a", status: "active", endpoint: "gw.example:51820" }] };
+      if (path.endsWith("/agents")) return { data: [agent], response: { status: 200 } };
+      if (path.endsWith("/agents/{deviceId}")) return { data: profile, response: { status: 200 } };
+      if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role: "owner" }], response: { status: 200 } };
+      if (path.endsWith("/runtime-status")) {
+        await runtimePending;
+        return { data: { ...runtime, connectivity: "disconnected", stale: true }, response: { status: 200 } };
+      }
+      return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
+    });
+
+    const { default: Agents } = await import("../src/pages/Agents");
+    render(createElement(Agents));
+    expect(await screen.findByText("checking")).toBeTruthy();
+    expect(screen.queryByText("connected")).toBeNull();
+
+    releaseRuntime();
+    await waitFor(() => expect(screen.getByText("disconnected")).toBeTruthy());
+  });
+
+  it("withdraws a stale connected label when the next runtime poll fails", async () => {
+    vi.useFakeTimers();
+    try {
+      currentOrg = { id: "org-a", name: "Enterprise A", max_agent_identities: null, managed_agent_runtime_enabled: true };
+      let runtimeCalls = 0;
+      get.mockImplementation(async (path: string) => {
+        if (path.endsWith("/nodes")) return { data: [{ id: "node-a", name: "gateway-a", status: "active", endpoint: "gw.example:51820" }] };
+        if (path.endsWith("/agents")) return { data: [agent], response: { status: 200 } };
+        if (path.endsWith("/agents/{deviceId}")) return { data: profile, response: { status: 200 } };
+        if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role: "owner" }], response: { status: 200 } };
+        if (path.endsWith("/runtime-status")) {
+          runtimeCalls += 1;
+          return runtimeCalls === 1
+            ? { data: runtime, response: { status: 200 } }
+            : { data: undefined, error: { error: { code: "unavailable" } }, response: { status: 503 } };
+        }
+        return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
+      });
+
+      const { default: Agents } = await import("../src/pages/Agents");
+      render(createElement(Agents));
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(screen.getByText("connected")).toBeTruthy();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      expect(screen.getByText("runtime unknown")).toBeTruthy();
+      expect(screen.queryByText("connected")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([

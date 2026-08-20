@@ -14,11 +14,30 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 )
 
 type recordingRuntimeNotifier struct {
 	mu  sync.Mutex
 	ids []uuid.UUID
+}
+
+type recordingAlertPublisher struct {
+	mu     sync.Mutex
+	events []alerts.Event
+}
+
+func (p *recordingAlertPublisher) Publish(_ context.Context, event alerts.Event) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, event)
+	return nil
+}
+
+func (p *recordingAlertPublisher) snapshot() []alerts.Event {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]alerts.Event(nil), p.events...)
 }
 
 func (n *recordingRuntimeNotifier) Notify(id uuid.UUID) {
@@ -154,6 +173,14 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	}
 	if err := svc.Report(ctx, id, 3, 4, "v-f04", "apply_failed"); err != nil {
 		t.Fatalf("bounded apply error report: %v", err)
+	}
+	alertPublisher := &recordingAlertPublisher{}
+	svc.SetAlertPublisher(alertPublisher)
+	if err := svc.Report(ctx, id, 3, 4, "v-f04", "apply_failed"); err != nil {
+		t.Fatalf("configuration drift alert report: %v", err)
+	}
+	if got := alertPublisher.snapshot(); len(got) != 1 || got[0].Key != alerts.EventAgentConfigurationDrift || got[0].Fields["error_code"] != "apply_failed" || got[0].Fields["revision"] != "4" {
+		t.Fatalf("configuration drift alert = %#v, want one typed apply_failed event", got)
 	}
 	state, err = q.GetAgentRuntimeState(ctx, sqlc.GetAgentRuntimeStateParams{DeviceID: agent, OrgID: org})
 	if err != nil || state.LastErrorCode == nil || *state.LastErrorCode != "apply_failed" {

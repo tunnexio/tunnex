@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 )
 
 const RuntimeCredentialPrefix = "tnx_runtime_"
@@ -76,6 +78,7 @@ type Service struct {
 	q        *sqlc.Queries
 	optIn    OptInFunc
 	notify   Notifier
+	alerts   alerts.Publisher
 	now      func() time.Time
 	pollTick time.Duration
 }
@@ -87,10 +90,21 @@ type Service struct {
 type Notifier interface{ Notify(nodeID uuid.UUID) }
 
 func New(q *sqlc.Queries, optIn OptInFunc) *Service {
-	return &Service{q: q, optIn: optIn, now: time.Now, pollTick: time.Second}
+	return &Service{q: q, optIn: optIn, now: time.Now, pollTick: time.Second, alerts: alerts.NoopPublisher{}}
 }
 
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
+
+// SetAlertPublisher attaches F11's durable outbox without making runtime
+// reporting depend on a particular transport. A nil value restores the
+// validating no-op used by focused service tests.
+func (s *Service) SetAlertPublisher(p alerts.Publisher) {
+	if p == nil {
+		s.alerts = alerts.NoopPublisher{}
+		return
+	}
+	s.alerts = p
+}
 
 func (s *Service) Authenticate(ctx context.Context, raw string) (Identity, error) {
 	if s == nil || s.q == nil || !strings.HasPrefix(raw, RuntimeCredentialPrefix) {
@@ -237,9 +251,6 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 		next := credential.Revision + 1
 		rotationRevision = &next
 	}
-	if err := s.q.ExpireAgentWireGuardRotation(ctx, sqlc.ExpireAgentWireGuardRotationParams{OrgID: id.OrgID, DeviceID: id.DeviceID}); err != nil {
-		return Config{}, false, ErrRuntimeStateMissing
-	}
 	wgCurrentRevision := int64(1)
 	var wgRotationRevision *int64
 	var wgRotationState *string
@@ -353,6 +364,23 @@ func (s *Service) Report(ctx context.Context, id Identity, appliedRevision, atte
 	if s.notify != nil && state.AppliedChanged {
 		s.notify.Notify(state.NodeID)
 	}
+	if state.LastErrorCode != nil && s.alerts != nil {
+		// The runtime report is already durable. Returning an outbox failure
+		// causes the machine to retry its report, so a configuration failure
+		// cannot be silently observed without being offered to subscribed
+		// destinations. Per-destination cooldown is the storm boundary.
+		if err := s.alerts.Publish(ctx, alerts.Event{
+			OrgID: id.OrgID, Key: alerts.EventAgentConfigurationDrift, Severity: alerts.SeverityWarning,
+			DedupKey: "agent:" + id.DeviceID.String() + ":configuration_drift",
+			Subject:  "Managed agent configuration requires attention",
+			Fields: map[string]string{
+				"agent_id": id.DeviceID.String(), "error_code": *state.LastErrorCode,
+				"revision": fmt.Sprintf("%d", state.LastAttemptedRevision),
+			},
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -433,10 +461,9 @@ func (s *Service) Status(ctx context.Context, orgID, deviceID uuid.UUID) (Status
 		LastSeenAt: seen, LastErrorCode: state.LastErrorCode, LastErrorRevision: state.LastErrorRevision}, nil
 }
 
-// RuntimeFreshnessWindow is six default 30-second runtime cycles. It reuses the
-// repository's established three-minute liveness window while keeping this
+// RuntimeFreshnessWindow is two default 30-second runtime cycles. It keeps the
 // machine channel's clock owned by its own reports.
-const RuntimeFreshnessWindow = 3 * time.Minute
+const RuntimeFreshnessWindow = time.Minute
 
 func deriveRuntimeHealth(now time.Time, seen *time.Time, desired, applied int64, lastError *string) (string, string, bool) {
 	stale := seen == nil || now.Sub(*seen) > RuntimeFreshnessWindow

@@ -193,12 +193,9 @@ WITH expired_candidate AS (
       terminal_at = COALESCE(terminal_at, now()), candidate_expires_at = NULL
   WHERE candidate.org_id = $1 AND candidate.device_id = $2
     AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= now()
+  RETURNING 1
 )
-UPDATE agent_runtime_credentials current
-SET rotation_requested_at = NULL, rotation_deadline = NULL,
-    rotation_requested_by = NULL
-WHERE current.org_id = $1 AND current.device_id = $2
-  AND current.state = 'current' AND current.rotation_deadline <= now()
+SELECT count(*) FROM expired_candidate
 `
 
 type ExpireAgentRuntimeCredentialRotationParams struct {
@@ -547,7 +544,8 @@ SET requested_revision = agent_wireguard_rotations.current_revision + 1,
     requested_by = EXCLUDED.requested_by, staged_at = NULL,
     updated_at = now()
 WHERE agent_wireguard_rotations.org_id = EXCLUDED.org_id
-  AND agent_wireguard_rotations.state = 'current'
+  AND (agent_wireguard_rotations.state = 'current'
+       OR agent_wireguard_rotations.deadline <= now())
 RETURNING agent_wireguard_rotations.device_id, agent_wireguard_rotations.org_id, agent_wireguard_rotations.current_revision, agent_wireguard_rotations.requested_revision, agent_wireguard_rotations.state, agent_wireguard_rotations.candidate_public_key, agent_wireguard_rotations.requested_at, agent_wireguard_rotations.deadline, agent_wireguard_rotations.requested_by, agent_wireguard_rotations.staged_at, agent_wireguard_rotations.completed_at, agent_wireguard_rotations.updated_at
 `
 

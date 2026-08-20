@@ -17,6 +17,7 @@ type Querier interface {
 	// by org scope. Single-use: only transitions a pending, unexpired invite.
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	AddAgentGroupMember(ctx context.Context, arg AddAgentGroupMemberParams) (int64, error)
+	AddAlertSubscription(ctx context.Context, arg AddAlertSubscriptionParams) (AlertSubscription, error)
 	// ── group_members ───────────────────────────────────────────────────────────────
 	// Returns rows-affected: 0 on ON CONFLICT (already a member) so the caller can skip
 	// the audit event for a no-op re-add (idempotent, still 204).
@@ -39,6 +40,7 @@ type Querier interface {
 	// lint:cross-org — the subnet is org-checked via GetSiteSubnetForOrg before approval. Idempotent-ish:
 	// approving an already-approved subnet is a no-op UPDATE.
 	ApproveSiteSubnet(ctx context.Context, id uuid.UUID) (SiteSubnet, error)
+	ArchiveAlertDestination(ctx context.Context, arg ArchiveAlertDestinationParams) (int64, error)
 	// S15.1 (D14/D19 step 2) — an admin NAMES the owner. There is no created_by on this table, so the minting
 	// user is not recoverable from the row: the admin is CHOOSING, not confirming, and nothing here guesses.
 	//
@@ -73,6 +75,9 @@ type Querier interface {
 	BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) (int64, error)
 	CancelAgentAccessRequest(ctx context.Context, arg CancelAgentAccessRequestParams) (AgentAccessRequest, error)
 	ChangeMemberRole(ctx context.Context, arg ChangeMemberRoleParams) (Membership, error)
+	// lint:cross-org — the leader-gated dispatcher claims only its bounded due
+	// batch, atomically moving each delivery out of the pending queue.
+	ClaimDueAlertDeliveries(ctx context.Context, arg ClaimDueAlertDeliveriesParams) ([]AlertDelivery, error)
 	// lint:cross-org — the DOWNGRADE-RELEASE sweep (the enforcement mirror of
 	// unlock-then-opt-in): when the device-health feature is OFF (open build), NO
 	// device may remain posture-blocked — disabling a feature must RELEASE its
@@ -280,6 +285,9 @@ type Querier interface {
 	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
 	CreateAgentPolicyTemplateVersionItem(ctx context.Context, arg CreateAgentPolicyTemplateVersionItemParams) (AgentPolicyTemplateVersionItem, error)
 	CreateAgentRuntimeCredential(ctx context.Context, arg CreateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
+	CreateAlertDelivery(ctx context.Context, arg CreateAlertDeliveryParams) (AlertDelivery, error)
+	CreateAlertDeliveryCooldown(ctx context.Context, arg CreateAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
+	CreateAlertDestination(ctx context.Context, arg CreateAlertDestinationParams) (AlertDestination, error)
 	CreateAuthToken(ctx context.Context, arg CreateAuthTokenParams) (AuthToken, error)
 	CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapAdminParams) (User, error)
 	CreateCliAuthCode(ctx context.Context, arg CreateCliAuthCodeParams) (CliAuthCode, error)
@@ -466,6 +474,7 @@ type Querier interface {
 	// resolves to extended-OR-(0 rows -> 409 grant_lapsed), never torn. Only a TEMPORARY
 	// (expires_at NOT NULL), still-LIVE grant can be extended.
 	ExtendPolicyRule(ctx context.Context, arg ExtendPolicyRuleParams) (PolicyRule, error)
+	FinishAlertDeliveryWithAttempt(ctx context.Context, arg FinishAlertDeliveryWithAttemptParams) (AlertDeliveryAttempt, error)
 	// Returns a fresh time-ordered UUIDv7 from the database. Demonstrates the sqlc
 	// pipeline and the uuid override; callers may also generate v7 ids in Go.
 	GenerateID(ctx context.Context) (uuid.UUID, error)
@@ -492,6 +501,9 @@ type Querier interface {
 	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
 	GetAgentScopedAuthority(ctx context.Context, arg GetAgentScopedAuthorityParams) (GetAgentScopedAuthorityRow, error)
 	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
+	GetAlertDeliveryCooldownForUpdate(ctx context.Context, arg GetAlertDeliveryCooldownForUpdateParams) (AlertDeliveryCooldown, error)
+	GetAlertDestination(ctx context.Context, arg GetAlertDestinationParams) (AlertDestination, error)
+	GetAlertDestinationForDelivery(ctx context.Context, arg GetAlertDestinationForDeliveryParams) (AlertDestination, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
 	// credential_expired UX line).
 	GetCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
@@ -669,6 +681,7 @@ type Querier interface {
 	// annotation. Granting deployment-level authority to a soft-deleted account would arm an identity that is
 	// meant to be gone, and a later undelete would restore it silently holding a capability nobody granted it.
 	GrantCPAdmin(ctx context.Context, id uuid.UUID) error
+	IncrementAlertDeliveryCooldown(ctx context.Context, arg IncrementAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	// lint:cross-org — user-scoped login challenge.
 	IncrementMfaChallengeAttempts(ctx context.Context, id uuid.UUID) (int32, error)
 	// The id is app-generated (uuid v7) so the SAME id identifies the row in BOTH the PG
@@ -844,6 +857,11 @@ type Querier interface {
 	// `n.last_seen_at` is kept for ONE case the status clock cannot cover: an agent so newly created that no
 	// push has mentioned it yet has no `device_status` row at all.
 	ListAgentsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListAgentsForOrgRow, error)
+	ListAlertDeliveries(ctx context.Context, arg ListAlertDeliveriesParams) ([]AlertDelivery, error)
+	ListAlertDestinations(ctx context.Context, orgID uuid.UUID) ([]AlertDestination, error)
+	ListAlertDestinationsForEvent(ctx context.Context, arg ListAlertDestinationsForEventParams) ([]AlertDestination, error)
+	ListAlertSubscriptions(ctx context.Context, arg ListAlertSubscriptionsParams) ([]AlertSubscription, error)
+	ListAlertingEnabledOrganizations(ctx context.Context) ([]uuid.UUID, error)
 	// Org-scoped audit feed with optional filters (actor / action / date range) and
 	// KEYSET pagination on (created_at, id) DESC. Every filter + cursor param is
 	// nullable, so the S4.3 dashboard passes none (latest N). The cursor is written
@@ -888,6 +906,9 @@ type Querier interface {
 	// organization; each returned row still carries org_id for same-tx mutation,
 	// audit and one push per affected tenant.
 	ListDueAgentAccessRequestsForUpdate(ctx context.Context) ([]AgentAccessRequest, error)
+	// lint:cross-org — the leader-gated dispatcher intentionally claims due
+	// deliveries across all tenants. It never exposes this query to a human route.
+	ListDueAlertDeliveries(ctx context.Context, arg ListDueAlertDeliveriesParams) ([]AlertDelivery, error)
 	// The poller's work-list: every org/provider with sync turned on. Deliberately CROSS-ORG — the
 	// background poller iterates all tenants; each config is reconciled org-scoped downstream.
 	// lint:cross-org
@@ -1172,6 +1193,11 @@ type Querier interface {
 	//              tier only, never escalates — a stable known-bad mapping, not a worsening outage)
 	// advance_clock also drives whether last_sync_error is cleared vs set.
 	RecordIdpSyncResult(ctx context.Context, arg RecordIdpSyncResultParams) error
+	// lint:cross-org — the leader-gated dispatcher requeues stale claims across
+	// every tenant; no human route can call this query.
+	// A delivery is claimed before outbound I/O. If that worker dies, a later
+	// leader requeues only claims older than the bounded dispatcher lease.
+	RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverStaleAlertDeliveriesParams) (int64, error)
 	RejectAgentAccessRequest(ctx context.Context, arg RejectAgentAccessRequestParams) (AgentAccessRequest, error)
 	// S7.3: pending -> revoked, FREEING the held pool IP (assigned_ip=NULL) so it returns to
 	// the pool for reuse (D1b — the same release RevokeDevice does). Only a PENDING device
@@ -1204,6 +1230,7 @@ type Querier interface {
 	RekeyNode(ctx context.Context, arg RekeyNodeParams) (Node, error)
 	RemoveAgentGroupMember(ctx context.Context, arg RemoveAgentGroupMemberParams) (int64, error)
 	RemoveAgentGroupMembershipsForDevice(ctx context.Context, arg RemoveAgentGroupMembershipsForDeviceParams) (int64, error)
+	RemoveAlertSubscription(ctx context.Context, arg RemoveAlertSubscriptionParams) (int64, error)
 	RemoveGroupMember(ctx context.Context, arg RemoveGroupMemberParams) (int64, error)
 	RemoveIdpAccessSource(ctx context.Context, arg RemoveIdpAccessSourceParams) error
 	// Remove a synced member — scoped to origin='idp_sync' so the reconcile can NEVER delete a
@@ -1225,6 +1252,7 @@ type Querier interface {
 	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (ReportAgentRuntimeStateRow, error)
 	RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error)
 	RequestAgentWireGuardRotation(ctx context.Context, arg RequestAgentWireGuardRotationParams) (AgentWireguardRotation, error)
+	ReserveAlertDeliveryCooldown(ctx context.Context, arg ReserveAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set
 	// from ListCascadeRevokedDevicesForNode.
 	// Restores ONE cascade-revoked device (S13.1 D5), to the address the caller resolved.
@@ -1409,6 +1437,9 @@ type Querier interface {
 	// organization must explicitly enable runtime synchronization, and disabling
 	// it immediately withdraws the poll/report/status surface.
 	SetOrganizationAgentRuntimeEnabled(ctx context.Context, arg SetOrganizationAgentRuntimeEnabledParams) (Organization, error)
+	// F11 is open-core but unlock-then-opt-in: alert dispatch stays off until an
+	// organization explicitly enables it.
+	SetOrganizationAlertingEnabled(ctx context.Context, arg SetOrganizationAlertingEnabledParams) (Organization, error)
 	// F3: toggle a rule's disabled flag. RETURNING * so the API echoes the new state; the caller (mutate)
 	// recompiles + pushes — disabling changes the compiled artifact's CONTENT (in-hash, ordinary push).
 	SetPolicyRuleEnabled(ctx context.Context, arg SetPolicyRuleEnabledParams) (PolicyRule, error)

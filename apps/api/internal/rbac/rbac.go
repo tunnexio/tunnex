@@ -116,6 +116,11 @@ const (
 	// roles hold organization-wide approval authority.
 	PermAgentAccessRequest Permission = "agent_access:request"
 	PermAgentAccessApprove Permission = "agent_access:approve"
+	// PermAlertingManage governs F11 alert destinations, subscriptions, test
+	// sends, and delivery history. It is intentionally not a reuse of runtime,
+	// policy, or agent lifecycle authority: configuring a webhook authorizes the
+	// control plane to make outbound requests on behalf of the organization.
+	PermAlertingManage Permission = "alerting:manage"
 )
 
 // Roles.
@@ -182,6 +187,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentTemplateManage:   true,
 		PermAgentAccessRequest:    true,
 		PermAgentAccessApprove:    true,
+		PermAlertingManage:        true,
 	},
 	RoleOwner: {
 		PermOrgView:               true,
@@ -211,6 +217,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentTemplateManage:   true,
 		PermAgentAccessRequest:    true,
 		PermAgentAccessApprove:    true,
+		PermAlertingManage:        true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org

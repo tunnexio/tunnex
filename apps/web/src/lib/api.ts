@@ -37,6 +37,11 @@ export type AgentAccessRequestPage =
   components["schemas"]["AgentAccessRequestPage"];
 export type AgentJITAccessSetting =
   components["schemas"]["AgentJITAccessSetting"];
+export type AlertingSetting = components["schemas"]["AlertingSetting"];
+export type AlertDestination = components["schemas"]["AlertDestination"];
+export type AlertDestinationKind = components["schemas"]["AlertDestinationKind"];
+export type AlertEventKey = components["schemas"]["AlertEventKey"];
+export type AlertDelivery = components["schemas"]["AlertDelivery"];
 export type AgentGroup = components["schemas"]["AgentGroup"];
 export type AgentGroupMember = components["schemas"]["AgentGroupMember"];
 export type AgentPolicyTemplate = components["schemas"]["AgentPolicyTemplate"];
