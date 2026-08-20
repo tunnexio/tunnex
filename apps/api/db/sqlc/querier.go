@@ -17,6 +17,7 @@ type Querier interface {
 	// by org scope. Single-use: only transitions a pending, unexpired invite.
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	AddAgentGroupMember(ctx context.Context, arg AddAgentGroupMemberParams) (int64, error)
+	AddAlertSubscription(ctx context.Context, arg AddAlertSubscriptionParams) (AlertSubscription, error)
 	// ── group_members ───────────────────────────────────────────────────────────────
 	// Returns rows-affected: 0 on ON CONFLICT (already a member) so the caller can skip
 	// the audit event for a no-op re-add (idempotent, still 204).
@@ -280,6 +281,9 @@ type Querier interface {
 	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
 	CreateAgentPolicyTemplateVersionItem(ctx context.Context, arg CreateAgentPolicyTemplateVersionItemParams) (AgentPolicyTemplateVersionItem, error)
 	CreateAgentRuntimeCredential(ctx context.Context, arg CreateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
+	CreateAlertDelivery(ctx context.Context, arg CreateAlertDeliveryParams) (AlertDelivery, error)
+	CreateAlertDeliveryAttempt(ctx context.Context, arg CreateAlertDeliveryAttemptParams) (AlertDeliveryAttempt, error)
+	CreateAlertDestination(ctx context.Context, arg CreateAlertDestinationParams) (AlertDestination, error)
 	CreateAuthToken(ctx context.Context, arg CreateAuthTokenParams) (AuthToken, error)
 	CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapAdminParams) (User, error)
 	CreateCliAuthCode(ctx context.Context, arg CreateCliAuthCodeParams) (CliAuthCode, error)
@@ -844,6 +848,9 @@ type Querier interface {
 	// `n.last_seen_at` is kept for ONE case the status clock cannot cover: an agent so newly created that no
 	// push has mentioned it yet has no `device_status` row at all.
 	ListAgentsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListAgentsForOrgRow, error)
+	ListAlertDestinations(ctx context.Context, orgID uuid.UUID) ([]AlertDestination, error)
+	ListAlertSubscriptions(ctx context.Context, arg ListAlertSubscriptionsParams) ([]AlertSubscription, error)
+	ListAlertingEnabledOrganizations(ctx context.Context) ([]uuid.UUID, error)
 	// Org-scoped audit feed with optional filters (actor / action / date range) and
 	// KEYSET pagination on (created_at, id) DESC. Every filter + cursor param is
 	// nullable, so the S4.3 dashboard passes none (latest N). The cursor is written
@@ -888,6 +895,9 @@ type Querier interface {
 	// organization; each returned row still carries org_id for same-tx mutation,
 	// audit and one push per affected tenant.
 	ListDueAgentAccessRequestsForUpdate(ctx context.Context) ([]AgentAccessRequest, error)
+	// lint:cross-org — the leader-gated dispatcher intentionally claims due
+	// deliveries across all tenants. It never exposes this query to a human route.
+	ListDueAlertDeliveries(ctx context.Context, arg ListDueAlertDeliveriesParams) ([]AlertDelivery, error)
 	// The poller's work-list: every org/provider with sync turned on. Deliberately CROSS-ORG — the
 	// background poller iterates all tenants; each config is reconciled org-scoped downstream.
 	// lint:cross-org
@@ -1409,6 +1419,9 @@ type Querier interface {
 	// organization must explicitly enable runtime synchronization, and disabling
 	// it immediately withdraws the poll/report/status surface.
 	SetOrganizationAgentRuntimeEnabled(ctx context.Context, arg SetOrganizationAgentRuntimeEnabledParams) (Organization, error)
+	// F11 is open-core but unlock-then-opt-in: alert dispatch stays off until an
+	// organization explicitly enables it.
+	SetOrganizationAlertingEnabled(ctx context.Context, arg SetOrganizationAlertingEnabledParams) (Organization, error)
 	// F3: toggle a rule's disabled flag. RETURNING * so the API echoes the new state; the caller (mutate)
 	// recompiles + pushes — disabling changes the compiled artifact's CONTENT (in-hash, ordinary push).
 	SetPolicyRuleEnabled(ctx context.Context, arg SetPolicyRuleEnabledParams) (PolicyRule, error)

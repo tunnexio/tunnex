@@ -68,6 +68,18 @@ SET agent_jit_access_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING *;
 
+-- name: SetOrganizationAlertingEnabled :one
+-- F11 is open-core but unlock-then-opt-in: alert dispatch stays off until an
+-- organization explicitly enables it.
+UPDATE organizations
+SET alerting_enabled = $2, updated_at = now()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING *;
+
+-- name: ListAlertingEnabledOrganizations :many
+SELECT id FROM organizations
+WHERE alerting_enabled = true AND deleted_at IS NULL;
+
 -- name: SoftDeleteOrganization :execrows
 UPDATE organizations
 SET deleted_at = now()

@@ -232,6 +232,63 @@ type AgentWireguardRotation struct {
 	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
+type AlertDelivery struct {
+	ID              uuid.UUID          `json:"id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	DestinationID   uuid.UUID          `json:"destination_id"`
+	EventKey        string             `json:"event_key"`
+	Severity        string             `json:"severity"`
+	DedupKey        string             `json:"dedup_key"`
+	Payload         []byte             `json:"payload"`
+	State           string             `json:"state"`
+	Attempts        int32              `json:"attempts"`
+	NextAttemptAt   time.Time          `json:"next_attempt_at"`
+	LastError       *string            `json:"last_error"`
+	SuppressedCount int32              `json:"suppressed_count"`
+	SentAt          pgtype.Timestamptz `json:"sent_at"`
+	FailedAt        pgtype.Timestamptz `json:"failed_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+type AlertDeliveryAttempt struct {
+	ID             uuid.UUID `json:"id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	DeliveryID     uuid.UUID `json:"delivery_id"`
+	Attempt        int32     `json:"attempt"`
+	Outcome        string    `json:"outcome"`
+	ResponseStatus *int32    `json:"response_status"`
+	Error          *string   `json:"error"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type AlertDestination struct {
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	Kind                string             `json:"kind"`
+	Name                string             `json:"name"`
+	EndpointSealed      []byte             `json:"endpoint_sealed"`
+	EndpointFingerprint string             `json:"endpoint_fingerprint"`
+	EndpointHost        string             `json:"endpoint_host"`
+	AllowPrivate        bool               `json:"allow_private"`
+	SeverityFloor       string             `json:"severity_floor"`
+	CooldownSeconds     int32              `json:"cooldown_seconds"`
+	QuietHoursStart     pgtype.Time        `json:"quiet_hours_start"`
+	QuietHoursEnd       pgtype.Time        `json:"quiet_hours_end"`
+	QuietHoursTimezone  *string            `json:"quiet_hours_timezone"`
+	ArchivedAt          pgtype.Timestamptz `json:"archived_at"`
+	CreatedByUserID     uuid.UUID          `json:"created_by_user_id"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+}
+
+type AlertSubscription struct {
+	OrgID         uuid.UUID `json:"org_id"`
+	DestinationID uuid.UUID `json:"destination_id"`
+	EventKey      string    `json:"event_key"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type AuditLog struct {
 	ID          uuid.UUID   `json:"id"`
 	OrgID       pgtype.UUID `json:"org_id"`
@@ -802,6 +859,7 @@ type Organization struct {
 	ManagedAgentRuntimeEnabled  bool               `json:"managed_agent_runtime_enabled"`
 	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
 	AgentJitAccessEnabled       bool               `json:"agent_jit_access_enabled"`
+	AlertingEnabled             bool               `json:"alerting_enabled"`
 }
 
 type OvpnClientCert struct {
