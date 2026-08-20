@@ -28,6 +28,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/bootstrap"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
@@ -416,12 +417,15 @@ func main() {
 	}
 
 	systemQueries := sqlc.New(pool)
+	alertPublisher := alerts.NewOutboxPublisher(alerts.NewPostgresOutbox(pool))
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		System: systemQueries,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
 		}),
 		AgentRuntimeNotify:    pushHub,
+		AlertPublisher:        alertPublisher,
+		AlertConfig:           alerts.NewConfigService(pool, sealer, mailer),
 		Licence:               licenceMgr,
 		Orgs:                  tenancy.NewService(pool).WithLicence(licenceMgr),
 		CliAuth:               cliAuthSvc,
@@ -622,6 +626,49 @@ func main() {
 	// deployment. Cheap flag first, then confirm against Postgres, because IsLeader alone can be stale for up to
 	// RetryInterval.
 	mayTick := func() bool { return elector.IsLeader() && elector.ConfirmLeader(electorCtx, pool) }
+	// F11 drains the durable alert outbox only from the elected writer. Delivery
+	// rows are claimed before outbound I/O, so serving replicas may all accept
+	// configuration while exactly one process sends a subscribed notification.
+	alertDispatcher := alerts.NewDispatcher(sqlc.New(pool), alerts.NewWebhookSender(sealer, mailer))
+	alertConditions := alerts.NewConditionScanner(alerts.NewPostgresConditionStore(pool), alertPublisher)
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-pollCtx.Done():
+				return
+			case <-t.C:
+				if !mayTick() {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(electorCtx, 2*time.Minute)
+				if err := alertDispatcher.RunOnce(ctx); err != nil {
+					logger.Error("alert_delivery_tick_failed", slog.String("error", err.Error()))
+				}
+				cancel()
+			}
+		}
+	}()
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-pollCtx.Done():
+				return
+			case <-t.C:
+				if !mayTick() {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(electorCtx, time.Minute)
+				if err := alertConditions.RunOnce(ctx); err != nil {
+					logger.Error("alert_condition_tick_failed", slog.String("error", err.Error()))
+				}
+				cancel()
+			}
+		}
+	}()
 	apphttp.StartIdpSyncPoller(pollCtx, idpSyncPort, logger, mayTick)
 	// S7.5.4 temporary-grant expiry sweep (enterprise only; no-op in the open build):
 	// a lapsed temporary grant's /32 is pushed off every org gateway promptly. Shares

@@ -182,6 +182,20 @@ owned by whoever touches `crypto.Sealer` next.
 ⛔ The URL is **never** returned by the API, only its host and fingerprint. A read-back webhook URL is a
 credential exfiltration path through a read-only permission.
 
+### D11 — Producer thresholds · **LOCKED: bounded defaults approved by founder**
+F11 needs concrete condition boundaries; without them an alert producer either pages on a normal retry or
+never fires at all. The following fixed v1 boundaries are intentionally not a per-org tuning surface:
+
+- **`agent.offline`**: three minutes of gateway-reported absence for one managed agent. A silent gateway is
+  not attributed to the agent, so no agent-offline event is emitted while the gateway reporter itself is stale.
+- **`agent.denial_spike`**: twenty denied decisions in a rolling five-minute window for one agent.
+- **`agent.access_expiring`**: fifteen minutes before an approved JIT agent-access request expires.
+- **`agent.rotation_failed`**: only a terminal credential or WireGuard rotation failure/deadline expiry; retry
+  noise is not an alert.
+
+These values were approved for the F11 walk on 2026-08-20. A future alert-policy story may expose tuning;
+F11 keeps them fixed so the event contract and cooldown semantics remain predictable.
+
 ---
 
 ## Configurability — what an owner actually controls

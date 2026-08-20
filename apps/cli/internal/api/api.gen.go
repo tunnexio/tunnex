@@ -157,6 +157,51 @@ const (
 	AgentRuntimeStatusLastErrorCodeInvalidConfig AgentRuntimeStatusLastErrorCode = "invalid_config"
 )
 
+// Defines values for AlertDeliveryState.
+const (
+	AlertDeliveryStateDelivering AlertDeliveryState = "delivering"
+	AlertDeliveryStateFailed     AlertDeliveryState = "failed"
+	AlertDeliveryStatePending    AlertDeliveryState = "pending"
+	AlertDeliveryStateSent       AlertDeliveryState = "sent"
+)
+
+// Defines values for AlertDestinationKind.
+const (
+	Discord    AlertDestinationKind = "discord"
+	Email      AlertDestinationKind = "email"
+	GoogleChat AlertDestinationKind = "google_chat"
+	Opsgenie   AlertDestinationKind = "opsgenie"
+	Pagerduty  AlertDestinationKind = "pagerduty"
+	Slack      AlertDestinationKind = "slack"
+	Teams      AlertDestinationKind = "teams"
+	Webhook    AlertDestinationKind = "webhook"
+)
+
+// Defines values for AlertEventKey.
+const (
+	AgentAccessExpiring     AlertEventKey = "agent.access_expiring"
+	AgentConfigurationDrift AlertEventKey = "agent.configuration_drift"
+	AgentDenialSpike        AlertEventKey = "agent.denial_spike"
+	AgentOffline            AlertEventKey = "agent.offline"
+	AgentRotationFailed     AlertEventKey = "agent.rotation_failed"
+)
+
+// Defines values for AlertSeverity.
+const (
+	Critical AlertSeverity = "critical"
+	Info     AlertSeverity = "info"
+	Warning  AlertSeverity = "warning"
+)
+
+// Defines values for AlertTestResultFailureCode.
+const (
+	Blocked   AlertTestResultFailureCode = "blocked"
+	Dns       AlertTestResultFailureCode = "dns"
+	HttpError AlertTestResultFailureCode = "http_error"
+	Network   AlertTestResultFailureCode = "network"
+	Timeout   AlertTestResultFailureCode = "timeout"
+)
+
 // Defines values for ChangeRoleRequestRole.
 const (
 	ChangeRoleRequestRoleAdmin  ChangeRoleRequestRole = "admin"
@@ -493,8 +538,8 @@ const (
 
 // Defines values for UpdateAgentProfileRequestStatus.
 const (
-	Active    UpdateAgentProfileRequestStatus = "active"
-	Suspended UpdateAgentProfileRequestStatus = "suspended"
+	UpdateAgentProfileRequestStatusActive    UpdateAgentProfileRequestStatus = "active"
+	UpdateAgentProfileRequestStatusSuspended UpdateAgentProfileRequestStatus = "suspended"
 )
 
 // Defines values for UpgradeStatusApprovalMode.
@@ -647,6 +692,11 @@ type ActivityEntry struct {
 // AddAgentGroupMemberRequest defines model for AddAgentGroupMemberRequest.
 type AddAgentGroupMemberRequest struct {
 	DeviceId openapi_types.UUID `json:"device_id"`
+}
+
+// AddAlertSubscriptionRequest defines model for AddAlertSubscriptionRequest.
+type AddAlertSubscriptionRequest struct {
+	EventKey AlertEventKey `json:"event_key"`
 }
 
 // AddGroupMemberRequest defines model for AddGroupMemberRequest.
@@ -1106,6 +1156,65 @@ type AgentWireGuardCandidate struct {
 	Revision  int64  `json:"revision"`
 }
 
+// AlertDelivery defines model for AlertDelivery.
+type AlertDelivery struct {
+	Attempts        int                `json:"attempts"`
+	CreatedAt       time.Time          `json:"created_at"`
+	DestinationId   openapi_types.UUID `json:"destination_id"`
+	EventKey        AlertEventKey      `json:"event_key"`
+	FailedAt        *time.Time         `json:"failed_at,omitempty"`
+	Id              openapi_types.UUID `json:"id"`
+	LastError       *string            `json:"last_error,omitempty"`
+	SentAt          *time.Time         `json:"sent_at,omitempty"`
+	Severity        AlertSeverity      `json:"severity"`
+	State           AlertDeliveryState `json:"state"`
+	SuppressedCount int                `json:"suppressed_count"`
+}
+
+// AlertDeliveryState defines model for AlertDelivery.State.
+type AlertDeliveryState string
+
+// AlertDestination defines model for AlertDestination.
+type AlertDestination struct {
+	AllowPrivate    bool      `json:"allow_private"`
+	Archived        bool      `json:"archived"`
+	CooldownSeconds int       `json:"cooldown_seconds"`
+	CreatedAt       time.Time `json:"created_at"`
+
+	// EndpointFingerprint Keyed proof of the write-only endpoint, not a raw hash.
+	EndpointFingerprint string               `json:"endpoint_fingerprint"`
+	EndpointHost        string               `json:"endpoint_host"`
+	Id                  openapi_types.UUID   `json:"id"`
+	Kind                AlertDestinationKind `json:"kind"`
+	Name                string               `json:"name"`
+	SeverityFloor       AlertSeverity        `json:"severity_floor"`
+	UpdatedAt           time.Time            `json:"updated_at"`
+}
+
+// AlertDestinationKind defines model for AlertDestinationKind.
+type AlertDestinationKind string
+
+// AlertEventKey defines model for AlertEventKey.
+type AlertEventKey string
+
+// AlertSeverity defines model for AlertSeverity.
+type AlertSeverity string
+
+// AlertTestResult defines model for AlertTestResult.
+type AlertTestResult struct {
+	Delivered   bool                        `json:"delivered"`
+	FailureCode *AlertTestResultFailureCode `json:"failure_code"`
+	StatusCode  *int                        `json:"status_code"`
+}
+
+// AlertTestResultFailureCode defines model for AlertTestResult.FailureCode.
+type AlertTestResultFailureCode string
+
+// AlertingSetting defines model for AlertingSetting.
+type AlertingSetting struct {
+	Enabled bool `json:"enabled"`
+}
+
 // ApplyAgentPolicyTemplateRequest defines model for ApplyAgentPolicyTemplateRequest.
 type ApplyAgentPolicyTemplateRequest struct {
 	GroupId           openapi_types.UUID `json:"group_id"`
@@ -1265,6 +1374,19 @@ type CreateAgentPolicyTemplateRequest struct {
 // CreateAgentPolicyTemplateVersionRequest defines model for CreateAgentPolicyTemplateVersionRequest.
 type CreateAgentPolicyTemplateVersionRequest struct {
 	Items []AgentPolicyTemplateItemInput `json:"items"`
+}
+
+// CreateAlertDestinationRequest defines model for CreateAlertDestinationRequest.
+type CreateAlertDestinationRequest struct {
+	// AllowPrivate Owner-only on-premises exception. Allows HTTP and private IP ranges.
+	AllowPrivate    *bool `json:"allow_private,omitempty"`
+	CooldownSeconds *int  `json:"cooldown_seconds,omitempty"`
+
+	// Endpoint Write-only secret endpoint; never returned by the API.
+	Endpoint      string               `json:"endpoint"`
+	Kind          AlertDestinationKind `json:"kind"`
+	Name          string               `json:"name"`
+	SeverityFloor *AlertSeverity       `json:"severity_floor,omitempty"`
 }
 
 // CreateDeviceRequest defines model for CreateDeviceRequest.
@@ -2883,6 +3005,15 @@ type IssueAgentBootstrapTokenJSONRequestBody = AgentBootstrapTokenRequest
 // UpdateAgentProfileJSONRequestBody defines body for UpdateAgentProfile for application/json ContentType.
 type UpdateAgentProfileJSONRequestBody = UpdateAgentProfileRequest
 
+// CreateAlertDestinationJSONRequestBody defines body for CreateAlertDestination for application/json ContentType.
+type CreateAlertDestinationJSONRequestBody = CreateAlertDestinationRequest
+
+// AddAlertDestinationSubscriptionJSONRequestBody defines body for AddAlertDestinationSubscription for application/json ContentType.
+type AddAlertDestinationSubscriptionJSONRequestBody = AddAlertSubscriptionRequest
+
+// SetOrganizationAlertingEnabledJSONRequestBody defines body for SetOrganizationAlertingEnabled for application/json ContentType.
+type SetOrganizationAlertingEnabledJSONRequestBody = AlertingSetting
+
 // SetDeviceApprovalJSONRequestBody defines body for SetDeviceApproval for application/json ContentType.
 type SetDeviceApprovalJSONRequestBody = DeviceApproval
 
@@ -3417,6 +3548,42 @@ type ClientInterface interface {
 
 	// TestAgentAccess request
 	TestAgentAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAlertDeliveries request
+	ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAlertDestinations request
+	ListAlertDestinations(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAlertDestinationWithBody request with any body
+	CreateAlertDestinationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAlertDestination(ctx context.Context, orgId openapi_types.UUID, body CreateAlertDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveAlertDestination request
+	ArchiveAlertDestination(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAlertDestinationSubscriptions request
+	ListAlertDestinationSubscriptions(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddAlertDestinationSubscriptionWithBody request with any body
+	AddAlertDestinationSubscriptionWithBody(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AddAlertDestinationSubscription(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, body AddAlertDestinationSubscriptionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveAlertDestinationSubscription request
+	RemoveAlertDestinationSubscription(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, eventKey AlertEventKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAlertDestination request
+	TestAlertDestination(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrganizationAlertingSetting request
+	GetOrganizationAlertingSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetOrganizationAlertingEnabledWithBody request with any body
+	SetOrganizationAlertingEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetOrganizationAlertingEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAuditLogs request
 	ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5325,6 +5492,162 @@ func (c *Client) GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.
 
 func (c *Client) TestAgentAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestAgentAccessRequest(c.Server, orgId, deviceId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAlertDeliveriesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAlertDestinations(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAlertDestinationsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAlertDestinationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAlertDestinationRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAlertDestination(ctx context.Context, orgId openapi_types.UUID, body CreateAlertDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAlertDestinationRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ArchiveAlertDestination(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveAlertDestinationRequest(c.Server, orgId, destinationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAlertDestinationSubscriptions(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAlertDestinationSubscriptionsRequest(c.Server, orgId, destinationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddAlertDestinationSubscriptionWithBody(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddAlertDestinationSubscriptionRequestWithBody(c.Server, orgId, destinationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddAlertDestinationSubscription(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, body AddAlertDestinationSubscriptionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddAlertDestinationSubscriptionRequest(c.Server, orgId, destinationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveAlertDestinationSubscription(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, eventKey AlertEventKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveAlertDestinationSubscriptionRequest(c.Server, orgId, destinationId, eventKey)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAlertDestination(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAlertDestinationRequest(c.Server, orgId, destinationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetOrganizationAlertingSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrganizationAlertingSettingRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAlertingEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAlertingEnabledRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationAlertingEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationAlertingEnabledRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -10682,6 +11005,427 @@ func NewTestAgentAccessRequest(server string, orgId openapi_types.UUID, deviceId
 	return req, nil
 }
 
+// NewListAlertDeliveriesRequest generates requests for ListAlertDeliveries
+func NewListAlertDeliveriesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-deliveries", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAlertDestinationsRequest generates requests for ListAlertDestinations
+func NewListAlertDestinationsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-destinations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAlertDestinationRequest calls the generic CreateAlertDestination builder with application/json body
+func NewCreateAlertDestinationRequest(server string, orgId openapi_types.UUID, body CreateAlertDestinationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAlertDestinationRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAlertDestinationRequestWithBody generates requests for CreateAlertDestination with any type of body
+func NewCreateAlertDestinationRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-destinations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewArchiveAlertDestinationRequest generates requests for ArchiveAlertDestination
+func NewArchiveAlertDestinationRequest(server string, orgId openapi_types.UUID, destinationId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "destinationId", runtime.ParamLocationPath, destinationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-destinations/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAlertDestinationSubscriptionsRequest generates requests for ListAlertDestinationSubscriptions
+func NewListAlertDestinationSubscriptionsRequest(server string, orgId openapi_types.UUID, destinationId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "destinationId", runtime.ParamLocationPath, destinationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-destinations/%s/subscriptions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAddAlertDestinationSubscriptionRequest calls the generic AddAlertDestinationSubscription builder with application/json body
+func NewAddAlertDestinationSubscriptionRequest(server string, orgId openapi_types.UUID, destinationId openapi_types.UUID, body AddAlertDestinationSubscriptionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddAlertDestinationSubscriptionRequestWithBody(server, orgId, destinationId, "application/json", bodyReader)
+}
+
+// NewAddAlertDestinationSubscriptionRequestWithBody generates requests for AddAlertDestinationSubscription with any type of body
+func NewAddAlertDestinationSubscriptionRequestWithBody(server string, orgId openapi_types.UUID, destinationId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "destinationId", runtime.ParamLocationPath, destinationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-destinations/%s/subscriptions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveAlertDestinationSubscriptionRequest generates requests for RemoveAlertDestinationSubscription
+func NewRemoveAlertDestinationSubscriptionRequest(server string, orgId openapi_types.UUID, destinationId openapi_types.UUID, eventKey AlertEventKey) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "destinationId", runtime.ParamLocationPath, destinationId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "eventKey", runtime.ParamLocationPath, eventKey)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-destinations/%s/subscriptions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTestAlertDestinationRequest generates requests for TestAlertDestination
+func NewTestAlertDestinationRequest(server string, orgId openapi_types.UUID, destinationId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "destinationId", runtime.ParamLocationPath, destinationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-destinations/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOrganizationAlertingSettingRequest generates requests for GetOrganizationAlertingSetting
+func NewGetOrganizationAlertingSettingRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alerting-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetOrganizationAlertingEnabledRequest calls the generic SetOrganizationAlertingEnabled builder with application/json body
+func NewSetOrganizationAlertingEnabledRequest(server string, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetOrganizationAlertingEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetOrganizationAlertingEnabledRequestWithBody generates requests for SetOrganizationAlertingEnabled with any type of body
+func NewSetOrganizationAlertingEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alerting-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListAuditLogsRequest generates requests for ListAuditLogs
 func NewListAuditLogsRequest(server string, orgId openapi_types.UUID, params *ListAuditLogsParams) (*http.Request, error) {
 	var err error
@@ -15412,6 +16156,42 @@ type ClientWithResponsesInterface interface {
 	// TestAgentAccessWithResponse request
 	TestAgentAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*TestAgentAccessResponse, error)
 
+	// ListAlertDeliveriesWithResponse request
+	ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error)
+
+	// ListAlertDestinationsWithResponse request
+	ListAlertDestinationsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDestinationsResponse, error)
+
+	// CreateAlertDestinationWithBodyWithResponse request with any body
+	CreateAlertDestinationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAlertDestinationResponse, error)
+
+	CreateAlertDestinationWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAlertDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAlertDestinationResponse, error)
+
+	// ArchiveAlertDestinationWithResponse request
+	ArchiveAlertDestinationWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAlertDestinationResponse, error)
+
+	// ListAlertDestinationSubscriptionsWithResponse request
+	ListAlertDestinationSubscriptionsWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDestinationSubscriptionsResponse, error)
+
+	// AddAlertDestinationSubscriptionWithBodyWithResponse request with any body
+	AddAlertDestinationSubscriptionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddAlertDestinationSubscriptionResponse, error)
+
+	AddAlertDestinationSubscriptionWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, body AddAlertDestinationSubscriptionJSONRequestBody, reqEditors ...RequestEditorFn) (*AddAlertDestinationSubscriptionResponse, error)
+
+	// RemoveAlertDestinationSubscriptionWithResponse request
+	RemoveAlertDestinationSubscriptionWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, eventKey AlertEventKey, reqEditors ...RequestEditorFn) (*RemoveAlertDestinationSubscriptionResponse, error)
+
+	// TestAlertDestinationWithResponse request
+	TestAlertDestinationWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*TestAlertDestinationResponse, error)
+
+	// GetOrganizationAlertingSettingWithResponse request
+	GetOrganizationAlertingSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOrganizationAlertingSettingResponse, error)
+
+	// SetOrganizationAlertingEnabledWithBodyWithResponse request with any body
+	SetOrganizationAlertingEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAlertingEnabledResponse, error)
+
+	SetOrganizationAlertingEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAlertingEnabledResponse, error)
+
 	// ListAuditLogsWithResponse request
 	ListAuditLogsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error)
 
@@ -17699,6 +18479,234 @@ func (r TestAgentAccessResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestAgentAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAlertDeliveriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AlertDelivery
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAlertDeliveriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAlertDeliveriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAlertDestinationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AlertDestination
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAlertDestinationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAlertDestinationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAlertDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AlertDestination
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAlertDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAlertDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ArchiveAlertDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveAlertDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveAlertDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAlertDestinationSubscriptionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AlertEventKey
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAlertDestinationSubscriptionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAlertDestinationSubscriptionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AddAlertDestinationSubscriptionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AlertEventKey
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AddAlertDestinationSubscriptionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddAlertDestinationSubscriptionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveAlertDestinationSubscriptionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveAlertDestinationSubscriptionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveAlertDestinationSubscriptionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestAlertDestinationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AlertTestResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAlertDestinationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAlertDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetOrganizationAlertingSettingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AlertingSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrganizationAlertingSettingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrganizationAlertingSettingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetOrganizationAlertingEnabledResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AlertingSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetOrganizationAlertingEnabledResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetOrganizationAlertingEnabledResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -20997,6 +22005,120 @@ func (c *ClientWithResponses) TestAgentAccessWithResponse(ctx context.Context, o
 		return nil, err
 	}
 	return ParseTestAgentAccessResponse(rsp)
+}
+
+// ListAlertDeliveriesWithResponse request returning *ListAlertDeliveriesResponse
+func (c *ClientWithResponses) ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error) {
+	rsp, err := c.ListAlertDeliveries(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAlertDeliveriesResponse(rsp)
+}
+
+// ListAlertDestinationsWithResponse request returning *ListAlertDestinationsResponse
+func (c *ClientWithResponses) ListAlertDestinationsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDestinationsResponse, error) {
+	rsp, err := c.ListAlertDestinations(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAlertDestinationsResponse(rsp)
+}
+
+// CreateAlertDestinationWithBodyWithResponse request with arbitrary body returning *CreateAlertDestinationResponse
+func (c *ClientWithResponses) CreateAlertDestinationWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAlertDestinationResponse, error) {
+	rsp, err := c.CreateAlertDestinationWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAlertDestinationResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAlertDestinationWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAlertDestinationJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAlertDestinationResponse, error) {
+	rsp, err := c.CreateAlertDestination(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAlertDestinationResponse(rsp)
+}
+
+// ArchiveAlertDestinationWithResponse request returning *ArchiveAlertDestinationResponse
+func (c *ClientWithResponses) ArchiveAlertDestinationWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAlertDestinationResponse, error) {
+	rsp, err := c.ArchiveAlertDestination(ctx, orgId, destinationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveAlertDestinationResponse(rsp)
+}
+
+// ListAlertDestinationSubscriptionsWithResponse request returning *ListAlertDestinationSubscriptionsResponse
+func (c *ClientWithResponses) ListAlertDestinationSubscriptionsWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDestinationSubscriptionsResponse, error) {
+	rsp, err := c.ListAlertDestinationSubscriptions(ctx, orgId, destinationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAlertDestinationSubscriptionsResponse(rsp)
+}
+
+// AddAlertDestinationSubscriptionWithBodyWithResponse request with arbitrary body returning *AddAlertDestinationSubscriptionResponse
+func (c *ClientWithResponses) AddAlertDestinationSubscriptionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddAlertDestinationSubscriptionResponse, error) {
+	rsp, err := c.AddAlertDestinationSubscriptionWithBody(ctx, orgId, destinationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddAlertDestinationSubscriptionResponse(rsp)
+}
+
+func (c *ClientWithResponses) AddAlertDestinationSubscriptionWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, body AddAlertDestinationSubscriptionJSONRequestBody, reqEditors ...RequestEditorFn) (*AddAlertDestinationSubscriptionResponse, error) {
+	rsp, err := c.AddAlertDestinationSubscription(ctx, orgId, destinationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddAlertDestinationSubscriptionResponse(rsp)
+}
+
+// RemoveAlertDestinationSubscriptionWithResponse request returning *RemoveAlertDestinationSubscriptionResponse
+func (c *ClientWithResponses) RemoveAlertDestinationSubscriptionWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, eventKey AlertEventKey, reqEditors ...RequestEditorFn) (*RemoveAlertDestinationSubscriptionResponse, error) {
+	rsp, err := c.RemoveAlertDestinationSubscription(ctx, orgId, destinationId, eventKey, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveAlertDestinationSubscriptionResponse(rsp)
+}
+
+// TestAlertDestinationWithResponse request returning *TestAlertDestinationResponse
+func (c *ClientWithResponses) TestAlertDestinationWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*TestAlertDestinationResponse, error) {
+	rsp, err := c.TestAlertDestination(ctx, orgId, destinationId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAlertDestinationResponse(rsp)
+}
+
+// GetOrganizationAlertingSettingWithResponse request returning *GetOrganizationAlertingSettingResponse
+func (c *ClientWithResponses) GetOrganizationAlertingSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOrganizationAlertingSettingResponse, error) {
+	rsp, err := c.GetOrganizationAlertingSetting(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrganizationAlertingSettingResponse(rsp)
+}
+
+// SetOrganizationAlertingEnabledWithBodyWithResponse request with arbitrary body returning *SetOrganizationAlertingEnabledResponse
+func (c *ClientWithResponses) SetOrganizationAlertingEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationAlertingEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAlertingEnabledWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAlertingEnabledResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetOrganizationAlertingEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAlertingEnabledResponse, error) {
+	rsp, err := c.SetOrganizationAlertingEnabled(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationAlertingEnabledResponse(rsp)
 }
 
 // ListAuditLogsWithResponse request returning *ListAuditLogsResponse
@@ -24882,6 +26004,322 @@ func ParseTestAgentAccessResponse(rsp *http.Response) (*TestAgentAccessResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentAccessDiagnostic
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAlertDeliveriesResponse parses an HTTP response from a ListAlertDeliveriesWithResponse call
+func ParseListAlertDeliveriesResponse(rsp *http.Response) (*ListAlertDeliveriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAlertDeliveriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AlertDelivery
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAlertDestinationsResponse parses an HTTP response from a ListAlertDestinationsWithResponse call
+func ParseListAlertDestinationsResponse(rsp *http.Response) (*ListAlertDestinationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAlertDestinationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AlertDestination
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAlertDestinationResponse parses an HTTP response from a CreateAlertDestinationWithResponse call
+func ParseCreateAlertDestinationResponse(rsp *http.Response) (*CreateAlertDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAlertDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AlertDestination
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseArchiveAlertDestinationResponse parses an HTTP response from a ArchiveAlertDestinationWithResponse call
+func ParseArchiveAlertDestinationResponse(rsp *http.Response) (*ArchiveAlertDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveAlertDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAlertDestinationSubscriptionsResponse parses an HTTP response from a ListAlertDestinationSubscriptionsWithResponse call
+func ParseListAlertDestinationSubscriptionsResponse(rsp *http.Response) (*ListAlertDestinationSubscriptionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAlertDestinationSubscriptionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AlertEventKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddAlertDestinationSubscriptionResponse parses an HTTP response from a AddAlertDestinationSubscriptionWithResponse call
+func ParseAddAlertDestinationSubscriptionResponse(rsp *http.Response) (*AddAlertDestinationSubscriptionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddAlertDestinationSubscriptionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AlertEventKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveAlertDestinationSubscriptionResponse parses an HTTP response from a RemoveAlertDestinationSubscriptionWithResponse call
+func ParseRemoveAlertDestinationSubscriptionResponse(rsp *http.Response) (*RemoveAlertDestinationSubscriptionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveAlertDestinationSubscriptionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAlertDestinationResponse parses an HTTP response from a TestAlertDestinationWithResponse call
+func ParseTestAlertDestinationResponse(rsp *http.Response) (*TestAlertDestinationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAlertDestinationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AlertTestResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrganizationAlertingSettingResponse parses an HTTP response from a GetOrganizationAlertingSettingWithResponse call
+func ParseGetOrganizationAlertingSettingResponse(rsp *http.Response) (*GetOrganizationAlertingSettingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrganizationAlertingSettingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AlertingSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetOrganizationAlertingEnabledResponse parses an HTTP response from a SetOrganizationAlertingEnabledWithResponse call
+func ParseSetOrganizationAlertingEnabledResponse(rsp *http.Response) (*SetOrganizationAlertingEnabledResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetOrganizationAlertingEnabledResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AlertingSetting
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

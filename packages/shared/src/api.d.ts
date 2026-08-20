@@ -2079,6 +2079,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/alerting-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read the explicit organization alerting opt-in */
+        get: operations["getOrganizationAlertingSetting"];
+        /**
+         * Enable or disable organization alert delivery
+         * @description Alerting is open-core but disabled by default. Requires alerting:manage; enabling never happens implicitly because a destination authorizes outbound delivery on behalf of an organization.
+         */
+        put: operations["setOrganizationAlertingEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/alert-destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List alert destinations without their endpoint secrets */
+        get: operations["listAlertDestinations"];
+        put?: never;
+        /**
+         * Create an outbound alert destination
+         * @description The endpoint is write-only and sealed at rest. allow_private is owner-only and is the sole escape hatch for an on-premises HTTP or private-address receiver.
+         */
+        post: operations["createAlertDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+            };
+            cookie?: never;
+        };
+        /** List an alert destination's subscribed event types */
+        get: operations["listAlertDestinationSubscriptions"];
+        put?: never;
+        /** Subscribe an alert destination to one typed event */
+        post: operations["addAlertDestinationSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Archive an alert destination without deleting delivery history */
+        delete: operations["archiveAlertDestination"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send one synthetic generic-webhook alert without enqueuing a production event */
+        post: operations["testAlertDestination"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions/{eventKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+                eventKey: components["schemas"]["AlertEventKey"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop an alert destination receiving one typed event */
+        delete: operations["removeAlertDestinationSubscription"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/alert-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List recent alert delivery outcomes without payloads or endpoint secrets */
+        get: operations["listAlertDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/routed-ranges": {
         parameters: {
             query?: never;
@@ -3031,6 +3178,77 @@ export interface components {
             generated_rules: number;
             withdrawn_tuples: number;
             changed_gateways: number;
+        };
+        AlertingSetting: {
+            enabled: boolean;
+        };
+        /** @enum {string} */
+        AlertDestinationKind: "slack" | "teams" | "pagerduty" | "opsgenie" | "discord" | "google_chat" | "webhook" | "email";
+        /** @enum {string} */
+        AlertSeverity: "info" | "warning" | "critical";
+        /** @enum {string} */
+        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift";
+        CreateAlertDestinationRequest: {
+            kind: components["schemas"]["AlertDestinationKind"];
+            name: string;
+            /**
+             * Format: uri
+             * @description Write-only secret endpoint; never returned by the API.
+             */
+            endpoint: string;
+            /**
+             * @description Owner-only on-premises exception. Allows HTTP and private IP ranges.
+             * @default false
+             */
+            allow_private: boolean;
+            severity_floor?: components["schemas"]["AlertSeverity"];
+            /** @default 900 */
+            cooldown_seconds: number;
+        };
+        AlertDestination: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["AlertDestinationKind"];
+            name: string;
+            endpoint_host: string;
+            /** @description Keyed proof of the write-only endpoint, not a raw hash. */
+            endpoint_fingerprint: string;
+            allow_private: boolean;
+            severity_floor: components["schemas"]["AlertSeverity"];
+            cooldown_seconds: number;
+            archived: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AlertDelivery: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            destination_id: string;
+            event_key: components["schemas"]["AlertEventKey"];
+            severity: components["schemas"]["AlertSeverity"];
+            /** @enum {string} */
+            state: "pending" | "delivering" | "sent" | "failed";
+            attempts: number;
+            suppressed_count: number;
+            last_error?: string;
+            /** Format: date-time */
+            sent_at?: string;
+            /** Format: date-time */
+            failed_at?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AlertTestResult: {
+            delivered: boolean;
+            status_code?: number | null;
+            /** @enum {string|null} */
+            failure_code?: "blocked" | "timeout" | "dns" | "network" | "http_error" | null;
+        };
+        AddAlertSubscriptionRequest: {
+            event_key: components["schemas"]["AlertEventKey"];
         };
         AgentJITAccessSetting: {
             enabled: boolean;
@@ -7965,6 +8183,260 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRuntimeSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getOrganizationAlertingSetting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Persisted alerting setting. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setOrganizationAlertingEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertingSetting"];
+            };
+        };
+        responses: {
+            /** @description Persisted alerting setting. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertingSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAlertDestinations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active and archived destination metadata. Endpoint URLs are never returned. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertDestination"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAlertDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAlertDestinationRequest"];
+            };
+        };
+        responses: {
+            /** @description Created destination metadata; endpoint is omitted. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertDestination"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAlertDestinationSubscriptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current closed-vocabulary event subscriptions. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertEventKey"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addAlertDestinationSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddAlertSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Subscription created or already present. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertEventKey"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    archiveAlertDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Destination archived. Repeating the request is harmless while the destination remains in this organization. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testAlertDestination: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sanitized result of the attempted test delivery. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertTestResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeAlertDestinationSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                destinationId: string;
+                eventKey: components["schemas"]["AlertEventKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscription removed. Repeating the request is harmless. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAlertDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The most recent bounded delivery history for the organization. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertDelivery"][];
                 };
             };
             default: components["responses"]["Error"];

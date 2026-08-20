@@ -13,6 +13,10 @@ SELECT * FROM alert_destinations
 WHERE org_id = $1
 ORDER BY archived_at NULLS FIRST, created_at, id;
 
+-- name: GetAlertDestination :one
+SELECT * FROM alert_destinations
+WHERE org_id = $1 AND id = $2;
+
 -- name: AddAlertSubscription :one
 INSERT INTO alert_subscriptions (org_id, destination_id, event_key)
 VALUES ($1, $2, $3)
@@ -23,6 +27,15 @@ RETURNING *;
 SELECT * FROM alert_subscriptions
 WHERE org_id = $1 AND destination_id = $2
 ORDER BY event_key;
+
+-- name: RemoveAlertSubscription :execrows
+DELETE FROM alert_subscriptions
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3;
+
+-- name: ArchiveAlertDestination :execrows
+UPDATE alert_destinations
+SET archived_at = now()
+WHERE org_id = $1 AND id = $2 AND archived_at IS NULL;
 
 -- name: ListAlertDestinationsForEvent :many
 SELECT d.*
@@ -130,3 +143,9 @@ INSERT INTO alert_delivery_attempts (
     org_id, delivery_id, attempt, outcome, response_status, error
 ) VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
+
+-- name: ListAlertDeliveries :many
+SELECT * FROM alert_deliveries
+WHERE org_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2;

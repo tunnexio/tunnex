@@ -38,6 +38,25 @@ func (q *Queries) AddAlertSubscription(ctx context.Context, arg AddAlertSubscrip
 	return i, err
 }
 
+const archiveAlertDestination = `-- name: ArchiveAlertDestination :execrows
+UPDATE alert_destinations
+SET archived_at = now()
+WHERE org_id = $1 AND id = $2 AND archived_at IS NULL
+`
+
+type ArchiveAlertDestinationParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	ID    uuid.UUID `json:"id"`
+}
+
+func (q *Queries) ArchiveAlertDestination(ctx context.Context, arg ArchiveAlertDestinationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, archiveAlertDestination, arg.OrgID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimDueAlertDeliveries = `-- name: ClaimDueAlertDeliveries :many
 WITH due AS (
     SELECT alert_deliveries.id
@@ -373,6 +392,41 @@ func (q *Queries) GetAlertDeliveryCooldownForUpdate(ctx context.Context, arg Get
 	return i, err
 }
 
+const getAlertDestination = `-- name: GetAlertDestination :one
+SELECT id, org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host, allow_private, severity_floor, cooldown_seconds, quiet_hours_start, quiet_hours_end, quiet_hours_timezone, archived_at, created_by_user_id, created_at, updated_at FROM alert_destinations
+WHERE org_id = $1 AND id = $2
+`
+
+type GetAlertDestinationParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	ID    uuid.UUID `json:"id"`
+}
+
+func (q *Queries) GetAlertDestination(ctx context.Context, arg GetAlertDestinationParams) (AlertDestination, error) {
+	row := q.db.QueryRow(ctx, getAlertDestination, arg.OrgID, arg.ID)
+	var i AlertDestination
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Kind,
+		&i.Name,
+		&i.EndpointSealed,
+		&i.EndpointFingerprint,
+		&i.EndpointHost,
+		&i.AllowPrivate,
+		&i.SeverityFloor,
+		&i.CooldownSeconds,
+		&i.QuietHoursStart,
+		&i.QuietHoursEnd,
+		&i.QuietHoursTimezone,
+		&i.ArchivedAt,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getAlertDestinationForDelivery = `-- name: GetAlertDestinationForDelivery :one
 SELECT d.id, d.org_id, d.kind, d.name, d.endpoint_sealed, d.endpoint_fingerprint, d.endpoint_host, d.allow_private, d.severity_floor, d.cooldown_seconds, d.quiet_hours_start, d.quiet_hours_end, d.quiet_hours_timezone, d.archived_at, d.created_by_user_id, d.created_at, d.updated_at
 FROM alert_destinations d
@@ -443,6 +497,55 @@ func (q *Queries) IncrementAlertDeliveryCooldown(ctx context.Context, arg Increm
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listAlertDeliveries = `-- name: ListAlertDeliveries :many
+SELECT id, org_id, destination_id, event_key, severity, dedup_key, payload, state, attempts, next_attempt_at, last_error, suppressed_count, sent_at, failed_at, created_at, updated_at FROM alert_deliveries
+WHERE org_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+`
+
+type ListAlertDeliveriesParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	Limit int32     `json:"limit"`
+}
+
+func (q *Queries) ListAlertDeliveries(ctx context.Context, arg ListAlertDeliveriesParams) ([]AlertDelivery, error) {
+	rows, err := q.db.Query(ctx, listAlertDeliveries, arg.OrgID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AlertDelivery{}
+	for rows.Next() {
+		var i AlertDelivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DestinationID,
+			&i.EventKey,
+			&i.Severity,
+			&i.DedupKey,
+			&i.Payload,
+			&i.State,
+			&i.Attempts,
+			&i.NextAttemptAt,
+			&i.LastError,
+			&i.SuppressedCount,
+			&i.SentAt,
+			&i.FailedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAlertDestinations = `-- name: ListAlertDestinations :many
@@ -658,6 +761,25 @@ type RecoverStaleAlertDeliveriesParams struct {
 // leader requeues only claims older than the bounded dispatcher lease.
 func (q *Queries) RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverStaleAlertDeliveriesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, recoverStaleAlertDeliveries, arg.NextAttemptAt, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const removeAlertSubscription = `-- name: RemoveAlertSubscription :execrows
+DELETE FROM alert_subscriptions
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3
+`
+
+type RemoveAlertSubscriptionParams struct {
+	OrgID         uuid.UUID `json:"org_id"`
+	DestinationID uuid.UUID `json:"destination_id"`
+	EventKey      string    `json:"event_key"`
+}
+
+func (q *Queries) RemoveAlertSubscription(ctx context.Context, arg RemoveAlertSubscriptionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removeAlertSubscription, arg.OrgID, arg.DestinationID, arg.EventKey)
 	if err != nil {
 		return 0, err
 	}

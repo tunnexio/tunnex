@@ -40,6 +40,7 @@ type Querier interface {
 	// lint:cross-org — the subnet is org-checked via GetSiteSubnetForOrg before approval. Idempotent-ish:
 	// approving an already-approved subnet is a no-op UPDATE.
 	ApproveSiteSubnet(ctx context.Context, id uuid.UUID) (SiteSubnet, error)
+	ArchiveAlertDestination(ctx context.Context, arg ArchiveAlertDestinationParams) (int64, error)
 	// S15.1 (D14/D19 step 2) — an admin NAMES the owner. There is no created_by on this table, so the minting
 	// user is not recoverable from the row: the admin is CHOOSING, not confirming, and nothing here guesses.
 	//
@@ -502,6 +503,7 @@ type Querier interface {
 	GetAgentScopedAuthority(ctx context.Context, arg GetAgentScopedAuthorityParams) (GetAgentScopedAuthorityRow, error)
 	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	GetAlertDeliveryCooldownForUpdate(ctx context.Context, arg GetAlertDeliveryCooldownForUpdateParams) (AlertDeliveryCooldown, error)
+	GetAlertDestination(ctx context.Context, arg GetAlertDestinationParams) (AlertDestination, error)
 	GetAlertDestinationForDelivery(ctx context.Context, arg GetAlertDestinationForDeliveryParams) (AlertDestination, error)
 	// Any state (auth needs to distinguish "expired" from "unknown" for the CLI's
 	// credential_expired UX line).
@@ -856,6 +858,7 @@ type Querier interface {
 	// `n.last_seen_at` is kept for ONE case the status clock cannot cover: an agent so newly created that no
 	// push has mentioned it yet has no `device_status` row at all.
 	ListAgentsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListAgentsForOrgRow, error)
+	ListAlertDeliveries(ctx context.Context, arg ListAlertDeliveriesParams) ([]AlertDelivery, error)
 	ListAlertDestinations(ctx context.Context, orgID uuid.UUID) ([]AlertDestination, error)
 	ListAlertDestinationsForEvent(ctx context.Context, arg ListAlertDestinationsForEventParams) ([]AlertDestination, error)
 	ListAlertSubscriptions(ctx context.Context, arg ListAlertSubscriptionsParams) ([]AlertSubscription, error)
@@ -1228,6 +1231,7 @@ type Querier interface {
 	RekeyNode(ctx context.Context, arg RekeyNodeParams) (Node, error)
 	RemoveAgentGroupMember(ctx context.Context, arg RemoveAgentGroupMemberParams) (int64, error)
 	RemoveAgentGroupMembershipsForDevice(ctx context.Context, arg RemoveAgentGroupMembershipsForDeviceParams) (int64, error)
+	RemoveAlertSubscription(ctx context.Context, arg RemoveAlertSubscriptionParams) (int64, error)
 	RemoveGroupMember(ctx context.Context, arg RemoveGroupMemberParams) (int64, error)
 	RemoveIdpAccessSource(ctx context.Context, arg RemoveIdpAccessSourceParams) error
 	// Remove a synced member — scoped to origin='idp_sync' so the reconcile can NEVER delete a

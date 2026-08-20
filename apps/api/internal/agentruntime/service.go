@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 )
 
 const RuntimeCredentialPrefix = "tnx_runtime_"
@@ -76,6 +78,7 @@ type Service struct {
 	q        *sqlc.Queries
 	optIn    OptInFunc
 	notify   Notifier
+	alerts   alerts.Publisher
 	now      func() time.Time
 	pollTick time.Duration
 }
@@ -87,10 +90,21 @@ type Service struct {
 type Notifier interface{ Notify(nodeID uuid.UUID) }
 
 func New(q *sqlc.Queries, optIn OptInFunc) *Service {
-	return &Service{q: q, optIn: optIn, now: time.Now, pollTick: time.Second}
+	return &Service{q: q, optIn: optIn, now: time.Now, pollTick: time.Second, alerts: alerts.NoopPublisher{}}
 }
 
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
+
+// SetAlertPublisher attaches F11's durable outbox without making runtime
+// reporting depend on a particular transport. A nil value restores the
+// validating no-op used by focused service tests.
+func (s *Service) SetAlertPublisher(p alerts.Publisher) {
+	if p == nil {
+		s.alerts = alerts.NoopPublisher{}
+		return
+	}
+	s.alerts = p
+}
 
 func (s *Service) Authenticate(ctx context.Context, raw string) (Identity, error) {
 	if s == nil || s.q == nil || !strings.HasPrefix(raw, RuntimeCredentialPrefix) {
@@ -352,6 +366,23 @@ func (s *Service) Report(ctx context.Context, id Identity, appliedRevision, atte
 	// heartbeats do not create needless recompiles.
 	if s.notify != nil && state.AppliedChanged {
 		s.notify.Notify(state.NodeID)
+	}
+	if state.LastErrorCode != nil && s.alerts != nil {
+		// The runtime report is already durable. Returning an outbox failure
+		// causes the machine to retry its report, so a configuration failure
+		// cannot be silently observed without being offered to subscribed
+		// destinations. Per-destination cooldown is the storm boundary.
+		if err := s.alerts.Publish(ctx, alerts.Event{
+			OrgID: id.OrgID, Key: alerts.EventAgentConfigurationDrift, Severity: alerts.SeverityWarning,
+			DedupKey: "agent:" + id.DeviceID.String() + ":configuration_drift",
+			Subject:  "Managed agent configuration requires attention",
+			Fields: map[string]string{
+				"agent_id": id.DeviceID.String(), "error_code": *state.LastErrorCode,
+				"revision": fmt.Sprintf("%d", state.LastAttemptedRevision),
+			},
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }

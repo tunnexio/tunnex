@@ -12,6 +12,11 @@ import {
   type UserGroup,
   type ResizeConflict,
   type AgentJITAccessSetting,
+  type AlertingSetting,
+  type AlertDestination,
+  type AlertDestinationKind,
+  type AlertEventKey,
+  type AlertDelivery,
 } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
 import { OrgSwitcher } from "../components/OrgSwitcher";
@@ -54,6 +59,7 @@ import {
   SettingGroup,
   SettingRow,
   SettingValue,
+  Select,
   Switch,
 } from "../components/ui";
 import { LicenceCard } from "../components/LicenceCard";
@@ -336,6 +342,19 @@ export default function Settings() {
                   canEdit={emailVerified}
                 />
               )}
+              {can(myRole, "alerting:manage") && (
+                <AlertingToggle
+                  key={org.id}
+                  orgId={org.id}
+                  canEdit={emailVerified}
+                />
+              )}
+              {can(myRole, "alerting:manage") && (
+                <AlertDestinations key={`destinations-${org.id}`} orgId={org.id} canEdit={emailVerified} canAllowPrivate={myRole === "owner"} />
+              )}
+              {can(myRole, "alerting:manage") && (
+                <AlertDeliveryHistory key={`deliveries-${org.id}`} orgId={org.id} />
+              )}
             </div>
           </SettingGroup>
         )}
@@ -516,6 +535,388 @@ function AgentJITAccessToggle({
         </div>
       ) : (
         <p className="text-xs text-slate-500">Loading…</p>
+      )}
+    </SettingRow>
+  );
+}
+
+function AlertingToggle({
+  orgId,
+  canEdit,
+}: {
+  orgId: string;
+  canEdit: boolean;
+}) {
+  const [setting, setSetting] = useState<AlertingSetting | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function load() {
+    setLoadError(null);
+    const result = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/alerting-settings", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (!result.ok) return setLoadError(result.error);
+    setSetting(result.data);
+  }
+
+  useEffect(() => {
+    void load();
+  }, [orgId]);
+
+  async function toggle() {
+    if (!setting) return;
+    setBusy(true);
+    setErr(null);
+    const response = await api.PUT(
+      "/api/v1/organizations/{orgId}/alerting-settings",
+      { params: { path: { orgId } }, body: { enabled: !setting.enabled } },
+    );
+    if (response.error) {
+      setBusy(false);
+      return setErr(apiErrorMessage(response.error, "Could not update alert delivery."));
+    }
+    await load();
+    setBusy(false);
+  }
+
+  return (
+    <SettingRow
+      label="Alert delivery"
+      description="Deliver subscribed operational and security alerts to configured destinations."
+      data-testid="alerting-settings"
+    >
+      {loadError ? (
+        <div className="flex flex-col items-end gap-1">
+          <ErrorText>{loadError}</ErrorText>
+          <Button onClick={() => void load()}>Retry</Button>
+        </div>
+      ) : setting ? (
+        <div className="flex flex-col items-end gap-1">
+          <Switch
+            label="Alert delivery"
+            checked={setting.enabled}
+            disabled={!canEdit || busy}
+            onChange={toggle}
+          />
+          <p className="text-xs text-slate-500">
+            {setting.enabled ? "Delivery is enabled." : "Delivery is disabled."}
+          </p>
+          <ErrorText>{err}</ErrorText>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">Loading…</p>
+      )}
+    </SettingRow>
+  );
+}
+
+const ALERT_EVENT_LABELS: Record<AlertEventKey, string> = {
+  "agent.offline": "Agent offline",
+  "agent.denial_spike": "Agent denial spike",
+  "agent.access_expiring": "Agent access expiring",
+  "agent.rotation_failed": "Agent rotation failed",
+  "agent.configuration_drift": "Agent configuration drift",
+};
+
+const ALERT_DESTINATION_LABELS: Record<AlertDestinationKind, string> = {
+  webhook: "Generic webhook",
+  slack: "Slack",
+  teams: "Microsoft Teams",
+  pagerduty: "PagerDuty",
+  opsgenie: "Opsgenie",
+  discord: "Discord",
+  google_chat: "Google Chat",
+  email: "Email",
+};
+
+function alertDestinationInput(kind: AlertDestinationKind) {
+  switch (kind) {
+    case "pagerduty": return { label: "PagerDuty routing key", placeholder: "Paste the integration routing key" };
+    case "opsgenie": return { label: "Opsgenie API key", placeholder: "Paste the API integration key" };
+    case "email": return { label: "Recipient email", placeholder: "oncall@example.com" };
+    default: return { label: "HTTPS endpoint", placeholder: "https://alerts.example.com/tunnex" };
+  }
+}
+
+function AlertDestinations({ orgId, canEdit, canAllowPrivate }: { orgId: string; canEdit: boolean; canAllowPrivate: boolean }) {
+  const [destinations, setDestinations] = useState<AlertDestination[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [kind, setKind] = useState<AlertDestinationKind>("webhook");
+  const [name, setName] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [severityFloor, setSeverityFloor] = useState<"info" | "warning" | "critical">("warning");
+  const [cooldownSeconds, setCooldownSeconds] = useState("900");
+  const [allowPrivate, setAllowPrivate] = useState(false);
+  const [events, setEvents] = useState<AlertEventKey[]>(["agent.offline"]);
+
+  async function load() {
+    setLoadError(null);
+    const result = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/alert-destinations", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (!result.ok) return setLoadError(result.error);
+    setDestinations(result.data);
+  }
+
+  useEffect(() => {
+    void load();
+  }, [orgId]);
+
+  function toggleEvent(key: AlertEventKey) {
+    setEvents((current) =>
+      current.includes(key) ? current.filter((candidate) => candidate !== key) : [...current, key],
+    );
+  }
+
+  async function create(close: () => void) {
+    const cooldown = Number(cooldownSeconds);
+    if (!name.trim() || !endpoint.trim() || events.length === 0 || !Number.isInteger(cooldown) || cooldown < 60 || cooldown > 86400) {
+      setFormError("Enter a name, destination, one event, and a cooldown between 60 seconds and 24 hours.");
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
+    const created = await api.POST("/api/v1/organizations/{orgId}/alert-destinations", {
+      params: { path: { orgId } },
+      body: {
+        kind,
+        name: name.trim(),
+        endpoint: endpoint.trim(),
+        allow_private: canAllowPrivate && allowPrivate,
+        severity_floor: severityFloor,
+        cooldown_seconds: cooldown,
+      },
+    });
+    if (created.error || !created.data) {
+      setBusy(false);
+      setFormError(apiErrorMessage(created.error, "Could not create alert destination."));
+      return;
+    }
+    for (const eventKey of events) {
+      const subscribed = await api.POST("/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions", {
+        params: { path: { orgId, destinationId: created.data.id } },
+        body: { event_key: eventKey },
+      });
+      if (subscribed.error) {
+        setBusy(false);
+        setFormError(apiErrorMessage(subscribed.error, "Destination was created, but one event could not be subscribed."));
+        await load();
+        return;
+      }
+    }
+    setName("");
+    setEndpoint("");
+    setKind("webhook");
+    setSeverityFloor("warning");
+    setCooldownSeconds("900");
+    setAllowPrivate(false);
+    setEvents(["agent.offline"]);
+    await load();
+    setBusy(false);
+    close();
+  }
+
+  async function archive(destinationId: string) {
+    setBusy(true);
+    setFormError(null);
+    const response = await api.DELETE("/api/v1/organizations/{orgId}/alert-destinations/{destinationId}", {
+      params: { path: { orgId, destinationId } },
+    });
+    if (response.error) setFormError(apiErrorMessage(response.error, "Could not archive alert destination."));
+    await load();
+    setBusy(false);
+  }
+
+  async function test(destination: AlertDestination) {
+    setBusy(true);
+    setFormError(null);
+    setTestResult(null);
+    const response = await api.POST(
+      "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/test",
+      { params: { path: { orgId, destinationId: destination.id } } },
+    );
+    if (response.error || !response.data) {
+      setFormError(apiErrorMessage(response.error, "Could not test alert destination."));
+    } else if (response.data.delivered) {
+      setTestResult(`${destination.name}: test delivered`);
+    } else {
+      setTestResult(`${destination.name}: test failed${response.data.failure_code ? ` (${response.data.failure_code})` : ""}`);
+    }
+    setBusy(false);
+  }
+
+  const active = destinations?.filter((destination) => !destination.archived) ?? [];
+  const endpointInput = alertDestinationInput(kind);
+  return (
+    <SettingDialogRow
+      label="Alert destinations"
+      description="Write-only provider credentials receive only the agent events you select."
+      value={destinations ? `${active.length} active` : "Loading…"}
+      actionLabel="Manage"
+      dialogTitle="Alert destinations"
+      disabled={!canEdit || busy}
+      error={formError}
+      data-testid="alert-destinations"
+      actions={(close) => <Button disabled={!canEdit || busy} onClick={() => void create(close)}>{busy ? "Saving…" : "Add destination"}</Button>}
+    >
+      {() => <div className="space-y-4">
+        {loadError ? <ErrorText>{loadError}</ErrorText> : null}
+        {active.map((destination) => (
+          <div key={destination.id} className="space-y-3 rounded-md border border-white/10 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm text-white">{destination.name}</p>
+                <p className="truncate text-xs text-slate-500">{ALERT_DESTINATION_LABELS[destination.kind]} · {destination.endpoint_host} · {destination.severity_floor}</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button disabled={!canEdit || busy} onClick={() => void test(destination)}>Test</Button>
+                <Button variant="danger" disabled={!canEdit || busy} onClick={() => void archive(destination.id)}>Archive</Button>
+              </div>
+            </div>
+            <AlertDestinationSubscriptions orgId={orgId} destinationId={destination.id} canEdit={canEdit && !busy} />
+          </div>
+        ))}
+        {testResult ? <p className="text-xs text-slate-400" role="status">{testResult}</p> : null}
+        {destinations && active.length === 0 ? <p className="text-sm text-slate-500">No active alert destinations.</p> : null}
+        <Field label="Name"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Operations webhook" /></Field>
+        <Field label="Destination type">
+          <Select value={kind} onChange={(event) => setKind(event.target.value as AlertDestinationKind)}>
+            {(Object.keys(ALERT_DESTINATION_LABELS) as AlertDestinationKind[]).map((value) => <option key={value} value={value}>{ALERT_DESTINATION_LABELS[value]}</option>)}
+          </Select>
+        </Field>
+        <Field label={endpointInput.label}><Input type={kind === "email" ? "email" : kind === "pagerduty" || kind === "opsgenie" ? "password" : "url"} value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder={endpointInput.placeholder} /></Field>
+        <Field label="Minimum severity">
+          <Select value={severityFloor} onChange={(event) => setSeverityFloor(event.target.value as "info" | "warning" | "critical")}>
+            <option value="info">Info and above</option>
+            <option value="warning">Warning and above</option>
+            <option value="critical">Critical only</option>
+          </Select>
+        </Field>
+        <Field label="Cooldown seconds"><Input type="number" min="60" max="86400" value={cooldownSeconds} onChange={(event) => setCooldownSeconds(event.target.value)} /></Field>
+        {canAllowPrivate ? <label className="flex items-center gap-2 text-sm text-slate-300">
+          <input type="checkbox" checked={allowPrivate} onChange={(event) => setAllowPrivate(event.target.checked)} />
+          Allow private-network destination
+        </label> : null}
+        <fieldset className="space-y-1">
+          <legend className="text-sm text-slate-300">Events</legend>
+          {(Object.keys(ALERT_EVENT_LABELS) as AlertEventKey[]).map((key) => (
+            <label key={key} className="flex items-center gap-2 text-sm text-slate-300">
+              <input type="checkbox" checked={events.includes(key)} onChange={() => toggleEvent(key)} />
+              {ALERT_EVENT_LABELS[key]}
+            </label>
+          ))}
+        </fieldset>
+        <ErrorText>{formError}</ErrorText>
+      </div>}
+    </SettingDialogRow>
+  );
+}
+
+function AlertDestinationSubscriptions({ orgId, destinationId, canEdit }: { orgId: string; destinationId: string; canEdit: boolean }) {
+  const [subscriptions, setSubscriptions] = useState<AlertEventKey[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSubscriptions(null);
+    setError(null);
+    void api.GET("/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions", {
+      params: { path: { orgId, destinationId } },
+    }).then((response) => {
+      if (cancelled) return;
+      if (response.error || !response.data) return setError(apiErrorMessage(response.error, "Could not load event subscriptions."));
+      setSubscriptions(response.data);
+    });
+    return () => { cancelled = true; };
+  }, [orgId, destinationId]);
+
+  async function toggle(eventKey: AlertEventKey) {
+    if (!subscriptions || busy) return;
+    setBusy(true);
+    setError(null);
+    const subscribed = subscriptions.includes(eventKey);
+    const response = subscribed
+      ? await api.DELETE("/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions/{eventKey}", {
+        params: { path: { orgId, destinationId, eventKey } },
+      })
+      : await api.POST("/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions", {
+        params: { path: { orgId, destinationId } }, body: { event_key: eventKey },
+      });
+    if (response.error) {
+      setError(apiErrorMessage(response.error, "Could not update event subscription."));
+    } else {
+      setSubscriptions((current) => current && (subscribed
+        ? current.filter((key) => key !== eventKey)
+        : [...current, eventKey]));
+    }
+    setBusy(false);
+  }
+
+  return <fieldset className="space-y-1" data-testid={`alert-subscriptions-${destinationId}`}>
+    <legend className="text-xs text-slate-500">Subscribed events</legend>
+    {subscriptions === null ? <p className="text-xs text-slate-500">Loading subscriptions…</p> : (Object.keys(ALERT_EVENT_LABELS) as AlertEventKey[]).map((eventKey) => (
+      <label key={eventKey} className="flex items-center gap-2 text-xs text-slate-300">
+        <input type="checkbox" checked={subscriptions.includes(eventKey)} disabled={!canEdit || busy} onChange={() => void toggle(eventKey)} />
+        {ALERT_EVENT_LABELS[eventKey]}
+      </label>
+    ))}
+    {error ? <ErrorText>{error}</ErrorText> : null}
+  </fieldset>;
+}
+
+function AlertDeliveryHistory({ orgId }: { orgId: string }) {
+  const [deliveries, setDeliveries] = useState<AlertDelivery[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  async function load() {
+    setLoadError(null);
+    const result = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/alert-deliveries", {
+        params: { path: { orgId } },
+      }),
+    );
+    if (!result.ok) return setLoadError(result.error);
+    setDeliveries(result.data);
+  }
+
+  useEffect(() => {
+    void load();
+  }, [orgId]);
+
+  return (
+    <SettingRow
+      label="Recent alert deliveries"
+      description="Latest delivery outcomes. Payloads and destination secrets are never shown."
+      data-testid="alert-deliveries"
+    >
+      {loadError ? (
+        <div className="flex items-center gap-2">
+          <ErrorText>{loadError}</ErrorText>
+          <Button onClick={() => void load()}>Retry</Button>
+        </div>
+      ) : deliveries === null ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : deliveries.length === 0 ? (
+        <p className="text-xs text-slate-500">No delivery attempts yet.</p>
+      ) : (
+        <div className="max-w-md space-y-1 text-right">
+          {deliveries.slice(0, 3).map((delivery) => (
+            <p key={delivery.id} className="text-xs text-slate-400">
+              {ALERT_EVENT_LABELS[delivery.event_key]} · {delivery.state} · attempt {delivery.attempts}
+              {delivery.last_error ? ` · ${delivery.last_error}` : ""}
+            </p>
+          ))}
+        </div>
       )}
     </SettingRow>
   );

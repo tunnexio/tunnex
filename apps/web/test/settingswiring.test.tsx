@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent, within } from "@testing-library/react";
 
 // SLICE 6 — Settings. Second SHEDDER, and the consequence here is different in kind from every screen before it.
 //
@@ -43,6 +43,23 @@ let edition: "open" | "enterprise" = "enterprise";
 let ovpnEnabled = false;
 let agentTemplatesEnabled = false;
 let jitAccessEnabled = false;
+let alertingEnabled = false;
+let alertDestinations: Array<{
+  id: string;
+  name: string;
+  kind: "webhook";
+  endpoint_host: string;
+  severity_floor: string;
+  archived: boolean;
+}> = [];
+let alertSubscriptions: Record<string, Array<"agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift">> = {};
+let alertDeliveries: Array<{
+  id: string;
+  event_key: "agent.offline";
+  state: "failed";
+  attempts: number;
+  last_error: string;
+}> = [];
 
 vi.mock("../src/lib/api", async () => {
   const actual =
@@ -51,7 +68,7 @@ vi.mock("../src/lib/api", async () => {
     ...actual,
     apiErrorMessage: (_e: unknown, f: string) => f,
     api: {
-      GET: vi.fn(async (path: string) => {
+      GET: vi.fn(async (path: string, request?: { params?: { path?: { destinationId?: string } } }) => {
         if (__cleaned) __lateGets.push(path);
         if (path === "/api/v1/auth/me")
           return { data: { id: "u1", email: "a@b.c", email_verified: true } };
@@ -103,6 +120,15 @@ vi.mock("../src/lib/api", async () => {
               };
         if (path.endsWith("/agent-jit-access-settings"))
           return { data: { enabled: jitAccessEnabled, pending_requests: 0, approved_requests: 0 } };
+        if (path.endsWith("/alerting-settings"))
+          return { data: { enabled: alertingEnabled } };
+        if (path.endsWith("/alert-destinations"))
+          return { data: alertDestinations };
+        const subscriptions = path.match(/alert-destinations\/([^/]+)\/subscriptions$/);
+        if (subscriptions)
+          return { data: alertSubscriptions[request?.params?.path?.destinationId ?? subscriptions[1]] ?? [] };
+        if (path.endsWith("/alert-deliveries"))
+          return { data: alertDeliveries };
         return { data: [] };
       }),
       PUT: vi.fn(async (path: string, request: { body?: { enabled?: boolean } }) => {
@@ -110,10 +136,48 @@ vi.mock("../src/lib/api", async () => {
           agentTemplatesEnabled = request.body?.enabled === true;
         if (path.endsWith("/agent-jit-access-settings"))
           jitAccessEnabled = request.body?.enabled === true;
+        if (path.endsWith("/alerting-settings"))
+          alertingEnabled = request.body?.enabled === true;
         return { data: { enabled: request.body?.enabled ?? true } };
       }),
-      POST: vi.fn(async () => ({ data: {} })),
-      DELETE: vi.fn(async () => ({ data: {} })),
+      POST: vi.fn(async (path: string, request: { params?: { path?: { destinationId?: string } }; body?: { kind?: "webhook"; name?: string; endpoint?: string; severity_floor?: string; cooldown_seconds?: number; allow_private?: boolean; event_key?: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" } }) => {
+        if (path.endsWith("/alert-destinations")) {
+          const destination = {
+            id: "destination-1",
+            name: request.body?.name ?? "Webhook",
+            kind: request.body?.kind ?? "webhook",
+            endpoint_host: new URL(request.body?.endpoint ?? "https://alerts.example.test").host,
+            severity_floor: request.body?.severity_floor ?? "warning",
+            archived: false,
+          };
+          alertDestinations = [...alertDestinations, destination];
+          return { data: destination };
+        }
+        const subscriptions = path.match(/alert-destinations\/([^/]+)\/subscriptions$/);
+        if (subscriptions && request.body?.event_key) {
+          const id = request.params?.path?.destinationId ?? subscriptions[1];
+          alertSubscriptions[id] = [...new Set([...(alertSubscriptions[id] ?? []), request.body.event_key])];
+          return { data: request.body.event_key };
+        }
+        if (path.endsWith("/test"))
+          return { data: { delivered: true, status_code: 204 } };
+        return { data: {} };
+      }),
+      DELETE: vi.fn(async (path: string, request?: { params?: { path?: { destinationId?: string; eventKey?: string } } }) => {
+        const subscription = path.match(/alert-destinations\/([^/]+)\/subscriptions\/([^/]+)$/);
+        if (subscription) {
+          const id = request?.params?.path?.destinationId ?? subscription[1];
+          const eventKey = request?.params?.path?.eventKey ?? subscription[2];
+          alertSubscriptions[id] = (alertSubscriptions[id] ?? []).filter((key) => key !== eventKey);
+          return { data: {} };
+        }
+        const match = path.match(/alert-destinations\/(.+)$/);
+        if (match)
+          alertDestinations = alertDestinations.map((destination) =>
+            destination.id === match[1] ? { ...destination, archived: true } : destination,
+          );
+        return { data: {} };
+      }),
     },
   };
 });
@@ -154,6 +218,10 @@ beforeEach(() => {
   ovpnEnabled = false;
   agentTemplatesEnabled = false;
   jitAccessEnabled = false;
+  alertingEnabled = false;
+  alertDestinations = [];
+  alertSubscriptions = {};
+  alertDeliveries = [];
   // ⛔ EVERY mock-controlling global must be reset here. `ssoFail` was added without one, so a test that set
   // it leaked into the next file-order test — and the symptom was a query "not finding" text that a DOM dump
   // showed present, because the component under assertion had loaded the OTHER arm.
@@ -207,6 +275,128 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
       screen.queryByRole("switch", { name: "Just-in-time agent access" }),
     ).toBeNull();
     expect(screen.getByText("Loading settings…")).toBeTruthy();
+  });
+});
+
+describe("Settings — F11 alert delivery", () => {
+  it("reads the persisted delivery state, writes the toggle, and never renders an endpoint outside its dialog", async () => {
+    alertingEnabled = false;
+    withAuth(<Settings />);
+    await openSection(/Features/);
+    const toggle = await screen.findByRole("switch", { name: "Alert delivery" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByText("alerts.example.test")).toBeNull();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(screen.getByRole("switch", { name: "Alert delivery" }).getAttribute("aria-checked")).toBe("true"),
+    );
+    expect(alertingEnabled).toBe(true);
+  });
+
+  it("creates a generic webhook with an explicit event subscription and refetches the safe destination summary", async () => {
+    const api = (await import("../src/lib/api")).api as unknown as {
+      POST: ReturnType<typeof vi.fn>;
+    };
+    withAuth(<Settings />);
+    await openSection(/Features/);
+    fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Operations" } });
+    fireEvent.change(screen.getByLabelText("HTTPS endpoint"), { target: { value: "https://alerts.example.test/tunnex" } });
+    fireEvent.click(screen.getByLabelText("Agent configuration drift"));
+    fireEvent.click(screen.getByRole("button", { name: "Add destination" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByText("1 active")).toBeTruthy();
+    expect(screen.queryByText("Generic webhook · alerts.example.test · warning")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+    expect(screen.getByText("Generic webhook · alerts.example.test · warning")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+    expect((await screen.findByRole("status")).textContent).toContain("Operations: test delivered");
+    expect(api.POST).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/alert-destinations",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          kind: "webhook",
+          name: "Operations",
+          endpoint: "https://alerts.example.test/tunnex",
+          allow_private: false,
+          severity_floor: "warning",
+          cooldown_seconds: 900,
+        }),
+      }),
+    );
+    expect(api.POST).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/test",
+      expect.objectContaining({ params: { path: { orgId: "org-1", destinationId: "destination-1" } } }),
+    );
+    expect(api.POST.mock.calls.filter(([path]) => String(path).endsWith("/subscriptions"))).toHaveLength(2);
+  });
+
+  it("exposes the private-network override only to the owner and sends it explicitly", async () => {
+    const api = (await import("../src/lib/api")).api as unknown as {
+      POST: ReturnType<typeof vi.fn>;
+    };
+    withAuth(<Settings />);
+    await openSection(/Features/);
+    fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Internal operations" } });
+    fireEvent.change(screen.getByLabelText("HTTPS endpoint"), { target: { value: "https://hooks.internal.example/tunnex" } });
+    fireEvent.click(screen.getByLabelText("Allow private-network destination"));
+    fireEvent.click(screen.getByRole("button", { name: "Add destination" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(api.POST).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/alert-destinations",
+      expect.objectContaining({ body: expect.objectContaining({ allow_private: true }) }),
+    );
+  });
+
+  it("loads and changes an existing destination's event subscriptions without recreating its secret", async () => {
+    alertDestinations = [{
+      id: "destination-1",
+      name: "Operations",
+      kind: "webhook",
+      endpoint_host: "alerts.example.test",
+      severity_floor: "warning",
+      archived: false,
+    }];
+    alertSubscriptions = { "destination-1": ["agent.offline"] };
+    const api = (await import("../src/lib/api")).api as unknown as {
+      POST: ReturnType<typeof vi.fn>;
+      DELETE: ReturnType<typeof vi.fn>;
+    };
+    withAuth(<Settings />);
+    await openSection(/Features/);
+    fireEvent.click(await screen.findByRole("button", { name: "Manage" }));
+    const subscriptions = await screen.findByTestId("alert-subscriptions-destination-1");
+    await waitFor(() => expect((within(subscriptions).getByLabelText("Agent offline") as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(within(subscriptions).getByLabelText("Agent configuration drift"));
+    await waitFor(() => expect((within(subscriptions).getByLabelText("Agent configuration drift") as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(within(subscriptions).getByLabelText("Agent offline"));
+    await waitFor(() => expect((within(subscriptions).getByLabelText("Agent offline") as HTMLInputElement).checked).toBe(false));
+    expect(subscriptions).toBeTruthy();
+    expect(api.POST).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions",
+      expect.objectContaining({ params: { path: { orgId: "org-1", destinationId: "destination-1" } }, body: { event_key: "agent.configuration_drift" } }),
+    );
+    expect(api.DELETE).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/alert-destinations/{destinationId}/subscriptions/{eventKey}",
+      expect.objectContaining({ params: { path: { orgId: "org-1", destinationId: "destination-1", eventKey: "agent.offline" } } }),
+    );
+  });
+
+  it("shows a bounded delivery outcome without exposing a payload or destination credential", async () => {
+    alertDeliveries = [{
+      id: "delivery-1",
+      event_key: "agent.offline",
+      state: "failed",
+      attempts: 5,
+      last_error: "alert destination returned HTTP 503",
+    }];
+    withAuth(<Settings />);
+    await openSection(/Features/);
+    expect(await screen.findByText(/Agent offline · failed · attempt 5/)).toBeTruthy();
+    expect(screen.queryByText("https://secret.example.test/hook")).toBeNull();
   });
 });
 
