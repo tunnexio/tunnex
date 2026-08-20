@@ -21,6 +21,34 @@ extract_resolver "$ROOT/deploy/get.sh" >"$TMP/get.resolver"
 cmp -s "$TMP/install.resolver" "$TMP/get.resolver" ||
 	fail "install.sh and get.sh version resolvers drifted"
 
+# ⛔ THE DISPLAY RESOLVER IS DUPLICATED FOR THE SAME REASON THE VERSION RESOLVER IS — each installer must
+# be a single self-contained file an operator can read before running it — so it needs the same guard. An
+# unguarded copy is the one that drifts, and a drifted VERSION LABEL is worse than no label: two operators
+# comparing notes would be told different things about the same build.
+extract_display() {
+	sed -n '/^# BEGIN DISPLAY VERSION RESOLVER/,/^# END DISPLAY VERSION RESOLVER/p' "$1"
+}
+
+extract_display "$ROOT/deploy/install.sh" >"$TMP/install.display"
+extract_display "$ROOT/deploy/get.sh" >"$TMP/get.display"
+[ -s "$TMP/install.display" ] || fail "install.sh display-version block is missing"
+[ -s "$TMP/get.display" ] || fail "get.sh display-version block is missing"
+cmp -s "$TMP/install.display" "$TMP/get.display" ||
+	fail "install.sh and get.sh display-version resolvers drifted"
+
+# ⚠ DISPLAY MUST NOT DECIDE WHAT GETS PULLED. The label is cosmetic; the
+# release resolver is the sole authority for image tag and source commit.
+grep -qE '^[[:space:]]*(VERSION|SOURCE_REF|SOURCE_COMMIT)=' "$TMP/get.display" &&
+	fail "the display-version block assigns VERSION/SOURCE_REF/SOURCE_COMMIT — it must be display-only"
+
+# And both installers must actually SHOW the human label rather than the raw image tag.
+for installer in "$ROOT/deploy/install.sh" "$ROOT/deploy/get.sh"; do
+	grep -Fq 'resolve_display_version' "$installer" ||
+		fail "$(basename "$installer") never calls resolve_display_version"
+	grep -Fq 'DISPLAY_VERSION' "$installer" ||
+		fail "$(basename "$installer") never displays DISPLAY_VERSION"
+done
+
 die() {
 	printf '%s\n' "$*" >&2
 	exit 1
@@ -28,7 +56,11 @@ die() {
 
 curl() {
 	[ "${MOCK_CURL_MUST_NOT_RUN:-0}" = "0" ] || fail "resolver called the API for an explicit override"
-	printf '%s' "${MOCK_RESPONSE:-}"
+	case "$2" in
+	*/releases/latest) printf '%s' "${MOCK_LATEST_RELEASE:-}" ;;
+	*/commits/*) printf '%s' "${MOCK_TAG_COMMIT:-}" ;;
+	*) fail "unexpected resolver API URL '$2'" ;;
+	esac
 }
 
 API="https://api.example.invalid/repos/tunnexio/tunnex"
@@ -41,41 +73,45 @@ resolve_result() {
 }
 
 SHA="b3c7bcd4895f31c63fe4b882a8cd622415b80ae4"
-MOCK_RESPONSE="{\"workflow_runs\":[{\"head_sha\":\"${SHA}\",\"conclusion\":\"success\"}]}"
-export MOCK_RESPONSE
+MOCK_LATEST_RELEASE='{"tag_name":"v1.2.3"}'
+MOCK_TAG_COMMIT="{\"sha\":\"${SHA}\"}"
+export MOCK_LATEST_RELEASE MOCK_TAG_COMMIT
 
 actual="$(unset TUNNEX_VERSION TUNNEX_SOURCE_REF; resolve_result)"
-expected="sha-b3c7bcd|${SHA}|successful main CI commit ${SHA}"
-[ "$actual" = "$expected" ] || fail "green-main resolution mismatch: got '$actual'"
+expected="v1.2.3|${SHA}|latest published release v1.2.3 (${SHA})"
+[ "$actual" = "$expected" ] || fail "latest-release resolution mismatch: got '$actual'"
 
-actual="$(TUNNEX_VERSION=v1.2.3 MOCK_CURL_MUST_NOT_RUN=1 resolve_result)"
-[ "$actual" = "v1.2.3|v1.2.3|operator override v1.2.3 (manifest ref v1.2.3)" ] ||
+actual="$(TUNNEX_VERSION=v1.2.3 resolve_result)"
+[ "$actual" = "v1.2.3|${SHA}|operator override v1.2.3 (source ${SHA})" ] ||
 	fail "release override mismatch: got '$actual'"
 
-actual="$(TUNNEX_VERSION=latest MOCK_CURL_MUST_NOT_RUN=1 resolve_result)"
-[ "$actual" = "latest|main|operator override latest (manifest ref main)" ] ||
-	fail "latest override must fetch its manifest from main: got '$actual'"
+actual="$(TUNNEX_VERSION=v1.2.3 TUNNEX_SOURCE_REF="$SHA" MOCK_CURL_MUST_NOT_RUN=1 resolve_result)"
+[ "$actual" = "v1.2.3|${SHA}|operator override v1.2.3 (source ${SHA})" ] ||
+	fail "explicit release source override mismatch: got '$actual'"
+
+actual="$(TUNNEX_VERSION=latest resolve_result)"
+[ "$actual" = "$expected" ] ||
+	fail "latest override must resolve the published release: got '$actual'"
 
 actual="$(TUNNEX_VERSION=sha-b3c7bcd MOCK_CURL_MUST_NOT_RUN=1 resolve_result)"
 [ "$actual" = "sha-b3c7bcd|b3c7bcd|operator override sha-b3c7bcd (manifest ref b3c7bcd)" ] ||
 	fail "SHA override must remove the image-tag prefix for the Git ref: got '$actual'"
 
-if output="$(MOCK_RESPONSE='{"workflow_runs":[]}' resolve_result 2>&1)"; then
-	fail "an absent successful workflow silently selected a version"
+if output="$(MOCK_LATEST_RELEASE='{}' resolve_result 2>&1)"; then
+	fail "an absent latest release silently selected a version"
 fi
-printf '%s' "$output" | grep -q 'Refusing to fall back to an older release' ||
-	fail "missing-workflow refusal did not name the forbidden stale fallback"
+printf '%s' "$output" | grep -q 'Refusing to install an untagged build' ||
+	fail "missing-release refusal did not name the forbidden untagged fallback"
 
 for installer in "$ROOT/deploy/install.sh" "$ROOT/deploy/get.sh"; do
-	if grep -q '/releases/latest' "$installer"; then
-		fail "$(basename "$installer") still selects GitHub's stale release pointer"
-	fi
-	grep -Fq '/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1' "$installer" ||
-		fail "$(basename "$installer") is not selecting a completed successful main workflow"
+	grep -Fq '/releases/latest' "$installer" ||
+		fail "$(basename "$installer") is not selecting GitHub's latest published release"
+	grep -Fq '/commits/${VERSION}' "$installer" ||
+		fail "$(basename "$installer") does not resolve the release tag to an exact source commit"
 	grep -Fq '${RAW}/${SOURCE_REF}/deploy/tunnex.yml' "$installer" ||
-		fail "$(basename "$installer") does not bind the compose manifest to SOURCE_REF"
-	grep -Fq 'tunnex-build-${SOURCE_REF}' "$installer" ||
-		fail "$(basename "$installer") does not bind successful-main descriptors to SOURCE_REF"
+		fail "$(basename "$installer") does not bind the compose manifest to the resolved source commit"
+	grep -Fq 'RELEASE_DESCRIPTOR_TAG="$VERSION"' "$installer" ||
+		fail "$(basename "$installer") does not bind descriptors to the semantic release tag"
 	grep -Fq 'expected-source-sha "$SOURCE_REF"' "$installer" ||
 		fail "$(basename "$installer") does not verify descriptor source SHA against SOURCE_REF"
 	grep -Fq 'images pinned by digest' "$installer" ||

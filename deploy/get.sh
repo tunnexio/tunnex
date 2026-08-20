@@ -39,27 +39,39 @@ resolve_install_version() {
 	SOURCE_COMMIT=""
 	VERSION_PROVENANCE=""
 
-	if [ -z "$VERSION" ]; then
-		# ⛔ A RELEASE IS NOT THE LATEST GREEN BUILD. Main CI publishes :latest and :sha-<commit> after
-		# its gates, while GitHub's latest-release pointer advances only when somebody cuts a release. The old resolver
-		# therefore served July's v0.3.0-rc5 during an August install even though newer green images existed.
-		#
-		# The successful CI WORKFLOW is the atomic publication pointer: it cannot be success until every
-		# image in the publish matrix has finished. Bind the compose manifest and all image tags to that
-		# same commit, so an install cannot mix a new manifest with old or partially-published images.
-		_runs="$(curl -fsSL "${API}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" 2>/dev/null || true)"
-		SOURCE_COMMIT="$(printf '%s' "$_runs" |
-			sed -n 's/.*"head_sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' |
+	# Customers install releases, never an arbitrary successful main build. The
+	# GitHub release is the mutable discovery pointer; its tag plus the resolved
+	# commit are then checked against the signed descriptor before anything runs.
+	if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
+		_release="$(curl -fsSL "${API}/releases/latest" 2>/dev/null || true)"
+		VERSION="$(printf '%s' "$_release" |
+			sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\(v[0-9][^"]*\)".*/\1/p' |
 			head -1)"
-		[ -n "$SOURCE_COMMIT" ] || die "could not resolve the newest fully-published green main build. Refusing to fall back to an older release."
-		VERSION="sha-$(printf '%.7s' "$SOURCE_COMMIT")"
-		SOURCE_REF="$SOURCE_COMMIT"
-		VERSION_PROVENANCE="successful main CI commit ${SOURCE_COMMIT}"
-	else
+		[ -n "$VERSION" ] || die "could not resolve the latest published Tunnex release. Refusing to install an untagged build."
+		SOURCE_REF=""
+		VERSION_PROVENANCE="latest published release ${VERSION}"
+	fi
+
+	case "$VERSION" in
+	v*)
+		# `releases/latest` identifies the customer-facing tag, while the commit
+		# endpoint resolves annotated and lightweight tags to the exact immutable
+		# source SHA that releaseverify expects.
+		if [ -z "$SOURCE_REF" ]; then
+			_commit="$(curl -fsSL "${API}/commits/${VERSION}" 2>/dev/null || true)"
+			SOURCE_REF="$(printf '%s' "$_commit" |
+				sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' |
+				head -1)"
+			[ -n "$SOURCE_REF" ] || die "could not resolve the exact source commit for release ${VERSION}."
+		fi
+		SOURCE_COMMIT="$SOURCE_REF"
+		case "$VERSION_PROVENANCE" in
+		"latest published release "*) VERSION_PROVENANCE="${VERSION_PROVENANCE} (${SOURCE_REF})" ;;
+		*) VERSION_PROVENANCE="operator override ${VERSION} (source ${SOURCE_REF})" ;;
+		esac
+		;;
+	*)
 		case "$VERSION" in
-		latest)
-			SOURCE_REF="${SOURCE_REF:-main}"
-			;;
 		sha-*)
 			# Docker's sha-* image tag is not a Git ref; raw.githubusercontent.com accepts the abbreviated
 			# commit after the prefix is removed. TUNNEX_SOURCE_REF remains available for an explicit full SHA.
@@ -70,12 +82,22 @@ resolve_install_version() {
 			;;
 		esac
 		VERSION_PROVENANCE="operator override ${VERSION} (manifest ref ${SOURCE_REF})"
-	fi
+		;;
+	esac
 
 	case "$VERSION" in '' | *[!A-Za-z0-9._-]*) die "resolved image tag '${VERSION}' contains unsupported characters" ;; esac
 	case "$SOURCE_REF" in '' | *[!A-Za-z0-9._/-]*) die "resolved manifest ref '${SOURCE_REF}' contains unsupported characters" ;; esac
 }
 # END INSTALL VERSION RESOLVER
+
+# BEGIN DISPLAY VERSION RESOLVER — kept byte-identical in install.sh and get.sh; the regression test
+# asserts they have not drifted, the same guard the version resolver above carries.
+# The install resolver already selects a semantic release tag. Keep this tiny
+# display seam so both installer entry points remain structurally identical.
+resolve_display_version() {
+	DISPLAY_VERSION="$VERSION"
+}
+# END DISPLAY VERSION RESOLVER
 
 # step/ok — a progress line OVERWRITTEN by its own result, so the transcript reads as a checklist rather
 # than a log. \033[K clears the rest of the line: without it the tail of a longer previous message survives
@@ -628,13 +650,14 @@ report_ports() {
 	printf '\n'
 }
 
-# ── 1. pin the newest fully-published green main build ──────────────────────────────────────────
+# ── 1. resolve the newest published semantic release ────────────────────────────────────────────
 API="https://api.github.com/repos/tunnexio/tunnex"
 RAW="https://raw.githubusercontent.com/tunnexio/tunnex"
 resolve_install_version
+resolve_display_version
 
 
-printf '  \033[2mInstalling %s\033[0m\n' "$VERSION"
+printf '  \033[2mInstalling %s\033[0m\n' "$DISPLAY_VERSION"
 printf '  \033[2mProvenance: %s\033[0m\n' "$VERSION_PROVENANCE"
 
 [ "$HAVE_TTY" = "1" ] || [ "$ASSUME_YES" = "1" ] || no_tty_help
@@ -704,7 +727,8 @@ fi
 
 # ── 3. THE SUMMARY — the one moment the whole decision is visible before anything happens ───────
 printf '\n  \033[1mReady to install\033[0m\n'
-printf '    Version          %s\n' "$VERSION"
+printf '    Version          %s\n' "$DISPLAY_VERSION"
+printf '    Image tag        %s\n' "$VERSION"
 printf '    Source commit    %s\n' "$SOURCE_REF"
 	printf '    Public URL       %s\n' "$BASE_URL"
 	printf '    Dashboard        %s/\n' "$BASE_URL"
@@ -739,9 +763,9 @@ step "fetching the release manifest"
 curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o tunnex.yml 2>/dev/null ||
 	die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
 
-# Every successful main build publishes an immutable, signed descriptor. This is
-# intentionally bound to SOURCE_REF rather than GitHub's mutable latest-release
-# pointer: image tags, compose and release metadata must describe one commit.
+# A published release has an immutable signed descriptor. The release tag is
+# resolved once, then SOURCE_REF is its exact commit, so images, compose and
+# release metadata describe one verified release rather than a moving branch.
 case "$VERSION" in
 	v*) RELEASE_DESCRIPTOR_TAG="$VERSION" ;;
 	sha-*) RELEASE_DESCRIPTOR_TAG="tunnex-build-${SOURCE_REF}" ;;

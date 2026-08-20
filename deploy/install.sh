@@ -40,27 +40,39 @@ resolve_install_version() {
 	SOURCE_COMMIT=""
 	VERSION_PROVENANCE=""
 
-	if [ -z "$VERSION" ]; then
-		# ⛔ A RELEASE IS NOT THE LATEST GREEN BUILD. Main CI publishes :latest and :sha-<commit> after
-		# its gates, while GitHub's latest-release pointer advances only when somebody cuts a release. The old resolver
-		# therefore served July's v0.3.0-rc5 during an August install even though newer green images existed.
-		#
-		# The successful CI WORKFLOW is the atomic publication pointer: it cannot be success until every
-		# image in the publish matrix has finished. Bind the compose manifest and all image tags to that
-		# same commit, so an install cannot mix a new manifest with old or partially-published images.
-		_runs="$(curl -fsSL "${API}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" 2>/dev/null || true)"
-		SOURCE_COMMIT="$(printf '%s' "$_runs" |
-			sed -n 's/.*"head_sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' |
+	# Customers install releases, never an arbitrary successful main build. The
+	# GitHub release is the mutable discovery pointer; its tag plus the resolved
+	# commit are then checked against the signed descriptor before anything runs.
+	if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
+		_release="$(curl -fsSL "${API}/releases/latest" 2>/dev/null || true)"
+		VERSION="$(printf '%s' "$_release" |
+			sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\(v[0-9][^"]*\)".*/\1/p' |
 			head -1)"
-		[ -n "$SOURCE_COMMIT" ] || die "could not resolve the newest fully-published green main build. Refusing to fall back to an older release."
-		VERSION="sha-$(printf '%.7s' "$SOURCE_COMMIT")"
-		SOURCE_REF="$SOURCE_COMMIT"
-		VERSION_PROVENANCE="successful main CI commit ${SOURCE_COMMIT}"
-	else
+		[ -n "$VERSION" ] || die "could not resolve the latest published Tunnex release. Refusing to install an untagged build."
+		SOURCE_REF=""
+		VERSION_PROVENANCE="latest published release ${VERSION}"
+	fi
+
+	case "$VERSION" in
+	v*)
+		# `releases/latest` identifies the customer-facing tag, while the commit
+		# endpoint resolves annotated and lightweight tags to the exact immutable
+		# source SHA that releaseverify expects.
+		if [ -z "$SOURCE_REF" ]; then
+			_commit="$(curl -fsSL "${API}/commits/${VERSION}" 2>/dev/null || true)"
+			SOURCE_REF="$(printf '%s' "$_commit" |
+				sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' |
+				head -1)"
+			[ -n "$SOURCE_REF" ] || die "could not resolve the exact source commit for release ${VERSION}."
+		fi
+		SOURCE_COMMIT="$SOURCE_REF"
+		case "$VERSION_PROVENANCE" in
+		"latest published release "*) VERSION_PROVENANCE="${VERSION_PROVENANCE} (${SOURCE_REF})" ;;
+		*) VERSION_PROVENANCE="operator override ${VERSION} (source ${SOURCE_REF})" ;;
+		esac
+		;;
+	*)
 		case "$VERSION" in
-		latest)
-			SOURCE_REF="${SOURCE_REF:-main}"
-			;;
 		sha-*)
 			# Docker's sha-* image tag is not a Git ref; raw.githubusercontent.com accepts the abbreviated
 			# commit after the prefix is removed. TUNNEX_SOURCE_REF remains available for an explicit full SHA.
@@ -71,12 +83,22 @@ resolve_install_version() {
 			;;
 		esac
 		VERSION_PROVENANCE="operator override ${VERSION} (manifest ref ${SOURCE_REF})"
-	fi
+		;;
+	esac
 
 	case "$VERSION" in '' | *[!A-Za-z0-9._-]*) die "resolved image tag '${VERSION}' contains unsupported characters" ;; esac
 	case "$SOURCE_REF" in '' | *[!A-Za-z0-9._/-]*) die "resolved manifest ref '${SOURCE_REF}' contains unsupported characters" ;; esac
 }
 # END INSTALL VERSION RESOLVER
+
+# BEGIN DISPLAY VERSION RESOLVER — kept byte-identical in install.sh and get.sh; the regression test
+# asserts they have not drifted, the same guard the version resolver above carries.
+# The install resolver already selects a semantic release tag. Keep this tiny
+# display seam so both installer entry points remain structurally identical.
+resolve_display_version() {
+	DISPLAY_VERSION="$VERSION"
+}
+# END DISPLAY VERSION RESOLVER
 
 # have_tty: can we read from the controlling terminal? True under `curl | sh` on a real terminal
 # (stdin is the pipe, but /dev/tty is the keyboard); false in CI / fully-detached pipes.
@@ -141,9 +163,10 @@ docker compose version >/dev/null 2>&1 || die "The Docker Compose v2 plugin is r
 command -v curl >/dev/null 2>&1 || die "curl is required."
 command -v openssl >/dev/null 2>&1 || die "openssl is required (secret generation)."
 
-# ── 1. pin the newest fully-published green main build ──────────────────────────────────────────
+# ── 1. resolve the newest published semantic release ────────────────────────────────────────────
 resolve_install_version
-say ">> Installing Tunnex ${VERSION}"
+resolve_display_version
+say ">> Installing Tunnex ${DISPLAY_VERSION} (image tag ${VERSION})"
 say ">> Provenance: ${VERSION_PROVENANCE}"
 
 # ── 2. public address — env override OR prompt; loopback refused at the SOURCE (both paths) ───────
@@ -222,8 +245,8 @@ cd "$DIR"
 trap 'rm -f .env.new 2>/dev/null' EXIT # never leave a half-written .env behind on failure
 curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o tunnex.yml || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
 
-# Successful-main installs have the same signed-descriptor requirement as tagged
-# releases. Bind it to SOURCE_REF, never GitHub's mutable latest-release pointer.
+# Published releases carry a signed descriptor. Bind its semantic release tag
+# to the exact resolved source commit before starting any image.
 case "$VERSION" in
 	v*) RELEASE_DESCRIPTOR_TAG="$VERSION" ;;
 	sha-*) RELEASE_DESCRIPTOR_TAG="tunnex-build-${SOURCE_REF}" ;;
