@@ -50,6 +50,29 @@ INSERT INTO alert_deliveries (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
+-- name: GetAlertDeliveryCooldownForUpdate :one
+SELECT * FROM alert_delivery_cooldowns
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3 AND dedup_key = $4
+FOR UPDATE;
+
+-- name: CreateAlertDeliveryCooldown :one
+INSERT INTO alert_delivery_cooldowns (
+    org_id, destination_id, event_key, dedup_key, next_eligible_at
+) VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: IncrementAlertDeliveryCooldown :one
+UPDATE alert_delivery_cooldowns
+SET suppressed_count = suppressed_count + 1
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3 AND dedup_key = $4
+RETURNING *;
+
+-- name: ReserveAlertDeliveryCooldown :one
+UPDATE alert_delivery_cooldowns
+SET next_eligible_at = $5, suppressed_count = 0
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3 AND dedup_key = $4
+RETURNING *;
+
 -- name: ListDueAlertDeliveries :many
 -- lint:cross-org — the leader-gated dispatcher intentionally claims due
 -- deliveries across all tenants. It never exposes this query to a human route.

@@ -106,7 +106,11 @@ func (d *Dispatcher) deliverOne(ctx context.Context, delivery sqlc.AlertDelivery
 		} else {
 			state = "failed"
 		}
-		return d.finish(ctx, delivery, state, next, &message, "failed", responseStatus)
+		outcome := "retryable_failure"
+		if state == "failed" {
+			outcome = "terminal_failure"
+		}
+		return d.finish(ctx, delivery, state, next, &message, outcome, responseStatus)
 	}
 	message := err.Error()
 	state := "pending"
@@ -116,7 +120,11 @@ func (d *Dispatcher) deliverOne(ctx context.Context, delivery sqlc.AlertDelivery
 	} else {
 		state = "failed"
 	}
-	return d.finish(ctx, delivery, state, next, &message, "failed", nil)
+	outcome := "retryable_failure"
+	if state == "failed" {
+		outcome = "terminal_failure"
+	}
+	return d.finish(ctx, delivery, state, next, &message, outcome, nil)
 }
 
 func (d *Dispatcher) finish(ctx context.Context, delivery sqlc.AlertDelivery, state string, next time.Time, message *string, outcome string, responseStatus *int32) error {

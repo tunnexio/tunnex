@@ -24,9 +24,12 @@ func (s *outboxStore) ListAlertDestinationsForEvent(_ context.Context, _ sqlc.Li
 	return s.destinations, nil
 }
 
-func (s *outboxStore) CreateAlertDelivery(_ context.Context, params sqlc.CreateAlertDeliveryParams) (sqlc.AlertDelivery, error) {
-	s.created = append(s.created, params)
-	return sqlc.AlertDelivery{}, nil
+func (s *outboxStore) Enqueue(_ context.Context, destination sqlc.AlertDestination, event Event, payload []byte, now time.Time) error {
+	s.created = append(s.created, sqlc.CreateAlertDeliveryParams{
+		OrgID: event.OrgID, DestinationID: destination.ID, EventKey: string(event.Key), Severity: string(event.Severity),
+		DedupKey: event.DedupKey, Payload: payload, NextAttemptAt: now,
+	})
+	return nil
 }
 
 func TestOutboxPublisherRequiresExplicitOrgOptIn(t *testing.T) {

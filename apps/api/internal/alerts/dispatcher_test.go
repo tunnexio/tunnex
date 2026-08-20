@@ -105,8 +105,12 @@ func TestDispatcherSchedulesThenDeadLettersFailures(t *testing.T) {
 			if got.State != tc.state || !got.NextAttemptAt.Equal(tc.next) || got.LastError == nil {
 				t.Fatalf("finish=%#v, want state=%s next=%s error", got, tc.state, tc.next)
 			}
-			if store.attempts[0].Outcome != "failed" || store.attempts[0].Attempt != tc.attempt {
-				t.Fatalf("attempt=%#v, want failed attempt %d", store.attempts[0], tc.attempt)
+			wantOutcome := "retryable_failure"
+			if tc.state == "failed" {
+				wantOutcome = "terminal_failure"
+			}
+			if store.attempts[0].Outcome != wantOutcome || store.attempts[0].Attempt != tc.attempt {
+				t.Fatalf("attempt=%#v, want %s attempt %d", store.attempts[0], wantOutcome, tc.attempt)
 			}
 		})
 	}

@@ -189,6 +189,42 @@ func (q *Queries) CreateAlertDeliveryAttempt(ctx context.Context, arg CreateAler
 	return i, err
 }
 
+const createAlertDeliveryCooldown = `-- name: CreateAlertDeliveryCooldown :one
+INSERT INTO alert_delivery_cooldowns (
+    org_id, destination_id, event_key, dedup_key, next_eligible_at
+) VALUES ($1, $2, $3, $4, $5)
+RETURNING org_id, destination_id, event_key, dedup_key, next_eligible_at, suppressed_count, updated_at
+`
+
+type CreateAlertDeliveryCooldownParams struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	DestinationID  uuid.UUID `json:"destination_id"`
+	EventKey       string    `json:"event_key"`
+	DedupKey       string    `json:"dedup_key"`
+	NextEligibleAt time.Time `json:"next_eligible_at"`
+}
+
+func (q *Queries) CreateAlertDeliveryCooldown(ctx context.Context, arg CreateAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error) {
+	row := q.db.QueryRow(ctx, createAlertDeliveryCooldown,
+		arg.OrgID,
+		arg.DestinationID,
+		arg.EventKey,
+		arg.DedupKey,
+		arg.NextEligibleAt,
+	)
+	var i AlertDeliveryCooldown
+	err := row.Scan(
+		&i.OrgID,
+		&i.DestinationID,
+		&i.EventKey,
+		&i.DedupKey,
+		&i.NextEligibleAt,
+		&i.SuppressedCount,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createAlertDestination = `-- name: CreateAlertDestination :one
 INSERT INTO alert_destinations (
     org_id, kind, name, endpoint_sealed, endpoint_fingerprint, endpoint_host,
@@ -304,6 +340,39 @@ func (q *Queries) FinishAlertDelivery(ctx context.Context, arg FinishAlertDelive
 	return i, err
 }
 
+const getAlertDeliveryCooldownForUpdate = `-- name: GetAlertDeliveryCooldownForUpdate :one
+SELECT org_id, destination_id, event_key, dedup_key, next_eligible_at, suppressed_count, updated_at FROM alert_delivery_cooldowns
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3 AND dedup_key = $4
+FOR UPDATE
+`
+
+type GetAlertDeliveryCooldownForUpdateParams struct {
+	OrgID         uuid.UUID `json:"org_id"`
+	DestinationID uuid.UUID `json:"destination_id"`
+	EventKey      string    `json:"event_key"`
+	DedupKey      string    `json:"dedup_key"`
+}
+
+func (q *Queries) GetAlertDeliveryCooldownForUpdate(ctx context.Context, arg GetAlertDeliveryCooldownForUpdateParams) (AlertDeliveryCooldown, error) {
+	row := q.db.QueryRow(ctx, getAlertDeliveryCooldownForUpdate,
+		arg.OrgID,
+		arg.DestinationID,
+		arg.EventKey,
+		arg.DedupKey,
+	)
+	var i AlertDeliveryCooldown
+	err := row.Scan(
+		&i.OrgID,
+		&i.DestinationID,
+		&i.EventKey,
+		&i.DedupKey,
+		&i.NextEligibleAt,
+		&i.SuppressedCount,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getAlertDestinationForDelivery = `-- name: GetAlertDestinationForDelivery :one
 SELECT d.id, d.org_id, d.kind, d.name, d.endpoint_sealed, d.endpoint_fingerprint, d.endpoint_host, d.allow_private, d.severity_floor, d.cooldown_seconds, d.quiet_hours_start, d.quiet_hours_end, d.quiet_hours_timezone, d.archived_at, d.created_by_user_id, d.created_at, d.updated_at
 FROM alert_destinations d
@@ -337,6 +406,40 @@ func (q *Queries) GetAlertDestinationForDelivery(ctx context.Context, arg GetAle
 		&i.ArchivedAt,
 		&i.CreatedByUserID,
 		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const incrementAlertDeliveryCooldown = `-- name: IncrementAlertDeliveryCooldown :one
+UPDATE alert_delivery_cooldowns
+SET suppressed_count = suppressed_count + 1
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3 AND dedup_key = $4
+RETURNING org_id, destination_id, event_key, dedup_key, next_eligible_at, suppressed_count, updated_at
+`
+
+type IncrementAlertDeliveryCooldownParams struct {
+	OrgID         uuid.UUID `json:"org_id"`
+	DestinationID uuid.UUID `json:"destination_id"`
+	EventKey      string    `json:"event_key"`
+	DedupKey      string    `json:"dedup_key"`
+}
+
+func (q *Queries) IncrementAlertDeliveryCooldown(ctx context.Context, arg IncrementAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error) {
+	row := q.db.QueryRow(ctx, incrementAlertDeliveryCooldown,
+		arg.OrgID,
+		arg.DestinationID,
+		arg.EventKey,
+		arg.DedupKey,
+	)
+	var i AlertDeliveryCooldown
+	err := row.Scan(
+		&i.OrgID,
+		&i.DestinationID,
+		&i.EventKey,
+		&i.DedupKey,
+		&i.NextEligibleAt,
+		&i.SuppressedCount,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -559,4 +662,40 @@ func (q *Queries) RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverSt
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const reserveAlertDeliveryCooldown = `-- name: ReserveAlertDeliveryCooldown :one
+UPDATE alert_delivery_cooldowns
+SET next_eligible_at = $5, suppressed_count = 0
+WHERE org_id = $1 AND destination_id = $2 AND event_key = $3 AND dedup_key = $4
+RETURNING org_id, destination_id, event_key, dedup_key, next_eligible_at, suppressed_count, updated_at
+`
+
+type ReserveAlertDeliveryCooldownParams struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	DestinationID  uuid.UUID `json:"destination_id"`
+	EventKey       string    `json:"event_key"`
+	DedupKey       string    `json:"dedup_key"`
+	NextEligibleAt time.Time `json:"next_eligible_at"`
+}
+
+func (q *Queries) ReserveAlertDeliveryCooldown(ctx context.Context, arg ReserveAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error) {
+	row := q.db.QueryRow(ctx, reserveAlertDeliveryCooldown,
+		arg.OrgID,
+		arg.DestinationID,
+		arg.EventKey,
+		arg.DedupKey,
+		arg.NextEligibleAt,
+	)
+	var i AlertDeliveryCooldown
+	err := row.Scan(
+		&i.OrgID,
+		&i.DestinationID,
+		&i.EventKey,
+		&i.DedupKey,
+		&i.NextEligibleAt,
+		&i.SuppressedCount,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

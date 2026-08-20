@@ -262,6 +262,16 @@ type AlertDeliveryAttempt struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+type AlertDeliveryCooldown struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	DestinationID   uuid.UUID `json:"destination_id"`
+	EventKey        string    `json:"event_key"`
+	DedupKey        string    `json:"dedup_key"`
+	NextEligibleAt  time.Time `json:"next_eligible_at"`
+	SuppressedCount int32     `json:"suppressed_count"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
 type AlertDestination struct {
 	ID                  uuid.UUID          `json:"id"`
 	OrgID               uuid.UUID          `json:"org_id"`
