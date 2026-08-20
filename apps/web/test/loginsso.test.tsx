@@ -46,7 +46,12 @@ function metaThen(...starts: unknown[]) {
   let i = 0;
   get.mockImplementation(async (path: string) => {
     if (path === "/api/v1/meta") {
-      return { data: { sso_providers: ["google", "microsoft"] } };
+      return {
+        data: {
+          sso_providers: ["google", "microsoft"],
+          upgrade: { current_version: "v0.1.5" },
+        },
+      };
     }
     // ⛔ /healthz MUST BE ROUTED, NOT LEFT TO THE QUEUE. AuthLayout renders HealthStatus, which GETs
     // /healthz on mount — so an unrouted path fell through to `starts[i++]` and ATE the SSO response the
@@ -84,6 +89,8 @@ describe("SSO sign-in without an organization field", () => {
     metaThen({ data: { redirect_url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" } });
     renderLogin();
 
+    expect(await screen.findByText("v0.1.5")).toBeTruthy();
+    expect(screen.queryByText("v0.1.0")).toBeNull();
     expect(screen.queryByLabelText("Organization slug")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
