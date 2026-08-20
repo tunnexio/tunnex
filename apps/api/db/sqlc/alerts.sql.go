@@ -537,3 +537,26 @@ func (q *Queries) ListDueAlertDeliveries(ctx context.Context, arg ListDueAlertDe
 	}
 	return items, nil
 }
+
+const recoverStaleAlertDeliveries = `-- name: RecoverStaleAlertDeliveries :execrows
+UPDATE alert_deliveries
+SET state = 'pending', next_attempt_at = $1, last_error = 'delivery worker lease expired'
+WHERE state = 'delivering' AND updated_at < $2
+`
+
+type RecoverStaleAlertDeliveriesParams struct {
+	NextAttemptAt time.Time `json:"next_attempt_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// lint:cross-org — the leader-gated dispatcher requeues stale claims across
+// every tenant; no human route can call this query.
+// A delivery is claimed before outbound I/O. If that worker dies, a later
+// leader requeues only claims older than the bounded dispatcher lease.
+func (q *Queries) RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverStaleAlertDeliveriesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recoverStaleAlertDeliveries, arg.NextAttemptAt, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

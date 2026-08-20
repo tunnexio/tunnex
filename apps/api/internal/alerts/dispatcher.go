@@ -11,6 +11,7 @@ import (
 const (
 	MaxAttempts = 5
 	BatchSize   = 50
+	ClaimLease  = time.Minute
 )
 
 // RetryAfter returns the fixed F11 retry delays after a failed attempt. A
@@ -31,6 +32,7 @@ func RetryAfter(attempt int32) (time.Duration, bool) {
 }
 
 type DispatchStore interface {
+	RecoverStaleAlertDeliveries(context.Context, sqlc.RecoverStaleAlertDeliveriesParams) (int64, error)
 	ClaimDueAlertDeliveries(context.Context, sqlc.ClaimDueAlertDeliveriesParams) ([]sqlc.AlertDelivery, error)
 	GetAlertDestinationForDelivery(context.Context, sqlc.GetAlertDestinationForDeliveryParams) (sqlc.AlertDestination, error)
 	FinishAlertDelivery(context.Context, sqlc.FinishAlertDeliveryParams) (sqlc.AlertDelivery, error)
@@ -62,8 +64,14 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 	if d == nil || d.store == nil || d.sender == nil {
 		return errors.New("alert dispatcher is not configured")
 	}
+	now := d.now().UTC()
+	if _, err := d.store.RecoverStaleAlertDeliveries(ctx, sqlc.RecoverStaleAlertDeliveriesParams{
+		NextAttemptAt: now, UpdatedAt: now.Add(-ClaimLease),
+	}); err != nil {
+		return err
+	}
 	claimed, err := d.store.ClaimDueAlertDeliveries(ctx, sqlc.ClaimDueAlertDeliveriesParams{
-		NextAttemptAt: d.now().UTC(), Limit: BatchSize,
+		NextAttemptAt: now, Limit: BatchSize,
 	})
 	if err != nil {
 		return err
@@ -81,10 +89,24 @@ func (d *Dispatcher) deliverOne(ctx context.Context, delivery sqlc.AlertDelivery
 		ID: delivery.ID, OrgID: delivery.OrgID,
 	})
 	if err == nil {
-		_, err = d.sender.Send(ctx, destination, delivery.Payload)
-	}
-	if err == nil {
-		return d.finish(ctx, delivery, "sent", d.now().UTC(), nil, "sent")
+		status, sendErr := d.sender.Send(ctx, destination, delivery.Payload)
+		err = sendErr
+		var responseStatus *int32
+		if status > 0 {
+			responseStatus = &status
+		}
+		if err == nil {
+			return d.finish(ctx, delivery, "sent", d.now().UTC(), nil, "sent", responseStatus)
+		}
+		message := err.Error()
+		state := "pending"
+		next := d.now().UTC()
+		if after, retry := RetryAfter(delivery.Attempts); retry {
+			next = next.Add(after)
+		} else {
+			state = "failed"
+		}
+		return d.finish(ctx, delivery, state, next, &message, "failed", responseStatus)
 	}
 	message := err.Error()
 	state := "pending"
@@ -94,10 +116,10 @@ func (d *Dispatcher) deliverOne(ctx context.Context, delivery sqlc.AlertDelivery
 	} else {
 		state = "failed"
 	}
-	return d.finish(ctx, delivery, state, next, &message, "failed")
+	return d.finish(ctx, delivery, state, next, &message, "failed", nil)
 }
 
-func (d *Dispatcher) finish(ctx context.Context, delivery sqlc.AlertDelivery, state string, next time.Time, message *string, outcome string) error {
+func (d *Dispatcher) finish(ctx context.Context, delivery sqlc.AlertDelivery, state string, next time.Time, message *string, outcome string, responseStatus *int32) error {
 	if _, err := d.store.FinishAlertDelivery(ctx, sqlc.FinishAlertDeliveryParams{
 		ID: delivery.ID, OrgID: delivery.OrgID, State: state,
 		NextAttemptAt: next, LastError: message,
@@ -106,7 +128,7 @@ func (d *Dispatcher) finish(ctx context.Context, delivery sqlc.AlertDelivery, st
 	}
 	_, err := d.store.CreateAlertDeliveryAttempt(ctx, sqlc.CreateAlertDeliveryAttemptParams{
 		OrgID: delivery.OrgID, DeliveryID: delivery.ID, Attempt: delivery.Attempts,
-		Outcome: outcome, Error: message,
+		Outcome: outcome, ResponseStatus: responseStatus, Error: message,
 	})
 	return err
 }

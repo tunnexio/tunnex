@@ -3,6 +3,7 @@ package alerts
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -14,6 +15,12 @@ type dispatchStore struct {
 	claimed  []sqlc.AlertDelivery
 	finished []sqlc.FinishAlertDeliveryParams
 	attempts []sqlc.CreateAlertDeliveryAttemptParams
+	recovery sqlc.RecoverStaleAlertDeliveriesParams
+}
+
+func (s *dispatchStore) RecoverStaleAlertDeliveries(_ context.Context, params sqlc.RecoverStaleAlertDeliveriesParams) (int64, error) {
+	s.recovery = params
+	return 0, nil
 }
 
 func (s *dispatchStore) ClaimDueAlertDeliveries(_ context.Context, _ sqlc.ClaimDueAlertDeliveriesParams) ([]sqlc.AlertDelivery, error) {
@@ -65,8 +72,14 @@ func TestDispatcherMarksSuccessfulDeliverySent(t *testing.T) {
 	if len(store.finished) != 1 || store.finished[0].State != "sent" || !store.finished[0].NextAttemptAt.Equal(now) {
 		t.Fatalf("finished=%#v, want sent at now", store.finished)
 	}
+	if !store.recovery.NextAttemptAt.Equal(now) || !store.recovery.UpdatedAt.Equal(now.Add(-ClaimLease)) {
+		t.Fatalf("recovery=%#v, want one-minute stale claim lease", store.recovery)
+	}
 	if len(store.attempts) != 1 || store.attempts[0].Outcome != "sent" || store.attempts[0].Error != nil {
 		t.Fatalf("attempts=%#v, want successful history", store.attempts)
+	}
+	if store.attempts[0].ResponseStatus == nil || *store.attempts[0].ResponseStatus != http.StatusAccepted {
+		t.Fatalf("attempt=%#v, want response status 202", store.attempts[0])
 	}
 }
 

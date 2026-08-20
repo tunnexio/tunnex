@@ -1188,6 +1188,11 @@ type Querier interface {
 	//              tier only, never escalates — a stable known-bad mapping, not a worsening outage)
 	// advance_clock also drives whether last_sync_error is cleared vs set.
 	RecordIdpSyncResult(ctx context.Context, arg RecordIdpSyncResultParams) error
+	// lint:cross-org — the leader-gated dispatcher requeues stale claims across
+	// every tenant; no human route can call this query.
+	// A delivery is claimed before outbound I/O. If that worker dies, a later
+	// leader requeues only claims older than the bounded dispatcher lease.
+	RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverStaleAlertDeliveriesParams) (int64, error)
 	RejectAgentAccessRequest(ctx context.Context, arg RejectAgentAccessRequestParams) (AgentAccessRequest, error)
 	// S7.3: pending -> revoked, FREEING the held pool IP (assigned_ip=NULL) so it returns to
 	// the pool for reuse (D1b — the same release RevokeDevice does). Only a PENDING device

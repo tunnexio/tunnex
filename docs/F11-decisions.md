@@ -132,6 +132,9 @@ delays of **1 minute, 2 minutes, 4 minutes, and 8 minutes**. The fifth failed at
 fixed for F11 rather than a new per-org tuning surface: alerting needs a predictable, bounded recovery
 path before it needs delivery-policy administration.
 
+Claimed rows use a one-minute worker lease. A later leader requeues only a `delivering` row whose claim
+has exceeded that lease, preserving at-least-once delivery after a process crash without a queue service.
+
 Rejected: Redis/NATS/river queue. New infrastructure for a workload measured in messages per hour.
 
 Rejected: fire-and-forget from the request goroutine. A webhook that is down during a deploy would lose
