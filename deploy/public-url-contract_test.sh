@@ -7,7 +7,7 @@ extract_helpers() {
 	awk '/^public_base_url_ok\(\)/,/^}/; /^public_base_url_host\(\)/,/^}/; /^public_base_url_scheme\(\)/,/^}/; /^public_base_url_is_ip\(\)/,/^}/; /^public_base_url_port\(\)/,/^}/; /^tls_mode_ok\(\)/,/^}/; /^public_base_url_tls_mode_ok\(\)/,/^}/' "$1"
 }
 
-for script in deploy/install.sh deploy/get.sh; do
+for script in deploy/install.sh; do
 	eval "$(extract_helpers "$script")"
 	public_base_url_ok https://vpn.acme.com
 	public_base_url_ok http://203.0.113.10:8443
