@@ -16,31 +16,37 @@
   and upstream, refreshed server-side when needed, returned with `no-store`,
   and retained by the runtime only in memory.
 
-## Live wire proof — pending a CP walk
+## Live wire proof — completed 2026-08-21
 
-This is not satisfied by local tests. On a disposable managed agent host:
+Disposable CP: `54.79.53.95`; managed agent: `3.26.228.109`. The temporary
+F14 proxy bound only to `127.0.0.1:17100` and used public, unauthenticated
+DeepWiki at `https://mcp.deepwiki.com/mcp` (streamable HTTP,
+`2025-11-25`). No private repository, client secret, OAuth token, or caller
+authorization header was used.
 
-1. Configure one inventory endpoint and the explicit loopback proxy:
-
-   ```sh
-   TUNNEX_MCP_INVENTORY_ENDPOINTS=https://mcp.example/rpc
-   TUNNEX_MCP_PROXY_LISTEN=127.0.0.1:17100
-   TUNNEX_MCP_PROXY_UPSTREAM=https://mcp.example/rpc
-   ```
-
-2. Let inventory report, then choose exactly one tool in **AI agents → MCP tool
-   policy** and save it.
-3. Point an MCP HTTP client deliberately at `http://127.0.0.1:17100`; call the
-   selected tool and prove the upstream receives it.
-4. Send a request whose body names a different tool while its mirrored header
-   names the allowed tool; prove the proxy rejects it and the upstream receives
-   nothing.
-5. Stop inventory reporting for more than one minute; prove the proxy denies
-   the formerly allowed call. Resume reporting and prove the same unchanged
-   tool becomes eligible again.
-6. For an F13-connected protected resource, prove the upstream sees only the
-   runtime leased bearer (never the MCP client's bearer), then inspect the API,
-   runtime report, UI, and logs to confirm no token appears.
-
-Direct calls to `https://mcp.example/rpc` are intentionally outside F14 and
-must be documented as such. The CP walk is the trigger to mark F14 complete.
+1. The agent reported DeepWiki inventory: server `DeepWiki`, three tools, zero
+   resources, and zero prompts. The CP UI displayed the inventory in shadow
+   mode.
+2. In **AI agents → MCP tool policy**, the operator selected only
+   `DeepWiki · read_wiki_structure`. The UI showed policy version `1`; the CP
+   audit log recorded `agent.mcp_tool_policy.replaced` with `rule_count: 1`.
+3. A `tools/call read_wiki_structure` through `http://127.0.0.1:17100` returned
+   HTTP `200` from DeepWiki. DeepWiki returned an ordinary public-repository
+   lookup result (the selected repository was not indexed), proving the proxy
+   forwarded the allowed request.
+4. A `tools/call read_wiki_contents` through the same proxy returned HTTP `403`
+   and `MCP tool is denied by policy`; it was rejected locally. A forged
+   `Mcp-Name: read_wiki_structure` with a body requesting `read_wiki_contents`
+   returned HTTP `400` and `MCP request headers do not match its body`.
+5. The runtime policy projection returned an empty allow-list while inventory
+   age exceeded one minute, then returned version `1` with the selected rule
+   after the next fresh agent report. This proves the stale-inventory fail-closed
+   gate. During the walk we also found and fixed the missing runtime-auth
+   allowlist entries for the F14 policy and OAuth-lease routes; before that
+   fix, the proxy safely denied a `401` policy fetch.
+6. A direct, identical public DeepWiki call returned HTTP `200`, documenting
+   the deliberate F14 boundary: only clients configured to use the explicit
+   loopback proxy receive F14 enforcement. A public provider has no OAuth
+   discovery, so the F13 token-lease path remains covered by its local
+   contract tests; a protected OAuth provider is the named trigger for a
+   separate wire proof.
