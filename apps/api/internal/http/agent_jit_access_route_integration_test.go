@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,6 +18,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
@@ -80,6 +82,7 @@ func TestAgentJITAccessRoutesAuthorizationRefetchAndRuleOwnership(t *testing.T) 
 	s := apiServer{
 		system: sqlc.New(pool), devices: devices.NewService(pool, nil, nil),
 		agentAccess: agentaccess.New(pool, nil), policy: policy.NewService(pool),
+		licence: licence.NewTestManager("scale", time.Now().Add(time.Hour)),
 	}
 	ownerCtx, requesterCtx, unrelatedCtx := with(orgOwner, rbac.RoleOwner), with(agentOwner, rbac.RoleMember), with(unrelated, rbac.RoleMember)
 	createBody := &api.CreateAgentAccessRequest{
