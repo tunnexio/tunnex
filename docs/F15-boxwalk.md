@@ -1,6 +1,6 @@
 # F15 — Signed workflow provenance box-walk
 
-Status: **local proof complete; live control-plane walk deferred**.
+Status: **live control-plane proof complete (2026-08-21); review and CI pending**.
 
 ## Local, production-shaped proof
 
@@ -23,10 +23,29 @@ Agent → Run → Tool → Resource chain, while an unverified row renders only 
 verification reason and received time. The UI has no MCP invocation or policy
 action.
 
-## Deferred live wire proof
+## Live control-plane wire proof
 
-Trigger: F14's prerequisite migration is merged and a real managed workflow
-runtime/SDK emits an F15 assertion on a control-plane test deployment. The
-walk must register the runtime's public key, post valid/replayed/tampered
-assertions through the runtime bearer endpoint, and capture the agent-detail
-screen. This is a wire proof, not substituted by the local test above.
+The F15 source tip was built on the control-plane test deployment and only the
+API and web services were recreated. The pre-walk deployment backup is retained
+at `/home/ubuntu/tunnex-backups/f15-20260821T091102Z`; the database applied
+migration `0104` and both rebuilt services became healthy. The existing node
+agent and managed runtime were not restarted or changed.
+
+From the real managed runtime host, a temporary Ed25519 key was generated only
+for this walk, its public half was registered through the runtime bearer
+endpoint, and the following three assertions were posted. No private key,
+bearer credential, OAuth secret, or MCP tool payload was retained in the
+repository.
+
+| Leg | Expected outcome | Result |
+|---|---|---|
+| Fresh signed assertion | `verified` ledger row and visible chain | PASS (`9769d2f8-1d82-4c69-8df0-bdee87e77acc`) |
+| Exact re-submission | separate `unverified/replay` row | PASS (`a9b63fea-fe74-47fc-9155-d7a7438a138c`) |
+| Same signature with changed tool claim | separate `unverified/bad_signature` row | PASS (`1351986c-947c-4f94-9528-cd3a75e7c449`) |
+| Agent-detail UI | verified row shows the full chain; both unverified rows expose only reason/time | PASS (operator-captured UI evidence, 2026-08-21) |
+
+The rendered UI shows the verified `Agent → f15-live-walk / run-live-001 →
+walk.tool → mcp://walk/resource` chain. The replay and bad-signature rows
+render as `Unverified context`, with workflow, tool, resource, and initiator
+intentionally hidden. This walk exercised provenance recording only: no MCP
+tool was invoked, no tool policy changed, and no access was granted.
