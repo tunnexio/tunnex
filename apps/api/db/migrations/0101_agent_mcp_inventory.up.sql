@@ -7,7 +7,7 @@ CREATE TABLE agent_mcp_inventory (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TRIGGER set_agent_mcp_inventory_updated_at BEFORE UPDATE ON agent_mcp_inventory
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON agent_mcp_inventory
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 COMMENT ON TABLE agent_mcp_inventory IS
