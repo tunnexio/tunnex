@@ -704,6 +704,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/runtime/workflow-signing-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register one managed agent workflow-signing public key
+         * @description Machine-only managed-runtime channel. The runtime registers a public Ed25519 key once under its own stable key ID; the private key never leaves the workflow host and an existing key ID cannot be replaced.
+         */
+        post: operations["registerAgentWorkflowSigningKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/runtime/workflow-provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record one signed managed-agent workflow assertion
+         * @description Machine-only managed-runtime channel. Every assertion is retained as immutable evidence; only the first valid signature for an enrolled key becomes verified. This endpoint never invokes an MCP tool or grants access.
+         */
+        post: operations["reportAgentWorkflowProvenance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/runtime/credential-candidate": {
         parameters: {
             query?: never;
@@ -844,6 +884,29 @@ export interface paths {
         put?: never;
         /** Start MCP OAuth consent for one observed protected resource */
         post: operations["startAgentMCPOAuthConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/workflow-provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List an agent's signed workflow provenance evidence
+         * @description Read-only privileged projection. Only verified records expose an Agent → Run → Tool → Resource chain; unverified evidence deliberately omits initiator and workflow labels.
+         */
+        get: operations["listAgentWorkflowProvenance"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4519,6 +4582,66 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        AgentWorkflowSigningKeyRegistration: {
+            kid: string;
+            /** @description Base64url raw 32-byte Ed25519 public key. The matching private key remains on the agent host. */
+            public_key: string;
+        };
+        AgentWorkflowProvenanceAssertion: {
+            /** @enum {integer} */
+            version: 1;
+            /** Format: uuid */
+            assertion_id: string;
+            workflow_id: string;
+            run_id: string;
+            trigger_kind: string;
+            /** @description Opaque SDK subject reference; never inferred by the control plane. */
+            initiating_subject_ref: string;
+            tool: string;
+            resource: string;
+            /** Format: date-time */
+            issued_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            kid: string;
+            signature: string;
+        };
+        AgentWorkflowProvenanceOutcome: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            assertion_id: string;
+            /** @enum {string} */
+            verification_state: "verified" | "unverified";
+            /** @enum {string} */
+            verification_reason: "verified" | "malformed" | "expired" | "not_yet_valid" | "lifetime_exceeded" | "unknown_key" | "revoked_key" | "bad_signature" | "replay";
+        };
+        AgentWorkflowProvenanceChain: {
+            workflow_id: string;
+            run_id: string;
+            trigger_kind: string;
+            initiating_subject_ref: string;
+            tool: string;
+            resource: string;
+            /** Format: date-time */
+            issued_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AgentWorkflowProvenanceRecord: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            assertion_id: string;
+            key_id: string;
+            /** @enum {string} */
+            verification_state: "verified" | "unverified";
+            /** @enum {string} */
+            verification_reason: "verified" | "malformed" | "expired" | "not_yet_valid" | "lifetime_exceeded" | "unknown_key" | "revoked_key" | "bad_signature" | "replay";
+            /** Format: date-time */
+            received_at: string;
+            verified_chain: components["schemas"]["AgentWorkflowProvenanceChain"] | null;
+        };
         /** @description Secret-free organization/admin projection of one managed agent runtime. */
         AgentRuntimeStatus: {
             /** Format: uuid */
@@ -6114,6 +6237,57 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    registerAgentWorkflowSigningKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentWorkflowSigningKeyRegistration"];
+            };
+        };
+        responses: {
+            /** @description Signing key is registered or already registered with identical public material. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
+    reportAgentWorkflowProvenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentWorkflowProvenanceAssertion"];
+            };
+        };
+        responses: {
+            /** @description Immutable provenance evidence recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentWorkflowProvenanceOutcome"];
+                };
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
     prepareAgentRuntimeCredential: {
         parameters: {
             query?: never;
@@ -6366,6 +6540,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentMCPOAuthConsentStart"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentWorkflowProvenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent immutable provenance evidence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentWorkflowProvenanceRecord"][];
                 };
             };
             default: components["responses"]["Error"];

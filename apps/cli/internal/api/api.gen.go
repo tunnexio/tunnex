@@ -172,6 +172,49 @@ const (
 	AgentRuntimeStatusLastErrorCodeInvalidConfig AgentRuntimeStatusLastErrorCode = "invalid_config"
 )
 
+// Defines values for AgentWorkflowProvenanceAssertionVersion.
+const (
+	N1 AgentWorkflowProvenanceAssertionVersion = 1
+)
+
+// Defines values for AgentWorkflowProvenanceOutcomeVerificationReason.
+const (
+	AgentWorkflowProvenanceOutcomeVerificationReasonBadSignature     AgentWorkflowProvenanceOutcomeVerificationReason = "bad_signature"
+	AgentWorkflowProvenanceOutcomeVerificationReasonExpired          AgentWorkflowProvenanceOutcomeVerificationReason = "expired"
+	AgentWorkflowProvenanceOutcomeVerificationReasonLifetimeExceeded AgentWorkflowProvenanceOutcomeVerificationReason = "lifetime_exceeded"
+	AgentWorkflowProvenanceOutcomeVerificationReasonMalformed        AgentWorkflowProvenanceOutcomeVerificationReason = "malformed"
+	AgentWorkflowProvenanceOutcomeVerificationReasonNotYetValid      AgentWorkflowProvenanceOutcomeVerificationReason = "not_yet_valid"
+	AgentWorkflowProvenanceOutcomeVerificationReasonReplay           AgentWorkflowProvenanceOutcomeVerificationReason = "replay"
+	AgentWorkflowProvenanceOutcomeVerificationReasonRevokedKey       AgentWorkflowProvenanceOutcomeVerificationReason = "revoked_key"
+	AgentWorkflowProvenanceOutcomeVerificationReasonUnknownKey       AgentWorkflowProvenanceOutcomeVerificationReason = "unknown_key"
+	AgentWorkflowProvenanceOutcomeVerificationReasonVerified         AgentWorkflowProvenanceOutcomeVerificationReason = "verified"
+)
+
+// Defines values for AgentWorkflowProvenanceOutcomeVerificationState.
+const (
+	AgentWorkflowProvenanceOutcomeVerificationStateUnverified AgentWorkflowProvenanceOutcomeVerificationState = "unverified"
+	AgentWorkflowProvenanceOutcomeVerificationStateVerified   AgentWorkflowProvenanceOutcomeVerificationState = "verified"
+)
+
+// Defines values for AgentWorkflowProvenanceRecordVerificationReason.
+const (
+	AgentWorkflowProvenanceRecordVerificationReasonBadSignature     AgentWorkflowProvenanceRecordVerificationReason = "bad_signature"
+	AgentWorkflowProvenanceRecordVerificationReasonExpired          AgentWorkflowProvenanceRecordVerificationReason = "expired"
+	AgentWorkflowProvenanceRecordVerificationReasonLifetimeExceeded AgentWorkflowProvenanceRecordVerificationReason = "lifetime_exceeded"
+	AgentWorkflowProvenanceRecordVerificationReasonMalformed        AgentWorkflowProvenanceRecordVerificationReason = "malformed"
+	AgentWorkflowProvenanceRecordVerificationReasonNotYetValid      AgentWorkflowProvenanceRecordVerificationReason = "not_yet_valid"
+	AgentWorkflowProvenanceRecordVerificationReasonReplay           AgentWorkflowProvenanceRecordVerificationReason = "replay"
+	AgentWorkflowProvenanceRecordVerificationReasonRevokedKey       AgentWorkflowProvenanceRecordVerificationReason = "revoked_key"
+	AgentWorkflowProvenanceRecordVerificationReasonUnknownKey       AgentWorkflowProvenanceRecordVerificationReason = "unknown_key"
+	AgentWorkflowProvenanceRecordVerificationReasonVerified         AgentWorkflowProvenanceRecordVerificationReason = "verified"
+)
+
+// Defines values for AgentWorkflowProvenanceRecordVerificationState.
+const (
+	AgentWorkflowProvenanceRecordVerificationStateUnverified AgentWorkflowProvenanceRecordVerificationState = "unverified"
+	AgentWorkflowProvenanceRecordVerificationStateVerified   AgentWorkflowProvenanceRecordVerificationState = "verified"
+)
+
 // Defines values for AlertDeliveryState.
 const (
 	AlertDeliveryStateDelivering AlertDeliveryState = "delivering"
@@ -1242,6 +1285,78 @@ type AgentWireGuardCandidate struct {
 	// PublicKey Public half of a WireGuard key generated only on the agent host.
 	PublicKey string `json:"public_key"`
 	Revision  int64  `json:"revision"`
+}
+
+// AgentWorkflowProvenanceAssertion defines model for AgentWorkflowProvenanceAssertion.
+type AgentWorkflowProvenanceAssertion struct {
+	AssertionId openapi_types.UUID `json:"assertion_id"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+
+	// InitiatingSubjectRef Opaque SDK subject reference; never inferred by the control plane.
+	InitiatingSubjectRef string                                  `json:"initiating_subject_ref"`
+	IssuedAt             time.Time                               `json:"issued_at"`
+	Kid                  string                                  `json:"kid"`
+	Resource             string                                  `json:"resource"`
+	RunId                string                                  `json:"run_id"`
+	Signature            string                                  `json:"signature"`
+	Tool                 string                                  `json:"tool"`
+	TriggerKind          string                                  `json:"trigger_kind"`
+	Version              AgentWorkflowProvenanceAssertionVersion `json:"version"`
+	WorkflowId           string                                  `json:"workflow_id"`
+}
+
+// AgentWorkflowProvenanceAssertionVersion defines model for AgentWorkflowProvenanceAssertion.Version.
+type AgentWorkflowProvenanceAssertionVersion int
+
+// AgentWorkflowProvenanceChain defines model for AgentWorkflowProvenanceChain.
+type AgentWorkflowProvenanceChain struct {
+	ExpiresAt            time.Time `json:"expires_at"`
+	InitiatingSubjectRef string    `json:"initiating_subject_ref"`
+	IssuedAt             time.Time `json:"issued_at"`
+	Resource             string    `json:"resource"`
+	RunId                string    `json:"run_id"`
+	Tool                 string    `json:"tool"`
+	TriggerKind          string    `json:"trigger_kind"`
+	WorkflowId           string    `json:"workflow_id"`
+}
+
+// AgentWorkflowProvenanceOutcome defines model for AgentWorkflowProvenanceOutcome.
+type AgentWorkflowProvenanceOutcome struct {
+	AssertionId        openapi_types.UUID                               `json:"assertion_id"`
+	Id                 openapi_types.UUID                               `json:"id"`
+	VerificationReason AgentWorkflowProvenanceOutcomeVerificationReason `json:"verification_reason"`
+	VerificationState  AgentWorkflowProvenanceOutcomeVerificationState  `json:"verification_state"`
+}
+
+// AgentWorkflowProvenanceOutcomeVerificationReason defines model for AgentWorkflowProvenanceOutcome.VerificationReason.
+type AgentWorkflowProvenanceOutcomeVerificationReason string
+
+// AgentWorkflowProvenanceOutcomeVerificationState defines model for AgentWorkflowProvenanceOutcome.VerificationState.
+type AgentWorkflowProvenanceOutcomeVerificationState string
+
+// AgentWorkflowProvenanceRecord defines model for AgentWorkflowProvenanceRecord.
+type AgentWorkflowProvenanceRecord struct {
+	AssertionId        openapi_types.UUID                              `json:"assertion_id"`
+	Id                 openapi_types.UUID                              `json:"id"`
+	KeyId              string                                          `json:"key_id"`
+	ReceivedAt         time.Time                                       `json:"received_at"`
+	VerificationReason AgentWorkflowProvenanceRecordVerificationReason `json:"verification_reason"`
+	VerificationState  AgentWorkflowProvenanceRecordVerificationState  `json:"verification_state"`
+	VerifiedChain      *AgentWorkflowProvenanceChain                   `json:"verified_chain"`
+}
+
+// AgentWorkflowProvenanceRecordVerificationReason defines model for AgentWorkflowProvenanceRecord.VerificationReason.
+type AgentWorkflowProvenanceRecordVerificationReason string
+
+// AgentWorkflowProvenanceRecordVerificationState defines model for AgentWorkflowProvenanceRecord.VerificationState.
+type AgentWorkflowProvenanceRecordVerificationState string
+
+// AgentWorkflowSigningKeyRegistration defines model for AgentWorkflowSigningKeyRegistration.
+type AgentWorkflowSigningKeyRegistration struct {
+	Kid string `json:"kid"`
+
+	// PublicKey Base64url raw 32-byte Ed25519 public key. The matching private key remains on the agent host.
+	PublicKey string `json:"public_key"`
 }
 
 // AlertDelivery defines model for AlertDelivery.
@@ -3060,6 +3175,12 @@ type ReportAgentRuntimeJSONRequestBody = AgentRuntimeReport
 // PrepareAgentRuntimeWireGuardJSONRequestBody defines body for PrepareAgentRuntimeWireGuard for application/json ContentType.
 type PrepareAgentRuntimeWireGuardJSONRequestBody = AgentWireGuardCandidate
 
+// ReportAgentWorkflowProvenanceJSONRequestBody defines body for ReportAgentWorkflowProvenance for application/json ContentType.
+type ReportAgentWorkflowProvenanceJSONRequestBody = AgentWorkflowProvenanceAssertion
+
+// RegisterAgentWorkflowSigningKeyJSONRequestBody defines body for RegisterAgentWorkflowSigningKey for application/json ContentType.
+type RegisterAgentWorkflowSigningKeyJSONRequestBody = AgentWorkflowSigningKeyRegistration
+
 // CliAuthorizeJSONRequestBody defines body for CliAuthorize for application/json ContentType.
 type CliAuthorizeJSONRequestBody = CliAuthorizeRequest
 
@@ -3441,6 +3562,16 @@ type ClientInterface interface {
 
 	PrepareAgentRuntimeWireGuard(ctx context.Context, body PrepareAgentRuntimeWireGuardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ReportAgentWorkflowProvenanceWithBody request with any body
+	ReportAgentWorkflowProvenanceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReportAgentWorkflowProvenance(ctx context.Context, body ReportAgentWorkflowProvenanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RegisterAgentWorkflowSigningKeyWithBody request with any body
+	RegisterAgentWorkflowSigningKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RegisterAgentWorkflowSigningKey(ctx context.Context, body RegisterAgentWorkflowSigningKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CliAuthorizeWithBody request with any body
 	CliAuthorizeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3748,6 +3879,9 @@ type ClientInterface interface {
 
 	// TestAgentAccess request
 	TestAgentAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentWorkflowProvenance request
+	ListAgentWorkflowProvenance(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAlertDeliveries request
 	ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4456,6 +4590,54 @@ func (c *Client) PrepareAgentRuntimeWireGuardWithBody(ctx context.Context, conte
 
 func (c *Client) PrepareAgentRuntimeWireGuard(ctx context.Context, body PrepareAgentRuntimeWireGuardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPrepareAgentRuntimeWireGuardRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReportAgentWorkflowProvenanceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReportAgentWorkflowProvenanceRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReportAgentWorkflowProvenance(ctx context.Context, body ReportAgentWorkflowProvenanceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReportAgentWorkflowProvenanceRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RegisterAgentWorkflowSigningKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegisterAgentWorkflowSigningKeyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RegisterAgentWorkflowSigningKey(ctx context.Context, body RegisterAgentWorkflowSigningKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegisterAgentWorkflowSigningKeyRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5836,6 +6018,18 @@ func (c *Client) GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.
 
 func (c *Client) TestAgentAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestAgentAccessRequest(c.Server, orgId, deviceId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentWorkflowProvenance(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentWorkflowProvenanceRequest(c.Server, orgId, deviceId)
 	if err != nil {
 		return nil, err
 	}
@@ -8278,6 +8472,86 @@ func NewPrepareAgentRuntimeWireGuardRequestWithBody(server string, contentType s
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/agent/runtime/wireguard-candidate")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReportAgentWorkflowProvenanceRequest calls the generic ReportAgentWorkflowProvenance builder with application/json body
+func NewReportAgentWorkflowProvenanceRequest(server string, body ReportAgentWorkflowProvenanceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReportAgentWorkflowProvenanceRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewReportAgentWorkflowProvenanceRequestWithBody generates requests for ReportAgentWorkflowProvenance with any type of body
+func NewReportAgentWorkflowProvenanceRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/workflow-provenance")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRegisterAgentWorkflowSigningKeyRequest calls the generic RegisterAgentWorkflowSigningKey builder with application/json body
+func NewRegisterAgentWorkflowSigningKeyRequest(server string, body RegisterAgentWorkflowSigningKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRegisterAgentWorkflowSigningKeyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRegisterAgentWorkflowSigningKeyRequestWithBody generates requests for RegisterAgentWorkflowSigningKey with any type of body
+func NewRegisterAgentWorkflowSigningKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/workflow-signing-key")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -11753,6 +12027,47 @@ func NewTestAgentAccessRequest(server string, orgId openapi_types.UUID, deviceId
 		}
 
 		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAgentWorkflowProvenanceRequest generates requests for ListAgentWorkflowProvenance
+func NewListAgentWorkflowProvenanceRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/workflow-provenance", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -16640,6 +16955,16 @@ type ClientWithResponsesInterface interface {
 
 	PrepareAgentRuntimeWireGuardWithResponse(ctx context.Context, body PrepareAgentRuntimeWireGuardJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeWireGuardResponse, error)
 
+	// ReportAgentWorkflowProvenanceWithBodyWithResponse request with any body
+	ReportAgentWorkflowProvenanceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportAgentWorkflowProvenanceResponse, error)
+
+	ReportAgentWorkflowProvenanceWithResponse(ctx context.Context, body ReportAgentWorkflowProvenanceJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportAgentWorkflowProvenanceResponse, error)
+
+	// RegisterAgentWorkflowSigningKeyWithBodyWithResponse request with any body
+	RegisterAgentWorkflowSigningKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterAgentWorkflowSigningKeyResponse, error)
+
+	RegisterAgentWorkflowSigningKeyWithResponse(ctx context.Context, body RegisterAgentWorkflowSigningKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterAgentWorkflowSigningKeyResponse, error)
+
 	// CliAuthorizeWithBodyWithResponse request with any body
 	CliAuthorizeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CliAuthorizeResponse, error)
 
@@ -16947,6 +17272,9 @@ type ClientWithResponsesInterface interface {
 
 	// TestAgentAccessWithResponse request
 	TestAgentAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestAgentAccessParams, reqEditors ...RequestEditorFn) (*TestAgentAccessResponse, error)
+
+	// ListAgentWorkflowProvenanceWithResponse request
+	ListAgentWorkflowProvenanceWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentWorkflowProvenanceResponse, error)
 
 	// ListAlertDeliveriesWithResponse request
 	ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error)
@@ -17717,6 +18045,53 @@ func (r PrepareAgentRuntimeWireGuardResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PrepareAgentRuntimeWireGuardResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReportAgentWorkflowProvenanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentWorkflowProvenanceOutcome
+	JSON401      *RuntimeUnauthorized
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReportAgentWorkflowProvenanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReportAgentWorkflowProvenanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RegisterAgentWorkflowSigningKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON401      *RuntimeUnauthorized
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RegisterAgentWorkflowSigningKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RegisterAgentWorkflowSigningKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19502,6 +19877,29 @@ func (r TestAgentAccessResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestAgentAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentWorkflowProvenanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentWorkflowProvenanceRecord
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentWorkflowProvenanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentWorkflowProvenanceResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -22138,6 +22536,40 @@ func (c *ClientWithResponses) PrepareAgentRuntimeWireGuardWithResponse(ctx conte
 	return ParsePrepareAgentRuntimeWireGuardResponse(rsp)
 }
 
+// ReportAgentWorkflowProvenanceWithBodyWithResponse request with arbitrary body returning *ReportAgentWorkflowProvenanceResponse
+func (c *ClientWithResponses) ReportAgentWorkflowProvenanceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportAgentWorkflowProvenanceResponse, error) {
+	rsp, err := c.ReportAgentWorkflowProvenanceWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReportAgentWorkflowProvenanceResponse(rsp)
+}
+
+func (c *ClientWithResponses) ReportAgentWorkflowProvenanceWithResponse(ctx context.Context, body ReportAgentWorkflowProvenanceJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportAgentWorkflowProvenanceResponse, error) {
+	rsp, err := c.ReportAgentWorkflowProvenance(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReportAgentWorkflowProvenanceResponse(rsp)
+}
+
+// RegisterAgentWorkflowSigningKeyWithBodyWithResponse request with arbitrary body returning *RegisterAgentWorkflowSigningKeyResponse
+func (c *ClientWithResponses) RegisterAgentWorkflowSigningKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterAgentWorkflowSigningKeyResponse, error) {
+	rsp, err := c.RegisterAgentWorkflowSigningKeyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegisterAgentWorkflowSigningKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) RegisterAgentWorkflowSigningKeyWithResponse(ctx context.Context, body RegisterAgentWorkflowSigningKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RegisterAgentWorkflowSigningKeyResponse, error) {
+	rsp, err := c.RegisterAgentWorkflowSigningKey(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegisterAgentWorkflowSigningKeyResponse(rsp)
+}
+
 // CliAuthorizeWithBodyWithResponse request with arbitrary body returning *CliAuthorizeResponse
 func (c *ClientWithResponses) CliAuthorizeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CliAuthorizeResponse, error) {
 	rsp, err := c.CliAuthorizeWithBody(ctx, contentType, body, reqEditors...)
@@ -23134,6 +23566,15 @@ func (c *ClientWithResponses) TestAgentAccessWithResponse(ctx context.Context, o
 		return nil, err
 	}
 	return ParseTestAgentAccessResponse(rsp)
+}
+
+// ListAgentWorkflowProvenanceWithResponse request returning *ListAgentWorkflowProvenanceResponse
+func (c *ClientWithResponses) ListAgentWorkflowProvenanceWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentWorkflowProvenanceResponse, error) {
+	rsp, err := c.ListAgentWorkflowProvenance(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentWorkflowProvenanceResponse(rsp)
 }
 
 // ListAlertDeliveriesWithResponse request returning *ListAlertDeliveriesResponse
@@ -24952,6 +25393,79 @@ func ParsePrepareAgentRuntimeWireGuardResponse(rsp *http.Response) (*PrepareAgen
 	}
 
 	response := &PrepareAgentRuntimeWireGuardResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReportAgentWorkflowProvenanceResponse parses an HTTP response from a ReportAgentWorkflowProvenanceWithResponse call
+func ParseReportAgentWorkflowProvenanceResponse(rsp *http.Response) (*ReportAgentWorkflowProvenanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReportAgentWorkflowProvenanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentWorkflowProvenanceOutcome
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRegisterAgentWorkflowSigningKeyResponse parses an HTTP response from a RegisterAgentWorkflowSigningKeyWithResponse call
+func ParseRegisterAgentWorkflowSigningKeyResponse(rsp *http.Response) (*RegisterAgentWorkflowSigningKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RegisterAgentWorkflowSigningKeyResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -27470,6 +27984,39 @@ func ParseTestAgentAccessResponse(rsp *http.Response) (*TestAgentAccessResponse,
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentAccessDiagnostic
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentWorkflowProvenanceResponse parses an HTTP response from a ListAgentWorkflowProvenanceWithResponse call
+func ParseListAgentWorkflowProvenanceResponse(rsp *http.Response) (*ListAgentWorkflowProvenanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentWorkflowProvenanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentWorkflowProvenanceRecord
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
