@@ -768,6 +768,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /** List an agent's MCP OAuth trust connections */
+        get: operations["listAgentMCPOAuthConnections"];
+        put?: never;
+        /** Start MCP OAuth consent for one observed protected resource */
+        post: operations["startAgentMCPOAuthConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcp/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Complete a browser MCP OAuth consent transaction */
+        get: operations["mcpOAuthCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agents/{deviceId}/test-access": {
         parameters: {
             query?: never;
@@ -4463,6 +4501,50 @@ export interface components {
             /** Format: date-time */
             observed_at: string;
         };
+        StartAgentMCPOAuthConnectionRequest: {
+            /** Format: uri */
+            endpoint: string;
+            /** Format: uri */
+            protected_resource: string;
+            /** Format: uri */
+            issuer: string;
+            scopes: string[];
+            client_id: string;
+            /** @description Optional pre-registered client secret. Sealed at rest and never returned. */
+            client_secret?: string;
+        };
+        AgentMCPOAuthConsentStart: {
+            /** Format: uuid */
+            connection_id: string;
+            /** Format: uri */
+            authorization_url: string;
+            /** @enum {string} */
+            state: "pending_consent";
+        };
+        AgentMCPOAuthConnection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uri */
+            endpoint: string;
+            /** Format: uri */
+            protected_resource: string;
+            /** Format: uri */
+            issuer: string;
+            scopes: string[];
+            client_id: string;
+            client_secret_fingerprint?: string | null;
+            /** @enum {string} */
+            state: "discovered" | "pending_consent" | "connected" | "expired" | "failed" | "disconnected";
+            failure_code?: string | null;
+            /** Format: date-time */
+            token_expires_at?: string | null;
+            /** Format: date-time */
+            connected_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         AgentAccessCheck: {
             /** @enum {string} */
             status: "pass" | "fail" | "inconclusive";
@@ -6038,6 +6120,80 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AgentMCPInventory"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentMCPOAuthConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Secret-free MCP OAuth connection projections. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPOAuthConnection"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startAgentMCPOAuthConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAgentMCPOAuthConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Browser authorization redirect prepared; no credential material is returned. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPOAuthConsentStart"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    mcpOAuthCallback: {
+        parameters: {
+            query: {
+                code: string;
+                state: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Browser redirect to a secret-free terminal connection result. */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

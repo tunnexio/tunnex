@@ -42,6 +42,25 @@ func (q *Queries) ConnectAgentMCPOAuthConnection(ctx context.Context, arg Connec
 	return result.RowsAffected(), nil
 }
 
+const failAgentMCPOAuthConnection = `-- name: FailAgentMCPOAuthConnection :execrows
+UPDATE agent_mcp_oauth_connections SET state='failed', failure_code=$1
+WHERE id=$2 AND org_id=$3
+`
+
+type FailAgentMCPOAuthConnectionParams struct {
+	FailureCode *string   `json:"failure_code"`
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) FailAgentMCPOAuthConnection(ctx context.Context, arg FailAgentMCPOAuthConnectionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, failAgentMCPOAuthConnection, arg.FailureCode, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getAgentMCPOAuthConnection = `-- name: GetAgentMCPOAuthConnection :one
 SELECT id, org_id, device_id, endpoint, protected_resource, issuer, scopes, client_id, client_secret_sealed, client_secret_fingerprint, access_token_sealed, refresh_token_sealed, token_expires_at, state, failure_code, connected_by_user_id, connected_at, created_at, updated_at FROM agent_mcp_oauth_connections WHERE id=$1 AND org_id=$2 AND device_id=$3
 `
@@ -54,6 +73,42 @@ type GetAgentMCPOAuthConnectionParams struct {
 
 func (q *Queries) GetAgentMCPOAuthConnection(ctx context.Context, arg GetAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error) {
 	row := q.db.QueryRow(ctx, getAgentMCPOAuthConnection, arg.ID, arg.OrgID, arg.DeviceID)
+	var i AgentMcpOauthConnection
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DeviceID,
+		&i.Endpoint,
+		&i.ProtectedResource,
+		&i.Issuer,
+		&i.Scopes,
+		&i.ClientID,
+		&i.ClientSecretSealed,
+		&i.ClientSecretFingerprint,
+		&i.AccessTokenSealed,
+		&i.RefreshTokenSealed,
+		&i.TokenExpiresAt,
+		&i.State,
+		&i.FailureCode,
+		&i.ConnectedByUserID,
+		&i.ConnectedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAgentMCPOAuthConnectionForCallback = `-- name: GetAgentMCPOAuthConnectionForCallback :one
+SELECT id, org_id, device_id, endpoint, protected_resource, issuer, scopes, client_id, client_secret_sealed, client_secret_fingerprint, access_token_sealed, refresh_token_sealed, token_expires_at, state, failure_code, connected_by_user_id, connected_at, created_at, updated_at FROM agent_mcp_oauth_connections WHERE id=$1 AND org_id=$2
+`
+
+type GetAgentMCPOAuthConnectionForCallbackParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) GetAgentMCPOAuthConnectionForCallback(ctx context.Context, arg GetAgentMCPOAuthConnectionForCallbackParams) (AgentMcpOauthConnection, error) {
+	row := q.db.QueryRow(ctx, getAgentMCPOAuthConnectionForCallback, arg.ID, arg.OrgID)
 	var i AgentMcpOauthConnection
 	err := row.Scan(
 		&i.ID,

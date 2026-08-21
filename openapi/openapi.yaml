@@ -920,6 +920,64 @@ paths:
               schema: { $ref: "#/components/schemas/AgentMCPInventory" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listAgentMCPOAuthConnections
+      summary: List an agent's MCP OAuth trust connections
+      tags: [agents]
+      responses:
+        "200":
+          description: Secret-free MCP OAuth connection projections.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AgentMCPOAuthConnection" } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: startAgentMCPOAuthConnection
+      summary: Start MCP OAuth consent for one observed protected resource
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartAgentMCPOAuthConnectionRequest" }
+      responses:
+        "201":
+          description: Browser authorization redirect prepared; no credential material is returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentMCPOAuthConsentStart" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/mcp/oauth/callback:
+    get:
+      operationId: mcpOAuthCallback
+      summary: Complete a browser MCP OAuth consent transaction
+      tags: [agents]
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 8192 }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 512 }
+      responses:
+        "302":
+          description: Browser redirect to a secret-free terminal connection result.
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/agents/{deviceId}/test-access:
     parameters:
       - name: orgId
@@ -5816,6 +5874,51 @@ components:
           description: Secret-free F12 inventory snapshot; no MCP request/response content or credentials.
           additionalProperties: true
         observed_at: { type: string, format: date-time }
+
+    StartAgentMCPOAuthConnectionRequest:
+      type: object
+      required: [endpoint, protected_resource, issuer, scopes, client_id]
+      additionalProperties: false
+      properties:
+        endpoint: { type: string, format: uri, maxLength: 2048 }
+        protected_resource: { type: string, format: uri, maxLength: 2048 }
+        issuer: { type: string, format: uri, maxLength: 2048 }
+        scopes: { type: array, minItems: 1, maxItems: 64, items: { type: string, minLength: 1, maxLength: 256 } }
+        client_id: { type: string, minLength: 1, maxLength: 2048 }
+        client_secret:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          writeOnly: true
+          description: Optional pre-registered client secret. Sealed at rest and never returned.
+
+    AgentMCPOAuthConsentStart:
+      type: object
+      required: [connection_id, authorization_url, state]
+      additionalProperties: false
+      properties:
+        connection_id: { type: string, format: uuid }
+        authorization_url: { type: string, format: uri }
+        state: { type: string, enum: [pending_consent] }
+
+    AgentMCPOAuthConnection:
+      type: object
+      required: [id, endpoint, protected_resource, issuer, scopes, client_id, state, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        endpoint: { type: string, format: uri }
+        protected_resource: { type: string, format: uri }
+        issuer: { type: string, format: uri }
+        scopes: { type: array, items: { type: string } }
+        client_id: { type: string }
+        client_secret_fingerprint: { type: string, nullable: true }
+        state: { type: string, enum: [discovered, pending_consent, connected, expired, failed, disconnected] }
+        failure_code: { type: string, nullable: true }
+        token_expires_at: { type: string, format: date-time, nullable: true }
+        connected_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     AgentAccessCheck:
       type: object

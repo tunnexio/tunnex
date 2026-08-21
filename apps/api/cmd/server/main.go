@@ -44,6 +44,7 @@ import (
 	applog "github.com/tunnexio/tunnex/apps/api/internal/log"
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mail"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/metrics"
 	"github.com/tunnexio/tunnex/apps/api/internal/mfa"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodepush"
@@ -459,6 +460,7 @@ func main() {
 		K8s:                   k8sSvc,
 		Sessions:              sessions,
 		Mfa:                   mfaSvc,
+		MCPOAuth:              mcpoauth.New(systemQueries, sealer, sessions.Client(), cfg.AppBaseURL),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPort(pool, pushHub),
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),

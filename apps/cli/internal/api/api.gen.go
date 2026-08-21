@@ -107,6 +107,21 @@ const (
 	AgentGroupMemberStatusSuspended AgentGroupMemberStatus = "suspended"
 )
 
+// Defines values for AgentMCPOAuthConnectionState.
+const (
+	AgentMCPOAuthConnectionStateConnected      AgentMCPOAuthConnectionState = "connected"
+	AgentMCPOAuthConnectionStateDisconnected   AgentMCPOAuthConnectionState = "disconnected"
+	AgentMCPOAuthConnectionStateDiscovered     AgentMCPOAuthConnectionState = "discovered"
+	AgentMCPOAuthConnectionStateExpired        AgentMCPOAuthConnectionState = "expired"
+	AgentMCPOAuthConnectionStateFailed         AgentMCPOAuthConnectionState = "failed"
+	AgentMCPOAuthConnectionStatePendingConsent AgentMCPOAuthConnectionState = "pending_consent"
+)
+
+// Defines values for AgentMCPOAuthConsentStartState.
+const (
+	AgentMCPOAuthConsentStartStatePendingConsent AgentMCPOAuthConsentStartState = "pending_consent"
+)
+
 // Defines values for AgentPolicyTemplateItemInputDestinationKind.
 const (
 	AgentPolicyTemplateItemInputDestinationKindGroup      AgentPolicyTemplateItemInputDestinationKind = "group"
@@ -1006,6 +1021,36 @@ type AgentMCPInventory struct {
 	// Snapshot Secret-free F12 inventory snapshot; no MCP request/response content or credentials.
 	Snapshot map[string]interface{} `json:"snapshot"`
 }
+
+// AgentMCPOAuthConnection defines model for AgentMCPOAuthConnection.
+type AgentMCPOAuthConnection struct {
+	ClientId                string                       `json:"client_id"`
+	ClientSecretFingerprint *string                      `json:"client_secret_fingerprint"`
+	ConnectedAt             *time.Time                   `json:"connected_at"`
+	CreatedAt               time.Time                    `json:"created_at"`
+	Endpoint                string                       `json:"endpoint"`
+	FailureCode             *string                      `json:"failure_code"`
+	Id                      openapi_types.UUID           `json:"id"`
+	Issuer                  string                       `json:"issuer"`
+	ProtectedResource       string                       `json:"protected_resource"`
+	Scopes                  []string                     `json:"scopes"`
+	State                   AgentMCPOAuthConnectionState `json:"state"`
+	TokenExpiresAt          *time.Time                   `json:"token_expires_at"`
+	UpdatedAt               time.Time                    `json:"updated_at"`
+}
+
+// AgentMCPOAuthConnectionState defines model for AgentMCPOAuthConnection.State.
+type AgentMCPOAuthConnectionState string
+
+// AgentMCPOAuthConsentStart defines model for AgentMCPOAuthConsentStart.
+type AgentMCPOAuthConsentStart struct {
+	AuthorizationUrl string                         `json:"authorization_url"`
+	ConnectionId     openapi_types.UUID             `json:"connection_id"`
+	State            AgentMCPOAuthConsentStartState `json:"state"`
+}
+
+// AgentMCPOAuthConsentStartState defines model for AgentMCPOAuthConsentStart.State.
+type AgentMCPOAuthConsentStartState string
 
 // AgentManagingGroupUpdate defines model for AgentManagingGroupUpdate.
 type AgentManagingGroupUpdate struct {
@@ -2657,6 +2702,18 @@ type SsoRedirect struct {
 	RedirectUrl string `json:"redirect_url"`
 }
 
+// StartAgentMCPOAuthConnectionRequest defines model for StartAgentMCPOAuthConnectionRequest.
+type StartAgentMCPOAuthConnectionRequest struct {
+	ClientId string `json:"client_id"`
+
+	// ClientSecret Optional pre-registered client secret. Sealed at rest and never returned.
+	ClientSecret      *string  `json:"client_secret,omitempty"`
+	Endpoint          string   `json:"endpoint"`
+	Issuer            string   `json:"issuer"`
+	ProtectedResource string   `json:"protected_resource"`
+	Scopes            []string `json:"scopes"`
+}
+
 // TokenRequest defines model for TokenRequest.
 type TokenRequest struct {
 	Token string `json:"token"`
@@ -2861,6 +2918,12 @@ type StartSsoLoginParams struct {
 // StartSsoLoginParamsProvider defines parameters for StartSsoLogin.
 type StartSsoLoginParamsProvider string
 
+// McpOAuthCallbackParams defines parameters for McpOAuthCallback.
+type McpOAuthCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
 // ListAccessEventsParams defines parameters for ListAccessEvents.
 type ListAccessEventsParams struct {
 	// DeniesOnly Only deny/deny_aggregate/terminated events (the security feed).
@@ -3059,6 +3122,9 @@ type IssueAgentBootstrapTokenJSONRequestBody = AgentBootstrapTokenRequest
 
 // UpdateAgentProfileJSONRequestBody defines body for UpdateAgentProfile for application/json ContentType.
 type UpdateAgentProfileJSONRequestBody = UpdateAgentProfileRequest
+
+// StartAgentMCPOAuthConnectionJSONRequestBody defines body for StartAgentMCPOAuthConnection for application/json ContentType.
+type StartAgentMCPOAuthConnectionJSONRequestBody = StartAgentMCPOAuthConnectionRequest
 
 // CreateAlertDestinationJSONRequestBody defines body for CreateAlertDestination for application/json ContentType.
 type CreateAlertDestinationJSONRequestBody = CreateAlertDestinationRequest
@@ -3427,6 +3493,9 @@ type ClientInterface interface {
 
 	InstallLicense(ctx context.Context, body InstallLicenseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// McpOAuthCallback request
+	McpOAuthCallback(ctx context.Context, params *McpOAuthCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMeta request
 	GetMeta(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3606,6 +3675,14 @@ type ClientInterface interface {
 
 	// GetAgentMCPInventory request
 	GetAgentMCPInventory(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentMCPOAuthConnections request
+	ListAgentMCPOAuthConnections(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartAgentMCPOAuthConnectionWithBody request with any body
+	StartAgentMCPOAuthConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	StartAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentRuntimeStatus request
 	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4774,6 +4851,18 @@ func (c *Client) InstallLicense(ctx context.Context, body InstallLicenseJSONRequ
 	return c.Client.Do(req)
 }
 
+func (c *Client) McpOAuthCallback(ctx context.Context, params *McpOAuthCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMcpOAuthCallbackRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetMeta(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetMetaRequest(c.Server)
 	if err != nil {
@@ -5568,6 +5657,42 @@ func (c *Client) RequestAgentCredentialRotation(ctx context.Context, orgId opena
 
 func (c *Client) GetAgentMCPInventory(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAgentMCPInventoryRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentMCPOAuthConnections(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentMCPOAuthConnectionsRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartAgentMCPOAuthConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartAgentMCPOAuthConnectionRequestWithBody(c.Server, orgId, deviceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartAgentMCPOAuthConnectionRequest(c.Server, orgId, deviceId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -8911,6 +9036,63 @@ func NewInstallLicenseRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewMcpOAuthCallbackRequest generates requests for McpOAuthCallback
+func NewMcpOAuthCallbackRequest(server string, params *McpOAuthCallbackParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/mcp/oauth/callback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "code", runtime.ParamLocationQuery, params.Code); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, params.State); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetMetaRequest generates requests for GetMeta
 func NewGetMetaRequest(server string) (*http.Request, error) {
 	var err error
@@ -11072,6 +11254,101 @@ func NewGetAgentMCPInventoryRequest(server string, orgId openapi_types.UUID, dev
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListAgentMCPOAuthConnectionsRequest generates requests for ListAgentMCPOAuthConnections
+func NewListAgentMCPOAuthConnectionsRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-oauth-connections", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStartAgentMCPOAuthConnectionRequest calls the generic StartAgentMCPOAuthConnection builder with application/json body
+func NewStartAgentMCPOAuthConnectionRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartAgentMCPOAuthConnectionRequestWithBody(server, orgId, deviceId, "application/json", bodyReader)
+}
+
+// NewStartAgentMCPOAuthConnectionRequestWithBody generates requests for StartAgentMCPOAuthConnection with any type of body
+func NewStartAgentMCPOAuthConnectionRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-oauth-connections", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -16174,6 +16451,9 @@ type ClientWithResponsesInterface interface {
 
 	InstallLicenseWithResponse(ctx context.Context, body InstallLicenseJSONRequestBody, reqEditors ...RequestEditorFn) (*InstallLicenseResponse, error)
 
+	// McpOAuthCallbackWithResponse request
+	McpOAuthCallbackWithResponse(ctx context.Context, params *McpOAuthCallbackParams, reqEditors ...RequestEditorFn) (*McpOAuthCallbackResponse, error)
+
 	// GetMetaWithResponse request
 	GetMetaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMetaResponse, error)
 
@@ -16353,6 +16633,14 @@ type ClientWithResponsesInterface interface {
 
 	// GetAgentMCPInventoryWithResponse request
 	GetAgentMCPInventoryWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentMCPInventoryResponse, error)
+
+	// ListAgentMCPOAuthConnectionsWithResponse request
+	ListAgentMCPOAuthConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPOAuthConnectionsResponse, error)
+
+	// StartAgentMCPOAuthConnectionWithBodyWithResponse request with any body
+	StartAgentMCPOAuthConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartAgentMCPOAuthConnectionResponse, error)
+
+	StartAgentMCPOAuthConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*StartAgentMCPOAuthConnectionResponse, error)
 
 	// GetAgentRuntimeStatusWithResponse request
 	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
@@ -17657,6 +17945,28 @@ func (r InstallLicenseResponse) StatusCode() int {
 	return 0
 }
 
+type McpOAuthCallbackResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r McpOAuthCallbackResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r McpOAuthCallbackResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetMetaResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -18706,6 +19016,52 @@ func (r GetAgentMCPInventoryResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetAgentMCPInventoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentMCPOAuthConnectionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentMCPOAuthConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentMCPOAuthConnectionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentMCPOAuthConnectionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StartAgentMCPOAuthConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentMCPOAuthConsentStart
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r StartAgentMCPOAuthConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartAgentMCPOAuthConnectionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -21707,6 +22063,15 @@ func (c *ClientWithResponses) InstallLicenseWithResponse(ctx context.Context, bo
 	return ParseInstallLicenseResponse(rsp)
 }
 
+// McpOAuthCallbackWithResponse request returning *McpOAuthCallbackResponse
+func (c *ClientWithResponses) McpOAuthCallbackWithResponse(ctx context.Context, params *McpOAuthCallbackParams, reqEditors ...RequestEditorFn) (*McpOAuthCallbackResponse, error) {
+	rsp, err := c.McpOAuthCallback(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMcpOAuthCallbackResponse(rsp)
+}
+
 // GetMetaWithResponse request returning *GetMetaResponse
 func (c *ClientWithResponses) GetMetaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMetaResponse, error) {
 	rsp, err := c.GetMeta(ctx, reqEditors...)
@@ -22287,6 +22652,32 @@ func (c *ClientWithResponses) GetAgentMCPInventoryWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseGetAgentMCPInventoryResponse(rsp)
+}
+
+// ListAgentMCPOAuthConnectionsWithResponse request returning *ListAgentMCPOAuthConnectionsResponse
+func (c *ClientWithResponses) ListAgentMCPOAuthConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPOAuthConnectionsResponse, error) {
+	rsp, err := c.ListAgentMCPOAuthConnections(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentMCPOAuthConnectionsResponse(rsp)
+}
+
+// StartAgentMCPOAuthConnectionWithBodyWithResponse request with arbitrary body returning *StartAgentMCPOAuthConnectionResponse
+func (c *ClientWithResponses) StartAgentMCPOAuthConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartAgentMCPOAuthConnectionResponse, error) {
+	rsp, err := c.StartAgentMCPOAuthConnectionWithBody(ctx, orgId, deviceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartAgentMCPOAuthConnectionResponse(rsp)
+}
+
+func (c *ClientWithResponses) StartAgentMCPOAuthConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*StartAgentMCPOAuthConnectionResponse, error) {
+	rsp, err := c.StartAgentMCPOAuthConnection(ctx, orgId, deviceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartAgentMCPOAuthConnectionResponse(rsp)
 }
 
 // GetAgentRuntimeStatusWithResponse request returning *GetAgentRuntimeStatusResponse
@@ -24857,6 +25248,32 @@ func ParseInstallLicenseResponse(rsp *http.Response) (*InstallLicenseResponse, e
 	return response, nil
 }
 
+// ParseMcpOAuthCallbackResponse parses an HTTP response from a McpOAuthCallbackWithResponse call
+func ParseMcpOAuthCallbackResponse(rsp *http.Response) (*McpOAuthCallbackResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &McpOAuthCallbackResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetMetaResponse parses an HTTP response from a GetMetaWithResponse call
 func ParseGetMetaResponse(rsp *http.Response) (*GetMetaResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -26341,6 +26758,72 @@ func ParseGetAgentMCPInventoryResponse(rsp *http.Response) (*GetAgentMCPInventor
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentMCPOAuthConnectionsResponse parses an HTTP response from a ListAgentMCPOAuthConnectionsWithResponse call
+func ParseListAgentMCPOAuthConnectionsResponse(rsp *http.Response) (*ListAgentMCPOAuthConnectionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentMCPOAuthConnectionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentMCPOAuthConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartAgentMCPOAuthConnectionResponse parses an HTTP response from a StartAgentMCPOAuthConnectionWithResponse call
+func ParseStartAgentMCPOAuthConnectionResponse(rsp *http.Response) (*StartAgentMCPOAuthConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartAgentMCPOAuthConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentMCPOAuthConsentStart
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

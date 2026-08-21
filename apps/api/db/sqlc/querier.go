@@ -475,6 +475,7 @@ type Querier interface {
 	// resolves to extended-OR-(0 rows -> 409 grant_lapsed), never torn. Only a TEMPORARY
 	// (expires_at NOT NULL), still-LIVE grant can be extended.
 	ExtendPolicyRule(ctx context.Context, arg ExtendPolicyRuleParams) (PolicyRule, error)
+	FailAgentMCPOAuthConnection(ctx context.Context, arg FailAgentMCPOAuthConnectionParams) (int64, error)
 	FinishAlertDeliveryWithAttempt(ctx context.Context, arg FinishAlertDeliveryWithAttemptParams) (AlertDeliveryAttempt, error)
 	// Returns a fresh time-ordered UUIDv7 from the database. Demonstrates the sqlc
 	// pipeline and the uuid override; callers may also generate v7 ids in Go.
@@ -494,6 +495,7 @@ type Querier interface {
 	GetAgentGroupForUpdate(ctx context.Context, arg GetAgentGroupForUpdateParams) (AgentGroup, error)
 	GetAgentMCPInventory(ctx context.Context, arg GetAgentMCPInventoryParams) (AgentMcpInventory, error)
 	GetAgentMCPOAuthConnection(ctx context.Context, arg GetAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
+	GetAgentMCPOAuthConnectionForCallback(ctx context.Context, arg GetAgentMCPOAuthConnectionForCallbackParams) (AgentMcpOauthConnection, error)
 	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
