@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,8 +23,27 @@ type MCPProxyPolicy struct {
 }
 
 type MCPProxyRule struct {
-	Endpoint string
-	ToolName string
+	Endpoint           string
+	ToolName           string
+	Arguments          *MCPArgumentConstraints
+	RateLimitPerMinute int
+	StepUpRequired     bool
+}
+
+// MCPArgumentConstraints is the intentionally small, policy-authored subset
+// of JSON Schema accepted by F16. The provider's input schema remains only an
+// F14 inventory pin; this restricts tenant-approved values within that shape.
+type MCPArgumentConstraints struct {
+	Required   []string
+	Properties map[string]MCPArgumentConstraint
+}
+
+type MCPArgumentConstraint struct {
+	Type      string
+	Enum      []json.RawMessage
+	MaxLength *int
+	Minimum   *float64
+	Maximum   *float64
 }
 
 type MCPPolicySource func(context.Context) (MCPProxyPolicy, error)
@@ -36,6 +57,7 @@ func MCPToolProxy(upstream string, policy MCPPolicySource, authorization MCPAuth
 		return nil, errors.New("MCP proxy requires an absolute upstream and policy source")
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	limiter := newMCPRateLimiter(time.Now)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeMCPProxyError(w, http.StatusMethodNotAllowed, -32600, "MCP proxy accepts POST only")
@@ -56,8 +78,21 @@ func MCPToolProxy(upstream string, policy MCPPolicySource, authorization MCPAuth
 			return
 		}
 		current, err := policy(r.Context())
-		if err != nil || current.Version == 0 || !allowsMCPProxyTool(current, target.String(), request.ToolName) {
+		rule, allowed := mcpProxyRule(current, target.String(), request.ToolName)
+		if err != nil || current.Version == 0 || !allowed {
 			writeMCPProxyError(w, http.StatusForbidden, -32100, "MCP tool is denied by policy")
+			return
+		}
+		if err := rule.Arguments.Validate(request.Arguments); err != nil {
+			writeMCPProxyError(w, http.StatusForbidden, -32101, "MCP tool arguments are denied by policy")
+			return
+		}
+		if !limiter.allow(current.Version, rule, time.Now()) {
+			writeMCPProxyError(w, http.StatusTooManyRequests, -32102, "MCP tool rate limit exceeded")
+			return
+		}
+		if rule.StepUpRequired {
+			writeMCPProxyError(w, http.StatusForbidden, -32103, "MCP tool requires step-up approval")
 			return
 		}
 		outbound := r.Clone(r.Context())
@@ -92,12 +127,123 @@ func MCPToolProxy(upstream string, policy MCPPolicySource, authorization MCPAuth
 }
 
 func allowsMCPProxyTool(policy MCPProxyPolicy, endpoint, tool string) bool {
+	_, ok := mcpProxyRule(policy, endpoint, tool)
+	return ok
+}
+
+func mcpProxyRule(policy MCPProxyPolicy, endpoint, tool string) (MCPProxyRule, bool) {
 	for _, rule := range policy.Rules {
 		if strings.TrimSpace(rule.Endpoint) == endpoint && rule.ToolName == tool {
-			return true
+			return rule, true
 		}
 	}
-	return false
+	return MCPProxyRule{}, false
+}
+
+// Validate accepts only a JSON object. A missing arguments field means an
+// empty object, which lets a required-list reject it without special cases.
+func (c *MCPArgumentConstraints) Validate(arguments json.RawMessage) error {
+	if c == nil {
+		return nil
+	}
+	value := map[string]json.RawMessage{}
+	if len(arguments) > 0 && string(arguments) != "null" {
+		if err := json.Unmarshal(arguments, &value); err != nil {
+			return errors.New("arguments must be an object")
+		}
+	}
+	for _, required := range c.Required {
+		if _, ok := value[required]; !ok {
+			return errors.New("required argument is missing")
+		}
+	}
+	for name, raw := range value {
+		constraint, ok := c.Properties[name]
+		if !ok {
+			return errors.New("argument is not allowed")
+		}
+		if err := constraint.validate(raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c MCPArgumentConstraint) validate(raw json.RawMessage) error {
+	var value interface{}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return errors.New("argument is invalid")
+	}
+	switch c.Type {
+	case "string":
+		s, ok := value.(string)
+		if !ok || (c.MaxLength != nil && len([]rune(s)) > *c.MaxLength) {
+			return errors.New("string argument is denied")
+		}
+	case "number":
+		n, ok := value.(float64)
+		if !ok || (c.Minimum != nil && n < *c.Minimum) || (c.Maximum != nil && n > *c.Maximum) {
+			return errors.New("number argument is denied")
+		}
+	case "integer":
+		n, ok := value.(float64)
+		if !ok || n != float64(int64(n)) || (c.Minimum != nil && n < *c.Minimum) || (c.Maximum != nil && n > *c.Maximum) {
+			return errors.New("integer argument is denied")
+		}
+	case "boolean":
+		if _, ok := value.(bool); !ok {
+			return errors.New("boolean argument is denied")
+		}
+	default:
+		return errors.New("argument constraint type is invalid")
+	}
+	if len(c.Enum) > 0 {
+		canonical, _ := json.Marshal(value)
+		matched := false
+		for _, allowed := range c.Enum {
+			if string(canonical) == string(allowed) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return errors.New("argument enum is denied")
+		}
+	}
+	return nil
+}
+
+type mcpRateWindow struct {
+	started time.Time
+	used    int
+}
+
+type mcpRateLimiter struct {
+	now     func() time.Time
+	mu      sync.Mutex
+	windows map[string]mcpRateWindow
+}
+
+func newMCPRateLimiter(now func() time.Time) *mcpRateLimiter {
+	return &mcpRateLimiter{now: now, windows: map[string]mcpRateWindow{}}
+}
+func (l *mcpRateLimiter) allow(version int64, rule MCPProxyRule, at time.Time) bool {
+	if rule.RateLimitPerMinute <= 0 {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := strconv.FormatInt(version, 10) + "\x00" + rule.Endpoint + "\x00" + rule.ToolName
+	w := l.windows[key]
+	if w.started.IsZero() || at.Sub(w.started) >= time.Minute {
+		w = mcpRateWindow{started: at}
+	}
+	if w.used >= rule.RateLimitPerMinute {
+		return false
+	}
+	w.used++
+	l.windows[key] = w
+	return true
 }
 
 func writeMCPProxyError(w http.ResponseWriter, status, code int, message string) {
