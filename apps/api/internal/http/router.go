@@ -41,6 +41,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
+	"github.com/tunnexio/tunnex/apps/api/internal/workflowprovenance"
 )
 
 // AuthFunc resolves the authenticated principal for a request, or nil if the
@@ -67,17 +68,18 @@ type Deps struct {
 	Machine            *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
 	// Licence is the entitlement source. ⚠ Never nil in production; a nil manager would mean Community,
 	// which is the fail-open default rather than a failure.
-	Licence        *licence.Manager
-	Sessions       *session.Store
-	Mfa            *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
-	MCPOAuth       *mcpoauth.Service
-	MCPToolPolicy  *mcptoolpolicy.Service
-	SSO            ssoPort           // nil => open build (SSO endpoints return edition_required)
-	Policy         policyPort        // nil => open build (policy endpoints return edition_required)
-	AgentTemplates agentTemplatePort // nil => open build (F09 endpoints return edition_required)
-	AgentAccess    agentAccessPort   // licence-gated (F10 endpoints return edition_required when unentitled)
-	AccessLog      accessLogPort     // nil => open build (access-log endpoints return edition_required)
-	IdpSync        idpSyncPort       // nil => open build (idp-sync endpoints return edition_required)
+	Licence            *licence.Manager
+	Sessions           *session.Store
+	Mfa                *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
+	MCPOAuth           *mcpoauth.Service
+	MCPToolPolicy      *mcptoolpolicy.Service
+	WorkflowProvenance *workflowprovenance.Service
+	SSO                ssoPort           // nil => open build (SSO endpoints return edition_required)
+	Policy             policyPort        // nil => open build (policy endpoints return edition_required)
+	AgentTemplates     agentTemplatePort // nil => open build (F09 endpoints return edition_required)
+	AgentAccess        agentAccessPort   // licence-gated (F10 endpoints return edition_required when unentitled)
+	AccessLog          accessLogPort     // nil => open build (access-log endpoints return edition_required)
+	IdpSync            idpSyncPort       // nil => open build (idp-sync endpoints return edition_required)
 	// DeviceApprovalEnabled => false in the open build (S7.3 device posture endpoints
 	// return edition_required). Named per-feature (NewDeviceApprovalEdition).
 	DeviceApprovalEnabled bool
@@ -260,7 +262,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		},
 	}))
 
-	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, sso: d.SSO, policy: d.Policy, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
 	// wraps every operation (self-arming — a new endpoint is gated by construction).

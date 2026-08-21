@@ -33,6 +33,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
+	"github.com/tunnexio/tunnex/apps/api/internal/workflowprovenance"
 )
 
 // authorize fails closed and permission-gates a request against orgID:
@@ -185,29 +186,30 @@ type apiServer struct {
 	system *sqlc.Queries
 	orgs   *tenancy.Service
 	// licence is the entitlement source, read on every gated question. ⚠ nil => Community (fail-open).
-	licence        *licence.Manager
-	cliAuth        *cliauth.Service
-	auth           *auth.Service
-	members        *tenancy.MembershipService
-	invites        *invites.Service
-	nodes          *nodes.Service
-	agentRuntime   *agentruntime.Service
-	alertConfig    *alerts.ConfigService
-	devices        *devices.Service
-	ovpn           *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export; nil in a stripped build
-	sites          *sites.Service
-	k8s            *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity; governance is enterprise
-	machine        *machineauth.Service // OPEN (S10.2): machine credentials — the GitOps operator's org identity
-	sessions       *session.Store
-	mfa            *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
-	mcpOAuth       *mcpoauth.Service
-	mcpToolPolicy  *mcptoolpolicy.Service
-	sso            ssoPort           // nil in the open build
-	policy         policyPort        // nil in the open build (Zero Trust, S7.1)
-	agentTemplates agentTemplatePort // nil in the open build (F09)
-	agentAccess    agentAccessPort   // licence-gated (F10)
-	accessLog      accessLogPort     // nil in the open build (Zero Trust visibility, S7.5.1)
-	idpSync        idpSyncPort       // nil in the open build (IdP-group sync, S7.5.2)
+	licence            *licence.Manager
+	cliAuth            *cliauth.Service
+	auth               *auth.Service
+	members            *tenancy.MembershipService
+	invites            *invites.Service
+	nodes              *nodes.Service
+	agentRuntime       *agentruntime.Service
+	alertConfig        *alerts.ConfigService
+	devices            *devices.Service
+	ovpn               *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export; nil in a stripped build
+	sites              *sites.Service
+	k8s                *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity; governance is enterprise
+	machine            *machineauth.Service // OPEN (S10.2): machine credentials — the GitOps operator's org identity
+	sessions           *session.Store
+	mfa                *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
+	mcpOAuth           *mcpoauth.Service
+	mcpToolPolicy      *mcptoolpolicy.Service
+	workflowProvenance *workflowprovenance.Service
+	sso                ssoPort           // nil in the open build
+	policy             policyPort        // nil in the open build (Zero Trust, S7.1)
+	agentTemplates     agentTemplatePort // nil in the open build (F09)
+	agentAccess        agentAccessPort   // licence-gated (F10)
+	accessLog          accessLogPort     // nil in the open build (Zero Trust visibility, S7.5.1)
+	idpSync            idpSyncPort       // nil in the open build (IdP-group sync, S7.5.2)
 	// ⛔ smtpConfigured — whether this deployment can send mail AT ALL. Served by /meta so the screens that
 	// send mail can say so BEFORE the operator acts. Invitations are the only way anyone joins, so a
 	// deployment without it is unusable while every screen reports success.

@@ -45,6 +45,27 @@ type AgentCredentialRotationStatus = components["schemas"]["AgentCredentialRotat
 type AgentMCPInventory = components["schemas"]["AgentMCPInventory"];
 type AgentMCPOAuthConnection = components["schemas"]["AgentMCPOAuthConnection"];
 type AgentMCPToolPolicy = components["schemas"]["AgentMCPToolPolicy"];
+type AgentWorkflowProvenanceRecord = components["schemas"]["AgentWorkflowProvenanceRecord"];
+
+export function AgentWorkflowProvenancePanel({ records }: { records: AgentWorkflowProvenanceRecord[] }) {
+  if (records.length === 0) return null;
+  return <div data-testid="agent-workflow-provenance" className="rounded-md border border-slate-700 p-3 text-xs text-slate-300">
+    <div className="font-semibold text-ink-heading">Workflow provenance</div>
+    <p className="mt-1 text-slate-500">Signed evidence only. This view never invokes a tool or grants MCP access.</p>
+    {records.map((record) => record.verification_state === "verified" && record.verified_chain ? (
+      <div key={record.id} className="mt-2 border-t border-slate-800 pt-2">
+        <div className="font-medium text-success">Verified</div>
+        <div>Agent → {record.verified_chain.workflow_id} / {record.verified_chain.run_id} → {record.verified_chain.tool} → {record.verified_chain.resource}</div>
+        <div className="text-slate-500">Trigger {record.verified_chain.trigger_kind} · initiator {record.verified_chain.initiating_subject_ref} · received {record.received_at}</div>
+      </div>
+    ) : (
+      <div key={record.id} className="mt-2 border-t border-slate-800 pt-2">
+        <div className="font-medium text-warning">Unverified context</div>
+        <div className="text-slate-500">{record.verification_reason} · received {record.received_at}. Workflow, tool, resource, and initiator are intentionally hidden.</div>
+      </div>
+    ))}
+  </div>;
+}
 
 type ObservedMCPTool = { endpoint: string; server_name: string; tool_name: string; input_schema_hash: string };
 
@@ -370,6 +391,7 @@ function AgentProfilePanel({
 	orgId,
   runtime,
   mcpInventory,
+  workflowProvenance,
   credentialRotation,
   editorVersion,
   canManageLifecycle,
@@ -386,6 +408,7 @@ function AgentProfilePanel({
   profile: AgentProfile;
   runtime: AgentRuntimeStatus | null;
   mcpInventory: AgentMCPInventory | null;
+  workflowProvenance: AgentWorkflowProvenanceRecord[];
   orgId: string;
   credentialRotation: AgentCredentialRotationStatus | null;
   editorVersion: number;
@@ -431,6 +454,7 @@ function AgentProfilePanel({
       {mcpInventory && <AgentMCPInventoryPanel inventory={mcpInventory} />}
       {mcpInventory && <AgentMCPOAuthPanel orgId={orgId} deviceId={profile.device_id} inventory={mcpInventory} canManage={canManageLifecycle} />}
       {mcpInventory && <AgentMCPToolPolicyPanel orgId={orgId} deviceId={profile.device_id} inventory={mcpInventory} canManage={canManageMCPPolicy} />}
+      <AgentWorkflowProvenancePanel records={workflowProvenance} />
       {credentialRotation && (
         <div data-testid="agent-credential-rotation" className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
           <div>
@@ -523,6 +547,7 @@ export default function Agents() {
   const [rows, setRows] = useState<Loaded<AgentRow[]> | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<Record<string, AgentRuntimeStatus | null>>({});
   const [mcpInventory, setMcpInventory] = useState<Record<string, AgentMCPInventory | null>>({});
+  const [workflowProvenance, setWorkflowProvenance] = useState<Record<string, AgentWorkflowProvenanceRecord[]>>({});
   const [credentialRotation, setCredentialRotation] = useState<Record<string, AgentCredentialRotationStatus | null>>({});
   const [profiles, setProfiles] = useState<Record<string, AgentProfile | null>>({});
   const [myRole, setMyRole] = useState<Role>();
@@ -564,6 +589,7 @@ export default function Agents() {
       setNotEntitled(false);
       setRuntimeStatus({});
       setMcpInventory({});
+      setWorkflowProvenance({});
       setCredentialRotation({});
       setProfiles({});
       setMyRole(undefined);
@@ -643,6 +669,10 @@ export default function Agents() {
           void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-inventory", { params: { path: { orgId: id, deviceId: agent.device_id } } }).then((result) => {
             if (cancelled) return;
             setMcpInventory((previous) => ({ ...previous, [agent.device_id]: result.error || !result.data ? null : result.data as AgentMCPInventory }));
+          });
+          void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/workflow-provenance", { params: { path: { orgId: id, deviceId: agent.device_id } } }).then((result) => {
+            if (cancelled) return;
+            setWorkflowProvenance((previous) => ({ ...previous, [agent.device_id]: result.error || !result.data ? [] : result.data as AgentWorkflowProvenanceRecord[] }));
           });
           void api.GET(
             "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
@@ -948,6 +978,7 @@ export default function Agents() {
                       orgId={orgId ?? ""}
                       runtime={status ?? null}
                       mcpInventory={mcpInventory[agent.device_id] ?? null}
+                      workflowProvenance={workflowProvenance[agent.device_id] ?? []}
                       credentialRotation={credentialRotation[agent.device_id] ?? null}
                       editorVersion={profileEditorVersion}
                       canManageLifecycle={profile.permissions.manage}

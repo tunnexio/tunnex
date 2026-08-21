@@ -276,6 +276,44 @@ type AgentWireguardRotation struct {
 	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
+// F15 append-only signed workflow assertions. Unverified entries are evidence only and never imply a workflow or human trigger.
+type AgentWorkflowProvenance struct {
+	ID                   uuid.UUID          `json:"id"`
+	OrgID                uuid.UUID          `json:"org_id"`
+	DeviceID             uuid.UUID          `json:"device_id"`
+	AssertionID          uuid.UUID          `json:"assertion_id"`
+	KeyID                string             `json:"key_id"`
+	WorkflowID           *string            `json:"workflow_id"`
+	RunID                *string            `json:"run_id"`
+	TriggerKind          *string            `json:"trigger_kind"`
+	InitiatingSubjectRef *string            `json:"initiating_subject_ref"`
+	Tool                 *string            `json:"tool"`
+	Resource             *string            `json:"resource"`
+	IssuedAt             pgtype.Timestamptz `json:"issued_at"`
+	ExpiresAt            pgtype.Timestamptz `json:"expires_at"`
+	Signature            *string            `json:"signature"`
+	VerificationState    string             `json:"verification_state"`
+	VerificationReason   string             `json:"verification_reason"`
+	ReceivedAt           time.Time          `json:"received_at"`
+}
+
+type AgentWorkflowProvenanceUsedAssertion struct {
+	DeviceID    uuid.UUID `json:"device_id"`
+	AssertionID uuid.UUID `json:"assertion_id"`
+	ClaimedAt   time.Time `json:"claimed_at"`
+}
+
+type AgentWorkflowSigningKey struct {
+	ID        uuid.UUID          `json:"id"`
+	OrgID     uuid.UUID          `json:"org_id"`
+	DeviceID  uuid.UUID          `json:"device_id"`
+	KeyID     string             `json:"key_id"`
+	PublicKey []byte             `json:"public_key"`
+	State     string             `json:"state"`
+	CreatedAt time.Time          `json:"created_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type AlertDelivery struct {
 	ID              uuid.UUID          `json:"id"`
 	OrgID           uuid.UUID          `json:"org_id"`

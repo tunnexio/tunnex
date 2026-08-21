@@ -58,6 +58,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
+	"github.com/tunnexio/tunnex/apps/api/internal/workflowprovenance"
 )
 
 func main() {
@@ -463,6 +464,7 @@ func main() {
 		Mfa:                   mfaSvc,
 		MCPOAuth:              mcpoauth.New(systemQueries, sealer, sessions.Client(), cfg.AppBaseURL),
 		MCPToolPolicy:         mcptoolpolicy.New(pool),
+		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPort(pool, pushHub),
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),

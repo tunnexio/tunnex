@@ -310,7 +310,7 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 			raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			var id agentruntime.Identity
 			var err error
-			if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" || r.URL.Path == "/api/v1/agent/runtime/wireguard-candidate" {
+			if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" || r.URL.Path == "/api/v1/agent/runtime/wireguard-candidate" || r.URL.Path == "/api/v1/agent/runtime/workflow-signing-key" || r.URL.Path == "/api/v1/agent/runtime/workflow-provenance" {
 				id, err = svc.AuthenticateCurrent(r.Context(), strings.TrimSpace(raw))
 			} else {
 				id, err = svc.Authenticate(r.Context(), strings.TrimSpace(raw))
@@ -325,5 +325,5 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 }
 
 func isRuntimeChannelPath(path string) bool {
-	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate" || path == "/api/v1/agent/runtime/mcp-tool-policy" || path == "/api/v1/agent/runtime/mcp-oauth-lease"
+	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate" || path == "/api/v1/agent/runtime/mcp-tool-policy" || path == "/api/v1/agent/runtime/mcp-oauth-lease" || path == "/api/v1/agent/runtime/workflow-signing-key" || path == "/api/v1/agent/runtime/workflow-provenance"
 }

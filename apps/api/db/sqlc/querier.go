@@ -75,6 +75,7 @@ type Querier interface {
 	BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) (int64, error)
 	CancelAgentAccessRequest(ctx context.Context, arg CancelAgentAccessRequestParams) (AgentAccessRequest, error)
 	ChangeMemberRole(ctx context.Context, arg ChangeMemberRoleParams) (Membership, error)
+	ClaimAgentWorkflowAssertion(ctx context.Context, arg ClaimAgentWorkflowAssertionParams) (AgentWorkflowProvenanceUsedAssertion, error)
 	// lint:cross-org — the leader-gated dispatcher claims only its bounded due
 	// batch, atomically moving each delivery out of the pending queue.
 	ClaimDueAlertDeliveries(ctx context.Context, arg ClaimDueAlertDeliveriesParams) ([]AlertDelivery, error)
@@ -286,6 +287,10 @@ type Querier interface {
 	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
 	CreateAgentPolicyTemplateVersionItem(ctx context.Context, arg CreateAgentPolicyTemplateVersionItemParams) (AgentPolicyTemplateVersionItem, error)
 	CreateAgentRuntimeCredential(ctx context.Context, arg CreateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
+	CreateAgentWorkflowProvenance(ctx context.Context, arg CreateAgentWorkflowProvenanceParams) (AgentWorkflowProvenance, error)
+	// F15: device-bound public signing keys. A key ID is immutable once enrolled;
+	// replacement is a future explicit rotation, never an upsert of trust material.
+	CreateAgentWorkflowSigningKey(ctx context.Context, arg CreateAgentWorkflowSigningKeyParams) (AgentWorkflowSigningKey, error)
 	CreateAlertDelivery(ctx context.Context, arg CreateAlertDeliveryParams) (AlertDelivery, error)
 	CreateAlertDeliveryCooldown(ctx context.Context, arg CreateAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	CreateAlertDestination(ctx context.Context, arg CreateAlertDestinationParams) (AlertDestination, error)
@@ -509,6 +514,7 @@ type Querier interface {
 	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
 	GetAgentScopedAuthority(ctx context.Context, arg GetAgentScopedAuthorityParams) (GetAgentScopedAuthorityRow, error)
 	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
+	GetAgentWorkflowSigningKey(ctx context.Context, arg GetAgentWorkflowSigningKeyParams) (AgentWorkflowSigningKey, error)
 	GetAlertDeliveryCooldownForUpdate(ctx context.Context, arg GetAlertDeliveryCooldownForUpdateParams) (AlertDeliveryCooldown, error)
 	GetAlertDestination(ctx context.Context, arg GetAlertDestinationParams) (AlertDestination, error)
 	GetAlertDestinationForDelivery(ctx context.Context, arg GetAlertDestinationForDeliveryParams) (AlertDestination, error)
@@ -842,6 +848,7 @@ type Querier interface {
 	ListAgentPolicyTemplateVersions(ctx context.Context, arg ListAgentPolicyTemplateVersionsParams) ([]AgentPolicyTemplateVersion, error)
 	ListAgentPolicyTemplates(ctx context.Context, orgID uuid.UUID) ([]AgentPolicyTemplate, error)
 	ListAgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
+	ListAgentWorkflowProvenance(ctx context.Context, arg ListAgentWorkflowProvenanceParams) ([]AgentWorkflowProvenance, error)
 	// S15.3 — the agent surface's one query.
 	//
 	// ⛔ AN AGENT IS A PEER HOMED ON A GATEWAY, NOT A GATEWAY. It holds its own /32, its traffic is FORWARDED

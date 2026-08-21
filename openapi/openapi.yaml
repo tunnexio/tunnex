@@ -827,6 +827,52 @@ paths:
         "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/agent/runtime/workflow-signing-key:
+    post:
+      operationId: registerAgentWorkflowSigningKey
+      summary: Register one managed agent workflow-signing public key
+      description: >-
+        Machine-only managed-runtime channel. The runtime registers a public Ed25519 key once under its own
+        stable key ID; the private key never leaves the workflow host and an existing key ID cannot be replaced.
+      security:
+        - runtimeBearer: []
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentWorkflowSigningKeyRegistration" }
+      responses:
+        "204":
+          description: Signing key is registered or already registered with identical public material.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/agent/runtime/workflow-provenance:
+    post:
+      operationId: reportAgentWorkflowProvenance
+      summary: Record one signed managed-agent workflow assertion
+      description: >-
+        Machine-only managed-runtime channel. Every assertion is retained as immutable evidence; only the first
+        valid signature for an enrolled key becomes verified. This endpoint never invokes an MCP tool or grants access.
+      security:
+        - runtimeBearer: []
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentWorkflowProvenanceAssertion" }
+      responses:
+        "201":
+          description: Immutable provenance evidence recorded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentWorkflowProvenanceOutcome" }
+        "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/agent/runtime/credential-candidate:
     post:
       operationId: prepareAgentRuntimeCredential
@@ -1038,6 +1084,31 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AgentMCPOAuthConsentStart" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/workflow-provenance:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listAgentWorkflowProvenance
+      summary: List an agent's signed workflow provenance evidence
+      description: >-
+        Read-only privileged projection. Only verified records expose an Agent → Run → Tool → Resource chain;
+        unverified evidence deliberately omits initiator and workflow labels.
+      tags: [agents]
+      responses:
+        "200":
+          description: Recent immutable provenance evidence.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AgentWorkflowProvenanceRecord" } }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/mcp/oauth/callback:
@@ -5911,6 +5982,74 @@ components:
           nullable: true
           additionalProperties: true
           description: Optional secret-free F13 protected-resource discovery for this runtime only.
+
+    AgentWorkflowSigningKeyRegistration:
+      type: object
+      required: [kid, public_key]
+      additionalProperties: false
+      properties:
+        kid: { type: string, minLength: 1, maxLength: 128 }
+        public_key:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: Base64url raw 32-byte Ed25519 public key. The matching private key remains on the agent host.
+
+    AgentWorkflowProvenanceAssertion:
+      type: object
+      required: [version, assertion_id, workflow_id, run_id, trigger_kind, initiating_subject_ref, tool, resource, issued_at, expires_at, kid, signature]
+      additionalProperties: false
+      properties:
+        version: { type: integer, enum: [1] }
+        assertion_id: { type: string, format: uuid }
+        workflow_id: { type: string, minLength: 1, maxLength: 256 }
+        run_id: { type: string, minLength: 1, maxLength: 256 }
+        trigger_kind: { type: string, minLength: 1, maxLength: 64 }
+        initiating_subject_ref: { type: string, minLength: 1, maxLength: 256, description: Opaque SDK subject reference; never inferred by the control plane. }
+        tool: { type: string, minLength: 1, maxLength: 256 }
+        resource: { type: string, minLength: 1, maxLength: 2048 }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        kid: { type: string, minLength: 1, maxLength: 128 }
+        signature: { type: string, minLength: 86, maxLength: 86, pattern: "^[A-Za-z0-9_-]{86}$" }
+
+    AgentWorkflowProvenanceOutcome:
+      type: object
+      required: [id, assertion_id, verification_state, verification_reason]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        assertion_id: { type: string, format: uuid }
+        verification_state: { type: string, enum: [verified, unverified] }
+        verification_reason: { type: string, enum: [verified, malformed, expired, not_yet_valid, lifetime_exceeded, unknown_key, revoked_key, bad_signature, replay] }
+
+    AgentWorkflowProvenanceChain:
+      type: object
+      required: [workflow_id, run_id, trigger_kind, initiating_subject_ref, tool, resource, issued_at, expires_at]
+      additionalProperties: false
+      properties:
+        workflow_id: { type: string }
+        run_id: { type: string }
+        trigger_kind: { type: string }
+        initiating_subject_ref: { type: string }
+        tool: { type: string }
+        resource: { type: string }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+
+    AgentWorkflowProvenanceRecord:
+      type: object
+      required: [id, assertion_id, key_id, verification_state, verification_reason, received_at, verified_chain]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        assertion_id: { type: string, format: uuid }
+        key_id: { type: string }
+        verification_state: { type: string, enum: [verified, unverified] }
+        verification_reason: { type: string, enum: [verified, malformed, expired, not_yet_valid, lifetime_exceeded, unknown_key, revoked_key, bad_signature, replay] }
+        received_at: { type: string, format: date-time }
+        verified_chain:
+          allOf: [{ $ref: "#/components/schemas/AgentWorkflowProvenanceChain" }]
+          nullable: true
 
     AgentRuntimeStatus:
       type: object
