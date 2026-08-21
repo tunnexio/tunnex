@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -114,7 +115,16 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 		return nil, runtimeMachineError(err)
 	}
 	if req.Body.McpInventory != nil {
-		body, err := json.Marshal(*req.Body.McpInventory)
+		inventory := *req.Body.McpInventory
+		if prior, err := s.system.GetAgentMCPInventory(ctx, sqlc.GetAgentMCPInventoryParams{DeviceID: id.DeviceID, OrgID: id.OrgID}); err == nil {
+			var previous map[string]interface{}
+			if json.Unmarshal(prior.Snapshot, &previous) == nil {
+				annotateMCPInventory(previous, inventory, time.Now().UTC())
+			}
+		} else {
+			annotateMCPInventory(nil, inventory, time.Now().UTC())
+		}
+		body, err := json.Marshal(inventory)
 		if err != nil || len(body) > 512<<10 || !validMCPInventoryValue(*req.Body.McpInventory) {
 			return nil, apierr.New(http.StatusBadRequest, "invalid_mcp_inventory", "MCP inventory is not acceptable")
 		}
@@ -123,6 +133,64 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 		}
 	}
 	return api.ReportAgentRuntime204Response{Headers: api.ReportAgentRuntime204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func annotateMCPInventory(previous, current map[string]interface{}, now time.Time) {
+	seen := now.Format(time.RFC3339Nano)
+	previousServers := inventoryBy(previous, "servers", "endpoint")
+	for _, server := range inventoryObjects(current, "servers") {
+		prior := previousServers[fmt.Sprint(server["endpoint"])]
+		stampMCPItem(prior, server, seen)
+		for _, group := range []struct{ key, identity string }{{"tools", "name"}, {"resources", "uri"}, {"prompts", "name"}} {
+			oldItems := inventoryBy(prior, group.key, group.identity)
+			for _, item := range inventoryObjects(server, group.key) {
+				stampMCPItem(oldItems[fmt.Sprint(item[group.identity])], item, seen)
+			}
+		}
+	}
+}
+
+func inventoryObjects(source map[string]interface{}, key string) []map[string]interface{} {
+	if source == nil {
+		return nil
+	}
+	values, _ := source[key].([]interface{})
+	out := make([]map[string]interface{}, 0, len(values))
+	for _, value := range values {
+		if object, ok := value.(map[string]interface{}); ok {
+			out = append(out, object)
+		}
+	}
+	return out
+}
+func inventoryBy(source map[string]interface{}, key, identity string) map[string]map[string]interface{} {
+	out := map[string]map[string]interface{}{}
+	for _, object := range inventoryObjects(source, key) {
+		out[fmt.Sprint(object[identity])] = object
+	}
+	return out
+}
+func stampMCPItem(previous, current map[string]interface{}, now string) {
+	current["last_seen_at"] = now
+	if previous == nil {
+		current["first_seen_at"], current["changed"] = now, true
+		return
+	}
+	current["first_seen_at"] = previous["first_seen_at"]
+	current["changed"] = !sameMCPMetadata(previous, current)
+}
+func sameMCPMetadata(left, right map[string]interface{}) bool {
+	scrub := func(value map[string]interface{}) []byte {
+		copy := map[string]interface{}{}
+		for k, v := range value {
+			if k != "first_seen_at" && k != "last_seen_at" && k != "changed" {
+				copy[k] = v
+			}
+		}
+		b, _ := json.Marshal(copy)
+		return b
+	}
+	return string(scrub(left)) == string(scrub(right))
 }
 
 func validMCPInventoryValue(value interface{}) bool {

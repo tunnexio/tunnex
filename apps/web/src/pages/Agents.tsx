@@ -52,7 +52,7 @@ function AgentMCPInventoryPanel({ inventory }: { inventory: AgentMCPInventory })
     {servers.length === 0 ? <p className="mt-2 text-slate-500">No MCP servers reported.</p> : servers.map((server, index) => {
       const count = (key: string) => Array.isArray(server[key]) ? server[key].length : 0;
       return <div key={`${String(server.endpoint)}:${index}`} className="mt-2 border-t border-slate-800 pt-2">
-        <div>{String(server.server_name ?? server.endpoint ?? "MCP server")} · {String(server.status ?? "unknown")}</div>
+        <div>{String(server.server_name ?? server.endpoint ?? "MCP server")} · {String(server.status ?? "unknown")} {server.changed === true ? "· changed" : ""}</div>
         <div className="text-slate-500">{String(server.protocol_version ?? "unnegotiated")} · {count("tools")} tools · {count("resources")} resources · {count("prompts")} prompts</div>
       </div>;
     })}

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -57,7 +58,16 @@ func observeMCPEndpoint(ctx context.Context, endpoint string) map[string]interfa
 				}
 			}
 		}
-		return base
+		normalized, err := normalizeObservedSnapshot(base)
+		if err != nil {
+			base["status"] = "invalid_inventory"
+			return base
+		}
+		encoded, _ := json.Marshal(normalized)
+		var out map[string]interface{}
+		_ = json.Unmarshal(encoded, &out)
+		out["status"] = "healthy"
+		return out
 	}
 	return base
 }
@@ -78,16 +88,58 @@ func mcpRequest(ctx context.Context, endpoint string, id int, method string, par
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("MCP HTTP %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
-	if err != nil {
-		return nil, err
+	var data []byte
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
+		scanner := bufio.NewScanner(io.LimitReader(resp.Body, 256<<10))
+		scanner.Buffer(make([]byte, 1024), 256<<10)
+		for scanner.Scan() {
+			if line := scanner.Text(); strings.HasPrefix(line, "data: ") {
+				data = []byte(strings.TrimPrefix(line, "data: "))
+				break
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			return nil, err
+		}
+		if len(data) == 0 {
+			return nil, errors.New("MCP SSE response contains no data event")
+		}
+	} else {
+		var err error
+		data, err = io.ReadAll(io.LimitReader(resp.Body, 256<<10))
+		if err != nil {
+			return nil, err
+		}
 	}
-	data = bytes.TrimPrefix(data, []byte("data: "))
 	var reply map[string]interface{}
 	if err := json.Unmarshal(data, &reply); err != nil {
 		return nil, err
 	}
 	return reply, nil
+}
+
+func normalizeObservedSnapshot(raw map[string]interface{}) (MCPInventorySnapshot, error) {
+	s := MCPInventorySnapshot{Endpoint: fmt.Sprint(raw["endpoint"]), ServerName: fmt.Sprint(raw["server_name"]), ProtocolVersion: fmt.Sprint(raw["protocol_version"]), Transport: "streamable_http", ObservedAt: time.Now().UTC()}
+	if n, ok := raw["latency_millis"].(int64); ok {
+		s.LatencyMillis = int(n)
+	}
+	if caps, ok := raw["capabilities"].(map[string]interface{}); ok {
+		if tools, ok := caps["tools"].(map[string]interface{}); ok {
+			s.Capabilities.ToolsListChanged, _ = tools["listChanged"].(bool)
+		}
+		if resources, ok := caps["resources"].(map[string]interface{}); ok {
+			s.Capabilities.ResourcesListChanged, _ = resources["listChanged"].(bool)
+			s.Capabilities.ResourcesSubscribe, _ = resources["subscribe"].(bool)
+		}
+		if prompts, ok := caps["prompts"].(map[string]interface{}); ok {
+			s.Capabilities.PromptsListChanged, _ = prompts["listChanged"].(bool)
+		}
+	}
+	decode := func(v interface{}, into interface{}) { b, _ := json.Marshal(v); _ = json.Unmarshal(b, into) }
+	decode(raw["tools"], &s.Tools)
+	decode(raw["resources"], &s.Resources)
+	decode(raw["prompts"], &s.Prompts)
+	return NormalizeMCPInventory(s)
 }
 
 // MCPInventorySnapshot is the secret-free result of one MCP discovery pass.
