@@ -18,9 +18,13 @@ CREATE TABLE agent_mcp_tool_approval_requests (
     denied_by_user_id uuid REFERENCES users (id),
     denied_at timestamptz,
     consumed_at timestamptz,
-    CHECK ((state = 'approved') = (approved_at IS NOT NULL)),
-    CHECK ((state = 'denied') = (denied_at IS NOT NULL)),
-    CHECK ((state = 'consumed') = (consumed_at IS NOT NULL))
+    CONSTRAINT agent_mcp_tool_approval_requests_timestamps_check CHECK (
+        (state = 'pending' AND approved_at IS NULL AND denied_at IS NULL AND consumed_at IS NULL) OR
+        (state = 'approved' AND approved_at IS NOT NULL AND denied_at IS NULL AND consumed_at IS NULL) OR
+        (state = 'denied' AND approved_at IS NULL AND denied_at IS NOT NULL AND consumed_at IS NULL) OR
+        (state = 'consumed' AND approved_at IS NOT NULL AND denied_at IS NULL AND consumed_at IS NOT NULL) OR
+        (state = 'expired' AND denied_at IS NULL AND consumed_at IS NULL)
+    )
 );
 
 CREATE INDEX agent_mcp_tool_approval_requests_pending_idx
