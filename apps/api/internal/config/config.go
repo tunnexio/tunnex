@@ -67,6 +67,10 @@ type Config struct {
 	// network update checks for deliberately air-gapped deployments.
 	ReleaseCatalogURL  string
 	ReleaseUpdateCheck bool
+	// HostUpgrade paths are mounted only by the single-host Docker installer.
+	// Empty keeps Kubernetes and development deployments read-only.
+	HostUpgradeRequestPath string
+	HostUpgradeStatusPath  string
 	// RedisURL is the session store DSN (S2.2).
 	RedisURL string
 	// ExternalDatabase / ExternalRedis are true when TUNNEX_DATABASE_URL /
@@ -135,37 +139,39 @@ func (c Config) AppBaseURLLooksLocal() bool {
 // server runs with zero configuration during development.
 func Load() Config {
 	return Config{
-		Addr:                getenv("TUNNEX_API_ADDR", ":8080"),
-		AgentAddr:           getenv("TUNNEX_AGENT_ADDR", ":8443"),
-		MetricsAddr:         getenv("TUNNEX_METRICS_ADDR", metrics.DefaultAddr),
-		Env:                 getenv("TUNNEX_ENV", "development"),
-		LogLevel:            strings.ToLower(getenv("TUNNEX_LOG_LEVEL", "info")),
-		SecretsDir:          getenv("TUNNEX_SECRETS_DIR", "/var/lib/tunnex/secrets"),
-		MasterKeyFile:       getenv("TUNNEX_MASTER_KEY_FILE", ""),
-		MasterKey:           getenv("TUNNEX_MASTER_KEY", ""),
-		SessionSecretFile:   getenv("TUNNEX_SESSION_SECRET_FILE", ""),
-		SessionSecret:       getenv("TUNNEX_SESSION_SECRET", ""),
-		DatabaseURL:         firstNonEmpty(getenv("TUNNEX_DATABASE_URL", ""), getenv("DATABASE_URL", "")),
-		ExternalDatabase:    getenv("TUNNEX_DATABASE_URL", "") != "",
-		ExternalRedis:       getenv("TUNNEX_REDIS_URL", "") != "",
-		AutoMigrate:         getbool("TUNNEX_AUTO_MIGRATE", true),
-		AppBaseURL:          getenv("APP_BASE_URL", "http://localhost"),
-		GatewayControlURL:   getenv("TUNNEX_GATEWAY_CONTROL_URL", ""),
-		AdminEmail:          getenv("TUNNEX_ADMIN_EMAIL", ""),
-		NodeAgentImage:      getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
-		ReleaseManifestPath: getenv("TUNNEX_RELEASE_MANIFEST_PATH", ""),
-		ReleaseManifestURL:  getenv("TUNNEX_RELEASE_MANIFEST_URL", ""),
-		ReleasePublicKey:    getenv("TUNNEX_RELEASE_PUBLIC_KEY", ""),
-		ReleaseSequence:     getint64("TUNNEX_RELEASE_SEQUENCE", 0),
-		ReleaseVersion:      getenv("TUNNEX_RELEASE_VERSION", ""),
-		ReleaseSourceSHA:    getenv("TUNNEX_RELEASE_SOURCE_SHA", ""),
-		ReleaseCatalogURL:   releaseCatalogURL(getenv("TUNNEX_ENV", "development")),
-		ReleaseUpdateCheck:  getbool("TUNNEX_RELEASE_UPDATE_CHECK", true),
-		RedisURL:            firstNonEmpty(getenv("TUNNEX_REDIS_URL", ""), getenv("REDIS_URL", "redis://redis:6379/0")),
-		CookieSecure:        getbool("TUNNEX_COOKIE_SECURE", false),
-		SessionIdleTTL:      getdur("TUNNEX_SESSION_IDLE_TTL", 24*time.Hour),
-		SessionAbsoluteTTL:  getdur("TUNNEX_SESSION_ABSOLUTE_TTL", 720*time.Hour),
-		CORSAllowedOrigins:  splitList(getenv("TUNNEX_CORS_ALLOWED_ORIGINS", "app://tunnex")),
+		Addr:                   getenv("TUNNEX_API_ADDR", ":8080"),
+		AgentAddr:              getenv("TUNNEX_AGENT_ADDR", ":8443"),
+		MetricsAddr:            getenv("TUNNEX_METRICS_ADDR", metrics.DefaultAddr),
+		Env:                    getenv("TUNNEX_ENV", "development"),
+		LogLevel:               strings.ToLower(getenv("TUNNEX_LOG_LEVEL", "info")),
+		SecretsDir:             getenv("TUNNEX_SECRETS_DIR", "/var/lib/tunnex/secrets"),
+		MasterKeyFile:          getenv("TUNNEX_MASTER_KEY_FILE", ""),
+		MasterKey:              getenv("TUNNEX_MASTER_KEY", ""),
+		SessionSecretFile:      getenv("TUNNEX_SESSION_SECRET_FILE", ""),
+		SessionSecret:          getenv("TUNNEX_SESSION_SECRET", ""),
+		DatabaseURL:            firstNonEmpty(getenv("TUNNEX_DATABASE_URL", ""), getenv("DATABASE_URL", "")),
+		ExternalDatabase:       getenv("TUNNEX_DATABASE_URL", "") != "",
+		ExternalRedis:          getenv("TUNNEX_REDIS_URL", "") != "",
+		AutoMigrate:            getbool("TUNNEX_AUTO_MIGRATE", true),
+		AppBaseURL:             getenv("APP_BASE_URL", "http://localhost"),
+		GatewayControlURL:      getenv("TUNNEX_GATEWAY_CONTROL_URL", ""),
+		AdminEmail:             getenv("TUNNEX_ADMIN_EMAIL", ""),
+		NodeAgentImage:         getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
+		ReleaseManifestPath:    getenv("TUNNEX_RELEASE_MANIFEST_PATH", ""),
+		ReleaseManifestURL:     getenv("TUNNEX_RELEASE_MANIFEST_URL", ""),
+		ReleasePublicKey:       getenv("TUNNEX_RELEASE_PUBLIC_KEY", ""),
+		ReleaseSequence:        getint64("TUNNEX_RELEASE_SEQUENCE", 0),
+		ReleaseVersion:         getenv("TUNNEX_RELEASE_VERSION", ""),
+		ReleaseSourceSHA:       getenv("TUNNEX_RELEASE_SOURCE_SHA", ""),
+		ReleaseCatalogURL:      releaseCatalogURL(getenv("TUNNEX_ENV", "development")),
+		ReleaseUpdateCheck:     getbool("TUNNEX_RELEASE_UPDATE_CHECK", true),
+		HostUpgradeRequestPath: getenv("TUNNEX_HOST_UPGRADE_REQUEST_PATH", ""),
+		HostUpgradeStatusPath:  getenv("TUNNEX_HOST_UPGRADE_STATUS_PATH", ""),
+		RedisURL:               firstNonEmpty(getenv("TUNNEX_REDIS_URL", ""), getenv("REDIS_URL", "redis://redis:6379/0")),
+		CookieSecure:           getbool("TUNNEX_COOKIE_SECURE", false),
+		SessionIdleTTL:         getdur("TUNNEX_SESSION_IDLE_TTL", 24*time.Hour),
+		SessionAbsoluteTTL:     getdur("TUNNEX_SESSION_ABSOLUTE_TTL", 720*time.Hour),
+		CORSAllowedOrigins:     splitList(getenv("TUNNEX_CORS_ALLOWED_ORIGINS", "app://tunnex")),
 		SMTP: SMTP{
 			Host:     getenv("SMTP_HOST", ""),
 			Port:     getenv("SMTP_PORT", "1025"),

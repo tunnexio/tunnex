@@ -51,7 +51,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "manifest":
-		m := backup.NewManifest(sealer, schemaVersion(cfg), noteFromArgs())
+		m := backup.NewManifestWithDump(sealer, schemaVersion(cfg), noteFromArgs(), os.Getenv("TUNNEX_BACKUP_DUMP_SHA256"))
 		if err := m.Write(os.Stdout); err != nil {
 			fatal("write manifest: %v", err)
 		}
@@ -73,6 +73,13 @@ func main() {
 				os.Exit(2) // distinct code: "wrong key", not "malformed input"
 			}
 			os.Exit(1)
+		}
+		if expectedDump, err := verifyDumpArg(os.Args[2:]); err != nil {
+			fatal("%v", err)
+		} else if expectedDump != "" {
+			if err := backup.VerifyDumpSHA256(m, expectedDump); err != nil {
+				fatal("REFUSING TO USE BACKUP\n\n%v", err)
+			}
 		}
 		fmt.Fprintf(os.Stdout, "ok: this control plane holds the master key this backup was sealed under "+
 			"(fingerprint %s, taken %s, schema version %d)\n",
@@ -103,6 +110,16 @@ func noteFromArgs() string {
 		return os.Args[2]
 	}
 	return ""
+}
+
+func verifyDumpArg(args []string) (string, error) {
+	if len(args) == 0 {
+		return "", nil
+	}
+	if len(args) == 2 && args[0] == "--dump-sha256" {
+		return args[1], nil
+	}
+	return "", errors.New("usage: backupctl verify [--dump-sha256 SHA256]")
 }
 
 func usage() {

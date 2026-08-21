@@ -336,6 +336,20 @@ const (
 	Ok HealthResponseStatus = "ok"
 )
 
+// Defines values for HostUpgradeStatusState.
+const (
+	HostUpgradeStatusStateBackingUp   HostUpgradeStatusState = "backing_up"
+	HostUpgradeStatusStateFailed      HostUpgradeStatusState = "failed"
+	HostUpgradeStatusStateHealthCheck HostUpgradeStatusState = "health_check"
+	HostUpgradeStatusStateHealthy     HostUpgradeStatusState = "healthy"
+	HostUpgradeStatusStateIdle        HostUpgradeStatusState = "idle"
+	HostUpgradeStatusStatePreflight   HostUpgradeStatusState = "preflight"
+	HostUpgradeStatusStatePulling     HostUpgradeStatusState = "pulling"
+	HostUpgradeStatusStateRequested   HostUpgradeStatusState = "requested"
+	HostUpgradeStatusStateRestarting  HostUpgradeStatusState = "restarting"
+	HostUpgradeStatusStateVerifying   HostUpgradeStatusState = "verifying"
+)
+
 // Defines values for HubMemberRole.
 const (
 	Primary HubMemberRole = "primary"
@@ -455,20 +469,20 @@ const (
 
 // Defines values for NodePolicyDegradedKind.
 const (
-	ApplyFailing                NodePolicyDegradedKind = "apply_failing"
-	CertExpiredCannotReconnect  NodePolicyDegradedKind = "cert_expired_cannot_reconnect"
-	ConntrackFlushUnavailable   NodePolicyDegradedKind = "conntrack_flush_unavailable"
-	Converging                  NodePolicyDegradedKind = "converging"
-	DesyncUnknown               NodePolicyDegradedKind = "desync_unknown"
-	Healthy                     NodePolicyDegradedKind = "healthy"
-	HubForwardingNotReconciling NodePolicyDegradedKind = "hub_forwarding_not_reconciling"
-	K8sEndpointsUnavailable     NodePolicyDegradedKind = "k8s_endpoints_unavailable"
-	SilentDesync                NodePolicyDegradedKind = "silent_desync"
-	SiteHubDown                 NodePolicyDegradedKind = "site_hub_down"
-	SiteLinkDown                NodePolicyDegradedKind = "site_link_down"
-	SiteSubnetUnreachable       NodePolicyDegradedKind = "site_subnet_unreachable"
-	StuckEnforcing              NodePolicyDegradedKind = "stuck_enforcing"
-	UnsupportedPolicyVersion    NodePolicyDegradedKind = "unsupported_policy_version"
+	NodePolicyDegradedKindApplyFailing                NodePolicyDegradedKind = "apply_failing"
+	NodePolicyDegradedKindCertExpiredCannotReconnect  NodePolicyDegradedKind = "cert_expired_cannot_reconnect"
+	NodePolicyDegradedKindConntrackFlushUnavailable   NodePolicyDegradedKind = "conntrack_flush_unavailable"
+	NodePolicyDegradedKindConverging                  NodePolicyDegradedKind = "converging"
+	NodePolicyDegradedKindDesyncUnknown               NodePolicyDegradedKind = "desync_unknown"
+	NodePolicyDegradedKindHealthy                     NodePolicyDegradedKind = "healthy"
+	NodePolicyDegradedKindHubForwardingNotReconciling NodePolicyDegradedKind = "hub_forwarding_not_reconciling"
+	NodePolicyDegradedKindK8sEndpointsUnavailable     NodePolicyDegradedKind = "k8s_endpoints_unavailable"
+	NodePolicyDegradedKindSilentDesync                NodePolicyDegradedKind = "silent_desync"
+	NodePolicyDegradedKindSiteHubDown                 NodePolicyDegradedKind = "site_hub_down"
+	NodePolicyDegradedKindSiteLinkDown                NodePolicyDegradedKind = "site_link_down"
+	NodePolicyDegradedKindSiteSubnetUnreachable       NodePolicyDegradedKind = "site_subnet_unreachable"
+	NodePolicyDegradedKindStuckEnforcing              NodePolicyDegradedKind = "stuck_enforcing"
+	NodePolicyDegradedKindUnsupportedPolicyVersion    NodePolicyDegradedKind = "unsupported_policy_version"
 )
 
 // Defines values for NodeStatus.
@@ -1738,6 +1752,26 @@ type HealthResponse struct {
 
 // HealthResponseStatus Liveness status.
 type HealthResponseStatus string
+
+// HostUpgradeStatus defines model for HostUpgradeStatus.
+type HostUpgradeStatus struct {
+	Available bool `json:"available"`
+
+	// BackupDump Retained host filename only
+	BackupDump *string `json:"backup_dump,omitempty"`
+
+	// BackupManifest Retained host filename only
+	BackupManifest  *string                `json:"backup_manifest,omitempty"`
+	ReasonCode      *string                `json:"reason_code,omitempty"`
+	RequestId       *openapi_types.UUID    `json:"request_id,omitempty"`
+	State           HostUpgradeStatusState `json:"state"`
+	TargetSourceSha *string                `json:"target_source_sha,omitempty"`
+	TargetVersion   *string                `json:"target_version,omitempty"`
+	UpdatedAt       *time.Time             `json:"updated_at,omitempty"`
+}
+
+// HostUpgradeStatusState defines model for HostUpgradeStatus.State.
+type HostUpgradeStatusState string
 
 // HubMember defines model for HubMember.
 type HubMember struct {
@@ -3223,6 +3257,12 @@ type ClientInterface interface {
 
 	AdminSetOrgRole(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminSetOrgRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetHostUpgrade request
+	GetHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RequestHostUpgrade request
+	RequestHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AdminSetCpAdminWithBody request with any body
 	AdminSetCpAdminWithBody(ctx context.Context, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -4007,6 +4047,30 @@ func (c *Client) AdminSetOrgRoleWithBody(ctx context.Context, orgId openapi_type
 
 func (c *Client) AdminSetOrgRole(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminSetOrgRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAdminSetOrgRoleRequest(c.Server, orgId, userId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetHostUpgradeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestHostUpgradeRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -7410,6 +7474,60 @@ func NewAdminSetOrgRoleRequestWithBody(server string, orgId openapi_types.UUID, 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetHostUpgradeRequest generates requests for GetHostUpgrade
+func NewGetHostUpgradeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/upgrade")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRequestHostUpgradeRequest generates requests for RequestHostUpgrade
+func NewRequestHostUpgradeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/upgrade")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -15830,6 +15948,12 @@ type ClientWithResponsesInterface interface {
 
 	AdminSetOrgRoleWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminSetOrgRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*AdminSetOrgRoleResponse, error)
 
+	// GetHostUpgradeWithResponse request
+	GetHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHostUpgradeResponse, error)
+
+	// RequestHostUpgradeWithResponse request
+	RequestHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error)
+
 	// AdminSetCpAdminWithBodyWithResponse request with any body
 	AdminSetCpAdminWithBodyWithResponse(ctx context.Context, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AdminSetCpAdminResponse, error)
 
@@ -16626,6 +16750,52 @@ func (r AdminSetOrgRoleResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AdminSetOrgRoleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetHostUpgradeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *HostUpgradeStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetHostUpgradeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetHostUpgradeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RequestHostUpgradeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *HostUpgradeStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RequestHostUpgradeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RequestHostUpgradeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -20937,6 +21107,24 @@ func (c *ClientWithResponses) AdminSetOrgRoleWithResponse(ctx context.Context, o
 	return ParseAdminSetOrgRoleResponse(rsp)
 }
 
+// GetHostUpgradeWithResponse request returning *GetHostUpgradeResponse
+func (c *ClientWithResponses) GetHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHostUpgradeResponse, error) {
+	rsp, err := c.GetHostUpgrade(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetHostUpgradeResponse(rsp)
+}
+
+// RequestHostUpgradeWithResponse request returning *RequestHostUpgradeResponse
+func (c *ClientWithResponses) RequestHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error) {
+	rsp, err := c.RequestHostUpgrade(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestHostUpgradeResponse(rsp)
+}
+
 // AdminSetCpAdminWithBodyWithResponse request with arbitrary body returning *AdminSetCpAdminResponse
 func (c *ClientWithResponses) AdminSetCpAdminWithBodyWithResponse(ctx context.Context, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AdminSetCpAdminResponse, error) {
 	rsp, err := c.AdminSetCpAdminWithBody(ctx, userId, contentType, body, reqEditors...)
@@ -23388,6 +23576,72 @@ func ParseAdminSetOrgRoleResponse(rsp *http.Response) (*AdminSetOrgRoleResponse,
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetHostUpgradeResponse parses an HTTP response from a GetHostUpgradeWithResponse call
+func ParseGetHostUpgradeResponse(rsp *http.Response) (*GetHostUpgradeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetHostUpgradeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HostUpgradeStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRequestHostUpgradeResponse parses an HTTP response from a RequestHostUpgradeWithResponse call
+func ParseRequestHostUpgradeResponse(rsp *http.Response) (*RequestHostUpgradeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RequestHostUpgradeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest HostUpgradeStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

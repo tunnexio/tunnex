@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -61,6 +62,12 @@ type Manifest struct {
 	SchemaVersion int64 `json:"schema_version"`
 	// Note is free text for the operator (which environment, why taken).
 	Note string `json:"note,omitempty"`
+	// DumpSHA256 binds this manifest to one PostgreSQL custom-format archive.
+	// Empty is accepted only for manifests created before archive binding existed.
+	DumpSHA256 string `json:"dump_sha256,omitempty"`
+	// Integrity is a keyed proof over every recovery-relevant manifest field.
+	// It is intentionally not a secret and is checked with the separate master key.
+	Integrity string `json:"integrity,omitempty"`
 }
 
 // KeyFingerprint returns the identity fingerprint for the master key behind s.
@@ -68,13 +75,48 @@ func KeyFingerprint(s Fingerprinter) string { return s.Fingerprint([]byte(keyPro
 
 // NewManifest builds the manifest for a dump taken now.
 func NewManifest(s Fingerprinter, schemaVersion int64, note string) Manifest {
-	return Manifest{
+	return NewManifestWithDump(s, schemaVersion, note, "")
+}
+
+// NewManifestWithDump builds a manifest and binds an optional dump digest to the
+// deployment master key. The empty digest preserves verification of legacy backups.
+func NewManifestWithDump(s Fingerprinter, schemaVersion int64, note, dumpSHA256 string) Manifest {
+	m := Manifest{
 		Version:              ManifestVersion,
 		TakenAt:              time.Now().UTC(),
 		MasterKeyFingerprint: KeyFingerprint(s),
 		SchemaVersion:        schemaVersion,
 		Note:                 note,
+		DumpSHA256:           strings.ToLower(strings.TrimSpace(dumpSHA256)),
 	}
+	m.Integrity = manifestIntegrity(s, m)
+	return m
+}
+
+func manifestProof(m Manifest) string {
+	return fmt.Sprintf("tunnex-backup-manifest-v1\n%s\n%d\n%s\n%s\n%s\n%d",
+		m.TakenAt.UTC().Format(time.RFC3339Nano), m.SchemaVersion, m.MasterKeyFingerprint, m.Note, m.DumpSHA256, m.Version)
+}
+
+// Fingerprint intentionally returns a short, display-safe keyed proof. Bind two
+// domain-separated proofs here so an offline archive replacement needs a 96-bit
+// collision rather than treating that display fingerprint as a 48-bit MAC.
+func manifestIntegrity(s Fingerprinter, m Manifest) string {
+	proof := manifestProof(m)
+	return s.Fingerprint([]byte("tunnex-backup-manifest-integrity-1\n"+proof)) +
+		s.Fingerprint([]byte("tunnex-backup-manifest-integrity-2\n"+proof))
+}
+
+func validSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, r := range value {
+		if !(r >= '0' && r <= '9') && !(r >= 'a' && r <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (m Manifest) Write(w io.Writer) error {
@@ -122,6 +164,31 @@ func Verify(m Manifest, s Fingerprinter) error {
 			"Restore the master key that belongs to this backup, then retry. The key is never contained in "+
 			"the backup; it is the separate artifact you were asked to custody.",
 			ErrKeyMismatch, have, m.MasterKeyFingerprint)
+	}
+	if m.DumpSHA256 != "" && !validSHA256(m.DumpSHA256) {
+		return errors.New("manifest carries an invalid dump SHA-256")
+	}
+	if m.Integrity == "" {
+		if m.DumpSHA256 != "" {
+			return errors.New("manifest binds a dump but carries no keyed integrity proof")
+		}
+		return nil // legacy manifests predate field binding and remain restorable.
+	}
+	if len(m.Integrity) != 24 || m.Integrity != manifestIntegrity(s, m) {
+		return errors.New("manifest integrity proof does not match this master key or its recorded backup fields")
+	}
+	return nil
+}
+
+// VerifyDumpSHA256 refuses an upgrade when the archive on disk differs from
+// the digest bound into its verified manifest.
+func VerifyDumpSHA256(m Manifest, got string) error {
+	got = strings.ToLower(strings.TrimSpace(got))
+	if !validSHA256(got) || m.DumpSHA256 == "" || !validSHA256(m.DumpSHA256) {
+		return errors.New("backup archive digest is absent or invalid")
+	}
+	if got != m.DumpSHA256 {
+		return errors.New("backup archive digest does not match its verified manifest")
 	}
 	return nil
 }

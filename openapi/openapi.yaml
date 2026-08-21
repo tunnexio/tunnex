@@ -2505,6 +2505,40 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/admin/upgrade:
+    get:
+      operationId: getHostUpgrade
+      summary: Read the local host-upgrade runner state
+      description: >-
+        Requires `users.cp_admin`. Returns only bounded stage and backup filenames;
+        raw host output, database contents, environment values, and Docker authority
+        never cross this API.
+      tags: [admin]
+      responses:
+        "200":
+          description: Current local runner state.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostUpgradeStatus" }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: requestHostUpgrade
+      summary: Approve the exact signed release currently shown by the control plane
+      description: >-
+        Requires `users.cp_admin`. The server pins its current verified catalog
+        source SHA and sequence; the client cannot supply a different target.
+        Duplicate requests for that same active target are idempotent.
+      tags: [admin]
+      responses:
+        "202":
+          description: Upgrade request accepted or already active for this exact target.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostUpgradeStatus" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/admin/gateway-endpoint:
     get:
       operationId: getGatewayEndpoint
@@ -6375,6 +6409,23 @@ components:
         backup_state: { type: string, enum: [unknown, required, verified, failed] }
         rollback_state: { type: string, enum: [not_needed, restore_from_backup, available, in_progress, failed] }
         approval_mode: { type: string, enum: [host_command_only, host_updater] }
+
+    HostUpgradeStatus:
+      type: object
+      additionalProperties: false
+      required: [available, state]
+      properties:
+        available: { type: boolean }
+        request_id: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [idle, requested, verifying, backing_up, preflight, pulling, restarting, health_check, healthy, failed]
+        target_source_sha: { type: string, pattern: '^[0-9a-f]{40}$' }
+        target_version: { type: string }
+        backup_dump: { type: string, description: Retained host filename only, never a path or contents. }
+        backup_manifest: { type: string, description: Retained host filename only, never a path or contents. }
+        reason_code: { type: string }
+        updated_at: { type: string, format: date-time }
 
     SignupRequest:
       type: object

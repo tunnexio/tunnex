@@ -3,9 +3,11 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-grep -Fq 'const hostCommand = "./upgrade.sh --apply"' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'const repairCommand = "curl -fsSL https://get.tunnex.io | sh"' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
 grep -Fq 'Installed version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
-grep -Fq 'Available version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'Target version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'Upgrade control plane' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'api.POST("/api/v1/admin/upgrade")' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
 grep -Fq 'health check failed' "$ROOT/deploy/upgrade.sh"
 grep -Fq 'restore the verified pre-upgrade backup' "$ROOT/deploy/upgrade.sh"
 if grep -F 'const hostCommand' "$ROOT/apps/web/src/components/UpgradeCenter.tsx" | grep -Eq -- '--public-key|release\.json'; then
@@ -38,12 +40,25 @@ cat >"$TMP/releaseverify" <<'EOF'
 [ "$1" = "-manifest" ]
 [ "$3" = "-public-key" ]
 [ "$4" = "from-installed-config" ]
+if [ "${5:-}" = "-print-env" ]; then
+  cat <<'ENV'
+TUNNEX_RELEASE_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+TUNNEX_RELEASE_VERSION=v9.9.9
+TUNNEX_RELEASE_SEQUENCE=99
+ENV
+fi
 EOF
 chmod 755 "$TMP/releaseverify"
 
 output=$(cd "$TMP/tunnex" && PATH="$TMP:$PATH" MOCK_CATALOG="$TMP/catalog.json" TUNNEX_RELEASEVERIFY="$TMP/releaseverify" ./upgrade.sh)
 printf '%s\n' "$output" | grep -Fq 'dry run: re-run with --apply'
 printf '%s\n' "$output" | grep -Fq 'release verified'
+
+if (cd "$TMP/tunnex" && PATH="$TMP:$PATH" MOCK_CATALOG="$TMP/catalog.json" TUNNEX_RELEASEVERIFY="$TMP/releaseverify" ./upgrade.sh --expected-source-sha bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) 2>"$TMP/pin-error"; then
+  echo 'expected an approved-release mismatch to fail' >&2
+  exit 1
+fi
+grep -Fq 'no longer matches the release approved in the UI' "$TMP/pin-error"
 
 if (cd "$TMP/tunnex" && PATH="$TMP:$PATH" MOCK_CATALOG="$TMP/catalog.json" TUNNEX_RELEASEVERIFY="$TMP/releaseverify" ./upgrade.sh --public-key '') 2>"$TMP/error"; then
   echo 'expected empty explicit key to fail' >&2

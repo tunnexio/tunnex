@@ -8,6 +8,7 @@ export const api = createTunnexClient("/");
 
 export type AuthUser = components["schemas"]["AuthUser"];
 export type Meta = components["schemas"]["Meta"];
+export type HostUpgradeStatus = components["schemas"]["HostUpgradeStatus"];
 export type Org = components["schemas"]["Organization"];
 export type Node = components["schemas"]["Node"];
 export type HubSet = components["schemas"]["HubSet"];

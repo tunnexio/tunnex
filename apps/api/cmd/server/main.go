@@ -35,6 +35,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	apphttp "github.com/tunnexio/tunnex/apps/api/internal/http"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
@@ -417,6 +418,24 @@ func main() {
 	}
 
 	systemQueries := sqlc.New(pool)
+	hostUpgradeSvc := hostupgrade.New(cfg.HostUpgradeRequestPath, cfg.HostUpgradeStatusPath, hostupgrade.SQLAudit(systemQueries))
+	if hostUpgradeSvc.Available() {
+		if releaseStatus != nil {
+			releaseStatus.ApprovalMode = "host_updater"
+		}
+		if releaseStatusProvider != nil {
+			provider := releaseStatusProvider
+			releaseStatusProvider = func() *release.Status {
+				status := provider()
+				if status == nil {
+					return nil
+				}
+				copy := *status
+				copy.ApprovalMode = "host_updater"
+				return &copy
+			}
+		}
+	}
 	alertPublisher := alerts.NewOutboxPublisher(alerts.NewPostgresOutbox(pool))
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		System: systemQueries,
@@ -456,6 +475,7 @@ func main() {
 		ReleaseStatus:         releaseStatus,
 		ReleaseBootstrap:      releaseBootstrap,
 		ReleaseStatusProvider: releaseStatusProvider,
+		HostUpgrade:           hostUpgradeSvc,
 		SMTPConfigured:        mail.Configured(mail.Config{Host: cfg.SMTP.Host}),
 		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
 		AuthFn:                apphttp.SessionAuth(sessions, sqlc.New(pool)),

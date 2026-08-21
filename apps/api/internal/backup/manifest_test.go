@@ -134,3 +134,22 @@ func TestManifestRoundTrip(t *testing.T) {
 		t.Fatalf("a round-tripped manifest must still verify: %v", err)
 	}
 }
+
+func TestManifestBindsDumpDigestToMasterKey(t *testing.T) {
+	s := sealerWithRandomKey(t)
+	digest := strings.Repeat("a", 64)
+	m := NewManifestWithDump(s, 53, "pre-upgrade", digest)
+	if err := Verify(m, s); err != nil {
+		t.Fatalf("bound manifest did not verify: %v", err)
+	}
+	if err := VerifyDumpSHA256(m, digest); err != nil {
+		t.Fatalf("matching dump digest refused: %v", err)
+	}
+	if err := VerifyDumpSHA256(m, strings.Repeat("b", 64)); err == nil {
+		t.Fatal("different dump digest was accepted")
+	}
+	m.DumpSHA256 = strings.Repeat("b", 64)
+	if err := Verify(m, s); err == nil {
+		t.Fatal("tampered dump binding was accepted")
+	}
+}

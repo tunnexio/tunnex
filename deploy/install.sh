@@ -31,6 +31,18 @@ TRUSTED_RELEASE_PUBLIC_KEY=b48ff99923c43052ade580cdca63952690f07f08372c35814baa4
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+as_root() {
+	if [ "$(id -u)" -eq 0 ]; then "$@"; return; fi
+	command -v sudo >/dev/null 2>&1 || die "sudo is required to install the local upgrade service"
+	sudo "$@"
+}
+file_sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | awk '{print $1}'
+	else
+		shasum -a 256 "$1" | awk '{print $1}'
+	fi
+}
 
 # BEGIN INSTALL VERSION RESOLVER — kept byte-identical in install.sh and get.sh; the regression test
 # extracts this block from both files and refuses drift.
@@ -302,8 +314,15 @@ esac
 # ── 4. workspace + the VERSIONED compose (matches the pinned images) ─────────────────────────────
 mkdir -p "$DIR"
 cd "$DIR"
-trap 'rm -f .env.new 2>/dev/null' EXIT # never leave a half-written .env behind on failure
-curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o tunnex.yml || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
+STAGE_DIR=$(mktemp -d "$PWD/.tunnex-install.XXXXXX")
+trap 'rm -rf "$STAGE_DIR" .env.new tunnex-upgrade-runner.service.next tunnex-upgrade-runner.path.next 2>/dev/null' EXIT # never leave a half-written managed file behind on failure
+
+# Fetch the complete host payload before replacing any managed file. The UI's
+# upgrade command is not usable when upgrade.sh is absent, so a partial download
+# must fail the install rather than leave a control plane that only looks ready.
+curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o "$STAGE_DIR/tunnex.yml" || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
+curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade.sh" -o "$STAGE_DIR/upgrade.sh" || die "could not download deploy/upgrade.sh at ${SOURCE_REF}"
+sh -n "$STAGE_DIR/upgrade.sh" || die "downloaded deploy/upgrade.sh is not valid shell"
 
 # Published releases carry a signed descriptor. Bind its semantic release tag
 # to the exact resolved source commit before starting any image.
@@ -313,12 +332,94 @@ case "$VERSION" in
 	*) die "a signed release descriptor is required for version ${VERSION}" ;;
 esac
 RELEASE_MANIFEST_URL="${TUNNEX_RELEASE_MANIFEST_URL:-https://github.com/tunnexio/tunnex/releases/download/${RELEASE_DESCRIPTOR_TAG}/release.json}"
-curl -fsSL "$RELEASE_MANIFEST_URL" -o release.json || die "could not download the signed release manifest for ${SOURCE_REF}; refusing an unverifiable install"
+curl -fsSL "$RELEASE_MANIFEST_URL" -o "$STAGE_DIR/release.json" || die "could not download the signed release manifest for ${SOURCE_REF}; refusing an unverifiable install"
+
+# `get.tunnex.io` deliberately serves install.sh from main while the resolver
+# selects the newest published tag. Old release source has no UI updater; do
+# not make that harmless main-before-tag interval break fresh installation.
+RUNNER_REQUIRED=false
+grep -Fq 'TUNNEX_HOST_UPGRADE_REQUEST_PATH' "$STAGE_DIR/tunnex.yml" && RUNNER_REQUIRED=true
+RUNNER_AVAILABLE=false
+if curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade-runner.sh" -o "$STAGE_DIR/upgrade-runner.sh"; then
+	sh -n "$STAGE_DIR/upgrade-runner.sh" || die "downloaded deploy/upgrade-runner.sh is not valid shell"
+	RUNNER_AVAILABLE=true
+elif [ "$RUNNER_REQUIRED" = true ]; then
+	die "could not download required deploy/upgrade-runner.sh at ${SOURCE_REF}"
+fi
+
+# Verify the staged descriptor before publishing any compose or privileged code.
+docker pull "ghcr.io/tunnexio/tunnex-api:${VERSION}" >/dev/null
+case "$(docker version --format '{{.Server.Arch}}' 2>/dev/null || true)" in
+	amd64|x86_64) RELEASE_ARCH=amd64 ;;
+	arm64|aarch64) RELEASE_ARCH=arm64 ;;
+	*) die "could not determine a supported Docker server architecture for release verification" ;;
+esac
+if ! RELEASE_ENV="$(docker run --rm --entrypoint releaseverify \
+	-v "$STAGE_DIR/release.json:/tmp/release.json:ro" \
+	"ghcr.io/tunnexio/tunnex-api:${VERSION}" \
+	-manifest /tmp/release.json -public-key "$TRUSTED_RELEASE_PUBLIC_KEY" \
+	-expected-source-sha "$SOURCE_REF" -platform "$RELEASE_ARCH" -print-env)"; then
+	die "signed release verification failed; refusing to publish deployment files or privileged updater code"
+fi
+
+mv "$STAGE_DIR/tunnex.yml" tunnex.yml
+mv "$STAGE_DIR/upgrade.sh" upgrade.sh
+chmod 0755 upgrade.sh
+mv "$STAGE_DIR/release.json" release.json
 # Signed release metadata is mounted into the unprivileged API container. It is not
 # secret, so keep it world-readable while the bind mount itself stays read-only.
 chmod 0644 release.json
 RELEASE_MANIFEST_PATH="/var/lib/tunnex/release.json"
 TUNNEX_RELEASE_PUBLIC_KEY="${TUNNEX_RELEASE_PUBLIC_KEY:-$TRUSTED_RELEASE_PUBLIC_KEY}"
+
+# The API can write only a bounded request file; the root host runner owns the
+# read-only status side and is the sole process with Docker authority.
+INSTALL_DIR=$(pwd)
+case "$INSTALL_DIR" in *'%'*|*'
+'*) die "installation path contains characters unsupported by the upgrade service" ;; esac
+if [ "$RUNNER_AVAILABLE" = true ]; then
+	ROOT_UPGRADE_DIR=/usr/local/lib/tunnex
+	as_root install -d -o root -g root -m 0755 "$ROOT_UPGRADE_DIR"
+	as_root install -m 0755 -o root -g root upgrade.sh "$ROOT_UPGRADE_DIR/upgrade.sh.next"
+	as_root install -m 0755 -o root -g root "$STAGE_DIR/upgrade-runner.sh" "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next"
+	as_root mv "$ROOT_UPGRADE_DIR/upgrade.sh.next" "$ROOT_UPGRADE_DIR/upgrade.sh"
+	as_root mv "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next" "$ROOT_UPGRADE_DIR/upgrade-runner.sh"
+	as_root install -d -o root -g root -m 0755 "$INSTALL_DIR/upgrade-state"
+	as_root install -d -o 10001 -g 10001 -m 0700 "$INSTALL_DIR/upgrade-state/requests"
+	as_root install -d -o root -g root -m 0755 "$INSTALL_DIR/upgrade-state/status"
+	as_root install -d -o root -g root -m 0700 "$INSTALL_DIR/upgrade-state/work"
+	cat >tunnex-upgrade-runner.service.next <<EOF
+[Unit]
+Description=Tunnex fixed-purpose control-plane upgrade runner
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory="${INSTALL_DIR}"
+Environment="TUNNEX_DIR=${INSTALL_DIR}"
+Environment=TUNNEX_UPGRADE_HELPER=${ROOT_UPGRADE_DIR}/upgrade.sh
+ExecStart=${ROOT_UPGRADE_DIR}/upgrade-runner.sh
+PrivateTmp=true
+NoNewPrivileges=true
+EOF
+	cat >tunnex-upgrade-runner.path.next <<EOF
+[Unit]
+Description=Watch for an approved Tunnex control-plane upgrade
+
+[Path]
+PathExists=${INSTALL_DIR}/upgrade-state/requests/request
+Unit=tunnex-upgrade-runner.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+	as_root install -o root -g root -m 0644 tunnex-upgrade-runner.service.next /etc/systemd/system/tunnex-upgrade-runner.service
+	as_root install -o root -g root -m 0644 tunnex-upgrade-runner.path.next /etc/systemd/system/tunnex-upgrade-runner.path
+	rm -f tunnex-upgrade-runner.service.next tunnex-upgrade-runner.path.next
+	as_root systemctl daemon-reload
+	as_root systemctl enable --now tunnex-upgrade-runner.path
+fi
 
 # ── 5. secrets — REUSE the existing DB password on a re-run (a new one won't match the volume) ────
 PG_PASS=""
@@ -332,12 +433,12 @@ fi
 #      silently use the FIRST value — the trap that bit the POC). Back up any existing one. ────────
 if [ -f .env ]; then
 	cp .env ".env.bak.$(date +%Y%m%d%H%M%S)"
-	say ">> Backed up your existing .env"
-fi
-umask 077
-cat >.env.new <<EOF
+	say ">> Preserving existing .env configuration (backup retained)."
+else
+	umask 077
+	cat >.env.new <<EOF
 # Tunnex deployment config — generated by install.sh. Safe to edit these values; do NOT hand-edit
-# tunnex.yml. Upgrade: bump TUNNEX_VERSION to a newer release tag, then \`docker compose -f tunnex.yml pull && up -d\`.
+# tunnex.yml. Upgrade through the dashboard or run ./upgrade.sh on this host.
 TUNNEX_VERSION=${VERSION}
 # Exact Git ref the installer used for tunnex.yml; image tag + manifest provenance stay inspectable.
 TUNNEX_SOURCE_REF=${SOURCE_REF}
@@ -346,6 +447,7 @@ TUNNEX_RELEASE_PUBLIC_KEY=${TUNNEX_RELEASE_PUBLIC_KEY:-$TRUSTED_RELEASE_PUBLIC_K
 TUNNEX_RELEASE_KEY_ID=release-2026-08-01
 TUNNEX_RELEASE_CATALOG_URL=${TUNNEX_RELEASE_CATALOG_URL:-https://github.com/tunnexio/tunnex/releases/download/tunnex-updates/release.json}
 TUNNEX_RELEASE_UPDATE_CHECK=${TUNNEX_RELEASE_UPDATE_CHECK:-true}
+TUNNEX_COMPOSE_SHA256=$(file_sha256 tunnex.yml)
 TUNNEX_LOG_LEVEL=info
 APP_BASE_URL=${BASE_URL}
 TUNNEX_TLS_MODE=${TLS_MODE}
@@ -364,28 +466,28 @@ SMTP_USERNAME=${SMTP_USERNAME}
 SMTP_PASSWORD=${SMTP_PASSWORD}
 TUNNEX_ADMIN_EMAIL=${ADMIN_EMAIL}
 EOF
-mv .env.new .env # atomic swap — the .env is never observed half-written
+	mv .env.new .env # atomic swap — the .env is never observed half-written
+fi
+set_dotenv() {
+	_key=$1 _value=$2 _tmp=.env.next
+	case "$_value" in *'
+'*|*''*) die "invalid release environment value" ;; esac
+	awk -F= -v key="$_key" -v value="$_value" '
+		$1 == key { print key "=" value; seen=1; next }
+		{ print }
+		END { if (!seen) print key "=" value }
+	' .env >"$_tmp"
+	mv "$_tmp" .env
+}
 
 # ── 7. pull + start ─────────────────────────────────────────────────────────────────────────────
-say ">> Pulling images and verifying the signed release…"
-docker compose -f tunnex.yml pull
-case "$(docker version --format '{{.Server.Arch}}' 2>/dev/null || true)" in
-	amd64|x86_64) RELEASE_ARCH=amd64 ;;
-	arm64|aarch64) RELEASE_ARCH=arm64 ;;
-	*) die "could not determine a supported Docker server architecture for release verification" ;;
-esac
-if ! RELEASE_ENV="$(docker run --rm --entrypoint releaseverify \
-	-v "$PWD/release.json:/tmp/release.json:ro" \
-	"ghcr.io/tunnexio/tunnex-api:${VERSION}" \
-	-manifest /tmp/release.json -public-key "$TUNNEX_RELEASE_PUBLIC_KEY" \
-	-expected-source-sha "$SOURCE_REF" -platform "$RELEASE_ARCH" -print-env)"; then
-	die "signed release verification failed; refusing to start images from an unverifiable release"
-fi
+say ">> Signed release verified; pinning images…"
 for RELEASE_KEY in TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_NODE_AGENT_IMAGE TUNNEX_MIGRATE_IMAGE TUNNEX_RELEASE_SEQUENCE TUNNEX_RELEASE_VERSION TUNNEX_RELEASE_SOURCE_SHA; do
 	RELEASE_VALUE="$(printf '%s\n' "$RELEASE_ENV" | sed -n "s/^${RELEASE_KEY}=//p" | head -1)"
 	[ -n "$RELEASE_VALUE" ] || die "signed release verifier omitted ${RELEASE_KEY}"
-	printf '%s=%s\n' "$RELEASE_KEY" "$RELEASE_VALUE" >>.env
+	set_dotenv "$RELEASE_KEY" "$RELEASE_VALUE"
 done
+set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 tunnex.yml)"
 docker compose -f tunnex.yml pull
 say ">> Signed release verified; images pinned by digest. Starting the stack…"
 docker compose -f tunnex.yml up -d --wait
@@ -412,6 +514,5 @@ say '      Copy the ONE command it shows and run it in this folder to bring the'
 say '      gateway online (it re-creates the node-agent with your join token).'
 say ''
 say "   Config:   $(pwd)/.env       (edit values here; never hand-edit tunnex.yml)"
-say '   Upgrade:  set TUNNEX_VERSION to a newer tag in .env, then:'
-say '             docker compose -f tunnex.yml pull && docker compose -f tunnex.yml up -d'
+say '   Upgrade:  use the dashboard when an update appears, or run ./upgrade.sh for a dry run.'
 say '════════════════════════════════════════════════════════════════════════════'
