@@ -150,6 +150,18 @@ type AgentMcpOauthConnection struct {
 	UpdatedAt               time.Time          `json:"updated_at"`
 }
 
+// F14 immutable MCP tool allow policies. Rules contain only stable inventory identities; never arguments, results, OAuth tokens, or client secrets.
+type AgentMcpToolPolicyVersion struct {
+	ID                  uuid.UUID `json:"id"`
+	OrgID               uuid.UUID `json:"org_id"`
+	DeviceID            uuid.UUID `json:"device_id"`
+	Version             int64     `json:"version"`
+	Rules               []byte    `json:"rules"`
+	InventoryObservedAt time.Time `json:"inventory_observed_at"`
+	CreatedByUserID     uuid.UUID `json:"created_by_user_id"`
+	CreatedAt           time.Time `json:"created_at"`
+}
+
 type AgentPolicyTemplate struct {
 	ID          uuid.UUID          `json:"id"`
 	OrgID       uuid.UUID          `json:"org_id"`

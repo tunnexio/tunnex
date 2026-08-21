@@ -664,6 +664,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/runtime/mcp-tool-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the current local-proxy MCP tool policy for this runtime
+         * @description Machine-only runtime projection. It returns no OAuth token or secret. A missing, stale, or changed inventory yields an empty allow-list so the explicit local proxy fails closed.
+         */
+        get: operations["getRuntimeMCPToolPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/runtime/mcp-oauth-lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lease one connected MCP OAuth access token to this runtime
+         * @description Machine-only, no-store token handoff for the runtime's own configured upstream. This response is never available to browser sessions and must be retained only in runtime memory.
+         */
+        get: operations["getRuntimeMCPOAuthLease"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/runtime/credential-candidate": {
         parameters: {
             query?: never;
@@ -761,6 +801,27 @@ export interface paths {
         /** Get an agent's observed MCP inventory */
         get: operations["getAgentMCPInventory"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /** Get the current immutable MCP tool policy for one agent */
+        get: operations["getAgentMCPToolPolicy"];
+        /** Create the next immutable MCP tool policy version */
+        put: operations["replaceAgentMCPToolPolicy"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4501,6 +4562,41 @@ export interface components {
             /** Format: date-time */
             observed_at: string;
         };
+        MCPToolPolicyRule: {
+            /** Format: uri */
+            endpoint: string;
+            server_name: string;
+            tool_name: string;
+            input_schema_hash: string;
+        };
+        AgentMCPToolPolicy: {
+            /** Format: int64 */
+            version: number;
+            rules: components["schemas"]["MCPToolPolicyRule"][];
+            /** Format: date-time */
+            inventory_observed_at: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ReplaceAgentMCPToolPolicyRequest: {
+            rules: components["schemas"]["MCPToolPolicyRule"][];
+        };
+        RuntimeMCPToolPolicy: {
+            /**
+             * Format: int64
+             * @description Zero means no usable policy and therefore deny all.
+             */
+            version: number;
+            rules: components["schemas"]["MCPToolPolicyRule"][];
+            /** Format: date-time */
+            inventory_observed_at: string | null;
+        };
+        RuntimeMCPOAuthLease: {
+            /** @description Runtime-only transient credential. Never returned by a human/session endpoint. */
+            access_token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         StartAgentMCPOAuthConnectionRequest: {
             /** Format: uri */
             endpoint: string;
@@ -5971,6 +6067,53 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getRuntimeMCPToolPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current fail-closed policy projection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeMCPToolPolicy"];
+                };
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
+    getRuntimeMCPOAuthLease: {
+        parameters: {
+            query: {
+                endpoint: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Short-lived OAuth access token for one upstream. */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeMCPOAuthLease"];
+                };
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
     prepareAgentRuntimeCredential: {
         parameters: {
             query?: never;
@@ -6119,6 +6262,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentMCPInventory"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentMCPToolPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current policy version. Rules allow only exact inventory identities at the local MCP proxy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPToolPolicy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    replaceAgentMCPToolPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplaceAgentMCPToolPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description New current policy version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPToolPolicy"];
                 };
             };
             default: components["responses"]["Error"];

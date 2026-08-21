@@ -24,6 +24,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
 	"github.com/tunnexio/tunnex/apps/api/internal/mfa"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpn"
@@ -200,6 +201,7 @@ type apiServer struct {
 	sessions       *session.Store
 	mfa            *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
 	mcpOAuth       *mcpoauth.Service
+	mcpToolPolicy  *mcptoolpolicy.Service
 	sso            ssoPort           // nil in the open build
 	policy         policyPort        // nil in the open build (Zero Trust, S7.1)
 	agentTemplates agentTemplatePort // nil in the open build (F09)

@@ -5,8 +5,6 @@ module github.com/tunnexio/tunnex/apps/cli
 
 go 1.25.13
 
-toolchain go1.25.11
-
 require github.com/oapi-codegen/runtime v1.1.1
 
 require (

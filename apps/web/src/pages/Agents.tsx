@@ -44,6 +44,59 @@ type AgentRuntimeStatus = components["schemas"]["AgentRuntimeStatus"];
 type AgentCredentialRotationStatus = components["schemas"]["AgentCredentialRotationStatus"];
 type AgentMCPInventory = components["schemas"]["AgentMCPInventory"];
 type AgentMCPOAuthConnection = components["schemas"]["AgentMCPOAuthConnection"];
+type AgentMCPToolPolicy = components["schemas"]["AgentMCPToolPolicy"];
+
+type ObservedMCPTool = { endpoint: string; server_name: string; tool_name: string; input_schema_hash: string };
+
+function observedMCPTools(inventory: AgentMCPInventory): ObservedMCPTool[] {
+  const servers = Array.isArray(inventory.snapshot.servers) ? inventory.snapshot.servers as Array<Record<string, unknown>> : [];
+  return servers.flatMap((server) => {
+    const endpoint = typeof server.endpoint === "string" ? server.endpoint : "";
+    const serverName = typeof server.server_name === "string" ? server.server_name : "";
+    const tools = Array.isArray(server.tools) ? server.tools as Array<Record<string, unknown>> : [];
+    return tools.flatMap((tool) => {
+      const toolName = typeof tool.name === "string" ? tool.name : "";
+      const schemaHash = typeof tool.input_schema_hash === "string" ? tool.input_schema_hash : "";
+      return endpoint && serverName && toolName && schemaHash ? [{ endpoint, server_name: serverName, tool_name: toolName, input_schema_hash: schemaHash }] : [];
+    });
+  });
+}
+
+function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: AgentMCPInventory; canManage: boolean }) {
+  const tools = observedMCPTools(inventory);
+  const [policy, setPolicy] = useState<AgentMCPToolPolicy | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const key = (tool: ObservedMCPTool) => `${tool.endpoint}\u0000${tool.server_name}\u0000${tool.tool_name}\u0000${tool.input_schema_hash}`;
+  useEffect(() => {
+    void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } } }).then((result) => {
+      if (result.data) {
+        const current = result.data as AgentMCPToolPolicy;
+        setPolicy(current);
+        setSelected(new Set(current.rules.map((rule) => key(rule))));
+      } else {
+        setPolicy(null); setSelected(new Set());
+      }
+    });
+  }, [orgId, deviceId]);
+  const save = async () => {
+    setBusy(true); setError(null);
+    const rules = tools.filter((tool) => selected.has(key(tool)));
+    const result = await api.PUT("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } }, body: { rules } });
+    setBusy(false);
+    if (result.error || !result.data) { setError("Could not save the MCP tool policy. Refresh inventory and try again."); return; }
+    setPolicy(result.data as AgentMCPToolPolicy);
+  };
+  return <div data-testid="agent-mcp-tool-policy" className="rounded-md border border-slate-700 p-3 text-xs text-slate-300">
+    <div className="font-semibold text-ink-heading">MCP tool policy</div>
+    <p className="mt-1 text-slate-500">Default deny. Only checked tools may pass through the agent’s explicit local MCP proxy; direct upstream use is not protected.</p>
+    {policy ? <p className="mt-1 text-slate-500">Current version {policy.version} · based on inventory observed {policy.inventory_observed_at}.</p> : <p className="mt-1 text-slate-500">No policy yet: the local proxy denies every tool.</p>}
+    {tools.length === 0 ? <p className="mt-2 text-slate-500">No observed tools are available to allow.</p> : <div className="mt-2 grid gap-1">{tools.map((tool) => <label key={key(tool)} className="flex items-center gap-2"><input type="checkbox" checked={selected.has(key(tool))} disabled={!canManage || busy} onChange={(event) => setSelected((previous) => { const next = new Set(previous); if (event.target.checked) next.add(key(tool)); else next.delete(key(tool)); return next; })} /><span>{tool.server_name} · <span className="font-mono">{tool.tool_name}</span></span></label>)}</div>}
+    {canManage && <Button className="mt-3" disabled={busy || tools.length === 0} onClick={() => void save()}>{busy ? "Saving…" : "Save tool policy"}</Button>}
+    {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
+  </div>;
+}
 
 function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: AgentMCPInventory; canManage: boolean }) {
   const discovered = (inventory.snapshot.oauth_discovery as { servers?: Array<{ endpoint?: string; status?: string; protected_resource?: string; authorization_servers?: string[]; scopes_supported?: string[] }> } | undefined)?.servers ?? [];
@@ -320,6 +373,7 @@ function AgentProfilePanel({
   credentialRotation,
   editorVersion,
   canManageLifecycle,
+  canManageMCPPolicy,
   canRotateCredential,
   assignmentMembers,
   assignmentGroups,
@@ -336,6 +390,7 @@ function AgentProfilePanel({
   credentialRotation: AgentCredentialRotationStatus | null;
   editorVersion: number;
   canManageLifecycle: boolean;
+  canManageMCPPolicy: boolean;
   canRotateCredential: boolean;
   assignmentMembers: Member[];
   assignmentGroups: UserGroup[];
@@ -375,6 +430,7 @@ function AgentProfilePanel({
       {runtime && <AgentRuntimePanel status={runtime} />}
       {mcpInventory && <AgentMCPInventoryPanel inventory={mcpInventory} />}
       {mcpInventory && <AgentMCPOAuthPanel orgId={orgId} deviceId={profile.device_id} inventory={mcpInventory} canManage={canManageLifecycle} />}
+      {mcpInventory && <AgentMCPToolPolicyPanel orgId={orgId} deviceId={profile.device_id} inventory={mcpInventory} canManage={canManageMCPPolicy} />}
       {credentialRotation && (
         <div data-testid="agent-credential-rotation" className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
           <div>
@@ -895,6 +951,7 @@ export default function Agents() {
                       credentialRotation={credentialRotation[agent.device_id] ?? null}
                       editorVersion={profileEditorVersion}
                       canManageLifecycle={profile.permissions.manage}
+                      canManageMCPPolicy={can(myRole, "agent_mcp_tool_policy:manage")}
                       canRotateCredential={profile.permissions.rotate_credentials}
                       assignmentMembers={assignmentMembers}
                       assignmentGroups={assignmentGroups}

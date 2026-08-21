@@ -63,7 +63,7 @@ expected to be rewritten before merge.
 ## Story status (re-entry checkpoint)
 **Update this on every merge (one line) — a stale pointer re-enters a fresh session in the wrong epic.**
 
-**AUTHORITATIVE CURRENT (2026-08-20): F11 ALERTS, WEBHOOKS AND SIEM — PR #23, content tip `ddc24d6` (`ddc24d6` pre-merge). Product code, multi-finder review, targeted re-review, schema/build/web gates and the AWS DEV Slack + generic-webhook walk are complete. The real PagerDuty-key wire leg remains a NAMED SUBSTITUTE, never claimed satisfied; the story is awaiting exact required GitHub checks and explicit in-session merge sign-off.**
+**AUTHORITATIVE CURRENT (2026-08-21): F14 MCP TOOL POLICY ENFORCEMENT — PR #29, content tip `9176c91` (`9176c91` pre-merge). Product code and the DeepWiki CP walk are complete: default deny, one allowed tool, denied sibling, header/body mismatch refusal, stale-inventory fail-close, audit, and the explicit direct-upstream boundary. Required GitHub checks and story-end review remain merge prerequisites.**
 
 **AUTHORITATIVE CURRENT (2026-08-13): PRIVATE KUBERNETES SERVICE HANDOFF — PR #127, content tip `ed657460` (`a5aff92b` pre-merge). Adds selected in-cluster connector handoff, private DNS/VIPs, direct ready-endpoint DNAT, CNI-safe forwarding, persistent connector identity, and the deterministic client return route proven by the rc31 EKS walk. Earlier `CURRENT` entries below are historical.**
 

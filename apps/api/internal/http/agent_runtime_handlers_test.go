@@ -16,7 +16,7 @@ func TestRuntimeAuthMiddlewareUniformlyRefusesNonRuntimeCredentials(t *testing.T
 	h := runtimeAuthMiddleware(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
-	paths := []string{"/api/v1/agent/runtime/poll", "/api/v1/agent/runtime/report", "/api/v1/agent/runtime/credential-candidate", "/api/v1/agent/runtime/wireguard-candidate"}
+	paths := []string{"/api/v1/agent/runtime/poll", "/api/v1/agent/runtime/report", "/api/v1/agent/runtime/credential-candidate", "/api/v1/agent/runtime/wireguard-candidate", "/api/v1/agent/runtime/mcp-tool-policy", "/api/v1/agent/runtime/mcp-oauth-lease"}
 	tokens := []string{"", "Bearer tnx_session_like", "Bearer tnx_runtime_unknown", "Basic not-a-bearer"}
 	var wantBody string
 	for _, path := range paths {
@@ -60,5 +60,38 @@ func TestAgentRuntimeStatusChecksPermissionBeforeRuntimeState(t *testing.T) {
 	_, err := (apiServer{}).GetAgentRuntimeStatus(context.Background(), api.GetAgentRuntimeStatusRequestObject{})
 	if !hasCode(err, http.StatusUnauthorized, "unauthenticated") {
 		t.Fatalf("status without principal = %v, want permission/auth refusal before state access", err)
+	}
+}
+
+func TestMCPInventoryValidatorAllowsJSONSchemaPropertyNames(t *testing.T) {
+	inventory := map[string]interface{}{
+		"servers": []interface{}{map[string]interface{}{
+			"tools": []interface{}{map[string]interface{}{
+				"input_schema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"content": map[string]interface{}{"type": "string"},
+						"repoName": map[string]interface{}{"anyOf": []interface{}{
+							map[string]interface{}{"items": map[string]interface{}{"type": "string"}},
+						}},
+					},
+				},
+				"output_schema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"result": map[string]interface{}{"type": "string"},
+					},
+				},
+			}},
+		}},
+	}
+	if !validMCPInventoryValue(inventory) {
+		t.Fatal("schema property names must not be treated as MCP result/content")
+	}
+}
+
+func TestMCPInventoryValidatorRejectsResultOutsideSchema(t *testing.T) {
+	if validMCPInventoryValue(map[string]interface{}{"result": "tool output"}) {
+		t.Fatal("MCP result content outside a schema must remain rejected")
 	}
 }

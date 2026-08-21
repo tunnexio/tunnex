@@ -203,9 +203,12 @@ func sameMCPMetadata(left, right map[string]interface{}) bool {
 }
 
 func validMCPInventoryValue(value interface{}) bool {
-	const maxDepth = 10
-	var walk func(interface{}, int) bool
-	walk = func(v interface{}, depth int) bool {
+	// Modern JSON Schema frequently nests properties through anyOf/items beyond
+	// the old ten-level generic payload limit. Keep the report bounded without
+	// rejecting a valid inventory merely because its schema is expressive.
+	const maxDepth = 32
+	var walk func(interface{}, int, bool, bool) bool
+	walk = func(v interface{}, depth int, inSchema, schemaProperties bool) bool {
 		if depth > maxDepth {
 			return false
 		}
@@ -214,9 +217,19 @@ func validMCPInventoryValue(value interface{}) bool {
 			for key, child := range x {
 				switch strings.ToLower(key) {
 				case "authorization", "credential", "credentials", "token", "access_token", "refresh_token", "session", "session_id", "content", "contents", "messages", "result":
-					return false
+					// JSON Schema property names are inventory metadata, not MCP
+					// response content. Modern servers commonly declare a property
+					// named "result" (and may declare "content") in input/output
+					// schemas; preserve that existing F12 contract while continuing
+					// to reject those names everywhere else in the report.
+					if !inSchema || !schemaProperties {
+						return false
+					}
 				}
-				if len(key) > 128 || !walk(child, depth+1) {
+				lowerKey := strings.ToLower(key)
+				childInSchema := inSchema || lowerKey == "input_schema" || lowerKey == "output_schema"
+				childSchemaProperties := childInSchema && lowerKey == "properties"
+				if len(key) > 128 || !walk(child, depth+1, childInSchema, childSchemaProperties) {
 					return false
 				}
 			}
@@ -225,7 +238,7 @@ func validMCPInventoryValue(value interface{}) bool {
 				return false
 			}
 			for _, child := range x {
-				if !walk(child, depth+1) {
+				if !walk(child, depth+1, inSchema, schemaProperties) {
 					return false
 				}
 			}
@@ -234,7 +247,7 @@ func validMCPInventoryValue(value interface{}) bool {
 		}
 		return true
 	}
-	return walk(value, 0)
+	return walk(value, 0, false, false)
 }
 
 func (s apiServer) GetAgentRuntimeStatus(ctx context.Context, req api.GetAgentRuntimeStatusRequestObject) (api.GetAgentRuntimeStatusResponseObject, error) {
@@ -312,5 +325,5 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 }
 
 func isRuntimeChannelPath(path string) bool {
-	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate"
+	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate" || path == "/api/v1/agent/runtime/mcp-tool-policy" || path == "/api/v1/agent/runtime/mcp-oauth-lease"
 }

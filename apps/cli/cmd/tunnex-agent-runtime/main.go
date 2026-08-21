@@ -30,6 +30,8 @@ func main() {
 	if endpoints := strings.TrimSpace(os.Getenv("TUNNEX_MCP_INVENTORY_ENDPOINTS")); endpoints != "" {
 		opts.MCPInventoryEndpoints = strings.Split(endpoints, ",")
 	}
+	opts.MCPProxyListen = strings.TrimSpace(os.Getenv("TUNNEX_MCP_PROXY_LISTEN"))
+	opts.MCPProxyUpstream = strings.TrimSpace(os.Getenv("TUNNEX_MCP_PROXY_UPSTREAM"))
 	if err := cli.RunManagedAgent(ctx, opts); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "tunnex-agent-runtime: stopped:", err)
 		os.Exit(1)

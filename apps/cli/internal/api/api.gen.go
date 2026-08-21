@@ -1052,6 +1052,14 @@ type AgentMCPOAuthConsentStart struct {
 // AgentMCPOAuthConsentStartState defines model for AgentMCPOAuthConsentStart.State.
 type AgentMCPOAuthConsentStartState string
 
+// AgentMCPToolPolicy defines model for AgentMCPToolPolicy.
+type AgentMCPToolPolicy struct {
+	CreatedAt           time.Time           `json:"created_at"`
+	InventoryObservedAt time.Time           `json:"inventory_observed_at"`
+	Rules               []MCPToolPolicyRule `json:"rules"`
+	Version             int64               `json:"version"`
+}
+
 // AgentManagingGroupUpdate defines model for AgentManagingGroupUpdate.
 type AgentManagingGroupUpdate struct {
 	GroupId *openapi_types.UUID `json:"group_id"`
@@ -2103,6 +2111,14 @@ type LoginResult struct {
 	User        *AuthUser `json:"user,omitempty"`
 }
 
+// MCPToolPolicyRule defines model for MCPToolPolicyRule.
+type MCPToolPolicyRule struct {
+	Endpoint        string `json:"endpoint"`
+	InputSchemaHash string `json:"input_schema_hash"`
+	ServerName      string `json:"server_name"`
+	ToolName        string `json:"tool_name"`
+}
+
 // MachineCredential defines model for MachineCredential.
 type MachineCredential struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -2523,6 +2539,11 @@ type RekeyResponse struct {
 	CertPem string `json:"cert_pem"`
 }
 
+// ReplaceAgentMCPToolPolicyRequest defines model for ReplaceAgentMCPToolPolicyRequest.
+type ReplaceAgentMCPToolPolicyRequest struct {
+	Rules []MCPToolPolicyRule `json:"rules"`
+}
+
 // ResizeConflict defines model for ResizeConflict.
 type ResizeConflict struct {
 	OrphanCount int      `json:"orphan_count"`
@@ -2612,6 +2633,22 @@ type RoutedRanges struct {
 
 	// Ranges Approved site-subnet CIDRs (canonical masked form, sorted) pushed to split-tunnel device AllowedIPs (S8.5). Ranges only — no identity material. Empty when none declared.
 	Ranges []string `json:"ranges"`
+}
+
+// RuntimeMCPOAuthLease defines model for RuntimeMCPOAuthLease.
+type RuntimeMCPOAuthLease struct {
+	// AccessToken Runtime-only transient credential. Never returned by a human/session endpoint.
+	AccessToken *string   `json:"access_token,omitempty"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+// RuntimeMCPToolPolicy defines model for RuntimeMCPToolPolicy.
+type RuntimeMCPToolPolicy struct {
+	InventoryObservedAt *time.Time          `json:"inventory_observed_at"`
+	Rules               []MCPToolPolicyRule `json:"rules"`
+
+	// Version Zero means no usable policy and therefore deny all.
+	Version int64 `json:"version"`
 }
 
 // SetAgentJITAccessSettingRequest defines model for SetAgentJITAccessSettingRequest.
@@ -2882,6 +2919,11 @@ type ZeroTrustModeMode string
 // and CLI can surface directly; `code` is stable for programmatic handling.
 type RuntimeUnauthorized = Error
 
+// GetRuntimeMCPOAuthLeaseParams defines parameters for GetRuntimeMCPOAuthLease.
+type GetRuntimeMCPOAuthLeaseParams struct {
+	Endpoint string `form:"endpoint" json:"endpoint"`
+}
+
 // PollAgentRuntimeParams defines parameters for PollAgentRuntime.
 type PollAgentRuntimeParams struct {
 	AppliedRevision int64  `form:"applied_revision" json:"applied_revision"`
@@ -3125,6 +3167,9 @@ type UpdateAgentProfileJSONRequestBody = UpdateAgentProfileRequest
 
 // StartAgentMCPOAuthConnectionJSONRequestBody defines body for StartAgentMCPOAuthConnection for application/json ContentType.
 type StartAgentMCPOAuthConnectionJSONRequestBody = StartAgentMCPOAuthConnectionRequest
+
+// ReplaceAgentMCPToolPolicyJSONRequestBody defines body for ReplaceAgentMCPToolPolicy for application/json ContentType.
+type ReplaceAgentMCPToolPolicyJSONRequestBody = ReplaceAgentMCPToolPolicyRequest
 
 // CreateAlertDestinationJSONRequestBody defines body for CreateAlertDestination for application/json ContentType.
 type CreateAlertDestinationJSONRequestBody = CreateAlertDestinationRequest
@@ -3376,6 +3421,12 @@ type ClientInterface interface {
 	PrepareAgentRuntimeCredentialWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PrepareAgentRuntimeCredential(ctx context.Context, body PrepareAgentRuntimeCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRuntimeMCPOAuthLease request
+	GetRuntimeMCPOAuthLease(ctx context.Context, params *GetRuntimeMCPOAuthLeaseParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRuntimeMCPToolPolicy request
+	GetRuntimeMCPToolPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PollAgentRuntime request
 	PollAgentRuntime(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3683,6 +3734,14 @@ type ClientInterface interface {
 	StartAgentMCPOAuthConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	StartAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentMCPToolPolicy request
+	GetAgentMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceAgentMCPToolPolicyWithBody request with any body
+	ReplaceAgentMCPToolPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReplaceAgentMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentRuntimeStatus request
 	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4313,6 +4372,30 @@ func (c *Client) PrepareAgentRuntimeCredentialWithBody(ctx context.Context, cont
 
 func (c *Client) PrepareAgentRuntimeCredential(ctx context.Context, body PrepareAgentRuntimeCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPrepareAgentRuntimeCredentialRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetRuntimeMCPOAuthLease(ctx context.Context, params *GetRuntimeMCPOAuthLeaseParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRuntimeMCPOAuthLeaseRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetRuntimeMCPToolPolicy(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRuntimeMCPToolPolicyRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -5693,6 +5776,42 @@ func (c *Client) StartAgentMCPOAuthConnectionWithBody(ctx context.Context, orgId
 
 func (c *Client) StartAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStartAgentMCPOAuthConnectionRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentMCPToolPolicyRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceAgentMCPToolPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceAgentMCPToolPolicyRequestWithBody(c.Server, orgId, deviceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceAgentMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceAgentMCPToolPolicyRequest(c.Server, orgId, deviceId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7933,6 +8052,78 @@ func NewPrepareAgentRuntimeCredentialRequestWithBody(server string, contentType 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetRuntimeMCPOAuthLeaseRequest generates requests for GetRuntimeMCPOAuthLease
+func NewGetRuntimeMCPOAuthLeaseRequest(server string, params *GetRuntimeMCPOAuthLeaseParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/mcp-oauth-lease")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "endpoint", runtime.ParamLocationQuery, params.Endpoint); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRuntimeMCPToolPolicyRequest generates requests for GetRuntimeMCPToolPolicy
+func NewGetRuntimeMCPToolPolicyRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/mcp-tool-policy")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -11344,6 +11535,101 @@ func NewStartAgentMCPOAuthConnectionRequestWithBody(server string, orgId openapi
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAgentMCPToolPolicyRequest generates requests for GetAgentMCPToolPolicy
+func NewGetAgentMCPToolPolicyRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-policy", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReplaceAgentMCPToolPolicyRequest calls the generic ReplaceAgentMCPToolPolicy builder with application/json body
+func NewReplaceAgentMCPToolPolicyRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceAgentMCPToolPolicyRequestWithBody(server, orgId, deviceId, "application/json", bodyReader)
+}
+
+// NewReplaceAgentMCPToolPolicyRequestWithBody generates requests for ReplaceAgentMCPToolPolicy with any type of body
+func NewReplaceAgentMCPToolPolicyRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-policy", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -16335,6 +16621,12 @@ type ClientWithResponsesInterface interface {
 
 	PrepareAgentRuntimeCredentialWithResponse(ctx context.Context, body PrepareAgentRuntimeCredentialJSONRequestBody, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeCredentialResponse, error)
 
+	// GetRuntimeMCPOAuthLeaseWithResponse request
+	GetRuntimeMCPOAuthLeaseWithResponse(ctx context.Context, params *GetRuntimeMCPOAuthLeaseParams, reqEditors ...RequestEditorFn) (*GetRuntimeMCPOAuthLeaseResponse, error)
+
+	// GetRuntimeMCPToolPolicyWithResponse request
+	GetRuntimeMCPToolPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRuntimeMCPToolPolicyResponse, error)
+
 	// PollAgentRuntimeWithResponse request
 	PollAgentRuntimeWithResponse(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*PollAgentRuntimeResponse, error)
 
@@ -16641,6 +16933,14 @@ type ClientWithResponsesInterface interface {
 	StartAgentMCPOAuthConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartAgentMCPOAuthConnectionResponse, error)
 
 	StartAgentMCPOAuthConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*StartAgentMCPOAuthConnectionResponse, error)
+
+	// GetAgentMCPToolPolicyWithResponse request
+	GetAgentMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentMCPToolPolicyResponse, error)
+
+	// ReplaceAgentMCPToolPolicyWithBodyWithResponse request with any body
+	ReplaceAgentMCPToolPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceAgentMCPToolPolicyResponse, error)
+
+	ReplaceAgentMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceAgentMCPToolPolicyResponse, error)
 
 	// GetAgentRuntimeStatusWithResponse request
 	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
@@ -17298,6 +17598,54 @@ func (r PrepareAgentRuntimeCredentialResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PrepareAgentRuntimeCredentialResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetRuntimeMCPOAuthLeaseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *RuntimeMCPOAuthLease
+	JSON401      *RuntimeUnauthorized
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRuntimeMCPOAuthLeaseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRuntimeMCPOAuthLeaseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetRuntimeMCPToolPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *RuntimeMCPToolPolicy
+	JSON401      *RuntimeUnauthorized
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRuntimeMCPToolPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRuntimeMCPToolPolicyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -19062,6 +19410,52 @@ func (r StartAgentMCPOAuthConnectionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r StartAgentMCPOAuthConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentMCPToolPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPToolPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentMCPToolPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentMCPToolPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReplaceAgentMCPToolPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPToolPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceAgentMCPToolPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceAgentMCPToolPolicyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -21683,6 +22077,24 @@ func (c *ClientWithResponses) PrepareAgentRuntimeCredentialWithResponse(ctx cont
 	return ParsePrepareAgentRuntimeCredentialResponse(rsp)
 }
 
+// GetRuntimeMCPOAuthLeaseWithResponse request returning *GetRuntimeMCPOAuthLeaseResponse
+func (c *ClientWithResponses) GetRuntimeMCPOAuthLeaseWithResponse(ctx context.Context, params *GetRuntimeMCPOAuthLeaseParams, reqEditors ...RequestEditorFn) (*GetRuntimeMCPOAuthLeaseResponse, error) {
+	rsp, err := c.GetRuntimeMCPOAuthLease(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRuntimeMCPOAuthLeaseResponse(rsp)
+}
+
+// GetRuntimeMCPToolPolicyWithResponse request returning *GetRuntimeMCPToolPolicyResponse
+func (c *ClientWithResponses) GetRuntimeMCPToolPolicyWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRuntimeMCPToolPolicyResponse, error) {
+	rsp, err := c.GetRuntimeMCPToolPolicy(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRuntimeMCPToolPolicyResponse(rsp)
+}
+
 // PollAgentRuntimeWithResponse request returning *PollAgentRuntimeResponse
 func (c *ClientWithResponses) PollAgentRuntimeWithResponse(ctx context.Context, params *PollAgentRuntimeParams, reqEditors ...RequestEditorFn) (*PollAgentRuntimeResponse, error) {
 	rsp, err := c.PollAgentRuntime(ctx, params, reqEditors...)
@@ -22678,6 +23090,32 @@ func (c *ClientWithResponses) StartAgentMCPOAuthConnectionWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseStartAgentMCPOAuthConnectionResponse(rsp)
+}
+
+// GetAgentMCPToolPolicyWithResponse request returning *GetAgentMCPToolPolicyResponse
+func (c *ClientWithResponses) GetAgentMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentMCPToolPolicyResponse, error) {
+	rsp, err := c.GetAgentMCPToolPolicy(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentMCPToolPolicyResponse(rsp)
+}
+
+// ReplaceAgentMCPToolPolicyWithBodyWithResponse request with arbitrary body returning *ReplaceAgentMCPToolPolicyResponse
+func (c *ClientWithResponses) ReplaceAgentMCPToolPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceAgentMCPToolPolicyResponse, error) {
+	rsp, err := c.ReplaceAgentMCPToolPolicyWithBody(ctx, orgId, deviceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceAgentMCPToolPolicyResponse(rsp)
+}
+
+func (c *ClientWithResponses) ReplaceAgentMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceAgentMCPToolPolicyResponse, error) {
+	rsp, err := c.ReplaceAgentMCPToolPolicy(ctx, orgId, deviceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceAgentMCPToolPolicyResponse(rsp)
 }
 
 // GetAgentRuntimeStatusWithResponse request returning *GetAgentRuntimeStatusResponse
@@ -24326,6 +24764,86 @@ func ParsePrepareAgentRuntimeCredentialResponse(rsp *http.Response) (*PrepareAge
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRuntimeMCPOAuthLeaseResponse parses an HTTP response from a GetRuntimeMCPOAuthLeaseWithResponse call
+func ParseGetRuntimeMCPOAuthLeaseResponse(rsp *http.Response) (*GetRuntimeMCPOAuthLeaseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRuntimeMCPOAuthLeaseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RuntimeMCPOAuthLease
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest RuntimeUnauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRuntimeMCPToolPolicyResponse parses an HTTP response from a GetRuntimeMCPToolPolicyWithResponse call
+func ParseGetRuntimeMCPToolPolicyResponse(rsp *http.Response) (*GetRuntimeMCPToolPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRuntimeMCPToolPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RuntimeMCPToolPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest RuntimeUnauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -26824,6 +27342,72 @@ func ParseStartAgentMCPOAuthConnectionResponse(rsp *http.Response) (*StartAgentM
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentMCPToolPolicyResponse parses an HTTP response from a GetAgentMCPToolPolicyWithResponse call
+func ParseGetAgentMCPToolPolicyResponse(rsp *http.Response) (*GetAgentMCPToolPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentMCPToolPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPToolPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceAgentMCPToolPolicyResponse parses an HTTP response from a ReplaceAgentMCPToolPolicyWithResponse call
+func ParseReplaceAgentMCPToolPolicyResponse(rsp *http.Response) (*ReplaceAgentMCPToolPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceAgentMCPToolPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPToolPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
