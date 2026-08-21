@@ -92,8 +92,8 @@ func ValidateMCPToolRequest(expectedVersion string, header http.Header, body []b
 			return MCPToolRequest{}, headerMismatch("MCP method header does not match request body")
 		}
 		if name != "" && header.Get("Mcp-Name") != "" {
-			name, err := decodeMCPHeaderValue(header.Get("Mcp-Name"))
-			if err != nil || name != nameForMethod(raw.Method, params) {
+			headerName, err := decodeMCPHeaderValue(header.Get("Mcp-Name"))
+			if err != nil || headerName != name {
 				return MCPToolRequest{}, headerMismatch("MCP name header does not match request body")
 			}
 		}
@@ -112,17 +112,6 @@ func ValidateMCPToolRequest(expectedVersion string, header http.Header, body []b
 		}
 	}
 	return out, nil
-}
-
-func nameForMethod(method string, params struct {
-	Name string                 `json:"name"`
-	URI  string                 `json:"uri"`
-	Meta map[string]interface{} `json:"_meta"`
-}) string {
-	if method == "resources/read" {
-		return params.URI
-	}
-	return params.Name
 }
 
 func isJSONObject(body []byte) bool {

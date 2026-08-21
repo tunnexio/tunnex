@@ -496,6 +496,9 @@ type Querier interface {
 	GetAgentMCPInventory(ctx context.Context, arg GetAgentMCPInventoryParams) (AgentMcpInventory, error)
 	GetAgentMCPOAuthConnection(ctx context.Context, arg GetAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
 	GetAgentMCPOAuthConnectionForCallback(ctx context.Context, arg GetAgentMCPOAuthConnectionForCallbackParams) (AgentMcpOauthConnection, error)
+	// This is the sole F14 query that reads sealed material. It is callable only
+	// from the machine-authenticated runtime lease path, never a human/API list.
+	GetAgentMCPOAuthConnectionForRuntime(ctx context.Context, arg GetAgentMCPOAuthConnectionForRuntimeParams) (AgentMcpOauthConnection, error)
 	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -1204,6 +1207,7 @@ type Querier interface {
 	// A delivery is claimed before outbound I/O. If that worker dies, a later
 	// leader requeues only claims older than the bounded dispatcher lease.
 	RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverStaleAlertDeliveriesParams) (int64, error)
+	RefreshAgentMCPOAuthConnection(ctx context.Context, arg RefreshAgentMCPOAuthConnectionParams) (int64, error)
 	RejectAgentAccessRequest(ctx context.Context, arg RejectAgentAccessRequestParams) (AgentAccessRequest, error)
 	// S7.3: pending -> revoked, FREEING the held pool IP (assigned_ip=NULL) so it returns to
 	// the pool for reuse (D1b — the same release RevokeDevice does). Only a PENDING device

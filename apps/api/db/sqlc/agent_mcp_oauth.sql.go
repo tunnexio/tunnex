@@ -134,6 +134,47 @@ func (q *Queries) GetAgentMCPOAuthConnectionForCallback(ctx context.Context, arg
 	return i, err
 }
 
+const getAgentMCPOAuthConnectionForRuntime = `-- name: GetAgentMCPOAuthConnectionForRuntime :one
+SELECT id, org_id, device_id, endpoint, protected_resource, issuer, scopes, client_id, client_secret_sealed, client_secret_fingerprint, access_token_sealed, refresh_token_sealed, token_expires_at, state, failure_code, connected_by_user_id, connected_at, created_at, updated_at FROM agent_mcp_oauth_connections
+WHERE org_id=$1 AND device_id=$2
+  AND endpoint=$3 AND state='connected'
+`
+
+type GetAgentMCPOAuthConnectionForRuntimeParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+	Endpoint string    `json:"endpoint"`
+}
+
+// This is the sole F14 query that reads sealed material. It is callable only
+// from the machine-authenticated runtime lease path, never a human/API list.
+func (q *Queries) GetAgentMCPOAuthConnectionForRuntime(ctx context.Context, arg GetAgentMCPOAuthConnectionForRuntimeParams) (AgentMcpOauthConnection, error) {
+	row := q.db.QueryRow(ctx, getAgentMCPOAuthConnectionForRuntime, arg.OrgID, arg.DeviceID, arg.Endpoint)
+	var i AgentMcpOauthConnection
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DeviceID,
+		&i.Endpoint,
+		&i.ProtectedResource,
+		&i.Issuer,
+		&i.Scopes,
+		&i.ClientID,
+		&i.ClientSecretSealed,
+		&i.ClientSecretFingerprint,
+		&i.AccessTokenSealed,
+		&i.RefreshTokenSealed,
+		&i.TokenExpiresAt,
+		&i.State,
+		&i.FailureCode,
+		&i.ConnectedByUserID,
+		&i.ConnectedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listAgentMCPOAuthConnections = `-- name: ListAgentMCPOAuthConnections :many
 SELECT id, org_id, device_id, endpoint, protected_resource, issuer, scopes, client_id, client_secret_fingerprint, token_expires_at, state, failure_code, connected_by_user_id, connected_at, created_at, updated_at
 FROM agent_mcp_oauth_connections WHERE org_id=$1 AND device_id=$2 ORDER BY created_at
@@ -198,6 +239,37 @@ func (q *Queries) ListAgentMCPOAuthConnections(ctx context.Context, arg ListAgen
 		return nil, err
 	}
 	return items, nil
+}
+
+const refreshAgentMCPOAuthConnection = `-- name: RefreshAgentMCPOAuthConnection :execrows
+UPDATE agent_mcp_oauth_connections
+SET access_token_sealed=$1,
+    refresh_token_sealed=COALESCE($2, refresh_token_sealed),
+    token_expires_at=$3,
+    state='connected', failure_code=NULL
+WHERE id=$4 AND org_id=$5 AND state='connected'
+`
+
+type RefreshAgentMCPOAuthConnectionParams struct {
+	AccessTokenSealed  *string            `json:"access_token_sealed"`
+	RefreshTokenSealed *string            `json:"refresh_token_sealed"`
+	TokenExpiresAt     pgtype.Timestamptz `json:"token_expires_at"`
+	ID                 uuid.UUID          `json:"id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+}
+
+func (q *Queries) RefreshAgentMCPOAuthConnection(ctx context.Context, arg RefreshAgentMCPOAuthConnectionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, refreshAgentMCPOAuthConnection,
+		arg.AccessTokenSealed,
+		arg.RefreshTokenSealed,
+		arg.TokenExpiresAt,
+		arg.ID,
+		arg.OrgID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertAgentMCPOAuthConnection = `-- name: UpsertAgentMCPOAuthConnection :one

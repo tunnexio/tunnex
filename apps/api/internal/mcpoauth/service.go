@@ -28,6 +28,7 @@ var (
 	ErrExchange         = errors.New("MCP OAuth exchange failed")
 	ErrMetadata         = errors.New("MCP OAuth issuer metadata rejected")
 	ErrAlreadyConnected = errors.New("MCP OAuth connection is already connected")
+	ErrLease            = errors.New("MCP OAuth runtime lease is unavailable")
 )
 
 type StartInput struct {
@@ -238,6 +239,89 @@ func (s *Service) List(ctx context.Context, orgID, deviceID uuid.UUID) ([]Connec
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// Lease is the narrow F14 token handoff. It is called only by a runtime bearer
+// for its own device and returns plaintext only in that TLS response; callers
+// must retain it in memory and must never report, log, or persist it locally.
+func (s *Service) Lease(ctx context.Context, orgID, deviceID uuid.UUID, endpoint string) (string, time.Time, error) {
+	if s == nil || s.queries == nil || s.sealer == nil || orgID == uuid.Nil || deviceID == uuid.Nil || !validURL(endpoint) {
+		return "", time.Time{}, ErrLease
+	}
+	row, err := s.queries.GetAgentMCPOAuthConnectionForRuntime(ctx, sqlc.GetAgentMCPOAuthConnectionForRuntimeParams{OrgID: orgID, DeviceID: deviceID, Endpoint: canonicalURL(endpoint)})
+	if err != nil || row.AccessTokenSealed == nil {
+		return "", time.Time{}, ErrLease
+	}
+	now := time.Now().UTC()
+	if row.TokenExpiresAt.Valid && row.TokenExpiresAt.Time.After(now.Add(30*time.Second)) {
+		plain, openErr := s.sealer.Open(*row.AccessTokenSealed)
+		if openErr != nil || len(plain) == 0 {
+			return "", time.Time{}, ErrLease
+		}
+		return string(plain), row.TokenExpiresAt.Time, nil
+	}
+	if row.RefreshTokenSealed == nil {
+		return "", time.Time{}, ErrLease
+	}
+	refresh, openErr := s.sealer.Open(*row.RefreshTokenSealed)
+	if openErr != nil || len(refresh) == 0 {
+		return "", time.Time{}, ErrLease
+	}
+	metadata, metadataErr := s.authorizationMetadata(ctx, row.Issuer)
+	if metadataErr != nil {
+		return "", time.Time{}, ErrLease
+	}
+	secret := ""
+	if row.ClientSecretSealed != nil {
+		value, secretErr := s.sealer.Open(*row.ClientSecretSealed)
+		if secretErr != nil {
+			return "", time.Time{}, ErrLease
+		}
+		secret = string(value)
+	}
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {string(refresh)}, "client_id": {row.ClientID}, "resource": {row.ProtectedResource}}
+	if secret != "" {
+		form.Set("client_secret", secret)
+	}
+	req, requestErr := http.NewRequestWithContext(ctx, http.MethodPost, metadata.TokenEndpoint, strings.NewReader(form.Encode()))
+	if requestErr != nil {
+		return "", time.Time{}, ErrLease
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, requestErr := s.http.Do(req)
+	if requestErr != nil {
+		return "", time.Time{}, ErrLease
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", time.Time{}, ErrLease
+	}
+	var token struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+	}
+	if json.NewDecoder(response.Body).Decode(&token) != nil || strings.TrimSpace(token.AccessToken) == "" || token.ExpiresIn <= 0 || token.ExpiresIn > 31_536_000 {
+		return "", time.Time{}, ErrLease
+	}
+	access, sealErr := s.sealer.Seal([]byte(token.AccessToken))
+	if sealErr != nil {
+		return "", time.Time{}, ErrLease
+	}
+	var nextRefresh *string
+	if token.RefreshToken != "" {
+		value, err := s.sealer.Seal([]byte(token.RefreshToken))
+		if err != nil {
+			return "", time.Time{}, ErrLease
+		}
+		nextRefresh = &value
+	}
+	expires := now.Add(time.Duration(token.ExpiresIn) * time.Second)
+	changed, updateErr := s.queries.RefreshAgentMCPOAuthConnection(ctx, sqlc.RefreshAgentMCPOAuthConnectionParams{ID: row.ID, OrgID: orgID, AccessTokenSealed: &access, RefreshTokenSealed: nextRefresh, TokenExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true}})
+	if updateErr != nil || changed != 1 {
+		return "", time.Time{}, ErrLease
+	}
+	return token.AccessToken, expires, nil
 }
 
 type flowState struct {

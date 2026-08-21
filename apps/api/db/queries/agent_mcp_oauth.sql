@@ -11,6 +11,13 @@ SELECT * FROM agent_mcp_oauth_connections WHERE id=sqlc.arg(id) AND org_id=sqlc.
 -- name: GetAgentMCPOAuthConnectionForCallback :one
 SELECT * FROM agent_mcp_oauth_connections WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id);
 
+-- name: GetAgentMCPOAuthConnectionForRuntime :one
+-- This is the sole F14 query that reads sealed material. It is callable only
+-- from the machine-authenticated runtime lease path, never a human/API list.
+SELECT * FROM agent_mcp_oauth_connections
+WHERE org_id=sqlc.arg(org_id) AND device_id=sqlc.arg(device_id)
+  AND endpoint=sqlc.arg(endpoint) AND state='connected';
+
 -- name: ListAgentMCPOAuthConnections :many
 SELECT id, org_id, device_id, endpoint, protected_resource, issuer, scopes, client_id, client_secret_fingerprint, token_expires_at, state, failure_code, connected_by_user_id, connected_at, created_at, updated_at
 FROM agent_mcp_oauth_connections WHERE org_id=sqlc.arg(org_id) AND device_id=sqlc.arg(device_id) ORDER BY created_at;
@@ -18,6 +25,14 @@ FROM agent_mcp_oauth_connections WHERE org_id=sqlc.arg(org_id) AND device_id=sql
 -- name: ConnectAgentMCPOAuthConnection :execrows
 UPDATE agent_mcp_oauth_connections SET access_token_sealed=sqlc.arg(access_token_sealed), refresh_token_sealed=sqlc.narg(refresh_token_sealed), token_expires_at=sqlc.narg(token_expires_at), state='connected', failure_code=NULL, connected_by_user_id=sqlc.arg(connected_by_user_id), connected_at=now()
 WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id);
+
+-- name: RefreshAgentMCPOAuthConnection :execrows
+UPDATE agent_mcp_oauth_connections
+SET access_token_sealed=sqlc.arg(access_token_sealed),
+    refresh_token_sealed=COALESCE(sqlc.narg(refresh_token_sealed), refresh_token_sealed),
+    token_expires_at=sqlc.narg(token_expires_at),
+    state='connected', failure_code=NULL
+WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND state='connected';
 
 -- name: FailAgentMCPOAuthConnection :execrows
 UPDATE agent_mcp_oauth_connections SET state='failed', failure_code=sqlc.arg(failure_code)

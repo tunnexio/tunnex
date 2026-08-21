@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/cli/internal/api"
@@ -51,6 +52,8 @@ type ManagedRuntimeOptions struct {
 	ApplyCommand          func(context.Context, string, string) error
 	RotateKeyCommand      func(context.Context, string, string) error
 	MCPInventoryEndpoints []string
+	MCPProxyListen        string
+	MCPProxyUpstream      string
 }
 
 func DefaultManagedRuntimeOptions() ManagedRuntimeOptions {
@@ -124,6 +127,9 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	if opts.Interval <= 0 || opts.Backoff <= 0 || opts.MaxBackoff < opts.Backoff || opts.PollWait < 0 || opts.PollWait > 60 {
 		return errors.New("managed-agent runtime timing is outside bounds")
 	}
+	if (opts.MCPProxyListen == "") != (opts.MCPProxyUpstream == "") {
+		return errors.New("MCP proxy listener and upstream must be configured together")
+	}
 	if opts.Jitter == nil {
 		opts.Jitter = boundedRuntimeJitter
 	}
@@ -148,8 +154,24 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	if err != nil {
 		return err
 	}
+	proxyErr := make(chan error, 1)
+	if opts.MCPProxyListen != "" {
+		go func() {
+			proxyErr <- StartMCPToolProxy(ctx, opts.MCPProxyListen, opts.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
+				return source.MCPProxyAuthorization(proxyCtx, opts.MCPProxyUpstream)
+			})
+		}()
+	}
 	backoff := opts.Backoff
 	for {
+		select {
+		case err := <-proxyErr:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				return err
+			}
+			return nil
+		default:
+		}
 		outcome, checkErr := runtime.CheckOnce(ctx)
 		if runtime.AppliedRevision() != state.AppliedRevision {
 			state.AppliedRevision = runtime.AppliedRevision()
@@ -186,6 +208,12 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 		case <-ctx.Done():
 			timer.Stop()
 			return ctx.Err()
+		case err := <-proxyErr:
+			timer.Stop()
+			if err != nil && !errors.Is(err, context.Canceled) {
+				return err
+			}
+			return nil
 		case <-timer.C:
 		}
 	}
@@ -203,16 +231,19 @@ func boundedRuntimeJitter(delay time.Duration) time.Duration {
 }
 
 type managedRuntimeSource struct {
-	client         *api.ClientWithResponses
-	server         string
-	credential     string
-	credentialPath string
-	wait           int
-	configPath     string
-	statePath      string
-	state          *ManagedRuntimeState
-	rotateKey      func(context.Context, string, string) error
-	mcpEndpoints   []string
+	client          *api.ClientWithResponses
+	server          string
+	credential      string
+	credentialPath  string
+	wait            int
+	configPath      string
+	statePath       string
+	state           *ManagedRuntimeState
+	rotateKey       func(context.Context, string, string) error
+	mcpEndpoints    []string
+	mcpTokenMu      sync.Mutex
+	mcpToken        string
+	mcpTokenExpires time.Time
 }
 
 func newManagedRuntimeSource(server, credential, credentialPath, configPath, statePath string,
@@ -313,6 +344,48 @@ func (s *managedRuntimeSource) poll(ctx context.Context, applied int64, version 
 		wgRevision = s.state.WireGuardRevision
 	}
 	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait, WireguardRevision: &wgRevision})
+}
+
+func (s *managedRuntimeSource) MCPProxyPolicy(ctx context.Context) (MCPProxyPolicy, error) {
+	response, err := s.client.GetRuntimeMCPToolPolicyWithResponse(ctx)
+	if err != nil {
+		return MCPProxyPolicy{}, err
+	}
+	if response.StatusCode() == http.StatusUnauthorized {
+		return MCPProxyPolicy{}, ErrRuntimeUnauthorized
+	}
+	if response.JSON200 == nil {
+		return MCPProxyPolicy{}, fmt.Errorf("runtime MCP policy failed with HTTP %d", response.StatusCode())
+	}
+	policy := MCPProxyPolicy{Version: response.JSON200.Version, Rules: make([]MCPProxyRule, 0, len(response.JSON200.Rules))}
+	for _, rule := range response.JSON200.Rules {
+		policy.Rules = append(policy.Rules, MCPProxyRule{Endpoint: rule.Endpoint, ToolName: rule.ToolName})
+	}
+	return policy, nil
+}
+
+// MCPProxyAuthorization retains an OAuth token only in this process's memory.
+// A deployment without a connected F13 OAuth trust receives no injected header;
+// the upstream may still be a public MCP server. Any obtained token is bound to
+// the exact upstream supplied by the proxy configuration.
+func (s *managedRuntimeSource) MCPProxyAuthorization(ctx context.Context, endpoint string) (string, error) {
+	s.mcpTokenMu.Lock()
+	defer s.mcpTokenMu.Unlock()
+	if s.mcpToken != "" && s.mcpTokenExpires.After(time.Now().Add(30*time.Second)) {
+		return s.mcpToken, nil
+	}
+	response, err := s.client.GetRuntimeMCPOAuthLeaseWithResponse(ctx, &api.GetRuntimeMCPOAuthLeaseParams{Endpoint: endpoint})
+	if err != nil {
+		return "", err
+	}
+	if response.JSON200 == nil || response.JSON200.AccessToken == nil {
+		if response.StatusCode() == http.StatusBadGateway {
+			return "", nil // no connected OAuth trust for this upstream: do not inject caller credentials.
+		}
+		return "", fmt.Errorf("runtime MCP OAuth lease failed with HTTP %d", response.StatusCode())
+	}
+	s.mcpToken, s.mcpTokenExpires = *response.JSON200.AccessToken, response.JSON200.ExpiresAt
+	return s.mcpToken, nil
 }
 
 func wireGuardRotationState(state *api.ManagedAgentConfigWireguardRotationState) *string {
