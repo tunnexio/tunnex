@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/tunnexio/tunnex/apps/cli/internal/cli"
@@ -26,6 +27,9 @@ func main() {
 	defer stop()
 	opts := cli.DefaultManagedRuntimeOptions()
 	opts.ClientVersion = version
+	if endpoints := strings.TrimSpace(os.Getenv("TUNNEX_MCP_INVENTORY_ENDPOINTS")); endpoints != "" {
+		opts.MCPInventoryEndpoints = strings.Split(endpoints, ",")
+	}
 	if err := cli.RunManagedAgent(ctx, opts); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "tunnex-agent-runtime: stopped:", err)
 		os.Exit(1)

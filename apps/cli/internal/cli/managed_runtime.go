@@ -39,17 +39,18 @@ type ManagedRuntimeState struct {
 }
 
 type ManagedRuntimeOptions struct {
-	StatePath        string
-	CredentialPath   string
-	ConfigPath       string
-	ClientVersion    string
-	PollWait         int
-	Interval         time.Duration
-	Backoff          time.Duration
-	MaxBackoff       time.Duration
-	Jitter           func(time.Duration) time.Duration
-	ApplyCommand     func(context.Context, string, string) error
-	RotateKeyCommand func(context.Context, string, string) error
+	StatePath             string
+	CredentialPath        string
+	ConfigPath            string
+	ClientVersion         string
+	PollWait              int
+	Interval              time.Duration
+	Backoff               time.Duration
+	MaxBackoff            time.Duration
+	Jitter                func(time.Duration) time.Duration
+	ApplyCommand          func(context.Context, string, string) error
+	RotateKeyCommand      func(context.Context, string, string) error
+	MCPInventoryEndpoints []string
 }
 
 func DefaultManagedRuntimeOptions() ManagedRuntimeOptions {
@@ -138,7 +139,7 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 		return err
 	}
 	source, err := newManagedRuntimeSource(state.Server, credential, opts.CredentialPath, opts.ConfigPath,
-		opts.StatePath, &state, opts.PollWait, opts.RotateKeyCommand)
+		opts.StatePath, &state, opts.PollWait, opts.RotateKeyCommand, opts.MCPInventoryEndpoints)
 	if err != nil {
 		return err
 	}
@@ -211,12 +212,17 @@ type managedRuntimeSource struct {
 	statePath      string
 	state          *ManagedRuntimeState
 	rotateKey      func(context.Context, string, string) error
+	mcpEndpoints   []string
 }
 
 func newManagedRuntimeSource(server, credential, credentialPath, configPath, statePath string,
-	state *ManagedRuntimeState, wait int, rotateKey func(context.Context, string, string) error) (*managedRuntimeSource, error) {
+	state *ManagedRuntimeState, wait int, rotateKey func(context.Context, string, string) error, mcpEndpoints ...[]string) (*managedRuntimeSource, error) {
+	var endpoints []string
+	if len(mcpEndpoints) > 0 {
+		endpoints = mcpEndpoints[0]
+	}
 	s := &managedRuntimeSource{server: strings.TrimRight(server, "/"), credentialPath: credentialPath,
-		configPath: configPath, statePath: statePath, state: state, wait: wait, rotateKey: rotateKey}
+		configPath: configPath, statePath: statePath, state: state, wait: wait, rotateKey: rotateKey, mcpEndpoints: endpoints}
 	if err := s.setCredential(credential); err != nil {
 		return nil, err
 	}
@@ -593,7 +599,14 @@ func (s *managedRuntimeSource) rotateCredential(ctx context.Context, applied int
 
 func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeReport) error {
 	code := api.AgentRuntimeReportErrorCode(report.ErrorCode)
-	resp, err := s.client.ReportAgentRuntimeWithResponse(ctx, api.AgentRuntimeReport{AppliedRevision: report.AppliedRevision, AttemptedRevision: report.AttemptedRevision, ClientVersion: report.ClientVersion, ErrorCode: code})
+	if len(s.mcpEndpoints) > 0 {
+		report.MCPInventory = ObserveMCPInventory(ctx, s.mcpEndpoints)
+	}
+	body := api.AgentRuntimeReport{AppliedRevision: report.AppliedRevision, AttemptedRevision: report.AttemptedRevision, ClientVersion: report.ClientVersion, ErrorCode: code}
+	if report.MCPInventory != nil {
+		body.McpInventory = &report.MCPInventory
+	}
+	resp, err := s.client.ReportAgentRuntimeWithResponse(ctx, body)
 	if err != nil {
 		return err
 	}

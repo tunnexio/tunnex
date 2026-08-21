@@ -41,7 +41,7 @@ func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAg
 
 func toAPIBootstrapRelease(r release.BootstrapRelease) api.AgentBootstrapRelease {
 	return api.AgentBootstrapRelease{
-		Tag: r.Tag, SourceSha: r.SourceSHA, ManifestUrl: r.ManifestURL, VerifierKeyId: r.VerifierKeyID,
+		Tag: r.Tag, SourceSha: r.SourceSHA, ManifestUrl: r.ManifestURL, VerifierKeyId: r.VerifierKeyID, VerifierPublicKey: r.VerifierPublicKey,
 		Runtime: api.AgentBootstrapRuntimeRelease{
 			Binary: api.TunnexAgentRuntime, Version: r.Runtime.Version,
 			LinuxAmd64: toAPIBootstrapAsset(r.Runtime.LinuxAMD64),

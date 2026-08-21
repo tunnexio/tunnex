@@ -13,6 +13,8 @@ package licence
 type Feature string
 
 const (
+	// FeatAgentJITAccess — expiring, owner-approved access grants for managed agents.
+	FeatAgentJITAccess Feature = "agent_jit_access"
 	// FeatMultiGateway — more than one gateway. ⚠ The COUNT is a band property, not a boolean; this only
 	// says whether the tier may exceed the free ceiling at all.
 	FeatMultiGateway Feature = "multi_gateway"
@@ -91,7 +93,7 @@ var tierFeatures = map[Tier]map[Feature]bool{
 	TierTrial:   {FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true},
 	TierStarter: {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
 	TierGrowth:  {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
-	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
+	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatAgentJITAccess: true},
 }
 
 // GatewayCeilingFor is the number of gateways a tier may ENROL. nil means unlimited.

@@ -42,6 +42,22 @@ type Node = {
 
 type AgentRuntimeStatus = components["schemas"]["AgentRuntimeStatus"];
 type AgentCredentialRotationStatus = components["schemas"]["AgentCredentialRotationStatus"];
+type AgentMCPInventory = components["schemas"]["AgentMCPInventory"];
+
+function AgentMCPInventoryPanel({ inventory }: { inventory: AgentMCPInventory }) {
+  const servers = Array.isArray(inventory.snapshot.servers) ? inventory.snapshot.servers as Array<Record<string, unknown>> : [];
+  return <div data-testid="agent-mcp-inventory" className="rounded-md border border-slate-700 p-3 text-xs text-slate-300">
+    <div className="font-semibold text-ink-heading">MCP inventory (shadow mode)</div>
+    <p className="mt-1 text-slate-500">Observed {inventory.observed_at}. No tools are called or enforced.</p>
+    {servers.length === 0 ? <p className="mt-2 text-slate-500">No MCP servers reported.</p> : servers.map((server, index) => {
+      const count = (key: string) => Array.isArray(server[key]) ? server[key].length : 0;
+      return <div key={`${String(server.endpoint)}:${index}`} className="mt-2 border-t border-slate-800 pt-2">
+        <div>{String(server.server_name ?? server.endpoint ?? "MCP server")} · {String(server.status ?? "unknown")} {server.changed === true ? "· changed" : ""}</div>
+        <div className="text-slate-500">{String(server.protocol_version ?? "unnegotiated")} · {count("tools")} tools · {count("resources")} resources · {count("prompts")} prompts</div>
+      </div>;
+    })}
+  </div>;
+}
 
 function agentStatusLabel(
   agent: AgentRow,
@@ -260,6 +276,7 @@ function AgentRuntimeSettingCard({
 function AgentProfilePanel({
   profile,
   runtime,
+  mcpInventory,
   credentialRotation,
   editorVersion,
   canManageLifecycle,
@@ -274,6 +291,7 @@ function AgentProfilePanel({
 }: {
   profile: AgentProfile;
   runtime: AgentRuntimeStatus | null;
+  mcpInventory: AgentMCPInventory | null;
   credentialRotation: AgentCredentialRotationStatus | null;
   editorVersion: number;
   canManageLifecycle: boolean;
@@ -314,6 +332,7 @@ function AgentProfilePanel({
         />
       )}
       {runtime && <AgentRuntimePanel status={runtime} />}
+      {mcpInventory && <AgentMCPInventoryPanel inventory={mcpInventory} />}
       {credentialRotation && (
         <div data-testid="agent-credential-rotation" className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
           <div>
@@ -405,6 +424,7 @@ export default function Agents() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [rows, setRows] = useState<Loaded<AgentRow[]> | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<Record<string, AgentRuntimeStatus | null>>({});
+  const [mcpInventory, setMcpInventory] = useState<Record<string, AgentMCPInventory | null>>({});
   const [credentialRotation, setCredentialRotation] = useState<Record<string, AgentCredentialRotationStatus | null>>({});
   const [profiles, setProfiles] = useState<Record<string, AgentProfile | null>>({});
   const [myRole, setMyRole] = useState<Role>();
@@ -445,6 +465,7 @@ export default function Agents() {
       setGw("");
       setNotEntitled(false);
       setRuntimeStatus({});
+      setMcpInventory({});
       setCredentialRotation({});
       setProfiles({});
       setMyRole(undefined);
@@ -520,6 +541,10 @@ export default function Agents() {
                 ? null
                 : runtimeResult.data as AgentRuntimeStatus,
             }));
+          });
+          void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-inventory", { params: { path: { orgId: id, deviceId: agent.device_id } } }).then((result) => {
+            if (cancelled) return;
+            setMcpInventory((previous) => ({ ...previous, [agent.device_id]: result.error || !result.data ? null : result.data as AgentMCPInventory }));
           });
           void api.GET(
             "/api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation",
@@ -823,6 +848,7 @@ export default function Agents() {
                     <AgentProfilePanel
                       profile={profile}
                       runtime={status ?? null}
+                      mcpInventory={mcpInventory[agent.device_id] ?? null}
                       credentialRotation={credentialRotation[agent.device_id] ?? null}
                       editorVersion={profileEditorVersion}
                       canManageLifecycle={profile.permissions.manage}

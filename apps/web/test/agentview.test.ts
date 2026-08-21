@@ -24,6 +24,7 @@ const release: BootstrapRelease = {
   source_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   manifest_url: "https://github.com/tunnexio/tunnex/releases/download/v0.4.0/release.json",
   verifier_key_id: "release-2026-01",
+  verifier_public_key: "tI_5mSPEMFKt5YDNymOVJpDwfwg3LDWBS6pEy4TWdKA",
   runtime: {
     binary: "tunnex-agent-runtime",
     version: "v0.4.0",
@@ -325,7 +326,6 @@ esac`);
           MOCK_SYSTEMCTL_CALLS: systemctlCalls,
           MOCK_UNIT: unit,
           MOCK_UNIT_SHA: sha(unitBytes),
-          TUNNEX_RELEASE_PUBLIC_KEY: "trusted-public-key",
           },
           stdio: ["pipe", "pipe", "pipe"],
         }).toString();
@@ -433,6 +433,8 @@ esac`);
     expect(cmd).toContain(release.source_sha);
     expect(cmd).toContain(release.manifest_url);
     expect(cmd).toContain(release.verifier_key_id);
+    expect(cmd).toContain(release.verifier_public_key);
+    expect(cmd).not.toContain("trusted release public key is required on the host");
     expect(cmd).toContain(release.runtime.linux_amd64.name);
     expect(cmd).toContain(release.runtime.linux_amd64.sha256);
     expect(cmd).toContain(release.runtime.linux_arm64.name);
@@ -440,6 +442,8 @@ esac`);
     expect(cmd).toContain(release.runtime.unit.name);
     expect(cmd).toContain(release.runtime.unit.sha256);
     expect(cmd).toContain('runtime_name="$expected_amd64_name"');
+    expect(cmd).toContain('curl -fsSL "$manifest_url"');
+    expect(cmd).toContain('curl -fsSL "${manifest_url%release.json}$runtime_name"');
   });
 
   it("verifies runtime bytes before install and rejects unsigned or mutable fallbacks", () => {

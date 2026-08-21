@@ -13,6 +13,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
@@ -50,7 +51,7 @@ func (s apiServer) ListAgentAccessDestinations(ctx context.Context, req api.List
 			return nil, apierr.New(403, "forbidden", "you may not access agent requests")
 		}
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	rows, err := s.agentAccess.ListDestinations(ctx, req.OrgId)
@@ -68,12 +69,16 @@ func agentAccessEditionRequired() error {
 	return apierr.Forbidden("edition_required", "just-in-time agent access is a Tunnex Enterprise feature")
 }
 
+func (s apiServer) agentAccessAvailable() bool {
+	return s.agentAccess != nil && s.licence != nil && s.licence.Has(licence.FeatAgentJITAccess, time.Now())
+}
+
 func (s apiServer) GetOrganizationAgentJITAccessSetting(ctx context.Context, req api.GetOrganizationAgentJITAccessSettingRequestObject) (api.GetOrganizationAgentJITAccessSettingResponseObject, error) {
 	ctx, err := authorize(ctx, req.OrgId, rbac.PermAgentAccessApprove)
 	if err != nil {
 		return nil, err
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	setting, err := s.agentAccess.Setting(ctx, req.OrgId)
@@ -88,7 +93,7 @@ func (s apiServer) SetOrganizationAgentJITAccessEnabled(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	if req.Body == nil {
@@ -115,7 +120,7 @@ func (s apiServer) CreateAgentAccessRequest(ctx context.Context, req api.CreateA
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.Body.DeviceId, rbac.PermAgentAccessRequest); err != nil {
 		return nil, err
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	row, replay, err := s.agentAccess.Create(ctx, req.OrgId, actorID(ctx), agentaccess.CreateInput{
@@ -171,7 +176,7 @@ func (s apiServer) ListAgentAccessRequests(ctx context.Context, req api.ListAgen
 			return nil, err
 		}
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	pageSize := int32(50)
@@ -221,7 +226,7 @@ func (s apiServer) GetAgentAccessRequest(ctx context.Context, req api.GetAgentAc
 	if !allowed {
 		return nil, apierr.New(403, "forbidden", "you may not access agent requests")
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	row, events, err := s.agentAccess.Get(ctx, req.OrgId, req.RequestId)
@@ -240,7 +245,7 @@ func (s apiServer) ApproveAgentAccessRequest(ctx context.Context, req api.Approv
 	if err != nil {
 		return nil, err
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	if req.Body == nil {
@@ -259,7 +264,7 @@ func (s apiServer) RejectAgentAccessRequest(ctx context.Context, req api.RejectA
 	if err != nil {
 		return nil, err
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	if req.Body == nil {
@@ -285,7 +290,7 @@ func (s apiServer) CancelAgentAccessRequest(ctx context.Context, req api.CancelA
 	if !allowed {
 		return nil, apierr.New(403, "forbidden", "you may not access agent requests")
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	if req.Body == nil {
@@ -304,7 +309,7 @@ func (s apiServer) RevokeAgentAccessRequest(ctx context.Context, req api.RevokeA
 	if err != nil {
 		return nil, err
 	}
-	if s.agentAccess == nil {
+	if !s.agentAccessAvailable() {
 		return nil, agentAccessEditionRequired()
 	}
 	if req.Body == nil {

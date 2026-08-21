@@ -71,7 +71,7 @@ type Deps struct {
 	SSO            ssoPort           // nil => open build (SSO endpoints return edition_required)
 	Policy         policyPort        // nil => open build (policy endpoints return edition_required)
 	AgentTemplates agentTemplatePort // nil => open build (F09 endpoints return edition_required)
-	AgentAccess    agentAccessPort   // nil => open build (F10 endpoints return edition_required)
+	AgentAccess    agentAccessPort   // licence-gated (F10 endpoints return edition_required when unentitled)
 	AccessLog      accessLogPort     // nil => open build (access-log endpoints return edition_required)
 	IdpSync        idpSyncPort       // nil => open build (idp-sync endpoints return edition_required)
 	// DeviceApprovalEnabled => false in the open build (S7.3 device posture endpoints

@@ -201,7 +201,7 @@ type apiServer struct {
 	sso            ssoPort           // nil in the open build
 	policy         policyPort        // nil in the open build (Zero Trust, S7.1)
 	agentTemplates agentTemplatePort // nil in the open build (F09)
-	agentAccess    agentAccessPort   // nil in the open build (F10)
+	agentAccess    agentAccessPort   // licence-gated (F10)
 	accessLog      accessLogPort     // nil in the open build (Zero Trust visibility, S7.5.1)
 	idpSync        idpSyncPort       // nil in the open build (IdP-group sync, S7.5.2)
 	// ⛔ smtpConfigured — whether this deployment can send mail AT ALL. Served by /meta so the screens that
@@ -439,6 +439,7 @@ func toAPIOrg(o sqlc.Organization) api.Organization {
 		OvpnEnabled:                 &ovpn, // D-S9.5-OPTIN: the UI hides the OpenVPN device type unless this is true
 		ManagedAgentRuntimeEnabled:  o.ManagedAgentRuntimeEnabled,
 		AgentPolicyTemplatesEnabled: o.AgentPolicyTemplatesEnabled,
+		AgentJitAccessEnabled:       o.AgentJitAccessEnabled,
 		CreatedAt:                   o.CreatedAt,
 		UpdatedAt:                   o.UpdatedAt,
 	}
