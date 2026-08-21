@@ -62,3 +62,33 @@ func TestAgentRuntimeStatusChecksPermissionBeforeRuntimeState(t *testing.T) {
 		t.Fatalf("status without principal = %v, want permission/auth refusal before state access", err)
 	}
 }
+
+func TestMCPInventoryValidatorAllowsJSONSchemaPropertyNames(t *testing.T) {
+	inventory := map[string]interface{}{
+		"servers": []interface{}{map[string]interface{}{
+			"tools": []interface{}{map[string]interface{}{
+				"input_schema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"content": map[string]interface{}{"type": "string"},
+					},
+				},
+				"output_schema": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"result": map[string]interface{}{"type": "string"},
+					},
+				},
+			}},
+		}},
+	}
+	if !validMCPInventoryValue(inventory) {
+		t.Fatal("schema property names must not be treated as MCP result/content")
+	}
+}
+
+func TestMCPInventoryValidatorRejectsResultOutsideSchema(t *testing.T) {
+	if validMCPInventoryValue(map[string]interface{}{"result": "tool output"}) {
+		t.Fatal("MCP result content outside a schema must remain rejected")
+	}
+}
