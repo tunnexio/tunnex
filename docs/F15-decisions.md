@@ -49,6 +49,9 @@ unique per agent. A replay, expiry, future clock beyond the skew window,
 unknown/revoked key, signature mismatch, or mismatched tool/resource records
 an unverified outcome and cannot overwrite a prior verified run.
 
+The first wire format permits a maximum five-minute lifetime and thirty seconds
+of future clock skew. Both are verifier constants, not agent-provided policy.
+
 ### D4 — Immutable run evidence separate from high-cardinality flow events
 
 Store verified and failed assertion outcomes in a small append-only,
