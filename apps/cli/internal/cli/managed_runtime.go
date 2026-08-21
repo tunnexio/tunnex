@@ -359,9 +359,50 @@ func (s *managedRuntimeSource) MCPProxyPolicy(ctx context.Context) (MCPProxyPoli
 	}
 	policy := MCPProxyPolicy{Version: response.JSON200.Version, Rules: make([]MCPProxyRule, 0, len(response.JSON200.Rules))}
 	for _, rule := range response.JSON200.Rules {
-		policy.Rules = append(policy.Rules, MCPProxyRule{Endpoint: rule.Endpoint, ToolName: rule.ToolName})
+		proxyRule := MCPProxyRule{Endpoint: rule.Endpoint, ToolName: rule.ToolName, RateLimitPerMinute: derefInt(rule.RateLimitPerMinute), StepUpRequired: rule.StepUpRequired != nil && *rule.StepUpRequired}
+		if rule.ArgumentConstraints != nil {
+			proxyRule.Arguments = toMCPProxyArguments(rule.ArgumentConstraints)
+		}
+		policy.Rules = append(policy.Rules, proxyRule)
 	}
 	return policy, nil
+}
+
+func derefInt(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+func toMCPProxyArguments(value *api.MCPArgumentConstraints) *MCPArgumentConstraints {
+	if value == nil {
+		return nil
+	}
+	out := &MCPArgumentConstraints{Required: append([]string(nil), value.Required...), Properties: map[string]MCPArgumentConstraint{}}
+	for name, c := range value.Properties {
+		out.Properties[name] = MCPArgumentConstraint{Type: string(c.Type), Enum: rawValues(c.Enum), MaxLength: c.MaxLength, Minimum: float64Pointer(c.Minimum), Maximum: float64Pointer(c.Maximum)}
+	}
+	return out
+}
+func rawValues(values *[]interface{}) []json.RawMessage {
+	if values == nil {
+		return nil
+	}
+	out := make([]json.RawMessage, 0, len(*values))
+	for _, value := range *values {
+		raw, err := json.Marshal(value)
+		if err == nil {
+			out = append(out, raw)
+		}
+	}
+	return out
+}
+func float64Pointer(value *float32) *float64 {
+	if value == nil {
+		return nil
+	}
+	out := float64(*value)
+	return &out
 }
 
 // MCPProxyAuthorization retains an OAuth token only in this process's memory.

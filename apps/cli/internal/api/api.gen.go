@@ -479,6 +479,14 @@ const (
 	Trial     LicenseStatusTier = "trial"
 )
 
+// Defines values for MCPArgumentConstraintType.
+const (
+	Boolean MCPArgumentConstraintType = "boolean"
+	Integer MCPArgumentConstraintType = "integer"
+	Number  MCPArgumentConstraintType = "number"
+	String  MCPArgumentConstraintType = "string"
+)
+
 // Defines values for ManagedAgentConfigWireguardRotationState.
 const (
 	ManagedAgentConfigWireguardRotationStatePrepared  ManagedAgentConfigWireguardRotationState = "prepared"
@@ -2226,12 +2234,33 @@ type LoginResult struct {
 	User        *AuthUser `json:"user,omitempty"`
 }
 
+// MCPArgumentConstraint defines model for MCPArgumentConstraint.
+type MCPArgumentConstraint struct {
+	Enum      *[]interface{}            `json:"enum,omitempty"`
+	MaxLength *int                      `json:"max_length"`
+	Maximum   *float32                  `json:"maximum"`
+	Minimum   *float32                  `json:"minimum"`
+	Type      MCPArgumentConstraintType `json:"type"`
+}
+
+// MCPArgumentConstraintType defines model for MCPArgumentConstraint.Type.
+type MCPArgumentConstraintType string
+
+// MCPArgumentConstraints defines model for MCPArgumentConstraints.
+type MCPArgumentConstraints struct {
+	Properties map[string]MCPArgumentConstraint `json:"properties"`
+	Required   []string                         `json:"required"`
+}
+
 // MCPToolPolicyRule defines model for MCPToolPolicyRule.
 type MCPToolPolicyRule struct {
-	Endpoint        string `json:"endpoint"`
-	InputSchemaHash string `json:"input_schema_hash"`
-	ServerName      string `json:"server_name"`
-	ToolName        string `json:"tool_name"`
+	ArgumentConstraints *MCPArgumentConstraints `json:"argument_constraints"`
+	Endpoint            string                  `json:"endpoint"`
+	InputSchemaHash     string                  `json:"input_schema_hash"`
+	RateLimitPerMinute  *int                    `json:"rate_limit_per_minute"`
+	ServerName          string                  `json:"server_name"`
+	StepUpRequired      *bool                   `json:"step_up_required,omitempty"`
+	ToolName            string                  `json:"tool_name"`
 }
 
 // MachineCredential defines model for MachineCredential.

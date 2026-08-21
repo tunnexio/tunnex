@@ -4691,6 +4691,24 @@ export interface components {
             server_name: string;
             tool_name: string;
             input_schema_hash: string;
+            argument_constraints?: components["schemas"]["MCPArgumentConstraints"] | null;
+            rate_limit_per_minute?: number | null;
+            /** @default false */
+            step_up_required: boolean;
+        };
+        MCPArgumentConstraints: {
+            required: string[];
+            properties: {
+                [key: string]: components["schemas"]["MCPArgumentConstraint"];
+            };
+        };
+        MCPArgumentConstraint: {
+            /** @enum {string} */
+            type: "string" | "number" | "integer" | "boolean";
+            enum?: unknown[];
+            max_length?: number | null;
+            minimum?: number | null;
+            maximum?: number | null;
         };
         AgentMCPToolPolicy: {
             /** Format: int64 */

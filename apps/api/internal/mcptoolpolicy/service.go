@@ -21,10 +21,13 @@ var (
 )
 
 type Rule struct {
-	Endpoint        string `json:"endpoint"`
-	ServerName      string `json:"server_name"`
-	ToolName        string `json:"tool_name"`
-	InputSchemaHash string `json:"input_schema_hash"`
+	Endpoint            string          `json:"endpoint"`
+	ServerName          string          `json:"server_name"`
+	ToolName            string          `json:"tool_name"`
+	InputSchemaHash     string          `json:"input_schema_hash"`
+	ArgumentConstraints json.RawMessage `json:"argument_constraints,omitempty"`
+	RateLimitPerMinute  *int            `json:"rate_limit_per_minute,omitempty"`
+	StepUpRequired      bool            `json:"step_up_required,omitempty"`
 }
 
 type Policy struct {
@@ -172,6 +175,12 @@ func canonicalRules(in []Rule) []Rule {
 		if rule.Endpoint == "" || rule.ServerName == "" || rule.ToolName == "" || rule.InputSchemaHash == "" || len(rule.Endpoint) > 2048 || len(rule.ServerName) > 512 || len(rule.ToolName) > 512 || len(rule.InputSchemaHash) > 128 {
 			return nil
 		}
+		if rule.RateLimitPerMinute != nil && (*rule.RateLimitPerMinute < 1 || *rule.RateLimitPerMinute > 60000) {
+			return nil
+		}
+		if len(rule.ArgumentConstraints) > 0 && !validArgumentConstraints(rule.ArgumentConstraints) {
+			return nil
+		}
 		key := ruleKey(rule)
 		if seen[key] {
 			continue
@@ -181,6 +190,33 @@ func canonicalRules(in []Rule) []Rule {
 	}
 	sort.Slice(out, func(i, j int) bool { return ruleKey(out[i]) < ruleKey(out[j]) })
 	return out
+}
+
+func validArgumentConstraints(raw json.RawMessage) bool {
+	var value struct {
+		Required   []string `json:"required"`
+		Properties map[string]struct {
+			Type      string            `json:"type"`
+			Enum      []json.RawMessage `json:"enum"`
+			MaxLength *int              `json:"max_length"`
+			Minimum   *float64          `json:"minimum"`
+			Maximum   *float64          `json:"maximum"`
+		} `json:"properties"`
+	}
+	if json.Unmarshal(raw, &value) != nil || len(value.Required) > 64 || len(value.Properties) > 64 {
+		return false
+	}
+	for _, name := range value.Required {
+		if strings.TrimSpace(name) == "" || len(name) > 128 {
+			return false
+		}
+	}
+	for name, p := range value.Properties {
+		if strings.TrimSpace(name) == "" || len(name) > 128 || (p.Type != "string" && p.Type != "number" && p.Type != "integer" && p.Type != "boolean") || len(p.Enum) > 64 || (p.MaxLength != nil && (*p.MaxLength < 0 || *p.MaxLength > 4096)) || (p.Minimum != nil && p.Maximum != nil && *p.Minimum > *p.Maximum) {
+			return false
+		}
+	}
+	return true
 }
 
 func ruleKey(rule Rule) string {

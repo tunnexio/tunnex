@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -77,7 +78,12 @@ func (s apiServer) ReplaceAgentMCPToolPolicy(ctx context.Context, req api.Replac
 	}
 	rules := make([]mcptoolpolicy.Rule, 0, len(req.Body.Rules))
 	for _, rule := range req.Body.Rules {
-		rules = append(rules, mcptoolpolicy.Rule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash})
+		var constraints json.RawMessage
+		if rule.ArgumentConstraints != nil {
+			raw, _ := json.Marshal(rule.ArgumentConstraints)
+			constraints = raw
+		}
+		rules = append(rules, mcptoolpolicy.Rule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash, ArgumentConstraints: constraints, RateLimitPerMinute: rule.RateLimitPerMinute, StepUpRequired: rule.StepUpRequired != nil && *rule.StepUpRequired})
 	}
 	p, err := s.mcpToolPolicy.Replace(ctx, req.OrgId, req.DeviceId, actorID(ctx), rules)
 	if errors.Is(err, mcptoolpolicy.ErrNotFound) {
@@ -98,7 +104,7 @@ func (s apiServer) ReplaceAgentMCPToolPolicy(ctx context.Context, req api.Replac
 func toAPIMCPToolPolicy(p mcptoolpolicy.Policy) api.AgentMCPToolPolicy {
 	rules := make([]api.MCPToolPolicyRule, 0, len(p.Rules))
 	for _, rule := range p.Rules {
-		rules = append(rules, api.MCPToolPolicyRule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash})
+		rules = append(rules, toAPIMCPToolPolicyRule(rule))
 	}
 	return api.AgentMCPToolPolicy{Version: p.Version, Rules: rules, InventoryObservedAt: p.InventoryObservedAt, CreatedAt: p.CreatedAt}
 }
@@ -106,7 +112,22 @@ func toAPIMCPToolPolicy(p mcptoolpolicy.Policy) api.AgentMCPToolPolicy {
 func toAPIRuntimeMCPToolPolicy(p mcptoolpolicy.Policy) api.RuntimeMCPToolPolicy {
 	rules := make([]api.MCPToolPolicyRule, 0, len(p.Rules))
 	for _, rule := range p.Rules {
-		rules = append(rules, api.MCPToolPolicyRule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash})
+		rules = append(rules, toAPIMCPToolPolicyRule(rule))
 	}
 	return api.RuntimeMCPToolPolicy{Version: p.Version, Rules: rules, InventoryObservedAt: &p.InventoryObservedAt}
+}
+
+func toAPIMCPToolPolicyRule(rule mcptoolpolicy.Rule) api.MCPToolPolicyRule {
+	out := api.MCPToolPolicyRule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash, RateLimitPerMinute: rule.RateLimitPerMinute}
+	if rule.StepUpRequired {
+		value := true
+		out.StepUpRequired = &value
+	}
+	if len(rule.ArgumentConstraints) > 0 {
+		var constraints api.MCPArgumentConstraints
+		if json.Unmarshal(rule.ArgumentConstraints, &constraints) == nil {
+			out.ArgumentConstraints = &constraints
+		}
+	}
+	return out
 }
