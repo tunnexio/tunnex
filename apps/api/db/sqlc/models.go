@@ -150,6 +150,27 @@ type AgentMcpOauthConnection struct {
 	UpdatedAt               time.Time          `json:"updated_at"`
 }
 
+// F16 step-up permits. Exact policy identity plus request digest only; raw MCP arguments, results, OAuth tokens, and secrets are never retained.
+type AgentMcpToolApprovalRequest struct {
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	DeviceID         uuid.UUID          `json:"device_id"`
+	PolicyVersion    int64              `json:"policy_version"`
+	Endpoint         string             `json:"endpoint"`
+	ServerName       string             `json:"server_name"`
+	ToolName         string             `json:"tool_name"`
+	InputSchemaHash  string             `json:"input_schema_hash"`
+	RequestDigest    string             `json:"request_digest"`
+	State            string             `json:"state"`
+	RequestedAt      time.Time          `json:"requested_at"`
+	ExpiresAt        time.Time          `json:"expires_at"`
+	ApprovedByUserID pgtype.UUID        `json:"approved_by_user_id"`
+	ApprovedAt       pgtype.Timestamptz `json:"approved_at"`
+	DeniedByUserID   pgtype.UUID        `json:"denied_by_user_id"`
+	DeniedAt         pgtype.Timestamptz `json:"denied_at"`
+	ConsumedAt       pgtype.Timestamptz `json:"consumed_at"`
+}
+
 // F14 immutable MCP tool allow policies. Rules contain only stable inventory identities; never arguments, results, OAuth tokens, or client secrets.
 type AgentMcpToolPolicyVersion struct {
 	ID                  uuid.UUID `json:"id"`

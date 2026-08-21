@@ -45,6 +45,7 @@ type AgentCredentialRotationStatus = components["schemas"]["AgentCredentialRotat
 type AgentMCPInventory = components["schemas"]["AgentMCPInventory"];
 type AgentMCPOAuthConnection = components["schemas"]["AgentMCPOAuthConnection"];
 type AgentMCPToolPolicy = components["schemas"]["AgentMCPToolPolicy"];
+type AgentMCPToolApprovalRequest = components["schemas"]["AgentMCPToolApprovalRequest"];
 type AgentWorkflowProvenanceRecord = components["schemas"]["AgentWorkflowProvenanceRecord"];
 
 export function AgentWorkflowProvenancePanel({ records }: { records: AgentWorkflowProvenanceRecord[] }) {
@@ -65,6 +66,15 @@ export function AgentWorkflowProvenancePanel({ records }: { records: AgentWorkfl
       </div>
     ))}
   </div>;
+}
+
+function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { orgId: string; deviceId: string; canApprove: boolean }) {
+  const [items, setItems] = useState<AgentMCPToolApprovalRequest[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = () => void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests", { params: { path: { orgId, deviceId } } }).then((result) => { if (result.data) setItems(result.data as AgentMCPToolApprovalRequest[]); });
+  useEffect(load, [orgId, deviceId]);
+  const approve = async (item: AgentMCPToolApprovalRequest) => { setBusy(item.id); await api.POST("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/approve", { params: { path: { orgId, deviceId, requestId: item.id } } }); setBusy(null); load(); };
+  return <div data-testid="agent-mcp-tool-approvals" className="rounded-md border border-slate-700 p-3 text-xs text-slate-300"><div className="font-semibold text-ink-heading">MCP step-up approvals</div><p className="mt-1 text-slate-500">The exact retried invocation consumes approval once. Arguments and credentials are never shown or retained.</p>{items.length === 0 ? <p className="mt-2 text-slate-500">No step-up requests.</p> : items.map((item) => <div key={item.id} className="mt-2 flex flex-wrap items-center gap-2"><span>{item.server_name} · <span className="font-mono">{item.tool_name}</span> · {item.state}</span>{item.state === "pending" && canApprove && <Button disabled={busy === item.id} onClick={() => void approve(item)}>{busy === item.id ? "Approving…" : "Approve once"}</Button>}</div>)}</div>;
 }
 
 type ObservedMCPTool = { endpoint: string; server_name: string; tool_name: string; input_schema_hash: string };
@@ -396,6 +406,7 @@ function AgentProfilePanel({
   editorVersion,
   canManageLifecycle,
   canManageMCPPolicy,
+  canApproveMCPTool,
   canRotateCredential,
   assignmentMembers,
   assignmentGroups,
@@ -414,6 +425,7 @@ function AgentProfilePanel({
   editorVersion: number;
   canManageLifecycle: boolean;
   canManageMCPPolicy: boolean;
+  canApproveMCPTool: boolean;
   canRotateCredential: boolean;
   assignmentMembers: Member[];
   assignmentGroups: UserGroup[];
@@ -454,6 +466,7 @@ function AgentProfilePanel({
       {mcpInventory && <AgentMCPInventoryPanel inventory={mcpInventory} />}
       {mcpInventory && <AgentMCPOAuthPanel orgId={orgId} deviceId={profile.device_id} inventory={mcpInventory} canManage={canManageLifecycle} />}
       {mcpInventory && <AgentMCPToolPolicyPanel orgId={orgId} deviceId={profile.device_id} inventory={mcpInventory} canManage={canManageMCPPolicy} />}
+      {mcpInventory && <AgentMCPToolApprovalPanel orgId={orgId} deviceId={profile.device_id} canApprove={canApproveMCPTool} />}
       <AgentWorkflowProvenancePanel records={workflowProvenance} />
       {credentialRotation && (
         <div data-testid="agent-credential-rotation" className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
@@ -983,6 +996,7 @@ export default function Agents() {
                       editorVersion={profileEditorVersion}
                       canManageLifecycle={profile.permissions.manage}
                       canManageMCPPolicy={can(myRole, "agent_mcp_tool_policy:manage")}
+                      canApproveMCPTool={can(myRole, "agent_mcp_tool_approval:approve")}
                       canRotateCredential={profile.permissions.rotate_credentials}
                       assignmentMembers={assignmentMembers}
                       assignmentGroups={assignmentGroups}

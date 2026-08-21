@@ -104,16 +104,37 @@ FROM agent_mcp_tool_approval_requests WHERE org_id=$1 AND device_id=$2 AND polic
 	return r, true, nil
 }
 
-func (s *Service) Approve(ctx context.Context, orgID, requestID, actorID uuid.UUID) (Request, error) {
-	if s == nil || s.pool == nil || orgID == uuid.Nil || requestID == uuid.Nil || actorID == uuid.Nil {
+func (s *Service) Approve(ctx context.Context, orgID, deviceID, requestID, actorID uuid.UUID) (Request, error) {
+	if s == nil || s.pool == nil || orgID == uuid.Nil || deviceID == uuid.Nil || requestID == uuid.Nil || actorID == uuid.Nil {
 		return Request{}, ErrInvalid
 	}
 	var r Request
-	err := scan(s.pool.QueryRow(ctx, `UPDATE agent_mcp_tool_approval_requests SET state='approved',approved_by_user_id=$3,approved_at=now() WHERE id=$1 AND org_id=$2 AND state='pending' AND expires_at>now() RETURNING id,org_id,device_id,policy_version,endpoint,server_name,tool_name,input_schema_hash,request_digest,state,requested_at,expires_at,COALESCE(approved_by_user_id,'00000000-0000-0000-0000-000000000000'),COALESCE(approved_at,'epoch'),COALESCE(consumed_at,'epoch')`, requestID, orgID, actorID), &r)
+	err := scan(s.pool.QueryRow(ctx, `UPDATE agent_mcp_tool_approval_requests SET state='approved',approved_by_user_id=$4,approved_at=now() WHERE id=$1 AND org_id=$2 AND device_id=$3 AND state='pending' AND expires_at>now() RETURNING id,org_id,device_id,policy_version,endpoint,server_name,tool_name,input_schema_hash,request_digest,state,requested_at,expires_at,COALESCE(approved_by_user_id,'00000000-0000-0000-0000-000000000000'),COALESCE(approved_at,'epoch'),COALESCE(consumed_at,'epoch')`, requestID, orgID, deviceID, actorID), &r)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Request{}, ErrConflict
 	}
 	return r, err
+}
+
+func (s *Service) List(ctx context.Context, orgID, deviceID uuid.UUID) ([]Request, error) {
+	if s == nil || s.pool == nil || orgID == uuid.Nil || deviceID == uuid.Nil {
+		return nil, ErrInvalid
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id,org_id,device_id,policy_version,endpoint,server_name,tool_name,input_schema_hash,request_digest,state,requested_at,expires_at,COALESCE(approved_by_user_id,'00000000-0000-0000-0000-000000000000'),COALESCE(approved_at,'epoch'),COALESCE(consumed_at,'epoch')
+FROM agent_mcp_tool_approval_requests WHERE org_id=$1 AND device_id=$2 ORDER BY requested_at DESC LIMIT 100`, orgID, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Request{}
+	for rows.Next() {
+		var r Request
+		if err := scan(rows, &r); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func valid(orgID, deviceID uuid.UUID, in Identity) bool {

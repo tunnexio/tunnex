@@ -125,6 +125,9 @@ const (
 	// explicit local MCP proxy. It is separate from network-policy, OAuth
 	// consent, and lifecycle permissions because it authorizes tool invocation.
 	PermAgentMCPToolPolicyManage Permission = "agent_mcp_tool_policy:manage"
+	// Separate human approval authority: policy authors cannot implicitly
+	// approve their own tool invocations.
+	PermAgentMCPToolApprovalApprove Permission = "agent_mcp_tool_approval:approve"
 )
 
 // Roles.
@@ -193,6 +196,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentAccessApprove:       true,
 		PermAlertingManage:           true,
 		PermAgentMCPToolPolicyManage: true,
+		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
 		PermOrgView:                  true,
@@ -224,6 +228,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentAccessApprove:       true,
 		PermAlertingManage:           true,
 		PermAgentMCPToolPolicyManage: true,
+		PermAgentMCPToolApprovalApprove: true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org

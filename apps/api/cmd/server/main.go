@@ -45,6 +45,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mail"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolapproval"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
 	"github.com/tunnexio/tunnex/apps/api/internal/metrics"
 	"github.com/tunnexio/tunnex/apps/api/internal/mfa"
@@ -464,6 +465,7 @@ func main() {
 		Mfa:                   mfaSvc,
 		MCPOAuth:              mcpoauth.New(systemQueries, sealer, sessions.Client(), cfg.AppBaseURL),
 		MCPToolPolicy:         mcptoolpolicy.New(pool),
+		MCPToolApproval:       mcptoolapproval.New(pool),
 		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPort(pool, pushHub),

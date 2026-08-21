@@ -159,7 +159,7 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 		go func() {
 			proxyErr <- StartMCPToolProxy(ctx, opts.MCPProxyListen, opts.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
 				return source.MCPProxyAuthorization(proxyCtx, opts.MCPProxyUpstream)
-			})
+			}, source.MCPProxyStepUp)
 		}()
 	}
 	backoff := opts.Backoff
@@ -359,13 +359,24 @@ func (s *managedRuntimeSource) MCPProxyPolicy(ctx context.Context) (MCPProxyPoli
 	}
 	policy := MCPProxyPolicy{Version: response.JSON200.Version, Rules: make([]MCPProxyRule, 0, len(response.JSON200.Rules))}
 	for _, rule := range response.JSON200.Rules {
-		proxyRule := MCPProxyRule{Endpoint: rule.Endpoint, ToolName: rule.ToolName, RateLimitPerMinute: derefInt(rule.RateLimitPerMinute), StepUpRequired: rule.StepUpRequired != nil && *rule.StepUpRequired}
+		proxyRule := MCPProxyRule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash, RateLimitPerMinute: derefInt(rule.RateLimitPerMinute), StepUpRequired: rule.StepUpRequired != nil && *rule.StepUpRequired}
 		if rule.ArgumentConstraints != nil {
 			proxyRule.Arguments = toMCPProxyArguments(rule.ArgumentConstraints)
 		}
 		policy.Rules = append(policy.Rules, proxyRule)
 	}
 	return policy, nil
+}
+
+func (s *managedRuntimeSource) MCPProxyStepUp(ctx context.Context, policy MCPProxyPolicy, rule MCPProxyRule, request MCPToolRequest) (bool, error) {
+	response, err := s.client.PermitRuntimeMCPToolApprovalWithResponse(ctx, api.RuntimeMCPToolApprovalPermitRequest{PolicyVersion: policy.Version, Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash, RequestDigest: MCPApprovalDigest(request)})
+	if err != nil {
+		return false, err
+	}
+	if response.JSON200 == nil {
+		return false, fmt.Errorf("runtime MCP approval failed with HTTP %d", response.StatusCode())
+	}
+	return response.JSON200.Allowed, nil
 }
 
 func derefInt(value *int) int {
