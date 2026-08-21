@@ -203,7 +203,10 @@ func sameMCPMetadata(left, right map[string]interface{}) bool {
 }
 
 func validMCPInventoryValue(value interface{}) bool {
-	const maxDepth = 10
+	// Modern JSON Schema frequently nests properties through anyOf/items beyond
+	// the old ten-level generic payload limit. Keep the report bounded without
+	// rejecting a valid inventory merely because its schema is expressive.
+	const maxDepth = 32
 	var walk func(interface{}, int, bool, bool) bool
 	walk = func(v interface{}, depth int, inSchema, schemaProperties bool) bool {
 		if depth > maxDepth {

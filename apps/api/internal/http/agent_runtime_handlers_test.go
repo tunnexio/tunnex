@@ -71,6 +71,9 @@ func TestMCPInventoryValidatorAllowsJSONSchemaPropertyNames(t *testing.T) {
 					"type": "object",
 					"properties": map[string]interface{}{
 						"content": map[string]interface{}{"type": "string"},
+						"repoName": map[string]interface{}{"anyOf": []interface{}{
+							map[string]interface{}{"items": map[string]interface{}{"type": "string"}},
+						}},
 					},
 				},
 				"output_schema": map[string]interface{}{
