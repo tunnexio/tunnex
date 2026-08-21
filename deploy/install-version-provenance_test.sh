@@ -105,6 +105,7 @@ for required in \
 	'${RAW}/${SOURCE_REF}/deploy/upgrade-runner.sh' \
 	'sh -n "$STAGE_DIR/upgrade.sh"' \
 	'sh -n "$STAGE_DIR/upgrade-runner.sh"' \
+	'chmod 0644 "$STAGE_DIR/release.json"' \
 	'chmod 0755 upgrade.sh' \
 	'ROOT_UPGRADE_DIR=/usr/local/lib/tunnex' \
 	'as_root install -d -o root -g root -m 0755 "$ROOT_UPGRADE_DIR"' \

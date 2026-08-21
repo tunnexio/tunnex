@@ -333,6 +333,10 @@ case "$VERSION" in
 esac
 RELEASE_MANIFEST_URL="${TUNNEX_RELEASE_MANIFEST_URL:-https://github.com/tunnexio/tunnex/releases/download/${RELEASE_DESCRIPTOR_TAG}/release.json}"
 curl -fsSL "$RELEASE_MANIFEST_URL" -o "$STAGE_DIR/release.json" || die "could not download the signed release manifest for ${SOURCE_REF}; refusing an unverifiable install"
+# The API image runs releaseverify as an unprivileged user. The descriptor is
+# public metadata, so make the staged bind mount readable before verification;
+# a restrictive caller umask must not turn a valid release into a false reject.
+chmod 0644 "$STAGE_DIR/release.json"
 
 # `get.tunnex.io` deliberately serves install.sh from main while the resolver
 # selects the newest published tag. Old release source has no UI updater; do
