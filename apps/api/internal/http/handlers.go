@@ -23,6 +23,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mfa"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpn"
@@ -197,7 +198,8 @@ type apiServer struct {
 	k8s            *k8s.Service         // OPEN (all editions, S10.3): K8s cluster/Service connectivity; governance is enterprise
 	machine        *machineauth.Service // OPEN (S10.2): machine credentials — the GitOps operator's org identity
 	sessions       *session.Store
-	mfa            *mfa.Service      // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
+	mfa            *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
+	mcpOAuth       *mcpoauth.Service
 	sso            ssoPort           // nil in the open build
 	policy         policyPort        // nil in the open build (Zero Trust, S7.1)
 	agentTemplates agentTemplatePort // nil in the open build (F09)

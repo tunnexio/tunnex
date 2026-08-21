@@ -103,6 +103,7 @@ type Querier interface {
 	// Arm enrollment: only an UNCONFIRMED row flips to confirmed, stamping the confirming code's
 	// timestep as the replay clock so the very first login can't replay the confirmation code.
 	ConfirmTOTP(ctx context.Context, arg ConfirmTOTPParams) (int64, error)
+	ConnectAgentMCPOAuthConnection(ctx context.Context, arg ConnectAgentMCPOAuthConnectionParams) (int64, error)
 	// lint:cross-org — the token hash is the public endpoint's credential and the row is locked before creation.
 	ConsumeAgentBootstrapToken(ctx context.Context, arg ConsumeAgentBootstrapTokenParams) (AgentBootstrapToken, error)
 	// Single-use + purpose-bound: only matches an unconsumed, unexpired token of the
@@ -474,6 +475,7 @@ type Querier interface {
 	// resolves to extended-OR-(0 rows -> 409 grant_lapsed), never torn. Only a TEMPORARY
 	// (expires_at NOT NULL), still-LIVE grant can be extended.
 	ExtendPolicyRule(ctx context.Context, arg ExtendPolicyRuleParams) (PolicyRule, error)
+	FailAgentMCPOAuthConnection(ctx context.Context, arg FailAgentMCPOAuthConnectionParams) (int64, error)
 	FinishAlertDeliveryWithAttempt(ctx context.Context, arg FinishAlertDeliveryWithAttemptParams) (AlertDeliveryAttempt, error)
 	// Returns a fresh time-ordered UUIDv7 from the database. Demonstrates the sqlc
 	// pipeline and the uuid override; callers may also generate v7 ids in Go.
@@ -492,6 +494,8 @@ type Querier interface {
 	GetAgentGroup(ctx context.Context, arg GetAgentGroupParams) (AgentGroup, error)
 	GetAgentGroupForUpdate(ctx context.Context, arg GetAgentGroupForUpdateParams) (AgentGroup, error)
 	GetAgentMCPInventory(ctx context.Context, arg GetAgentMCPInventoryParams) (AgentMcpInventory, error)
+	GetAgentMCPOAuthConnection(ctx context.Context, arg GetAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
+	GetAgentMCPOAuthConnectionForCallback(ctx context.Context, arg GetAgentMCPOAuthConnectionForCallbackParams) (AgentMcpOauthConnection, error)
 	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -825,6 +829,7 @@ type Querier interface {
 	ListAgentAccessRequestsForActor(ctx context.Context, arg ListAgentAccessRequestsForActorParams) ([]AgentAccessRequest, error)
 	ListAgentGroupMembers(ctx context.Context, arg ListAgentGroupMembersParams) ([]ListAgentGroupMembersRow, error)
 	ListAgentGroups(ctx context.Context, orgID uuid.UUID) ([]AgentGroup, error)
+	ListAgentMCPOAuthConnections(ctx context.Context, arg ListAgentMCPOAuthConnectionsParams) ([]ListAgentMCPOAuthConnectionsRow, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
 	// these exact assignments through ON DELETE SET NULL; the client must not
 	// infer this count from separately loaded agent rows.
@@ -1550,6 +1555,7 @@ type Querier interface {
 	UpdateResource(ctx context.Context, arg UpdateResourceParams) (Resource, error)
 	UpdateUserGroup(ctx context.Context, arg UpdateUserGroupParams) (UserGroup, error)
 	UpsertAgentMCPInventory(ctx context.Context, arg UpsertAgentMCPInventoryParams) (AgentMcpInventory, error)
+	UpsertAgentMCPOAuthConnection(ctx context.Context, arg UpsertAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
 	// lint:cross-org — keyed by device_id; ownership + org checked by the service
 	// (GetDevice + owner match) in the same transaction. Snapshot-only (v1): the
 	// latest report replaces the prior one; reported_at is the SERVER clock that

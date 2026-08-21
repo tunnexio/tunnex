@@ -43,6 +43,45 @@ type Node = {
 type AgentRuntimeStatus = components["schemas"]["AgentRuntimeStatus"];
 type AgentCredentialRotationStatus = components["schemas"]["AgentCredentialRotationStatus"];
 type AgentMCPInventory = components["schemas"]["AgentMCPInventory"];
+type AgentMCPOAuthConnection = components["schemas"]["AgentMCPOAuthConnection"];
+
+function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: AgentMCPInventory; canManage: boolean }) {
+  const discovered = (inventory.snapshot.oauth_discovery as { servers?: Array<{ endpoint?: string; status?: string; protected_resource?: string; authorization_servers?: string[]; scopes_supported?: string[] }> } | undefined)?.servers ?? [];
+  const protectedServer = discovered.find((server) => server.status === "protected");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [scopes, setScopes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [connections, setConnections] = useState<AgentMCPOAuthConnection[]>([]);
+	const terminal = new URLSearchParams(window.location.search).get("mcp_oauth");
+  useEffect(() => { void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections", { params: { path: { orgId, deviceId } } }).then((result) => { if (result.data) setConnections(result.data as AgentMCPOAuthConnection[]); }); }, [orgId, deviceId]);
+  if (!protectedServer) return null;
+	const connected = connections.find((connection) => connection.endpoint === protectedServer.endpoint && connection.state === "connected");
+  const start = async () => {
+    if (!canManage || !protectedServer.endpoint || !protectedServer.protected_resource || !protectedServer.authorization_servers?.[0]) return;
+    setBusy(true); setError(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections", { params: { path: { orgId, deviceId } }, body: { endpoint: protectedServer.endpoint, protected_resource: protectedServer.protected_resource, issuer: protectedServer.authorization_servers[0], scopes: scopes.split(/\s+/).filter(Boolean), client_id: clientId, ...(clientSecret ? { client_secret: clientSecret } : {}) } });
+    setBusy(false);
+    if (result.error || !result.data) { setError("Could not start MCP OAuth consent. Confirm the registered client and issuer metadata."); return; }
+    window.location.assign((result.data as { authorization_url: string }).authorization_url);
+  };
+  return <div data-testid="agent-mcp-oauth" className="rounded-md border border-slate-700 p-3 text-xs text-slate-300">
+    <div className="font-semibold text-ink-heading">MCP OAuth connection</div>
+    <p className="mt-1 text-slate-500">Protected resource {protectedServer.protected_resource} · issuer {protectedServer.authorization_servers?.[0]}</p>
+    <p className="mt-1 text-slate-500">Pre-registered client only. Tokens and client secrets are never shown here or sent to the agent.</p>
+    {terminal === "connected" && <p role="status" className="mt-2 text-success">Consent completed. The connection is ready for F14 policy configuration; no MCP tool access is granted yet.</p>}
+    {terminal === "failed" && <p role="alert" className="mt-2 text-danger">Consent did not complete. Check the registered client, issuer, and requested scopes.</p>}
+    {connections.map((connection) => <div key={connection.id} className="mt-2 text-slate-400">{connection.endpoint} · {connection.state}{connection.token_expires_at ? ` · expires ${connection.token_expires_at}` : ""}</div>)}
+    {connected ? <p role="status" className="mt-2 text-success">Connected. Re-consent is not available here; F14 owns token renewal and use policy.</p> : canManage && <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <Field label="Client ID"><Input value={clientId} onChange={(event) => setClientId(event.target.value)} /></Field>
+      <Field label="Client secret (optional)"><Input type="password" autoComplete="new-password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} /></Field>
+      <Field label="Requested scopes"><Input placeholder={(protectedServer.scopes_supported ?? []).join(" ")} value={scopes} onChange={(event) => setScopes(event.target.value)} /></Field>
+      <div className="flex items-end"><Button disabled={busy || !clientId || !scopes} onClick={() => void start()}>{busy ? "Starting consent…" : "Continue to consent"}</Button></div>
+    </div>}
+    {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
+  </div>;
+}
 
 function AgentMCPInventoryPanel({ inventory }: { inventory: AgentMCPInventory }) {
   const servers = Array.isArray(inventory.snapshot.servers) ? inventory.snapshot.servers as Array<Record<string, unknown>> : [];
@@ -275,6 +314,7 @@ function AgentRuntimeSettingCard({
 
 function AgentProfilePanel({
   profile,
+	orgId,
   runtime,
   mcpInventory,
   credentialRotation,
@@ -292,6 +332,7 @@ function AgentProfilePanel({
   profile: AgentProfile;
   runtime: AgentRuntimeStatus | null;
   mcpInventory: AgentMCPInventory | null;
+  orgId: string;
   credentialRotation: AgentCredentialRotationStatus | null;
   editorVersion: number;
   canManageLifecycle: boolean;
@@ -333,6 +374,7 @@ function AgentProfilePanel({
       )}
       {runtime && <AgentRuntimePanel status={runtime} />}
       {mcpInventory && <AgentMCPInventoryPanel inventory={mcpInventory} />}
+      {mcpInventory && <AgentMCPOAuthPanel orgId={orgId} deviceId={profile.device_id} inventory={mcpInventory} canManage={canManageLifecycle} />}
       {credentialRotation && (
         <div data-testid="agent-credential-rotation" className="flex flex-wrap items-center gap-3 rounded-md border border-slate-700 p-3">
           <div>
@@ -847,6 +889,7 @@ export default function Agents() {
                   <>
                     <AgentProfilePanel
                       profile={profile}
+                      orgId={orgId ?? ""}
                       runtime={status ?? null}
                       mcpInventory={mcpInventory[agent.device_id] ?? null}
                       credentialRotation={credentialRotation[agent.device_id] ?? null}

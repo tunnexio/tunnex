@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +27,151 @@ func ObserveMCPInventory(ctx context.Context, endpoints []string) map[string]int
 		servers = append(servers, observeMCPEndpoint(ctx, strings.TrimSpace(raw)))
 	}
 	return map[string]interface{}{"servers": servers}
+}
+
+// ObserveMCPOAuthDiscovery obtains only protected-resource metadata. It sends
+// no authorization header and does not follow an authorization-server redirect.
+// The resulting facts are for an administrator to begin consent; no credential
+// crosses this runtime-to-control-plane report.
+func ObserveMCPOAuthDiscovery(ctx context.Context, endpoints []string) map[string]interface{} {
+	servers := make([]interface{}, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		servers = append(servers, observeMCPOAuthEndpoint(ctx, strings.TrimSpace(endpoint)))
+	}
+	return map[string]interface{}{"servers": servers}
+}
+
+func observeMCPOAuthEndpoint(ctx context.Context, endpoint string) map[string]interface{} {
+	fact := map[string]interface{}{"endpoint": endpoint, "status": "not_protected"}
+	u, err := canonicalMCPEndpoint(endpoint)
+	if err != nil {
+		fact["status"] = "invalid_endpoint"
+		return fact
+	}
+	metadataURL := protectedResourceMetadataHint(ctx, u)
+	if metadataURL == "" {
+		metadataURL = protectedResourceMetadataFallback(u)
+	}
+	metadata, err := fetchProtectedResourceMetadata(ctx, metadataURL)
+	if err != nil {
+		fact["status"] = "unavailable"
+		return fact
+	}
+	resource, _ := metadata["resource"].(string)
+	if resource == "" || resource != canonicalURL(u) {
+		fact["status"] = "invalid_metadata"
+		return fact
+	}
+	issuers := stringList(metadata["authorization_servers"], 8)
+	if len(issuers) == 0 {
+		fact["status"] = "invalid_metadata"
+		return fact
+	}
+	fact["status"] = "protected"
+	fact["protected_resource"] = resource
+	fact["authorization_servers"] = issuers
+	if scopes := stringList(metadata["scopes_supported"], 64); len(scopes) > 0 {
+		fact["scopes_supported"] = scopes
+	}
+	return fact
+}
+
+func protectedResourceMetadataHint(ctx context.Context, endpoint *url.URL) string {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`))
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		return ""
+	}
+	return protectedResourceMetadataFromChallenge(resp.Header.Values("WWW-Authenticate"))
+}
+
+var resourceMetadataParameter = regexp.MustCompile(`(?i)resource_metadata="([^"]+)"`)
+
+func protectedResourceMetadataFromChallenge(challenges []string) string {
+	for _, challenge := range challenges {
+		match := resourceMetadataParameter.FindStringSubmatch(challenge)
+		if len(match) == 2 {
+			if u, err := url.Parse(match[1]); err == nil && u.IsAbs() && u.User == nil && u.RawQuery == "" && u.Fragment == "" {
+				return u.String()
+			}
+		}
+	}
+	return ""
+}
+
+func protectedResourceMetadataFallback(endpoint *url.URL) string {
+	copy := *endpoint
+	copy.RawQuery, copy.Fragment = "", ""
+	copy.Path = "/.well-known/oauth-protected-resource" + strings.TrimSuffix(copy.Path, "/")
+	return copy.String()
+}
+
+func fetchProtectedResourceMetadata(ctx context.Context, raw string) (map[string]interface{}, error) {
+	u, err := url.Parse(raw)
+	if err != nil || !u.IsAbs() || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("invalid protected-resource metadata URL")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("protected-resource metadata HTTP %d", resp.StatusCode)
+	}
+	var metadata map[string]interface{}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&metadata); err != nil {
+		return nil, err
+	}
+	return metadata, nil
+}
+
+func canonicalMCPEndpoint(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil || !u.IsAbs() || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("MCP endpoint must be an absolute URL without credentials, query, or fragment")
+	}
+	return u, nil
+}
+
+func canonicalURL(u *url.URL) string {
+	copy := *u
+	copy.RawQuery, copy.Fragment = "", ""
+	copy.Path = strings.TrimSuffix(copy.Path, "/")
+	if copy.Path == "" {
+		copy.Path = "/"
+	}
+	return copy.String()
+}
+
+func stringList(raw interface{}, limit int) []string {
+	values, _ := raw.([]interface{})
+	out := make([]string, 0, len(values))
+	for _, rawValue := range values {
+		value, ok := rawValue.(string)
+		if !ok || len(value) == 0 || len(value) > 2048 || len(out) == limit {
+			continue
+		}
+		u, err := url.Parse(value)
+		if strings.Contains(value, "://") && (err != nil || !u.IsAbs() || u.User != nil || u.RawQuery != "" || u.Fragment != "") {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
 }
 
 func observeMCPEndpoint(ctx context.Context, endpoint string) map[string]interface{} {
