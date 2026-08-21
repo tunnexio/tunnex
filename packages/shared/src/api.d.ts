@@ -5033,7 +5033,7 @@ export interface components {
             mode: "warn" | "require";
             /** @description Check parameters. os_version: {"min":{"macos":"14.0","windows":"10.0"}} — a platform absent from "min" is not enforced. disk_encryption: none.
              *      */
-            param?: Record<string, never> | null;
+            param?: Record<string, never>;
             /** @description On PUT only: how many devices' LAST report would fail this check (best-effort blast radius). The config write itself blocks nothing — a device's gate only ever flips on its own next report (D4 grandfather).
              *      */
             would_fail_count?: number;
@@ -5041,7 +5041,7 @@ export interface components {
         HealthCheckInput: {
             /** @enum {string} */
             mode: "warn" | "require";
-            param?: Record<string, never> | null;
+            param?: Record<string, never>;
         };
         /** @description Client-reported posture facts (S7.5.3). NOT attestation — a compromised device can misreport; posture checks deter honest non-compliance and give an audit trail (defense-in-depth, not a guarantee).
          *      */
