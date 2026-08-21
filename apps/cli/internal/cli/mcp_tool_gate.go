@@ -25,8 +25,11 @@ const (
 type MCPToolRequest struct {
 	Method   string
 	ToolName string
-	ID       json.RawMessage
-	Body     []byte
+	// Arguments are retained only for the duration of a local proxy decision.
+	// They are never suitable for audit, logging, or runtime state.
+	Arguments json.RawMessage
+	ID        json.RawMessage
+	Body      []byte
 }
 
 // MCPRequestError is safe to render as a local JSON-RPC error. It intentionally
@@ -60,9 +63,10 @@ func ValidateMCPToolRequest(expectedVersion string, header http.Header, body []b
 	}
 	out := MCPToolRequest{Method: raw.Method, ID: raw.ID, Body: append([]byte(nil), body...)}
 	var params struct {
-		Name string                 `json:"name"`
-		URI  string                 `json:"uri"`
-		Meta map[string]interface{} `json:"_meta"`
+		Name      string                 `json:"name"`
+		URI       string                 `json:"uri"`
+		Arguments json.RawMessage        `json:"arguments"`
+		Meta      map[string]interface{} `json:"_meta"`
 	}
 	if len(raw.Params) > 0 && json.Unmarshal(raw.Params, &params) != nil {
 		return MCPToolRequest{}, invalidMCPRequest("MCP request parameters are invalid")
@@ -72,6 +76,7 @@ func ValidateMCPToolRequest(expectedVersion string, header http.Header, body []b
 			return MCPToolRequest{}, invalidMCPRequest("tools/call has no tool name")
 		}
 		out.ToolName = params.Name
+		out.Arguments = append(json.RawMessage(nil), params.Arguments...)
 	}
 	if expectedVersion == MCPProtocol20260728 {
 		if v, _ := params.Meta["io.modelcontextprotocol/protocolVersion"].(string); v != expectedVersion {

@@ -325,5 +325,5 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 }
 
 func isRuntimeChannelPath(path string) bool {
-	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate" || path == "/api/v1/agent/runtime/mcp-tool-policy" || path == "/api/v1/agent/runtime/mcp-oauth-lease" || path == "/api/v1/agent/runtime/workflow-signing-key" || path == "/api/v1/agent/runtime/workflow-provenance"
+	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate" || path == "/api/v1/agent/runtime/mcp-tool-policy" || path == "/api/v1/agent/runtime/mcp-oauth-lease" || path == "/api/v1/agent/runtime/mcp-tool-approval-permit" || path == "/api/v1/agent/runtime/workflow-signing-key" || path == "/api/v1/agent/runtime/workflow-provenance"
 }

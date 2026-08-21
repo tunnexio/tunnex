@@ -704,6 +704,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/runtime/mcp-tool-approval-permit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Consume an approved one-use MCP tool permit or create a pending request */
+        post: operations["permitRuntimeMCPToolApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/runtime/workflow-signing-key": {
         parameters: {
             query?: never;
@@ -863,6 +880,47 @@ export interface paths {
         /** Create the next immutable MCP tool policy version */
         put: operations["replaceAgentMCPToolPolicy"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /** List bounded MCP step-up approval requests */
+        get: operations["listAgentMCPToolApprovalRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve one pending MCP step-up request */
+        post: operations["approveAgentMCPToolApprovalRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4691,6 +4749,24 @@ export interface components {
             server_name: string;
             tool_name: string;
             input_schema_hash: string;
+            argument_constraints?: components["schemas"]["MCPArgumentConstraints"] | null;
+            rate_limit_per_minute?: number | null;
+            /** @default false */
+            step_up_required: boolean;
+        };
+        MCPArgumentConstraints: {
+            required: string[];
+            properties: {
+                [key: string]: components["schemas"]["MCPArgumentConstraint"];
+            };
+        };
+        MCPArgumentConstraint: {
+            /** @enum {string} */
+            type: "string" | "number" | "integer" | "boolean";
+            enum?: unknown[];
+            max_length?: number | null;
+            minimum?: number | null;
+            maximum?: number | null;
         };
         AgentMCPToolPolicy: {
             /** Format: int64 */
@@ -4719,6 +4795,46 @@ export interface components {
             access_token: string;
             /** Format: date-time */
             expires_at: string;
+        };
+        RuntimeMCPToolApprovalPermitRequest: {
+            /** Format: int64 */
+            policy_version: number;
+            /** Format: uri */
+            endpoint: string;
+            server_name: string;
+            tool_name: string;
+            input_schema_hash: string;
+            request_digest: string;
+        };
+        RuntimeMCPToolApprovalPermit: {
+            /** Format: uuid */
+            request_id: string;
+            /** @enum {string} */
+            state: "pending" | "approved" | "denied" | "expired" | "consumed";
+            allowed: boolean;
+        };
+        AgentMCPToolApprovalRequest: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            device_id: string;
+            /** Format: int64 */
+            policy_version: number;
+            /** Format: uri */
+            endpoint: string;
+            server_name: string;
+            tool_name: string;
+            input_schema_hash: string;
+            /** @enum {string} */
+            state: "pending" | "approved" | "denied" | "expired" | "consumed";
+            /** Format: date-time */
+            requested_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            approved_by_user_id?: string | null;
+            /** Format: date-time */
+            approved_at?: string | null;
         };
         StartAgentMCPOAuthConnectionRequest: {
             /** Format: uri */
@@ -6237,6 +6353,32 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    permitRuntimeMCPToolApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeMCPToolApprovalPermitRequest"];
+            };
+        };
+        responses: {
+            /** @description Permit decision. allowed is true exactly once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeMCPToolApprovalPermit"];
+                };
+            };
+            401: components["responses"]["RuntimeUnauthorized"];
+            default: components["responses"]["Error"];
+        };
+    };
     registerAgentWorkflowSigningKey: {
         parameters: {
             query?: never;
@@ -6488,6 +6630,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentMCPToolPolicy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentMCPToolApprovalRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approval records without raw MCP arguments or credentials. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPToolApprovalRequest"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    approveAgentMCPToolApprovalRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved request. The next matching runtime retry consumes it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPToolApprovalRequest"];
                 };
             };
             default: components["responses"]["Error"];

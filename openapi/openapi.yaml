@@ -827,6 +827,27 @@ paths:
         "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/agent/runtime/mcp-tool-approval-permit:
+    post:
+      operationId: permitRuntimeMCPToolApproval
+      summary: Consume an approved one-use MCP tool permit or create a pending request
+      security:
+        - runtimeBearer: []
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RuntimeMCPToolApprovalPermitRequest" }
+      responses:
+        "200":
+          description: Permit decision. allowed is true exactly once.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RuntimeMCPToolApprovalPermit" }
+        "401": { $ref: "#/components/responses/RuntimeUnauthorized" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/agent/runtime/workflow-signing-key:
     post:
       operationId: registerAgentWorkflowSigningKey
@@ -1046,6 +1067,54 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AgentMCPToolPolicy" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listAgentMCPToolApprovalRequests
+      summary: List bounded MCP step-up approval requests
+      tags: [agents]
+      responses:
+        "200":
+          description: Approval records without raw MCP arguments or credentials.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AgentMCPToolApprovalRequest" } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/approve:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: requestId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: approveAgentMCPToolApprovalRequest
+      summary: Approve one pending MCP step-up request
+      tags: [agents]
+      responses:
+        "200":
+          description: Approved request. The next matching runtime retry consumes it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentMCPToolApprovalRequest" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections:
@@ -6105,6 +6174,33 @@ components:
         server_name: { type: string, minLength: 1, maxLength: 512 }
         tool_name: { type: string, minLength: 1, maxLength: 512 }
         input_schema_hash: { type: string, minLength: 1, maxLength: 128 }
+        argument_constraints:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MCPArgumentConstraints" }]
+        rate_limit_per_minute: { type: integer, minimum: 1, maximum: 60000, nullable: true }
+        step_up_required: { type: boolean, default: false }
+
+    MCPArgumentConstraints:
+      type: object
+      required: [required, properties]
+      additionalProperties: false
+      properties:
+        required: { type: array, maxItems: 64, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 128 } }
+        properties:
+          type: object
+          maxProperties: 64
+          additionalProperties: { $ref: "#/components/schemas/MCPArgumentConstraint" }
+
+    MCPArgumentConstraint:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [string, number, integer, boolean] }
+        enum: { type: array, maxItems: 64, items: {} }
+        max_length: { type: integer, minimum: 0, maximum: 4096, nullable: true }
+        minimum: { type: number, nullable: true }
+        maximum: { type: number, nullable: true }
 
     AgentMCPToolPolicy:
       type: object
@@ -6150,6 +6246,45 @@ components:
           writeOnly: true
           description: Runtime-only transient credential. Never returned by a human/session endpoint.
         expires_at: { type: string, format: date-time }
+
+    RuntimeMCPToolApprovalPermitRequest:
+      type: object
+      required: [policy_version, endpoint, server_name, tool_name, input_schema_hash, request_digest]
+      additionalProperties: false
+      properties:
+        policy_version: { type: integer, format: int64, minimum: 1 }
+        endpoint: { type: string, format: uri, maxLength: 2048 }
+        server_name: { type: string, minLength: 1, maxLength: 512 }
+        tool_name: { type: string, minLength: 1, maxLength: 512 }
+        input_schema_hash: { type: string, minLength: 1, maxLength: 128 }
+        request_digest: { type: string, pattern: '^[a-f0-9]{64}$' }
+
+    RuntimeMCPToolApprovalPermit:
+      type: object
+      required: [request_id, state, allowed]
+      additionalProperties: false
+      properties:
+        request_id: { type: string, format: uuid }
+        state: { type: string, enum: [pending, approved, denied, expired, consumed] }
+        allowed: { type: boolean }
+
+    AgentMCPToolApprovalRequest:
+      type: object
+      required: [id, device_id, policy_version, endpoint, server_name, tool_name, input_schema_hash, state, requested_at, expires_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        device_id: { type: string, format: uuid }
+        policy_version: { type: integer, format: int64, minimum: 1 }
+        endpoint: { type: string, format: uri, maxLength: 2048 }
+        server_name: { type: string, minLength: 1, maxLength: 512 }
+        tool_name: { type: string, minLength: 1, maxLength: 512 }
+        input_schema_hash: { type: string, minLength: 1, maxLength: 128 }
+        state: { type: string, enum: [pending, approved, denied, expired, consumed] }
+        requested_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        approved_by_user_id: { type: string, format: uuid, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
 
     StartAgentMCPOAuthConnectionRequest:
       type: object
