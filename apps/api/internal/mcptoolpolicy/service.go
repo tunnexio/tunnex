@@ -2,6 +2,7 @@
 package mcptoolpolicy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -203,7 +204,9 @@ func validArgumentConstraints(raw json.RawMessage) bool {
 			Maximum   *float64          `json:"maximum"`
 		} `json:"properties"`
 	}
-	if json.Unmarshal(raw, &value) != nil || len(value.Required) > 64 || len(value.Properties) > 64 {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&value) != nil || decoder.More() || len(value.Required) > 64 || len(value.Properties) > 64 {
 		return false
 	}
 	for _, name := range value.Required {
