@@ -137,9 +137,41 @@ func normalizeObservedSnapshot(raw map[string]interface{}) (MCPInventorySnapshot
 	}
 	decode := func(v interface{}, into interface{}) { b, _ := json.Marshal(v); _ = json.Unmarshal(b, into) }
 	decode(raw["tools"], &s.Tools)
+	// MCP wire names use camel case, while the persisted snapshot deliberately
+	// uses snake case. Keep the boundary explicit so valid current-protocol
+	// `inputSchema`/`outputSchema` and `mimeType` fields are not discarded.
+	for i, tool := range inventoryObjects(raw, "tools") {
+		if i >= len(s.Tools) {
+			break
+		}
+		if schema, ok := tool["inputSchema"]; ok {
+			b, _ := json.Marshal(schema)
+			s.Tools[i].InputSchema = b
+		}
+		if schema, ok := tool["outputSchema"]; ok {
+			b, _ := json.Marshal(schema)
+			s.Tools[i].OutputSchema = b
+		}
+	}
 	decode(raw["resources"], &s.Resources)
+	for i, resource := range inventoryObjects(raw, "resources") {
+		if i < len(s.Resources) {
+			s.Resources[i].MIMEType, _ = resource["mimeType"].(string)
+		}
+	}
 	decode(raw["prompts"], &s.Prompts)
 	return NormalizeMCPInventory(s)
+}
+
+func inventoryObjects(raw map[string]interface{}, key string) []map[string]interface{} {
+	values, _ := raw[key].([]interface{})
+	objects := make([]map[string]interface{}, 0, len(values))
+	for _, value := range values {
+		if object, ok := value.(map[string]interface{}); ok {
+			objects = append(objects, object)
+		}
+	}
+	return objects
 }
 
 // MCPInventorySnapshot is the secret-free result of one MCP discovery pass.
