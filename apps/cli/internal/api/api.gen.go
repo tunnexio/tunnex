@@ -873,8 +873,11 @@ type AgentBootstrapRelease struct {
 	// Tag Immutable v* or tunnex-build-* release tag.
 	Tag string `json:"tag"`
 
-	// VerifierKeyId Public verifier key identifier only; no key material.
+	// VerifierKeyId Public verifier key identifier.
 	VerifierKeyId string `json:"verifier_key_id"`
+
+	// VerifierPublicKey Deployment-pinned Ed25519 public verification key encoded as raw base64url; public verifier material only
+	VerifierPublicKey string `json:"verifier_public_key"`
 }
 
 // AgentBootstrapRequest defines model for AgentBootstrapRequest.

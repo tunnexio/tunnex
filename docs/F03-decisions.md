@@ -227,8 +227,8 @@ token-validity oracle.
 
 #### H3 — Signed runtime release inputs for the copied command (P1) — LOCKED / APPROVED
 
-The released command currently requires `TUNNEX_RELEASE_TAG`,
-`TUNNEX_RELEASE_SOURCE_SHA`, and `TUNNEX_RELEASE_PUBLIC_KEY` before it will
+The released command formerly required `TUNNEX_RELEASE_TAG`,
+`TUNNEX_RELEASE_SOURCE_SHA`, and `TUNNEX_RELEASE_PUBLIC_KEY` before it would
 download or verify a runtime asset. The repository's authoritative release
 path is the deployment-mounted signed descriptor at
 `/var/lib/tunnex/release.json`, with the trust key and source SHA held in
@@ -243,12 +243,11 @@ a trust key in the browser command, or use `latest`/the mutable catalog as a
 substitute. The canonical deployment rule is already measured in
 `deploy/install.sh` and `deploy/get.sh`: a `v*` release uses that exact tag,
 while a `sha-*` release uses `tunnex-build-${SOURCE_REF}`. The copied command
-is not self-contained until an authoritative
-server-owned bootstrap package metadata contract supplies the immutable tag,
-expected full source SHA, and trust-root reference (or the server emits a
-fully pinned command). The approved contract is the typed metadata DTO below;
-the host still supplies the deployment-configured trust root to
-`releaseverify`.
+is self-contained only when an authoritative server-owned bootstrap package
+metadata contract supplies the immutable tag, expected full source SHA, and
+deployment-pinned public verifier key. The approved contract is the typed
+metadata DTO below; the generated command passes this public verification
+material directly to `releaseverify`.
 
 ##### H3 decision-ready contract proposal
 
@@ -264,6 +263,7 @@ release:
   source_sha: string                # full 40-hex commit SHA
   manifest_url: string              # immutable tag URL, never latest/catalog
   verifier_key_id: string            # identifier only, not a private key
+  verifier_public_key: string        # deployment-pinned Ed25519 public key, base64url
   runtime:
     binary: tunnex-agent-runtime
     version: string
@@ -282,11 +282,11 @@ descriptor, not from browser configuration. Any configured URL must be HTTPS,
 have no query/fragment, and end in the exact immutable `/<tag>/release.json`.
 The response
 contains no signing private key, bootstrap hash, runtime credential, WireGuard
-private key, or raw descriptor signature. The verifier public key is not a
-secret and is not returned as key material; `verifier_key_id` is for audit and
-diagnostics only. The host-side released verifier must already have the
-deployment's pinned public trust root installed/configured; that is the one
-deployment prerequisite still requiring release-owner confirmation.
+private key, or raw descriptor signature. `verifier_public_key` is public
+verification material, normalized as base64url, and is returned only in the
+authenticated one-time enrollment response; `verifier_key_id` remains for
+audit and diagnostics. The generated command therefore has no external
+environment-variable trust-root prerequisite.
 
 The operation ordering is:
 
@@ -359,9 +359,9 @@ and the real Linux/systemd boxwalk.
   `TUNNEX_RELEASE_MANIFEST_PATH`, the optional immutable
   `TUNNEX_RELEASE_MANIFEST_URL`, `TUNNEX_RELEASE_PUBLIC_KEY`, and
   `TUNNEX_RELEASE_SOURCE_SHA`; `apps/api/cmd/server/main.go:357-360` loads the
-  mounted signed descriptor. The remaining prerequisite is a supported
-  host-side installation/configuration path for the same pinned public trust
-  root used by `releaseverify`; the command fails closed when it is absent.
+  mounted signed descriptor. The server projects the same configured public
+  verifier key in the authenticated one-time bootstrap response; no host-side
+  environment variable is required.
 
 ## Current acceptance evidence
 

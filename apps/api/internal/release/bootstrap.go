@@ -1,6 +1,7 @@
 package release
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strings"
@@ -8,13 +9,16 @@ import (
 
 // BootstrapRelease is the non-secret, server-owned release projection needed
 // by the managed-agent installer. It is built only from a manifest that has
-// already passed Parse/Verify; the signing key itself is never projected.
+// already passed Parse/Verify. It includes the configured Ed25519 public
+// verifier so a copied bootstrap command is self-contained; it never includes
+// a signing key or credential.
 type BootstrapRelease struct {
-	Tag           string
-	SourceSHA     string
-	ManifestURL   string
-	VerifierKeyID string
-	Runtime       ManagedAgentRuntime
+	Tag               string
+	SourceSHA         string
+	ManifestURL       string
+	VerifierKeyID     string
+	VerifierPublicKey string
+	Runtime           ManagedAgentRuntime
 }
 
 // ImmutableReleaseTag is the publication convention used by deploy/install.sh
@@ -31,24 +35,29 @@ func ImmutableReleaseTag(version, sourceSHA string) (string, error) {
 	}
 }
 
-func BootstrapReleaseFromSigned(s SignedManifest, configuredManifestURL ...string) (BootstrapRelease, error) {
+func BootstrapReleaseFromSigned(s SignedManifest, configuredManifestURL, configuredPublicKey string) (BootstrapRelease, error) {
 	tag, err := ImmutableReleaseTag(s.Manifest.Version, s.Manifest.SourceSHA)
 	if err != nil {
 		return BootstrapRelease{}, err
 	}
 	manifestURL := "https://github.com/tunnexio/tunnex/releases/download/" + tag + "/release.json"
-	if len(configuredManifestURL) > 0 && strings.TrimSpace(configuredManifestURL[0]) != "" {
-		manifestURL = strings.TrimSpace(configuredManifestURL[0])
+	if strings.TrimSpace(configuredManifestURL) != "" {
+		manifestURL = strings.TrimSpace(configuredManifestURL)
 		u, parseErr := url.Parse(manifestURL)
 		if parseErr != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || !strings.HasSuffix(u.Path, "/"+tag+"/release.json") {
 			return BootstrapRelease{}, fmt.Errorf("configured release manifest URL is not immutable for tag %s", tag)
 		}
 	}
+	publicKey, err := decodeKey(configuredPublicKey)
+	if err != nil {
+		return BootstrapRelease{}, fmt.Errorf("configured bootstrap verifier key: %w", err)
+	}
 	return BootstrapRelease{
-		Tag:           tag,
-		SourceSHA:     s.Manifest.SourceSHA,
-		ManifestURL:   manifestURL,
-		VerifierKeyID: s.KeyID,
-		Runtime:       s.Manifest.ManagedAgentRuntime,
+		Tag:               tag,
+		SourceSHA:         s.Manifest.SourceSHA,
+		ManifestURL:       manifestURL,
+		VerifierKeyID:     s.KeyID,
+		VerifierPublicKey: base64.RawURLEncoding.EncodeToString(publicKey),
+		Runtime:           s.Manifest.ManagedAgentRuntime,
 	}, nil
 }

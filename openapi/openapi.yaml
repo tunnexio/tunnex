@@ -5821,13 +5821,14 @@ components:
     AgentBootstrapRelease:
       type: object
       description: Server-verified immutable runtime release metadata. Contains no secret or signing private key.
-      required: [tag, source_sha, manifest_url, verifier_key_id, runtime]
+      required: [tag, source_sha, manifest_url, verifier_key_id, verifier_public_key, runtime]
       additionalProperties: false
       properties:
         tag: { type: string, minLength: 1, maxLength: 128, description: Immutable v* or tunnex-build-* release tag. }
         source_sha: { type: string, pattern: '^[0-9a-f]{40}$', description: Full source commit SHA bound by the signed descriptor. }
         manifest_url: { type: string, format: uri, description: Immutable release.json URL for the exact tag. }
-        verifier_key_id: { type: string, minLength: 1, maxLength: 128, description: Public verifier key identifier only; no key material. }
+        verifier_key_id: { type: string, minLength: 1, maxLength: 128, description: Public verifier key identifier. }
+        verifier_public_key: { type: string, minLength: 43, maxLength: 64, description: Deployment-pinned Ed25519 public verification key encoded as raw base64url; public verifier material only, not a signing key or credential. }
         runtime: { $ref: "#/components/schemas/AgentBootstrapRuntimeRelease" }
 
     AgentBootstrapRuntimeRelease:

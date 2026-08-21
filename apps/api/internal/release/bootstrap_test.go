@@ -18,9 +18,11 @@ func TestImmutableReleaseTagUsesPublishedDeploymentConvention(t *testing.T) {
 	}
 }
 
-func TestBootstrapReleaseProjectionContainsNoVerifierKeyMaterial(t *testing.T) {
+const bootstrapVerifierPublicKey = "tI_5mSPEMFKt5YDNymOVJpDwfwg3LDWBS6pEy4TWdKA"
+
+func TestBootstrapReleaseProjectionIncludesOnlyPublicVerifierMaterial(t *testing.T) {
 	signed, _ := signedFixture(t)
-	got, err := BootstrapReleaseFromSigned(signed)
+	got, err := BootstrapReleaseFromSigned(signed, "", bootstrapVerifierPublicKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,15 +32,18 @@ func TestBootstrapReleaseProjectionContainsNoVerifierKeyMaterial(t *testing.T) {
 	if strings.Contains(got.ManifestURL, "latest") || strings.Contains(got.ManifestURL, "catalog") {
 		t.Fatalf("projection used mutable URL: %q", got.ManifestURL)
 	}
+	if got.VerifierPublicKey != bootstrapVerifierPublicKey {
+		t.Fatalf("projection lost normalized public verifier key: %q", got.VerifierPublicKey)
+	}
 }
 
 func TestBootstrapReleaseProjectionAcceptsOnlyConfiguredImmutableURL(t *testing.T) {
 	signed, _ := signedFixture(t)
-	got, err := BootstrapReleaseFromSigned(signed, "https://mirror.example/releases/v0.4.0/release.json")
+	got, err := BootstrapReleaseFromSigned(signed, "https://mirror.example/releases/v0.4.0/release.json", bootstrapVerifierPublicKey)
 	if err != nil || got.ManifestURL != "https://mirror.example/releases/v0.4.0/release.json" {
 		t.Fatalf("configured immutable URL = %q, %v", got.ManifestURL, err)
 	}
-	if _, err := BootstrapReleaseFromSigned(signed, "https://mirror.example/releases/latest/release.json"); err == nil {
+	if _, err := BootstrapReleaseFromSigned(signed, "https://mirror.example/releases/latest/release.json", bootstrapVerifierPublicKey); err == nil {
 		t.Fatal("mutable release URL must be refused")
 	}
 }

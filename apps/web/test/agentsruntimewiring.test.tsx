@@ -297,6 +297,7 @@ describe("released Agents route — F04 runtime facts", () => {
       source_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       manifest_url: "https://github.com/tunnexio/tunnex/releases/download/v0.4.0/release.json",
       verifier_key_id: "release-2026-01",
+      verifier_public_key: "tI_5mSPEMFKt5YDNymOVJpDwfwg3LDWBS6pEy4TWdKA",
       runtime: {
         binary: "tunnex-agent-runtime",
         version: "v0.4.0",
@@ -341,6 +342,8 @@ describe("released Agents route — F04 runtime facts", () => {
     expect(issuedCommand).toMatch(/source_sha=.*aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/);
     expect(issuedCommand).toContain("https://github.com/tunnexio/tunnex/releases/download/v0.4.0/release.json");
     expect(issuedCommand).toMatch(/verifier_key_id=.*release-2026-01/);
+    expect(issuedCommand).toContain("tI_5mSPEMFKt5YDNymOVJpDwfwg3LDWBS6pEy4TWdKA");
+    expect(issuedCommand).not.toContain("trusted release public key is required on the host");
     expect(issuedCommand).toContain("tunnex-agent-runtime-linux-amd64");
     expect(issuedCommand).toContain("tunnex-agent-runtime.service");
     expect(issuedCommand).not.toMatch(/-----BEGIN|runtime-secret-test|public-key-test|token_hash/i);

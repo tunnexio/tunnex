@@ -23,6 +23,8 @@ const (
 	// FeatIdpSync — IdP directory sync. ⚠ Its DEPROVISION half is not gated: a licence may stop granting
 	// access, it must never stop removing it.
 	FeatIdpSync Feature = "idp_sync"
+	// FeatAgentJITAccess — expiring, owner-approved access grants for managed agents.
+	FeatAgentJITAccess Feature = "agent_jit_access"
 )
 
 // Tier is what a licence grants. ⚠ Community is the no-key tier: holding no licence IS being Community.
@@ -91,7 +93,7 @@ var tierFeatures = map[Tier]map[Feature]bool{
 	TierTrial:   {FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true},
 	TierStarter: {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
 	TierGrowth:  {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
-	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
+	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatAgentJITAccess: true},
 }
 
 // GatewayCeilingFor is the number of gateways a tier may ENROL. nil means unlimited.

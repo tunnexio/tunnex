@@ -10,7 +10,12 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentaccess"
 )
 
-func NewAgentAccessPort(_ *pgxpool.Pool, _ agentaccess.Pusher) agentAccessPort { return nil }
+// JIT is licence-gated at the handler seam, not by the build tag. A Scale
+// licence must work with the same single API image as every other tier.
+func NewAgentAccessPort(pool *pgxpool.Pool, pusher agentaccess.Pusher) agentAccessPort {
+	return agentaccess.New(pool, pusher)
+}
 
-func StartAgentAccessSweeper(_ context.Context, _ *pgxpool.Pool, _ agentaccess.Pusher, _ func() bool) {
+func StartAgentAccessSweeper(ctx context.Context, pool *pgxpool.Pool, pusher agentaccess.Pusher, mayTick func() bool) {
+	go agentaccess.New(pool, pusher).StartExpirySweeper(ctx, mayTick)
 }

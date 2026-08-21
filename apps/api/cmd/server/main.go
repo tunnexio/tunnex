@@ -376,7 +376,7 @@ func main() {
 				ApprovalMode:   "host_command_only",
 			}
 		} else {
-			if metadata, metadataErr := release.BootstrapReleaseFromSigned(signed, cfg.ReleaseManifestURL); metadataErr == nil {
+			if metadata, metadataErr := release.BootstrapReleaseFromSigned(signed, cfg.ReleaseManifestURL, cfg.ReleasePublicKey); metadataErr == nil {
 				releaseBootstrap = &metadata
 			} else {
 				logger.Warn("bootstrap_release_metadata_unavailable", slog.String("error", metadataErr.Error()))
