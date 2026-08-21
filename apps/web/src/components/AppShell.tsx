@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   NAV_WIDTH,
   navShows,
@@ -305,6 +305,7 @@ function SidebarNav({
   const { navMode } = useLayoutCapability();
   const counts = useNavCounts();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
   // ⛔ USER-CONTROLLED, AND PERSISTED AT THE DESIGNER'S OWN KEY. `navMode` narrows the rail when the
   // VIEWPORT is small; this is the operator narrowing it on a wide screen and having it remembered.
   // Read once at mount so the first paint is already correct — a sidebar that expands and then
@@ -324,6 +325,16 @@ function SidebarNav({
   // of the preference — the preference governs the WIDE case, which is what it was missing.
   const collapsed = navMode === "rail" || collapse === "closed";
 
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const firstLink = drawerRef.current?.querySelector<HTMLElement>('a[href]');
+    (firstLink ?? drawerRef.current)?.focus();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [drawerOpen]);
+
   if (navMode === "drawer") {
     return (
       <>
@@ -332,15 +343,22 @@ function SidebarNav({
           aria-expanded={drawerOpen}
           aria-controls="main-nav"
           onClick={() => setDrawerOpen((o) => !o)}
-          className="absolute left-4 top-4 rounded-md border border-white/10 px-3 py-2 text-sm text-slate-300"
+          className="absolute left-4 top-4 min-h-11 rounded-md border border-white/10 px-3 py-2 text-sm text-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
         >
           Menu
         </button>
         <nav
+          ref={drawerRef}
           id="main-nav"
           aria-label="Main"
           hidden={!drawerOpen}
           className="absolute inset-y-0 left-0 z-20 flex w-[228px] flex-col justify-between border-r border-line bg-bg p-2.5"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setDrawerOpen(false);
+            }
+          }}
         >
           <NavGroups onNavigate={() => setDrawerOpen(false)} counts={counts} />
           {email && onLogout && (
@@ -507,7 +525,7 @@ export function AppShell() {
             computed, asserted, and never consumable — dormant machinery in our own new code (docs/laws.md).
             Padding and gap are the README's: 20px 24px 28px, flex column, gap 14. */}
           <main
-            className="tnx-page flex min-h-0 flex-1 flex-col gap-3.5 px-6 pb-[30px] pt-[34px] overflow-y-auto"
+            className="tnx-page flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-4 pb-[30px] pt-6 sm:px-6 sm:pt-[34px]"
             data-columns={columns}
           >
             {/* data-columns publishes the column BUDGET so a page grid can consume it — which nothing could do

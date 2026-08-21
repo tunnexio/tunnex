@@ -10,9 +10,13 @@ export function LoadRetry({
   onRetry: () => void;
 }) {
   return (
-    <div className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300">
+    <div
+      role="alert"
+      className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300"
+    >
       {error}{" "}
       <button
+        type="button"
         className="underline underline-offset-2 hover:text-amber-200"
         onClick={onRetry}
       >
