@@ -131,6 +131,9 @@ func TestStartAndCompleteUsesPKCEAndSealedCustody(t *testing.T) {
 	if _, err := sealer.Open(*row.AccessTokenSealed); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := svc.Start(ctx, StartInput{OrgID: org, DeviceID: device, ActorID: user, Endpoint: "https://mcp.example/rpc", Resource: "https://mcp.example/resource", Issuer: server.URL + "/issuer", Scopes: []string{"tools:read"}, ClientID: "registered-client"}); !errors.Is(err, ErrAlreadyConnected) {
+		t.Fatalf("repeat start err=%v", err)
+	}
 	if err := svc.Complete(ctx, state, "code"); !errors.Is(err, ErrFlowNotFound) {
 		t.Fatalf("replay err=%v", err)
 	}

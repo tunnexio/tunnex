@@ -84,6 +84,9 @@ func toAPIMCPOAuthConnection(row mcpoauth.Connection) api.AgentMCPOAuthConnectio
 }
 
 func mapMCPOAuthError(err error) error {
+	if errors.Is(err, mcpoauth.ErrAlreadyConnected) {
+		return apierr.Conflict("mcp_oauth_already_connected", "this MCP OAuth connection is already connected")
+	}
 	if errors.Is(err, mcpoauth.ErrInvalidInput) || errors.Is(err, mcpoauth.ErrMetadata) {
 		return apierr.BadRequest("invalid_mcp_oauth", "MCP OAuth issuer metadata or connection details are not acceptable")
 	}

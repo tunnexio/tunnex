@@ -57,6 +57,7 @@ function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage }: { orgId: 
 	const terminal = new URLSearchParams(window.location.search).get("mcp_oauth");
   useEffect(() => { void api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections", { params: { path: { orgId, deviceId } } }).then((result) => { if (result.data) setConnections(result.data as AgentMCPOAuthConnection[]); }); }, [orgId, deviceId]);
   if (!protectedServer) return null;
+	const connected = connections.find((connection) => connection.endpoint === protectedServer.endpoint && connection.state === "connected");
   const start = async () => {
     if (!canManage || !protectedServer.endpoint || !protectedServer.protected_resource || !protectedServer.authorization_servers?.[0]) return;
     setBusy(true); setError(null);
@@ -72,7 +73,7 @@ function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage }: { orgId: 
     {terminal === "connected" && <p role="status" className="mt-2 text-success">Consent completed. The connection is ready for F14 policy configuration; no MCP tool access is granted yet.</p>}
     {terminal === "failed" && <p role="alert" className="mt-2 text-danger">Consent did not complete. Check the registered client, issuer, and requested scopes.</p>}
     {connections.map((connection) => <div key={connection.id} className="mt-2 text-slate-400">{connection.endpoint} · {connection.state}{connection.token_expires_at ? ` · expires ${connection.token_expires_at}` : ""}</div>)}
-    {canManage && <div className="mt-3 grid gap-2 sm:grid-cols-2">
+    {connected ? <p role="status" className="mt-2 text-success">Connected. Re-consent is not available here; F14 owns token renewal and use policy.</p> : canManage && <div className="mt-3 grid gap-2 sm:grid-cols-2">
       <Field label="Client ID"><Input value={clientId} onChange={(event) => setClientId(event.target.value)} /></Field>
       <Field label="Client secret (optional)"><Input type="password" autoComplete="new-password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} /></Field>
       <Field label="Requested scopes"><Input placeholder={(protectedServer.scopes_supported ?? []).join(" ")} value={scopes} onChange={(event) => setScopes(event.target.value)} /></Field>

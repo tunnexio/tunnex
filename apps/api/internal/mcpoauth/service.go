@@ -23,10 +23,11 @@ import (
 )
 
 var (
-	ErrInvalidInput = errors.New("invalid MCP OAuth input")
-	ErrFlowNotFound = errors.New("MCP OAuth flow not found")
-	ErrExchange     = errors.New("MCP OAuth exchange failed")
-	ErrMetadata     = errors.New("MCP OAuth issuer metadata rejected")
+	ErrInvalidInput     = errors.New("invalid MCP OAuth input")
+	ErrFlowNotFound     = errors.New("MCP OAuth flow not found")
+	ErrExchange         = errors.New("MCP OAuth exchange failed")
+	ErrMetadata         = errors.New("MCP OAuth issuer metadata rejected")
+	ErrAlreadyConnected = errors.New("MCP OAuth connection is already connected")
 )
 
 type StartInput struct {
@@ -78,6 +79,15 @@ func (s *Service) Start(ctx context.Context, in StartInput) (StartResult, error)
 	metadata, err := s.authorizationMetadata(ctx, in.Issuer)
 	if err != nil || !metadata.allowsResource(in.Resource) {
 		return StartResult{}, ErrMetadata
+	}
+	existing, err := s.List(ctx, in.OrgID, in.DeviceID)
+	if err != nil {
+		return StartResult{}, err
+	}
+	for _, connection := range existing {
+		if connection.Endpoint == in.Endpoint && connection.State == "connected" {
+			return StartResult{}, ErrAlreadyConnected
+		}
 	}
 	var sealed *string
 	var fingerprint *string
