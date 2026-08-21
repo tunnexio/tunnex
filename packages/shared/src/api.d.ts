@@ -399,6 +399,7 @@ export interface paths {
         /**
          * Mint a one-time CLI authorization code (browser leg)
          * @description COOKIE-SESSION ONLY (argued exception to bearer≡cookie): minting a new credential from an existing bearer credential would be self-replication — a stolen token could outlive its expiry by re-minting. The browser session is the human checkpoint. Verified email required. The redirect_uri must be a loopback (http://127.0.0.1:<port>/callback or http://[::1]:<port>/callback, any port, exactly that path — never a hostname). The code is single-use, expires in 60s, and is bound to this exact redirect_uri + PKCE challenge.
+         *
          */
         post: operations["cliAuthorize"];
         delete?: never;
@@ -419,6 +420,7 @@ export interface paths {
         /**
          * Exchange a one-time code (+ PKCE verifier) for a CLI credential
          * @description Public (the CLI holds no credential yet). The exchange requires the code, the PKCE verifier matching the challenge presented at authorize, and the EXACT redirect_uri the code was bound to. Any mismatch, reuse, or expiry → 400 invalid_grant. The credential is returned EXACTLY ONCE.
+         *
          */
         post: operations["cliToken"];
         delete?: never;
@@ -457,6 +459,7 @@ export interface paths {
         /**
          * Revoke one of the caller's CLI credentials (immediate)
          * @description Self-scoped (a caller revokes only their own credential). Allowed unverified — revoking a credential is logout-class, not org-mutating.
+         *
          */
         delete: operations["revokeCliCredential"];
         options?: never;
@@ -476,6 +479,7 @@ export interface paths {
         /**
          * Start the device-code fallback (browserless hosts)
          * @description Public. Returns a short user_code the user enters at verification_uri from any browser, and a device_code the CLI polls with. Same hygiene class as authorization codes — hashed at rest, single-use, short TTL.
+         *
          */
         post: operations["cliDeviceStart"];
         delete?: never;
@@ -496,6 +500,7 @@ export interface paths {
         /**
          * Approve a device-code login (browser leg)
          * @description COOKIE-SESSION ONLY (same argued exception as cliAuthorize) + verified email required — this is the human checkpoint of the device flow.
+         *
          */
         post: operations["cliDeviceApprove"];
         delete?: never;
@@ -516,6 +521,7 @@ export interface paths {
         /**
          * Poll for the device-flow credential
          * @description Public. 400 authorization_pending until approved; expired/consumed codes → 400 invalid_grant. On approval the credential is returned EXACTLY ONCE.
+         *
          */
         post: operations["cliDeviceToken"];
         delete?: never;
@@ -1702,6 +1708,7 @@ export interface paths {
         /**
          * Extend a temporary grant's expiry window in place (enterprise)
          * @description S7.5.4: moves a temporary grant's expires_at forward (window-extensible, never delete+recreate). Refuses a permanent grant (409 not_temporary) or an already-lapsed one (409 grant_lapsed) — a lapsed grant is terminal.
+         *
          */
         put: operations["extendGrant"];
         post?: never;
@@ -1712,6 +1719,7 @@ export interface paths {
         /**
          * Enable or disable an allow-rule without deleting it (enterprise, F3)
          * @description F3: toggle a rule's enabled state. Disabling WITHDRAWS the rule's permission under default-deny ("as if the rule weren't there" — NOT a deny-rule, not active blocking); it is a real, in-hash policy change that recompiles + pushes (traffic matching the rule stops within a push cycle). Re-enabling restores the grant. Audited as two distinct actions (policy.rule_enabled / policy.rule_disabled). No RequiredVersion bump.
+         *
          */
         patch: operations["setPolicyRuleEnabled"];
         trace?: never;
@@ -1794,6 +1802,7 @@ export interface paths {
          *     revoke them, so this deliberately reuses that permission rather than minting a read-only
          *     one whose grant table would have to answer "who may see who was invited, but do nothing".
          *     The secret token is NEVER returned: it is shown once, by `createInvitation`.
+         *
          */
         get: operations["listInvitations"];
         put?: never;
@@ -1936,6 +1945,7 @@ export interface paths {
         /**
          * Grant or change a user's role in ANY organization (deployment admin)
          * @description Requires `users.cp_admin`. Creates the membership if the user has none. Refuses to demote the organization's last owner (409 `last_owner`). Audited into the TARGET organization's log, so the org's own owners see that someone from outside their tenant changed a role.
+         *
          */
         put: operations["adminSetOrgRole"];
         post?: never;
@@ -1958,6 +1968,7 @@ export interface paths {
         /**
          * Grant or revoke the deployment-administrator capability
          * @description Requires `users.cp_admin`. Refuses any change that would leave the deployment with ZERO holders (409 `last_cp_admin`) — there is no public signup, so a deployment with no deployment administrator cannot be recovered without database access.
+         *
          */
         put: operations["adminSetCpAdmin"];
         post?: never;
@@ -2073,6 +2084,7 @@ export interface paths {
          * @description Creates an organization. In the open edition this fails with
          *     `org_limit_reached` once one organization exists; the enterprise build
          *     allows multiple.
+         *
          */
         post: operations["createOrganization"];
         delete?: never;
@@ -2508,6 +2520,7 @@ export interface paths {
         /**
          * Unbind a gateway node from the site — D6 replace-node (S8.1/S8.6
          * @description Unbinds a gateway. With a node_id body, unbinds THAT gateway — post the single-node lift a site may hold several, so the caller names which (S8.6 #3). WITHOUT a body (the legacy caller shape, S8.6 #6 compat), unbinds the site's SOLE gateway; a multi-gateway site then requires node_id (409). 404 when the node is not bound to this site / the site has no gateway.
+         *
          */
         delete: operations["unbindSiteNode"];
         options?: never;
@@ -3985,7 +3998,8 @@ export interface components {
              * @enum {string}
              */
             mode: "off" | "enforcing";
-            /** @description On ENABLING enforcing (PUT only), the full-tunnel devices whose internet egress becomes policy-governed by the flip — the blast radius for the warn-and-confirm. The server obeys regardless; this is the honest count + names. Absent/empty when disabling or when none are affected. State name for these = egress_policy_denied (distinct from gateway_no_egress: the gateway CAN egress, policy is denying it). */
+            /** @description On ENABLING enforcing (PUT only), the full-tunnel devices whose internet egress becomes policy-governed by the flip — the blast radius for the warn-and-confirm. The server obeys regardless; this is the honest count + names. Absent/empty when disabling or when none are affected. State name for these = egress_policy_denied (distinct from gateway_no_egress: the gateway CAN egress, policy is denying it).
+             *      */
             affected_full_tunnel_devices?: components["schemas"]["AffectedDevice"][];
         };
         AffectedDevice: {
@@ -4029,7 +4043,8 @@ export interface components {
             url: string;
         };
         CliAuthorizeRequest: {
-            /** @description Loopback only — http://127.0.0.1:<port>/callback or http://[::1]:<port>/callback (any port, exactly that path; hostnames incl. "localhost" are refused — DNS-spoofable). */
+            /** @description Loopback only — http://127.0.0.1:<port>/callback or http://[::1]:<port>/callback (any port, exactly that path; hostnames incl. "localhost" are refused — DNS-spoofable).
+             *      */
             redirect_uri: string;
             /** @description PKCE S256 challenge (base64url SHA-256 of the CLI's verifier). */
             code_challenge: string;
@@ -4050,7 +4065,8 @@ export interface components {
             redirect_uri: string;
         };
         CliTokenResponse: {
-            /** @description The dedicated CLI bearer credential, prefixed tnx_ (secret-scanner matchable). Shown exactly once; stored hashed; send as "Authorization: Bearer <token>". */
+            /** @description The dedicated CLI bearer credential, prefixed tnx_ (secret-scanner matchable). Shown exactly once; stored hashed; send as "Authorization: Bearer <token>".
+             *      */
             token: string;
             /**
              * Format: date-time
@@ -4760,7 +4776,8 @@ export interface components {
              * @enum {string}
              */
             mode: "off" | "on";
-            /** @description On ENABLING (PUT off->on only), the count of existing active devices that stay active (grandfathered — a flip must not black-hole the fleet). Best-effort; absent when disabling. */
+            /** @description On ENABLING (PUT off->on only), the count of existing active devices that stay active (grandfathered — a flip must not black-hole the fleet). Best-effort; absent when disabling.
+             *      */
             grandfathered_count?: number;
         };
         HealthCheck: {
@@ -4771,20 +4788,24 @@ export interface components {
             kind: "os_version" | "disk_encryption";
             /**
              * @description warn = surface + audit only, never gates. require = a fresh non-compliant report excludes the device from every gateway within seconds.
+             *
              * @enum {string}
              */
             mode: "warn" | "require";
-            /** @description Check parameters. os_version: {"min":{"macos":"14.0","windows":"10.0"}} — a platform absent from "min" is not enforced. disk_encryption: none. */
-            param?: Record<string, never> | null;
-            /** @description On PUT only: how many devices' LAST report would fail this check (best-effort blast radius). The config write itself blocks nothing — a device's gate only ever flips on its own next report (D4 grandfather). */
+            /** @description Check parameters. os_version: {"min":{"macos":"14.0","windows":"10.0"}} — a platform absent from "min" is not enforced. disk_encryption: none.
+             *      */
+            param?: Record<string, never>;
+            /** @description On PUT only: how many devices' LAST report would fail this check (best-effort blast radius). The config write itself blocks nothing — a device's gate only ever flips on its own next report (D4 grandfather).
+             *      */
             would_fail_count?: number;
         };
         HealthCheckInput: {
             /** @enum {string} */
             mode: "warn" | "require";
-            param?: Record<string, never> | null;
+            param?: Record<string, never>;
         };
-        /** @description Client-reported posture facts (S7.5.3). NOT attestation — a compromised device can misreport; posture checks deter honest non-compliance and give an audit trail (defense-in-depth, not a guarantee). */
+        /** @description Client-reported posture facts (S7.5.3). NOT attestation — a compromised device can misreport; posture checks deter honest non-compliance and give an audit trail (defense-in-depth, not a guarantee).
+         *      */
         DeviceHealthReport: {
             /** @enum {string} */
             platform: "macos" | "windows" | "linux" | "other";
@@ -5089,11 +5110,10 @@ export interface components {
             token: string;
             password: string;
         };
-        /**
-         * @description Standard error envelope for every non-2xx response. Chosen over bare
+        /** @description Standard error envelope for every non-2xx response. Chosen over bare
          *     RFC 7807 so the correlation `request_id` is a first-class field the SPA
          *     and CLI can surface directly; `code` is stable for programmatic handling.
-         */
+         *      */
         Error: {
             error: {
                 /**
@@ -5209,7 +5229,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Credentials valid. If MFA is required (self-enrolled or org-enforced), NO session cookie is set and `mfa_required=true` with a challenge; the client completes at /auth/mfa/verify. Otherwise the session cookie is set and `user` is returned. */
+            /** @description Credentials valid. If MFA is required (self-enrolled or org-enforced), NO session cookie is set and `mfa_required=true` with a challenge; the client completes at /auth/mfa/verify. Otherwise the session cookie is set and `user` is returned.
+             *      */
             200: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];
