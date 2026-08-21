@@ -127,6 +127,29 @@ type AgentMcpInventory struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+// F13 agent MCP OAuth trust; tokens and client secrets are sealed and never returned by readable APIs.
+type AgentMcpOauthConnection struct {
+	ID                      uuid.UUID          `json:"id"`
+	OrgID                   uuid.UUID          `json:"org_id"`
+	DeviceID                uuid.UUID          `json:"device_id"`
+	Endpoint                string             `json:"endpoint"`
+	ProtectedResource       string             `json:"protected_resource"`
+	Issuer                  string             `json:"issuer"`
+	Scopes                  []byte             `json:"scopes"`
+	ClientID                string             `json:"client_id"`
+	ClientSecretSealed      *string            `json:"client_secret_sealed"`
+	ClientSecretFingerprint *string            `json:"client_secret_fingerprint"`
+	AccessTokenSealed       *string            `json:"access_token_sealed"`
+	RefreshTokenSealed      *string            `json:"refresh_token_sealed"`
+	TokenExpiresAt          pgtype.Timestamptz `json:"token_expires_at"`
+	State                   string             `json:"state"`
+	FailureCode             *string            `json:"failure_code"`
+	ConnectedByUserID       pgtype.UUID        `json:"connected_by_user_id"`
+	ConnectedAt             pgtype.Timestamptz `json:"connected_at"`
+	CreatedAt               time.Time          `json:"created_at"`
+	UpdatedAt               time.Time          `json:"updated_at"`
+}
+
 type AgentPolicyTemplate struct {
 	ID          uuid.UUID          `json:"id"`
 	OrgID       uuid.UUID          `json:"org_id"`

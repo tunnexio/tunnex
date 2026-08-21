@@ -116,6 +116,15 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 	}
 	if req.Body.McpInventory != nil {
 		inventory := *req.Body.McpInventory
+		if req.Body.McpOauthDiscovery != nil {
+			// Keep F13 discovery co-located with the F12 runtime-owned snapshot.
+			// It is deliberately metadata only: no authorization header, code,
+			// client secret, access token, refresh token, or session may enter it.
+			if !validMCPInventoryValue(*req.Body.McpOauthDiscovery) {
+				return nil, apierr.New(http.StatusBadRequest, "invalid_mcp_oauth_discovery", "MCP OAuth discovery is not acceptable")
+			}
+			inventory["oauth_discovery"] = *req.Body.McpOauthDiscovery
+		}
 		if prior, err := s.system.GetAgentMCPInventory(ctx, sqlc.GetAgentMCPInventoryParams{DeviceID: id.DeviceID, OrgID: id.OrgID}); err == nil {
 			var previous map[string]interface{}
 			if json.Unmarshal(prior.Snapshot, &previous) == nil {

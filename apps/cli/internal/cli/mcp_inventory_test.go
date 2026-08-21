@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -12,6 +14,48 @@ func TestNormalizeMCPInventoryAcceptsLegacyAndCurrentSnapshots(t *testing.T) {
 		if err != nil || got.Tools[0].InputSchemaHash == "" {
 			t.Fatalf("%s: %#v, %v", version, got, err)
 		}
+	}
+}
+
+func TestObserveMCPOAuthDiscoveryUsesResourceMetadataChallenge(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mcp":
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+server.URL+`/metadata"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		case "/metadata":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"resource": server.URL + "/mcp", "authorization_servers": []string{"https://issuer.example"}, "scopes_supported": []string{"tools:read"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	discovery := ObserveMCPOAuthDiscovery(t.Context(), []string{server.URL + "/mcp"})
+	servers := discovery["servers"].([]interface{})
+	got := servers[0].(map[string]interface{})
+	if got["status"] != "protected" || got["protected_resource"] != server.URL+"/mcp" {
+		t.Fatalf("discovery=%#v", got)
+	}
+}
+
+func TestObserveMCPOAuthDiscoveryUsesWellKnownFallback(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mcp":
+			w.WriteHeader(http.StatusUnauthorized)
+		case "/.well-known/oauth-protected-resource/mcp":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"resource": server.URL + "/mcp", "authorization_servers": []string{"https://issuer.example"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	discovery := ObserveMCPOAuthDiscovery(t.Context(), []string{server.URL + "/mcp"})
+	got := discovery["servers"].([]interface{})[0].(map[string]interface{})
+	if got["status"] != "protected" {
+		t.Fatalf("discovery=%#v", got)
 	}
 }
 

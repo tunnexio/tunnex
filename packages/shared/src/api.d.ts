@@ -4415,6 +4415,10 @@ export interface components {
             mcp_inventory?: {
                 [key: string]: unknown;
             } | null;
+            /** @description Optional secret-free F13 protected-resource discovery for this runtime only. */
+            mcp_oauth_discovery?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** @description Secret-free organization/admin projection of one managed agent runtime. */
         AgentRuntimeStatus: {

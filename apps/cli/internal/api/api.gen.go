@@ -1138,6 +1138,9 @@ type AgentRuntimeReport struct {
 
 	// McpInventory Optional secret-free F12 MCP inventory snapshot for this runtime only.
 	McpInventory *map[string]interface{} `json:"mcp_inventory"`
+
+	// McpOauthDiscovery Optional secret-free F13 protected-resource discovery for this runtime only.
+	McpOauthDiscovery *map[string]interface{} `json:"mcp_oauth_discovery"`
 }
 
 // AgentRuntimeReportErrorCode Empty means no error; otherwise a bounded stable code, never raw runtime output.

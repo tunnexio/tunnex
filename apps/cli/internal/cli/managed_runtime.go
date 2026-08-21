@@ -601,10 +601,14 @@ func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeRe
 	code := api.AgentRuntimeReportErrorCode(report.ErrorCode)
 	if len(s.mcpEndpoints) > 0 {
 		report.MCPInventory = ObserveMCPInventory(ctx, s.mcpEndpoints)
+		report.MCPOAuthDiscovery = ObserveMCPOAuthDiscovery(ctx, s.mcpEndpoints)
 	}
 	body := api.AgentRuntimeReport{AppliedRevision: report.AppliedRevision, AttemptedRevision: report.AttemptedRevision, ClientVersion: report.ClientVersion, ErrorCode: code}
 	if report.MCPInventory != nil {
 		body.McpInventory = &report.MCPInventory
+	}
+	if report.MCPOAuthDiscovery != nil {
+		body.McpOauthDiscovery = &report.MCPOAuthDiscovery
 	}
 	resp, err := s.client.ReportAgentRuntimeWithResponse(ctx, body)
 	if err != nil {

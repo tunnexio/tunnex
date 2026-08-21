@@ -5766,6 +5766,11 @@ components:
           nullable: true
           additionalProperties: true
           description: Optional secret-free F12 MCP inventory snapshot for this runtime only.
+        mcp_oauth_discovery:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Optional secret-free F13 protected-resource discovery for this runtime only.
 
     AgentRuntimeStatus:
       type: object
