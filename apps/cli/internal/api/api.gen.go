@@ -998,6 +998,15 @@ type AgentJITAccessSetting struct {
 	PendingRequests  int  `json:"pending_requests"`
 }
 
+// AgentMCPInventory defines model for AgentMCPInventory.
+type AgentMCPInventory struct {
+	DeviceId   openapi_types.UUID `json:"device_id"`
+	ObservedAt time.Time          `json:"observed_at"`
+
+	// Snapshot Secret-free F12 inventory snapshot; no MCP request/response content or credentials.
+	Snapshot map[string]interface{} `json:"snapshot"`
+}
+
 // AgentManagingGroupUpdate defines model for AgentManagingGroupUpdate.
 type AgentManagingGroupUpdate struct {
 	GroupId *openapi_types.UUID `json:"group_id"`
@@ -1126,6 +1135,9 @@ type AgentRuntimeReport struct {
 
 	// ErrorCode Empty means no error; otherwise a bounded stable code, never raw runtime output.
 	ErrorCode AgentRuntimeReportErrorCode `json:"error_code"`
+
+	// McpInventory Optional secret-free F12 MCP inventory snapshot for this runtime only.
+	McpInventory *map[string]interface{} `json:"mcp_inventory"`
 }
 
 // AgentRuntimeReportErrorCode Empty means no error; otherwise a bounded stable code, never raw runtime output.
@@ -3589,6 +3601,9 @@ type ClientInterface interface {
 	// RequestAgentCredentialRotation request
 	RequestAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAgentMCPInventory request
+	GetAgentMCPInventory(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetAgentRuntimeStatus request
 	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -5538,6 +5553,18 @@ func (c *Client) GetAgentCredentialRotation(ctx context.Context, orgId openapi_t
 
 func (c *Client) RequestAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRequestAgentCredentialRotationRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentMCPInventory(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentMCPInventoryRequest(c.Server, orgId, deviceId)
 	if err != nil {
 		return nil, err
 	}
@@ -11005,6 +11032,47 @@ func NewRequestAgentCredentialRotationRequest(server string, orgId openapi_types
 	return req, nil
 }
 
+// NewGetAgentMCPInventoryRequest generates requests for GetAgentMCPInventory
+func NewGetAgentMCPInventoryRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-inventory", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetAgentRuntimeStatusRequest generates requests for GetAgentRuntimeStatus
 func NewGetAgentRuntimeStatusRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -16280,6 +16348,9 @@ type ClientWithResponsesInterface interface {
 	// RequestAgentCredentialRotationWithResponse request
 	RequestAgentCredentialRotationWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RequestAgentCredentialRotationResponse, error)
 
+	// GetAgentMCPInventoryWithResponse request
+	GetAgentMCPInventoryWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentMCPInventoryResponse, error)
+
 	// GetAgentRuntimeStatusWithResponse request
 	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
 
@@ -18609,6 +18680,29 @@ func (r RequestAgentCredentialRotationResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RequestAgentCredentialRotationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentMCPInventoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPInventory
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentMCPInventoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentMCPInventoryResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -22181,6 +22275,15 @@ func (c *ClientWithResponses) RequestAgentCredentialRotationWithResponse(ctx con
 		return nil, err
 	}
 	return ParseRequestAgentCredentialRotationResponse(rsp)
+}
+
+// GetAgentMCPInventoryWithResponse request returning *GetAgentMCPInventoryResponse
+func (c *ClientWithResponses) GetAgentMCPInventoryWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentMCPInventoryResponse, error) {
+	rsp, err := c.GetAgentMCPInventory(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentMCPInventoryResponse(rsp)
 }
 
 // GetAgentRuntimeStatusWithResponse request returning *GetAgentRuntimeStatusResponse
@@ -26198,6 +26301,39 @@ func ParseRequestAgentCredentialRotationResponse(rsp *http.Response) (*RequestAg
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentCredentialRotationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentMCPInventoryResponse parses an HTTP response from a GetAgentMCPInventoryWithResponse call
+func ParseGetAgentMCPInventoryResponse(rsp *http.Response) (*GetAgentMCPInventoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentMCPInventoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPInventory
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

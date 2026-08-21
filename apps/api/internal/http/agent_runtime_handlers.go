@@ -2,11 +2,14 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -22,6 +25,27 @@ func (s apiServer) PrepareAgentRuntimeCredential(ctx context.Context, req api.Pr
 		return nil, runtimeMachineError(err)
 	}
 	return api.PrepareAgentRuntimeCredential204Response{Headers: api.PrepareAgentRuntimeCredential204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) GetAgentMCPInventory(ctx context.Context, req api.GetAgentMCPInventoryRequestObject) (api.GetAgentMCPInventoryResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
+		return nil, err
+	}
+	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
+		return nil, err
+	}
+	row, err := s.system.GetAgentMCPInventory(ctx, sqlc.GetAgentMCPInventoryParams{DeviceID: req.DeviceId, OrgID: req.OrgId})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apierr.NotFound("mcp_inventory_not_found", "MCP inventory has not been observed")
+	}
+	if err != nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_inventory_unavailable", "MCP inventory is temporarily unavailable")
+	}
+	var snapshot map[string]interface{}
+	if err := json.Unmarshal(row.Snapshot, &snapshot); err != nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_inventory_unavailable", "MCP inventory is temporarily unavailable")
+	}
+	return api.GetAgentMCPInventory200JSONResponse{DeviceId: row.DeviceID, ObservedAt: row.ObservedAt, Snapshot: snapshot}, nil
 }
 
 func (s apiServer) PrepareAgentRuntimeWireGuard(ctx context.Context, req api.PrepareAgentRuntimeWireGuardRequestObject) (api.PrepareAgentRuntimeWireGuardResponseObject, error) {
@@ -89,7 +113,51 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 	if err := s.agentRuntime.Report(ctx, id, req.Body.AppliedRevision, req.Body.AttemptedRevision, req.Body.ClientVersion, string(req.Body.ErrorCode)); err != nil {
 		return nil, runtimeMachineError(err)
 	}
+	if req.Body.McpInventory != nil {
+		body, err := json.Marshal(*req.Body.McpInventory)
+		if err != nil || len(body) > 512<<10 || !validMCPInventoryValue(*req.Body.McpInventory) {
+			return nil, apierr.New(http.StatusBadRequest, "invalid_mcp_inventory", "MCP inventory is not acceptable")
+		}
+		if _, err := s.system.UpsertAgentMCPInventory(ctx, sqlc.UpsertAgentMCPInventoryParams{DeviceID: id.DeviceID, OrgID: id.OrgID, Snapshot: body, ObservedAt: time.Now().UTC()}); err != nil {
+			return nil, apierr.New(http.StatusServiceUnavailable, "mcp_inventory_unavailable", "MCP inventory is temporarily unavailable")
+		}
+	}
 	return api.ReportAgentRuntime204Response{Headers: api.ReportAgentRuntime204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func validMCPInventoryValue(value interface{}) bool {
+	const maxDepth = 10
+	var walk func(interface{}, int) bool
+	walk = func(v interface{}, depth int) bool {
+		if depth > maxDepth {
+			return false
+		}
+		switch x := v.(type) {
+		case map[string]interface{}:
+			for key, child := range x {
+				switch strings.ToLower(key) {
+				case "authorization", "credential", "credentials", "token", "access_token", "refresh_token", "session", "session_id", "content", "contents", "messages", "result":
+					return false
+				}
+				if len(key) > 128 || !walk(child, depth+1) {
+					return false
+				}
+			}
+		case []interface{}:
+			if len(x) > 2048 {
+				return false
+			}
+			for _, child := range x {
+				if !walk(child, depth+1) {
+					return false
+				}
+			}
+		case string:
+			return len(x) <= 4096
+		}
+		return true
+	}
+	return walk(value, 0)
 }
 
 func (s apiServer) GetAgentRuntimeStatus(ctx context.Context, req api.GetAgentRuntimeStatusRequestObject) (api.GetAgentRuntimeStatusResponseObject, error) {

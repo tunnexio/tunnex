@@ -491,6 +491,7 @@ type Querier interface {
 	GetAgentGovernanceForUpdate(ctx context.Context, arg GetAgentGovernanceForUpdateParams) (GetAgentGovernanceForUpdateRow, error)
 	GetAgentGroup(ctx context.Context, arg GetAgentGroupParams) (AgentGroup, error)
 	GetAgentGroupForUpdate(ctx context.Context, arg GetAgentGroupForUpdateParams) (AgentGroup, error)
+	GetAgentMCPInventory(ctx context.Context, arg GetAgentMCPInventoryParams) (AgentMcpInventory, error)
 	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -1548,6 +1549,7 @@ type Querier interface {
 	UpdateOrganizationName(ctx context.Context, arg UpdateOrganizationNameParams) (Organization, error)
 	UpdateResource(ctx context.Context, arg UpdateResourceParams) (Resource, error)
 	UpdateUserGroup(ctx context.Context, arg UpdateUserGroupParams) (UserGroup, error)
+	UpsertAgentMCPInventory(ctx context.Context, arg UpsertAgentMCPInventoryParams) (AgentMcpInventory, error)
 	// lint:cross-org — keyed by device_id; ownership + org checked by the service
 	// (GetDevice + owner match) in the same transaction. Snapshot-only (v1): the
 	// latest report replaces the prior one; reported_at is the SERVER clock that

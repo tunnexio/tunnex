@@ -748,6 +748,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /** Get an agent's observed MCP inventory */
+        get: operations["getAgentMCPInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agents/{deviceId}/test-access": {
         parameters: {
             query?: never;
@@ -4391,6 +4411,10 @@ export interface components {
              * @enum {string}
              */
             error_code: "" | "invalid_config" | "apply_failed";
+            /** @description Optional secret-free F12 MCP inventory snapshot for this runtime only. */
+            mcp_inventory?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** @description Secret-free organization/admin projection of one managed agent runtime. */
         AgentRuntimeStatus: {
@@ -4424,6 +4448,16 @@ export interface components {
             last_error_code?: "invalid_config" | "apply_failed" | null;
             /** Format: int64 */
             last_error_revision?: number | null;
+        };
+        AgentMCPInventory: {
+            /** Format: uuid */
+            device_id: string;
+            /** @description Secret-free F12 inventory snapshot; no MCP request/response content or credentials. */
+            snapshot: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            observed_at: string;
         };
         AgentAccessCheck: {
             /** @enum {string} */
@@ -4578,7 +4612,7 @@ export interface components {
             mode: "warn" | "require";
             /** @description Check parameters. os_version: {"min":{"macos":"14.0","windows":"10.0"}} — a platform absent from "min" is not enforced. disk_encryption: none.
              *      */
-            param?: Record<string, never> | null;
+            param?: Record<string, never>;
             /** @description On PUT only: how many devices' LAST report would fail this check (best-effort blast radius). The config write itself blocks nothing — a device's gate only ever flips on its own next report (D4 grandfather).
              *      */
             would_fail_count?: number;
@@ -4586,7 +4620,7 @@ export interface components {
         HealthCheckInput: {
             /** @enum {string} */
             mode: "warn" | "require";
-            param?: Record<string, never> | null;
+            param?: Record<string, never>;
         };
         /** @description Client-reported posture facts (S7.5.3). NOT attestation — a compromised device can misreport; posture checks deter honest non-compliance and give an audit trail (defense-in-depth, not a guarantee).
          *      */
@@ -5975,6 +6009,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRuntimeStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentMCPInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shadow-mode inventory metadata only. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPInventory"];
                 };
             };
             default: components["responses"]["Error"];

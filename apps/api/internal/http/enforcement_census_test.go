@@ -65,6 +65,7 @@ var ENFORCEMENT = map[string]enforcement{
 		why: "the directory-sync reconciler refuses the ADDITIVE half. ⛔ Its subtractive half is " +
 			"never gated: a licence may stop granting access, it must never stop removing it",
 	},
+	"agent_jit_access": {symbol: "FeatAgentJITAccess", why: "agent JIT handlers refuse until the Scale entitlement is present"},
 }
 
 // enforcementSites finds every non-test line in the API that mentions a symbol, EXCLUDING the licence

@@ -13,6 +13,8 @@ package licence
 type Feature string
 
 const (
+	// FeatAgentJITAccess — expiring, owner-approved access grants for managed agents.
+	FeatAgentJITAccess Feature = "agent_jit_access"
 	// FeatMultiGateway — more than one gateway. ⚠ The COUNT is a band property, not a boolean; this only
 	// says whether the tier may exceed the free ceiling at all.
 	FeatMultiGateway Feature = "multi_gateway"
@@ -23,8 +25,6 @@ const (
 	// FeatIdpSync — IdP directory sync. ⚠ Its DEPROVISION half is not gated: a licence may stop granting
 	// access, it must never stop removing it.
 	FeatIdpSync Feature = "idp_sync"
-	// FeatAgentJITAccess — expiring, owner-approved access grants for managed agents.
-	FeatAgentJITAccess Feature = "agent_jit_access"
 )
 
 // Tier is what a licence grants. ⚠ Community is the no-key tier: holding no licence IS being Community.

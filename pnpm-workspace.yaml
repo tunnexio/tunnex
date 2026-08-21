@@ -3,5 +3,8 @@ packages:
   - "apps/client"
   - "packages/*"
 allowBuilds:
-  electron: set this to true or false
-  esbuild: set this to true or false
+  electron: true
+  esbuild: true
+onlyBuiltDependencies:
+  - electron
+  - esbuild

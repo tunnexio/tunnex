@@ -38,6 +38,7 @@ type AgentRuntimeReport struct {
 	AttemptedRevision int64
 	ClientVersion     string
 	ErrorCode         string
+	MCPInventory      map[string]interface{}
 }
 
 // AgentRuntimeSource is implemented by the F04 authenticated poll/report API.

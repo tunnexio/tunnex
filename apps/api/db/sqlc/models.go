@@ -118,6 +118,15 @@ type AgentGroupMember struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+// F12 MCP shadow-mode metadata only; no credentials, session ids, contents, prompts, or tool results.
+type AgentMcpInventory struct {
+	DeviceID   uuid.UUID `json:"device_id"`
+	Snapshot   []byte    `json:"snapshot"`
+	ObservedAt time.Time `json:"observed_at"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type AgentPolicyTemplate struct {
 	ID          uuid.UUID          `json:"id"`
 	OrgID       uuid.UUID          `json:"org_id"`

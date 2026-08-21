@@ -898,6 +898,28 @@ paths:
               schema: { $ref: "#/components/schemas/AgentRuntimeStatus" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-inventory:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAgentMCPInventory
+      summary: Get an agent's observed MCP inventory
+      tags: [agents]
+      responses:
+        "200":
+          description: Shadow-mode inventory metadata only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentMCPInventory" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/agents/{deviceId}/test-access:
     parameters:
       - name: orgId
@@ -5739,6 +5761,11 @@ components:
           type: string
           enum: ["", invalid_config, apply_failed]
           description: Empty means no error; otherwise a bounded stable code, never raw runtime output.
+        mcp_inventory:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Optional secret-free F12 MCP inventory snapshot for this runtime only.
 
     AgentRuntimeStatus:
       type: object
@@ -5772,6 +5799,18 @@ components:
           enum: [invalid_config, apply_failed]
           description: Last bounded stable runtime error, never raw runtime output.
         last_error_revision: { type: integer, format: int64, minimum: 1, nullable: true }
+
+    AgentMCPInventory:
+      type: object
+      required: [device_id, snapshot, observed_at]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        snapshot:
+          type: object
+          description: Secret-free F12 inventory snapshot; no MCP request/response content or credentials.
+          additionalProperties: true
+        observed_at: { type: string, format: date-time }
 
     AgentAccessCheck:
       type: object
