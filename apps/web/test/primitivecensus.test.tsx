@@ -1,9 +1,11 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { render, screen, within, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, within, cleanup } from "@testing-library/react";
+import { useState } from "react";
 import {
   Badge,
   DataTable,
   EmptyState,
+  ErrorText,
   Field,
   Input,
   List,
@@ -66,6 +68,11 @@ describe("every structural primitive is queryable by ROLE and NAME", () => {
     expect(screen.getByRole("dialog", { name: "Revoke device" })).toBeTruthy();
   });
 
+  it("ErrorText is announced instead of being a colour-only failure", () => {
+    render(<ErrorText>Could not save device.</ErrorText>);
+    expect(screen.getByRole("alert").textContent).toContain("Could not save device.");
+  });
+
   it("EmptyState says what is empty — and is DISTINCT from a failure, which must never reach it", () => {
     render(<EmptyState>No devices yet.</EmptyState>);
     expect(screen.getByText("No devices yet.")).toBeTruthy();
@@ -78,6 +85,96 @@ describe("every structural primitive is queryable by ROLE and NAME", () => {
     expect(screen.getByText("revoked")).toBeTruthy();
   });
 });
+
+describe("Modal — complete keyboard dialog behaviour", () => {
+  function Harness() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Open revoke dialog
+        </button>
+        {open && (
+          <Modal
+            title="Revoke device"
+            onDismiss={() => setOpen(false)}
+            actions={<button type="button">Cancel</button>}
+          >
+            This action disconnects the device.
+          </Modal>
+        )}
+      </>
+    );
+  }
+
+  it("moves focus inside, closes with Escape, and restores the opener", () => {
+    render(<Harness />);
+    const opener = screen.getByRole("button", { name: "Open revoke dialog" });
+    opener.focus();
+    fireEvent.click(opener);
+
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(document.activeElement).toBe(cancel);
+
+    fireEvent.keyDown(cancel, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("returns to the opener even when the dialog field uses autoFocus", () => {
+    render(
+      <HarnessWithAutoFocus />,
+    );
+    const opener = screen.getByRole("button", { name: "Open create dialog" });
+    opener.focus();
+    fireEvent.click(opener);
+
+    const siteName = screen.getByRole("textbox", { name: "Site name" });
+    expect(document.activeElement).toBe(siteName);
+    fireEvent.keyDown(siteName, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("keeps Tab navigation within the dialog", () => {
+    render(
+      <Modal
+        title="Edit device"
+        onDismiss={() => {}}
+        actions={<button type="button">Save</button>}
+      >
+        <button type="button">Cancel</button>
+      </Modal>,
+    );
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    const save = screen.getByRole("button", { name: "Save" });
+    save.focus();
+    fireEvent.keyDown(save, { key: "Tab" });
+    expect(document.activeElement).toBe(cancel);
+    fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(save);
+  });
+});
+
+function HarnessWithAutoFocus() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open create dialog
+      </button>
+      {open && (
+        <Modal
+          title="Create site"
+          onDismiss={() => setOpen(false)}
+          actions={<button type="button">Cancel</button>}
+        >
+          <input aria-label="Site name" autoFocus />
+        </Modal>
+      )}
+    </>
+  );
+}
 
 describe("DataTable — the primitive the app did not have", () => {
   const rows = [
