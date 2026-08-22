@@ -473,8 +473,9 @@ PATH="$TEST_PATH" sh "$TMP/malicious-os-release-test.sh" ||
 # yum-utils supplies `yum-config-manager` as a separate executable. A fresh
 # yum-family host must not try the dnf-only `yum config-manager` spelling.
 RPM_BIN="$TMP/rpm-bin"
+RPM_SYSTEM_BIN="$TMP/rpm-system-bin"
 RPM_LOG="$TMP/rpm.log"
-mkdir -p "$RPM_BIN"
+mkdir -p "$RPM_BIN" "$RPM_SYSTEM_BIN"
 : >"$RPM_LOG"
 cat >"$RPM_BIN/yum" <<'EOF'
 #!/bin/sh
@@ -485,6 +486,7 @@ cat >"$RPM_BIN/yum-config-manager" <<'EOF'
 printf 'yum-config-manager %s\n' "$*" >>"$TUNNEX_TEST_RPM_LOG"
 EOF
 chmod +x "$RPM_BIN"/*
+ln -s "$(command -v sh)" "$RPM_SYSTEM_BIN/sh"
 cat >"$TMP/yum-bootstrap-test.sh" <<EOF
 #!/bin/sh
 set -eu
@@ -496,7 +498,7 @@ HOST_OS_ID=rocky
 HOST_OS_ID=rocky
 install_rpm_prerequisites
 EOF
-PATH="$RPM_BIN:/usr/bin:/bin" TUNNEX_TEST_RPM_LOG="$RPM_LOG" sh "$TMP/yum-bootstrap-test.sh" ||
+PATH="$RPM_BIN:$RPM_SYSTEM_BIN" TUNNEX_TEST_RPM_LOG="$RPM_LOG" sh "$TMP/yum-bootstrap-test.sh" ||
 	fail 'fresh yum-family Docker bootstrap failed'
 grep -Fq 'yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo' "$RPM_LOG" ||
 	fail 'yum-family bootstrap did not invoke yum-config-manager for Docker repository setup'
