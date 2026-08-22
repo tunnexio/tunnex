@@ -563,7 +563,7 @@ ensure_docker_ready
 [ "\$HOST_OS_ID" = macos ]
 [ "\$DOCKER_AS_ROOT" = false ]
 EOF
-PATH="$MAC_BIN:/usr/bin:/bin" \
+PATH="$MAC_BIN:$SYSTEM_BIN" \
 TUNNEX_TEST_MAC_BIN="$MAC_BIN" \
 TUNNEX_TEST_MAC_BREW_LOG="$MAC_LOG" \
 TUNNEX_MAC_APPLICATIONS_DIR="$MAC_APPS" \
@@ -591,7 +591,7 @@ as_root() { "\$@"; }
 ensure_docker_ready
 [ "\$DOCKER_AS_ROOT" = false ]
 EOF
-PATH="$MAC_BIN:/usr/bin:/bin" \
+PATH="$MAC_BIN:$SYSTEM_BIN" \
 TUNNEX_TEST_MAC_BIN="$MAC_BIN" \
 TUNNEX_TEST_MAC_BREW_LOG="$MAC_LOG" \
 TUNNEX_TEST_MAC_OPEN_LOG="$MAC_OPEN_LOG" \
@@ -620,7 +620,7 @@ ensure_docker_ready
 [ "\$DOCKER_AS_ROOT" = true ]
 docker_cli info
 EOF
-PATH="$ROOT_BIN:/usr/bin:/bin" sh "$TMP/root-socket-test.sh" ||
+PATH="$ROOT_BIN:$SYSTEM_BIN" sh "$TMP/root-socket-test.sh" ||
 	fail 'root-only Docker socket was not handled for the current install'
 [ ! -e "$TMP/root-socket-tried-to-start-docker" ] ||
 	fail 'usable root-only Docker socket was mistaken for a stopped daemon'
