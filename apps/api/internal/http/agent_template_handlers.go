@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
@@ -64,6 +67,91 @@ func requireAgentTemplates(s apiServer, ctx context.Context, orgID uuid.UUID) er
 
 func (s apiServer) requireAgentTemplates(ctx context.Context, orgID uuid.UUID) error {
 	return requireAgentTemplates(s, ctx, orgID)
+}
+
+func (s apiServer) ListAgentMCPProfiles(ctx context.Context, req api.ListAgentMCPProfilesRequestObject) (api.ListAgentMCPProfilesResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+		return nil, err
+	}
+	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
+	rows, err := s.system.ListAgentMCPProfiles(ctx, req.OrgId)
+	if err != nil {
+		return nil, apierr.Internal()
+	}
+	out := make([]api.AgentMCPProfile, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toAPIAgentMCPProfile(row))
+	}
+	return api.ListAgentMCPProfiles200JSONResponse{Body: out, Headers: api.ListAgentMCPProfiles200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) CreateAgentMCPProfile(ctx context.Context, req api.CreateAgentMCPProfileRequestObject) (api.CreateAgentMCPProfileResponseObject, error) {
+	ctx, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	name, endpoint := strings.TrimSpace(req.Body.Name), strings.TrimSpace(req.Body.Endpoint)
+	u, parseErr := url.Parse(endpoint)
+	if name == "" || parseErr != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, apierr.BadRequest("invalid_request", "name and credential-free absolute MCP endpoint are required")
+	}
+	row, err := s.system.CreateAgentMCPProfile(ctx, sqlc.CreateAgentMCPProfileParams{OrgID: req.OrgId, Name: name, Endpoint: endpoint})
+	if isUniqueViolation(err) {
+		return nil, apierr.Conflict("mcp_profile_conflict", "MCP profile name already exists")
+	}
+	if err != nil {
+		return nil, apierr.Internal()
+	}
+	return api.CreateAgentMCPProfile201JSONResponse{Body: toAPIAgentMCPProfile(row), Headers: api.CreateAgentMCPProfile201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) AssignAgentMCPProfile(ctx context.Context, req api.AssignAgentMCPProfileRequestObject) (api.AssignAgentMCPProfileResponseObject, error) {
+	ctx, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	if _, err := s.system.GetAgentMCPProfile(ctx, sqlc.GetAgentMCPProfileParams{ID: req.ProfileId, OrgID: req.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+		return nil, apierr.NotFound("mcp_profile_not_found", "MCP profile was not found")
+	} else if err != nil {
+		return nil, apierr.Internal()
+	}
+	if _, err := s.system.GetAgentGroup(ctx, sqlc.GetAgentGroupParams{ID: req.Body.GroupId, OrgID: req.OrgId}); errors.Is(err, pgx.ErrNoRows) {
+		return nil, apierr.NotFound("agent_group_not_found", "agent group was not found")
+	} else if err != nil {
+		return nil, apierr.Internal()
+	}
+	row, err := s.system.AssignAgentMCPProfile(ctx, sqlc.AssignAgentMCPProfileParams{OrgID: req.OrgId, ProfileID: req.ProfileId, AgentGroupID: req.Body.GroupId})
+	if isProfileAssignmentConflict(err) {
+		return nil, apierr.Conflict("mcp_profile_assignment_conflict", "an agent may have only one MCP profile")
+	}
+	if err != nil {
+		return nil, apierr.Internal()
+	}
+	return api.AssignAgentMCPProfile201JSONResponse{Body: api.AgentMCPProfileAssignment{Id: row.ID, OrgId: row.OrgID, ProfileId: row.ProfileID, GroupId: row.AgentGroupID, AssignedAt: row.AssignedAt}, Headers: api.AssignAgentMCPProfile201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func isProfileAssignmentConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && (pgErr.Code == "23505" || pgErr.Code == "P0001")
 }
 
 func actorID(ctx context.Context) uuid.UUID {
@@ -444,6 +532,10 @@ func (s apiServer) RemoveAgentPolicyTemplateAssignment(ctx context.Context, req 
 
 func toAPIAgentGroup(row sqlc.AgentGroup) api.AgentGroup {
 	return api.AgentGroup{Id: row.ID, OrgId: row.OrgID, Name: row.Name, Description: row.Description, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+}
+
+func toAPIAgentMCPProfile(row sqlc.AgentMcpProfile) api.AgentMCPProfile {
+	return api.AgentMCPProfile{Id: row.ID, OrgId: row.OrgID, Name: row.Name, Endpoint: row.Endpoint, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 
 func toAPIAgentPolicyTemplate(row sqlc.AgentPolicyTemplate) api.AgentPolicyTemplate {

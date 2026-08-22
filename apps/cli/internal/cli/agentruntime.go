@@ -25,6 +25,7 @@ type ManagedAgentConfig struct {
 	AllowedIPs                 []string
 	DNS                        []string
 	PersistentKeepalive        int
+	MCPUpstream                *string
 	CredentialRotationRevision *int64
 	WireGuardCurrentRevision   int64
 	WireGuardRotationRevision  *int64

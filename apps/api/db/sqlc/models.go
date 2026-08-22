@@ -150,6 +150,23 @@ type AgentMcpOauthConnection struct {
 	UpdatedAt               time.Time          `json:"updated_at"`
 }
 
+type AgentMcpProfile struct {
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	Name      string    `json:"name"`
+	Endpoint  string    `json:"endpoint"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AgentMcpProfileAssignment struct {
+	ID           uuid.UUID `json:"id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	ProfileID    uuid.UUID `json:"profile_id"`
+	AgentGroupID uuid.UUID `json:"agent_group_id"`
+	AssignedAt   time.Time `json:"assigned_at"`
+}
+
 // F16 step-up permits. Exact policy identity plus request digest only; raw MCP arguments, results, OAuth tokens, and secrets are never retained.
 type AgentMcpToolApprovalRequest struct {
 	ID               uuid.UUID          `json:"id"`

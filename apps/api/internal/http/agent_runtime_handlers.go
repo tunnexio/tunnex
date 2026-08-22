@@ -90,6 +90,7 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 		Body: api.ManagedAgentConfig{Revision: cfg.Revision, DeviceId: cfg.DeviceID, OrgId: cfg.OrgID,
 			Address: cfg.Address, GatewayEndpoint: cfg.GatewayEndpoint, GatewayPublicKey: cfg.GatewayPublicKey,
 			AllowedIps: cfg.AllowedIPs, Dns: cfg.DNS, PersistentKeepalive: cfg.PersistentKeepalive,
+			McpUpstream:                cfg.MCPUpstream,
 			CredentialRotationRevision: cfg.CredentialRotationRevision,
 			WireguardCurrentRevision:   cfg.WireGuardCurrentRevision,
 			WireguardRotationRevision:  cfg.WireGuardRotationRevision,

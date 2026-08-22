@@ -136,8 +136,8 @@ func TestManagedRuntimeRotatesBearerWithoutTunnelChurn(t *testing.T) {
 			t.Fatalf("rotation scratch remains at %s: %v", scratch, err)
 		}
 	}
-	if applyCalls != 0 {
-		t.Fatalf("credential rotation churned WireGuard apply %d time(s)", applyCalls)
+	if applyCalls != 1 {
+		t.Fatalf("credential rotation changed WireGuard apply count to %d; want only startup restore", applyCalls)
 	}
 	request, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/agent/runtime/poll", nil)
 	if err != nil {

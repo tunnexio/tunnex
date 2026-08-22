@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -172,6 +173,7 @@ type Config struct {
 	AllowedIPs                 []string
 	DNS                        []string
 	PersistentKeepalive        int
+	MCPUpstream                *string
 	CredentialRotationRevision *int64
 	WireGuardCurrentRevision   int64
 	WireGuardRotationRevision  *int64
@@ -250,7 +252,11 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	routeFingerprint := fingerprintAllowedIPs(allowed)
+	mcpUpstream, err := s.mcpUpstreamForDevice(ctx, id.OrgID, id.DeviceID)
+	if err != nil {
+		return Config{}, false, ErrRuntimeStateMissing
+	}
+	routeFingerprint := fingerprintRuntimeConfig(allowed, mcpUpstream)
 	state, err := s.q.EnsureAgentRuntimeState(ctx, sqlc.EnsureAgentRuntimeStateParams{ID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
@@ -298,7 +304,7 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 		Revision: desiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
 		Address: *dev.AssignedIp + "/32", GatewayEndpoint: node.Endpoint,
 		GatewayPublicKey: node.WgPublicKey, AllowedIPs: allowed, DNS: dns,
-		PersistentKeepalive: 25, CredentialRotationRevision: rotationRevision,
+		PersistentKeepalive: 25, MCPUpstream: mcpUpstream, CredentialRotationRevision: rotationRevision,
 		WireGuardCurrentRevision: wgCurrentRevision, WireGuardRotationRevision: wgRotationRevision,
 		WireGuardRotationState: wgRotationState,
 	}, false, nil
@@ -326,13 +332,35 @@ func (s *Service) effectiveAllowedIPs(ctx context.Context, orgID, deviceID uuid.
 	return append([]string{poolCIDR}, routes...), nil
 }
 
-func fingerprintAllowedIPs(allowed []string) string {
+func fingerprintRuntimeConfig(allowed []string, mcpUpstream *string) string {
 	h := sha256.New()
 	for _, route := range allowed {
 		_, _ = h.Write([]byte(route))
 		_, _ = h.Write([]byte{0})
 	}
+	if mcpUpstream != nil {
+		_, _ = h.Write([]byte("mcp:" + *mcpUpstream))
+	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (s *Service) mcpUpstreamForDevice(ctx context.Context, orgID, deviceID uuid.UUID) (*string, error) {
+	profiles, err := s.q.ListAgentMCPProfilesForDevice(ctx, sqlc.ListAgentMCPProfilesForDeviceParams{OrgID: orgID, DeviceID: deviceID})
+	if err != nil {
+		return nil, err
+	}
+	if len(profiles) == 0 {
+		return nil, nil
+	}
+	if len(profiles) != 1 {
+		return nil, errors.New("multiple MCP profiles assigned to agent")
+	}
+	endpoint := strings.TrimSpace(profiles[0].Endpoint)
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("invalid MCP profile endpoint")
+	}
+	return &endpoint, nil
 }
 
 // PollWait performs an immediate read and, only while the caller is current,

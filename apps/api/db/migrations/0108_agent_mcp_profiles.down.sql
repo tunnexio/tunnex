@@ -1,0 +1,5 @@
+DROP TRIGGER agent_mcp_profile_member_one_per_agent ON agent_group_members;
+DROP TRIGGER agent_mcp_profile_assignment_one_per_agent ON agent_mcp_profile_assignments;
+DROP FUNCTION agent_mcp_profile_one_per_agent();
+DROP TABLE agent_mcp_profile_assignments;
+DROP TABLE agent_mcp_profiles;

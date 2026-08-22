@@ -41,6 +41,7 @@ type Querier interface {
 	// approving an already-approved subnet is a no-op UPDATE.
 	ApproveSiteSubnet(ctx context.Context, id uuid.UUID) (SiteSubnet, error)
 	ArchiveAlertDestination(ctx context.Context, arg ArchiveAlertDestinationParams) (int64, error)
+	AssignAgentMCPProfile(ctx context.Context, arg AssignAgentMCPProfileParams) (AgentMcpProfileAssignment, error)
 	// S15.1 (D14/D19 step 2) — an admin NAMES the owner. There is no created_by on this table, so the minting
 	// user is not recoverable from the row: the admin is CHOOSING, not confirming, and nothing here guesses.
 	//
@@ -283,6 +284,7 @@ type Querier interface {
 	CreateAgentAccessRequest(ctx context.Context, arg CreateAgentAccessRequestParams) (AgentAccessRequest, error)
 	CreateAgentBootstrapToken(ctx context.Context, arg CreateAgentBootstrapTokenParams) (AgentBootstrapToken, error)
 	CreateAgentGroup(ctx context.Context, arg CreateAgentGroupParams) (AgentGroup, error)
+	CreateAgentMCPProfile(ctx context.Context, arg CreateAgentMCPProfileParams) (AgentMcpProfile, error)
 	CreateAgentPolicyTemplate(ctx context.Context, arg CreateAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
 	CreateAgentPolicyTemplateVersionItem(ctx context.Context, arg CreateAgentPolicyTemplateVersionItemParams) (AgentPolicyTemplateVersionItem, error)
@@ -504,6 +506,7 @@ type Querier interface {
 	// This is the sole F14 query that reads sealed material. It is callable only
 	// from the machine-authenticated runtime lease path, never a human/API list.
 	GetAgentMCPOAuthConnectionForRuntime(ctx context.Context, arg GetAgentMCPOAuthConnectionForRuntimeParams) (AgentMcpOauthConnection, error)
+	GetAgentMCPProfile(ctx context.Context, arg GetAgentMCPProfileParams) (AgentMcpProfile, error)
 	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -839,6 +842,9 @@ type Querier interface {
 	ListAgentGroupMembers(ctx context.Context, arg ListAgentGroupMembersParams) ([]ListAgentGroupMembersRow, error)
 	ListAgentGroups(ctx context.Context, orgID uuid.UUID) ([]AgentGroup, error)
 	ListAgentMCPOAuthConnections(ctx context.Context, arg ListAgentMCPOAuthConnectionsParams) ([]ListAgentMCPOAuthConnectionsRow, error)
+	ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAgentMCPProfileAssignmentsRow, error)
+	ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]AgentMcpProfile, error)
+	ListAgentMCPProfilesForDevice(ctx context.Context, arg ListAgentMCPProfilesForDeviceParams) ([]ListAgentMCPProfilesForDeviceRow, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
 	// these exact assignments through ON DELETE SET NULL; the client must not
 	// infer this count from separately loaded agent rows.

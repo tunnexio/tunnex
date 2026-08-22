@@ -3749,6 +3749,51 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/AgentPolicyTemplateDestinationImpact" } } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agent-mcp-profiles:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentMCPProfiles
+      summary: List reusable managed-agent MCP profiles
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Profiles.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AgentMCPProfile" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAgentMCPProfile
+      summary: Create immutable reusable managed-agent MCP profile
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAgentMCPProfileRequest" } } }
+      responses:
+        "201":
+          description: Profile created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfile" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-mcp-profiles/{profileId}/assignments:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: profileId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: assignAgentMCPProfile
+      summary: Assign an MCP profile to a managed-agent group
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AssignAgentMCPProfileRequest" } } }
+      responses:
+        "201":
+          description: Assignment created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfileAssignment" } } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/agent-groups:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -4243,6 +4288,40 @@ components:
         description: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    AgentMCPProfile:
+      type: object
+      required: [id, org_id, name, endpoint, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        name: { type: string }
+        endpoint: { type: string, format: uri }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateAgentMCPProfileRequest:
+      type: object
+      required: [name, endpoint]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        endpoint: { type: string, format: uri, minLength: 1, maxLength: 2048 }
+    AssignAgentMCPProfileRequest:
+      type: object
+      required: [group_id]
+      additionalProperties: false
+      properties:
+        group_id: { type: string, format: uuid }
+    AgentMCPProfileAssignment:
+      type: object
+      required: [id, org_id, profile_id, group_id, assigned_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        profile_id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+        assigned_at: { type: string, format: date-time }
     CreateAgentGroupRequest:
       type: object
       required: [name]
@@ -5960,6 +6039,11 @@ components:
           type: array
           items: { type: string }
         persistent_keepalive: { type: integer, minimum: 0, maximum: 65535 }
+        mcp_upstream:
+          type: string
+          format: uri
+          nullable: true
+          description: Canonical Streamable HTTP MCP endpoint supplied by the assigned group profile. It is configuration, never a credential; null leaves the local proxy default-deny.
         credential_rotation_revision:
           type: integer
           format: int64
