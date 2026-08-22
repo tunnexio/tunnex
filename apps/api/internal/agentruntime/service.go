@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
+	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 )
 
 const RuntimeCredentialPrefix = "tnx_runtime_"
@@ -55,6 +57,11 @@ const (
 
 type OptInFunc func(context.Context, uuid.UUID) (OptInState, error)
 
+// RoutedRangesFunc returns the org's approved split-tunnel destination ranges.
+// It is injected by the HTTP composition root so managed-agent route intent
+// shares the same source of truth as ordinary device exports.
+type RoutedRangesFunc func(context.Context, uuid.UUID) ([]string, error)
+
 // OrganizationOptIn is the production opt-in boundary. Both the paid-edition
 // unlock and the persisted organization decision must be true; absence or a
 // database error fails closed.
@@ -79,6 +86,7 @@ type Service struct {
 	optIn    OptInFunc
 	notify   Notifier
 	alerts   alerts.Publisher
+	ranges   RoutedRangesFunc
 	now      func() time.Time
 	pollTick time.Duration
 }
@@ -94,6 +102,8 @@ func New(q *sqlc.Queries, optIn OptInFunc) *Service {
 }
 
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
+
+func (s *Service) SetRoutedRanges(r RoutedRangesFunc) { s.ranges = r }
 
 // SetAlertPublisher attaches F11's durable outbox without making runtime
 // reporting depend on a particular transport. A nil value restores the
@@ -171,6 +181,7 @@ type Config struct {
 	AllowedIPs                 []string
 	DNS                        []string
 	PersistentKeepalive        int
+	MCPUpstream                *string
 	CredentialRotationRevision *int64
 	WireGuardCurrentRevision   int64
 	WireGuardRotationRevision  *int64
@@ -241,9 +252,31 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	if dev.Status != "active" || dev.AssignedIp == nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	state, err := s.q.EnsureAgentRuntimeState(ctx, sqlc.EnsureAgentRuntimeStateParams{ID: id.DeviceID, OrgID: id.OrgID})
+	org, err := s.q.GetOrganizationByID(ctx, id.OrgID)
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
+	}
+	allowed, err := s.effectiveAllowedIPs(ctx, id.OrgID, id.DeviceID, org.PoolCidr, dev.FullTunnel)
+	if err != nil {
+		return Config{}, false, ErrRuntimeStateMissing
+	}
+	mcpUpstream, err := s.mcpUpstreamForDevice(ctx, id.OrgID, id.DeviceID)
+	if err != nil {
+		return Config{}, false, ErrRuntimeStateMissing
+	}
+	routeFingerprint := fingerprintRuntimeConfig(allowed, mcpUpstream)
+	state, err := s.q.EnsureAgentRuntimeState(ctx, sqlc.EnsureAgentRuntimeStateParams{ID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
+	if err != nil {
+		return Config{}, false, ErrRuntimeStateMissing
+	}
+	desiredRevision := state.DesiredRevision
+	if state.RouteFingerprint != routeFingerprint {
+		refreshed, refreshErr := s.q.RefreshAgentRuntimeRouteFingerprint(ctx, sqlc.RefreshAgentRuntimeRouteFingerprintParams{DeviceID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
+		err = refreshErr
+		if err != nil {
+			return Config{}, false, ErrRuntimeStateMissing
+		}
+		desiredRevision = refreshed.DesiredRevision
 	}
 	var rotationRevision *int64
 	credential, rotationErr := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: id.OrgID, DeviceID: id.DeviceID})
@@ -264,31 +297,99 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	} else if !errors.Is(wgErr, pgx.ErrNoRows) {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	if state.DesiredRevision <= appliedRevision && rotationRevision == nil && wgRotationRevision == nil && wgCurrentRevision == wireGuardRevision {
+	if desiredRevision <= appliedRevision && rotationRevision == nil && wgRotationRevision == nil && wgCurrentRevision == wireGuardRevision {
 		return Config{}, true, nil
 	}
 	node, err := s.q.GetOrgNode(ctx, sqlc.GetOrgNodeParams{ID: dev.NodeID, OrgID: id.OrgID})
 	if err != nil || node.Endpoint == "" || node.WgPublicKey == "" {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	org, err := s.q.GetOrganizationByID(ctx, id.OrgID)
-	if err != nil {
-		return Config{}, false, ErrRuntimeStateMissing
-	}
-	allowed := []string{org.PoolCidr}
 	dns := []string(nil)
 	if dev.FullTunnel {
-		allowed = []string{"0.0.0.0/0"}
 		dns = []string{"1.1.1.1"}
 	}
 	return Config{
-		Revision: state.DesiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
+		Revision: desiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
 		Address: *dev.AssignedIp + "/32", GatewayEndpoint: node.Endpoint,
 		GatewayPublicKey: node.WgPublicKey, AllowedIPs: allowed, DNS: dns,
-		PersistentKeepalive: 25, CredentialRotationRevision: rotationRevision,
+		PersistentKeepalive: 25, MCPUpstream: mcpUpstream, CredentialRotationRevision: rotationRevision,
 		WireGuardCurrentRevision: wgCurrentRevision, WireGuardRotationRevision: wgRotationRevision,
 		WireGuardRotationState: wgRotationState,
 	}, false, nil
+}
+
+// managedAgentRoutes derives only destination prefixes that the canonical
+// policy compiler authorizes for this managed-agent identity. It prevents a
+// customer-side runtime from relying on an operator-installed host route.
+func (s *Service) managedAgentRoutes(ctx context.Context, orgID, deviceID uuid.UUID) ([]string, error) {
+	snapshot, err := policy.BuildSnapshotWithQueries(ctx, s.q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return policy.AgentRouteCIDRs(snapshot, deviceID), nil
+}
+
+func (s *Service) effectiveAllowedIPs(ctx context.Context, orgID, deviceID uuid.UUID, poolCIDR string, fullTunnel bool) ([]string, error) {
+	if fullTunnel {
+		return []string{"0.0.0.0/0"}, nil
+	}
+	allowed := []string{poolCIDR}
+	seen := map[string]bool{poolCIDR: true}
+	if s.ranges != nil {
+		ranges, err := s.ranges(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range ranges {
+			route = strings.TrimSpace(route)
+			if route != "" && !seen[route] {
+				seen[route] = true
+				allowed = append(allowed, route)
+			}
+		}
+	}
+	routes, err := s.managedAgentRoutes(ctx, orgID, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, route := range routes {
+		if !seen[route] {
+			seen[route] = true
+			allowed = append(allowed, route)
+		}
+	}
+	return allowed, nil
+}
+
+func fingerprintRuntimeConfig(allowed []string, mcpUpstream *string) string {
+	h := sha256.New()
+	for _, route := range allowed {
+		_, _ = h.Write([]byte(route))
+		_, _ = h.Write([]byte{0})
+	}
+	if mcpUpstream != nil {
+		_, _ = h.Write([]byte("mcp:" + *mcpUpstream))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (s *Service) mcpUpstreamForDevice(ctx context.Context, orgID, deviceID uuid.UUID) (*string, error) {
+	profiles, err := s.q.ListAgentMCPProfilesForDevice(ctx, sqlc.ListAgentMCPProfilesForDeviceParams{OrgID: orgID, DeviceID: deviceID})
+	if err != nil {
+		return nil, err
+	}
+	if len(profiles) == 0 {
+		return nil, nil
+	}
+	if len(profiles) != 1 {
+		return nil, errors.New("multiple MCP profiles assigned to agent")
+	}
+	endpoint := strings.TrimSpace(profiles[0].Endpoint)
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("invalid MCP profile endpoint")
+	}
+	return &endpoint, nil
 }
 
 // PollWait performs an immediate read and, only while the caller is current,
@@ -424,9 +525,9 @@ func (s *Service) RouteIntent(ctx context.Context, orgID, deviceID uuid.UUID) (R
 	if err != nil {
 		return RouteIntent{}, ErrRuntimeStateMissing
 	}
-	allowed := []string{org.PoolCidr}
-	if dev.FullTunnel {
-		allowed = []string{"0.0.0.0/0"}
+	allowed, err := s.effectiveAllowedIPs(ctx, orgID, deviceID, org.PoolCidr, dev.FullTunnel)
+	if err != nil {
+		return RouteIntent{}, ErrRuntimeStateMissing
 	}
 	return RouteIntent{AllowedIPs: allowed}, nil
 }

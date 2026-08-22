@@ -60,7 +60,7 @@ func DefaultManagedRuntimeOptions() ManagedRuntimeOptions {
 	return ManagedRuntimeOptions{StatePath: ManagedRuntimeStatePath, CredentialPath: ManagedRuntimeToken,
 		ConfigPath: ManagedRuntimeConfig, ClientVersion: ManagedRuntimeBinary, PollWait: 30,
 		Interval: 30 * time.Second, Backoff: time.Second, MaxBackoff: time.Minute,
-		Jitter: boundedRuntimeJitter, ApplyCommand: runWireGuardQuick,
+		Jitter: boundedRuntimeJitter, ApplyCommand: runWireGuardQuick, MCPProxyListen: "127.0.0.1:17100",
 		RotateKeyCommand: runWireGuardKeySwap}
 }
 
@@ -127,9 +127,6 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	if opts.Interval <= 0 || opts.Backoff <= 0 || opts.MaxBackoff < opts.Backoff || opts.PollWait < 0 || opts.PollWait > 60 {
 		return errors.New("managed-agent runtime timing is outside bounds")
 	}
-	if (opts.MCPProxyListen == "") != (opts.MCPProxyUpstream == "") {
-		return errors.New("MCP proxy listener and upstream must be configured together")
-	}
 	if opts.Jitter == nil {
 		opts.Jitter = boundedRuntimeJitter
 	}
@@ -150,15 +147,29 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 		return err
 	}
 	applier := &wireGuardRuntimeApplier{path: opts.ConfigPath, command: opts.ApplyCommand}
-	runtime, err := NewAgentRuntimeAt(source, applier, state.ClientVersion, state.AppliedRevision, state.AppliedRevision > 0)
+	runtimeApplied := state.AppliedRevision
+	runtimeInitialized := state.AppliedRevision > 0
+	if state.AppliedRevision > 0 {
+		// A durable revision proves the file was last-good, not that a host
+		// reboot retained its kernel interface. Restore it before reporting a
+		// healthy runtime so traffic never silently follows the native route.
+		if err := applier.Restore(ctx); err != nil {
+			return fmt.Errorf("restore last-good managed-agent tunnel: %w", err)
+		}
+		// Request one desired-state reconciliation after restoring. This keeps
+		// newly rendered fields (such as exact policy routes) convergent while
+		// preserving the restored tunnel during a transient CP outage.
+		runtimeApplied = 0
+	}
+	runtime, err := NewAgentRuntimeAt(source, applier, state.ClientVersion, runtimeApplied, runtimeInitialized)
 	if err != nil {
 		return err
 	}
 	proxyErr := make(chan error, 1)
 	if opts.MCPProxyListen != "" {
 		go func() {
-			proxyErr <- StartMCPToolProxy(ctx, opts.MCPProxyListen, opts.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
-				return source.MCPProxyAuthorization(proxyCtx, opts.MCPProxyUpstream)
+			proxyErr <- StartMCPToolProxyDynamic(ctx, opts.MCPProxyListen, source.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
+				return source.MCPProxyAuthorization(proxyCtx, source.currentMCPUpstream())
 			}, source.MCPProxyStepUp)
 		}()
 	}
@@ -241,6 +252,8 @@ type managedRuntimeSource struct {
 	state           *ManagedRuntimeState
 	rotateKey       func(context.Context, string, string) error
 	mcpEndpoints    []string
+	mcpUpstream     string
+	mcpConfigMu     sync.RWMutex
 	mcpTokenMu      sync.Mutex
 	mcpToken        string
 	mcpTokenExpires time.Time
@@ -254,6 +267,9 @@ func newManagedRuntimeSource(server, credential, credentialPath, configPath, sta
 	}
 	s := &managedRuntimeSource{server: strings.TrimRight(server, "/"), credentialPath: credentialPath,
 		configPath: configPath, statePath: statePath, state: state, wait: wait, rotateKey: rotateKey, mcpEndpoints: endpoints}
+	if len(endpoints) == 1 {
+		s.mcpUpstream = endpoints[0]
+	}
 	if err := s.setCredential(credential); err != nil {
 		return nil, err
 	}
@@ -332,10 +348,35 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 		return ManagedAgentConfig{}, fmt.Errorf("runtime poll failed with HTTP %d", resp.StatusCode())
 	}
 	c := resp.JSON200
-	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive, CredentialRotationRevision: c.CredentialRotationRevision,
+	s.setMCPUpstream(c.McpUpstream)
+	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive, MCPUpstream: c.McpUpstream, CredentialRotationRevision: c.CredentialRotationRevision,
 		WireGuardCurrentRevision:  c.WireguardCurrentRevision,
 		WireGuardRotationRevision: c.WireguardRotationRevision,
 		WireGuardRotationState:    wireGuardRotationState(c.WireguardRotationState)}, nil
+}
+
+func (s *managedRuntimeSource) setMCPUpstream(upstream *string) {
+	s.mcpConfigMu.Lock()
+	defer s.mcpConfigMu.Unlock()
+	s.mcpUpstream = ""
+	s.mcpEndpoints = nil
+	if upstream != nil && strings.TrimSpace(*upstream) != "" {
+		s.mcpUpstream = strings.TrimSpace(*upstream)
+		s.mcpEndpoints = []string{s.mcpUpstream}
+	}
+}
+
+func (s *managedRuntimeSource) currentMCPUpstream() string {
+	s.mcpConfigMu.RLock()
+	defer s.mcpConfigMu.RUnlock()
+	return s.mcpUpstream
+}
+
+func (s *managedRuntimeSource) MCPProxyUpstream(context.Context) (string, error) {
+	if upstream := s.currentMCPUpstream(); upstream != "" {
+		return upstream, nil
+	}
+	return "", errors.New("no MCP profile is assigned")
 }
 
 func (s *managedRuntimeSource) poll(ctx context.Context, applied int64, version string) (*api.PollAgentRuntimeResponse, error) {
@@ -724,9 +765,10 @@ func (s *managedRuntimeSource) rotateCredential(ctx context.Context, applied int
 
 func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeReport) error {
 	code := api.AgentRuntimeReportErrorCode(report.ErrorCode)
-	if len(s.mcpEndpoints) > 0 {
-		report.MCPInventory = ObserveMCPInventory(ctx, s.mcpEndpoints)
-		report.MCPOAuthDiscovery = ObserveMCPOAuthDiscovery(ctx, s.mcpEndpoints)
+	upstream := s.currentMCPUpstream()
+	if upstream != "" {
+		report.MCPInventory = ObserveMCPInventory(ctx, []string{upstream})
+		report.MCPOAuthDiscovery = ObserveMCPOAuthDiscovery(ctx, []string{upstream})
 	}
 	body := api.AgentRuntimeReport{AppliedRevision: report.AppliedRevision, AttemptedRevision: report.AttemptedRevision, ClientVersion: report.ClientVersion, ErrorCode: code}
 	if report.MCPInventory != nil {
@@ -751,6 +793,14 @@ func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeRe
 type wireGuardRuntimeApplier struct {
 	path    string
 	command func(context.Context, string, string) error
+}
+
+// Restore re-applies the durable last-good file without rewriting it.
+func (a *wireGuardRuntimeApplier) Restore(ctx context.Context) error {
+	if a.command == nil {
+		return errors.New("managed-agent WireGuard restore command is unavailable")
+	}
+	return a.command(ctx, a.path, "apply")
 }
 
 func (a *wireGuardRuntimeApplier) Apply(ctx context.Context, cfg ManagedAgentConfig) error {

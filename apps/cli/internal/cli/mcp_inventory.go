@@ -178,7 +178,7 @@ func observeMCPEndpoint(ctx context.Context, endpoint string) map[string]interfa
 	base := map[string]interface{}{"endpoint": endpoint, "status": "failed"}
 	for _, version := range []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"} {
 		start := time.Now()
-		init, err := mcpRequest(ctx, endpoint, 1, "initialize", map[string]interface{}{"protocolVersion": version, "capabilities": map[string]interface{}{}, "clientInfo": map[string]interface{}{"name": "tunnex-agent-runtime", "version": "f12"}})
+		init, sessionID, err := mcpSessionRequest(ctx, endpoint, 1, "initialize", map[string]interface{}{"protocolVersion": version, "capabilities": map[string]interface{}{}, "clientInfo": map[string]interface{}{"name": "tunnex-agent-runtime", "version": "f12"}}, "")
 		if err != nil {
 			continue
 		}
@@ -196,9 +196,10 @@ func observeMCPEndpoint(ctx context.Context, endpoint string) map[string]interfa
 			base["server_name"], _ = info["name"].(string)
 		}
 		base["capabilities"] = result["capabilities"]
-		_, _ = mcpRequest(ctx, endpoint, 2, "notifications/initialized", map[string]interface{}{})
+		_, sessionID, _ = mcpSessionRequest(ctx, endpoint, 2, "notifications/initialized", map[string]interface{}{}, sessionID)
 		for _, spec := range []struct{ key, method string }{{"tools", "tools/list"}, {"resources", "resources/list"}, {"prompts", "prompts/list"}} {
-			if reply, err := mcpRequest(ctx, endpoint, 3, spec.method, map[string]interface{}{}); err == nil {
+			if reply, nextSessionID, err := mcpSessionRequest(ctx, endpoint, 3, spec.method, map[string]interface{}{}, sessionID); err == nil {
+				sessionID = nextSessionID
 				if r, ok := reply["result"].(map[string]interface{}); ok {
 					base[spec.key] = r[spec.key]
 				}
@@ -219,20 +220,33 @@ func observeMCPEndpoint(ctx context.Context, endpoint string) map[string]interfa
 }
 
 func mcpRequest(ctx context.Context, endpoint string, id int, method string, params interface{}) (map[string]interface{}, error) {
+	reply, _, err := mcpSessionRequest(ctx, endpoint, id, method, params, "")
+	return reply, err
+}
+
+// mcpSessionRequest preserves the server-issued streamable-HTTP session across
+// inventory discovery requests. It never invokes an MCP tool.
+func mcpSessionRequest(ctx context.Context, endpoint string, id int, method string, params interface{}, sessionID string) (map[string]interface{}, string, error) {
 	body, _ := json.Marshal(map[string]interface{}{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, sessionID, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	if sessionID != "" {
+		req.Header.Set("Mcp-Session-Id", sessionID)
+	}
 	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
-		return nil, err
+		return nil, sessionID, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("MCP HTTP %d", resp.StatusCode)
+		return nil, sessionID, fmt.Errorf("MCP HTTP %d", resp.StatusCode)
+	}
+	if next := strings.TrimSpace(resp.Header.Get("Mcp-Session-Id")); next != "" {
+		sessionID = next
 	}
 	var data []byte
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
@@ -245,23 +259,23 @@ func mcpRequest(ctx context.Context, endpoint string, id int, method string, par
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			return nil, err
+			return nil, sessionID, err
 		}
 		if len(data) == 0 {
-			return nil, errors.New("MCP SSE response contains no data event")
+			return nil, sessionID, errors.New("MCP SSE response contains no data event")
 		}
 	} else {
 		var err error
 		data, err = io.ReadAll(io.LimitReader(resp.Body, 256<<10))
 		if err != nil {
-			return nil, err
+			return nil, sessionID, err
 		}
 	}
 	var reply map[string]interface{}
 	if err := json.Unmarshal(data, &reply); err != nil {
-		return nil, err
+		return nil, sessionID, err
 	}
-	return reply, nil
+	return reply, sessionID, nil
 }
 
 func normalizeObservedSnapshot(raw map[string]interface{}) (MCPInventorySnapshot, error) {

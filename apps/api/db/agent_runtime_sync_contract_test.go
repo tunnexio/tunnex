@@ -53,8 +53,10 @@ func TestAgentRuntimeQueriesAreOrgScopedAndMonotonic(t *testing.T) {
 			t.Errorf("agent runtime query contract missing %q", want)
 		}
 	}
-	if got := strings.Count(s, "d.org_id = $2"); got != 4 {
-		t.Fatalf("every runtime query must be org scoped: got %d/4", got)
+	// RefreshAgentRuntimeRouteFingerprint is also runtime desired-state mutation
+	// and must carry the same devices.org_id tenant guard as the original four.
+	if got := strings.Count(s, "d.org_id = $2"); got != 5 {
+		t.Fatalf("every runtime query must be org scoped: got %d/5", got)
 	}
 }
 

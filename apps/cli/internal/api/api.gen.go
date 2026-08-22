@@ -1121,6 +1121,25 @@ type AgentMCPOAuthConsentStart struct {
 // AgentMCPOAuthConsentStartState defines model for AgentMCPOAuthConsentStart.State.
 type AgentMCPOAuthConsentStartState string
 
+// AgentMCPProfile defines model for AgentMCPProfile.
+type AgentMCPProfile struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Endpoint  string             `json:"endpoint"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	OrgId     openapi_types.UUID `json:"org_id"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// AgentMCPProfileAssignment defines model for AgentMCPProfileAssignment.
+type AgentMCPProfileAssignment struct {
+	AssignedAt time.Time          `json:"assigned_at"`
+	GroupId    openapi_types.UUID `json:"group_id"`
+	Id         openapi_types.UUID `json:"id"`
+	OrgId      openapi_types.UUID `json:"org_id"`
+	ProfileId  openapi_types.UUID `json:"profile_id"`
+}
+
 // AgentMCPToolApprovalRequest defines model for AgentMCPToolApprovalRequest.
 type AgentMCPToolApprovalRequest struct {
 	ApprovedAt       *time.Time                       `json:"approved_at"`
@@ -1471,6 +1490,11 @@ type ApplyAgentPolicyTemplateRequest struct {
 	TemplateVersionId openapi_types.UUID `json:"template_version_id"`
 }
 
+// AssignAgentMCPProfileRequest defines model for AssignAgentMCPProfileRequest.
+type AssignAgentMCPProfileRequest struct {
+	GroupId openapi_types.UUID `json:"group_id"`
+}
+
 // AssignMachineCredentialOwnerRequest defines model for AssignMachineCredentialOwnerRequest.
 type AssignMachineCredentialOwnerRequest struct {
 	// UserId The org member who owns this credential. The admin CHOOSES — there is no created_by to confirm against.
@@ -1611,6 +1635,12 @@ type CreateAgentAccessRequest struct {
 type CreateAgentGroupRequest struct {
 	Description *string `json:"description,omitempty"`
 	Name        string  `json:"name"`
+}
+
+// CreateAgentMCPProfileRequest defines model for CreateAgentMCPProfileRequest.
+type CreateAgentMCPProfileRequest struct {
+	Endpoint string `json:"endpoint"`
+	Name     string `json:"name"`
 }
 
 // CreateAgentPolicyTemplateRequest defines model for CreateAgentPolicyTemplateRequest.
@@ -2334,7 +2364,10 @@ type ManagedAgentConfig struct {
 	GatewayEndpoint string `json:"gateway_endpoint"`
 
 	// GatewayPublicKey The gateway WireGuard public key.
-	GatewayPublicKey    string             `json:"gateway_public_key"`
+	GatewayPublicKey string `json:"gateway_public_key"`
+
+	// McpUpstream Canonical Streamable HTTP MCP endpoint supplied by the assigned group profile. It is configuration, never a credential; null leaves the local proxy default-deny.
+	McpUpstream         *string            `json:"mcp_upstream"`
 	OrgId               openapi_types.UUID `json:"org_id"`
 	PersistentKeepalive int                `json:"persistent_keepalive"`
 	Revision            int64              `json:"revision"`
@@ -3345,6 +3378,12 @@ type AddAgentGroupMemberJSONRequestBody = AddAgentGroupMemberRequest
 // SetOrganizationAgentJITAccessEnabledJSONRequestBody defines body for SetOrganizationAgentJITAccessEnabled for application/json ContentType.
 type SetOrganizationAgentJITAccessEnabledJSONRequestBody = SetAgentJITAccessSettingRequest
 
+// CreateAgentMCPProfileJSONRequestBody defines body for CreateAgentMCPProfile for application/json ContentType.
+type CreateAgentMCPProfileJSONRequestBody = CreateAgentMCPProfileRequest
+
+// AssignAgentMCPProfileJSONRequestBody defines body for AssignAgentMCPProfile for application/json ContentType.
+type AssignAgentMCPProfileJSONRequestBody = AssignAgentMCPProfileRequest
+
 // ApplyAgentPolicyTemplateJSONRequestBody defines body for ApplyAgentPolicyTemplate for application/json ContentType.
 type ApplyAgentPolicyTemplateJSONRequestBody = ApplyAgentPolicyTemplateRequest
 
@@ -3868,6 +3907,19 @@ type ClientInterface interface {
 	SetOrganizationAgentJITAccessEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetOrganizationAgentJITAccessEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAgentMCPProfiles request
+	ListAgentMCPProfiles(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentMCPProfileWithBody request with any body
+	CreateAgentMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AssignAgentMCPProfileWithBody request with any body
+	AssignAgentMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AssignAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, body AssignAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAgentPolicyTemplateAssignments request
 	ListAgentPolicyTemplateAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5674,6 +5726,66 @@ func (c *Client) SetOrganizationAgentJITAccessEnabledWithBody(ctx context.Contex
 
 func (c *Client) SetOrganizationAgentJITAccessEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetOrganizationAgentJITAccessEnabledRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentMCPProfiles(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentMCPProfilesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentMCPProfileRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentMCPProfileRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AssignAgentMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssignAgentMCPProfileRequestWithBody(c.Server, orgId, profileId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AssignAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, body AssignAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAssignAgentMCPProfileRequest(c.Server, orgId, profileId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -10958,6 +11070,141 @@ func NewSetOrganizationAgentJITAccessEnabledRequestWithBody(server string, orgId
 	}
 
 	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAgentMCPProfilesRequest generates requests for ListAgentMCPProfiles
+func NewListAgentMCPProfilesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-mcp-profiles", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentMCPProfileRequest calls the generic CreateAgentMCPProfile builder with application/json body
+func NewCreateAgentMCPProfileRequest(server string, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentMCPProfileRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAgentMCPProfileRequestWithBody generates requests for CreateAgentMCPProfile with any type of body
+func NewCreateAgentMCPProfileRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-mcp-profiles", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAssignAgentMCPProfileRequest calls the generic AssignAgentMCPProfile builder with application/json body
+func NewAssignAgentMCPProfileRequest(server string, orgId openapi_types.UUID, profileId openapi_types.UUID, body AssignAgentMCPProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAssignAgentMCPProfileRequestWithBody(server, orgId, profileId, "application/json", bodyReader)
+}
+
+// NewAssignAgentMCPProfileRequestWithBody generates requests for AssignAgentMCPProfile with any type of body
+func NewAssignAgentMCPProfileRequestWithBody(server string, orgId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "profileId", runtime.ParamLocationPath, profileId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-mcp-profiles/%s/assignments", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -17450,6 +17697,19 @@ type ClientWithResponsesInterface interface {
 
 	SetOrganizationAgentJITAccessEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentJITAccessEnabledResponse, error)
 
+	// ListAgentMCPProfilesWithResponse request
+	ListAgentMCPProfilesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPProfilesResponse, error)
+
+	// CreateAgentMCPProfileWithBodyWithResponse request with any body
+	CreateAgentMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentMCPProfileResponse, error)
+
+	CreateAgentMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentMCPProfileResponse, error)
+
+	// AssignAgentMCPProfileWithBodyWithResponse request with any body
+	AssignAgentMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignAgentMCPProfileResponse, error)
+
+	AssignAgentMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, body AssignAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*AssignAgentMCPProfileResponse, error)
+
 	// ListAgentPolicyTemplateAssignmentsWithResponse request
 	ListAgentPolicyTemplateAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplateAssignmentsResponse, error)
 
@@ -19569,6 +19829,75 @@ func (r SetOrganizationAgentJITAccessEnabledResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetOrganizationAgentJITAccessEnabledResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentMCPProfilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentMCPProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentMCPProfilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentMCPProfilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAgentMCPProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentMCPProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentMCPProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentMCPProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AssignAgentMCPProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentMCPProfileAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AssignAgentMCPProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AssignAgentMCPProfileResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -23604,6 +23933,49 @@ func (c *ClientWithResponses) SetOrganizationAgentJITAccessEnabledWithResponse(c
 	return ParseSetOrganizationAgentJITAccessEnabledResponse(rsp)
 }
 
+// ListAgentMCPProfilesWithResponse request returning *ListAgentMCPProfilesResponse
+func (c *ClientWithResponses) ListAgentMCPProfilesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPProfilesResponse, error) {
+	rsp, err := c.ListAgentMCPProfiles(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentMCPProfilesResponse(rsp)
+}
+
+// CreateAgentMCPProfileWithBodyWithResponse request with arbitrary body returning *CreateAgentMCPProfileResponse
+func (c *ClientWithResponses) CreateAgentMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentMCPProfileResponse, error) {
+	rsp, err := c.CreateAgentMCPProfileWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentMCPProfileResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAgentMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentMCPProfileResponse, error) {
+	rsp, err := c.CreateAgentMCPProfile(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentMCPProfileResponse(rsp)
+}
+
+// AssignAgentMCPProfileWithBodyWithResponse request with arbitrary body returning *AssignAgentMCPProfileResponse
+func (c *ClientWithResponses) AssignAgentMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignAgentMCPProfileResponse, error) {
+	rsp, err := c.AssignAgentMCPProfileWithBody(ctx, orgId, profileId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssignAgentMCPProfileResponse(rsp)
+}
+
+func (c *ClientWithResponses) AssignAgentMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, body AssignAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*AssignAgentMCPProfileResponse, error) {
+	rsp, err := c.AssignAgentMCPProfile(ctx, orgId, profileId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAssignAgentMCPProfileResponse(rsp)
+}
+
 // ListAgentPolicyTemplateAssignmentsWithResponse request returning *ListAgentPolicyTemplateAssignmentsResponse
 func (c *ClientWithResponses) ListAgentPolicyTemplateAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentPolicyTemplateAssignmentsResponse, error) {
 	rsp, err := c.ListAgentPolicyTemplateAssignments(ctx, orgId, reqEditors...)
@@ -27537,6 +27909,105 @@ func ParseSetOrganizationAgentJITAccessEnabledResponse(rsp *http.Response) (*Set
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentMCPProfilesResponse parses an HTTP response from a ListAgentMCPProfilesWithResponse call
+func ParseListAgentMCPProfilesResponse(rsp *http.Response) (*ListAgentMCPProfilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentMCPProfilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentMCPProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentMCPProfileResponse parses an HTTP response from a CreateAgentMCPProfileWithResponse call
+func ParseCreateAgentMCPProfileResponse(rsp *http.Response) (*CreateAgentMCPProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentMCPProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentMCPProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAssignAgentMCPProfileResponse parses an HTTP response from a AssignAgentMCPProfileWithResponse call
+func ParseAssignAgentMCPProfileResponse(rsp *http.Response) (*AssignAgentMCPProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AssignAgentMCPProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentMCPProfileAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

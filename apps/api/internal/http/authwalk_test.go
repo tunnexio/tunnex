@@ -102,6 +102,8 @@ var walkBodies = map[string]string{
 	"createagentpolicytemplateversion":           `{"items":[{"destination_kind":"resource","destination_id":"00000000-0000-0000-0000-000000000000"}]}`,
 	"previewagentpolicytemplate":                 `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000"}`,
 	"applyagentpolicytemplate":                   `{"group_id":"00000000-0000-0000-0000-000000000000","template_version_id":"00000000-0000-0000-0000-000000000000","preview_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","idempotency_key":"walk"}`,
+	"createagentmcpprofile":                      `{"name":"Walk MCP","endpoint":"https://mcp.example.test/mcp"}`,
+	"assignagentmcpprofile":                      `{"group_id":"00000000-0000-0000-0000-000000000000"}`,
 	// F10 JIT agent access. Keep these structurally valid so the spec-driven
 	// walk measures authentication rather than request validation.
 	"setorganizationagentjitaccessenabled": `{"enabled":true}`,
@@ -159,6 +161,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{serviceId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
 			reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
 

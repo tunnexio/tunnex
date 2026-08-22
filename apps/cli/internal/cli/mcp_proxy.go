@@ -51,15 +51,21 @@ type MCPArgumentConstraint struct {
 }
 
 type MCPPolicySource func(context.Context) (MCPProxyPolicy, error)
+type MCPUpstreamSource func(context.Context) (string, error)
 type MCPAuthorizationSource func(context.Context) (string, error)
 type MCPStepUpSource func(context.Context, MCPProxyPolicy, MCPProxyRule, MCPToolRequest) (bool, error)
 
 // MCPToolProxy is an explicit HTTP MCP proxy. Its caller chooses a loopback
 // listener; this handler never makes a direct client connection protected.
 func MCPToolProxy(upstream string, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) (http.Handler, error) {
-	target, err := url.Parse(upstream)
-	if err != nil || target.Scheme == "" || target.Host == "" || policy == nil {
-		return nil, errors.New("MCP proxy requires an absolute upstream and policy source")
+	return MCPToolProxyDynamic(func(context.Context) (string, error) { return upstream, nil }, policy, authorization, stepUp...)
+}
+
+// MCPToolProxyDynamic resolves the upstream per request from the authenticated
+// runtime desired state. An absent profile leaves the loopback proxy fail-closed.
+func MCPToolProxyDynamic(upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) (http.Handler, error) {
+	if upstream == nil || policy == nil {
+		return nil, errors.New("MCP proxy requires upstream and policy sources")
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	limiter := newMCPRateLimiter(time.Now)
@@ -82,29 +88,47 @@ func MCPToolProxy(upstream string, policy MCPPolicySource, authorization MCPAuth
 			writeMCPProxyError(w, http.StatusBadRequest, -32020, "MCP request headers do not match its body")
 			return
 		}
-		current, err := policy(r.Context())
-		rule, allowed := mcpProxyRule(current, target.String(), request.ToolName)
-		if err != nil || current.Version == 0 || !allowed {
+		upstreamURL, upstreamErr := upstream(r.Context())
+		target, parseErr := url.Parse(upstreamURL)
+		if upstreamErr != nil || parseErr != nil || target.Scheme == "" || target.Host == "" || target.User != nil {
 			writeMCPProxyError(w, http.StatusForbidden, -32100, "MCP tool is denied by policy")
 			return
 		}
-		if err := rule.Arguments.Validate(request.Arguments); err != nil {
-			writeMCPProxyError(w, http.StatusForbidden, -32101, "MCP tool arguments are denied by policy")
-			return
-		}
-		if !limiter.allow(current.Version, rule, time.Now()) {
-			writeMCPProxyError(w, http.StatusTooManyRequests, -32102, "MCP tool rate limit exceeded")
-			return
-		}
-		if rule.StepUpRequired && (len(stepUp) == 0 || stepUp[0] == nil) {
-			writeMCPProxyError(w, http.StatusForbidden, -32103, "MCP tool requires step-up approval")
-			return
-		}
-		if rule.StepUpRequired {
-			allowed, approvalErr := stepUp[0](r.Context(), current, rule, request)
-			if approvalErr != nil || !allowed {
+		if request.ToolName == "" {
+			switch request.Method {
+			case "initialize", "notifications/initialized", "tools/list", "ping":
+				// Fixed transport/control methods establish and inspect an MCP
+				// session; they cannot invoke a tool. Every other unnamed method
+				// remains default-denied.
+			default:
+				writeMCPProxyError(w, http.StatusForbidden, -32100, "MCP tool is denied by policy")
+				return
+			}
+		} else {
+			current, err := policy(r.Context())
+			rule, allowed := mcpProxyRule(current, target.String(), request.ToolName)
+			if err != nil || current.Version == 0 || !allowed {
+				writeMCPProxyError(w, http.StatusForbidden, -32100, "MCP tool is denied by policy")
+				return
+			}
+			if err := rule.Arguments.Validate(request.Arguments); err != nil {
+				writeMCPProxyError(w, http.StatusForbidden, -32101, "MCP tool arguments are denied by policy")
+				return
+			}
+			if !limiter.allow(current.Version, rule, time.Now()) {
+				writeMCPProxyError(w, http.StatusTooManyRequests, -32102, "MCP tool rate limit exceeded")
+				return
+			}
+			if rule.StepUpRequired && (len(stepUp) == 0 || stepUp[0] == nil) {
 				writeMCPProxyError(w, http.StatusForbidden, -32103, "MCP tool requires step-up approval")
 				return
+			}
+			if rule.StepUpRequired {
+				allowed, approvalErr := stepUp[0](r.Context(), current, rule, request)
+				if approvalErr != nil || !allowed {
+					writeMCPProxyError(w, http.StatusForbidden, -32103, "MCP tool requires step-up approval")
+					return
+				}
 			}
 		}
 		outbound := r.Clone(r.Context())
@@ -289,11 +313,15 @@ func copyMCPProxyHeaders(dst, src http.Header) {
 // StartMCPToolProxy serves only a loopback listener. It is intentionally
 // separate from RunManagedAgent so an operator must configure a client to use it.
 func StartMCPToolProxy(ctx context.Context, listen, upstream string, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
+	return StartMCPToolProxyDynamic(ctx, listen, func(context.Context) (string, error) { return upstream, nil }, policy, authorization, stepUp...)
+}
+
+func StartMCPToolProxyDynamic(ctx context.Context, listen string, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 		return errors.New("MCP proxy listener must be loopback")
 	}
-	handler, err := MCPToolProxy(upstream, policy, authorization, stepUp...)
+	handler, err := MCPToolProxyDynamic(upstream, policy, authorization, stepUp...)
 	if err != nil {
 		return err
 	}
