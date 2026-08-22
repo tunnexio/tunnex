@@ -17,6 +17,42 @@ func TestNormalizeMCPInventoryAcceptsLegacyAndCurrentSnapshots(t *testing.T) {
 	}
 }
 
+func TestObserveMCPInventoryRetainsStreamableHTTPSession(t *testing.T) {
+	const session = "inventory-session"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			ID     int    `json:"id"`
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.Method != "initialize" && r.Header.Get("Mcp-Session-Id") != session {
+			http.Error(w, "missing session", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Mcp-Session-Id", session)
+		w.Header().Set("Content-Type", "application/json")
+		switch request.Method {
+		case "initialize":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"jsonrpc": "2.0", "id": request.ID, "result": map[string]interface{}{"protocolVersion": "2025-11-25", "serverInfo": map[string]interface{}{"name": "session-fixture"}, "capabilities": map[string]interface{}{}}})
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+		case "tools/list":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"jsonrpc": "2.0", "id": request.ID, "result": map[string]interface{}{"tools": []interface{}{map[string]interface{}{"name": "read", "inputSchema": map[string]interface{}{"type": "object"}}}}})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"jsonrpc": "2.0", "id": request.ID, "result": map[string]interface{}{}})
+		}
+	}))
+	defer server.Close()
+	observed := ObserveMCPInventory(t.Context(), []string{server.URL})
+	item := observed["servers"].([]interface{})[0].(map[string]interface{})
+	tools, ok := item["tools"].([]interface{})
+	if !ok || len(tools) != 1 || tools[0].(map[string]interface{})["name"] != "read" {
+		t.Fatalf("session-protected tools were not observed: %#v", item)
+	}
+}
+
 func TestObserveMCPOAuthDiscoveryUsesResourceMetadataChallenge(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

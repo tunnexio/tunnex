@@ -15,6 +15,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
+	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 )
 
 const RuntimeCredentialPrefix = "tnx_runtime_"
@@ -280,6 +281,12 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	if dev.FullTunnel {
 		allowed = []string{"0.0.0.0/0"}
 		dns = []string{"1.1.1.1"}
+	} else {
+		routes, routeErr := s.managedAgentRoutes(ctx, id.OrgID, id.DeviceID)
+		if routeErr != nil {
+			return Config{}, false, ErrRuntimeStateMissing
+		}
+		allowed = append(allowed, routes...)
 	}
 	return Config{
 		Revision: state.DesiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
@@ -289,6 +296,17 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 		WireGuardCurrentRevision: wgCurrentRevision, WireGuardRotationRevision: wgRotationRevision,
 		WireGuardRotationState: wgRotationState,
 	}, false, nil
+}
+
+// managedAgentRoutes derives only destination prefixes that the canonical
+// policy compiler authorizes for this managed-agent identity. It prevents a
+// customer-side runtime from relying on an operator-installed host route.
+func (s *Service) managedAgentRoutes(ctx context.Context, orgID, deviceID uuid.UUID) ([]string, error) {
+	snapshot, err := policy.BuildSnapshotWithQueries(ctx, s.q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return policy.AgentRouteCIDRs(snapshot, deviceID), nil
 }
 
 // PollWait performs an immediate read and, only while the caller is current,
@@ -427,6 +445,12 @@ func (s *Service) RouteIntent(ctx context.Context, orgID, deviceID uuid.UUID) (R
 	allowed := []string{org.PoolCidr}
 	if dev.FullTunnel {
 		allowed = []string{"0.0.0.0/0"}
+	} else {
+		routes, err := s.managedAgentRoutes(ctx, orgID, deviceID)
+		if err != nil {
+			return RouteIntent{}, ErrRuntimeStateMissing
+		}
+		allowed = append(allowed, routes...)
 	}
 	return RouteIntent{AllowedIPs: allowed}, nil
 }

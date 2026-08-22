@@ -150,7 +150,21 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 		return err
 	}
 	applier := &wireGuardRuntimeApplier{path: opts.ConfigPath, command: opts.ApplyCommand}
-	runtime, err := NewAgentRuntimeAt(source, applier, state.ClientVersion, state.AppliedRevision, state.AppliedRevision > 0)
+	runtimeApplied := state.AppliedRevision
+	runtimeInitialized := state.AppliedRevision > 0
+	if state.AppliedRevision > 0 {
+		// A durable revision proves the file was last-good, not that a host
+		// reboot retained its kernel interface. Restore it before reporting a
+		// healthy runtime so traffic never silently follows the native route.
+		if err := applier.Restore(ctx); err != nil {
+			return fmt.Errorf("restore last-good managed-agent tunnel: %w", err)
+		}
+		// Request one desired-state reconciliation after restoring. This keeps
+		// newly rendered fields (such as exact policy routes) convergent while
+		// preserving the restored tunnel during a transient CP outage.
+		runtimeApplied = 0
+	}
+	runtime, err := NewAgentRuntimeAt(source, applier, state.ClientVersion, runtimeApplied, runtimeInitialized)
 	if err != nil {
 		return err
 	}
@@ -751,6 +765,14 @@ func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeRe
 type wireGuardRuntimeApplier struct {
 	path    string
 	command func(context.Context, string, string) error
+}
+
+// Restore re-applies the durable last-good file without rewriting it.
+func (a *wireGuardRuntimeApplier) Restore(ctx context.Context) error {
+	if a.command == nil {
+		return errors.New("managed-agent WireGuard restore command is unavailable")
+	}
+	return a.command(ctx, a.path, "apply")
 }
 
 func (a *wireGuardRuntimeApplier) Apply(ctx context.Context, cfg ManagedAgentConfig) error {

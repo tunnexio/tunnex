@@ -82,29 +82,41 @@ func MCPToolProxy(upstream string, policy MCPPolicySource, authorization MCPAuth
 			writeMCPProxyError(w, http.StatusBadRequest, -32020, "MCP request headers do not match its body")
 			return
 		}
-		current, err := policy(r.Context())
-		rule, allowed := mcpProxyRule(current, target.String(), request.ToolName)
-		if err != nil || current.Version == 0 || !allowed {
-			writeMCPProxyError(w, http.StatusForbidden, -32100, "MCP tool is denied by policy")
-			return
-		}
-		if err := rule.Arguments.Validate(request.Arguments); err != nil {
-			writeMCPProxyError(w, http.StatusForbidden, -32101, "MCP tool arguments are denied by policy")
-			return
-		}
-		if !limiter.allow(current.Version, rule, time.Now()) {
-			writeMCPProxyError(w, http.StatusTooManyRequests, -32102, "MCP tool rate limit exceeded")
-			return
-		}
-		if rule.StepUpRequired && (len(stepUp) == 0 || stepUp[0] == nil) {
-			writeMCPProxyError(w, http.StatusForbidden, -32103, "MCP tool requires step-up approval")
-			return
-		}
-		if rule.StepUpRequired {
-			allowed, approvalErr := stepUp[0](r.Context(), current, rule, request)
-			if approvalErr != nil || !allowed {
+		if request.ToolName == "" {
+			switch request.Method {
+			case "initialize", "notifications/initialized", "tools/list", "ping":
+				// Fixed transport/control methods establish and inspect an MCP
+				// session; they cannot invoke a tool. Every other unnamed method
+				// remains default-denied.
+			default:
+				writeMCPProxyError(w, http.StatusForbidden, -32100, "MCP tool is denied by policy")
+				return
+			}
+		} else {
+			current, err := policy(r.Context())
+			rule, allowed := mcpProxyRule(current, target.String(), request.ToolName)
+			if err != nil || current.Version == 0 || !allowed {
+				writeMCPProxyError(w, http.StatusForbidden, -32100, "MCP tool is denied by policy")
+				return
+			}
+			if err := rule.Arguments.Validate(request.Arguments); err != nil {
+				writeMCPProxyError(w, http.StatusForbidden, -32101, "MCP tool arguments are denied by policy")
+				return
+			}
+			if !limiter.allow(current.Version, rule, time.Now()) {
+				writeMCPProxyError(w, http.StatusTooManyRequests, -32102, "MCP tool rate limit exceeded")
+				return
+			}
+			if rule.StepUpRequired && (len(stepUp) == 0 || stepUp[0] == nil) {
 				writeMCPProxyError(w, http.StatusForbidden, -32103, "MCP tool requires step-up approval")
 				return
+			}
+			if rule.StepUpRequired {
+				allowed, approvalErr := stepUp[0](r.Context(), current, rule, request)
+				if approvalErr != nil || !allowed {
+					writeMCPProxyError(w, http.StatusForbidden, -32103, "MCP tool requires step-up approval")
+					return
+				}
 			}
 		}
 		outbound := r.Clone(r.Context())

@@ -669,6 +669,33 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	return out
 }
 
+// AgentRouteCIDRs returns canonical destination prefixes present in compiled
+// policy for one managed-agent source. It projects Compile rather than adding a
+// second matcher, so the runtime and gateway enforce the same authorization.
+func AgentRouteCIDRs(s Snapshot, agentID uuid.UUID) []string {
+	if agentID == uuid.Nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, artifact := range Compile(s) {
+		for _, allow := range artifact.Allow {
+			if allow.SrcDeviceID != agentID.String() {
+				continue
+			}
+			prefix, err := netip.ParsePrefix(allow.DstCIDR)
+			if err == nil {
+				seen[prefix.Masked().String()] = struct{}{}
+			}
+		}
+	}
+	routes := make([]string, 0, len(seen))
+	for route := range seen {
+		routes = append(routes, route)
+	}
+	sort.Strings(routes)
+	return routes
+}
+
 // normProto maps a stored protocol to the wire enum, defaulting unknown/empty to
 // "any" (fail-open on the L4 scope is fine — the L3 grant itself is the gate).
 func normProto(p string) policyspec.Protocol {

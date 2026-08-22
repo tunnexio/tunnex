@@ -71,6 +71,45 @@ func TestMCPToolProxyForwardsOnlyAnAllowedTool(t *testing.T) {
 	}
 }
 
+func TestMCPToolProxyPermitsOnlyFixedControlMethodsWithoutAToolRule(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	proxy, err := MCPToolProxy(upstream.URL, func(context.Context) (MCPProxyPolicy, error) {
+		return MCPProxyPolicy{}, nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(proxy)
+	defer server.Close()
+	for _, method := range []string{"initialize", "notifications/initialized", "tools/list", "ping"} {
+		body := `{"jsonrpc":"2.0","id":1,"method":"` + method + `","params":{}}`
+		response, err := http.Post(server.URL, "application/json", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusNoContent {
+			t.Fatalf("%s status = %d", method, response.StatusCode)
+		}
+	}
+	response, err := http.Post(server.URL, "application/json", bytes.NewBufferString(`{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("unnamed non-control status = %d", response.StatusCode)
+	}
+	if calls.Load() != 4 {
+		t.Fatalf("upstream calls = %d", calls.Load())
+	}
+}
+
 func TestMCPToolProxyRejectsArgumentsBeforeUpstream(t *testing.T) {
 	var calls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); w.WriteHeader(http.StatusNoContent) }))
