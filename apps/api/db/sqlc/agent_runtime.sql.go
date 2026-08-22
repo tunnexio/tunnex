@@ -25,7 +25,7 @@ WHERE ars.device_id = $1
   AND d.deleted_at IS NULL
 RETURNING ars.device_id, ars.desired_revision, ars.applied_revision,
           ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
-          ars.last_error_code, ars.last_error_revision, ars.created_at, ars.updated_at
+          ars.last_error_code, ars.last_error_revision, ars.route_fingerprint, ars.created_at, ars.updated_at
 `
 
 type BumpAgentDesiredRevisionParams struct {
@@ -33,9 +33,23 @@ type BumpAgentDesiredRevisionParams struct {
 	OrgID    uuid.UUID `json:"org_id"`
 }
 
-func (q *Queries) BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDesiredRevisionParams) (AgentRuntimeState, error) {
+type BumpAgentDesiredRevisionRow struct {
+	DeviceID              uuid.UUID          `json:"device_id"`
+	DesiredRevision       int64              `json:"desired_revision"`
+	AppliedRevision       int64              `json:"applied_revision"`
+	LastAttemptedRevision int64              `json:"last_attempted_revision"`
+	ClientVersion         string             `json:"client_version"`
+	LastSeenAt            pgtype.Timestamptz `json:"last_seen_at"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorRevision     *int64             `json:"last_error_revision"`
+	RouteFingerprint      string             `json:"route_fingerprint"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+}
+
+func (q *Queries) BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDesiredRevisionParams) (BumpAgentDesiredRevisionRow, error) {
 	row := q.db.QueryRow(ctx, bumpAgentDesiredRevision, arg.DeviceID, arg.OrgID)
-	var i AgentRuntimeState
+	var i BumpAgentDesiredRevisionRow
 	err := row.Scan(
 		&i.DeviceID,
 		&i.DesiredRevision,
@@ -45,6 +59,7 @@ func (q *Queries) BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDes
 		&i.LastSeenAt,
 		&i.LastErrorCode,
 		&i.LastErrorRevision,
+		&i.RouteFingerprint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -52,8 +67,8 @@ func (q *Queries) BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDes
 }
 
 const ensureAgentRuntimeState = `-- name: EnsureAgentRuntimeState :one
-INSERT INTO agent_runtime_state (device_id)
-SELECT d.id
+INSERT INTO agent_runtime_state (device_id, route_fingerprint)
+SELECT d.id, $3
 FROM devices d
 WHERE d.id = $1
   AND d.org_id = $2
@@ -62,19 +77,34 @@ WHERE d.id = $1
 ON CONFLICT (device_id) DO UPDATE SET device_id = EXCLUDED.device_id
 RETURNING device_id, desired_revision, applied_revision,
           last_attempted_revision, client_version, last_seen_at,
-          last_error_code, last_error_revision, created_at, updated_at
+          last_error_code, last_error_revision, route_fingerprint, created_at, updated_at
 `
 
 type EnsureAgentRuntimeStateParams struct {
-	ID    uuid.UUID `json:"id"`
-	OrgID uuid.UUID `json:"org_id"`
+	ID               uuid.UUID `json:"id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	RouteFingerprint string    `json:"route_fingerprint"`
+}
+
+type EnsureAgentRuntimeStateRow struct {
+	DeviceID              uuid.UUID          `json:"device_id"`
+	DesiredRevision       int64              `json:"desired_revision"`
+	AppliedRevision       int64              `json:"applied_revision"`
+	LastAttemptedRevision int64              `json:"last_attempted_revision"`
+	ClientVersion         string             `json:"client_version"`
+	LastSeenAt            pgtype.Timestamptz `json:"last_seen_at"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorRevision     *int64             `json:"last_error_revision"`
+	RouteFingerprint      string             `json:"route_fingerprint"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
 }
 
 // The org join is the tenant boundary; device ids are globally unique, but a
 // runtime bootstrap must never turn knowledge of another org's UUID into state.
-func (q *Queries) EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (AgentRuntimeState, error) {
-	row := q.db.QueryRow(ctx, ensureAgentRuntimeState, arg.ID, arg.OrgID)
-	var i AgentRuntimeState
+func (q *Queries) EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (EnsureAgentRuntimeStateRow, error) {
+	row := q.db.QueryRow(ctx, ensureAgentRuntimeState, arg.ID, arg.OrgID, arg.RouteFingerprint)
+	var i EnsureAgentRuntimeStateRow
 	err := row.Scan(
 		&i.DeviceID,
 		&i.DesiredRevision,
@@ -84,6 +114,7 @@ func (q *Queries) EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRu
 		&i.LastSeenAt,
 		&i.LastErrorCode,
 		&i.LastErrorRevision,
+		&i.RouteFingerprint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -93,7 +124,7 @@ func (q *Queries) EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRu
 const getAgentRuntimeState = `-- name: GetAgentRuntimeState :one
 SELECT ars.device_id, ars.desired_revision, ars.applied_revision,
        ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
-       ars.last_error_code, ars.last_error_revision, ars.created_at, ars.updated_at
+       ars.last_error_code, ars.last_error_revision, ars.route_fingerprint, ars.created_at, ars.updated_at
 FROM agent_runtime_state ars
 JOIN devices d ON d.id = ars.device_id
 WHERE ars.device_id = $1
@@ -107,9 +138,23 @@ type GetAgentRuntimeStateParams struct {
 	OrgID    uuid.UUID `json:"org_id"`
 }
 
-func (q *Queries) GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error) {
+type GetAgentRuntimeStateRow struct {
+	DeviceID              uuid.UUID          `json:"device_id"`
+	DesiredRevision       int64              `json:"desired_revision"`
+	AppliedRevision       int64              `json:"applied_revision"`
+	LastAttemptedRevision int64              `json:"last_attempted_revision"`
+	ClientVersion         string             `json:"client_version"`
+	LastSeenAt            pgtype.Timestamptz `json:"last_seen_at"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorRevision     *int64             `json:"last_error_revision"`
+	RouteFingerprint      string             `json:"route_fingerprint"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+}
+
+func (q *Queries) GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (GetAgentRuntimeStateRow, error) {
 	row := q.db.QueryRow(ctx, getAgentRuntimeState, arg.DeviceID, arg.OrgID)
-	var i AgentRuntimeState
+	var i GetAgentRuntimeStateRow
 	err := row.Scan(
 		&i.DeviceID,
 		&i.DesiredRevision,
@@ -119,6 +164,68 @@ func (q *Queries) GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeS
 		&i.LastSeenAt,
 		&i.LastErrorCode,
 		&i.LastErrorRevision,
+		&i.RouteFingerprint,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const refreshAgentRuntimeRouteFingerprint = `-- name: RefreshAgentRuntimeRouteFingerprint :one
+UPDATE agent_runtime_state ars
+SET desired_revision = CASE
+        WHEN ars.route_fingerprint IS DISTINCT FROM $3 THEN ars.desired_revision + 1
+        ELSE ars.desired_revision
+    END,
+    route_fingerprint = $3,
+    updated_at = now()
+FROM devices d
+WHERE ars.device_id = $1
+  AND d.id = ars.device_id
+  AND d.org_id = $2
+  AND d.kind = 'agent'
+  AND d.deleted_at IS NULL
+RETURNING ars.device_id, ars.desired_revision, ars.applied_revision,
+          ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
+          ars.last_error_code, ars.last_error_revision, ars.route_fingerprint,
+          ars.created_at, ars.updated_at
+`
+
+type RefreshAgentRuntimeRouteFingerprintParams struct {
+	DeviceID         uuid.UUID `json:"device_id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	RouteFingerprint string    `json:"route_fingerprint"`
+}
+
+type RefreshAgentRuntimeRouteFingerprintRow struct {
+	DeviceID              uuid.UUID          `json:"device_id"`
+	DesiredRevision       int64              `json:"desired_revision"`
+	AppliedRevision       int64              `json:"applied_revision"`
+	LastAttemptedRevision int64              `json:"last_attempted_revision"`
+	ClientVersion         string             `json:"client_version"`
+	LastSeenAt            pgtype.Timestamptz `json:"last_seen_at"`
+	LastErrorCode         *string            `json:"last_error_code"`
+	LastErrorRevision     *int64             `json:"last_error_revision"`
+	RouteFingerprint      string             `json:"route_fingerprint"`
+	CreatedAt             time.Time          `json:"created_at"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+}
+
+// A route-set change is desired state, not an imperative host command. Advance
+// only when the fingerprint changes, so concurrent polls coalesce safely.
+func (q *Queries) RefreshAgentRuntimeRouteFingerprint(ctx context.Context, arg RefreshAgentRuntimeRouteFingerprintParams) (RefreshAgentRuntimeRouteFingerprintRow, error) {
+	row := q.db.QueryRow(ctx, refreshAgentRuntimeRouteFingerprint, arg.DeviceID, arg.OrgID, arg.RouteFingerprint)
+	var i RefreshAgentRuntimeRouteFingerprintRow
+	err := row.Scan(
+		&i.DeviceID,
+		&i.DesiredRevision,
+		&i.AppliedRevision,
+		&i.LastAttemptedRevision,
+		&i.ClientVersion,
+		&i.LastSeenAt,
+		&i.LastErrorCode,
+		&i.LastErrorRevision,
+		&i.RouteFingerprint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

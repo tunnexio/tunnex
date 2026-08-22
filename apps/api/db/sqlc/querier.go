@@ -62,7 +62,7 @@ type Querier interface {
 	// write itself enforces the re-home refusal the read alone could only race on. The caller re-reads on 0
 	// rows to emit the right typed error (same-site no-op / already-bound-elsewhere / node-or-site-not-found).
 	BindNodeToSite(ctx context.Context, arg BindNodeToSiteParams) (int64, error)
-	BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDesiredRevisionParams) (AgentRuntimeState, error)
+	BumpAgentDesiredRevision(ctx context.Context, arg BumpAgentDesiredRevisionParams) (BumpAgentDesiredRevisionRow, error)
 	// Atomically ALLOCATE the next monotonic per-org CRL number (D-S9.5-1: per-org, never a global counter).
 	// Concurrent rebuilds get DISTINCT numbers; the crl_pem is set immediately after by SetOVPNCRL for THIS
 	// number, so the highest-numbered (latest) CRL wins. On first revocation the placeholder crl_pem is empty
@@ -469,7 +469,7 @@ type Querier interface {
 	EnsureAgentProfile(ctx context.Context, deviceID uuid.UUID) error
 	// The org join is the tenant boundary; device ids are globally unique, but a
 	// runtime bootstrap must never turn knowledge of another org's UUID into state.
-	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (AgentRuntimeState, error)
+	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (EnsureAgentRuntimeStateRow, error)
 	ExpireAgentAccessRequest(ctx context.Context, arg ExpireAgentAccessRequestParams) (AgentAccessRequest, error)
 	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
 	ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAgentWireGuardRotationParams) error
@@ -511,7 +511,7 @@ type Querier interface {
 	// lint:cross-org — F04's bearer hash is the credential; the returned row supplies its org/device binding.
 	GetAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AgentRuntimeCredential, error)
 	GetAgentRuntimeCredentialRotation(ctx context.Context, arg GetAgentRuntimeCredentialRotationParams) (GetAgentRuntimeCredentialRotationRow, error)
-	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (AgentRuntimeState, error)
+	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (GetAgentRuntimeStateRow, error)
 	GetAgentScopedAuthority(ctx context.Context, arg GetAgentScopedAuthorityParams) (GetAgentScopedAuthorityRow, error)
 	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	GetAgentWorkflowSigningKey(ctx context.Context, arg GetAgentWorkflowSigningKeyParams) (AgentWorkflowSigningKey, error)
@@ -1215,6 +1215,9 @@ type Querier interface {
 	// leader requeues only claims older than the bounded dispatcher lease.
 	RecoverStaleAlertDeliveries(ctx context.Context, arg RecoverStaleAlertDeliveriesParams) (int64, error)
 	RefreshAgentMCPOAuthConnection(ctx context.Context, arg RefreshAgentMCPOAuthConnectionParams) (int64, error)
+	// A route-set change is desired state, not an imperative host command. Advance
+	// only when the fingerprint changes, so concurrent polls coalesce safely.
+	RefreshAgentRuntimeRouteFingerprint(ctx context.Context, arg RefreshAgentRuntimeRouteFingerprintParams) (RefreshAgentRuntimeRouteFingerprintRow, error)
 	RejectAgentAccessRequest(ctx context.Context, arg RejectAgentAccessRequestParams) (AgentAccessRequest, error)
 	// S7.3: pending -> revoked, FREEING the held pool IP (assigned_ip=NULL) so it returns to
 	// the pool for reuse (D1b — the same release RevokeDevice does). Only a PENDING device

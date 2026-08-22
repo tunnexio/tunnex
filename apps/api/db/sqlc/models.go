@@ -280,6 +280,7 @@ type AgentRuntimeState struct {
 	LastErrorRevision     *int64             `json:"last_error_revision"`
 	CreatedAt             time.Time          `json:"created_at"`
 	UpdatedAt             time.Time          `json:"updated_at"`
+	RouteFingerprint      string             `json:"route_fingerprint"`
 }
 
 type AgentWireguardRotation struct {

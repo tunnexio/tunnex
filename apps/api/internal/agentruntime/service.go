@@ -242,9 +242,27 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	if dev.Status != "active" || dev.AssignedIp == nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	state, err := s.q.EnsureAgentRuntimeState(ctx, sqlc.EnsureAgentRuntimeStateParams{ID: id.DeviceID, OrgID: id.OrgID})
+	org, err := s.q.GetOrganizationByID(ctx, id.OrgID)
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
+	}
+	allowed, err := s.effectiveAllowedIPs(ctx, id.OrgID, id.DeviceID, org.PoolCidr, dev.FullTunnel)
+	if err != nil {
+		return Config{}, false, ErrRuntimeStateMissing
+	}
+	routeFingerprint := fingerprintAllowedIPs(allowed)
+	state, err := s.q.EnsureAgentRuntimeState(ctx, sqlc.EnsureAgentRuntimeStateParams{ID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
+	if err != nil {
+		return Config{}, false, ErrRuntimeStateMissing
+	}
+	desiredRevision := state.DesiredRevision
+	if state.RouteFingerprint != routeFingerprint {
+		refreshed, refreshErr := s.q.RefreshAgentRuntimeRouteFingerprint(ctx, sqlc.RefreshAgentRuntimeRouteFingerprintParams{DeviceID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
+		err = refreshErr
+		if err != nil {
+			return Config{}, false, ErrRuntimeStateMissing
+		}
+		desiredRevision = refreshed.DesiredRevision
 	}
 	var rotationRevision *int64
 	credential, rotationErr := s.q.GetAgentRuntimeCredentialRotation(ctx, sqlc.GetAgentRuntimeCredentialRotationParams{OrgID: id.OrgID, DeviceID: id.DeviceID})
@@ -265,31 +283,19 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	} else if !errors.Is(wgErr, pgx.ErrNoRows) {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	if state.DesiredRevision <= appliedRevision && rotationRevision == nil && wgRotationRevision == nil && wgCurrentRevision == wireGuardRevision {
+	if desiredRevision <= appliedRevision && rotationRevision == nil && wgRotationRevision == nil && wgCurrentRevision == wireGuardRevision {
 		return Config{}, true, nil
 	}
 	node, err := s.q.GetOrgNode(ctx, sqlc.GetOrgNodeParams{ID: dev.NodeID, OrgID: id.OrgID})
 	if err != nil || node.Endpoint == "" || node.WgPublicKey == "" {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	org, err := s.q.GetOrganizationByID(ctx, id.OrgID)
-	if err != nil {
-		return Config{}, false, ErrRuntimeStateMissing
-	}
-	allowed := []string{org.PoolCidr}
 	dns := []string(nil)
 	if dev.FullTunnel {
-		allowed = []string{"0.0.0.0/0"}
 		dns = []string{"1.1.1.1"}
-	} else {
-		routes, routeErr := s.managedAgentRoutes(ctx, id.OrgID, id.DeviceID)
-		if routeErr != nil {
-			return Config{}, false, ErrRuntimeStateMissing
-		}
-		allowed = append(allowed, routes...)
 	}
 	return Config{
-		Revision: state.DesiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
+		Revision: desiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
 		Address: *dev.AssignedIp + "/32", GatewayEndpoint: node.Endpoint,
 		GatewayPublicKey: node.WgPublicKey, AllowedIPs: allowed, DNS: dns,
 		PersistentKeepalive: 25, CredentialRotationRevision: rotationRevision,
@@ -307,6 +313,26 @@ func (s *Service) managedAgentRoutes(ctx context.Context, orgID, deviceID uuid.U
 		return nil, err
 	}
 	return policy.AgentRouteCIDRs(snapshot, deviceID), nil
+}
+
+func (s *Service) effectiveAllowedIPs(ctx context.Context, orgID, deviceID uuid.UUID, poolCIDR string, fullTunnel bool) ([]string, error) {
+	if fullTunnel {
+		return []string{"0.0.0.0/0"}, nil
+	}
+	routes, err := s.managedAgentRoutes(ctx, orgID, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{poolCIDR}, routes...), nil
+}
+
+func fingerprintAllowedIPs(allowed []string) string {
+	h := sha256.New()
+	for _, route := range allowed {
+		_, _ = h.Write([]byte(route))
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // PollWait performs an immediate read and, only while the caller is current,
@@ -442,15 +468,9 @@ func (s *Service) RouteIntent(ctx context.Context, orgID, deviceID uuid.UUID) (R
 	if err != nil {
 		return RouteIntent{}, ErrRuntimeStateMissing
 	}
-	allowed := []string{org.PoolCidr}
-	if dev.FullTunnel {
-		allowed = []string{"0.0.0.0/0"}
-	} else {
-		routes, err := s.managedAgentRoutes(ctx, orgID, deviceID)
-		if err != nil {
-			return RouteIntent{}, ErrRuntimeStateMissing
-		}
-		allowed = append(allowed, routes...)
+	allowed, err := s.effectiveAllowedIPs(ctx, orgID, deviceID, org.PoolCidr, dev.FullTunnel)
+	if err != nil {
+		return RouteIntent{}, ErrRuntimeStateMissing
 	}
 	return RouteIntent{AllowedIPs: allowed}, nil
 }
