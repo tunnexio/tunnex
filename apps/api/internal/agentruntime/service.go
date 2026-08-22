@@ -57,6 +57,11 @@ const (
 
 type OptInFunc func(context.Context, uuid.UUID) (OptInState, error)
 
+// RoutedRangesFunc returns the org's approved split-tunnel destination ranges.
+// It is injected by the HTTP composition root so managed-agent route intent
+// shares the same source of truth as ordinary device exports.
+type RoutedRangesFunc func(context.Context, uuid.UUID) ([]string, error)
+
 // OrganizationOptIn is the production opt-in boundary. Both the paid-edition
 // unlock and the persisted organization decision must be true; absence or a
 // database error fails closed.
@@ -81,6 +86,7 @@ type Service struct {
 	optIn    OptInFunc
 	notify   Notifier
 	alerts   alerts.Publisher
+	ranges   RoutedRangesFunc
 	now      func() time.Time
 	pollTick time.Duration
 }
@@ -96,6 +102,8 @@ func New(q *sqlc.Queries, optIn OptInFunc) *Service {
 }
 
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
+
+func (s *Service) SetRoutedRanges(r RoutedRangesFunc) { s.ranges = r }
 
 // SetAlertPublisher attaches F11's durable outbox without making runtime
 // reporting depend on a particular transport. A nil value restores the
@@ -325,11 +333,32 @@ func (s *Service) effectiveAllowedIPs(ctx context.Context, orgID, deviceID uuid.
 	if fullTunnel {
 		return []string{"0.0.0.0/0"}, nil
 	}
+	allowed := []string{poolCIDR}
+	seen := map[string]bool{poolCIDR: true}
+	if s.ranges != nil {
+		ranges, err := s.ranges(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		for _, route := range ranges {
+			route = strings.TrimSpace(route)
+			if route != "" && !seen[route] {
+				seen[route] = true
+				allowed = append(allowed, route)
+			}
+		}
+	}
 	routes, err := s.managedAgentRoutes(ctx, orgID, deviceID)
 	if err != nil {
 		return nil, err
 	}
-	return append([]string{poolCIDR}, routes...), nil
+	for _, route := range routes {
+		if !seen[route] {
+			seen[route] = true
+			allowed = append(allowed, route)
+		}
+	}
+	return allowed, nil
 }
 
 func fingerprintRuntimeConfig(allowed []string, mcpUpstream *string) string {

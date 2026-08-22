@@ -30,8 +30,15 @@ func main() {
 	if endpoints := strings.TrimSpace(os.Getenv("TUNNEX_MCP_INVENTORY_ENDPOINTS")); endpoints != "" {
 		opts.MCPInventoryEndpoints = strings.Split(endpoints, ",")
 	}
-	opts.MCPProxyListen = strings.TrimSpace(os.Getenv("TUNNEX_MCP_PROXY_LISTEN"))
-	opts.MCPProxyUpstream = strings.TrimSpace(os.Getenv("TUNNEX_MCP_PROXY_UPSTREAM"))
+	// The managed runtime always exposes its loopback proxy by default. An
+	// optional environment value may override its listener for compatibility,
+	// but an absent value must not erase the safe default.
+	if listen := strings.TrimSpace(os.Getenv("TUNNEX_MCP_PROXY_LISTEN")); listen != "" {
+		opts.MCPProxyListen = listen
+	}
+	if upstream := strings.TrimSpace(os.Getenv("TUNNEX_MCP_PROXY_UPSTREAM")); upstream != "" {
+		opts.MCPProxyUpstream = upstream
+	}
 	if err := cli.RunManagedAgent(ctx, opts); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "tunnex-agent-runtime: stopped:", err)
 		os.Exit(1)
