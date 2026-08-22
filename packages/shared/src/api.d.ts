@@ -2889,6 +2889,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agent-mcp-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List reusable managed-agent MCP profiles */
+        get: operations["listAgentMCPProfiles"];
+        put?: never;
+        /** Create immutable reusable managed-agent MCP profile */
+        post: operations["createAgentMCPProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-mcp-profiles/{profileId}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign an MCP profile to a managed-agent group */
+        post: operations["assignAgentMCPProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agent-groups": {
         parameters: {
             query?: never;
@@ -3309,6 +3349,40 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        AgentMCPProfile: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            name: string;
+            /** Format: uri */
+            endpoint: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateAgentMCPProfileRequest: {
+            name: string;
+            /** Format: uri */
+            endpoint: string;
+        };
+        AssignAgentMCPProfileRequest: {
+            /** Format: uuid */
+            group_id: string;
+        };
+        AgentMCPProfileAssignment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            profile_id: string;
+            /** Format: uuid */
+            group_id: string;
+            /** Format: date-time */
+            assigned_at: string;
         };
         CreateAgentGroupRequest: {
             name: string;
@@ -4564,6 +4638,11 @@ export interface components {
             allowed_ips: string[];
             dns: string[];
             persistent_keepalive: number;
+            /**
+             * Format: uri
+             * @description Canonical Streamable HTTP MCP endpoint supplied by the assigned group profile. It is configuration, never a credential; null leaves the local proxy default-deny.
+             */
+            mcp_upstream?: string | null;
             /**
              * Format: int64
              * @description Non-secret requested successor revision; omitted when no request is pending.
@@ -9977,6 +10056,87 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentPolicyTemplateDestinationImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentMCPProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profiles. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfile"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAgentMCPProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentMCPProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Profile created. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfile"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    assignAgentMCPProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignAgentMCPProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Assignment created. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfileAssignment"];
                 };
             };
             default: components["responses"]["Error"];
