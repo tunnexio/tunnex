@@ -14,6 +14,39 @@ A quickstart nobody executed is documentation that looks like a guarantee, so th
 
 ---
 
+## 0. Public one-command installer 🔶 locally verified
+
+For a fresh Linux or macOS host with a public DNS name or IP:
+
+```bash
+curl -fsSL https://get.tunnex.io | sh
+```
+
+For Windows, open Administrator PowerShell:
+
+```powershell
+irm https://get.tunnex.io/install.ps1 | iex
+```
+
+The terminal guide shows the Tunnex wordmark and slogan, checks the host, selects the latest signed
+semantic release, collects the public URL/TLS/admin/email choices, and presents one final review. Only
+after confirmation does it install or start a compatible Docker runtime and Compose v2, generate secrets,
+pull digest-pinned images, and verify the running stack. A working existing runtime is reused. Linux uses
+the host package manager, macOS reuses Docker Desktop or prepares Homebrew + Colima, and Windows prepares
+Docker Desktop + Git Bash through Windows Package Manager before entering the same canonical flow.
+
+On Linux, that flow runs the control plane and its co-located WireGuard gateway. On macOS and Windows,
+it runs a portable control plane and keeps the Linux-only `node-agent` container disabled; the final
+screen tells you to enroll the gateway on a separate Linux host. This is a runtime boundary, not a missing
+installer feature: the gateway requires `/dev/net/tun`, `NET_ADMIN`, IP forwarding, and host networking.
+
+*What is verified:* the complete installer ran locally against a clean Ubuntu host simulation, including
+Docker/Compose bootstrap, signed-release hand-off, generated configuration, safe rerun, and a root-only
+Docker socket. The native Windows launcher contract also proves existing-runtime reuse and fresh Docker
+Desktop preparation before canonical hand-off, plus the portable-control-plane handoff. *What is not yet verified:* this exact new flow on live
+fresh Linux, macOS, and Windows hosts. Those live-wire proofs are required before changing
+`get.tunnex.io`.
+
 ## 1. Quickstart — Docker Compose ✅ verified
 
 Single host, everything on one machine. Good for evaluation and small deployments.

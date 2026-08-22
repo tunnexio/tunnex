@@ -11,8 +11,10 @@
 #     sudo sh install.sh
 #
 # Brings up a working Tunnex deployment from PREBUILT images — no source build, no file edits.
-# Prerequisite: any host with Docker Engine + the Compose v2 plugin AND a public address (a DNS name
-# or public IP users + gateways can reach). It installs the SOFTWARE; it does not conjure the server.
+# Prerequisite: a Linux or macOS host AND a public address (a DNS name or public IP users + gateways
+# can reach). Windows enters through install.ps1, which prepares the native host before handing off to
+# this shared product flow. Docker Engine/desktop + Compose v2 are prepared when absent; the installer
+# does not conjure the server, DNS, or firewall rules.
 #
 # Non-interactive / piped-with-no-terminal: set the inputs as env vars so the pipe still works:
 #     curl -fsSL <url> | TUNNEX_PUBLIC_BASE_URL=https://vpn.acme.com TUNNEX_ADMIN_EMAIL=owner@example.com TUNNEX_SMTP=skip sh
@@ -33,7 +35,7 @@ say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 as_root() {
 	if [ "$(id -u)" -eq 0 ]; then "$@"; return; fi
-	command -v sudo >/dev/null 2>&1 || die "sudo is required to install the local upgrade service"
+	command -v sudo >/dev/null 2>&1 || die "sudo is required to prepare this control-plane host"
 	sudo "$@"
 }
 file_sha256() {
@@ -44,8 +46,297 @@ file_sha256() {
 	fi
 }
 
-# BEGIN INSTALL VERSION RESOLVER — kept byte-identical in install.sh and get.sh; the regression test
-# extracts this block from both files and refuses drift.
+setup_palette() {
+	TUNNEX_WHITE=''
+	TUNNEX_RED=''
+	TUNNEX_DIM=''
+	TUNNEX_RESET=''
+	[ -z "${NO_COLOR+x}" ] || return 0
+	case "${TUNNEX_COLOR:-auto}" in
+	always) : ;;
+	auto) [ -t 1 ] || return 0 ;;
+	never) return 0 ;;
+	*) die "TUNNEX_COLOR must be auto, always, or never" ;;
+	esac
+	TUNNEX_WHITE="$(printf '\033[1;97m')"
+	TUNNEX_RED="$(printf '\033[1;31m')"
+	TUNNEX_DIM="$(printf '\033[2m')"
+	TUNNEX_RESET="$(printf '\033[0m')"
+}
+print_wordmark() {
+	say ''
+	printf '  %s▀█▀ █ █ █▄ █ █▄ █ %s%s█▀▀ ▀▄▀%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %s █  █ █ █ ▀█ █ ▀█ %s%s█▀▀ ▄▀▄%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %s ▀  ▀▀▀ ▀  ▀ ▀  ▀ %s%s▀▀▀ ▀ ▀%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %sConnect Everything. Trust Nothing.%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
+	printf '  %sSelf-hosted Zero Trust VPN%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
+}
+stage() {
+	printf '\n%s[%s/5]%s %s\n' "$TUNNEX_RED" "$1" "$TUNNEX_RESET" "$2"
+}
+
+# BEGIN INSTALL CONFIRMATION — extracted by deploy/install-host-bootstrap_test.sh.
+confirm_installation() {
+	if [ "$AUTO_CONFIRM" = false ] && have_tty; then
+		case "$(ask 'Proceed with this installation? [Y/n]: ')" in
+		n|N|no|NO) say ">> Cancelled before changing the host."; exit 0 ;;
+		esac
+	fi
+}
+# END INSTALL CONFIRMATION
+
+# BEGIN HOST BOOTSTRAP — extracted by deploy/install-host-bootstrap_test.sh.
+DOCKER_AS_ROOT=false
+docker_cli() {
+	if [ "$DOCKER_AS_ROOT" = true ]; then
+		as_root docker "$@"
+	else
+		docker "$@"
+	fi
+}
+load_host_os() {
+	HOST_KERNEL=${TUNNEX_HOST_KERNEL:-$(uname -s)}
+	HOST_OS_ID=''
+	HOST_OS_CODENAME=''
+	HOST_PACKAGE_MANAGER=''
+	case "$HOST_KERNEL" in
+	Linux)
+		_os_release=${TUNNEX_OS_RELEASE_FILE:-/etc/os-release}
+		if [ -r "$_os_release" ]; then
+			# os-release is shell-compatible, but it is host input, not installer code.
+			# Read only the descriptive keys required for package selection; never source it.
+			while IFS= read -r _os_release_line || [ -n "$_os_release_line" ]; do
+				case "$_os_release_line" in
+				ID=*) _os_release_key=ID ;;
+				VERSION_CODENAME=*) _os_release_key=VERSION_CODENAME ;;
+				UBUNTU_CODENAME=*) _os_release_key=UBUNTU_CODENAME ;;
+				*) continue ;;
+				esac
+				_os_release_value=${_os_release_line#*=}
+				case "$_os_release_value" in
+				\"*\") _os_release_value=${_os_release_value#\"}; _os_release_value=${_os_release_value%\"} ;;
+				\'*\') _os_release_value=${_os_release_value#\'}; _os_release_value=${_os_release_value%\'} ;;
+				esac
+				case "$_os_release_value" in
+				''|*[!A-Za-z0-9._-]*) continue ;;
+				esac
+				case "$_os_release_key" in
+				ID) HOST_OS_ID=$_os_release_value ;;
+				VERSION_CODENAME) HOST_OS_CODENAME=$_os_release_value ;;
+				UBUNTU_CODENAME) [ -n "$HOST_OS_CODENAME" ] || HOST_OS_CODENAME=$_os_release_value ;;
+				esac
+			done <"$_os_release"
+			[ -n "$HOST_OS_ID" ] || HOST_OS_ID=linux
+		else
+			HOST_OS_ID=linux
+		fi
+		for _pm in apt-get dnf yum zypper pacman apk; do
+			if command -v "$_pm" >/dev/null 2>&1; then HOST_PACKAGE_MANAGER=$_pm; break; fi
+		done
+		[ -n "$HOST_PACKAGE_MANAGER" ] ||
+			die "no supported package manager was found. Install Docker Engine + Compose v2, then re-run the same command."
+		;;
+	Darwin)
+		HOST_OS_ID=macos
+		HOST_PACKAGE_MANAGER=brew
+		;;
+	MINGW*|MSYS*|CYGWIN*)
+		HOST_OS_ID=windows
+		HOST_PACKAGE_MANAGER=windows
+		;;
+	*) die "automatic runtime preparation is not available for ${HOST_KERNEL}. Install Docker + Compose v2, then re-run." ;;
+	esac
+}
+install_apt_prerequisites() {
+	as_root apt-get update
+	as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg openssl
+	if ! command -v docker >/dev/null 2>&1; then
+		case "$HOST_OS_ID" in
+		ubuntu|debian)
+			[ -n "$HOST_OS_CODENAME" ] || die "cannot determine the ${HOST_OS_ID} release codename for Docker packages"
+			_key_tmp=$(mktemp "${TMPDIR:-/tmp}/tunnex-docker-key.XXXXXX")
+			_repo_tmp=$(mktemp "${TMPDIR:-/tmp}/tunnex-docker-repo.XXXXXX")
+			trap 'rm -f "$_key_tmp" "$_repo_tmp"' EXIT INT TERM
+			curl -fsSL "https://download.docker.com/linux/${HOST_OS_ID}/gpg" -o "$_key_tmp" ||
+				die "could not download Docker's repository signing key"
+			as_root install -d -m 0755 /etc/apt/keyrings
+			as_root install -m 0644 "$_key_tmp" /etc/apt/keyrings/docker.asc
+			_arch=$(dpkg --print-architecture)
+			printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' \
+				"$_arch" "$HOST_OS_ID" "$HOST_OS_CODENAME" >"$_repo_tmp"
+			as_root install -m 0644 "$_repo_tmp" /etc/apt/sources.list.d/docker.list
+			as_root apt-get update
+			as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+				docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+			rm -f "$_key_tmp" "$_repo_tmp"
+			trap - EXIT INT TERM
+			;;
+		*)
+			# An apt-compatible derivative need not have an official Docker CE repository.
+			# Prefer its maintained native packages rather than guessing a repository URL.
+			as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
+			if ! as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2; then
+				as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin
+			fi
+			;;
+		esac
+	elif ! docker compose version >/dev/null 2>&1; then
+		if as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-v2; then
+			:
+		elif as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin; then
+			:
+		else
+			die "Docker exists but Compose v2 could not be added without replacing it. Install a Compose v2 plugin compatible with this Docker distribution, then re-run."
+		fi
+	fi
+}
+install_rpm_prerequisites() {
+	if command -v dnf >/dev/null 2>&1; then
+		_rpm=dnf
+		_rpm_config_manager='dnf config-manager'
+	else
+		_rpm=yum
+		_rpm_config_manager=yum-config-manager
+	fi
+	command -v "$_rpm" >/dev/null 2>&1 || die "${HOST_OS_ID} has neither dnf nor yum"
+	as_root "$_rpm" -y install ca-certificates curl openssl
+	if ! command -v docker >/dev/null 2>&1; then
+		case "$HOST_OS_ID" in fedora) _repo_os=fedora ;; *) _repo_os=centos ;; esac
+		if [ "$_rpm" = dnf ]; then
+			as_root "$_rpm" -y install dnf-plugins-core
+		else
+			as_root "$_rpm" -y install yum-utils
+		fi
+		# dnf exposes `dnf config-manager`; yum-utils exposes the separate
+		# `yum-config-manager` executable. Calling the former through yum aborts
+		# a fresh RHEL-family bootstrap before Docker can be installed.
+		as_root $_rpm_config_manager --add-repo "https://download.docker.com/linux/${_repo_os}/docker-ce.repo"
+		as_root "$_rpm" -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+	elif ! docker compose version >/dev/null 2>&1; then
+		as_root "$_rpm" -y install docker-compose-plugin ||
+			die "Docker exists but Compose v2 could not be added without replacing it. Install a compatible Compose v2 plugin, then re-run."
+	fi
+}
+install_zypper_prerequisites() {
+	as_root zypper --non-interactive refresh
+	as_root zypper --non-interactive install ca-certificates curl openssl docker docker-compose
+}
+install_pacman_prerequisites() {
+	as_root pacman -Sy --noconfirm ca-certificates curl openssl docker docker-compose
+}
+install_apk_prerequisites() {
+	as_root apk add ca-certificates curl openssl docker docker-cli-compose
+}
+wait_for_docker() {
+	_waited=0
+	while [ "$_waited" -lt "${TUNNEX_DOCKER_WAIT_SECONDS:-120}" ]; do
+		if docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then return 0; fi
+		sleep 2
+		_waited=$((_waited + 2))
+	done
+	return 1
+}
+install_macos_prerequisites() {
+	_mac_applications_dir=${TUNNEX_MAC_APPLICATIONS_DIR:-/Applications}
+	if [ -d "${_mac_applications_dir}/Docker.app" ]; then
+		say ">> Starting Docker Desktop…"
+		open -a Docker || die "Docker Desktop is installed but could not be started"
+		wait_for_docker || die "Docker Desktop did not become ready. Finish its first-run setup, then re-run the same command."
+		return 0
+	fi
+	if ! command -v brew >/dev/null 2>&1; then
+		command -v bash >/dev/null 2>&1 || die "bash is required to install Homebrew on macOS"
+		say ">> Installing Homebrew so the container runtime can be prepared…"
+		NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+		if [ -x /opt/homebrew/bin/brew ]; then
+			PATH="/opt/homebrew/bin:$PATH"
+		elif [ -x /usr/local/bin/brew ]; then
+			PATH="/usr/local/bin:$PATH"
+		else
+			die "Homebrew installation finished but brew is not available on PATH"
+		fi
+		export PATH
+	fi
+	brew install docker docker-compose colima openssl
+	say ">> Starting the Colima container runtime…"
+	colima start
+	wait_for_docker || die "Colima started but Docker Engine and Compose v2 did not become ready"
+}
+install_host_prerequisites() {
+	load_host_os
+	case "$HOST_PACKAGE_MANAGER" in
+	apt-get) install_apt_prerequisites ;;
+	dnf|yum) install_rpm_prerequisites ;;
+	zypper) install_zypper_prerequisites ;;
+	pacman) install_pacman_prerequisites ;;
+	apk) install_apk_prerequisites ;;
+	brew) install_macos_prerequisites ;;
+	windows) die "fresh Windows setup uses the PowerShell one-liner so Docker Desktop and Git Bash can be prepared safely" ;;
+	esac
+}
+start_linux_docker() {
+	if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+		as_root systemctl enable --now docker >/dev/null 2>&1 ||
+			die "Docker was installed but its system service could not be started"
+	elif command -v rc-service >/dev/null 2>&1; then
+		as_root rc-service docker start >/dev/null 2>&1 || die "Docker's OpenRC service could not be started"
+		command -v rc-update >/dev/null 2>&1 && as_root rc-update add docker default >/dev/null 2>&1 || true
+	elif command -v service >/dev/null 2>&1; then
+		as_root service docker start >/dev/null 2>&1 || die "Docker's service could not be started"
+	fi
+}
+ensure_docker_ready() {
+	if ! command -v openssl >/dev/null 2>&1 ||
+	   ! command -v docker >/dev/null 2>&1 ||
+	   ! docker compose version >/dev/null 2>&1; then
+		install_host_prerequisites
+	fi
+	[ -n "${HOST_KERNEL:-}" ] || HOST_KERNEL=${TUNNEX_HOST_KERNEL:-$(uname -s)}
+	case "$HOST_KERNEL" in
+	Linux)
+		# Do not rewrite service enablement on a usable installation. A root-only
+		# Docker socket is still a usable daemon for this run, so it must not be
+		# mistaken for a stopped service either.
+		if ! docker info >/dev/null 2>&1 && ! as_root docker info >/dev/null 2>&1; then
+			start_linux_docker
+		fi
+		;;
+	Darwin)
+		# `docker compose version` only proves the client is installed. If Docker
+		# Desktop was stopped, use the same visible startup/resume path as a
+		# fresh macOS host before declaring the daemon unusable.
+		if ! docker info >/dev/null 2>&1; then install_macos_prerequisites; fi
+		;;
+	esac
+	if docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+		DOCKER_AS_ROOT=false
+	elif as_root docker info >/dev/null 2>&1 && as_root docker compose version >/dev/null 2>&1; then
+		DOCKER_AS_ROOT=true
+	else
+		die "Docker Engine is installed but the daemon or Compose v2 is not usable"
+	fi
+	command -v openssl >/dev/null 2>&1 || die "openssl is required for secret generation"
+	if [ "$DOCKER_AS_ROOT" = true ] && [ "$(id -u)" -ne 0 ] && command -v getent >/dev/null 2>&1 && getent group docker >/dev/null 2>&1; then
+		_user=$(id -un)
+		case " $(id -nG) " in
+		*" docker "*) : ;;
+		*) as_root usermod -aG docker "$_user" || true
+		   say ">> Docker access was enabled for ${_user}; it takes effect at the next login. This install will safely use sudo." ;;
+		esac
+	fi
+}
+# END HOST BOOTSTRAP
+
+host_is_portable_control_plane() {
+	[ -n "${HOST_KERNEL:-}" ] || HOST_KERNEL=${TUNNEX_HOST_KERNEL:-$(uname -s)}
+	case "$HOST_KERNEL" in
+	Darwin|MINGW*|MSYS*|CYGWIN*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+# BEGIN INSTALL VERSION RESOLVER — the canonical installer owns release selection;
+# deploy/install-version-provenance_test.sh extracts and exercises this block directly.
 resolve_install_version() {
 	VERSION="${TUNNEX_VERSION:-}"
 	SOURCE_REF="${TUNNEX_SOURCE_REF:-}"
@@ -103,10 +394,8 @@ resolve_install_version() {
 }
 # END INSTALL VERSION RESOLVER
 
-# BEGIN DISPLAY VERSION RESOLVER — kept byte-identical in install.sh and get.sh; the regression test
-# asserts they have not drifted, the same guard the version resolver above carries.
-# The install resolver already selects a semantic release tag. Keep this tiny
-# display seam so both installer entry points remain structurally identical.
+# BEGIN DISPLAY VERSION RESOLVER — the selected release tag is already the
+# customer-facing version, so no source-build label needs to be synthesized.
 resolve_display_version() {
 	DISPLAY_VERSION="$VERSION"
 }
@@ -114,12 +403,33 @@ resolve_display_version() {
 
 # have_tty: can we read from the controlling terminal? True under `curl | sh` on a real terminal
 # (stdin is the pipe, but /dev/tty is the keyboard); false in CI / fully-detached pipes.
-have_tty() { [ -e /dev/tty ] && { true </dev/tty; } 2>/dev/null; }
+# The override lets the focused PTY contract use its allocated slave directly
+# on hosts whose sandbox forbids reopening /dev/tty; customer installs keep the
+# controlling-terminal default.
+TUNNEX_TTY_DEVICE=${TUNNEX_TEST_TTY_DEVICE:-/dev/tty}
+have_tty() {
+	if [ "$TUNNEX_TTY_DEVICE" = - ]; then [ -t 0 ]; else [ -e "$TUNNEX_TTY_DEVICE" ] && { true <"$TUNNEX_TTY_DEVICE"; } 2>/dev/null; fi
+}
+tty_write() {
+	if [ "$TUNNEX_TTY_DEVICE" = - ]; then printf '%s' "$1" >&2; else printf '%s' "$1" >"$TUNNEX_TTY_DEVICE"; fi
+}
+tty_newline() {
+	if [ "$TUNNEX_TTY_DEVICE" = - ]; then printf '\n' >&2; else printf '\n' >"$TUNNEX_TTY_DEVICE"; fi
+}
+tty_read_line() {
+	if [ "$TUNNEX_TTY_DEVICE" = - ]; then IFS= read -r reply; else IFS= read -r reply <"$TUNNEX_TTY_DEVICE"; fi
+	printf '%s' "$reply"
+}
+tty_stty() {
+	if [ "$TUNNEX_TTY_DEVICE" = - ]; then stty "$@"; else stty "$@" <"$TUNNEX_TTY_DEVICE"; fi
+}
+tty_read_byte() {
+	if [ "$TUNNEX_TTY_DEVICE" = - ]; then dd bs=1 count=1 2>/dev/null; else dd if="$TUNNEX_TTY_DEVICE" bs=1 count=1 2>/dev/null; fi
+}
 # ask reads from the TERMINAL even under `curl | sh`.
 ask() {
-	printf '%s' "$1" >/dev/tty
-	IFS= read -r reply </dev/tty || die "no input on the terminal"
-	printf '%s' "$reply"
+	tty_write "$1"
+	tty_read_line || die "no input on the terminal"
 }
 # BEGIN MASKED SECRET READER — kept behaviorally identical with get.sh; the contract test checks both.
 # ask_secret PROMPT — masked raw terminal input. Sets ANSWER while never echoing the secret itself.
@@ -127,27 +437,27 @@ ask() {
 ask_secret() {
 	_prompt="$1"
 	if ! have_tty; then ANSWER=""; return 0; fi
-	_saved="$(stty -g </dev/tty 2>/dev/null || true)"
+	_saved="$(tty_stty -g 2>/dev/null || true)"
 	[ -n "$_saved" ] || die "could not configure the terminal for secret input"
-	trap "stty '$_saved' </dev/tty 2>/dev/null || stty echo </dev/tty 2>/dev/null; exit 130" INT TERM
-	stty raw -echo </dev/tty 2>/dev/null || { stty "$_saved" </dev/tty 2>/dev/null || true; die "could not disable terminal echo for secret input"; }
-	printf '%s ' "$_prompt" >/dev/tty
+	trap "tty_stty '$_saved' 2>/dev/null || tty_stty echo 2>/dev/null; exit 130" INT TERM
+	tty_stty raw -echo 2>/dev/null || { tty_stty "$_saved" 2>/dev/null || true; die "could not disable terminal echo for secret input"; }
+	tty_write "$_prompt "
 	_secret=''
 	while :; do
-		_byte="$(dd if=/dev/tty bs=1 count=1 2>/dev/null || true)"
-		[ -n "$_byte" ] || { stty "$_saved" </dev/tty 2>/dev/null || true; trap - INT TERM; die "secret input ended before Enter"; }
+		_byte="$(tty_read_byte || true)"
+		[ -n "$_byte" ] || { tty_stty "$_saved" 2>/dev/null || true; trap - INT TERM; die "secret input ended before Enter"; }
 		case "$_byte" in
 		"$(printf '\r')" | "$(printf '\n')") break ;;
-		"$(printf '\003')") stty "$_saved" </dev/tty 2>/dev/null || true; trap - INT TERM; exit 130 ;;
+		"$(printf '\003')") tty_stty "$_saved" 2>/dev/null || true; trap - INT TERM; exit 130 ;;
 		"$(printf '\177')" | "$(printf '\010')")
-			if [ -n "$_secret" ]; then _secret="${_secret%?}"; printf '\b \b' >/dev/tty; fi
+			if [ -n "$_secret" ]; then _secret="${_secret%?}"; tty_write "$(printf '\b \b')"; fi
 			;;
-		*) _secret="${_secret}${_byte}"; printf '*' >/dev/tty ;;
+		*) _secret="${_secret}${_byte}"; tty_write '*' ;;
 		esac
 	done
-	stty "$_saved" </dev/tty 2>/dev/null || stty echo </dev/tty 2>/dev/null || true
+	tty_stty "$_saved" 2>/dev/null || tty_stty echo 2>/dev/null || true
 	trap - INT TERM
-	printf '\n' >/dev/tty
+	tty_newline
 	ANSWER="$_secret"
 }
 # END MASKED SECRET READER
@@ -228,19 +538,45 @@ select_tls_mode() {
 	[ "$SCHEME" = https ] && COOKIE_SECURE=true || COOKIE_SECURE=false
 }
 
-# ── 0. prerequisites — fail LOUD + actionable ────────────────────────────────────────────────────
-command -v docker >/dev/null 2>&1 || die "Docker is required. Install Docker Engine + the Compose plugin (https://docs.docker.com/engine/install/), then re-run."
-docker compose version >/dev/null 2>&1 || die "The Docker Compose v2 plugin is required (\`docker compose version\` must work)."
-command -v curl >/dev/null 2>&1 || die "curl is required."
-command -v openssl >/dev/null 2>&1 || die "openssl is required (secret generation)."
+AUTO_CONFIRM=false
+for _arg in "$@"; do
+	case "$_arg" in
+	--yes|-y) AUTO_CONFIRM=true ;;
+	*) die "unknown installer option: $_arg" ;;
+	esac
+done
+
+setup_palette
+print_wordmark
+stage 1 "Checking this host"
+command -v curl >/dev/null 2>&1 || die "curl is required to download Tunnex and its verified host prerequisites."
+if command -v docker >/dev/null 2>&1 &&
+   docker compose version >/dev/null 2>&1 &&
+   command -v openssl >/dev/null 2>&1; then
+	HOST_PLAN="Use the existing Docker Engine and Compose installation"
+else
+	load_host_os
+	HOST_PLAN="Install or complete Docker Engine, Compose v2, and required utilities for ${HOST_OS_ID}"
+fi
+if host_is_portable_control_plane; then
+	PORTABLE_CONTROL_PLANE=true
+	DEPLOYMENT_SHAPE="Portable control plane; enroll the gateway on a separate Linux host"
+else
+	PORTABLE_CONTROL_PLANE=false
+	DEPLOYMENT_SHAPE="Control plane with the co-located Linux gateway"
+fi
+say ">> ${HOST_PLAN}"
+say ">> ${DEPLOYMENT_SHAPE}"
 
 # ── 1. resolve the newest published semantic release ────────────────────────────────────────────
+stage 2 "Selecting a verified Tunnex release"
 resolve_install_version
 resolve_display_version
 say ">> Installing Tunnex ${DISPLAY_VERSION} (image tag ${VERSION})"
 say ">> Provenance: ${VERSION_PROVENANCE}"
 
 # ── 2. public address — env override OR prompt; loopback refused at the SOURCE (both paths) ───────
+stage 3 "Configuring your control plane"
 BASE_URL="${TUNNEX_PUBLIC_BASE_URL:-${TUNNEX_PUBLIC_ADDR:-}}"
 if [ -n "$BASE_URL" ]; then
 	public_base_url_ok "$BASE_URL" || die "TUNNEX_PUBLIC_BASE_URL='${BASE_URL}' is not a usable public URL. Set an http:// or https:// URL with no path, credentials, or query (for example, https://vpn.acme.com)."
@@ -311,7 +647,40 @@ skip)
 	;;
 esac
 
-# ── 4. workspace + the VERSIONED compose (matches the pinned images) ─────────────────────────────
+# ── 4. review once, then prepare the host and versioned compose ──────────────────────────────────
+stage 4 "Reviewing the installation plan"
+say "   Version          ${DISPLAY_VERSION}"
+say "   Public URL       ${BASE_URL}"
+say "   TLS mode         ${TLS_MODE}"
+say "   Administrator    ${ADMIN_EMAIL}"
+case "$SMTP_MODE" in
+configure) say "   Email            ${SMTP_HOST}:${SMTP_PORT} as ${SMTP_FROM}" ;;
+skip) say "   Email            skipped" ;;
+esac
+say "   Host readiness   ${HOST_PLAN}"
+say "   Deployment       ${DEPLOYMENT_SHAPE}"
+case "$DIR" in
+/*) INSTALL_PLAN_DIR=$DIR ;;
+*) INSTALL_PLAN_DIR="$(pwd)/${DIR}" ;;
+esac
+INSTALL_PROJECT_SOURCE=${INSTALL_PLAN_DIR%/}
+INSTALL_COMPOSE_PROJECT=${TUNNEX_COMPOSE_PROJECT:-${INSTALL_PROJECT_SOURCE##*/}}
+INSTALL_COMPOSE_PROJECT=$(printf '%s' "$INSTALL_COMPOSE_PROJECT" | tr '[:upper:]' '[:lower:]')
+case "$INSTALL_COMPOSE_PROJECT" in
+[a-z0-9]*) ;;
+*) die "installation directory must end in a letter or number, or set TUNNEX_COMPOSE_PROJECT to a valid Compose project name" ;;
+esac
+case "$INSTALL_COMPOSE_PROJECT" in
+*[!a-z0-9_-]*) die "TUNNEX_COMPOSE_PROJECT may contain only lowercase letters, numbers, hyphens, and underscores" ;;
+esac
+say "   Directory        ${INSTALL_PLAN_DIR}"
+say "   Compose project  ${INSTALL_COMPOSE_PROJECT}"
+confirm_installation
+
+stage 5 "Installing and verifying Tunnex"
+ensure_docker_ready
+say ">> Docker Engine and Compose v2 are ready."
+
 mkdir -p "$DIR"
 cd "$DIR"
 STAGE_DIR=$(mktemp -d "$PWD/.tunnex-install.XXXXXX")
@@ -343,22 +712,28 @@ chmod 0644 "$STAGE_DIR/release.json"
 # not make that harmless main-before-tag interval break fresh installation.
 RUNNER_REQUIRED=false
 grep -Fq 'TUNNEX_HOST_UPGRADE_REQUEST_PATH' "$STAGE_DIR/tunnex.yml" && RUNNER_REQUIRED=true
-RUNNER_AVAILABLE=false
+RUNNER_PAYLOAD_AVAILABLE=false
 if curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade-runner.sh" -o "$STAGE_DIR/upgrade-runner.sh"; then
 	sh -n "$STAGE_DIR/upgrade-runner.sh" || die "downloaded deploy/upgrade-runner.sh is not valid shell"
-	RUNNER_AVAILABLE=true
+	RUNNER_PAYLOAD_AVAILABLE=true
 elif [ "$RUNNER_REQUIRED" = true ]; then
 	die "could not download required deploy/upgrade-runner.sh at ${SOURCE_REF}"
 fi
+RUNNER_AVAILABLE=false
+HOST_KERNEL=${HOST_KERNEL:-${TUNNEX_HOST_KERNEL:-$(uname -s)}}
+if [ "$RUNNER_PAYLOAD_AVAILABLE" = true ] && [ "$HOST_KERNEL" = Linux ] &&
+   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+	RUNNER_AVAILABLE=true
+fi
 
 # Verify the staged descriptor before publishing any compose or privileged code.
-docker pull "ghcr.io/tunnexio/tunnex-api:${VERSION}" >/dev/null
-case "$(docker version --format '{{.Server.Arch}}' 2>/dev/null || true)" in
+docker_cli pull "ghcr.io/tunnexio/tunnex-api:${VERSION}" >/dev/null
+case "$(docker_cli version --format '{{.Server.Arch}}' 2>/dev/null || true)" in
 	amd64|x86_64) RELEASE_ARCH=amd64 ;;
 	arm64|aarch64) RELEASE_ARCH=arm64 ;;
 	*) die "could not determine a supported Docker server architecture for release verification" ;;
 esac
-if ! RELEASE_ENV="$(docker run --rm --entrypoint releaseverify \
+if ! RELEASE_ENV="$(docker_cli run --rm --entrypoint releaseverify \
 	-v "$STAGE_DIR/release.json:/tmp/release.json:ro" \
 	"ghcr.io/tunnexio/tunnex-api:${VERSION}" \
 	-manifest /tmp/release.json -public-key "$TRUSTED_RELEASE_PUBLIC_KEY" \
@@ -423,6 +798,8 @@ EOF
 	rm -f tunnex-upgrade-runner.service.next tunnex-upgrade-runner.path.next
 	as_root systemctl daemon-reload
 	as_root systemctl enable --now tunnex-upgrade-runner.path
+else
+	say ">> Dashboard host upgrades are unavailable on this runtime; verified upgrades remain available through ./upgrade.sh."
 fi
 
 # ── 5. secrets — REUSE the existing DB password on a re-run (a new one won't match the volume) ────
@@ -452,12 +829,16 @@ TUNNEX_RELEASE_KEY_ID=release-2026-08-01
 TUNNEX_RELEASE_CATALOG_URL=${TUNNEX_RELEASE_CATALOG_URL:-https://github.com/tunnexio/tunnex/releases/download/tunnex-updates/release.json}
 TUNNEX_RELEASE_UPDATE_CHECK=${TUNNEX_RELEASE_UPDATE_CHECK:-true}
 TUNNEX_COMPOSE_SHA256=$(file_sha256 tunnex.yml)
+COMPOSE_PROJECT_NAME=${INSTALL_COMPOSE_PROJECT}
 TUNNEX_LOG_LEVEL=info
 APP_BASE_URL=${BASE_URL}
 TUNNEX_TLS_MODE=${TLS_MODE}
 TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}
 TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}
 TUNNEX_NODE_ENDPOINT=${ADDR}:51820
+TUNNEX_PORTABLE_CONTROL_PLANE=${PORTABLE_CONTROL_PLANE}
+TUNNEX_HOST_UPGRADE_REQUEST_SOURCE=${TUNNEX_HOST_UPGRADE_REQUEST_SOURCE:-./upgrade-state/requests}
+TUNNEX_HOST_UPGRADE_STATUS_SOURCE=${TUNNEX_HOST_UPGRADE_STATUS_SOURCE:-./upgrade-state/status}
 POSTGRES_USER=tunnex
 POSTGRES_PASSWORD=${PG_PASS}
 POSTGRES_DB=tunnex
@@ -470,6 +851,12 @@ SMTP_USERNAME=${SMTP_USERNAME}
 SMTP_PASSWORD=${SMTP_PASSWORD}
 TUNNEX_ADMIN_EMAIL=${ADMIN_EMAIL}
 EOF
+	if [ "$RUNNER_AVAILABLE" != true ]; then
+		sed -e 's|^TUNNEX_HOST_UPGRADE_REQUEST_SOURCE=.*$|TUNNEX_HOST_UPGRADE_REQUEST_SOURCE=tunnex_host_upgrade_requests|' \
+		    -e 's|^TUNNEX_HOST_UPGRADE_STATUS_SOURCE=.*$|TUNNEX_HOST_UPGRADE_STATUS_SOURCE=tunnex_host_upgrade_status|' \
+		    .env.new >.env.portable
+		mv .env.portable .env.new
+	fi
 	mv .env.new .env # atomic swap — the .env is never observed half-written
 fi
 set_dotenv() {
@@ -492,13 +879,21 @@ for RELEASE_KEY in TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_N
 	set_dotenv "$RELEASE_KEY" "$RELEASE_VALUE"
 done
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 tunnex.yml)"
-docker compose -f tunnex.yml pull
+set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$PORTABLE_CONTROL_PLANE"
+tunnex_compose() {
+	docker_cli compose --project-name "$INSTALL_COMPOSE_PROJECT" --env-file .env -f tunnex.yml "$@"
+}
+tunnex_compose pull
 say ">> Signed release verified; images pinned by digest. Starting the stack…"
-docker compose -f tunnex.yml up -d --wait
+if [ "$PORTABLE_CONTROL_PLANE" = true ]; then
+	tunnex_compose up -d --wait --scale node-agent=0
+else
+	tunnex_compose up -d --wait
+fi
 
 # The API prints the one-time credential to stdout. Surface that banner here because `up -d` is detached;
 # operators should not need to search container logs, and the API will also email it when SMTP is configured.
-CREDS="$(docker compose -f tunnex.yml logs api 2>/dev/null | sed -n '/TUNNEX - FIRST RUN/,/^.*=\{20,\}$/p' | tail -n +2 || true)"
+CREDS="$(tunnex_compose logs api 2>/dev/null | sed -n '/TUNNEX - FIRST RUN/,/^.*=\{20,\}$/p' | tail -n +2 || true)"
 if printf '%s' "$CREDS" | grep -q 'password'; then
 	say ''
 	say 'Your administrator credential (shown once):'
@@ -513,9 +908,15 @@ say ''
 say "   1. Open the dashboard:   ${BASE_URL}/"
 say "   2. Sign in as ${ADMIN_EMAIL}; set the one-time password to your own password."
 say '   3. Create your first organization.'
-say '   4. Enroll a gateway:     Dashboard → Gateways → “Generate join token”.'
-say '      Copy the ONE command it shows and run it in this folder to bring the'
-say '      gateway online (it re-creates the node-agent with your join token).'
+if [ "$PORTABLE_CONTROL_PLANE" = true ]; then
+	say '   4. Enroll a gateway:     Dashboard → Gateways → “Generate join token”.'
+	say '      Run its ONE command on a Linux gateway host with /dev/net/tun and NET_ADMIN.'
+	say '      This portable host runs the control plane only; it does not pretend to be a gateway.'
+else
+	say '   4. Enroll this gateway: Dashboard → Gateways → “Generate join token”.'
+	say '      Copy the ONE command it shows and run it in this folder to bring the'
+	say '      co-located Linux gateway online.'
+fi
 say ''
 say "   Config:   $(pwd)/.env       (edit values here; never hand-edit tunnex.yml)"
 say '   Upgrade:  use the dashboard when an update appears, or run ./upgrade.sh for a dry run.'

@@ -15,9 +15,12 @@ Self-hosted, multi-tenant VPN & Zero Trust access platform — a modern, open al
 > first gateway, first device — plus the collected honest limits, what to monitor, and the two recovery
 > stories. Every procedure in it is marked with whether we have actually run it.
 
-**Prerequisite: any VPS with Docker Engine + the Compose v2 plugin and a public address** (a DNS name
-or public IP that users and gateways can reach). The installer installs the *software* — it does not
-provision the server; a laptop with no public IP is not a deploy target.
+**Prerequisite: a Linux, macOS, or Windows host and a public address** (a DNS name or public IP that
+users and gateways can reach). The platform launcher prepares a compatible Docker runtime and Compose
+v2 when they are absent, then hands off to the same signed-release installer. Linux can run the complete
+single-host control plane and gateway. macOS and Windows install a portable control plane and then guide
+you to enroll the WireGuard gateway on a separate Linux host. A usable runtime is preserved. The installer
+does not provision the server, DNS, firewall, load balancer, or public IP.
 
 **Recommended — download, verify, inspect, then run** (our audience is sovereignty/security-conscious;
 never pipe a script you haven't read into a root shell):
@@ -33,28 +36,45 @@ sudo sh get.sh
 **Convenience — one-liner:**
 
 ```bash
+# Linux or macOS
 curl -fsSL https://get.tunnex.io | sh
 ```
 
-Either way it collects the deployment address, administrator, address pool, and SMTP choice before
-changing the machine. It generates the DB secret, writes a clean `./tunnex/.env`, and pins the newest
-fully-published green `main` build: the compose manifest and every `ghcr.io/tunnexio/tunnex-*` image
-come from the same CI commit, recorded as `TUNNEX_SOURCE_REF`. No `git clone`, no `--build`, no editing
-compose. Re-running reuses the DB password.
-
-Non-interactive (CI / no terminal) — pass the two inputs as env vars:
-
-```bash
-curl -fsSL https://get.tunnex.io | TUNNEX_PUBLIC_ADDR=vpn.acme.com sh -s -- --yes
+```powershell
+# Windows Administrator PowerShell
+irm https://get.tunnex.io/install.ps1 | iex
 ```
 
-- Dashboard → `http://<your-address>/`
+Every platform shows the same branded guide. It checks the host, selects the latest signed semantic release, collects
+the deployment address, TLS mode, administrator, and SMTP choice, then shows one review before it
+changes the machine. It installs missing host prerequisites, generates the DB secret, writes a clean
+`./tunnex/.env`, and pins the compose manifest and every `ghcr.io/tunnexio/tunnex-*` image to that
+release's verified source commit. No `git clone`, no source build, no compose editing. Re-running
+preserves a usable Docker installation and reuses the DB password.
+
+> **Why macOS/Windows use a separate gateway:** the gateway requires Linux `/dev/net/tun`, `NET_ADMIN`,
+> IP forwarding, and host networking. The portable installer keeps `node-agent` disabled instead of
+> claiming that Docker Desktop can provide an equivalent data plane.
+
+Non-interactive (CI / no terminal) — pass the required inputs as env vars:
+
+```bash
+curl -fsSL https://get.tunnex.io | \
+  TUNNEX_PUBLIC_BASE_URL=https://vpn.acme.com \
+  TUNNEX_TLS_MODE=direct \
+  TUNNEX_ADMIN_EMAIL=owner@example.com \
+  TUNNEX_SMTP=skip sh -s -- --yes
+```
+
+- Dashboard → the exact public URL selected during onboarding.
 - Config lives in `./tunnex/.env` (edit values there; never hand-edit `tunnex.yml`).
-- Provenance: `.env` records both the immutable `sha-*` image tag and exact manifest commit.
+- Provenance: `.env` records the semantic release, immutable image digests, and exact source commit.
 
 > `get.tunnex.io` serves [`deploy/get.sh`](deploy/get.sh) directly with a five-minute revalidation
-> window. The legacy raw/release path, [`deploy/install.sh`](deploy/install.sh), uses the identical
-> version resolver; CI rejects any drift between them.
+> window. That small launcher downloads and delegates to the canonical
+> [`deploy/install.sh`](deploy/install.sh). Windows starts with
+> [`deploy/install.ps1`](deploy/install.ps1), which prepares Docker Desktop and Git Bash before the
+> same canonical hand-off. CI exercises both platform contracts and the shared release resolver.
 
 ## Develop locally
 

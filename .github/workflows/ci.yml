@@ -46,6 +46,13 @@ jobs:
       - name: Installer version provenance contract
         run: sh deploy/install-version-provenance_test.sh
 
+      - name: Installer fresh-host bootstrap contract
+        run: sh deploy/install-host-bootstrap_test.sh
+
+      - name: Installer Windows fresh-host bootstrap contract
+        shell: pwsh
+        run: ./deploy/install-windows-bootstrap_test.ps1
+
       - name: Signed update catalog contract
         run: sh deploy/signed-main-release-contract_test.sh
 
@@ -729,6 +736,7 @@ jobs:
                 source_sha: sha,
                 source_ref: sourceRef,
                 installer_url: `https://raw.githubusercontent.com/tunnexio/tunnex/${sha}/deploy/get.sh`,
+                powershell_installer_url: `https://raw.githubusercontent.com/tunnexio/tunnex/${sha}/deploy/install.ps1`,
               },
             });
 
@@ -780,9 +788,11 @@ jobs:
         with:
           name: tunnex-linux-agent-runtime
           path: runtime-artifacts
-      - name: Checksum install.sh (bare filename so `sha256sum -c` works in the download dir)
+      - name: Checksum platform installers (bare filename so `sha256sum -c` works in the download dir)
         working-directory: deploy
-        run: sha256sum install.sh > install.sh.sha256
+        run: |
+          sha256sum install.sh > install.sh.sha256
+          sha256sum install.ps1 > install.ps1.sha256
       - name: Build and sign the immutable release manifest
         env:
           TUNNEX_RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.TUNNEX_RELEASE_SIGNING_PRIVATE_KEY }}
@@ -836,7 +846,7 @@ jobs:
           (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
           rm release-unsigned.json
           sha256sum release.json > release.json.sha256
-      - name: Attach install.sh + checksum to the release
+      - name: Attach platform installers + checksums to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -857,12 +867,16 @@ jobs:
           else
             gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes
           fi
-          gh release upload "$RELEASE_TAG" deploy/install.sh deploy/install.sh.sha256 release.json release.json.sha256 --clobber
+          gh release upload "$RELEASE_TAG" \
+            deploy/install.sh deploy/install.sh.sha256 \
+            deploy/install.ps1 deploy/install.ps1.sha256 \
+            release.json release.json.sha256 --clobber
       - name: Attest installer and release descriptor
         uses: actions/attest@v4
         with:
           subject-path: |
             deploy/install.sh
+            deploy/install.ps1
             release.json
       - name: Attach desktop installers + combined checksum to tagged release
         if: startsWith(github.ref, 'refs/tags/v')
