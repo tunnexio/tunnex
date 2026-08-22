@@ -116,6 +116,21 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
   });
 
+  it("[triage] opening the drawer moves focus inside and Escape returns it to Menu", async () => {
+    renderShell("triage");
+    const menu = screen.getByRole("button", { name: /menu/i });
+    menu.focus();
+    fireEvent.click(menu);
+
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    const firstDestination = within(nav).getAllByRole("link")[0];
+    expect(document.activeElement).toBe(firstDestination);
+
+    fireEvent.keyDown(firstDestination, { key: "Escape" });
+    expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
+    expect(document.activeElement).toBe(menu);
+  });
+
   it("[operate] there is no menu button — the rail is already open", async () => {
     renderShell("operate");
     expect(screen.queryByRole("button", { name: /menu/i })).toBeNull();

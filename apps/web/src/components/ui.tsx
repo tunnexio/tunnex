@@ -2,8 +2,10 @@ import {
   cloneElement,
   Fragment,
   isValidElement,
+  useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
@@ -56,7 +58,10 @@ export function Button({
    */
   size?: "default" | "sm";
 }) {
-  const pad = size === "sm" ? "px-2.5 py-1 text-xs" : "px-4 py-2 text-sm";
+  const pad =
+    size === "sm"
+      ? "min-h-8 px-2.5 py-1 text-xs"
+      : "min-h-11 px-4 py-2 text-sm";
   const base = `inline-flex items-center justify-center rounded-md ${pad} font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400`;
   // ⛔ THE PRIMARY BUTTON WAS UNREADABLE, PRODUCT-WIDE, AND THE PALETTE SWAP IS WHY.
   //
@@ -132,7 +137,7 @@ export function Input({
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
+      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
       {...props}
     />
   );
@@ -146,7 +151,11 @@ export function StatusDot({ tone }: { tone: "on" | "off" | "warn" }) {
 }
 
 export function ErrorText({ children }: { children: ReactNode }) {
-  return children ? <p className="text-xs text-danger">{children}</p> : null;
+  return children ? (
+    <p role="alert" className="text-xs text-danger">
+      {children}
+    </p>
+  ) : null;
 }
 
 // Select: themed <select>, promoted from the raw <select>+selectCls that pages rolled
@@ -173,7 +182,7 @@ export function Select({
 }) {
   return (
     <select
-      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
+      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
       {...props}
     >
       {children}
@@ -209,10 +218,64 @@ export function Modal({
    */
   size?: "default" | "wide";
 }) {
-  // Dismiss on backdrop-click or the Cancel action only. Esc-to-dismiss was DROPPED after a
-  // 3-finding churn (broken → too-global → focus-steal) on a nice-to-have that's also a
-  // data-loss footgun on a form modal. If a11y later needs Esc, it returns as the full
-  // designed dialog pattern (focus trap + first-field focus + panel listener), not a patch.
+  const headingId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Capture the opener during render, before a child input's `autoFocus` runs in
+  // the commit phase. Reading it in the effect is too late: the focused field
+  // then becomes the apparent opener and disappears with the dialog.
+  const returnFocusRef = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+
+  // F17 restores the complete dialog contract rather than bringing back Escape as a global
+  // listener: focus enters the panel, stays in the panel while it is open, and returns to the
+  // opener on dismissal. This lets every existing create/edit/confirm consumer benefit without
+  // each page inventing its own partial version.
+  useEffect(() => {
+    const panel = panelRef.current;
+    const firstFocusable = panel?.querySelector<HTMLElement>(
+      '[autofocus], button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    (firstFocusable ?? panel)?.focus();
+
+    return () => {
+      const opener = returnFocusRef.current;
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onDismiss();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusable = Array.from(
+      panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusable.length === 0) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   //
   // ⛔ PORTALLED TO <body>, AND THIS IS NOT COSMETIC.
   //
@@ -234,14 +297,18 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-labelledby={headingId}
       onClick={onDismiss}
     >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className={`w-full ${size === "wide" ? "max-w-2xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4]`}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
       >
         <h2
+          id={headingId}
           className={`text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}
         >
           {title}
@@ -877,7 +944,7 @@ function PagerButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="min-w-[1.75rem] rounded border border-white/10 px-1.5 py-0.5 text-slate-400 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent"
+      className="min-h-8 min-w-8 rounded border border-white/10 px-1.5 py-0.5 text-slate-400 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 disabled:opacity-30 disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -1226,7 +1293,12 @@ export function DataTable<T>({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div
+        tabIndex={0}
+        role="region"
+        aria-label={`${caption} table scroll area`}
+        className="overflow-x-auto rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+      >
         <table className="w-full text-left text-sm">
           <caption className="sr-only">{caption}</caption>
           <thead>
