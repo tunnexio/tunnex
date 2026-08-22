@@ -41,6 +41,16 @@ cat >"$BIN/dpkg" <<'EOF'
 #!/bin/sh
 printf 'amd64\n'
 EOF
+# GitHub runners already include Docker under /usr/bin. Give installer
+# subprocesses a small, explicit system-tool path instead, so this fixture can
+# truthfully model a host with no Docker CLI until apt installs the test double.
+SYSTEM_BIN="$TMP/system-bin"
+mkdir -p "$SYSTEM_BIN"
+for tool in awk basename cat chmod cp cut date dd dirname env grep head mkdir mktemp mv openssl rm sed sh shasum sleep sort stty tail tr; do
+	tool_path=$(command -v "$tool" || true)
+	[ -n "$tool_path" ] && ln -s "$tool_path" "$SYSTEM_BIN/$tool"
+done
+TEST_PATH="$BIN:$SYSTEM_BIN"
 cat >"$BIN/install" <<'EOF'
 #!/bin/sh
 # Package-repository writes are intentionally absorbed by this disposable stub.
@@ -121,7 +131,7 @@ APT_LOG="$TMP/apt.log"
 : >"$APT_LOG"
 OUTPUT="$TMP/install-output.txt"
 SOURCE_SHA=0123456789abcdef0123456789abcdef01234567
-PATH="$BIN:/usr/bin:/bin" \
+PATH="$TEST_PATH" \
 TUNNEX_TEST_BIN="$BIN" \
 TUNNEX_TEST_APT_LOG="$APT_LOG" \
 TUNNEX_OS_RELEASE_FILE="$TMP/os-release" \
@@ -183,7 +193,7 @@ grep -Fq 'Cancelled before changing the host.' "$TMP/cancel-output.txt" ||
 # A second clean target reuses the now-working Docker CLI and must not invoke
 # apt at all. This protects customer reruns and hosts with Docker preinstalled.
 : >"$APT_LOG"
-PATH="$BIN:/usr/bin:/bin" \
+PATH="$TEST_PATH" \
 TUNNEX_TEST_BIN="$BIN" \
 TUNNEX_TEST_APT_LOG="$APT_LOG" \
 TUNNEX_OS_RELEASE_FILE="$TMP/os-release" \
@@ -203,7 +213,7 @@ grep -Fq 'Use the existing Docker Engine and Compose installation' "$TMP/reuse-o
 # WireGuard gateway. The choice is visible, persisted, and preserved on upgrade.
 PORTABLE_DOCKER_LOG="$TMP/portable-compose.log"
 : >"$PORTABLE_DOCKER_LOG"
-PATH="$BIN:/usr/bin:/bin" \
+PATH="$TEST_PATH" \
 TUNNEX_HOST_KERNEL=Darwin \
 TUNNEX_TEST_DOCKER_LOG="$PORTABLE_DOCKER_LOG" \
 TUNNEX_VERSION=v9.9.9 \
@@ -230,7 +240,7 @@ grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE' "$ROOT/deploy/upgrade.sh" &&
 # the first install for the upgrade helper to read.
 WINDOWS_DOCKER_LOG="$TMP/windows-compose.log"
 : >"$WINDOWS_DOCKER_LOG"
-PATH="$BIN:/usr/bin:/bin" \
+PATH="$TEST_PATH" \
 	TUNNEX_HOST_KERNEL=MINGW64_NT \
 	TUNNEX_TEST_DOCKER_LOG="$WINDOWS_DOCKER_LOG" \
 	TUNNEX_VERSION=v9.9.9 \
@@ -323,7 +333,7 @@ PYTHON
 rm -f "$BIN/docker"
 : >"$APT_LOG"
 INTERACTIVE_OUTPUT="$TMP/interactive-output.txt"
-PATH="$BIN:/usr/bin:/bin" \
+PATH="$TEST_PATH" \
 TUNNEX_TEST_BIN="$BIN" \
 TUNNEX_TEST_APT_LOG="$APT_LOG" \
 TUNNEX_OS_RELEASE_FILE="$TMP/os-release" \
@@ -456,7 +466,7 @@ TUNNEX_HOST_KERNEL=Linux TUNNEX_OS_RELEASE_FILE="$MALICIOUS_OS_RELEASE" load_hos
 [ "\$HOST_OS_ID" = ubuntu ]
 [ "\$HOST_OS_CODENAME" = noble ]
 EOF
-PATH="$BIN:/usr/bin:/bin" sh "$TMP/malicious-os-release-test.sh" ||
+PATH="$TEST_PATH" sh "$TMP/malicious-os-release-test.sh" ||
 	fail 'os-release metadata could not be parsed safely'
 [ ! -e "$MALICIOUS_MARKER" ] || fail 'os-release fixture was executed instead of parsed'
 
