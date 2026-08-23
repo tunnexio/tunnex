@@ -147,13 +147,20 @@ TUNNEX_DIR="$TMP/control-plane" \
 for expected in \
 	'▀█▀ █ █ █▄ █ █▄ █ █▀▀ ▀▄▀' \
 	'Connect Everything. Trust Nothing.' \
+	'Preparing secure host onboarding…' \
+	'TUNNEX SETUP' \
+	'Security boundary' \
+	'QuickStart is recommended.' \
 	'[1/5] Checking this host' \
+	'Detected: ubuntu' \
 	'Install or complete Docker Engine, Compose v2, and required utilities for ubuntu' \
 	'[2/5] Selecting a verified Tunnex release' \
 	'[3/5] Configuring your control plane' \
 	'[4/5] Reviewing the installation plan' \
-	'Public URL       https://preview.tunnex.test' \
-	'TLS mode         terminated' \
+	'╭─ QuickStart plan' \
+	'Mode               QuickStart (recommended)' \
+	'Public URL         https://preview.tunnex.test' \
+	'TLS mode           terminated' \
 	'[5/5] Installing and verifying Tunnex' \
 	'Docker Engine and Compose v2 are ready.' \
 	'Tunnex v9.9.9 is running.'; do
@@ -170,6 +177,29 @@ grep -Fq 'TUNNEX_RELEASE_SOURCE_SHA=0123456789abcdef0123456789abcdef01234567' "$
 	fail 'generated environment lost verified release provenance'
 grep -Fq 'COMPOSE_PROJECT_NAME=control-plane' "$TMP/control-plane/.env" ||
 	fail 'installer did not persist an installation-specific Compose project name'
+
+# OpenClaw-style local preview must show the complete, host-specific plan while
+# stopping before Docker/bootstrap, download, or product mutations.
+: >"$APT_LOG"
+PREVIEW_DIR="$TMP/onboarding-preview"
+PATH="$TEST_PATH" \
+TUNNEX_TEST_BIN="$BIN" \
+TUNNEX_TEST_APT_LOG="$APT_LOG" \
+TUNNEX_OS_RELEASE_FILE="$TMP/os-release" \
+TUNNEX_VERSION=v9.9.9 \
+TUNNEX_SOURCE_REF="$SOURCE_SHA" \
+TUNNEX_PUBLIC_BASE_URL=https://preview.tunnex.test \
+TUNNEX_TLS_MODE=terminated \
+TUNNEX_ADMIN_EMAIL=owner@preview.tunnex.test \
+TUNNEX_SMTP=skip \
+TUNNEX_DIR="$PREVIEW_DIR" \
+	sh "$INSTALLER" --dry-run >"$TMP/onboarding-preview-output.txt"
+grep -Fq 'Changes            Preview only (no host or product changes)' "$TMP/onboarding-preview-output.txt" ||
+	fail 'dry-run did not disclose the no-mutation boundary'
+grep -Fq 'Onboarding preview complete. Re-run without --dry-run when you are ready.' "$TMP/onboarding-preview-output.txt" ||
+	fail 'dry-run did not provide a safe rerun instruction'
+[ ! -s "$APT_LOG" ] || fail 'dry-run invoked host package installation'
+[ ! -e "$PREVIEW_DIR" ] || fail 'dry-run created an installation directory'
 
 # Cancellation is exercised independently of a real TTY. If the confirmation
 # says no, control must never reach the marker representing host mutation.
@@ -392,7 +422,10 @@ for expected in \
 	'SMTP password:' \
 	'From address [no-reply@preview.tunnex.test]:' \
 	'Proceed with this installation? [Y/n]:' \
-	'Email            mail.preview.tunnex.test:587 as support@preview.tunnex.test' \
+	'Downloading the signed release verifier' \
+	'Pulling verified Tunnex images' \
+	'Starting the control plane and Linux gateway' \
+	'Email              mail.preview.tunnex.test:587 as support@preview.tunnex.test' \
 	'Tunnex v9.9.9 is running.'; do
 	grep -Fq "$expected" "$TMP/interactive-output-normalized.txt" ||
 		fail "interactive walkthrough omitted: $expected"

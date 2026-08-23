@@ -32,7 +32,7 @@ DIR="${TUNNEX_DIR:-tunnex}"
 TRUSTED_RELEASE_PUBLIC_KEY=b48ff99923c43052ade580cdca63952690f07f08372c35814baa44cb84d674a0
 
 say() { printf '%s\n' "$*"; }
-die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+die() { printf '%s✗%s %s\n' "${TUNNEX_ERROR:-}" "${TUNNEX_RESET:-}" "$*" >&2; exit 1; }
 as_root() {
 	if [ "$(id -u)" -eq 0 ]; then "$@"; return; fi
 	command -v sudo >/dev/null 2>&1 || die "sudo is required to prepare this control-plane host"
@@ -49,6 +49,9 @@ file_sha256() {
 setup_palette() {
 	TUNNEX_WHITE=''
 	TUNNEX_RED=''
+	TUNNEX_CYAN=''
+	TUNNEX_AMBER=''
+	TUNNEX_ERROR=''
 	TUNNEX_DIM=''
 	TUNNEX_RESET=''
 	[ -z "${NO_COLOR+x}" ] || return 0
@@ -60,10 +63,15 @@ setup_palette() {
 	esac
 	TUNNEX_WHITE="$(printf '\033[1;97m')"
 	TUNNEX_RED="$(printf '\033[1;31m')"
+	TUNNEX_CYAN="$(printf '\033[1;36m')"
+	TUNNEX_AMBER="$(printf '\033[1;33m')"
+	TUNNEX_ERROR="$(printf '\033[1;31m')"
 	TUNNEX_DIM="$(printf '\033[2m')"
 	TUNNEX_RESET="$(printf '\033[0m')"
 }
 print_wordmark() {
+	say ''
+	printf '%sPreparing secure host onboarding…%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
 	say ''
 	printf '  %s▀█▀ █ █ █▄ █ █▄ █ %s%s█▀▀ ▀▄▀%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
 	printf '  %s █  █ █ █ ▀█ █ ▀█ %s%s█▀▀ ▄▀▄%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
@@ -73,6 +81,79 @@ print_wordmark() {
 }
 stage() {
 	printf '\n%s[%s/5]%s %s\n' "$TUNNEX_RED" "$1" "$TUNNEX_RESET" "$2"
+}
+info() {
+	printf '%s·%s %s\n' "$TUNNEX_DIM" "$TUNNEX_RESET" "$1"
+}
+success() {
+	printf '%s✓%s %s\n' "$TUNNEX_CYAN" "$TUNNEX_RESET" "$1"
+}
+warn() {
+	printf '%s!%s %s\n' "$TUNNEX_AMBER" "$TUNNEX_RESET" "$1"
+}
+plan_start() {
+	printf '\n%s╭─%s %sQuickStart plan%s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_WHITE" "$TUNNEX_RESET"
+}
+plan_item() {
+	printf '  %s│%s %s%-18s%s %s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_DIM" "$1" "$TUNNEX_RESET" "$2"
+}
+plan_end() {
+	printf '%s╰────────────────────────────────────────────────────────────%s\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+}
+show_setup_boundary() {
+	printf '\n%sTUNNEX SETUP%s\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '%s╭─%s %sSecurity boundary%s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_WHITE" "$TUNNEX_RESET"
+	printf '  %s│%s Tunnex is a self-hosted control plane for users and Linux gateways.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %s│%s Your public URL is used for sign-in, email links, and gateway enrollment.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %s│%s Keep the host patched and expose only the ports required by your TLS mode.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '  %s│%s macOS and Windows run a portable control plane; their gateway stays on Linux.\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '%s╰────────────────────────────────────────────────────────────%s\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	info 'QuickStart is recommended. You will review every change before Tunnex changes this host.'
+}
+# Run a command while keeping an interactive terminal informed. Unlike the
+# OpenClaw installer, this needs no downloaded UI binary: the loader is native
+# POSIX shell, is disabled for non-interactive automation, and prints the
+# captured command output only when that command fails.
+run_with_loader() {
+	_loader_title=$1
+	shift
+	if ! have_tty || [ "${TUNNEX_LOADER:-auto}" = never ]; then
+		info "${_loader_title}"
+		"$@"
+		return
+	fi
+	_loader_log=$(mktemp "${TMPDIR:-/tmp}/tunnex-loader.XXXXXX") || {
+		info "${_loader_title}"
+		"$@"
+		return
+	}
+	(
+		while :; do
+			for _loader_frame in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
+				if [ "$TUNNEX_TTY_DEVICE" = - ]; then
+					printf '\r%s%s%s %s' "$TUNNEX_CYAN" "$_loader_frame" "$TUNNEX_RESET" "$_loader_title" >&2
+				else
+					printf '\r%s%s%s %s' "$TUNNEX_CYAN" "$_loader_frame" "$TUNNEX_RESET" "$_loader_title" >"$TUNNEX_TTY_DEVICE"
+				fi
+				sleep 1
+			done
+		done
+	) &
+	_loader_pid=$!
+	if "$@" >"$_loader_log" 2>&1; then _loader_status=0; else _loader_status=$?; fi
+	kill "$_loader_pid" 2>/dev/null || true
+	wait "$_loader_pid" 2>/dev/null || true
+	if [ "$TUNNEX_TTY_DEVICE" = - ]; then
+		printf '\r\033[2K' >&2
+	else
+		printf '\r\033[2K' >"$TUNNEX_TTY_DEVICE"
+	fi
+	if [ "$_loader_status" -ne 0 ]; then
+		warn "${_loader_title} failed"
+		tail -n 80 "$_loader_log" >&2 || true
+	fi
+	rm -f "$_loader_log"
+	return "$_loader_status"
 }
 
 # BEGIN INSTALL CONFIRMATION — extracted by deploy/install-host-bootstrap_test.sh.
@@ -539,15 +620,18 @@ select_tls_mode() {
 }
 
 AUTO_CONFIRM=false
+DRY_RUN=false
 for _arg in "$@"; do
 	case "$_arg" in
 	--yes|-y) AUTO_CONFIRM=true ;;
+	--dry-run|--preview) DRY_RUN=true ;;
 	*) die "unknown installer option: $_arg" ;;
 	esac
 done
 
 setup_palette
 print_wordmark
+show_setup_boundary
 stage 1 "Checking this host"
 command -v curl >/dev/null 2>&1 || die "curl is required to download Tunnex and its verified host prerequisites."
 if command -v docker >/dev/null 2>&1 &&
@@ -558,6 +642,12 @@ else
 	load_host_os
 	HOST_PLAN="Install or complete Docker Engine, Compose v2, and required utilities for ${HOST_OS_ID}"
 fi
+case "${HOST_KERNEL:-${TUNNEX_HOST_KERNEL:-$(uname -s)}}" in
+Darwin) HOST_DISPLAY_NAME='macOS' ;;
+MINGW*|MSYS*|CYGWIN*) HOST_DISPLAY_NAME='Windows' ;;
+Linux) HOST_DISPLAY_NAME="${HOST_OS_ID:-Linux}" ;;
+*) HOST_DISPLAY_NAME='this host' ;;
+esac
 if host_is_portable_control_plane; then
 	PORTABLE_CONTROL_PLANE=true
 	DEPLOYMENT_SHAPE="Portable control plane; enroll the gateway on a separate Linux host"
@@ -565,15 +655,16 @@ else
 	PORTABLE_CONTROL_PLANE=false
 	DEPLOYMENT_SHAPE="Control plane with the co-located Linux gateway"
 fi
-say ">> ${HOST_PLAN}"
-say ">> ${DEPLOYMENT_SHAPE}"
+success "Detected: ${HOST_DISPLAY_NAME}"
+info "${HOST_PLAN}"
+info "${DEPLOYMENT_SHAPE}"
 
 # ── 1. resolve the newest published semantic release ────────────────────────────────────────────
 stage 2 "Selecting a verified Tunnex release"
 resolve_install_version
 resolve_display_version
-say ">> Installing Tunnex ${DISPLAY_VERSION} (image tag ${VERSION})"
-say ">> Provenance: ${VERSION_PROVENANCE}"
+info "Installing Tunnex ${DISPLAY_VERSION} (image tag ${VERSION})"
+info "Provenance: ${VERSION_PROVENANCE}"
 
 # ── 2. public address — env override OR prompt; loopback refused at the SOURCE (both paths) ───────
 stage 3 "Configuring your control plane"
@@ -635,7 +726,7 @@ configure)
 	[ -n "$SMTP_HOST" ] || die "TUNNEX_SMTP=configure but SMTP_HOST is not set (export SMTP_HOST/SMTP_USERNAME/SMTP_PASSWORD for a non-interactive run)."
 	;;
 skip)
-	say ">> ⛔ SMTP SKIPPED — NOBODY CAN BE INVITED TO THIS DEPLOYMENT."
+warn 'SMTP skipped — invitations, password resets, and verification emails are unavailable.'
 	say "   Invitations are the only way people join, and they are delivered by email. Password resets"
 	say "   and address verification need it too. You can still sign in as the administrator, and the"
 	say "   dashboard shows a copyable invitation link you can send by hand."
@@ -649,16 +740,18 @@ esac
 
 # ── 4. review once, then prepare the host and versioned compose ──────────────────────────────────
 stage 4 "Reviewing the installation plan"
-say "   Version          ${DISPLAY_VERSION}"
-say "   Public URL       ${BASE_URL}"
-say "   TLS mode         ${TLS_MODE}"
-say "   Administrator    ${ADMIN_EMAIL}"
+plan_start
+plan_item 'Mode' 'QuickStart (recommended)'
+plan_item 'Version' "${DISPLAY_VERSION}"
+plan_item 'Public URL' "${BASE_URL}"
+plan_item 'TLS mode' "${TLS_MODE}"
+plan_item 'Administrator' "${ADMIN_EMAIL}"
 case "$SMTP_MODE" in
-configure) say "   Email            ${SMTP_HOST}:${SMTP_PORT} as ${SMTP_FROM}" ;;
-skip) say "   Email            skipped" ;;
+configure) plan_item 'Email' "${SMTP_HOST}:${SMTP_PORT} as ${SMTP_FROM}" ;;
+skip) plan_item 'Email' 'skipped' ;;
 esac
-say "   Host readiness   ${HOST_PLAN}"
-say "   Deployment       ${DEPLOYMENT_SHAPE}"
+plan_item 'Host readiness' "${HOST_PLAN}"
+plan_item 'Deployment' "${DEPLOYMENT_SHAPE}"
 case "$DIR" in
 /*) INSTALL_PLAN_DIR=$DIR ;;
 *) INSTALL_PLAN_DIR="$(pwd)/${DIR}" ;;
@@ -673,13 +766,22 @@ esac
 case "$INSTALL_COMPOSE_PROJECT" in
 *[!a-z0-9_-]*) die "TUNNEX_COMPOSE_PROJECT may contain only lowercase letters, numbers, hyphens, and underscores" ;;
 esac
-say "   Directory        ${INSTALL_PLAN_DIR}"
-say "   Compose project  ${INSTALL_COMPOSE_PROJECT}"
+plan_item 'Directory' "${INSTALL_PLAN_DIR}"
+plan_item 'Compose project' "${INSTALL_COMPOSE_PROJECT}"
+if [ "$DRY_RUN" = true ]; then
+	plan_item 'Changes' 'Preview only (no host or product changes)'
+	plan_end
+	stage 5 "Preview complete"
+	success "Onboarding preview complete. Re-run without --dry-run when you are ready."
+	exit 0
+fi
+plan_end
 confirm_installation
 
 stage 5 "Installing and verifying Tunnex"
+info 'Preparing Docker Engine and Compose v2'
 ensure_docker_ready
-say ">> Docker Engine and Compose v2 are ready."
+success 'Docker Engine and Compose v2 are ready.'
 
 mkdir -p "$DIR"
 cd "$DIR"
@@ -727,7 +829,8 @@ if [ "$RUNNER_PAYLOAD_AVAILABLE" = true ] && [ "$HOST_KERNEL" = Linux ] &&
 fi
 
 # Verify the staged descriptor before publishing any compose or privileged code.
-docker_cli pull "ghcr.io/tunnexio/tunnex-api:${VERSION}" >/dev/null
+run_with_loader 'Downloading the signed release verifier' docker_cli pull "ghcr.io/tunnexio/tunnex-api:${VERSION}" ||
+	die 'could not download the signed release verifier image'
 case "$(docker_cli version --format '{{.Server.Arch}}' 2>/dev/null || true)" in
 	amd64|x86_64) RELEASE_ARCH=amd64 ;;
 	arm64|aarch64) RELEASE_ARCH=arm64 ;;
@@ -764,7 +867,8 @@ if [ "$RUNNER_AVAILABLE" = true ]; then
 	as_root mv "$ROOT_UPGRADE_DIR/upgrade.sh.next" "$ROOT_UPGRADE_DIR/upgrade.sh"
 	as_root mv "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next" "$ROOT_UPGRADE_DIR/upgrade-runner.sh"
 	as_root install -d -o root -g root -m 0755 "$INSTALL_DIR/upgrade-state"
-	as_root install -d -o 10001 -g 10001 -m 0700 "$INSTALL_DIR/upgrade-state/requests"
+	as_root install -d -m 0700 "$INSTALL_DIR/upgrade-state/requests"
+	as_root chown 10001:10001 "$INSTALL_DIR/upgrade-state/requests"
 	as_root install -d -o root -g root -m 0755 "$INSTALL_DIR/upgrade-state/status"
 	as_root install -d -o root -g root -m 0700 "$INSTALL_DIR/upgrade-state/work"
 	cat >tunnex-upgrade-runner.service.next <<EOF
@@ -775,7 +879,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-WorkingDirectory="${INSTALL_DIR}"
+WorkingDirectory=${INSTALL_DIR}
 Environment="TUNNEX_DIR=${INSTALL_DIR}"
 Environment=TUNNEX_UPGRADE_HELPER=${ROOT_UPGRADE_DIR}/upgrade.sh
 ExecStart=${ROOT_UPGRADE_DIR}/upgrade-runner.sh
@@ -883,12 +987,14 @@ set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$PORTABLE_CONTROL_PLANE"
 tunnex_compose() {
 	docker_cli compose --project-name "$INSTALL_COMPOSE_PROJECT" --env-file .env -f tunnex.yml "$@"
 }
-tunnex_compose pull
-say ">> Signed release verified; images pinned by digest. Starting the stack…"
+run_with_loader 'Pulling verified Tunnex images' tunnex_compose pull || die 'could not pull the verified Tunnex images'
+success 'Signed release verified; images pinned by digest.'
 if [ "$PORTABLE_CONTROL_PLANE" = true ]; then
-	tunnex_compose up -d --wait --scale node-agent=0
+	run_with_loader 'Starting the portable control plane' tunnex_compose up -d --wait --scale node-agent=0 ||
+		die 'control plane did not become healthy'
 else
-	tunnex_compose up -d --wait
+	run_with_loader 'Starting the control plane and Linux gateway' tunnex_compose up -d --wait ||
+		die 'control plane and Linux gateway did not become healthy'
 fi
 
 # The API prints the one-time credential to stdout. Surface that banner here because `up -d` is detached;

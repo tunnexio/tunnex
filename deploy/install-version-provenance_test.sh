@@ -110,6 +110,7 @@ for required in \
 	'ROOT_UPGRADE_DIR=/usr/local/lib/tunnex' \
 	'as_root install -d -o root -g root -m 0755 "$ROOT_UPGRADE_DIR"' \
 	'as_root install -m 0755 -o root -g root "$STAGE_DIR/upgrade-runner.sh" "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next"' \
+	'WorkingDirectory=${INSTALL_DIR}' \
 	'ExecStart=${ROOT_UPGRADE_DIR}/upgrade-runner.sh' \
 	'Environment="TUNNEX_DIR=${INSTALL_DIR}"' \
 	'Verify the staged descriptor before publishing' \
@@ -127,6 +128,14 @@ for required in \
 	grep -Fq "$required" "$ROOT/deploy/install.sh" ||
 		fail "canonical installer lacks required contract: $required"
 done
+
+if grep -Fq 'WorkingDirectory="${INSTALL_DIR}"' "$ROOT/deploy/install.sh"; then
+	fail "systemd runner writes a quoted WorkingDirectory that systemd rejects"
+fi
+
+if grep -Fq 'install -d -o 10001 -g 10001' "$ROOT/deploy/install.sh"; then
+	fail "canonical installer requires a nonexistent host user for the API request directory"
+fi
 
 grep -Fq 'DOCKER_METADATA_SHORT_SHA_LENGTH: "7"' "$ROOT/.github/workflows/ci.yml" ||
 	fail "CI no longer pins the SHA abbreviation length consumed by installers"
