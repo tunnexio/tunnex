@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
-	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
@@ -21,9 +19,6 @@ func (s apiServer) GetAgentProfile(ctx context.Context, req api.GetAgentProfileR
 	}
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
-	}
-	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
-		return nil, policyEditionRequired()
 	}
 	p, err := s.devices.GetAgentProfile(ctx, req.OrgId, req.DeviceId)
 	if err != nil {
@@ -53,9 +48,6 @@ func (s apiServer) UpdateAgentProfile(ctx context.Context, req api.UpdateAgentPr
 		if _, err := authorize(ctx, req.OrgId, rbac.PermAgentManage); err != nil {
 			return nil, err
 		}
-	}
-	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
-		return nil, policyEditionRequired()
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	current, err := s.devices.GetAgentProfile(ctx, req.OrgId, req.DeviceId)

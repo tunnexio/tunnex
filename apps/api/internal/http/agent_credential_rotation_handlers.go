@@ -2,12 +2,10 @@ package http
 
 import (
 	"context"
-	"time"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
-	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
@@ -17,9 +15,6 @@ func (s apiServer) GetAgentCredentialRotation(ctx context.Context, req api.GetAg
 	}
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
-	}
-	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
-		return nil, policyEditionRequired()
 	}
 	status, err := s.devices.GetAgentCredentialRotation(ctx, req.OrgId, req.DeviceId)
 	if err != nil {
@@ -31,9 +26,6 @@ func (s apiServer) GetAgentCredentialRotation(ctx context.Context, req api.GetAg
 func (s apiServer) RequestAgentCredentialRotation(ctx context.Context, req api.RequestAgentCredentialRotationRequestObject) (api.RequestAgentCredentialRotationResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentCredentialRotate); err != nil {
 		return nil, err
-	}
-	if s.policy == nil || (s.licence != nil && s.licence.Evaluate(time.Now()).Tier == licence.TierCommunity) {
-		return nil, policyEditionRequired()
 	}
 	principal, _ := authctx.PrincipalFrom(ctx)
 	status, err := s.devices.RequestAgentCredentialRotation(ctx, principal.UserID, req.OrgId, req.DeviceId)

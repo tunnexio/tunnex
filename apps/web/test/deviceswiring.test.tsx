@@ -331,12 +331,11 @@ describe("Devices — failure path", () => {
 /**
  * ⛔ A STATE A SURFACE DISPLAYS AND CANNOT ACT ON IS A DEAD END.
  *
- * This page listed a device with a `pending` badge and rendered its Actions cell `null` — Revoke was offered
- * for `active` only. Approve and Reject existed, and their sole call site was the Device-approval card on
- * ACCESS POLICIES, so an operator looking straight at a pending device had to already know it was governed
- * from a different screen. Found by the founder, on the screen where it is most obvious.
+ * Approval and rejection now have one confirmed mutation home under Devices → Approvals.
+ * The inventory keeps the pending fact visible and gives the operator a route-aware path to that workflow;
+ * it must not reintroduce a second, unconfirmed mutation surface.
  */
-describe("Devices — a pending device can be acted on HERE", () => {
+describe("Devices — pending-device ownership", () => {
   // ⚠ `DEVICES` is a SHARED, MUTATED array — an earlier test in this file empties and refills it, so an
   // appended test inherits whatever ran before. Set it explicitly rather than depending on order.
   const seed = (rows: unknown[]) => {
@@ -344,7 +343,7 @@ describe("Devices — a pending device can be acted on HERE", () => {
     (DEVICES as unknown[]).push(...rows);
   };
 
-  it("⛔ APPROVE IS OFFERED ON A PENDING DEVICE — the verb that had no call site on this screen", async () => {
+  it("routes a pending device to the single confirmed approval workspace", async () => {
     seed([
       {
         id: "d-p",
@@ -363,27 +362,14 @@ describe("Devices — a pending device can be acted on HERE", () => {
     await waitFor(() =>
       expect(screen.getByRole("table", { name: "Devices" })).toBeTruthy(),
     );
-    fireEvent.click(
-      await screen.findByRole("checkbox", { name: /^Select unapproved-phone/ }),
-    );
+    expect(screen.getByRole("link", { name: "Approvals" }).getAttribute("href")).toBe("/devices/approvals");
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
 
-    expect(
-      screen.getByRole("button", { name: "Approve" }).hasAttribute("disabled"),
-    ).toBe(false);
-    expect(
-      screen.getByRole("button", { name: "Reject" }).hasAttribute("disabled"),
-    ).toBe(false);
-
-    // ⛔ AND REVOKE IS *NOT* OFFERED FOR IT, with the reason. A pending device is REJECTED, not revoked —
-    // two different decisions — and revoking one would be a no-op the server reports as success.
-    const revoke = screen.getByRole("button", { name: "Revoke" });
-    expect(revoke.hasAttribute("disabled")).toBe(true);
-    expect(revoke.getAttribute("title")).toMatch(
-      /pending device cannot be revoked/,
-    );
+    expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
   });
 
-  it("⚠ …AND THE CONVERSE, so 'always enabled' cannot pass: an ACTIVE device revokes and cannot be approved", async () => {
+  it("keeps active-device revocation separate from approval", async () => {
     seed([
       {
         id: "d-a",
@@ -409,8 +395,6 @@ describe("Devices — a pending device can be acted on HERE", () => {
     expect(
       screen.getByRole("button", { name: "Revoke" }).hasAttribute("disabled"),
     ).toBe(false);
-    expect(
-      screen.getByRole("button", { name: "Approve" }).hasAttribute("disabled"),
-    ).toBe(true);
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 });

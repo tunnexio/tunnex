@@ -61,7 +61,7 @@ func (s apiServer) TestAgentAccess(ctx context.Context, req api.TestAgentAccessR
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, apierr.New(503, "agent_diagnostic_unavailable", "agent policy diagnostic service is unavailable")
 	}
 	if s.nodes == nil || s.agentRuntime == nil {
 		return nil, apierr.New(500, "agent_diagnostic_unavailable", "agent diagnostic services are unavailable")

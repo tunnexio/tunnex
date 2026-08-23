@@ -286,7 +286,7 @@ func runtimeMachineError(err error) error {
 	case errors.Is(err, agentruntime.ErrUnauthorized), errors.Is(err, agentruntime.ErrOptedOut):
 		return runtimeUnauthorized()
 	case errors.Is(err, agentruntime.ErrOptInUnavailable):
-		return apierr.New(http.StatusForbidden, "edition_required", "managed agent runtime synchronization is unavailable in this edition")
+		return apierr.New(http.StatusServiceUnavailable, "runtime_unavailable", "managed agent runtime synchronization is temporarily unavailable")
 	case errors.Is(err, agentruntime.ErrInvalidReport):
 		return apierr.New(http.StatusBadRequest, "invalid_runtime_report", "runtime report is not acceptable")
 	default:

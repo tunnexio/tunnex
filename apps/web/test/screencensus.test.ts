@@ -113,6 +113,16 @@ const COVERED: Record<string, string> = {
 // THE ORDER IS THE COMMIT-ONE ORDER, and the reason is recorded with it: surfaces are ranked by where
 // disagreement with the backend is most consequential, not by size.
 const PENDING: Record<string, string> = {
+	"AccessGroups.tsx": "S18 canonical typed Group inventory, membership, archive and organization-switch wiring — agenttemplateswiring.test.tsx",
+	"AccessResources.tsx": "S18 canonical Access Resources inventory and lifecycle workspace — resource route and caller coverage is being finalized",
+	"AgentsPolicyTemplates.tsx": "S18 F09 Agents-owned immutable template, preview, assignment and recovery wiring — agenttemplateswiring.test.tsx",
+	"AgentsManagementGate.tsx": "shared permission boundary for Agents group/template workspaces; exercised by agenttemplateswiring.test.tsx",
+	"AgentDetail.tsx": "S18 MCP workspace — wiring and failure-path coverage follows the Agents-owned lifecycle contract",
+	"AgentsIndex.tsx": "S18 operational index — URL query and permission/plan failure coverage is being finalized",
+	"AgentsMCP.tsx": "S18 MCP management — lifecycle mutation and opt-in failure coverage is being finalized",
+	"S18VisualScenarios.tsx": "development-only gallery fixture — reviewed through browser states, not production routing",
+	"DeviceApprovals.tsx": "S18 Device lifecycle approval workspace — route, RBAC, pending queue and unavailable-state coverage is being finalized",
+	"DevicePosture.tsx": "S18 Device lifecycle posture workspace — route, RBAC and default-off posture coverage is being finalized",
   // ⛔ S15.3. The AI-agent surface is routed and rendering, and its VIEW-MODEL is covered
   // (agentview.test.ts: the render floor, the three-valued kind, UNDETERMINED's ruled words, the
   // ordering, the Overview card's copy). The WIRING and FAILURE-PATH tests are not written yet —
@@ -183,7 +193,7 @@ describe("screen census", () => {
     // ZERO. Every accountable screen is covered. The list stays, because a screen added tomorrow must land in
     // one of the three lists or fail the census by name — an empty PENDING is a state, not a reason to delete
     // the mechanism.
-    expect(Object.keys(PENDING).length).toBe(2);
+    expect(Object.keys(PENDING).length).toBe(12);
   });
 
   // THE CEILING IS NOT THIS NUMBER. Recorded so the totals above are read as a LEDGER OF TODAY, not a target.
@@ -196,7 +206,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 9 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(11);
+  it("the ledger is a snapshot of today — 19 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(21);
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, apiErrorMessage, type HostUpgradeStatus, type Meta } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -26,14 +26,20 @@ export function UpgradeCenter() {
   const [busy, setBusy] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState("");
+  // A request result is newer than an in-flight polling read. Without this
+  // epoch, an initial idle read can land after the accepted POST and hide the
+  // durable "Request accepted" state until the next polling interval.
+  const refreshEpoch = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!cpAdmin) return;
+    const epoch = refreshEpoch.current;
     try {
       const [metaResult, hostResult] = await Promise.all([
         api.GET("/api/v1/meta"),
         api.GET("/api/v1/admin/upgrade"),
       ]);
+      if (epoch !== refreshEpoch.current) return;
       if (metaResult.data) setMeta(metaResult.data);
       if (hostResult.data) setHost(hostResult.data);
       setReconnecting(Boolean(metaResult.error || hostResult.error));
@@ -77,6 +83,7 @@ export function UpgradeCenter() {
         setError(apiErrorMessage(requestError, "Could not request the host upgrade."));
         return;
       }
+      refreshEpoch.current += 1;
       setHost(data);
       setConfirming(false);
     } catch {

@@ -9,45 +9,37 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
-// Zero Trust policy is enterprise-only. In the open build the policy port is nil,
-// so an authenticated + authorized owner still gets 403 edition_required —
-// server-side enforcement, not merely a hidden UI. authorize() runs FIRST (a
-// sessionless request 401s — the spec walk stays honest); the edition gate fires
-// for authenticated callers. One read + one mutate + the mode toggle cover the
-// three permission classes (PermPolicyView / PermPolicyManage on data + on mode).
-func TestPolicyEditionGatedInOpenBuild(t *testing.T) {
-	s := apiServer{} // open build: policy port is nil
+// A missing policy dependency is an internal availability fault, never a plan
+// refusal. Community has the same core Zero Trust policy API as every paid plan.
+// authorize() still runs first, preserving the no-oracle ordering.
+func TestPolicyServiceUnavailableIsNotAPlanRefusal(t *testing.T) {
+	s := apiServer{}
 	org := uuid.New()
 	ctx := principalWithRole(org, rbac.RoleOwner) // authed + verified owner
 
-	if _, err := s.ListGroups(ctx, api.ListGroupsRequestObject{OrgId: org}); !hasCode(err, 403, "edition_required") {
-		t.Fatalf("ListGroups: want 403 edition_required, got %v", err)
+	if _, err := s.ListGroups(ctx, api.ListGroupsRequestObject{OrgId: org}); !hasCode(err, 503, "policy_service_unavailable") {
+		t.Fatalf("ListGroups: want 503 policy_service_unavailable, got %v", err)
 	}
-	if _, err := s.CreateGroup(ctx, api.CreateGroupRequestObject{OrgId: org, Body: &api.CreateGroupJSONRequestBody{Name: "eng"}}); !hasCode(err, 403, "edition_required") {
-		t.Fatalf("CreateGroup: want 403 edition_required, got %v", err)
+	if _, err := s.CreateGroup(ctx, api.CreateGroupRequestObject{OrgId: org, Body: &api.CreateGroupJSONRequestBody{Name: "eng"}}); !hasCode(err, 503, "policy_service_unavailable") {
+		t.Fatalf("CreateGroup: want 503 policy_service_unavailable, got %v", err)
 	}
-	if _, err := s.ListResources(ctx, api.ListResourcesRequestObject{OrgId: org}); !hasCode(err, 403, "edition_required") {
-		t.Fatalf("ListResources: want 403 edition_required, got %v", err)
+	if _, err := s.ListResources(ctx, api.ListResourcesRequestObject{OrgId: org}); !hasCode(err, 503, "policy_service_unavailable") {
+		t.Fatalf("ListResources: want 503 policy_service_unavailable, got %v", err)
 	}
-	if _, err := s.ListPolicyRules(ctx, api.ListPolicyRulesRequestObject{OrgId: org}); !hasCode(err, 403, "edition_required") {
-		t.Fatalf("ListPolicyRules: want 403 edition_required, got %v", err)
+	if _, err := s.ListPolicyRules(ctx, api.ListPolicyRulesRequestObject{OrgId: org}); !hasCode(err, 503, "policy_service_unavailable") {
+		t.Fatalf("ListPolicyRules: want 503 policy_service_unavailable, got %v", err)
 	}
-	if _, err := s.GetZeroTrustMode(ctx, api.GetZeroTrustModeRequestObject{OrgId: org}); !hasCode(err, 403, "edition_required") {
-		t.Fatalf("GetZeroTrustMode: want 403 edition_required, got %v", err)
+	if _, err := s.GetZeroTrustMode(ctx, api.GetZeroTrustModeRequestObject{OrgId: org}); !hasCode(err, 503, "policy_service_unavailable") {
+		t.Fatalf("GetZeroTrustMode: want 503 policy_service_unavailable, got %v", err)
 	}
 	mode := api.ZeroTrustModeMode("enforcing")
-	if _, err := s.SetZeroTrustMode(ctx, api.SetZeroTrustModeRequestObject{OrgId: org, Body: &api.SetZeroTrustModeJSONRequestBody{Mode: mode}}); !hasCode(err, 403, "edition_required") {
-		t.Fatalf("SetZeroTrustMode: want 403 edition_required, got %v", err)
+	if _, err := s.SetZeroTrustMode(ctx, api.SetZeroTrustModeRequestObject{OrgId: org, Body: &api.SetZeroTrustModeJSONRequestBody{Mode: mode}}); !hasCode(err, 503, "policy_service_unavailable") {
+		t.Fatalf("SetZeroTrustMode: want 503 policy_service_unavailable, got %v", err)
 	}
 }
 
-// A NON-member owner-role principal still 401/404s before the edition gate is even
-// reached is covered by the spec 401-walk; here we assert the gate itself is the
-// 403 (not a nil-panic) for the authorized caller — i.e. the port nil-check is
-// after authorize, mirroring the SSO precedent.
-// ⛔ REVERSED (S12.1). This asserted the open build wired NO policy port. There is one binary now and Zero
-// Trust is COMMUNITY — it must be wired for everyone. Rewritten rather than deleted: the invariant did not
-// disappear, it inverted.
+// This is deliberately a wiring invariant rather than a plan test. Production
+// always injects NewPolicyPort; a nil port must be observable as a service fault.
 func TestPolicyPortIsAlwaysWired(t *testing.T) {
 	if NewPolicyPort(nil, nil) == nil {
 		t.Fatal("⛔ the policy port is nil — Zero Trust is Community and must be wired unconditionally. " +

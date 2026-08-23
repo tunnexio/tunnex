@@ -576,8 +576,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the org's AI agents (enterprise)
-         * @description S15.3 — the agents enrolled in this organization, each with the human who authorised it and whether its activity is attributable. ⛔ ENTERPRISE: the open edition receives 403 edition_required, which is a SUCCESSFUL REFUSAL — the surface renders ABSENCE, never an error. ⛔ This endpoint says which agents EXIST and who owns them. It says nothing about what they may do: reachability is set by grants on Access Policies, and per-tool control does not exist in this product.
+         * List the organization's AI agents
+         * @description S15.3 — the agents enrolled in this organization, each with the human who authorised it and whether its activity is attributable. AI Agents inventory is available on Community and every licensed tier. ⛔ This endpoint says which agents EXIST and who owns them. It says nothing about what they may do: reachability is set by grants on Access Policies, and per-tool control does not exist in this product.
          */
         get: operations["listAgents"];
         put?: never;
@@ -857,6 +857,29 @@ export interface paths {
         };
         /** Get an agent's observed MCP inventory */
         get: operations["getAgentMCPInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/effective-mcp-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get an agent's effective inherited MCP profile
+         * @description Read-only inheritance projection. Profiles remain assigned only to agent groups; this endpoint identifies the effective profile and its source group and never creates a per-agent assignment.
+         */
+        get: operations["getAgentEffectiveMCPProfile"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1500,7 +1523,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** The device-approval queue (enterprise) */
+        /** The device-approval queue */
         get: operations["listPendingDevices"];
         put?: never;
         post?: never;
@@ -1522,7 +1545,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending device (peer + grants land org-wide within seconds, enterprise) */
+        /** Approve a pending device (peer + grants land org-wide within seconds) */
         post: operations["approveDevice"];
         delete?: never;
         options?: never;
@@ -1542,7 +1565,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject a pending device (revoked, tunnel address freed, enterprise) */
+        /** Reject a pending device (revoked, tunnel address freed) */
         post: operations["rejectDevice"];
         delete?: never;
         options?: never;
@@ -1559,9 +1582,9 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get the org device-approval mode (enterprise) */
+        /** Get the org device-approval mode */
         get: operations["getDeviceApproval"];
-        /** Set the org device-approval mode — enabling gates new enrollments (enterprise) */
+        /** Set the org device-approval mode — enabling gates new enrollments */
         put: operations["setDeviceApproval"];
         post?: never;
         delete?: never;
@@ -1579,7 +1602,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List the org's configured posture checks (enterprise) */
+        /** List the org's configured posture checks */
         get: operations["listHealthChecks"];
         put?: never;
         post?: never;
@@ -1600,10 +1623,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Opt the org into a posture check, or change its mode/param (enterprise) */
+        /** Opt the org into a posture check, or change its mode/param */
         put: operations["putHealthCheck"];
         post?: never;
-        /** Turn a posture check off (idempotent; blocked devices unblock on their next report, enterprise) */
+        /** Turn a posture check off (idempotent; blocked devices unblock on their next report) */
         delete: operations["deleteHealthCheck"];
         options?: never;
         head?: never;
@@ -1622,7 +1645,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Self-report device posture facts (owner only; server evaluates, enterprise) */
+        /** Self-report device posture facts (owner only; server evaluates) */
         post: operations["reportDeviceHealth"];
         delete?: never;
         options?: never;
@@ -2250,7 +2273,7 @@ export interface paths {
         get?: never;
         /**
          * Set the organization managed-agent identity quota
-         * @description Enterprise organization setting. Requires org:update. `max_agent_identities: null` means unlimited. The server counts pending, active, and suspended agent identities organization-wide; revoked and deleted identities do not count. No remaining count is returned or inferred.
+         * @description Organization setting. Requires org:update. `max_agent_identities: null` means unlimited. The server counts pending, active, and suspended agent identities organization-wide; revoked and deleted identities do not count. No remaining count is returned or inferred.
          */
         put: operations["setOrganizationAgentQuota"];
         post?: never;
@@ -2333,7 +2356,7 @@ export interface paths {
         get?: never;
         /**
          * Enable or disable managed-agent runtime synchronization for an organization
-         * @description Enterprise-only explicit opt-in. Requires agent_runtime:manage. A paid licence unlocks this capability but never enables it implicitly; the default is disabled. Disabling an active organization makes the next runtime poll/report a terminal uniform refusal so managed tunnels offboard instead of preserving synchronization indefinitely.
+         * @description Explicit organization opt-in. Requires agent_runtime:manage. It never enables itself; the default is disabled. Disabling an active organization makes the next runtime poll/report a terminal uniform refusal so managed tunnels offboard instead of preserving synchronization indefinitely.
          */
         put: operations["setOrganizationAgentRuntimeEnabled"];
         post?: never;
@@ -2921,8 +2944,95 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assign an MCP profile to a managed-agent group */
+        /**
+         * Assign an MCP profile to a managed-agent group
+         * @deprecated
+         * @description Deprecated compatibility wrapper. New callers must use the group-owned atomic replacement operation.
+         */
         post: operations["assignAgentMCPProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-mcp-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List active and historical MCP profile assignments */
+        get: operations["listAgentMCPAssignments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-groups/{groupId}/mcp-profile-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview the exact impact of replacing or removing a group MCP profile */
+        post: operations["previewAgentGroupMCPProfileImpact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-groups/{groupId}/mcp-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Atomically set or replace a group MCP profile */
+        put: operations["replaceAgentGroupMCPProfile"];
+        post?: never;
+        /** Atomically unassign a group MCP profile */
+        delete: operations["unassignAgentGroupMCPProfile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agent-mcp-profiles/{profileId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive an unused MCP profile
+         * @description Refuses while any active group assignment references the profile. A `mcp_profile_in_use` refusal reports the exact blocking active-group and current-agent counts so the operator can unassign before retrying.
+         */
+        post: operations["archiveAgentMCPProfile"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3145,9 +3255,15 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Read the explicit JIT access opt-in and server-owned blockers */
+        /**
+         * Read the Scale-gated JIT access opt-in and server-owned blockers
+         * @description Requires the `agent_jit_access` licence capability. Authorized callers without it receive 403 `feature_required`.
+         */
         get: operations["getOrganizationAgentJITAccessSetting"];
-        /** Enable or disable approval-gated temporary agent access */
+        /**
+         * Enable or disable Scale-gated approval-based temporary agent access
+         * @description Requires the `agent_jit_access` licence capability. A qualifying plan does not enable the organization opt-in automatically.
+         */
         put: operations["setOrganizationAgentJITAccessEnabled"];
         post?: never;
         delete?: never;
@@ -3345,6 +3461,8 @@ export interface components {
             org_id: string;
             name: string;
             description: string;
+            /** @description Exact current active managed-agent membership count. */
+            member_count: number;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3362,6 +3480,8 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** Format: date-time */
+            archived_at: string | null;
         };
         CreateAgentMCPProfileRequest: {
             name: string;
@@ -3379,10 +3499,53 @@ export interface components {
             org_id: string;
             /** Format: uuid */
             profile_id: string;
+            profile_name: string;
             /** Format: uuid */
             group_id: string;
+            group_name: string;
+            /** @enum {string} */
+            state: "active" | "replaced" | "unassigned" | "quarantined";
             /** Format: date-time */
             assigned_at: string;
+            /** Format: date-time */
+            ended_at?: string | null;
+            quarantine_reason?: string | null;
+        };
+        AgentMCPProfileImpactRequest: {
+            /** Format: uuid */
+            profile_id?: string | null;
+            /** @default false */
+            unassign: boolean;
+        };
+        SetAgentGroupMCPProfileRequest: {
+            /** Format: uuid */
+            profile_id: string;
+        };
+        AgentMCPProfileImpact: {
+            /** Format: uuid */
+            group_id: string;
+            /** Format: uuid */
+            current_profile_id?: string | null;
+            /** Format: uuid */
+            proposed_profile_id?: string | null;
+            /** Format: int32 */
+            affected_agent_count: number;
+            affected_agent_ids: string[];
+            effective_upstream_changes: boolean;
+            desired_runtime_updates_queued: boolean;
+            mutation_allowed: boolean;
+            conflict?: string | null;
+        };
+        AgentMCPProfileMutationResult: components["schemas"]["AgentMCPProfileImpact"] & {
+            assignment?: components["schemas"]["AgentMCPProfileAssignment"] | null;
+        };
+        AgentMCPProfileArchiveConflict: {
+            /** @enum {string} */
+            code: "mcp_profile_in_use";
+            /** Format: int32 */
+            active_group_count: number;
+            /** Format: int32 */
+            affected_agent_count: number;
         };
         CreateAgentGroupRequest: {
             name: string;
@@ -3694,6 +3857,8 @@ export interface components {
             org_id: string;
             name: string;
             description: string;
+            /** @description Exact current visible group membership count. */
+            member_count: number;
             /** @description Present for policy managers: current live agent-profile assignments cleared if this group is deleted; removing one group member withdraws that person's authority over the same agents without clearing the assignment. */
             managed_agent_count?: number;
             /** Format: date-time */
@@ -4455,6 +4620,22 @@ export interface components {
             tx_bytes?: number | null;
             status: string;
         };
+        AgentListPage: {
+            items: components["schemas"]["Agent"][];
+            /** @description Opaque keyset cursor for the next page, or null when this response is final. No total is implied or returned: a client must not infer one from a loaded batch. */
+            next_cursor?: string | null;
+        };
+        AgentEffectiveMCPProfile: {
+            assigned: boolean;
+            /** Format: uuid */
+            profile_id?: string | null;
+            profile_name?: string | null;
+            /** @description Credential-free MCP upstream endpoint. */
+            endpoint?: string | null;
+            /** Format: uuid */
+            group_id?: string | null;
+            group_name?: string | null;
+        };
         Node: {
             /** Format: uuid */
             id: string;
@@ -4524,6 +4705,11 @@ export interface components {
             id: string;
             /** Format: uuid */
             user_id: string;
+            /**
+             * Format: email
+             * @description Server-resolved device owner attribution for approval review. Null when the owner record is unavailable; clients must not infer an owner.
+             */
+            owner_email?: string | null;
             /** Format: uuid */
             node_id: string;
             name: string;
@@ -6245,7 +6431,26 @@ export interface operations {
     };
     listAgents: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Case-insensitive search across agent name, owner email, and gateway name. */
+                q?: string;
+                /** @description Repeatable lifecycle filter. Values are ORed. */
+                lifecycle?: ("active" | "pending" | "suspended" | "revoked")[];
+                /** @description Repeatable managed-runtime state filter. Values are ORed. */
+                runtime?: ("not_configured" | "pending" | "healthy" | "degraded")[];
+                /** @description Repeatable effective MCP-profile filter. Values are ORed. */
+                mcp?: ("assigned" | "unassigned")[];
+                /** @description Repeatable JIT access state filter. Values are ORed. */
+                access?: ("active" | "pending" | "none")[];
+                /** @description Repeatable gateway identifier filter. Values are ORed. */
+                gateway_id?: string[];
+                /** @description Allowlisted sort key. The current contract exposes only a stable name index. */
+                sort?: "name";
+                dir?: "asc" | "desc";
+                limit?: number;
+                /** @description Opaque keyset cursor returned by the preceding response. It is valid only for the same filters and sort direction. */
+                cursor?: string;
+            };
             header?: never;
             path: {
                 orgId: string;
@@ -6261,7 +6466,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Agent"][];
+                    "application/json": components["schemas"]["AgentListPage"];
                 };
             };
             default: components["responses"]["Error"];
@@ -6657,6 +6862,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentMCPInventory"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentEffectiveMCPProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective profile, or an explicit unassigned projection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentEffectiveMCPProfile"];
                 };
             };
             default: components["responses"]["Error"];
@@ -10129,7 +10358,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Assignment created. */
+            /** @description Current active assignment; created or idempotently reused when the selected profile is already active. */
             201: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];
@@ -10137,6 +10366,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentMCPProfileAssignment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentMCPAssignments: {
+        parameters: {
+            query?: {
+                state?: "active" | "replaced" | "unassigned" | "quarantined";
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Assignment history and quarantine provenance. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfileAssignment"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    previewAgentGroupMCPProfileImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentMCPProfileImpactRequest"];
+            };
+        };
+        responses: {
+            /** @description Server-owned affected-agent and runtime impact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfileImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    replaceAgentGroupMCPProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAgentGroupMCPProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Replacement committed with exact impact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfileMutationResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    unassignAgentGroupMCPProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unassignment committed with recovery information. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfileMutationResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    archiveAgentMCPProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile archived; historical assignments remain visible. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfile"];
+                };
+            };
+            /** @description Active group assignments still reference this profile; unassign them before retrying archive. */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPProfileArchiveConflict"];
                 };
             };
             default: components["responses"]["Error"];

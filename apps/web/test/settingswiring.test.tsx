@@ -43,6 +43,13 @@ let edition: "open" | "enterprise" = "enterprise";
 let ovpnEnabled = false;
 let agentTemplatesEnabled = false;
 let jitAccessEnabled = false;
+let zeroTrustMode: "off" | "enforcing" = "off";
+let zeroTrustFailure = false;
+let approvalModes: Record<string, "on" | "off"> = { "org-1": "off", "org-2": "off" };
+let deferNewOrgSecurityLoad = false;
+let resolveDeferredApproval: (() => void) | null = null;
+let resolveDeferredLicence: (() => void) | null = null;
+let approvalMutations: string[] = [];
 let alertingEnabled = false;
 let alertDestinations: Array<{
   id: string;
@@ -70,11 +77,15 @@ vi.mock("../src/lib/api", async () => {
     ...actual,
     apiErrorMessage: (_e: unknown, f: string) => f,
     api: {
-      GET: vi.fn(async (path: string, request?: { params?: { path?: { destinationId?: string } } }) => {
+      GET: vi.fn(async (path: string, request?: { params?: { path?: { destinationId?: string; orgId?: string } } }) => {
         if (__cleaned) __lateGets.push(path);
         if (path === "/api/v1/auth/me")
           return { data: { id: "u1", email: "a@b.c", email_verified: true } };
         if (path === "/api/v1/meta") return { data: { edition } };
+        if (path === "/api/v1/license") {
+          if (deferNewOrgSecurityLoad) return new Promise((resolve) => { resolveDeferredLicence = () => resolve({ data: { features: ["agent_jit_access"] } }); });
+          return { data: { features: ["agent_jit_access"] } };
+        }
         if (path === "/api/v1/organizations") {
           return {
             data: [
@@ -122,6 +133,15 @@ vi.mock("../src/lib/api", async () => {
               };
         if (path.endsWith("/agent-jit-access-settings"))
           return { data: { enabled: jitAccessEnabled, pending_requests: 0, approved_requests: 0 } };
+        if (path.endsWith("/device-approval")) {
+          const orgId = request?.params?.path?.orgId ?? "org-1";
+          if (deferNewOrgSecurityLoad && orgId === "org-2") return new Promise((resolve) => { resolveDeferredApproval = () => resolve({ data: { mode: approvalModes[orgId] } }); });
+          return { data: { mode: approvalModes[orgId] } };
+        }
+        if (path.endsWith("/zero-trust-mode"))
+          return zeroTrustFailure
+            ? { error: { error: { code: "policy_service_unavailable", message: "mode unavailable" } } }
+            : { data: { mode: zeroTrustMode } };
         if (path.endsWith("/alerting-settings"))
           return { data: { enabled: alertingEnabled } };
         if (path.endsWith("/alert-destinations"))
@@ -133,13 +153,19 @@ vi.mock("../src/lib/api", async () => {
           return { data: alertDeliveries };
         return { data: [] };
       }),
-      PUT: vi.fn(async (path: string, request: { body?: { enabled?: boolean } }) => {
+      PUT: vi.fn(async (path: string, request: { params?: { path?: { orgId?: string } }; body?: { enabled?: boolean; mode?: "on" | "off" } }) => {
         if (path.endsWith("/agent-policy-template-settings"))
           agentTemplatesEnabled = request.body?.enabled === true;
         if (path.endsWith("/agent-jit-access-settings"))
           jitAccessEnabled = request.body?.enabled === true;
         if (path.endsWith("/alerting-settings"))
           alertingEnabled = request.body?.enabled === true;
+        if (path.endsWith("/device-approval")) {
+          const orgId = request.params?.path?.orgId ?? "";
+          approvalMutations.push(orgId);
+          if (request.body?.mode) approvalModes[orgId] = request.body.mode;
+          return { data: { mode: approvalModes[orgId] } };
+        }
         return { data: { enabled: request.body?.enabled ?? true } };
       }),
       POST: vi.fn(async (path: string, request: { params?: { path?: { destinationId?: string } }; body?: { kind?: "webhook"; name?: string; endpoint?: string; severity_floor?: string; cooldown_seconds?: number; allow_private?: boolean; event_key?: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" } }) => {
@@ -221,6 +247,13 @@ beforeEach(() => {
   ovpnEnabled = false;
   agentTemplatesEnabled = false;
   jitAccessEnabled = false;
+  zeroTrustMode = "off";
+  zeroTrustFailure = false;
+  approvalModes = { "org-1": "off", "org-2": "off" };
+  deferNewOrgSecurityLoad = false;
+  resolveDeferredApproval = null;
+  resolveDeferredLicence = null;
+  approvalMutations = [];
   alertingEnabled = false;
   alertDestinations = [];
   alertSubscriptions = {};
@@ -230,6 +263,7 @@ beforeEach(() => {
   // it leaked into the next file-order test — and the symptom was a query "not finding" text that a DOM dump
   // showed present, because the component under assertion had loaded the OTHER arm.
   ssoFail = false;
+  window.history.replaceState({}, "", "/settings");
 });
 
 /**
@@ -243,7 +277,7 @@ async function openSection(name: RegExp) {
 describe("Settings — F10 unlock then explicit opt-in", () => {
   it("renders default-off truth, writes once, and refetches persisted state", async () => {
     withAuth(<Settings />);
-    await openSection(/Features/);
+    await openSection(/Access & security/);
     const sw = await screen.findByRole("switch", {
       name: "Just-in-time agent access",
     });
@@ -263,7 +297,7 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
   it("renders persisted enabled state without defaulting it off", async () => {
     jitAccessEnabled = true;
     withAuth(<Settings />);
-    await openSection(/Features/);
+    await openSection(/Access & security/);
     const sw = await screen.findByRole("switch", {
       name: "Just-in-time agent access",
     });
@@ -272,13 +306,77 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
 
   it("withdraws prior-organization JIT settings synchronously", async () => {
     withAuthAndSwitch();
-    await openSection(/Features/);
+    await openSection(/Access & security/);
     await screen.findByRole("switch", { name: "Just-in-time agent access" });
     fireEvent.click(screen.getByRole("button", { name: "Switch organization" }));
     expect(
       screen.queryByRole("switch", { name: "Just-in-time agent access" }),
     ).toBeNull();
     expect(screen.getByText("Loading settings…")).toBeTruthy();
+  });
+
+  it("withdraws Access & security state on organization switch and mutates only the newly loaded organization", async () => {
+    approvalModes["org-1"] = "on";
+    approvalModes["org-2"] = "off";
+    withAuthAndSwitch();
+    await openSection(/Access & security/);
+    const prior = await screen.findByRole("switch", { name: "Require device approval" });
+    expect(prior.getAttribute("aria-checked")).toBe("true");
+    deferNewOrgSecurityLoad = true;
+    fireEvent.click(screen.getByRole("button", { name: "Switch organization" }));
+    expect(screen.queryByRole("switch", { name: "Require device approval" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Just-in-time agent access" })).toBeNull();
+    expect(screen.getByText("Loading settings…")).toBeTruthy();
+    await waitFor(() => {
+      expect(resolveDeferredApproval).not.toBeNull();
+      expect(resolveDeferredLicence).not.toBeNull();
+    });
+    expect(screen.getAllByText("Loading…").length).toBeGreaterThan(0);
+    resolveDeferredApproval?.();
+    resolveDeferredLicence?.();
+    deferNewOrgSecurityLoad = false;
+    const current = await screen.findByRole("switch", { name: "Require device approval" });
+    expect(current.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(current);
+    await waitFor(() => expect(approvalMutations).toEqual(["org-2"]));
+  });
+});
+
+describe("Settings — URL-backed section rail", () => {
+  it("opens a permitted direct section URL and keeps rail selection in the URL", async () => {
+    window.history.replaceState({}, "", "/settings?section=access-security");
+    withAuth(<Settings />);
+    await waitFor(() => expect(screen.getByRole("tabpanel").id).toBe("access-security"));
+    fireEvent.click(screen.getByRole("tab", { name: "Licence & plan" }));
+    expect(window.location.search).toBe("?section=licence");
+    expect(screen.getByRole("tabpanel").id).toBe("licence");
+  });
+
+  it("restores sections from browser Back/Forward and safely normalizes an invalid section", async () => {
+    window.history.replaceState({}, "", "/settings?section=licence");
+    withAuth(<Settings />);
+    await waitFor(() => expect(screen.getByRole("tabpanel").id).toBe("licence"));
+    window.history.replaceState({}, "", "/settings?section=access-security");
+    fireEvent.popState(window);
+    await waitFor(() => expect(screen.getByRole("tabpanel").id).toBe("access-security"));
+    window.history.replaceState({}, "", "/settings?section=not-a-section");
+    fireEvent.popState(window);
+    await waitFor(() => expect(screen.getByRole("tabpanel").id).toBe("organization"));
+    expect(window.location.search).toBe("?section=organization");
+  });
+
+  it("shows authoritative Zero Trust state and never defaults a failed read to Off", async () => {
+    zeroTrustMode = "enforcing";
+    withAuth(<Settings />);
+    await openSection(/Access & security/);
+    expect(await screen.findByText("Enforcing")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Manage in Access Policies" }).getAttribute("href")).toBe("/access");
+    cleanup();
+    zeroTrustFailure = true;
+    withAuth(<Settings />);
+    await openSection(/Access & security/);
+    expect((await screen.findByRole("alert")).textContent).toContain("Could not load current Zero Trust mode.");
+    expect(screen.queryByText("Off")).toBeNull();
   });
 });
 
@@ -449,7 +547,7 @@ describe("Settings — F09 unlock then explicit opt-in", () => {
   it("renders default-off truth and refetches the persisted enabled state", async () => {
     agentTemplatesEnabled = false;
     withAuth(<Settings />);
-    await openSection(/Features/);
+    await openSection(/AI Agents/);
     const sw = await screen.findByRole("switch", {
       name: "Agent groups & policy templates",
     });
@@ -468,7 +566,7 @@ describe("Settings — F09 unlock then explicit opt-in", () => {
   it("renders persisted enabled state without defaulting it off", async () => {
     agentTemplatesEnabled = true;
     withAuth(<Settings />);
-    await openSection(/Features/);
+    await openSection(/AI Agents/);
     const sw = await screen.findByRole("switch", {
       name: "Agent groups & policy templates",
     });

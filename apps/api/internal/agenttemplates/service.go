@@ -39,7 +39,7 @@ type Service struct {
 
 func New(pool *pgxpool.Pool, pusher Pusher) *Service { return &Service{pool: pool, pusher: pusher} }
 
-func (s *Service) ListGroups(ctx context.Context, orgID uuid.UUID) ([]sqlc.AgentGroup, error) {
+func (s *Service) ListGroups(ctx context.Context, orgID uuid.UUID) ([]sqlc.ListAgentGroupsRow, error) {
 	if s == nil || s.pool == nil {
 		return nil, ErrInvalid
 	}
@@ -157,6 +157,7 @@ type Assignment struct {
 type RemovalImpact struct {
 	Members         int
 	Assignments     int
+	MCPAssignments  int
 	GeneratedRules  int
 	WithdrawnTuples int
 	ChangedGateways int
@@ -235,10 +236,11 @@ func (s *Service) ArchiveGroup(ctx context.Context, orgID, groupID, actor uuid.U
 	if err := tx.QueryRow(ctx, `SELECT
 		(SELECT count(*) FROM agent_group_members WHERE org_id=$1 AND agent_group_id=$2),
 		(SELECT count(*) FROM agent_policy_template_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active'),
-		(SELECT count(DISTINCT b.policy_rule_id) FROM agent_policy_template_assignments a JOIN agent_policy_template_rule_bindings b ON b.org_id=a.org_id AND b.assignment_id=a.id WHERE a.org_id=$1 AND a.agent_group_id=$2 AND a.state='active')`, orgID, groupID).Scan(&impact.Members, &impact.Assignments, &impact.GeneratedRules); err != nil {
+		(SELECT count(*) FROM agent_mcp_profile_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active'),
+		(SELECT count(DISTINCT b.policy_rule_id) FROM agent_policy_template_assignments a JOIN agent_policy_template_rule_bindings b ON b.org_id=a.org_id AND b.assignment_id=a.id WHERE a.org_id=$1 AND a.agent_group_id=$2 AND a.state='active')`, orgID, groupID).Scan(&impact.Members, &impact.Assignments, &impact.MCPAssignments, &impact.GeneratedRules); err != nil {
 		return RemovalImpact{}, err
 	}
-	if impact.Members != 0 || impact.Assignments != 0 {
+	if impact.Members != 0 || impact.Assignments != 0 || impact.MCPAssignments != 0 {
 		return impact, ErrConflict
 	}
 	if _, err := tx.Exec(ctx, `UPDATE agent_groups SET archived_at=now() WHERE id=$1 AND org_id=$2 AND archived_at IS NULL`, groupID, orgID); err != nil {
@@ -276,17 +278,19 @@ func (s *Service) AddMember(ctx context.Context, orgID, groupID, deviceID, actor
 	if changed == 0 {
 		return false, tx.Commit(ctx)
 	}
-	if err := audit(ctx, tx, orgID, actor, "agent_group.member_added", "agent_group", groupID, map[string]any{"device_id": deviceID}); err != nil {
+	var assigned, mcpAssigned bool
+	if err := tx.QueryRow(ctx, `SELECT
+		EXISTS (SELECT 1 FROM agent_policy_template_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active'),
+		EXISTS (SELECT 1 FROM agent_mcp_profile_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active')`, orgID, groupID).Scan(&assigned, &mcpAssigned); err != nil {
 		return false, err
 	}
-	var assigned bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_policy_template_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active')`, orgID, groupID).Scan(&assigned); err != nil {
+	if err := audit(ctx, tx, orgID, actor, "agent_group.member_added", "agent_group", groupID, map[string]any{"device_id": deviceID, "mcp_inheritance_gained": mcpAssigned}); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
-	if assigned && s.pusher != nil {
+	if (assigned || mcpAssigned) && s.pusher != nil {
 		s.pusher.PushOrgNodes(ctx, orgID)
 	}
 	return true, nil
@@ -344,13 +348,16 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, groupID, deviceID, ac
 		}
 	}
 	impact := RemovalImpact{Assignments: assignments, GeneratedRules: generated, WithdrawnTuples: withdrawn, ChangedGateways: gateways}
-	if err := audit(ctx, tx, orgID, actor, "agent_group.member_removed", "agent_group", groupID, map[string]any{"device_id": deviceID, "assignments": assignments, "generated_rules": generated, "withdrawn_tuples": withdrawn, "changed_gateways": gateways}); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM agent_mcp_profile_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active'`, orgID, groupID).Scan(&impact.MCPAssignments); err != nil {
+		return RemovalImpact{}, err
+	}
+	if err := audit(ctx, tx, orgID, actor, "agent_group.member_removed", "agent_group", groupID, map[string]any{"device_id": deviceID, "assignments": assignments, "mcp_inheritance_lost": impact.MCPAssignments != 0, "generated_rules": generated, "withdrawn_tuples": withdrawn, "changed_gateways": gateways}); err != nil {
 		return RemovalImpact{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return RemovalImpact{}, err
 	}
-	if assignments != 0 && s.pusher != nil {
+	if (assignments != 0 || impact.MCPAssignments != 0) && s.pusher != nil {
 		s.pusher.PushOrgNodes(ctx, orgID)
 	}
 	return impact, nil

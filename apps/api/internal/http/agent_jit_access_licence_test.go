@@ -12,18 +12,18 @@ func TestAgentJITAccessUsesTheScaleLicenceEntitlement(t *testing.T) {
 	port := agentaccess.New(nil, nil)
 	expires := time.Now().Add(time.Hour)
 
-	if !(apiServer{
+	if err := (apiServer{
 		licence:     licence.NewTestManager("scale", expires),
 		agentAccess: port,
-	}).agentAccessAvailable() {
+	}).requireAgentAccessCapability(); err != nil {
 		t.Fatal("Scale licence must unlock JIT access")
 	}
 
 	for _, tier := range []string{"community", "starter", "growth"} {
-		if (apiServer{
+		if err := (apiServer{
 			licence:     licence.NewTestManager(tier, expires),
 			agentAccess: port,
-		}).agentAccessAvailable() {
+		}).requireAgentAccessCapability(); !hasCode(err, 403, "feature_required") {
 			t.Fatalf("%s licence must not unlock JIT access", tier)
 		}
 	}

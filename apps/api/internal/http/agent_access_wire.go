@@ -1,5 +1,3 @@
-//go:build !enterprise
-
 package http
 
 import (
@@ -10,8 +8,8 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentaccess"
 )
 
-// JIT is licence-gated at the handler seam, not by the build tag. A Scale
-// licence must work with the same single API image as every other tier.
+// JIT access is wired into the single Tunnex binary. The handlers apply the
+// Scale feature entitlement and organization opt-in before use.
 func NewAgentAccessPort(pool *pgxpool.Pool, pusher agentaccess.Pusher) agentAccessPort {
 	return agentaccess.New(pool, pusher)
 }

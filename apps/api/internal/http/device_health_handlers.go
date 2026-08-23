@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -12,21 +11,10 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
-// deviceHealthEditionRequired is the open-build 403 for the device-health
-// endpoints. NAMED per feature (s.deviceHealthEnabled) — the standing discipline
-// (F2 / S12.1): device health, device approval, and Zero Trust policy unlock
-// independently.
-func deviceHealthEditionRequired() error {
-	return apierr.New(http.StatusForbidden, "edition_required", "Device posture checks are a Tunnex Enterprise feature")
-}
-
-// ListHealthChecks GET .../health-checks — the org's configured (opted-in) checks.
+// ListHealthChecks GET .../health-checks — the Community org's configured (opted-in) checks.
 func (s apiServer) ListHealthChecks(ctx context.Context, req api.ListHealthChecksRequestObject) (api.ListHealthChecksResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceHealthManage); err != nil {
 		return nil, err
-	}
-	if !s.deviceHealthEnabled {
-		return nil, deviceHealthEditionRequired()
 	}
 	checks, err := s.devices.ListHealthChecks(ctx, req.OrgId)
 	if err != nil {
@@ -45,9 +33,6 @@ func (s apiServer) ListHealthChecks(ctx context.Context, req api.ListHealthCheck
 func (s apiServer) PutHealthCheck(ctx context.Context, req api.PutHealthCheckRequestObject) (api.PutHealthCheckResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceHealthManage); err != nil {
 		return nil, err
-	}
-	if !s.deviceHealthEnabled {
-		return nil, deviceHealthEditionRequired()
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	if req.Body == nil {
@@ -77,9 +62,6 @@ func (s apiServer) DeleteHealthCheck(ctx context.Context, req api.DeleteHealthCh
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceHealthManage); err != nil {
 		return nil, err
 	}
-	if !s.deviceHealthEnabled {
-		return nil, deviceHealthEditionRequired()
-	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	if err := s.devices.DeleteHealthCheck(ctx, p.UserID, req.OrgId, req.CheckKind); err != nil {
 		return nil, err
@@ -93,9 +75,6 @@ func (s apiServer) DeleteHealthCheck(ctx context.Context, req api.DeleteHealthCh
 func (s apiServer) ReportDeviceHealth(ctx context.Context, req api.ReportDeviceHealthRequestObject) (api.ReportDeviceHealthResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
 		return nil, err
-	}
-	if !s.deviceHealthEnabled {
-		return nil, deviceHealthEditionRequired()
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	if req.Body == nil {

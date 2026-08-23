@@ -1169,9 +1169,10 @@ func (q *Queries) ListNodeIDsForUserActiveDevices(ctx context.Context, userID uu
 }
 
 const listPendingDevicesByOrg = `-- name: ListPendingDevicesByOrg :many
-SELECT d.id, d.org_id, d.user_id, d.node_id, d.name, d.platform, d.public_key, d.assigned_ip, d.status, d.created_at, d.updated_at, d.revoked_at, d.deleted_at, d.full_tunnel, d.approved_by, d.health_blocked, d.transport, d.provisioning_mode, d.provisioned_ranges, d.revoked_cause, d.provisioned_ip, d.revoked_prev_status, d.provisioned_node_id, d.kind, ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes,
+SELECT d.id, d.org_id, d.user_id, d.node_id, d.name, d.platform, d.public_key, d.assigned_ip, d.status, d.created_at, d.updated_at, d.revoked_at, d.deleted_at, d.full_tunnel, d.approved_by, d.health_blocked, d.transport, d.provisioning_mode, d.provisioned_ranges, d.revoked_cause, d.provisioned_ip, d.revoked_prev_status, d.provisioned_node_id, d.kind, u.email AS owner_email, ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes,
        dh.evaluated_state, dh.failed_checks, dh.os_version, dh.disk_encrypted, dh.reported_at
 FROM devices d
+LEFT JOIN users u ON u.id = d.user_id
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
 WHERE d.org_id = $1 AND d.status = 'pending' AND d.deleted_at IS NULL AND d.kind <> 'agent'
@@ -1180,6 +1181,7 @@ ORDER BY d.created_at
 
 type ListPendingDevicesByOrgRow struct {
 	Device          Device             `json:"device"`
+	OwnerEmail      *string            `json:"owner_email"`
 	LastHandshakeAt pgtype.Timestamptz `json:"last_handshake_at"`
 	RxBytes         *int64             `json:"rx_bytes"`
 	TxBytes         *int64             `json:"tx_bytes"`
@@ -1235,6 +1237,7 @@ func (q *Queries) ListPendingDevicesByOrg(ctx context.Context, orgID uuid.UUID) 
 			&i.Device.RevokedPrevStatus,
 			&i.Device.ProvisionedNodeID,
 			&i.Device.Kind,
+			&i.OwnerEmail,
 			&i.LastHandshakeAt,
 			&i.RxBytes,
 			&i.TxBytes,

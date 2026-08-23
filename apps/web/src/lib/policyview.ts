@@ -107,14 +107,13 @@ export function pruneStaleRuleIds(
 }
 
 // ── Parent access-page gate as a PURE function ([75]+[101]) ──────────────────────────
-// The upsell needs only EDITION (role-irrelevant); the admin body needs ROLE RESOLVED. A
-// members-load failure must NOT blank a non-enterprise user's upsell ([75]), and role
-// in-flight must render "loading", never the manage-gated-away notice ([101]).
+// The Rules workspace needs an organization context and a resolved role. A members-load
+// failure must not impersonate an authorization denial, and role in-flight must render
+// "loading", never the manage-gated-away notice ([101]).
 export type AccessView =
   | "loading"
   | "fatal"
   | "load_retry"
-  | "upsell"
   | "role_retry"
   | "role_loading"
   | "member_gate"
@@ -123,45 +122,26 @@ export type AccessView =
 export function accessView(i: {
   fatal: boolean;
   loadError: boolean;
-  editionReady: boolean; // meta + org both loaded
-  isEnterprise: boolean;
+  accessReady: boolean; // organization context loaded
   roleError: boolean;
   roleResolved: boolean;
   canView: boolean;
-  /** The caller's role — needed because permission is now evaluated BEFORE the edition branch. */
+  /** The caller's role — permission is evaluated before any optional capability surface. */
   role: Role | undefined;
 }): AccessView {
   if (i.fatal) return "fatal";
   if (i.loadError) return "load_retry";
-  if (!i.editionReady) return "loading";
-  // ⛔ PERMISSION BEFORE EDITION — AND THE SERVER'S ORDER IS THE SPECIFICATION, NOT A PREFERENCE.
-  //
-  // This read `if (!i.isEnterprise) return "upsell"` FIRST, with the note "[75]: role irrelevant here". Role
-  // is NOT irrelevant. Measured on the open-edition review stack (S14.12), the server answers:
-  //
-  //   open + owner  (holds policy:view) -> 403 edition_required
-  //   open + member (no policy:view)    -> 403 forbidden        <- and the screen said "upsell"
-  //
-  // Every policy handler runs `authorize(..., PermPolicyView)` and only THEN `if s.policy == nil`
-  // (TestEditionGateNeverPrecedesPermissionGate: 43 handlers, 41 permission-first, 2 pre-session, 0 leaks).
-  // So the old order SOLD ENTERPRISE TO A MEMBER whose role forbids policy on ANY edition — the S14.5 halt
-  // running forward, and the SECOND instance of this exact defect in one story (the first was
-  // `usersview.groupAccessState`). The class is how this codebase reasons about gates, not one screen's slip.
-  //
-  // Role must therefore be RESOLVED before the edition branch, so the two retry/loading arms move up with it.
+  if (!i.accessReady) return "loading";
   if (i.roleError) return "role_retry";
   if (!i.roleResolved) return "role_loading"; // [101]: never the gate copy while role in-flight
   if (!can(i.role, "policy:view")) return "member_gate";
-  if (!i.isEnterprise) return "upsell"; // reached only by a caller who COULD use the feature
   return i.canView ? "admin_body" : "member_gate";
 }
 
-// ── policy RBAC + edition gate (pure) ───────────────────────────────────────────────
-// Whole feature is enterprise-gated; view needs policy:view; managing needs
-// policy:manage AND a verified email (mirrors the server's verified-email requirement
-// on mutating calls). Device-approval management is the separate device:approve grant.
+// ── policy RBAC gate (pure) ─────────────────────────────────────────────────────────
+// Core Zero Trust policy is available on Community and every paid plan. Named paid
+// capabilities are checked separately against the server-authoritative licence API.
 export interface PolicyGate {
-  isEnterprise: boolean;
   canView: boolean;
   canManagePolicy: boolean;
   canManageDevices: boolean;
@@ -174,23 +154,18 @@ export interface PolicyGate {
 export function policyGate(input: {
   role: Role | undefined;
   emailVerified: boolean;
-  edition: string | undefined;
 }): PolicyGate {
-  const isEnterprise = input.edition === "enterprise";
-  const canView = isEnterprise && can(input.role, "policy:view");
+  const canView = can(input.role, "policy:view");
   return {
-    isEnterprise,
     canView,
     canManagePolicy:
       canView && input.emailVerified && can(input.role, "policy:manage"),
     canManageDevices:
-      isEnterprise && input.emailVerified && can(input.role, "device:approve"),
+      input.emailVerified && can(input.role, "device:approve"),
     canManageDeviceHealth:
-      isEnterprise &&
       input.emailVerified &&
       can(input.role, "device_health:manage"),
     canManageAgentTemplates:
-      isEnterprise &&
       input.emailVerified &&
       can(input.role, "agent_template:manage"),
   };
@@ -801,6 +776,7 @@ export function resPortsValid(loStr: string, hiStr: string): boolean {
 // consequence that does not follow.
 export type RulesEmptyState =
   | { kind: "rows" } // not empty — the list renders
+  | { kind: "loading" } // authoritative rules/mode reads are still in flight
   | { kind: "failed" } // we could not read; say so, never "no rules"
   | { kind: "enforcing_empty" } // we read it: zero rules under default-deny. LOUD.
   | { kind: "off_empty" }; // we read it: zero rules, and mode is off, so nothing is denied
@@ -810,11 +786,15 @@ export function rulesEmptyState(i: {
   modeResult: Loaded<"off" | "enforcing"> | null;
   renderedCount: number;
 }): RulesEmptyState {
-  if (i.renderedCount > 0) return { kind: "rows" };
-  // Failure FIRST: a failed read leaves renderedCount at 0, which is exactly how a failure disguises itself
-  // as an answer. Mode being unknown counts as failure too — the consequence sentence depends on it.
-  if (!i.rulesResult || !i.rulesResult.ok) return { kind: "failed" };
-  if (!i.modeResult || !i.modeResult.ok) return { kind: "failed" };
+  // The rules inventory owns whether rows remain visible. A failed Rules read cannot be masked by stale rows,
+  // but a successful populated inventory stays visible when only the separate posture read is unavailable.
+  if (i.rulesResult?.ok === false) return { kind: "failed" };
+  if (i.rulesResult?.ok === true && i.renderedCount > 0) return { kind: "rows" };
+  // With no authoritative rows, any resolved failure means we cannot make an empty-rule consequence claim.
+  if (i.modeResult?.ok === false) return { kind: "failed" };
+  // Null means a request is in flight, not a failed read. Do not make an empty-rule consequence claim until
+  // both authoritative inputs have actually resolved successfully.
+  if (!i.rulesResult || !i.modeResult) return { kind: "loading" };
   return i.modeResult.data === "enforcing"
     ? { kind: "enforcing_empty" }
     : { kind: "off_empty" };
@@ -828,6 +808,8 @@ export function rulesEmptyCopy(s: RulesEmptyState): {
   switch (s.kind) {
     case "rows":
       return { text: "", loud: false };
+    case "loading":
+      return { text: "Loading rules…", loud: false };
     case "failed":
       // Never "No rules". The screen did not read them.
       return {
@@ -858,15 +840,16 @@ export function rulesEmptyCopy(s: RulesEmptyState): {
 //     ~640px tall with ~28px per labelled node, so ONE COLUMN SEATS ~22 NODES before labels collide.
 //   · every rule is ONE EDGE. With sources and destinations drawn as distinct nodes, R rules can address up
 //     to 2R nodes, so the column bound is reached at R = 22.
-//   · edge legibility fails earlier than node legibility: at R > 24 the mean crossings per edge exceeds 3 in
-//     a bipartite layout with no routing, which is the point at which "hover to trace" stops being a
-//     shortcut and becomes the ONLY way to read the graph — i.e. the graph is no longer a summary.
+//   · the review cap is deliberately lower: at R > 20 we withhold rather than
+//     make the optional graph compete with the complete table for attention.
 //
-// 24 is therefore the LARGER of the two bounds and the one that binds. Above it the TABLE is authoritative.
+// 20 is therefore the binding cap. Above it the TABLE is authoritative.
 //
 // SAME STRUCTURE AS `crossesMultiSiteThreshold` (S8.3) DELIBERATELY: reusing the shape means the two cannot
 // drift into different ideas of what "too many to draw" means.
-export const FLOW_GRAPH_MAX_RULES = 24;
+// Twenty is the hard visual-review cap: it bounds the optional shortcut while
+// the table remains the complete, authoritative inventory.
+export const FLOW_GRAPH_MAX_RULES = 20;
 
 export type FlowGraphState =
   | { kind: "draw"; rules: number }

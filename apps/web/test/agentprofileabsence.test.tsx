@@ -21,6 +21,8 @@ vi.mock("../src/lib/api", async () => {
 vi.mock("react-router-dom", () => ({
   Link: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) =>
     createElement("a", props, children),
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
+  useLocation: () => ({ pathname: "/agents", search: "", hash: "", state: null, key: "test" }),
 }));
 
 vi.mock("../src/components/ui", () => {
@@ -51,6 +53,7 @@ vi.mock("../src/components/ui", () => {
     Button: primitive("button"),
     Card: primitive("section"),
     DataTable: () => null,
+    EmptyState: primitive("section"),
     Field: primitive("label"),
     Input: primitive("input"),
     Select: primitive("select"),
@@ -87,10 +90,10 @@ describe("released /agents route absence boundary", () => {
       return { data: undefined, error: { error: { code: "not_found" } }, response: { status: 404 } };
     });
 
-    const { default: Agents } = await import("../src/pages/Agents");
-    render(createElement(Agents));
+    const { default: AgentsIndex } = await import("../src/pages/AgentsIndex");
+    render(createElement(AgentsIndex, { fixture: { state: { kind: "ready", page: { items: [] }, canEnroll: false, canManageMCP: false } } }));
 
-    expect(await screen.findByText("No agents yet.")).toBeTruthy();
+    expect(await screen.findByText("0 in this result")).toBeTruthy();
     expect(screen.queryByText("Environment")).toBeNull();
     expect(screen.queryByText("Runtime")).toBeNull();
     expect(screen.queryByRole("button", { name: "Suspend" })).toBeNull();

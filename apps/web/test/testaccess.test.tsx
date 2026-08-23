@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 let role: "admin" | "member" = "admin";
 let profileAllowed = true;
@@ -35,7 +36,7 @@ vi.mock("../src/lib/api", async () => {
     ...actual,
     api: {
       GET: vi.fn(async (path: string, request?: { params?: { path?: { deviceId?: string }; query?: { destination?: string } } }) => {
-        if (path === "/api/v1/meta") return { data: { edition: "enterprise" } };
+        if (path === "/api/v1/license") return { data: { state: "unlicensed", tier: "community", features: [] } };
         if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role, email_verified: true }] };
         if (path.endsWith("/agents")) return { data: [{ device_id: "agent-a", name: "agent alpha", gateway_name: "gw-a" }] };
         if (path.endsWith("/agents/{deviceId}")) return profileAllowed ? { data: { device_id: "agent-a", name: "agent alpha" } } : { error: { error: { code: "forbidden" } } };
@@ -64,8 +65,17 @@ afterEach(() => {
 });
 
 describe("released F08 Test Access panel", () => {
+  it("keeps Community Rules and Add rule reachable without consulting meta.edition", async () => {
+    render(<MemoryRouter><Access /></MemoryRouter>);
+
+    await screen.findByRole("button", { name: "Add rule" });
+    expect(screen.queryByText(/Enterprise feature|Open edition|edition_required/i)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Rules" })).toBeTruthy();
+    expect(screen.queryByText("This capability is not included in your current plan. Core access policies remain available.")).toBeNull();
+  });
+
   it("renders ordered server checks and ignores a superseded tuple response", async () => {
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByTestId("test-access-panel");
     const destination = screen.getByPlaceholderText("10.20.0.15");
     const button = screen.getByRole("button", { name: "Test access" });
@@ -94,7 +104,7 @@ describe("released F08 Test Access panel", () => {
   it("omits the diagnostic DOM for an unrelated member", async () => {
     role = "member";
     profileAllowed = false;
-    render(<Access />);
+    render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByText("Access policies are managed by owners and admins.");
     await waitFor(() => expect(screen.queryByTestId("test-access-panel")).toBeNull());
     expect(screen.queryByText("agent alpha")).toBeNull();

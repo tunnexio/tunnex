@@ -79,7 +79,7 @@ func TestAgentProfileHandlersAuthorizationAndAtomicity(t *testing.T) {
 		t.Fatalf("owner agent list: %v", err)
 	}
 	ownerListBody, ok := ownerList.(api.ListAgents200JSONResponse)
-	if !ok || len(ownerListBody.Body) != 1 || ownerListBody.Body[0].OwnerEmail == nil || *ownerListBody.Body[0].OwnerEmail != owner.String()+"@example.test" {
+	if !ok || len(ownerListBody.Body.Items) != 1 || ownerListBody.Body.Items[0].OwnerEmail == nil || *ownerListBody.Body.Items[0].OwnerEmail != owner.String()+"@example.test" {
 		t.Fatalf("owner list omitted own owner email: %#v", ownerList)
 	}
 	outsiderList, err := s.ListAgents(memberCtx(outsider, rbac.RoleMember), listReq)
@@ -87,7 +87,7 @@ func TestAgentProfileHandlersAuthorizationAndAtomicity(t *testing.T) {
 		t.Fatalf("member agent list: %v", err)
 	}
 	outsiderBody, ok := outsiderList.(api.ListAgents200JSONResponse)
-	if !ok || len(outsiderBody.Body) != 1 || outsiderBody.Body[0].OwnerEmail != nil {
+	if !ok || len(outsiderBody.Body.Items) != 1 || outsiderBody.Body.Items[0].OwnerEmail != nil {
 		t.Fatalf("plain member list leaked owner email: %#v", outsiderList)
 	}
 	adminList, err := s.ListAgents(memberCtx(owner, rbac.RoleOwner), listReq)
@@ -95,7 +95,7 @@ func TestAgentProfileHandlersAuthorizationAndAtomicity(t *testing.T) {
 		t.Fatalf("admin/owner agent list: %v", err)
 	}
 	adminBody, ok := adminList.(api.ListAgents200JSONResponse)
-	if !ok || len(adminBody.Body) != 1 || adminBody.Body[0].OwnerEmail == nil {
+	if !ok || len(adminBody.Body.Items) != 1 || adminBody.Body.Items[0].OwnerEmail == nil {
 		t.Fatalf("management list omitted owner email: %#v", adminList)
 	}
 	if _, err := s.GetAgentProfile(memberCtx(outsider, rbac.RoleMember), api.GetAgentProfileRequestObject{OrgId: org, DeviceId: device}); !hasCode(err, 403, "forbidden") {

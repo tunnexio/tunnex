@@ -729,7 +729,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex w-full min-w-0 flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <h1 className="text-[22px] font-semibold leading-tight text-ink-heading">
           {title}
@@ -738,7 +738,7 @@ export function PageHeader({
           <p className="mt-1 text-cell text-ink-tertiary">{subtitle}</p>
         )}
       </div>
-      {actions}
+      {actions && <div className="max-w-full shrink-0">{actions}</div>}
     </div>
   );
 }
@@ -1164,7 +1164,10 @@ export function DataTable<T>({
   //
   // > **A FILTER IS A NEW WAY TO MANUFACTURE A REASSURING EMPTY**, on a screen whose whole `failed` prop
   // > exists because of that class. The row count stays visible so the difference is never inferred.
-  if (rows.length === 0) return <EmptyState>{empty}</EmptyState>;
+  if (rows.length === 0)
+    return isValidElement(empty) && empty.type === EmptyState
+      ? empty
+      : <EmptyState>{empty}</EmptyState>;
 
   const toggle = (key: string) =>
     // Re-sorting returns to the first page: the row you were looking at is not where it was, and staying on

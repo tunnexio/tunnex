@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-let role: "admin" | "member" = "admin";
+let role: "admin" | "member" | "operator" = "admin";
 let currentOrg = {
   id: "org-a",
   name: "Organization A",
@@ -49,7 +49,7 @@ vi.mock("../src/lib/api", async () => {
     api: {
       GET: vi.fn(async (path: string, input?: { params?: { path?: { orgId?: string; deviceId?: string; requestId?: string } } }) => {
         const orgId = input?.params?.path?.orgId ?? currentOrg.id;
-        if (path === "/api/v1/meta") return { data: { edition: "enterprise" } };
+        if (path === "/api/v1/license") return { data: { state: "valid", tier: "scale", features: ["agent_jit_access"] } };
         if (path.endsWith("/members")) return { data: [{ user_id: role === "admin" ? "admin-a" : "user-a", role, email_verified: true }] };
         if (path.endsWith("/zero-trust-mode")) return { data: { mode: "enforcing" } };
         if (path.endsWith("/agents")) return { data: [{ device_id: "agent-a", name: "build-agent", gateway_name: "gw-a" }] };
@@ -120,8 +120,8 @@ describe("released F10 JIT agent access workflow", () => {
     await screen.findByText(/ship release · revoked/);
   });
 
-  it("lets a scoped member request and cancel but never approve", async () => {
-    role = "member";
+  it("lets a scoped operator request and cancel but never approve", async () => {
+    role = "operator";
     render(<Access />);
     await screen.findByRole("heading", { name: "Just-in-time agent access" });
     fireEvent.change(screen.getByPlaceholderText("Why is access needed?"), { target: { value: "debug incident" } });
@@ -138,12 +138,12 @@ describe("released F10 JIT agent access workflow", () => {
     render(<Access />);
     await screen.findByText("Access policies are managed by owners and admins.");
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Just-in-time agent access" })).toBeNull());
-    expect(requestReads).toEqual(["org-a:requests"]);
+    expect(requestReads).toEqual([]);
     expect(screen.queryByText("Just-in-time agent access")).toBeNull();
   });
 
   it("keeps original-requester history and cancel after current scope is removed", async () => {
-    role = "member";
+    role = "operator";
     profileAllowed = false;
     requests = [requestRow("pending")];
     render(<Access />);

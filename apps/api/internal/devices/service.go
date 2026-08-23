@@ -1201,7 +1201,10 @@ func (s *Service) ResizePool(ctx context.Context, actor, orgID uuid.UUID, newCID
 
 // DeviceWithStatus is a device plus its live telemetry (nil when never reported).
 type DeviceWithStatus struct {
-	Device          sqlc.Device
+	Device sqlc.Device
+	// OwnerEmail is resolved by the pending-device query for approval attribution.
+	// It is nil only when the owner record is unavailable; callers must not infer it.
+	OwnerEmail      *string
 	LastHandshakeAt *time.Time
 	RxBytes         *int64
 	TxBytes         *int64
@@ -1454,7 +1457,7 @@ func (s *Service) ListPending(ctx context.Context, orgID uuid.UUID) ([]DeviceWit
 	out := make([]DeviceWithStatus, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, DeviceWithStatus{
-			Device: r.Device, LastHandshakeAt: tsPtr(r.LastHandshakeAt), RxBytes: r.RxBytes, TxBytes: r.TxBytes,
+			Device: r.Device, OwnerEmail: r.OwnerEmail, LastHandshakeAt: tsPtr(r.LastHandshakeAt), RxBytes: r.RxBytes, TxBytes: r.TxBytes,
 			Health: s.deviceHealthProjection(surfaceHealth, r.Device.HealthBlocked, r.EvaluatedState, r.FailedChecks, r.OsVersion, r.DiskEncrypted, r.ReportedAt, now),
 		})
 	}

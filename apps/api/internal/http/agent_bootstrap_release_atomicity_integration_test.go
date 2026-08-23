@@ -90,8 +90,8 @@ func TestAgentBootstrapReleaseFailureIsAtomicAndOrdered(t *testing.T) {
 	}
 	communityUnavailable := enterpriseUnavailable
 	communityUnavailable.licence = licence.NewTestManager("community", time.Now().Add(time.Hour))
-	if _, err := communityUnavailable.IssueAgentBootstrapToken(ownerCtx, req); !hasCode(err, 403, "edition_required") {
-		t.Fatalf("community request: want edition refusal before descriptor lookup, got %v", err)
+	if _, err := communityUnavailable.IssueAgentBootstrapToken(ownerCtx, req); !hasCode(err, 503, "bootstrap_unavailable") {
+		t.Fatalf("community request: base enrollment must reach the real descriptor guard, got %v", err)
 	}
 	finalCount, finalHashes := countAndHashes()
 	if finalCount != beforeCount || finalHashes != beforeHashes {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { PRODUCT_NAME } from "./brand";
 import { api } from "./lib/api";
@@ -8,7 +8,6 @@ import { AuthLayout } from "./components/AuthLayout";
 import { MfaSettings } from "./components/MfaSettings";
 import { AppShell } from "./components/AppShell";
 import { OrgProvider } from "./lib/useOrg";
-import VisualGallery from "./pages/VisualGallery";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -22,16 +21,27 @@ import CliAuth from "./pages/CliAuth";
 import CliDevice from "./pages/CliDevice";
 import Dashboard from "./pages/Dashboard";
 import Devices from "./pages/Devices";
+import DeviceApprovals from "./pages/DeviceApprovals";
+import DevicePosture from "./pages/DevicePosture";
 import Gateways from "./pages/Gateways";
 import Sites from "./pages/Sites";
 import RoutedRanges from "./pages/RoutedRanges";
 import Kubernetes from "./pages/Kubernetes";
-import Agents from "./pages/Agents";
+import AgentsIndex from "./pages/AgentsIndex";
+import AgentDetail from "./pages/AgentDetail";
+import AgentsMCP from "./pages/AgentsMCP";
+import AgentsPolicyTemplates from "./pages/AgentsPolicyTemplates";
+import AccessGroups from "./pages/AccessGroups";
+import AccessResources from "./pages/AccessResources";
 import Access from "./pages/Access";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import AccessEvents from "./pages/AccessEvents";
 import AuditLog from "./pages/AuditLog";
+
+const VisualGallery = import.meta.env.VITE_VISUAL_GALLERY === "1"
+  ? lazy(() => import("./pages/VisualGallery"))
+  : null;
 
 /**
  * App is the router + auth shell (S4.1). Authenticated pages live under AppShell
@@ -55,8 +65,8 @@ export default function App() {
             surface must be PROVEN unshipped, not assumed.
             Deliberately OUTSIDE RequireAuth: the gallery renders primitives with fixture data and touches no
             API, so a login would add a dependency the snapshot does not need. */}
-        {import.meta.env.VITE_VISUAL_GALLERY === "1" && (
-          <Route path="/__visual" element={<VisualGallery />} />
+        {VisualGallery && (
+          <Route path="/__visual" element={<Suspense fallback={null}><VisualGallery /></Suspense>} />
         )}
         <Route
           path="/login"
@@ -125,12 +135,20 @@ export default function App() {
           >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/devices" element={<Devices />} />
+            <Route path="/devices/approvals" element={<DeviceApprovals />} />
+            <Route path="/devices/posture" element={<DevicePosture />} />
             <Route path="/gateways" element={<Gateways />} />
             <Route path="/sites" element={<Sites />} />
             <Route path="/routed-ranges" element={<RoutedRanges />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
-            <Route path="/agents" element={<Agents />} />
+            <Route path="/agents" element={<AgentsIndex />} />
+            <Route path="/agents/mcp" element={<AgentsMCP />} />
+            <Route path="/agents/groups" element={<Navigate to="/access/groups?type=agents" replace />} />
+            <Route path="/agents/policies" element={<AgentsPolicyTemplates />} />
+            <Route path="/agents/:agentId" element={<AgentDetail />} />
             <Route path="/access" element={<Access />} />
+            <Route path="/access/groups" element={<AccessGroups />} />
+            <Route path="/access/resources" element={<AccessResources />} />
             <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/access-events" element={<AccessEvents />} />

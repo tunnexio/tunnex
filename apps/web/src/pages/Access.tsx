@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
+  listItems,
   type GroupMember,
   apiErrorMessage,
   apiErrorCode,
   loadOne,
   type Loaded,
-  type Meta,
   type Org,
   type Member,
   type Role,
@@ -18,23 +19,15 @@ import {
   type PolicyRule,
   type ZeroTrustMode,
   type AffectedDevice,
-  type DeviceApproval,
-  type Device,
-  type HealthCheck,
   type CreatePolicyRuleRequest,
   type AgentAccessDiagnostic,
   type AgentAccessDestination,
   type AgentAccessRequest,
   type AgentGroup,
-  type AgentGroupMember,
-  type AgentPolicyTemplate,
-  type AgentPolicyTemplateVersion,
-  type AgentPolicyTemplatePreview,
-  type AgentPolicyTemplateAssignment,
 } from "../lib/api";
+import type { components } from "@tunnex/shared";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/rbac";
-import { portLabel } from "../lib/k8sview";
 import {
   Button,
   Card,
@@ -65,12 +58,8 @@ import {
   rulesSummary,
   rulesEmptyState,
   rulesEmptyCopy,
-  flowGraphState,
-  flowGraphNote,
   flowLayout,
-  cascadeConfirmCopy,
-  cascadeConfirmSatisfied,
-  groupMemberRemovalCopy,
+  FLOW_GRAPH_MAX_RULES,
   srcGroupEmptyWarn,
   srcGroupEmptyBadge,
   srcGroupEmptyExplain,
@@ -81,7 +70,6 @@ import {
   defaultSrcKind,
   defaultDstKind,
   extendErrorCopy,
-  resPortsValid,
   activeMembers,
   canEditRuleInModal,
   grantControls,
@@ -93,21 +81,8 @@ import {
   ruleEffectCaution,
   ruleSourceReady,
 } from "../lib/policyview";
-import {
-  DIRECTORY_MANAGED_BADGE,
-  DIRECTORY_MANAGED_NOTE,
-  isDirectoryManaged,
-} from "../lib/idpsyncview";
 import { ManagedBadge } from "../components/ManagedBadge";
-import {
-  POSTURE_HONESTY_LINE,
-  buildOsVersionParam,
-  checkModeOf,
-  osVersionCoverage,
-  osVersionMins,
-  wouldFailCopy,
-  type CheckMode,
-} from "../lib/postureview";
+import { AccessTabRail } from "../components/AccessTabRail";
 // swapRule + swapPartialMessage power the create-then-delete rule edit (D-a5) in RuleFormModal.
 // Every GET here goes through loadOne — a raw api.GET whose emptiness is user-meaningful is
 // review-refused (S7.4a review): a fetch failure must render a legible retry, never a
@@ -118,24 +93,20 @@ export default function Access() {
   const { state } = useAuth();
   const myId = state.status === "authed" ? state.user.id : "";
   const emailVerified = state.status === "authed" && state.user.email_verified;
-  const [meta, setMeta] = useState<Meta | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [myRole, setMyRole] = useState<Role | undefined>(undefined);
   // Page-level gating inputs, kept DISTINCT so no signal blanks another (fold-2):
-  // - loadError: meta/org fetch failed (can't determine edition) → retry, nothing renderable.
+  // - loadError: organization context could not be loaded → retry, nothing renderable.
   // - fatal: terminal, non-retryable (no org).
-  // - roleError / roleResolved: the members fetch — its failure affects ONLY the enterprise
-  //   admin path ([75]); role in-flight must render "loading", never the gate notice ([101]).
+  // - roleError / roleResolved: the members fetch — its failure affects ONLY the
+  //   role-gated path; role in-flight must render "loading", never the gate notice ([101]).
   const [loadError, setLoadError] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
-  // S8.5 stale-button fix (one-truth at the React tier): RulesSection and GroupsResourcesSection each hold
-  // their OWN copy of the groups list (a cohesive batched load in RulesSection, so lifting just groups would
-  // fracture it). subjectsRev is the parent-owned invalidation signal — GroupsResourcesSection bumps it on a
-  // group/resource mutation, RulesSection re-loads on the bump — so its subject copies (and the "Add rule"
-  // enabled state derived from them) can never go stale behind a group add. Invalidate the copy, not the
-  // symptom (patching the disabled expression would leave the stale copy feeding the rule modal too).
-  const [subjectsRev, setSubjectsRev] = useState(0);
+  // Rules owns its own bounded subject inventory. Groups and Resources are dedicated
+  // Access routes, so a Rules refresh is no longer coupled to a second management
+  // surface mounted below this page.
+  const [subjectsRev] = useState(0);
   const [roleResolved, setRoleResolved] = useState(false);
   const reloadEpoch = useRef(0);
   const selectedOrgId = useRef<string | null>(currentOrg?.id ?? null);
@@ -151,7 +122,6 @@ export default function Access() {
     setFatal(null);
     setRoleError(null);
     setRoleResolved(false);
-    setMeta(null);
     setOrg(null);
     setMyRole(undefined);
     if (orgLoading) return;
@@ -165,10 +135,6 @@ export default function Access() {
       }
       return;
     }
-    const mRes = await loadOne(() => api.GET("/api/v1/meta"));
-    if (!isCurrent()) return;
-    if (!mRes.ok) return setLoadError(mRes.error); // [67]: surface loadOne's (human) message
-    setMeta(mRes.data as Meta);
     // ⛔ THE ORG COMES FROM THE SEAM, NOT FROM INDEX ZERO (S12.5).
     // ⛔ LOADING IS NOT ABSENCE (S12.5). See the note in Dashboard.tsx — three states, not two: still
     // loading (say nothing), the read failed (say THAT), genuinely no membership (say that).
@@ -200,13 +166,11 @@ export default function Access() {
   const gate = policyGate({
     role: myRole,
     emailVerified,
-    edition: meta?.edition,
   });
   const view = accessView({
     fatal: fatal != null,
     loadError: loadError != null,
-    editionReady: meta != null && org != null,
-    isEnterprise: gate.isEnterprise,
+    accessReady: org != null,
     roleError: roleError != null,
     roleResolved,
     canView: gate.canView,
@@ -214,7 +178,7 @@ export default function Access() {
   });
 
   // The shell switches currentOrg synchronously, while this page deliberately reloads
-  // meta + membership before accepting the next org into page state. Do not render one
+  // membership before accepting the next org into page state. Do not render one
   // tenant's rules or agent names under another tenant's shell during that interval.
   if (currentOrg && org?.id !== currentOrg.id) {
     return (
@@ -238,6 +202,7 @@ export default function Access() {
           </>
         }
       />
+      <AccessTabRail />
 
       {view === "fatal" && <ErrorText>{fatal}</ErrorText>}
       {view === "load_retry" && (
@@ -250,19 +215,7 @@ export default function Access() {
         />
       )}
       {(view === "loading" || view === "role_loading") && (
-        <p className="mt-6 text-sm text-slate-500">Loading…</p>
-      )}
-
-      {view === "upsell" && (
-        <Card className="mt-6">
-          <h2 className="text-sm font-semibold text-slate-300">
-            Zero Trust access
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Policy rules, device approval, and default-deny enforcement are a
-            Tunnex Enterprise feature.
-          </p>
-        </Card>
+        <p className="mt-6 text-sm text-slate-500">Loading access policies…</p>
       )}
 
       {view === "member_gate" && (
@@ -273,12 +226,12 @@ export default function Access() {
         </Card>
       )}
 
-      {org && gate.isEnterprise && roleResolved && (
+      {org && gate.canView && roleResolved && (
         <TestAccessSection key={org.id} orgId={org.id} />
       )}
 
-      {org && gate.isEnterprise && roleResolved && (
-        <AgentJITAccessSection
+      {org && roleResolved && (can(myRole, "agent:grant_access") || can(myRole, "agent_access:approve")) && (
+        <AgentJITCapabilitySection
           key={`f10-${org.id}`}
           orgId={org.id}
           enabled={org.agent_jit_access_enabled}
@@ -289,13 +242,6 @@ export default function Access() {
 
       {view === "admin_body" && org && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {org.agent_policy_templates_enabled && gate.canManageAgentTemplates && (
-            <AgentPolicyTemplatesSection
-              key={`f09-${org.id}`}
-              orgId={org.id}
-              onApplied={() => setSubjectsRev((v) => v + 1)}
-            />
-          )}
           <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
           <RulesSection
             orgId={org.id}
@@ -303,329 +249,29 @@ export default function Access() {
             canManageAgentTemplates={gate.canManageAgentTemplates}
             subjectsRev={subjectsRev}
           />
-          <GroupsResourcesSection
-            orgId={org.id}
-            canManage={gate.canManagePolicy}
-            onSubjectsChanged={() => setSubjectsRev((v) => v + 1)}
-          />
-          <DeviceApprovalSection
-            orgId={org.id}
-            canManage={gate.canManageDevices}
-          />
-          <PostureChecksSection
-            orgId={org.id}
-            canManage={gate.canManageDeviceHealth}
-          />
         </div>
       )}
     </div>
   );
 }
 
-function AgentPolicyTemplatesSection({
-  orgId,
-  onApplied,
-}: {
-  orgId: string;
-  onApplied: () => void;
-}) {
-  const [groups, setGroups] = useState<AgentGroup[] | null>(null);
-  const [templates, setTemplates] = useState<AgentPolicyTemplate[] | null>(null);
-  const [agents, setAgents] = useState<Array<{ device_id: string; name: string }> | null>(null);
-  const [resources, setResources] = useState<Resource[] | null>(null);
-  const [members, setMembers] = useState<AgentGroupMember[] | null>(null);
-  const [versions, setVersions] = useState<AgentPolicyTemplateVersion[] | null>(null);
-  const [assignments, setAssignments] = useState<AgentPolicyTemplateAssignment[] | null>(null);
-  const [groupId, setGroupId] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  const [versionId, setVersionId] = useState("");
-  const [agentId, setAgentId] = useState("");
-  const [resourceId, setResourceId] = useState("");
-  const [groupName, setGroupName] = useState("");
-  const [templateName, setTemplateName] = useState("");
-  const [selectedGroupName, setSelectedGroupName] = useState("");
-  const [selectedTemplateName, setSelectedTemplateName] = useState("");
-  const [preview, setPreview] = useState<AgentPolicyTemplatePreview | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const epoch = useRef(0);
-
-  const loadBase = useCallback(async () => {
-    const current = ++epoch.current;
-    setErr(null);
-    const [gs, ts, as, rs, xs] = await Promise.all([
-      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId } } })),
-      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates", { params: { path: { orgId } } })),
-      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents", { params: { path: { orgId } } })),
-      loadOne(() => api.GET("/api/v1/organizations/{orgId}/resources", { params: { path: { orgId } } })),
-      loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-template-assignments", { params: { path: { orgId } } })),
-    ]);
-    if (current !== epoch.current) return;
-    if (!gs.ok || !ts.ok || !as.ok || !rs.ok || !xs.ok) {
-      setGroups(null);
-      setTemplates(null);
-      setAgents(null);
-      setResources(null);
-      setAssignments(null);
-      return setErr("Could not load agent groups and policy templates. Refresh to retry.");
-    }
-    setGroups(gs.data);
-    setTemplates(ts.data);
-    setAgents(as.data.map((agent) => ({ device_id: agent.device_id, name: agent.name })));
-    setResources(rs.data);
-    setAssignments(xs.data);
-    setGroupId((value) => gs.data.some((g) => g.id === value) ? value : (gs.data[0]?.id ?? ""));
-    setTemplateId((value) => ts.data.some((t) => t.id === value) ? value : (ts.data[0]?.id ?? ""));
-    setAgentId((value) => as.data.some((a) => a.device_id === value) ? value : (as.data[0]?.device_id ?? ""));
-    setResourceId((value) => rs.data.some((r) => r.id === value) ? value : (rs.data[0]?.id ?? ""));
-  }, [orgId]);
-
-  useEffect(() => {
-    setSelectedGroupName(groups?.find((group) => group.id === groupId)?.name ?? "");
-  }, [groups, groupId]);
-
-  useEffect(() => {
-    setSelectedTemplateName(templates?.find((template) => template.id === templateId)?.name ?? "");
-  }, [templates, templateId]);
-
-  useEffect(() => {
-    void loadBase();
-    return () => { epoch.current += 1; };
-  }, [loadBase]);
-
-  useEffect(() => {
-    let off = false;
-    setMembers(null);
-    setPreview(null);
-    if (!groupId) return () => { off = true; };
-    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }))
-      .then((result) => {
-        if (off) return;
-        if (!result.ok) return setErr(result.error);
-        setMembers(result.data);
-      });
-    return () => { off = true; };
-  }, [orgId, groupId]);
-
-  useEffect(() => {
-    let off = false;
-    setVersions(null);
-    setVersionId("");
-    setPreview(null);
-    if (!templateId) return () => { off = true; };
-    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", { params: { path: { orgId, templateId } } }))
-      .then((result) => {
-        if (off) return;
-        if (!result.ok) return setErr(result.error);
-        setVersions(result.data);
-        setVersionId(result.data[0]?.id ?? "");
-      });
-    return () => { off = true; };
-  }, [orgId, templateId]);
-
-  async function mutate(call: () => Promise<{ error?: unknown }>, fallback: string) {
-    setBusy(true);
-    setErr(null);
-    setNotice(null);
-    try {
-      const result = await call();
-      if (result.error) {
-        setErr(apiErrorMessage(result.error, fallback));
-        return false;
-      }
-      return true;
-    } catch {
-      setErr("Could not reach the API.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function createGroup() {
-    if (!groupName.trim()) return;
-    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId } }, body: { name: groupName.trim() } }), "Could not create the agent group."))) return;
-    setGroupName("");
-    await loadBase();
-  }
-
-  async function addMember() {
-    if (!groupId || !agentId) return;
-    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } }, body: { device_id: agentId } }), "Could not add the agent."))) return;
-    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }));
-    if (result.ok) setMembers(result.data); else setErr(result.error);
-  }
-
-  async function removeMember(member: AgentGroupMember) {
-    if (!groupId) return;
-    const groupAssignments = (assignments ?? []).filter((assignment) => assignment.group_id === groupId);
-    const rules = groupAssignments.reduce((sum, assignment) => sum + assignment.rule_count, 0);
-    if (!window.confirm(`Remove ${member.name} from this group? ${groupAssignments.length} assignments and ${rules} generated rules remain; only this agent's compiled access is withdrawn.`)) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const result = await api.DELETE("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members/{deviceId}", { params: { path: { orgId, groupId, deviceId: member.device_id } } });
-      if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not remove the agent."));
-      const refetch = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } }));
-      if (!refetch.ok) return setErr(refetch.error);
-      setMembers(refetch.data);
-      setNotice(`Removed ${member.name}: ${result.data.withdrawn_tuples} compiled tuples withdrawn across ${result.data.changed_gateways} gateways; ${result.data.generated_rules} generated rules preserved.`);
-      onApplied();
-    } catch {
-      setErr("Could not reach the API.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function updateGroup() {
-    if (!groupId || !selectedGroupName.trim()) return;
-    if (!(await mutate(() => api.PATCH("/api/v1/organizations/{orgId}/agent-groups/{groupId}", { params: { path: { orgId, groupId } }, body: { name: selectedGroupName.trim() } }), "Could not update the group."))) return;
-    await loadBase();
-  }
-
-  async function archiveGroup() {
-    if (!groupId) return;
-    const active = (assignments ?? []).filter((assignment) => assignment.group_id === groupId);
-    const ruleCount = active.reduce((sum, assignment) => sum + assignment.rule_count, 0);
-    if (!window.confirm(`Archive this group? It currently has ${(members ?? []).length} members, ${active.length} active assignments, and ${ruleCount} generated rules. All must be zero.`)) return;
-    if (!(await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/agent-groups/{groupId}", { params: { path: { orgId, groupId } } }), "Could not archive the group."))) return;
-    setMembers(null);
-    await loadBase();
-  }
-
-  async function createTemplate() {
-    if (!templateName.trim()) return;
-    if (!(await mutate(() => api.POST("/api/v1/organizations/{orgId}/agent-policy-templates", { params: { path: { orgId } }, body: { name: templateName.trim() } }), "Could not create the template."))) return;
-    setTemplateName("");
-    await loadBase();
-  }
-
-  async function updateTemplate() {
-    if (!templateId || !selectedTemplateName.trim()) return;
-    if (!(await mutate(() => api.PATCH("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}", { params: { path: { orgId, templateId } }, body: { name: selectedTemplateName.trim() } }), "Could not update the template."))) return;
-    await loadBase();
-  }
-
-  async function archiveTemplate() {
-    if (!templateId) return;
-    const active = (assignments ?? []).filter((assignment) => assignment.template_id === templateId);
-    if (!window.confirm(`Archive this template? ${active.length} live assignments remain unchanged; remove them separately to withdraw access.`)) return;
-    if (!(await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}", { params: { path: { orgId, templateId } } }), "Could not archive the template."))) return;
-    setVersions(null);
-    await loadBase();
-  }
-
-  async function createVersion() {
-    if (!templateId || !resourceId) return;
-    setBusy(true);
-    setErr(null);
-    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", {
-      params: { path: { orgId, templateId } },
-      body: { items: [{ destination_kind: "resource", destination_id: resourceId }] },
-    });
-    setBusy(false);
-    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not create the immutable version."));
-    const refetch = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-policy-templates/{templateId}/versions", { params: { path: { orgId, templateId } } }));
-    if (!refetch.ok) return setErr(refetch.error);
-    setVersions(refetch.data);
-    setVersionId(result.data.id);
-    setPreview(null);
-  }
-
-  async function previewApply() {
-    if (!groupId || !versionId) return;
-    setBusy(true);
-    setErr(null);
-    setNotice(null);
-    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-template-preview", {
-      params: { path: { orgId } }, body: { group_id: groupId, template_version_id: versionId },
-    });
-    setBusy(false);
-    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not preview the policy change."));
-    setPreview(result.data);
-  }
-
-  async function apply() {
-    if (!preview || !groupId || !versionId) return;
-    setBusy(true);
-    setErr(null);
-    const result = await api.POST("/api/v1/organizations/{orgId}/agent-policy-template-assignments", {
-      params: { path: { orgId } },
-      body: { group_id: groupId, template_version_id: versionId, preview_digest: preview.digest, idempotency_key: crypto.randomUUID() },
-    });
-    setBusy(false);
-    if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not apply the template."));
-    await loadBase();
-    setPreview(null);
-    setNotice(`Applied to ${result.data.preview.affected_agents} agents; ${result.data.preview.changed_gateways} gateway artifacts changed.`);
-    onApplied();
-  }
-
-  async function removeAssignment(assignment: AgentPolicyTemplateAssignment) {
-    if (!window.confirm(`Remove ${assignment.template_name} v${assignment.version} from ${assignment.group_name}? ${assignment.rule_count} assignment-owned rules may be withdrawn; shared rules are preserved.`)) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const result = await api.DELETE("/api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}", { params: { path: { orgId, assignmentId: assignment.id } } });
-      if (result.error || !result.data) return setErr(apiErrorMessage(result.error, "Could not remove the assignment."));
-      await loadBase();
-      setPreview(null);
-      setNotice(`Assignment removed: ${result.data.generated_rules} orphaned rules deleted and ${result.data.withdrawn_tuples} compiled tuples withdrawn across ${result.data.changed_gateways} gateways.`);
-      onApplied();
-    } catch {
-      setErr("Could not reach the API.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (groups === null || templates === null || agents === null || resources === null || assignments === null) {
-    return <Card><h2 className="text-sm font-semibold text-slate-300">Agent groups &amp; templates</h2><ErrorText>{err}</ErrorText>{!err && <p className="mt-2 text-xs text-slate-500">Loading…</p>}</Card>;
-  }
-
-  const memberIds = new Set((members ?? []).map((member) => member.device_id));
-  return (
-    <Card data-testid="agent-policy-templates">
-      <h2 className="text-sm font-semibold text-slate-300">Agent groups &amp; templates</h2>
-      <p className="mt-1 text-xs text-slate-500">Build one immutable policy version, preview its exact compiled impact, then apply it through the ordinary policy engine.</p>
-      <ErrorText>{err}</ErrorText>
-      {notice && <p className="mt-2 text-xs text-emerald-400">{notice}</p>}
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
-        <div className="space-y-2 rounded-card border border-white/10 p-3">
-          <h3 className="text-xs font-semibold text-slate-300">1. Agent group</h3>
-          <div className="flex gap-2"><Input aria-label="New agent group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="Group name" /><Button disabled={busy || !groupName.trim()} onClick={createGroup}>Create group</Button></div>
-          <Select aria-label="Agent group" value={groupId} onChange={(e) => setGroupId(e.target.value)}><option value="">Select group</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select>
-          {groupId && <div className="flex gap-2"><Input aria-label="Selected agent group name" value={selectedGroupName} onChange={(e) => setSelectedGroupName(e.target.value)} /><Button disabled={busy || !selectedGroupName.trim()} onClick={updateGroup}>Save name</Button><Button disabled={busy} onClick={archiveGroup}>Archive</Button></div>}
-          <div className="flex gap-2"><Select aria-label="Agent to add" value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">Select agent</option>{agents.map((a) => <option key={a.device_id} value={a.device_id}>{a.name}</option>)}</Select><Button disabled={busy || !groupId || !agentId || memberIds.has(agentId)} onClick={addMember}>Add agent</Button></div>
-          {members && <div className="space-y-1 text-xs text-slate-400"><p>Members: {members.length || "none"}</p>{members.map((member) => <div className="flex items-center justify-between gap-2" key={member.device_id}><span>{member.name} · {member.status}</span><Button disabled={busy} onClick={() => removeMember(member)}>Remove</Button></div>)}</div>}
-        </div>
-        <div className="space-y-2 rounded-card border border-white/10 p-3">
-          <h3 className="text-xs font-semibold text-slate-300">2. Immutable template version</h3>
-          <div className="flex gap-2"><Input aria-label="New agent policy template name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" /><Button disabled={busy || !templateName.trim()} onClick={createTemplate}>Create template</Button></div>
-          <Select aria-label="Agent policy template" value={templateId} onChange={(e) => setTemplateId(e.target.value)}><option value="">Select template</option>{templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select>
-          {templateId && <div className="flex gap-2"><Input aria-label="Selected agent policy template name" value={selectedTemplateName} onChange={(e) => setSelectedTemplateName(e.target.value)} /><Button disabled={busy || !selectedTemplateName.trim()} onClick={updateTemplate}>Save name</Button><Button disabled={busy} onClick={archiveTemplate}>Archive</Button></div>}
-          <div className="flex gap-2"><Select aria-label="Template destination resource" value={resourceId} onChange={(e) => setResourceId(e.target.value)}><option value="">Select resource</option>{resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select><Button disabled={busy || !templateId || !resourceId} onClick={createVersion}>Create version</Button></div>
-          <Select aria-label="Template version" value={versionId} onChange={(e) => { setVersionId(e.target.value); setPreview(null); }}><option value="">Select version</option>{(versions ?? []).map((v) => <option key={v.id} value={v.id}>v{v.version}</option>)}</Select>
-        </div>
-      </div>
-      <div className="mt-3 flex gap-2"><Button disabled={busy || !groupId || !versionId} onClick={previewApply}>Preview impact</Button>{preview && <Button disabled={busy} onClick={apply}>Apply preview</Button>}</div>
-      {preview && <div className="mt-3 rounded-card border border-white/10 p-3 text-xs text-slate-300" data-testid="agent-policy-template-preview"><p>{preview.affected_agents} agents · {preview.created_rules} rules created · {preview.reused_rules} reused · {preview.removed_rules} removed · {preview.changed_gateways} gateways changed</p><p className="mt-1 font-mono text-[10px] text-slate-500">Digest {preview.digest}</p></div>}
-      <div className="mt-4 space-y-2" data-testid="agent-policy-template-assignments">
-        <h3 className="text-xs font-semibold text-slate-300">Current assignments</h3>
-        {assignments.length === 0 ? <p className="text-xs text-slate-500">No template assignments.</p> : assignments.map((assignment) => <div className="flex items-center justify-between gap-3 rounded-card border border-white/10 p-3 text-xs" key={assignment.id}><div><p className="text-slate-300">{assignment.group_name} → {assignment.template_name} v{assignment.version}</p><p className="text-slate-500">{assignment.rule_count} assignment-owned rules · applied {relativeAge(assignment.applied_at)}</p></div><Button disabled={busy} onClick={() => removeAssignment(assignment)}>Remove assignment</Button></div>)}
-      </div>
-    </Card>
-  );
-}
-
 type TestableAgent = { device_id: string; name: string };
 
-// F08 read-only evaluator. The section first proves scoped privileged access by
-// loading each agent profile; an unrelated member therefore gets no Test Access
-// DOM at all. The keyed parent remount plus request epoch prevent tenant/input
-// results from committing after an org or tuple switch.
+type LicenceStatus = components["schemas"]["LicenseStatus"];
+
+function AgentJITCapabilitySection({ orgId, enabled, canApprove, currentUserId }: {
+  orgId: string; enabled: boolean; canApprove: boolean; currentUserId: string;
+}) {
+  const [licence, setLicence] = useState<Loaded<LicenceStatus> | null>(null);
+  useEffect(() => { void loadOne(() => api.GET("/api/v1/license")).then((result) => setLicence(result as Loaded<LicenceStatus>)); }, []);
+  if (licence === null) return <Card><p className="text-cell text-ink-tertiary">Loading just-in-time access capability…</p></Card>;
+  if (!licence.ok) return <Card><p className="text-cell text-ink-tertiary">Could not load just-in-time access capability.</p><ErrorText>{licence.error}</ErrorText></Card>;
+  if (!Array.isArray(licence.data.features)) return <Card><h2 className="text-sm font-semibold text-ink-heading">Just-in-time access</h2><p className="mt-1 text-cell text-ink-tertiary">The control plane returned an invalid licence capability response.</p><ErrorText>Refresh the page or contact an administrator if the problem continues.</ErrorText></Card>;
+  if (!licence.data.features.includes("agent_jit_access")) return null;
+  if (!enabled) return <div className="rounded-md border border-border bg-white/5 px-3 py-2 text-cell text-ink-tertiary">Just-in-time access is available on this plan but disabled for this organization. <Link className="font-medium text-accent-400 hover:underline" to="/settings">Enable it in Org Settings</Link>.</div>;
+  return <AgentJITAccessSection orgId={orgId} enabled={enabled} canApprove={canApprove} currentUserId={currentUserId} />;
+}
+
 function AgentJITAccessSection({
   orgId,
   enabled,
@@ -666,7 +312,7 @@ function AgentJITAccessSection({
       return;
     }
     const visible = await Promise.all(
-      agentResult.data.map(async (agent) => {
+      listItems(agentResult.data).map(async (agent) => {
         const profile = await loadOne(() =>
           api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
             params: { path: { orgId, deviceId: agent.device_id } },
@@ -696,12 +342,7 @@ function AgentJITAccessSection({
     // A rolling upgrade can briefly return the pre-F10 list shape here. Fail
     // the optional panel visibly; never fabricate an empty history and never
     // crash the whole Access page.
-    if (!Array.isArray(requestResult.data?.items)) {
-      setAuthorized(true);
-      setError("Could not load request history.");
-      return;
-    }
-    const requestItems = requestResult.data.items;
+    const requestItems = listItems(requestResult.data);
     if (scoped.length === 0) {
       setAuthorized(true);
       setAgents([]);
@@ -966,7 +607,7 @@ function TestAccessSection({ orgId }: { orgId: string }) {
       );
       if (epoch !== loadEpoch.current || !listed.ok) return;
       const visible = await Promise.all(
-        listed.data.map(async (agent) => {
+        listItems(listed.data).map(async (agent) => {
           const profile = await loadOne(() =>
             api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}", {
               params: { path: { orgId, deviceId: agent.device_id } },
@@ -1282,6 +923,11 @@ function RulesSection({
     "off" | "enforcing"
   > | null>(null);
   const [rulesResult, setRulesResult] = useState<Loaded<number> | null>(null);
+  const [visualizing, setVisualizing] = useState(false);
+  // The graph is only ever a shortcut over this same filtered inventory. Keeping
+  // filtering in the route (rather than hidden inside DataTable) means it cannot
+  // silently draw rules the operator has narrowed out of the authoritative table.
+  const [ruleQuery, setRuleQuery] = useState("");
   // ⛔ MEMBER COUNTS FOR SOURCE GROUPS ONLY — the bounded half of the coupling.
   // Lazy counts in the Groups panel LOSE the visibly-empty property; src_group_empty restores it HERE, on the
   // rule row, where the operator's attention already is. The fan-out is the DISTINCT SOURCE GROUPS of the
@@ -1388,7 +1034,7 @@ function RulesSection({
     setSites((sr.ok ? (sr.data as Site[]) : []) as Site[]); // D5
     setServices((ksr.ok ? (ksr.data as K8sService[]) : []) as K8sService[]); // S10.3: k8s_service dst subjects
     const loadedAgents = ar.ok
-      ? (ar.data as Array<{
+      ? (listItems(ar.data) as Array<{
           device_id: string;
           name: string;
           gateway_name: string;
@@ -1424,6 +1070,48 @@ function RulesSection({
 
   const notice = staleNoticeText(staleRuleIds); // DERIVED — no notice state
   const visibleAgents = agentsOrgId === orgId ? agents : [];
+  const filteredRules = useMemo(() => {
+    const query = ruleQuery.trim().toLowerCase();
+    if (!query) return rules;
+    return rules.filter((rule) => {
+      const row = ruleRow(
+        rule,
+        groups,
+        resources,
+        members,
+        sites,
+        loaded,
+        services,
+      );
+      return [row.src.label, row.dst.label, rule.src_kind, rule.dst_kind]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }, [groups, loaded, members, resources, ruleQuery, rules, services, sites]);
+  // The optional graph is derived from the same filtered inventory as the table before it can open.
+  // It is complete-or-withheld: a graph that omits even one loaded flow is not an operational summary.
+  const flowRows = useMemo(() => filteredRules.map((rule) => {
+    const row = ruleRow(rule, groups, resources, members, sites, loaded, services);
+    return {
+      id: rule.id,
+      src: row.src.label,
+      dst: row.dst.label,
+      temp: rule.expires_at != null,
+      srcKind: rule.src_kind as FlowKind,
+      dstKind: rule.dst_kind as FlowKind,
+    };
+  }), [filteredRules, groups, loaded, members, resources, services, sites]);
+  const flowProbe = useMemo(() => flowLayout(flowRows), [flowRows]);
+  const visualization = useMemo(() => {
+    if (!rulesResult || !modeResult) return { kind: "loading" as const };
+    if (flowRows.length === 0) return { kind: "empty" as const };
+    if (flowRows.length > FLOW_GRAPH_MAX_RULES) return { kind: "too-many" as const };
+    if (flowProbe.shown.length !== flowRows.length) return { kind: "omitted" as const };
+    return { kind: "draw" as const };
+  }, [flowProbe.shown.length, flowRows.length, modeResult, rulesResult]);
+  useEffect(() => {
+    if (visualizing && visualization.kind !== "draw") setVisualizing(false);
+  }, [visualization.kind, visualizing]);
 
   async function del(id: string) {
     const { error } = await api.DELETE(
@@ -1460,6 +1148,8 @@ function RulesSection({
   }
 
   const view = sectionRender(loadError, notice);
+  const ruleEmptyState = rulesEmptyState({ rulesResult, modeResult, renderedCount: rules.length });
+  const rulesAuthoritative = rulesResult?.ok === true;
 
   return (
     <Card className="mt-4">
@@ -1473,9 +1163,10 @@ function RulesSection({
             <Button
               onClick={() => setCreating(true)}
               disabled={
-                groups.length === 0 &&
-                sites.length === 0 &&
-                visibleAgents.length === 0
+                !rulesAuthoritative ||
+                (groups.length === 0 &&
+                  sites.length === 0 &&
+                  visibleAgents.length === 0)
               }
             >
               Add rule
@@ -1512,10 +1203,17 @@ function RulesSection({
       )}
       <ErrorText>{err}</ErrorText>
       {view.showRetry && (
-        <LoadRetry error={loadError ?? "Couldn't load rules."} onRetry={load} />
+        <>
+          {ruleEmptyState.kind === "failed" && <p className="mt-3 text-xs text-amber-300">{rulesEmptyCopy(ruleEmptyState).text}</p>}
+          <LoadRetry error={loadError ?? "Couldn't load rules."} onRetry={load} />
+        </>
       )}
 
-      {view.showContent && (
+      {view.showContent && ruleEmptyState.kind === "loading" && (
+        <p role="status" className="mt-3 text-xs text-slate-500">Loading rules…</p>
+      )}
+
+      {view.showContent && ruleEmptyState.kind !== "loading" && (
         <>
           {groups.length === 0 &&
             sites.length === 0 &&
@@ -1526,6 +1224,30 @@ function RulesSection({
               a rule.
             </p>
           )}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-slate-500">The table is the authoritative rules inventory.</p>
+              <p className="mt-1 text-xs text-slate-400" data-testid="visualization-count">{filteredRules.length} matching rules · visualization limit {FLOW_GRAPH_MAX_RULES}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                aria-label="Filter Rules"
+                value={ruleQuery}
+                onChange={(event) => setRuleQuery(event.target.value)}
+                placeholder="Filter loaded rules…"
+              />
+              <Button size="sm" variant="ghost" aria-describedby="rules-visualization-status" disabled={visualization.kind !== "draw"} onClick={() => {
+                if (visualizing) setVisualizing(false);
+                else if (visualization.kind === "draw") setVisualizing(true);
+              }}>
+                {visualizing && visualization.kind === "draw" ? "Hide visualization" : "Visualize filtered rules"}
+              </Button>
+            </div>
+          </div>
+          {visualization.kind === "empty" && <p id="rules-visualization-status" className="mt-2 text-xs text-slate-500">No matching rules to visualize. Adjust the filter to include rules.</p>}
+          {visualization.kind === "too-many" && <p id="rules-visualization-status" className="mt-2 text-xs text-amber-300">{flowRows.length} matching rules; visualization limit is {FLOW_GRAPH_MAX_RULES}. Narrow the filter.</p>}
+          {visualization.kind === "omitted" && <p id="rules-visualization-status" className="mt-2 text-xs text-amber-300">Only {flowProbe.shown.length} of {flowRows.length} flows can be represented. Narrow the filter.</p>}
+          {visualization.kind === "draw" && <p id="rules-visualization-status" className="sr-only">All matching rules can be visualized.</p>}
           {/* ── ACCESS FLOW ({{ polFlow }}) — built from the handoff's buildPolicyFlow(), not from a screenshot.
               GEOMETRY VERBATIM: canvas 600x312 rx14 over a 16px dot field; node boxes 152x36 rx10 at cx±76,
               columns at LX=95 / RX=505 so the paths own the middle 260px; vertical pitch 68 from cy=54;
@@ -1540,44 +1262,10 @@ function RulesSection({
               of their sources (one barycentric pass), which reproduces the handoff's hand-chosen order on its
               own data. A prettier line over the same tangle would have been worse — it would look deliberate.
 
-              ⛔ AND THE COLUMN IS CAPPED AT THE DESIGN'S OWN FOUR SLOTS. The handoff draws 5 edges over 8
-              nodes while its rule table shows 9 rows — it renders a SUBSET, by hand. Above the cap the
-              remainder is stated, never silently dropped, and the table below stays authoritative. */}
-          {(() => {
-            const rows = rules.map((r) => {
-              const rr = ruleRow(
-                r,
-                groups,
-                resources,
-                members,
-                sites,
-                loaded,
-                services,
-              );
-              return {
-                id: r.id,
-                src: rr.src.label,
-                dst: rr.dst.label,
-                temp: r.expires_at != null,
-                // ⛔ FROM THE RULE'S OWN UNION, never inferred from the label.
-                srcKind: r.src_kind as FlowKind,
-                dstKind: r.dst_kind as FlowKind,
-              };
-            });
-            // Coverage is judged on what the layout ACTUALLY drew, so the gate sees the same number the
-            // reader would. Two thresholds on one panel: the count cap (24) and the coverage floor (0.5).
-            const probe = flowLayout(rows);
-            const g = flowGraphState(rows.length, probe.shown.length);
-            if (g.kind !== "draw")
-              return (
-                <p
-                  className="mt-3 text-xs text-slate-500"
-                  data-testid="flow-withheld"
-                >
-                  {flowGraphNote(g)}
-                </p>
-              );
-            const { srcs, dsts, shown, hidden } = flowLayout(rows);
+              ⛔ THE COLUMN IS CAPPED AT THE DESIGN'S OWN FOUR SLOTS. Unlike the historical handoff, this
+              operational graph is complete-or-withheld: it never draws a subset of the filtered inventory. */}
+          {visualizing && visualization.kind === "draw" && (() => {
+            const { srcs, dsts, shown } = flowProbe;
             const si = (l: string) => srcs.findIndex((n) => n.label === l);
             const di = (l: string) => dsts.findIndex((n) => n.label === l);
             const cy = (i: number) => 54 + i * 68;
@@ -1648,7 +1336,7 @@ function RulesSection({
                   viewBox="0 0 600 312"
                   className="mx-auto block max-w-full"
                   role="img"
-                  aria-label={`Access flow: ${shown.length} of ${rows.length} rules drawn, ${srcs.length} sources to ${dsts.length} destinations`}
+                  aria-label={`Access flow: ${shown.length} of ${flowRows.length} rules drawn, ${srcs.length} sources to ${dsts.length} destinations`}
                 >
                   <defs>
                     <pattern
@@ -1700,11 +1388,7 @@ function RulesSection({
                     allow&nbsp;&nbsp;
                     <span className="text-slate-300">- - -</span> temporary
                   </span>
-                  <span>
-                    {hidden > 0
-                      ? `${shown.length} of ${rows.length} flows drawn. ${hidden} more in the table below.`
-                      : "All access flows"}
-                  </span>
+                  <span>All filtered access flows</span>
                 </div>
               </div>
             );
@@ -1743,8 +1427,9 @@ function RulesSection({
           <div className="mt-3">
             <DataTable<PolicyRule>
               caption="Rules"
-              rows={rules}
+              rows={filteredRules}
               rowKey={(r) => r.id}
+              filterable={false}
               // ⛔ THE PAGE OWNS THE EMPTY COPY, because it distinguishes states this component cannot see:
               // an ENFORCING org with zero rules is a lockout warning, not an emptiness.
               failed={
@@ -1755,27 +1440,31 @@ function RulesSection({
                 }).kind === "failed"
               }
               empty={
-                <span
-                  className={
-                    rulesEmptyState({
-                      rulesResult,
-                      modeResult,
-                      renderedCount: rules.length,
-                    }).kind === "enforcing_empty"
-                      ? "text-xs font-semibold text-warn"
-                      : "text-xs text-slate-500"
-                  }
-                >
-                  {
-                    rulesEmptyCopy(
+                filteredRules.length === 0 && rules.length > 0 ? (
+                  <span className="text-xs text-slate-500">No loaded rules match this filter.</span>
+                ) : (
+                  <span
+                    className={
                       rulesEmptyState({
                         rulesResult,
                         modeResult,
                         renderedCount: rules.length,
-                      }),
-                    ).text
-                  }
-                </span>
+                      }).kind === "enforcing_empty"
+                        ? "text-xs font-semibold text-warn"
+                        : "text-xs text-slate-500"
+                    }
+                  >
+                    {
+                      rulesEmptyCopy(
+                        rulesEmptyState({
+                          rulesResult,
+                          modeResult,
+                          renderedCount: rules.length,
+                        }),
+                      ).text
+                    }
+                  </span>
+                )
               }
               // ⛔ THE VERBS LIVE IN ONE BAR, NOT ON EVERY ROW. Fifteen rules meant forty-five buttons —
               // the same three verbs redrawn fifteen times, crowding out the thing the row is actually
@@ -2759,1531 +2448,6 @@ function RuleFormModal({
         )}
         <ErrorText>{err}</ErrorText>
       </div>
-    </Modal>
-  );
-}
-
-// ── Groups & Resources ──────────────────────────────────────────────────────────────
-function GroupsResourcesSection({
-  orgId,
-  canManage,
-  onSubjectsChanged,
-}: {
-  orgId: string;
-  canManage: boolean;
-  onSubjectsChanged: () => void;
-}) {
-  const [groups, setGroups] = useState<UserGroup[]>([]);
-  // The roster, for the "add a member" picker. A failed read leaves it EMPTY, which hides the picker rather
-  // than offering an empty one — the add control is absent, not broken.
-  const [orgMembers, setOrgMembers] = useState<Member[]>([]);
-  // ⛔ COUNTS ON EVERY ROW, FETCHED LAZILY, REMEMBERED ONCE KNOWN — founder-ruled, REVERSING the earlier
-  // on-expansion-only ruling, and the reversal has a reason: the earlier argument was REQUEST COST, and
-  // CACHING ANSWERS COST WITHOUT BUYING SILENCE. One fetch per group per session, not per render.
-  //   "0 members" IS THE SINGLE MOST IMPORTANT THING THIS PANEL CAN TELL AN OPERATOR, and hiding it behind an
-  //   expansion hides the exact state src_group_empty exists to warn about.
-  // undefined = not yet fetched (render nothing), null = fetched and FAILED (say so), number = the answer.
-  // ⛔ SAME CASCADE AS A GROUP (dst_resource_id ON DELETE CASCADE), so the same typed guard.
-  const [confirmRes, setConfirmRes] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [memberCounts, setMemberCounts] = useState<Map<string, number | null>>(
-    new Map(),
-  );
-  const noteCount = useCallback(
-    (gid: string, n: number | null) =>
-      setMemberCounts((m) => new Map(m).set(gid, n)),
-    [],
-  );
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [groupsError, setGroupsError] = useState<string | null>(null);
-  const [resourcesError, setResourcesError] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [newGroup, setNewGroup] = useState("");
-  // Feature 1 (port-scoped resources): the resource MODEL + compiler + API already carry protocol + ports
-  // end-to-end (resources.port_low/high, compiler.go:417-419); only this form omitted the port inputs — so a
-  // rule targeting a resource could only ever grant ALL ports. Ports are OPTIONAL (empty = all ports for the
-  // protocol); the server (createResource) is the authoritative validator (both-or-neither, low<=high).
-  const [newRes, setNewRes] = useState({
-    name: "",
-    cidr: "",
-    protocol: "any" as "any" | "tcp" | "udp",
-    portLow: "",
-    portHigh: "",
-  });
-
-  const load = useCallback(async () => {
-    const [gr, resr, mr] = await Promise.all([
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/groups", {
-          params: { path: { orgId } },
-        }),
-      ),
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/resources", {
-          params: { path: { orgId } },
-        }),
-      ),
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/members", {
-          params: { path: { orgId } },
-        }),
-      ),
-    ]);
-    // Per-column legibility: a failed groups load shows retry in the groups column, not
-    // "No groups yet." ([4]); same for resources.
-    // The roster feeds the add-a-member picker only. A failed read leaves it EMPTY, which HIDES the picker
-    // rather than offering an empty one — an absent control, never a broken one.
-    setOrgMembers(mr.ok ? (mr.data as Member[]) : []);
-    setGroupsError(gr.ok ? null : gr.error);
-    // One pass over the groups, cached in `memberCounts`. Bounded by group count and done ONCE.
-    if (gr.ok) {
-      void Promise.all(
-        (gr.data as UserGroup[]).map(async (g) => {
-          const r = (await loadOne(() =>
-            api.GET("/api/v1/organizations/{orgId}/groups/{groupId}/members", {
-              params: { path: { orgId, groupId: g.id } },
-            }),
-          )) as Loaded<GroupMember[]>;
-          return [g.id, r.ok ? r.data.length : null] as const;
-        }),
-      ).then((pairs) => setMemberCounts(new Map(pairs)));
-    }
-    setResourcesError(resr.ok ? null : resr.error);
-    if (gr.ok) setGroups(gr.data as UserGroup[]);
-    if (resr.ok) setResources(resr.data as Resource[]);
-  }, [orgId]);
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function addGroup() {
-    if (!newGroup.trim()) return;
-    const { error } = await api.POST("/api/v1/organizations/{orgId}/groups", {
-      params: { path: { orgId } },
-      body: { name: newGroup.trim() },
-    });
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not create the group."));
-    setNewGroup("");
-    load();
-    onSubjectsChanged(); // S8.5: re-sync RulesSection's subject copy (the stale "Add rule" button)
-  }
-  async function delGroup(id: string) {
-    const { error } = await api.DELETE(
-      "/api/v1/organizations/{orgId}/groups/{groupId}",
-      {
-        params: { path: { orgId, groupId: id } },
-      },
-    );
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not delete the group."));
-    load();
-    onSubjectsChanged();
-  }
-  async function addResource() {
-    if (
-      !newRes.name.trim() ||
-      !newRes.cidr.trim() ||
-      !resPortsValid(newRes.portLow, newRes.portHigh)
-    )
-      return;
-    // Both-or-neither: a low with no high is a SINGLE port (high := low); both empty = all ports (omit).
-    const loStr = newRes.portLow.trim();
-    const hiStr = newRes.portHigh.trim();
-    let port_low: number | undefined;
-    let port_high: number | undefined;
-    if (loStr !== "") {
-      port_low = Number(loStr);
-      port_high = hiStr === "" ? port_low : Number(hiStr);
-    }
-    const { error } = await api.POST(
-      "/api/v1/organizations/{orgId}/resources",
-      {
-        params: { path: { orgId } },
-        body: {
-          name: newRes.name.trim(),
-          cidr: newRes.cidr.trim(),
-          protocol: newRes.protocol,
-          port_low,
-          port_high,
-        },
-      },
-    );
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not create the resource."));
-    setNewRes({
-      name: "",
-      cidr: "",
-      protocol: "any",
-      portLow: "",
-      portHigh: "",
-    });
-    load();
-    onSubjectsChanged(); // resources are rule destinations — keep RulesSection's copy fresh too
-  }
-  async function delResource(id: string) {
-    const { error } = await api.DELETE(
-      "/api/v1/organizations/{orgId}/resources/{resourceId}",
-      {
-        params: { path: { orgId, resourceId: id } },
-      },
-    );
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not delete the resource."));
-    load();
-    onSubjectsChanged();
-  }
-
-  // ⛔ THE CASCADE CONFIRM MOVED WITH THE VERB. Deleting a group deletes every rule that names it, so the
-  // confirmation is not optional ceremony — and from a selection bar the same click can take several groups
-  // and all of their rules at once, which is strictly more consequential than the per-row version was.
-  const [deletingGroups, setDeletingGroups] = useState<UserGroup[]>([]);
-  // ⛔ TABS, NOT A STACK. Two tables one under the other cost a screen of scrolling to reach the second, and
-  // the two are alternatives — an operator is working on groups OR on resources, never reading both at once.
-  const [tab, setTab] = useState<"groups" | "resources">("groups");
-  // ⛔ EDIT EXISTED IN THE API AND HAD NO CALL SITE. `PATCH .../groups/{id}` and `PATCH .../resources/{id}`
-  // have shipped all along; the UI offered only Delete, so renaming a group or correcting a resource's port
-  // meant deleting it — which CASCADES every rule that names it — and building it again. A capability the
-  // product had and no operator could reach (the absence question, docs/CLAUDE.md).
-  const [editingGroup, setEditingGroup] = useState<UserGroup | null>(null);
-  const [editingRes, setEditingRes] = useState<Resource | null>(null);
-
-  return (
-    <Card className="mt-4">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Groups &amp; resources
-      </h2>
-      {/* ⛔ RENAME, NOT DELETE-AND-REBUILD. Deleting a group CASCADES every rule that names it, so without
-          this the only way to fix a typo in a group's name was to destroy the access it grants and
-          reconstruct it from memory. */}
-      {editingGroup && (
-        <RenameGroupModal
-          orgId={orgId}
-          group={editingGroup}
-          onClose={() => setEditingGroup(null)}
-          onDone={() => {
-            setEditingGroup(null);
-            load();
-            onSubjectsChanged();
-          }}
-        />
-      )}
-      {editingRes && (
-        <EditResourceModal
-          orgId={orgId}
-          resource={editingRes}
-          onClose={() => setEditingRes(null)}
-          onDone={() => {
-            setEditingRes(null);
-            load();
-            onSubjectsChanged();
-          }}
-        />
-      )}
-      {deletingGroups.length > 0 && (
-        <CascadeDeleteModal
-          orgId={orgId}
-          kind="group"
-          destinationIds={deletingGroups.map((group) => group.id)}
-          name={
-            deletingGroups.length === 1
-              ? deletingGroups[0].name
-              : `${deletingGroups.length} groups`
-          }
-          managedAgentCount={
-            deletingGroups.every(
-              (group) => group.managed_agent_count !== undefined,
-            )
-              ? deletingGroups.reduce(
-                  (sum, group) => sum + (group.managed_agent_count ?? 0),
-                  0,
-                )
-              : undefined
-          }
-          onCancel={() => setDeletingGroups([])}
-          onConfirm={() => {
-            const gs = deletingGroups;
-            setDeletingGroups([]);
-            void (async () => {
-              for (const g of gs) await delGroup(g.id);
-            })();
-          }}
-        />
-      )}
-      <ErrorText>{err}</ErrorText>
-      {/* ⛔ STACKED, NOT SIDE BY SIDE. Two tables in a half-width column each render five columns in the
-          space of two — CIDR, protocol and ports would truncate exactly where an operator is comparing them
-          against a router config. Each table gets the full row. */}
-      {/* ⛔ TABS ABOVE, ADD-FORM ABOVE THE TABLE. Both creation forms used to sit BELOW their list, so on
-          an org with ten groups the way to make the eleventh was off the bottom of the card — the primary
-          action on the screen, reachable only by scrolling past everything it creates. */}
-      <div className="mt-3 flex gap-1 border-b border-white/10">
-        {(["groups", "resources"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-3 py-1.5 text-sm capitalize ${
-              tab === t
-                ? "border-white/60 text-ink-heading"
-                : "border-transparent text-ink-tertiary hover:text-slate-300"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      <div className="mt-3">
-        {tab === "groups" && canManage && (
-          <div className="mt-2 flex gap-2">
-            <Input
-              placeholder="Group name"
-              value={newGroup}
-              onChange={(e) => setNewGroup(e.target.value)}
-            />
-            <Button onClick={addGroup}>Add</Button>
-          </div>
-        )}
-        {tab === "resources" && canManage && (
-          <div className="mt-2 space-y-2">
-            <Input
-              placeholder="Name"
-              value={newRes.name}
-              onChange={(e) => setNewRes({ ...newRes, name: e.target.value })}
-            />
-            <div className="flex gap-2">
-              <Input
-                placeholder="CIDR e.g. 10.0.5.0/24"
-                value={newRes.cidr}
-                onChange={(e) => setNewRes({ ...newRes, cidr: e.target.value })}
-              />
-              <Select
-                value={newRes.protocol}
-                onChange={(e) =>
-                  setNewRes({
-                    ...newRes,
-                    protocol: e.target.value as "any" | "tcp" | "udp",
-                  })
-                }
-              >
-                <option value="any">any</option>
-                <option value="tcp">tcp</option>
-                <option value="udp">udp</option>
-              </Select>
-            </div>
-            {/* Feature 1: OPTIONAL port scope. Leave blank = all ports for the protocol; a low alone =
-                    a single port; low+high = a range. Server is authoritative (createResource validates). */}
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                placeholder="Port (optional)"
-                value={newRes.portLow}
-                onChange={(e) =>
-                  setNewRes({ ...newRes, portLow: e.target.value })
-                }
-              />
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                placeholder="to (range, optional)"
-                value={newRes.portHigh}
-                onChange={(e) =>
-                  setNewRes({ ...newRes, portHigh: e.target.value })
-                }
-              />
-              <Button
-                onClick={addResource}
-                disabled={!resPortsValid(newRes.portLow, newRes.portHigh)}
-              >
-                Add
-              </Button>
-            </div>
-            {!resPortsValid(newRes.portLow, newRes.portHigh) && (
-              <p className="text-xs text-amber-400">
-                Ports must be 1–65535; leave both blank for all ports, or set a
-                low ≤ high.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="mt-3 space-y-4">
-        {/* ⛔ GROUPS AS A TABLE. Name / members / type / created are the same five facts for every group, and
-            an org accumulates them — the list gave no way to search and no way to stop rendering all of them.
-
-            ⚠ WHAT SURVIVED THE CONVERSION, because each was earned: the DIRECTORY badge where the name is
-            (the reconciler owns that membership, so say it where the name is), the THREE-ARM member count
-            (unfetched renders NOTHING and must never become a 0 nobody asked for; 0 is the loudest state
-            here and is styled as a warning, not as metadata), and expansion to manage members. */}
-        {/* ⚠ `hidden`, NOT A CSS CLASS, AND THE DIFFERENCE IS THE POINT. `hidden` takes the panel out of
-            the accessibility tree and out of find-in-page, so a screen reader and ⌘F see what the eye sees —
-            whereas `.opacity-0` or an off-screen class would leave a whole table readable to both while
-            invisible, which is the invisible-is-not-absent failure.
-
-            ⚠ The nodes DO stay in the DOM, deliberately: switching tabs keeps each table's filter, sort and
-            page rather than resetting the operator's view every time they glance at the other one. */}
-        <div hidden={tab !== "groups"}>
-          {groupsError ? (
-            <LoadRetry error={groupsError} onRetry={load} />
-          ) : (
-            <>
-              <DataTable<UserGroup>
-                caption="Groups"
-                rows={groups}
-                rowKey={(g) => g.id}
-                failed={false}
-                pageSize={10}
-                empty="No groups yet."
-                rowActions={
-                  canManage
-                    ? [
-                        {
-                          key: "edit",
-                          label: "Rename",
-                          arity: "single",
-                          run: (gs: UserGroup[]) => setEditingGroup(gs[0]),
-                        },
-                        {
-                          key: "delete",
-                          label: "Delete",
-                          danger: true,
-                          // ⚠ A directory-managed group's MEMBERSHIP is owned by the reconciler; the group
-                          // itself is still deletable, so nothing is withheld here.
-                          run: (gs: UserGroup[]) => setDeletingGroups(gs),
-                        },
-                      ]
-                    : undefined
-                }
-                expandable={(g) => (
-                  <GroupMembersPanel
-                    orgId={orgId}
-                    group={g}
-                    members={orgMembers}
-                    canManage={canManage}
-                    onCount={noteCount}
-                    onMembershipChange={onSubjectsChanged}
-                  />
-                )}
-                columns={[
-                  {
-                    key: "name",
-                    header: "Group name",
-                    sortValue: (g) => g.name,
-                    cell: (g) => (
-                      <span className="flex items-center gap-2">
-                        <span className="text-slate-200">{g.name}</span>
-                        {isDirectoryManaged(g) && (
-                          <span className="rounded-full border border-accent-500/40 bg-accent-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent-400">
-                            {DIRECTORY_MANAGED_BADGE}
-                          </span>
-                        )}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "members",
-                    header: "Members",
-                    sortValue: (g) => memberCounts.get(g.id) ?? -1,
-                    // ⛔ THE COUNT IS THE WAY IN. Making it the disclosure control means the number an
-                    // operator is already looking at is the thing they click, rather than a chevron in a
-                    // column that means nothing until used.
-                    // ⛔ IT HAD TO LOOK LIKE A CONTROL, AND IT DID NOT. The count was plain text with a
-                    // hover underline, so the only way to manage members was to click something that read
-                    // as a label — the founder found it by accident, which is the definition of an
-                    // undiscoverable affordance. It is now a bordered control with a disclosure caret and
-                    // the word "Manage", so what it does is legible without clicking it.
-                    cell: (g, { expanded, toggle }) => {
-                      const count = memberCounts.get(g.id);
-                      return (
-                        <button
-                          type="button"
-                          onClick={toggle}
-                          aria-expanded={expanded}
-                          title={
-                            expanded ? "Hide members" : "View and add members"
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs hover:border-white/25 hover:bg-white/10"
-                        >
-                          <svg
-                            aria-hidden
-                            viewBox="0 0 10 10"
-                            className={`h-2 w-2 shrink-0 text-slate-500 transition-transform ${expanded ? "rotate-90" : ""}`}
-                            fill="currentColor"
-                          >
-                            <path d="M2 0 L8 5 L2 10 Z" />
-                          </svg>
-                          {/* `undefined` = not yet asked, and renders as a prompt rather than as a 0
-                              nobody fetched. */}
-                          {count === undefined ? (
-                            <span className="text-slate-500">view members</span>
-                          ) : count === null ? (
-                            <span className="text-warn">
-                              members could not be loaded
-                            </span>
-                          ) : count === 0 ? (
-                            <span className="font-semibold text-warn">
-                              0 members
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">
-                              {count === 1 ? "1 member" : `${count} members`}
-                            </span>
-                          )}
-                          {/* ⚠ The VERB, beside the number. "3 members" alone says what is true; it does
-                              not say that clicking is how you change it. */}
-                          <span className="text-slate-600">· Manage</span>
-                        </button>
-                      );
-                    },
-                  },
-                  {
-                    key: "type",
-                    header: "Type",
-                    sortValue: (g) =>
-                      isDirectoryManaged(g) ? "directory group" : "user group",
-                    cell: (g) => (
-                      <span className="text-xs text-slate-500">
-                        {isDirectoryManaged(g)
-                          ? "Directory group"
-                          : "User group"}
-                      </span>
-                    ),
-                  },
-                ]}
-              />
-            </>
-          )}
-        </div>
-        <div hidden={tab !== "resources"}>
-          {resourcesError ? (
-            <LoadRetry error={resourcesError} onRetry={load} />
-          ) : (
-            <>
-              {/* ⛔ RESOURCES AS A TABLE, with CIDR / protocol / ports in COLUMNS OF THEIR OWN. They were
-                  concatenated into one muted string — "10.20.4.0/24 · tcp/5432" — which cannot be sorted,
-                  cannot be scanned down, and put the three facts that decide what a rule actually permits
-                  into the typography of an afterthought. */}
-              <DataTable<Resource>
-                caption="Resources"
-                rows={resources}
-                rowKey={(r) => r.id}
-                failed={false}
-                pageSize={10}
-                empty="No resources yet."
-                rowActions={
-                  canManage
-                    ? [
-                        {
-                          key: "edit",
-                          label: "Edit",
-                          arity: "single",
-                          run: (rs: Resource[]) => setEditingRes(rs[0]),
-                        },
-                        {
-                          key: "delete",
-                          label: "Delete",
-                          danger: true,
-                          run: (rs: Resource[]) =>
-                            setConfirmRes({ id: rs[0].id, name: rs[0].name }),
-                          // ⚠ ONE AT A TIME, deliberately. The confirm names the resource and lists the
-                          // rules that will go with it; a multi-resource cascade would need a different
-                          // dialog, and shipping the verb before that dialog exists would mean confirming
-                          // a deletion whose consequences were not shown.
-                          arity: "single",
-                        },
-                      ]
-                    : undefined
-                }
-                columns={[
-                  {
-                    key: "name",
-                    header: "Resource",
-                    sortValue: (r) => `${r.name} ${r.label ?? ""}`,
-                    cell: (r) => (
-                      <span className="flex items-center gap-2">
-                        <span className="text-slate-200">{r.name}</span>
-                        {/* ⛔ THE OPERATOR'S OWN NOTE (S15.3), RENDERED AS WRITTEN. An ASSERTION, never an
-                            inference — the product cannot detect what a destination speaks, and a label the
-                            system generated would claim a capability it does not have.
-                            ⚠ Only when set: the field is optional and must LOOK optional. */}
-                        {r.label && (
-                          <span className="rounded border border-line px-1.5 py-0.5 text-[10px] text-ink-secondary">
-                            {r.label}
-                          </span>
-                        )}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "cidr",
-                    header: "CIDR",
-                    sortValue: (r) => r.cidr,
-                    cell: (r) => (
-                      <span className="font-mono text-xs text-slate-500">
-                        {r.cidr}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "protocol",
-                    header: "Protocol",
-                    sortValue: (r) => r.protocol,
-                    cell: (r) => (
-                      <span className="font-mono text-xs text-slate-500">
-                        {r.protocol}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "ports",
-                    header: "Ports",
-                    sortValue: (r) => r.port_low ?? -1,
-                    cell: (r) => (
-                      <span className="font-mono text-xs text-slate-500">
-                        {portLabel(r.port_low, r.port_high)}
-                      </span>
-                    ),
-                  },
-                ]}
-              />
-            </>
-          )}
-        </div>
-      </div>
-      {confirmRes && (
-        <CascadeDeleteModal
-          orgId={orgId}
-          kind="resource"
-          destinationIds={[confirmRes.id]}
-          name={confirmRes.name}
-          onCancel={() => setConfirmRes(null)}
-          onConfirm={() => {
-            const id = confirmRes.id;
-            setConfirmRes(null);
-            void delResource(id);
-          }}
-        />
-      )}
-    </Card>
-  );
-}
-
-// ── Device approval (folded S7.3 admin surface) ─────────────────────────────────────
-function DeviceApprovalSection({
-  orgId,
-  canManage,
-}: {
-  orgId: string;
-  canManage: boolean;
-}) {
-  const [mode, setMode] = useState<"off" | "on" | null>(null);
-  const [modeError, setModeError] = useState<string | null>(null);
-  const [pending, setPending] = useState<Device[]>([]);
-  const [pendingError, setPendingError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const [dr, pr] = await Promise.all([
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/device-approval", {
-          params: { path: { orgId } },
-        }),
-      ),
-      loadOne(() =>
-        api.GET("/api/v1/organizations/{orgId}/devices/pending", {
-          params: { path: { orgId } },
-        }),
-      ),
-    ]);
-    setModeError(dr.ok ? null : dr.error);
-    if (dr.ok) setMode((dr.data as DeviceApproval).mode);
-    // [3]: a failed pending fetch must NOT render "No devices awaiting approval" — that hides
-    // a device blocked from connecting. Show retry.
-    setPendingError(pr.ok ? null : pr.error);
-    if (pr.ok) setPending(pr.data as Device[]);
-  }, [orgId]);
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function setApproval(next: "off" | "on") {
-    setBusy(true);
-    setErr(null);
-    const { error } = await api.PUT(
-      "/api/v1/organizations/{orgId}/device-approval",
-      {
-        params: { path: { orgId } },
-        body: { mode: next },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(
-        apiErrorMessage(error, "Could not change device approval."),
-      );
-    load();
-  }
-  async function decide(deviceId: string, action: "approve" | "reject") {
-    const path =
-      action === "approve"
-        ? "/api/v1/organizations/{orgId}/devices/{deviceId}/approve"
-        : "/api/v1/organizations/{orgId}/devices/{deviceId}/reject";
-    const { error } = await api.POST(path, {
-      params: { path: { orgId, deviceId } },
-    });
-    if (error)
-      return setErr(apiErrorMessage(error, `Could not ${action} the device.`));
-    load();
-  }
-
-  return (
-    <Card className="mt-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-300">
-            Device approval
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            {mode === "on"
-              ? "On. new devices enroll pending and cannot connect until approved."
-              : mode === "off"
-                ? "Off. new devices are active on enrollment."
-                : modeError
-                  ? "n/a"
-                  : "…"}
-          </p>
-        </div>
-        {canManage && mode != null && !modeError && (
-          <Button
-            variant={mode === "on" ? "ghost" : "primary"}
-            disabled={busy}
-            onClick={() => setApproval(mode === "on" ? "off" : "on")}
-          >
-            {mode === "on" ? "Turn off" : "Require approval"}
-          </Button>
-        )}
-      </div>
-      {modeError && <LoadRetry error={modeError} onRetry={load} />}
-      <ErrorText>{err}</ErrorText>
-
-      {/* ⛔ PENDING DEVICES AS A TABLE. A device awaiting approval is the ONE list here where the operator
-          is being asked to make a security decision — and the row gave them a name and an IP with no owner,
-          no platform, no age. Approving a device you cannot attribute is approving a device.
-
-          ⚠ The wait is shown because it is the fact that decides urgency: a request from four minutes ago
-          and one from nine days ago are different situations wearing the same row. */}
-      {pendingError ? (
-        <LoadRetry error={pendingError} onRetry={load} />
-      ) : (
-        <DataTable<Device>
-          caption="Pending devices"
-          rows={pending}
-          rowKey={(d) => d.id}
-          failed={false}
-          pageSize={10}
-          empty="No devices awaiting approval."
-          rowActions={
-            canManage
-              ? [
-                  {
-                    key: "approve",
-                    label: "Approve",
-                    run: (ds: Device[]) => {
-                      void Promise.all(ds.map((d) => decide(d.id, "approve")));
-                    },
-                  },
-                  {
-                    key: "reject",
-                    label: "Reject",
-                    danger: true,
-                    run: (ds: Device[]) => {
-                      void Promise.all(ds.map((d) => decide(d.id, "reject")));
-                    },
-                  },
-                ]
-              : undefined
-          }
-          columns={[
-            {
-              key: "name",
-              header: "Device",
-              sortValue: (d) => d.name,
-              cell: (d) => <span className="text-slate-200">{d.name}</span>,
-            },
-            {
-              key: "ip",
-              header: "Address",
-              sortValue: (d) => d.assigned_ip ?? "",
-              cell: (d) => (
-                <span className="font-mono text-xs text-slate-500">
-                  {d.assigned_ip}
-                </span>
-              ),
-            },
-            {
-              key: "waiting",
-              header: "Waiting",
-              sortValue: (d) => Date.parse(d.created_at),
-              cell: (d) => (
-                <span className="text-xs text-slate-500">
-                  {relativeAge(d.created_at)}
-                </span>
-              ),
-            },
-          ]}
-        />
-      )}
-    </Card>
-  );
-}
-
-// ── Device posture checks (S7.5.3) ───────────────────────────────────────────────────
-// Per-check org opt-in (no configured check = off — the unlock-then-opt-in convention).
-// Three legibility requirements (the slice-3 rider): (1) per-platform NON-coverage is
-// visible (an os_version min for macOS only must SAY Windows is unconstrained), (2) a
-// device that doesn't report shows as UNKNOWN, never as a pass (rendered on the Devices
-// page), (3) the verbatim honesty line sits HERE, where an admin configures the checks.
-function PostureChecksSection({
-  orgId,
-  canManage,
-}: {
-  orgId: string;
-  canManage: boolean;
-}) {
-  const [checks, setChecks] = useState<HealthCheck[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [saveNote, setSaveNote] = useState<string | null>(null);
-  // os_version editor state (min inputs live-preview the coverage indicator).
-  const [osMode, setOsMode] = useState<CheckMode>("off");
-  const [osMacos, setOsMacos] = useState("");
-  const [osWindows, setOsWindows] = useState("");
-
-  const load = useCallback(async () => {
-    const r = await loadOne(() =>
-      api.GET("/api/v1/organizations/{orgId}/health-checks", {
-        params: { path: { orgId } },
-      }),
-    );
-    setLoadError(r.ok ? null : r.error);
-    if (r.ok) {
-      const list = r.data as HealthCheck[];
-      setChecks(list);
-      setOsMode(checkModeOf(list, "os_version"));
-      const mins = osVersionMins(list.find((c) => c.kind === "os_version"));
-      setOsMacos(mins.macos);
-      setOsWindows(mins.windows);
-    }
-  }, [orgId]);
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function saveCheck(
-    kind: HealthCheck["kind"],
-    mode: CheckMode,
-    param?: Record<string, unknown> | null,
-  ) {
-    setBusy(true);
-    setErr(null);
-    setSaveNote(null);
-    if (mode === "off") {
-      const { error } = await api.DELETE(
-        "/api/v1/organizations/{orgId}/health-checks/{checkKind}",
-        {
-          params: { path: { orgId, checkKind: kind } },
-        },
-      );
-      setBusy(false);
-      if (error)
-        return setErr(apiErrorMessage(error, "Could not turn the check off."));
-      return load();
-    }
-    const { data, error } = await api.PUT(
-      "/api/v1/organizations/{orgId}/health-checks/{checkKind}",
-      {
-        params: { path: { orgId, checkKind: kind } },
-        body: {
-          mode,
-          param: (param ?? undefined) as Record<string, never> | undefined,
-        },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not save the check."));
-    setSaveNote(
-      wouldFailCopy(mode, (data as HealthCheck | undefined)?.would_fail_count),
-    );
-    load();
-  }
-
-  function saveOsVersion() {
-    if (osMode === "off") return saveCheck("os_version", "off");
-    const param = buildOsVersionParam({ macos: osMacos, windows: osWindows });
-    if (!param)
-      return setErr(
-        "Set a minimum version for at least one platform, or turn the check off.",
-      );
-    return saveCheck("os_version", osMode, param);
-  }
-
-  const diskMode = checkModeOf(checks, "disk_encryption");
-  const coverage = osVersionCoverage({
-    macos: osMode === "off" ? "" : osMacos,
-    windows: osMode === "off" ? "" : osWindows,
-  });
-
-  return (
-    <Card className="mt-4">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Device posture checks
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Per-check requirements evaluated on every device self-report.{" "}
-        <span className="text-slate-400">warn</span> surfaces a warning;{" "}
-        <span className="text-amber-300">require</span> disconnects a
-        non-compliant device within seconds of its report.
-      </p>
-      {/* The honesty line — verbatim, at the point of configuration (D6, locked). */}
-      <div className="mt-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-400">
-        {POSTURE_HONESTY_LINE}
-      </div>
-
-      {loadError && <LoadRetry error={loadError} onRetry={load} />}
-      <ErrorText>{err}</ErrorText>
-      {saveNote && (
-        <div className="mt-3 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300">
-          {saveNote}
-        </div>
-      )}
-
-      {checks != null && !loadError && (
-        <div className="mt-4 space-y-4">
-          {/* Disk encryption */}
-          <div className="rounded-md bg-white/5 px-3 py-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-200">Disk encryption</p>
-                <p className="text-xs text-slate-500">
-                  FileVault (macOS) / BitLocker (Windows), as reported by the
-                  device.
-                </p>
-              </div>
-              {canManage ? (
-                <Select
-                  width="auto"
-                  value={diskMode}
-                  disabled={busy}
-                  onChange={(e) =>
-                    saveCheck("disk_encryption", e.target.value as CheckMode)
-                  }
-                >
-                  <option value="off">Off</option>
-                  <option value="warn">Warn</option>
-                  <option value="require">Require</option>
-                </Select>
-              ) : (
-                <span className="text-xs text-slate-400">{diskMode}</span>
-              )}
-            </div>
-            {/* A device that reports the fact as ABSENT (couldn't read it) is UNKNOWN for this
-                check — unknown never blocks, and it is not compliance. */}
-          </div>
-
-          {/* OS version */}
-          <div className="rounded-md bg-white/5 px-3 py-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-200">Minimum OS version</p>
-                <p className="text-xs text-slate-500">
-                  Per-platform floors; leave a platform empty to not constrain
-                  it.
-                </p>
-              </div>
-              {canManage ? (
-                <Select
-                  width="auto"
-                  value={osMode}
-                  disabled={busy}
-                  onChange={(e) => setOsMode(e.target.value as CheckMode)}
-                >
-                  <option value="off">Off</option>
-                  <option value="warn">Warn</option>
-                  <option value="require">Require</option>
-                </Select>
-              ) : (
-                <span className="text-xs text-slate-400">
-                  {checkModeOf(checks, "os_version")}
-                </span>
-              )}
-            </div>
-            {osMode !== "off" && canManage && (
-              <div className="mt-3 flex flex-wrap items-end gap-3">
-                <Field label="macOS minimum">
-                  <Input
-                    value={osMacos}
-                    onChange={(e) => setOsMacos(e.target.value)}
-                    placeholder="e.g. 14.0"
-                  />
-                </Field>
-                <Field label="Windows minimum">
-                  <Input
-                    value={osWindows}
-                    onChange={(e) => setOsWindows(e.target.value)}
-                    placeholder="e.g. 10.0.22631"
-                  />
-                </Field>
-                <Button disabled={busy} onClick={saveOsVersion}>
-                  Save
-                </Button>
-                {/* [6] Windows-version foot-gun: Win 11 reports major 10 (10.0.22000+),
-                    so "11.0" would block the whole Windows fleet. Steer to build numbers. */}
-                <p className="w-full text-xs text-slate-500">
-                  Windows uses build numbers. Windows 11 reports as{" "}
-                  <span className="font-mono text-slate-400">10.0.22000</span>,
-                  not 11.0. Enter the build (e.g.{" "}
-                  <span className="font-mono text-slate-400">10.0.22631</span>{" "}
-                  for 23H2); run{" "}
-                  <span className="font-mono text-slate-400">winver</span> to
-                  check a device.
-                </p>
-              </div>
-            )}
-            {/* WF-OVPN-walk-3: "Off" hid the min-version inputs AND the Save button, so the setting
-                could not be persisted from the UI (a dead-end). Off has nothing to configure, but it
-                still needs its own Save affordance — saveOsVersion() already handles the off case. */}
-            {osMode === "off" && canManage && (
-              <div className="mt-3">
-                <Button disabled={busy} onClick={saveOsVersion}>
-                  Save
-                </Button>
-              </div>
-            )}
-            {/* THE coverage indicator (ratified rider): every reporting platform is named —
-                a constrained platform shows its floor, an unconstrained one SAYS so. Never
-                a silent gap. */}
-            {osMode !== "off" && (
-              <ul className="mt-2 space-y-0.5 text-xs">
-                {coverage.map((c) => (
-                  <li
-                    key={c.platform}
-                    className={c.covered ? "text-slate-400" : "text-amber-400"}
-                  >
-                    {c.label}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-// ⛔ ONE TYPED CONFIRM FOR BOTH CASCADING DELETES. Groups and resources have the SAME cascade
-// (ON DELETE CASCADE on src_group_id / dst_group_id / dst_resource_id) and the SAME silence (a 204 with no
-// body), so they get the same guard rather than two that can drift apart.
-function CascadeDeleteModal({
-  orgId,
-  kind,
-  name,
-  destinationIds,
-  managedAgentCount,
-  onCancel,
-  onConfirm,
-}: {
-  orgId: string;
-  kind: "group" | "resource";
-  name: string;
-  destinationIds: string[];
-  managedAgentCount?: number;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const [typed, setTyped] = useState("");
-  const [templateVersionCount, setTemplateVersionCount] = useState<number>();
-  useEffect(() => {
-    let cancelled = false;
-    setTemplateVersionCount(undefined);
-    Promise.all(
-      destinationIds.map((destinationId) =>
-        api.GET(
-          "/api/v1/organizations/{orgId}/agent-policy-template-destination-impact",
-          {
-            params: {
-              path: { orgId },
-              query: {
-                destination_kind: kind,
-                destination_id: destinationId,
-              },
-            },
-          },
-        ),
-      ),
-    ).then((results) => {
-      if (cancelled || results.some((result) => result.error || !result.data)) return;
-      setTemplateVersionCount(
-        results.reduce((sum, result) => sum + (result.data?.version_count ?? 0), 0),
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [destinationIds.join(","), kind, orgId]);
-  const copy = cascadeConfirmCopy(
-    kind,
-    name,
-    managedAgentCount,
-    templateVersionCount,
-  );
-  const ok =
-    copy.impactKnown &&
-    !copy.blocked &&
-    cascadeConfirmSatisfied(typed, name);
-  return (
-    <Modal
-      title={copy.title}
-      danger
-      onDismiss={onCancel}
-      actions={
-        <>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          {/* The control is DISABLED until the name matches — the guard is the typing, not a second click. */}
-          <Button variant="danger" disabled={!ok} onClick={onConfirm}>
-            Delete {kind}
-          </Button>
-        </>
-      }
-    >
-      <p className="text-sm text-slate-300">{copy.body}</p>
-      <div className="mt-3">
-        <Field label={`Type “${copy.typeToConfirm}” to confirm`}>
-          <Input
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder={copy.typeToConfirm}
-            autoFocus
-          />
-        </Field>
-      </div>
-    </Modal>
-  );
-}
-
-// ── GROUP MEMBERSHIP — the surface for three endpoints that shipped in S7.5.2 with one consumer ──────────
-//
-// `addGroupMember` and `removeGroupMember` have existed since S7.5.2 and the web app has NEVER called them.
-// A group on this screen was a name and a Delete, while rules above used those same groups as SOURCES — a
-// form creating an object nobody could populate, above rules that depend on it being populated.
-//
-// ⛔ COUNTS ARE LAZY, ON EXPANSION ONLY, AND THE COLLAPSED ROW SHOWS NOTHING RATHER THAN A ZERO IT NEVER
-// FETCHED. `UserGroup` carries no count, so an eager count costs ONE REQUEST PER GROUP. Measured on the live
-// stack: 3 groups = 65ms; ~433ms at 20; ~1083ms at 50 — on a screen already making 15 reads.
-//
-//   "WE HAVEN'T ASKED" AND "ZERO MEMBERS" ARE DIFFERENT FACTS, and the second is the dangerous one on a rule
-//   source: it reads as "this rule grants nothing" and may be false.
-//
-// ⛔ AND LAZY COUNTS LOSE THE VISIBLY-EMPTY PROPERTY, which is why `src_group_empty` exists on the RULE ROW —
-// it restores it where the operator's attention already is, at no request cost. Two decisions, one problem.
-/**
- * The MEMBERS panel for one group — what used to be the expanded half of a list row.
- *
- * ⛔ IT NO LONGER OWNS `open`. The table owns expansion, so this component only exists while the row is
- * expanded and therefore fetches ON MOUNT. That removes the "expanded but never asked" state entirely
- * rather than leaving two places that both think they know whether the members have been loaded.
- */
-function GroupMembersPanel({
-  orgId,
-  group,
-  members,
-  canManage,
-  onCount,
-  onMembershipChange,
-}: {
-  orgId: string;
-  group: UserGroup;
-  members: Member[];
-  canManage: boolean;
-  onCount: (groupId: string, n: number | null) => void;
-  onMembershipChange: () => void;
-}) {
-  // THREE ARMS, as everywhere else: null = not asked, {ok:false} = asked and failed, {ok:true} = the answer.
-  const [loaded, setLoaded] = useState<Loaded<GroupMember[]> | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
-
-  const fetchMembers = useCallback(async () => {
-    const r = (await loadOne(() =>
-      api.GET("/api/v1/organizations/{orgId}/groups/{groupId}/members", {
-        params: { path: { orgId, groupId: group.id } },
-      }),
-    )) as Loaded<GroupMember[]>;
-    setLoaded(r);
-    onCount(group.id, r.ok ? r.data.length : null); // keep the row's cached count in step with a mutation
-  }, [orgId, group.id, onCount]);
-
-  // Mounted means expanded, so ask immediately.
-  useEffect(() => {
-    void fetchMembers();
-  }, [fetchMembers]);
-
-  async function mutateMembership(fn: () => Promise<{ error?: unknown }>) {
-    setBusy(true);
-    const { error } = await fn();
-    setBusy(false);
-    if (!error) {
-      await fetchMembers();
-      onMembershipChange(); // the rule rows read this count for src_group_empty
-    }
-  }
-
-  // ⛔ MEMBERSHIP OF A SYNCED GROUP IS NOT EDITABLE — AddGroupMember answers 409
-  // idp_managed_group (enterprise/policy/service.go:125). The controls below were gated on
-  // canManage ALONE, so every Add/Remove on a directory group was a guaranteed refusal.
-  const directoryManaged = isDirectoryManaged(group);
-  const canEditMembers = canManage && !directoryManaged;
-  const rows = loaded?.ok ? loaded.data : [];
-  const inGroup = new Set(rows.map((m) => m.user_id));
-  const addable = members.filter((m) => !inGroup.has(m.user_id));
-  const removalCopy = removingMember
-    ? groupMemberRemovalCopy(
-        removingMember.name || removingMember.email,
-        group.name,
-        group.managed_agent_count,
-      )
-    : null;
-
-  return (
-    <>
-      {removingMember && removalCopy && (
-        <Modal
-          title="Remove group member?"
-          danger
-          onDismiss={() => setRemovingMember(null)}
-          actions={
-            <>
-              <Button variant="ghost" onClick={() => setRemovingMember(null)}>
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                disabled={busy || !removalCopy.impactKnown}
-                onClick={() => {
-                  const member = removingMember;
-                  setRemovingMember(null);
-                  void mutateMembership(() =>
-                    api.DELETE(
-                      "/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}",
-                      {
-                        params: {
-                          path: {
-                            orgId,
-                            groupId: group.id,
-                            userId: member.user_id,
-                          },
-                        },
-                      },
-                    ),
-                  );
-                }}
-              >
-                Remove member
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm text-slate-300">{removalCopy.body}</p>
-        </Modal>
-      )}
-      <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-      {/* ⚠ THE PANEL NAMES ITSELF. Expanded content that opens with a bare list of emails leaves the
-          operator to infer what they are looking at and what they may do to it. */}
-      <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wide text-ink-tertiary">
-        Members of {group.name}
-      </p>
-      {
-        <div>
-          {loaded === null && (
-            <p className="text-xs text-slate-500">Loading members…</p>
-          )}
-          {loaded && !loaded.ok && (
-            <LoadRetry error={loaded.error} onRetry={fetchMembers} />
-          )}
-          {loaded?.ok && rows.length === 0 && (
-            <p className="text-xs text-slate-500">
-              No members. Rules using this group as a source match no device and
-              grant nothing.
-            </p>
-          )}
-          {loaded?.ok &&
-            rows.map((m) => (
-              <div
-                key={m.user_id}
-                className="flex items-center justify-between py-0.5 text-xs"
-              >
-                <span className="text-slate-300">{m.name || m.email}</span>
-                {canEditMembers && (
-                  <Button
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => setRemovingMember(m)}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-            ))}
-          {directoryManaged && loaded?.ok && (
-            <p className="mt-2 text-xs text-slate-500">
-              {DIRECTORY_MANAGED_NOTE}
-            </p>
-          )}
-          {canEditMembers && loaded?.ok && addable.length > 0 && (
-            <div className="mt-2 flex gap-2">
-              <select
-                className="rounded-md border border-white/10 bg-ink-900 px-2 py-1 text-xs text-white disabled:opacity-50"
-                aria-label={`Add a member to ${group.name}`}
-                defaultValue=""
-                disabled={busy}
-                onChange={(e) => {
-                  const userId = e.target.value;
-                  if (!userId) return;
-                  e.target.value = "";
-                  void mutateMembership(() =>
-                    api.POST(
-                      "/api/v1/organizations/{orgId}/groups/{groupId}/members",
-                      {
-                        params: { path: { orgId, groupId: group.id } },
-                        body: { user_id: userId },
-                      },
-                    ),
-                  );
-                }}
-              >
-                <option value="">Add a member…</option>
-                {addable.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {m.name || m.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      }
-      </div>
-    </>
-  );
-}
-
-/**
- * Rename a group.
- *
- * ⚠ THE NAME IS ALL THAT CHANGES, and rules follow it automatically because they reference the group by ID.
- * Said in the dialog, because the alternative an operator would otherwise assume — that renaming might break
- * their rules — is exactly what would push them back to delete-and-rebuild.
- */
-function RenameGroupModal({
-  orgId,
-  group,
-  onClose,
-  onDone,
-}: {
-  orgId: string;
-  group: UserGroup;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [name, setName] = useState(group.name);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function save() {
-    setBusy(true);
-    setErr(null);
-    const { error } = await api.PATCH(
-      "/api/v1/organizations/{orgId}/groups/{groupId}",
-      {
-        params: { path: { orgId, groupId: group.id } },
-        body: { name: name.trim() },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not rename the group."));
-    onDone();
-  }
-
-  return (
-    <Modal
-      title="Rename group"
-      onDismiss={onClose}
-      actions={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={busy || !name.trim() || name.trim() === group.name}
-            onClick={() => void save()}
-          >
-            {busy ? "Saving…" : "Save"}
-          </Button>
-        </>
-      }
-    >
-      <Field label="Group name">
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
-      </Field>
-      <p className="mt-2 text-xs text-ink-secondary">
-        Rules that use this group keep working — they reference it by identity,
-        not by name.
-      </p>
-      <ErrorText>{err}</ErrorText>
-    </Modal>
-  );
-}
-
-/**
- * Edit a resource.
- *
- * ⛔ CHANGING A CIDR OR A PORT CHANGES WHAT EVERY RULE NAMING IT PERMITS, and it does so silently — the rules
- * themselves do not appear to change. That is the one thing this dialog has to say out loud, because the
- * blast radius is invisible from here.
- */
-function EditResourceModal({
-  orgId,
-  resource,
-  onClose,
-  onDone,
-}: {
-  orgId: string;
-  resource: Resource;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [f, setF] = useState({
-    name: resource.name,
-    cidr: resource.cidr,
-    protocol: resource.protocol as "any" | "tcp" | "udp",
-    port_low: resource.port_low != null ? String(resource.port_low) : "",
-    port_high: resource.port_high != null ? String(resource.port_high) : "",
-    label: resource.label ?? "",
-  });
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function save() {
-    setBusy(true);
-    setErr(null);
-    const { error } = await api.PATCH(
-      "/api/v1/organizations/{orgId}/resources/{resourceId}",
-      {
-        params: { path: { orgId, resourceId: resource.id } },
-        body: {
-          name: f.name.trim(),
-          cidr: f.cidr.trim(),
-          protocol: f.protocol,
-          // Blank means "all ports" — sent as null rather than 0, which would be a port nobody asked for.
-          port_low: f.port_low.trim() ? Number(f.port_low) : null,
-          port_high: f.port_high.trim() ? Number(f.port_high) : null,
-          label: f.label.trim() ? f.label.trim() : null,
-        },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not update the resource."));
-    onDone();
-  }
-
-  return (
-    <Modal
-      title="Edit resource"
-      onDismiss={onClose}
-      actions={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={busy || !f.name.trim() || !f.cidr.trim()}
-            onClick={() => void save()}
-          >
-            {busy ? "Saving…" : "Save"}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Field label="Name">
-          <Input
-            value={f.name}
-            onChange={(e) => setF({ ...f, name: e.target.value })}
-          />
-        </Field>
-        <Field label="CIDR">
-          <Input
-            value={f.cidr}
-            onChange={(e) => setF({ ...f, cidr: e.target.value })}
-          />
-        </Field>
-        <div className="flex gap-2">
-          <Field label="Protocol">
-            <Select
-              value={f.protocol}
-              onChange={(e) =>
-                setF({
-                  ...f,
-                  protocol: e.target.value as "any" | "tcp" | "udp",
-                })
-              }
-            >
-              <option value="any">any</option>
-              <option value="tcp">tcp</option>
-              <option value="udp">udp</option>
-            </Select>
-          </Field>
-          <Field label="Port low (blank = all)">
-            <Input
-              value={f.port_low}
-              onChange={(e) => setF({ ...f, port_low: e.target.value })}
-            />
-          </Field>
-          <Field label="Port high">
-            <Input
-              value={f.port_high}
-              onChange={(e) => setF({ ...f, port_high: e.target.value })}
-            />
-          </Field>
-        </div>
-        <Field label="Label (optional note)">
-          <Input
-            value={f.label}
-            onChange={(e) => setF({ ...f, label: e.target.value })}
-          />
-        </Field>
-        {/* ⛔ THE INVISIBLE BLAST RADIUS, STATED. */}
-        <p className="text-xs text-warn">
-          Changing the CIDR, protocol or ports changes what every rule using
-          this resource permits. The rules themselves will not look any
-          different.
-        </p>
-      </div>
-      <ErrorText>{err}</ErrorText>
     </Modal>
   );
 }
