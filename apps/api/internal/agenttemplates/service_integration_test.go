@@ -44,7 +44,7 @@ func TestObservableTemplateApplyPostgres(t *testing.T) {
 	t.Cleanup(func() { _, _ = adminPool.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	dsn := *base
 	dsn.Path = "/" + name
-	if err := db.MigrateTo(dsn.String(), 100); err != nil {
+	if err := db.Up(dsn.String()); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, dsn.String())

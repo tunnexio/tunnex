@@ -247,6 +247,9 @@ func TestAgentTemplateRouteAuthorizationOptInAndRefetch(t *testing.T) {
 	if _, err := s.ArchiveAgentPolicyTemplate(with(owner, rbac.RoleOwner), api.ArchiveAgentPolicyTemplateRequestObject{OrgId: org, TemplateId: templateBody.Body.Id}); err != nil {
 		t.Fatalf("archive empty template: %v", err)
 	}
+	if _, err := s.RemoveAgentGroupMember(with(owner, rbac.RoleOwner), api.RemoveAgentGroupMemberRequestObject{OrgId: org, GroupId: createdBody.Body.Id, DeviceId: device}); err != nil {
+		t.Fatalf("remove counted member before archive: %v", err)
+	}
 	if _, err := s.ArchiveAgentGroup(with(owner, rbac.RoleOwner), api.ArchiveAgentGroupRequestObject{OrgId: org, GroupId: createdBody.Body.Id}); err != nil {
 		t.Fatalf("archive empty group: %v", err)
 	}
