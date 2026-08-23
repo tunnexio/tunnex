@@ -63,6 +63,8 @@ expected to be rewritten before merge.
 ## Story status (re-entry checkpoint)
 **Update this on every merge (one line) — a stale pointer re-enters a fresh session in the wrong epic.**
 
+**AUTHORITATIVE CURRENT (2026-08-23): F20 ONE-COMMAND ONBOARDING — PR #34, content tip `<post-merge sha>` (`8d46b8e` pre-merge). Guided native Linux/macOS shell and Windows PowerShell entrypoints prepare a supported Docker/Compose runtime, review the plan before product mutation, install a verified release, verify startup, and isolate each target with its own Compose project. macOS and Windows remain portable-control-plane installs: their WireGuard gateway must be enrolled on a separate Linux host. Required GitHub checks and story-end review remain merge prerequisites.**
+
 **AUTHORITATIVE CURRENT (2026-08-22): F19 CENTRALLY MANAGED MCP HARNESS PROFILES — PR #33, content tip `<post-merge sha>` (`c3c3da3` pre-merge). Shared MCP profiles now target reusable agent groups; the managed runtime converges both exact routes and the loopback proxy without host-local endpoint settings. The live DeepWiki walk proved `read_wiki_structure` allowed (HTTP 200) and `read_wiki_contents` denied (HTTP 403) after removal of the legacy agent-host override. Required GitHub checks and story-end review remain merge prerequisites.**
 
 **AUTHORITATIVE CURRENT (2026-08-21): F14 MCP TOOL POLICY ENFORCEMENT — PR #29, content tip `9176c91` (`9176c91` pre-merge). Product code and the DeepWiki CP walk are complete: default deny, one allowed tool, denied sibling, header/body mismatch refusal, stale-inventory fail-close, audit, and the explicit direct-upstream boundary. Required GitHub checks and story-end review remain merge prerequisites.**

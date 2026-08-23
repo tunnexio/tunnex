@@ -83,8 +83,8 @@ services:
       - ./release.json:/var/lib/tunnex/release.json:ro
       # The API can request one fixed-purpose host upgrade and read sanitized
       # progress. It never receives the Docker socket or a host command channel.
-      - ./upgrade-state/requests:/var/lib/tunnex/upgrade/requests
-      - ./upgrade-state/status:/var/lib/tunnex/upgrade/status:ro
+      - ${TUNNEX_HOST_UPGRADE_REQUEST_SOURCE:-./upgrade-state/requests}:/var/lib/tunnex/upgrade/requests
+      - ${TUNNEX_HOST_UPGRADE_STATUS_SOURCE:-./upgrade-state/status}:/var/lib/tunnex/upgrade/status:ro
     ports:
       - "8443:8443" # mTLS agent control channel (agents dial directly)
     depends_on:
@@ -162,3 +162,5 @@ volumes:
   tunnex_node_state:
   caddy_data:
   caddy_config:
+  tunnex_host_upgrade_requests:
+  tunnex_host_upgrade_status:

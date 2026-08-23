@@ -116,6 +116,8 @@ for required in \
 	'Preserving existing .env configuration' \
 	'systemctl enable --now tunnex-upgrade-runner.path' \
 	'TUNNEX_COMPOSE_SHA256=$(file_sha256 tunnex.yml)' \
+	'COMPOSE_PROJECT_NAME=${INSTALL_COMPOSE_PROJECT}' \
+	'docker_cli compose --project-name "$INSTALL_COMPOSE_PROJECT" --env-file .env -f tunnex.yml' \
 	'RELEASE_DESCRIPTOR_TAG="$VERSION"' \
 	'expected-source-sha "$SOURCE_REF"' \
 	'images pinned by digest' \
@@ -130,14 +132,23 @@ grep -Fq 'DOCKER_METADATA_SHORT_SHA_LENGTH: "7"' "$ROOT/.github/workflows/ci.yml
 	fail "CI no longer pins the SHA abbreviation length consumed by installers"
 grep -Fq 'gh release edit "$GITHUB_REF_NAME" --latest' "$ROOT/.github/workflows/ci.yml" ||
 	fail "CI does not explicitly mark a completed versioned release as latest"
+grep -Fq 'powershell_installer_url: `https://raw.githubusercontent.com/tunnexio/tunnex/${sha}/deploy/install.ps1`' "$ROOT/.github/workflows/ci.yml" ||
+	fail "installer-site sync does not carry the immutable PowerShell launcher URL"
+grep -Fq 'deploy/install.ps1 deploy/install.ps1.sha256' "$ROOT/.github/workflows/ci.yml" ||
+	fail "release assets do not publish the PowerShell launcher with its checksum"
+[ -f "$ROOT/deploy/install.ps1" ] || fail "native PowerShell launcher is missing"
 
 for variable in TUNNEX_ADMIN_EMAIL SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USERNAME SMTP_PASSWORD TUNNEX_EDGE_LISTEN TUNNEX_COOKIE_SECURE; do
 	grep -Fq "\${${variable}" "$ROOT/deploy/tunnex.yml" ||
 		fail "deploy/tunnex.yml does not consume ${variable}"
 done
-grep -Fq './upgrade-state/requests:/var/lib/tunnex/upgrade/requests' "$ROOT/deploy/tunnex.yml" ||
+grep -Fq '${TUNNEX_HOST_UPGRADE_REQUEST_SOURCE:-./upgrade-state/requests}:/var/lib/tunnex/upgrade/requests' "$ROOT/deploy/tunnex.yml" ||
 	fail "compose does not mount the bounded upgrade request directory"
-grep -Fq './upgrade-state/status:/var/lib/tunnex/upgrade/status:ro' "$ROOT/deploy/tunnex.yml" ||
+grep -Fq '${TUNNEX_HOST_UPGRADE_STATUS_SOURCE:-./upgrade-state/status}:/var/lib/tunnex/upgrade/status:ro' "$ROOT/deploy/tunnex.yml" ||
 	fail "compose does not mount upgrade status read-only"
+grep -Fq 'TUNNEX_HOST_UPGRADE_REQUEST_SOURCE=tunnex_host_upgrade_requests' "$ROOT/deploy/install.sh" ||
+	fail "portable installer runtimes do not select the named request volume"
+grep -Fq 'TUNNEX_HOST_UPGRADE_STATUS_SOURCE=tunnex_host_upgrade_status' "$ROOT/deploy/install.sh" ||
+	fail "portable installer runtimes do not select the named status volume"
 
 printf 'installer provenance contract: PASS\n'

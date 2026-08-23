@@ -18,12 +18,16 @@ if sed -n '/^  nginx:/,/^  [a-z].*:/p' "$COMPOSE" | grep -q 'ports:'; then
 	exit 1
 fi
 
-for installer in "$ROOT/deploy/get.sh" "$ROOT/deploy/install.sh"; do
-	grep -Fq 'TUNNEX_TLS_MODE=${TLS_MODE}' "$installer"
-	grep -Fq 'TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}' "$installer"
-	grep -Fq 'TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}' "$installer"
-	grep -Fq 'Direct HTTPS needs a DNS hostname on port 443' "$installer"
-done
+installer="$ROOT/deploy/install.sh"
+grep -Fq 'TUNNEX_TLS_MODE=${TLS_MODE}' "$installer"
+grep -Fq 'TUNNEX_EDGE_LISTEN=${EDGE_LISTEN}' "$installer"
+grep -Fq 'TUNNEX_COOKIE_SECURE=${COOKIE_SECURE}' "$installer"
+grep -Fq 'Direct HTTPS needs a DNS hostname on port 443' "$installer"
+
+# get.sh is intentionally a tiny pipe-safe launcher. It must delegate every
+# prompt and TLS choice to the one canonical implementation above.
+grep -Fq "CANONICAL_INSTALLER_URL='https://raw.githubusercontent.com/tunnexio/tunnex/main/deploy/install.sh'" "$ROOT/deploy/get.sh"
+grep -Fq 'sh "$installer" "$@"' "$ROOT/deploy/get.sh"
 
 grep -Fq 'ensure_edge_config()' "$ROOT/deploy/upgrade.sh"
 grep -Fq 'set_dotenv TUNNEX_EDGE_LISTEN' "$ROOT/deploy/upgrade.sh"

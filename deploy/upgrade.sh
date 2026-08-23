@@ -154,6 +154,12 @@ compose() {
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
   fi
 }
+compose_up() {
+  case "$(dotenv_value TUNNEX_PORTABLE_CONTROL_PLANE)" in
+    true) compose up "$@" --scale node-agent=0 ;;
+    *) compose up "$@" ;;
+  esac
+}
 healthcheck() {
   i=0
   while [ "$i" -lt 30 ]; do
@@ -350,7 +356,7 @@ ensure_edge_config
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
 compose pull
 write_status restarting
-compose up -d
+compose_up -d
 compose ps --all
 write_status health_check
 if ! healthcheck; then
