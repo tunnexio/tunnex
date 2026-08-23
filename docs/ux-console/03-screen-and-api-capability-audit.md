@@ -1,0 +1,56 @@
+# Complete Screen and API Capability Audit
+
+**Method:** current React callers were compared by exact OpenAPI path. At `fe7ccf5`, 119 of 136 mutating operations have a React caller; the 17 exceptions are below. Source locations named here are current implementation, not target architecture.
+
+## Screen capability inventory
+
+| Section | Current route/component/API reads | Operator job and present problem | Target index/detail and list columns |
+|---|---|---|---|
+| Authentication/onboarding | Auth pages; `auth/*`, `/meta`, `/organizations` | Sign in, accept invite, reset/verify password, force first-password/MFA change, create first org. These are isolated forms, with no unified progress/recovery map. | Keep isolated from shell; show explicit state machine: account → verify → password/MFA wall → membership/create org → console. Never offer `create-org` without `cp_admin`. |
+| Overview | `/dashboard`, `Dashboard.tsx`; organizations, nodes, devices, agents, sites, access summary | Answer “what needs attention now?” Current dashboard mixes cards and conditional panels but has no durable action queue. | Not a general list. Priority queue: degraded gateway, pending device/subnet/JIT request, stale agent/runtime, security/configuration prerequisite; every item links to owner. |
+| Gateways | `/gateways`, `Gateways.tsx`, `components/Gateways.tsx`; nodes, join token, lifecycle/transfer/hub APIs | Enrol, assess, move/revoke/delete. Current inline enrollment card shares a list page and tables have no detail route. | Index: name, health/reason, site, endpoint, agent version, last seen, egress/OpenVPN. Detail tabs per route map. |
+| Sites | `/sites`, `Sites.tsx`; sites/subnets/DNS/bind/routed-LAN APIs | Model private topology, bind gateways, approve/withdraw routes. Current page combines cards, tables, multiple modals, and deep actions. | Index: name, status, approved/pending CIDRs, gateways, forwarded zones, last change. Detail owns subnets, DNS, binding. |
+| Routed ranges | `/routed-ranges`, `RoutedRanges.tsx`; routed-LAN/sites/nodes reads | Answer where a CIDR routes and whether it conflicts. No durable range identity/detail API. | Queryable org index: CIDR, origin/site, state, gateway path, conflicts. Context links to Site; no invented detail route. |
+| Kubernetes | `/kubernetes`, `Kubernetes.tsx`; clusters/connectors/services APIs | Register cluster, choose connector, expose/unexpose private services. Current page mixes cluster cards, service table, and modal orchestration. | Cluster index: name, site, connector/reachability, service count, updated. Detail tabs overview/connector/services/activity; service table: namespace/name, protocol/ports, VIP/DNS, policy refs. |
+| AI Agents | `/agents`, `Agents.tsx`; agent profile/runtime/MCP/JIT endpoints | Operate managed agents. It is already a route, but a large single component; templates/JIT are split onto Access. | Index: name, lifecycle, gateway, runtime/connectivity, MCP inventory state, policy/JIT state, last seen. Detail tabs own all agent configuration. |
+| Access policies | `/access`, `Access.tsx`; policy/groups/resources/approval/posture/JIT/templates APIs | Authorize access and device posture. Current long page embeds unrelated agent lifecycle/template/JIT sections. | Tabs: Rules; Subjects & resources; Device controls. Table rows: subject → destination, protocol/ports, mode, expiry, enabled, managed source, changed at. Agent items become contextual links only. |
+| Devices | `/devices`, `Devices.tsx`; devices, export, revoke/remove/approval/health APIs | Issue/inspect/revoke human devices. Creation modal and table have no detail route; `updateDeviceMode` has no caller. | Index: name, owner, state, gateway, IP, mode, posture, client/version, last handshake, config stale. Detail owns export/config/access-posture/activity. |
+| Users & roles | `/users`, `Users.tsx`; members/invitations/roles/MFA APIs | Invite, role-manage, deactivate/reactivate people. Current roster carries many operations in rows/modals with no person workspace. | Index: user, role, active/invited/deactivated, verification/MFA, device count, directory source, last change. Proposed detail route is held until list/detail API is decided. |
+| Settings | `/settings`, `Settings.tsx`; organization/network/auth/directory/features/licence/alert APIs | Organization and personal defaults. Existing `SettingsRail` is the strongest local pattern; selection is not URL-backed. | Keep rail; URL-back section. Entity controls move out; retain personal MFA/CLI credentials and deployment/org defaults. |
+| Access Events | `/access-events`, `AccessEvents.tsx`; access event APIs | Investigate allowed/denied flows. Current query filters are limited and edition-gated correctly. | Dense event index: time, decision, agent/device, source gateway, destination, rule/policy version, bytes/freshness; drill through to related detail/audit. |
+| Audit Log | `/audit`, `AuditLog.tsx`; audit APIs | Establish who changed what. Current table is evidence-focused but needs URL-backed action/actor/entity/time filters and deep links. | Columns: time, actor/system, action, entity, concise impact, request ID. Never make audit the only place a mutation outcome is explained. |
+
+## Exact mutation reachability audit
+
+All UI-covered operations are called from the component/page that owns the corresponding current route: auth pages/auth context; `Gateways.tsx`/`components/Gateways.tsx`; `Devices.tsx`; `Sites.tsx`; `Kubernetes.tsx`; `Agents.tsx`; `Access.tsx`; `Users.tsx`; `Settings.tsx`; `MachineCredentials.tsx`; `MfaSettings.tsx`; and `UpgradeCenter.tsx`. This includes every listed create/update/delete/revoke/approve API except the explicit exceptions below.
+
+| Operation | Endpoint | Disposition (not silently resolved) |
+|---|---|---|
+| `cliToken`, `cliDeviceToken` | `POST /auth/cli/token`, `POST /auth/cli/device/token` | **Intentionally CLI-only:** polling/exchange leg of CLI protocols. Browser must not call it. |
+| `enrollAgent`, `reportAgentRuntime`, `permitRuntimeMCPToolApproval`, `registerAgentWorkflowSigningKey`, `reportAgentWorkflowProvenance`, `prepareAgentRuntimeCredential`, `prepareAgentRuntimeWireGuard` | `/agent/enroll`, `/agent/runtime/*` | **Intentionally agent-runtime-only:** authenticated data-plane/runtime protocol, not an operator browser action. |
+| `rekeyChallenge`, `rekeyAgent` | `/agent/rekey/*` | **Intentionally gateway-agent-only:** recovery protocol; browser must not exercise proof-of-possession paths. |
+| `revokeCliCredential` | `DELETE /auth/cli/credentials/{credentialId}` | **Missing UI caller — HELD.** Current Settings exposes machine credentials, not the caller’s CLI credential revocation. Decide whether personal security owns it. |
+| `updateDeviceMode` | `PATCH /organizations/{orgId}/devices/{deviceId}/mode` | **Missing UI caller — HELD.** Decide whether mode is editable in Device detail or deliberately API/CLI-only; do not remove endpoint without product ruling. |
+| `adminSetOrgRole`, `adminSetCpAdmin` | `/admin/organizations/.../role`, `/admin/users/.../cp-admin` | **API-only/held.** CP-admin governance surface is absent; decide separate CP administration UI vs documented API-only operation. |
+| `createAgentMCPProfile`, `assignAgentMCPProfile` | `/agent-mcp-profiles`, `/assignments` | **Missing UI caller — HELD.** F19 managed profiles exist in API but are not represented in AI Agents. First Agents vertical slice must disposition this. |
+
+## Destructive-effects audit
+
+| Action / endpoint | Actual handler/database effect | Required pre/post UX, recovery, audit |
+|---|---|---|
+| Delete organization | `DELETE /organizations/{orgId}` calls `SoftDeleteOrganization`; refuses nonempty org, then soft-deletes and writes `org.deleted`. | Preflight must show every blocking resource; no force action. Success says organization is hidden; audit link. Recovery/undelete is not exposed—held. |
+| Revoke gateway | `POST /nodes/{nodeId}/revoke` revokes node and its homed devices/credentials/telemetry; node is terminal. | Confirm device count, loss of tunnels, target transfer option. Post-state shows revoked cause and Restore Devices only where allowed; audit link. |
+| Delete gateway | `DELETE /nodes/{nodeId}` only after revoked; deletes consumed join tokens and FK cascade is safe only after devices moved. | Confirm terminal deletion; explain no undo and required revoke/transfer order. Post: remove row, audit `node.deleted`. |
+| Revoke/remove device | `POST .../revoke` is full credential/address/telemetry sweep; `DELETE .../devices/{id}` removes a revoked roster row. | Confirm owner, gateway, connection loss; revoke is terminal, remove only after revoke. Show config/re-enrol recovery and audit. |
+| Deactivate member | `POST .../deactivate` disables member and revokes owned credentials; reactivate is a separate action with cause-limited restoration. | Confirm credential count/effect; post roster state and audit. Reactivation is explicit recovery, never an undo promise. |
+| Delete site / subnet / DNS forward / unbind | Site delete cascades subnets and site policy rules, unbinds gateway; it refuses live agent requests/template references. Subnet removal withdraws routes and sweeps dependent DNS forwards; DNS removal withdraws gateway forwarding. | Preflight server counts and named dependency warnings; post topology refresh, reconcile-pending state, audit evidence. |
+| Deregister cluster / unexpose service | Cluster deletion cascades services/observations; service unexpose withdraws VIP/DNS and refuses protected references where applicable. | Confirm count of services/policy impact and no traffic claim until reconcile; audit/deep link. |
+| Delete policy group/resource/rule or disable rule | Deletes are refused when live JIT/template dependencies exist; rule disable recompiles/pushes policy and emits distinct enabled/disabled audit actions. | Explain access withdrawn/changed, dependency refusal, propagation state, and audit filter. |
+| Unmap IdP group | Removes sync binding and every member, then pushes org policy; audit records `members_removed`. | Require named count confirmation; post shows manual empty group and policy propagation. Re-map/re-sync is recovery, not undo. |
+| Archive agent group/template; remove assignment/member | Archive is lifecycle removal constrained by immutable references; assignment removal withdraws generated policy tuples. | Present immutable/live dependency refusal, affected agent/rule count, post policy convergence and audit evidence. |
+| Reject/cancel/revoke JIT request | changes request lifecycle and associated managed access/rule effect. | Name target, grant and expiry; post status must state whether access was withdrawn and link to agent Access/activity/audit. |
+| Archive alert destination / remove subscription | archive is configuration lifecycle, subscription removal stops future delivery. | Confirm affected event types; post state and audit/alerting history link. |
+
+## Required audit follow-up before implementation
+
+For each destructive dialog, obtain the handler’s actual server-derived preview/count if available; where no preview endpoint exists, do not fabricate a count. The first story’s decision paper must choose whether to add preview contracts, starting with the selected vertical slice.
