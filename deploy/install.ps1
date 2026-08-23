@@ -1,4 +1,4 @@
-# Tunnex Windows one-command launcher.
+﻿# Tunnex Windows one-command launcher.
 #
 #   irm https://get.tunnex.io/install.ps1 | iex
 #
@@ -48,10 +48,49 @@ function Test-DockerReady {
         "$env:ProgramFiles\Docker\Docker\resources\bin\docker.exe"
     )
     if (-not $docker) { return $false }
-    & $docker info *> $null
-    if ($LASTEXITCODE -ne 0) { return $false }
-    & $docker compose version *> $null
-    return ($LASTEXITCODE -eq 0)
+    # Docker Desktop returns a non-zero exit while its first-run window is
+    # open. That is expected readiness state, not a terminating PowerShell
+    # error; restore the caller preference after probing it.
+    $savedErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $docker info *> $null
+        if ($LASTEXITCODE -ne 0) { return $false }
+        & $docker compose version *> $null
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+    }
+}
+
+function Assert-SupportedWindowsHost {
+    $recovery = @"
+Windows Server cannot run the Tunnex Windows installer on this host.
+
+Why: Tunnex on Windows uses Docker Desktop's Linux-container backend. Docker
+Desktop is unsupported on Windows Server, and signing in cannot add the CPU
+virtualization support required by its Linux VM.
+
+Choose one of these paths:
+  1. Recommended for this EC2 host: run the Linux Tunnex installer on a Linux VM.
+  2. Windows test host: use Windows 10/11 with WSL 2 and hardware virtualization enabled.
+  3. AWS nested VM: choose a nested-virtualization-capable instance and enable
+     Nested virtualization before installing Docker Desktop.
+"@
+    if ($env:TUNNEX_TEST_WINDOWS -eq "1") {
+        if ($env:TUNNEX_TEST_WINDOWS_SERVER -eq "1") {
+            Write-Host ""
+            Write-Host $recovery -ForegroundColor Yellow
+            exit 1
+        }
+        return
+    }
+    $operatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+    if ([int]$operatingSystem.ProductType -ne 1) {
+        Write-Host ""
+        Write-Host $recovery -ForegroundColor Yellow
+        exit 1
+    }
 }
 
 function Install-WingetPackage([string]$PackageId) {
@@ -125,6 +164,12 @@ function Resolve-CanonicalInstaller {
     if ($env:TUNNEX_TEST_WINDOWS -eq "1" -and $env:TUNNEX_TEST_INSTALLER_PATH) {
         return $env:TUNNEX_TEST_INSTALLER_PATH
     }
+    if ($env:TUNNEX_INSTALL_SH_PATH) {
+        if (-not (Test-Path -LiteralPath $env:TUNNEX_INSTALL_SH_PATH -PathType Leaf)) {
+            throw "TUNNEX_INSTALL_SH_PATH does not point to a readable install.sh file."
+        }
+        return (Resolve-Path -LiteralPath $env:TUNNEX_INSTALL_SH_PATH).Path
+    }
     $installerUrl = if ($env:TUNNEX_INSTALL_SH_URL) {
         $env:TUNNEX_INSTALL_SH_URL
     } else {
@@ -139,6 +184,7 @@ function Resolve-CanonicalInstaller {
 Write-TunnexWordmark
 Write-Host ""
 Write-Host "[1/2] Preparing this Windows host" -ForegroundColor Red
+Assert-SupportedWindowsHost
 Ensure-DockerDesktop
 $bash = Ensure-GitBash
 Write-Host ">> Docker Desktop, Compose v2, and Git Bash are ready."
