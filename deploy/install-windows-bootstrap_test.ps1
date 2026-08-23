@@ -59,6 +59,7 @@ esac
     Assert-Contains $freshOutput "CANONICAL_INSTALLER_REACHED"
     $wingetArguments = Get-Content -LiteralPath $wingetLog -Raw
     Assert-Contains $wingetArguments "install --exact --id Docker.DockerDesktop"
+    Assert-Contains $wingetArguments "--source winget"
 
     $env:TUNNEX_TEST_DOCKER_READY = "1"
     $env:TUNNEX_TEST_DOCKER_READY_AFTER_INSTALL = "0"
@@ -70,6 +71,7 @@ esac
     Assert-Contains $gitOutput "CANONICAL_INSTALLER_REACHED"
     $wingetArguments = Get-Content -LiteralPath $wingetLog -Raw
     Assert-Contains $wingetArguments "install --exact --id Git.Git"
+    Assert-Contains $wingetArguments "--source winget"
 
     Write-Host "install windows bootstrap contract: PASS"
 } finally {

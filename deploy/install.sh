@@ -764,7 +764,12 @@ if [ "$RUNNER_AVAILABLE" = true ]; then
 	as_root mv "$ROOT_UPGRADE_DIR/upgrade.sh.next" "$ROOT_UPGRADE_DIR/upgrade.sh"
 	as_root mv "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next" "$ROOT_UPGRADE_DIR/upgrade-runner.sh"
 	as_root install -d -o root -g root -m 0755 "$INSTALL_DIR/upgrade-state"
-	as_root install -d -o 10001 -g 10001 -m 0700 "$INSTALL_DIR/upgrade-state/requests"
+	# The API runs as numeric UID/GID 10001 inside its container. That account is
+	# intentionally not required to exist on the host, so create the directory
+	# first and then assign numeric ownership with chown (GNU install rejects an
+	# unknown host user name here).
+	as_root install -d -m 0700 "$INSTALL_DIR/upgrade-state/requests"
+	as_root chown 10001:10001 "$INSTALL_DIR/upgrade-state/requests"
 	as_root install -d -o root -g root -m 0755 "$INSTALL_DIR/upgrade-state/status"
 	as_root install -d -o root -g root -m 0700 "$INSTALL_DIR/upgrade-state/work"
 	cat >tunnex-upgrade-runner.service.next <<EOF

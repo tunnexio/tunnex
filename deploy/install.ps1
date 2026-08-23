@@ -64,7 +64,10 @@ function Install-WingetPackage([string]$PackageId) {
         throw "Windows Package Manager (winget) is required for automatic setup. Install App Installer, then run the same Tunnex command again."
     }
     Write-Host ">> Installing $PackageId with Windows Package Manager..."
-    & $winget install --exact --id $PackageId --accept-package-agreements --accept-source-agreements --silent
+    # Docker Desktop and Git are published in the community winget source. Pin
+    # it so a broken Microsoft Store source (for example, a certificate-pinning
+    # failure) cannot block host setup before resolving this package.
+    & $winget install --exact --id $PackageId --source winget --accept-package-agreements --accept-source-agreements --silent
     if ($LASTEXITCODE -ne 0) {
         throw "winget could not install $PackageId. Correct the error above, then run the same Tunnex command again."
     }
