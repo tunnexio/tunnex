@@ -5,6 +5,9 @@ import {
   applyGatewayFilter,
   toGatewayRow,
   groupNotes,
+  gatewayEgressLabel,
+  gatewayEgressDetail,
+  gatewayOperationalLabel,
 } from "../src/lib/gatewaysview";
 import type { Node } from "../src/lib/api";
 
@@ -13,6 +16,7 @@ const node = (p: Partial<Node> & { id: string; name: string }): Node =>
     status: "active",
     agent_version: "0.3.0",
     enrolled_at: "2026-01-01T00:00:00Z",
+    last_seen_at: "2099-01-01T00:00:00Z",
     ...p,
   }) as Node;
 
@@ -116,6 +120,34 @@ describe("gateway egress mode is carried to the rendered row", () => {
   it("keeps an unreported capability explicit as checking", () => {
     expect(toGatewayRow(node({ id: "a", name: "new" })).egressMode).toBeNull();
   });
+
+  it("renders revoked unknown egress as terminally unreported, never checking", () => {
+    const row = toGatewayRow(node({ id: "a", name: "gone", status: "revoked", egress_mode: null }));
+    expect(gatewayEgressLabel(row)).toBe("Not reported before revocation");
+    expect(gatewayEgressDetail(row)).toMatch(/cannot provide a future capability report/i);
+  });
+
+  it("labels a revoked known egress report as historical", () => {
+    const dual = toGatewayRow(node({ id: "a", name: "gone-dual", status: "revoked", egress_mode: "dual_stack" }));
+    const ipv4 = toGatewayRow(node({ id: "b", name: "gone-v4", status: "revoked", egress_mode: "ipv4_only" }));
+    expect(gatewayEgressLabel(dual)).toBe("Last reported: Dual-stack");
+    expect(gatewayEgressLabel(ipv4)).toBe("Last reported: IPv4-only");
+    expect(gatewayEgressDetail(dual)).toMatch(/historical capability report/i);
+  });
+});
+
+describe("first-connection truth", () => {
+  it("keeps lifecycle active while classifying a never-connected node outside healthy", () => {
+    const neverConnected = node({ id: "new", name: "new-gateway", last_seen_at: undefined });
+    const row = toGatewayRow(neverConnected);
+    expect(row.status).toBe("active");
+    expect(row.operationalState).toBe("awaiting_first_connection");
+    expect(gatewayOperationalLabel(row)).toBe("awaiting first connection");
+    const groups = groupGateways([neverConnected]);
+    expect(groups.find((group) => group.key === "healthy")?.rows).toEqual([]);
+    expect(gatewayFilterCounts([neverConnected])).toEqual({ all: 1, healthy: 0, degraded: 1, revoked: 0 });
+    expect(applyGatewayFilter(groups, "healthy")[0]?.rows).toEqual([]);
+  });
 });
 
 describe("⛔ THE CHIP COUNTS AND THE GROUPING ARE ONE DERIVATION", () => {
@@ -181,6 +213,7 @@ describe("⛔ THE NOTES RENDER PER KIND, NOT PER ROW", () => {
       status: "active",
       agent_version: "0.3.0",
       enrolled_at: "2026-01-01T00:00:00Z",
+      last_seen_at: "2099-01-01T00:00:00Z",
       ...(kind ? { policy_degraded: true, policy_degraded_kind: kind } : {}),
     }) as Node;
 

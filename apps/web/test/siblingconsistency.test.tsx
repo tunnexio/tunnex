@@ -63,13 +63,11 @@ vi.mock("../src/lib/api", async () => {
 });
 
 import { OrgProvider } from "../src/lib/useOrg";
-import { Gateways } from "../src/components/Gateways";
 import { GatewayRow } from "../src/pages/Sites";
 import Devices from "../src/pages/Devices";
 import { policyHealthBadge } from "../src/lib/healthview";
 import { postureBadge } from "../src/lib/postureview";
-
-const org = { id: "org-1", name: "Acme" } as never;
+import { toGatewayRow } from "../src/lib/gatewaysview";
 
 // ONE degraded+revoked fixture, rendered through every surface that draws this concept. The kind is the one
 // WF-S11-10 actually put on screen — an instruction to undo a deliberate security action.
@@ -91,33 +89,16 @@ describe("sibling consistency — revoked rows carry NO health/instruction badge
   });
 
   it("Gateways: a revoked gateway shows no health badge; an active one still does", () => {
-    render(
-      <Gateways
-        org={org}
-        nodes={
-          [
-            {
-              id: "a",
-              name: "gw-revoked",
-              status: "revoked",
-              agent_version: "0.1.0",
-              policy_degraded: true,
-              policy_degraded_kind: DEGRADED_KIND,
-            },
-            {
-              id: "b",
-              name: "gw-active",
-              status: "active",
-              agent_version: "0.1.0",
-              policy_degraded: true,
-              policy_degraded_kind: DEGRADED_KIND,
-            },
-          ] as never[]
-        }
-      />,
-    );
-    // Exactly one badge for two degraded gateways — the active one. The revoked one is suppressed.
-    expect(screen.getAllByText(badge!.label)).toHaveLength(1);
+    const revoked = toGatewayRow({
+      id: "a", name: "gw-revoked", status: "revoked", agent_version: "0.1.0",
+      policy_degraded: true, policy_degraded_kind: DEGRADED_KIND,
+    } as never);
+    const active = toGatewayRow({
+      id: "b", name: "gw-active", status: "active", agent_version: "0.1.0",
+      policy_degraded: true, policy_degraded_kind: DEGRADED_KIND,
+    } as never);
+    expect(revoked.health).toBeNull();
+    expect(active.health?.label).toBe(badge!.label);
   });
 
   it("Sites (GatewayRow): a revoked gateway shows no health badge — THE SURFACE THE FIX HAD NOT REACHED", () => {

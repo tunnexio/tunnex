@@ -24,6 +24,7 @@ import Devices from "./pages/Devices";
 import DeviceApprovals from "./pages/DeviceApprovals";
 import DevicePosture from "./pages/DevicePosture";
 import Gateways from "./pages/Gateways";
+import GatewayDetail from "./pages/GatewayDetail";
 import Sites from "./pages/Sites";
 import RoutedRanges from "./pages/RoutedRanges";
 import Kubernetes from "./pages/Kubernetes";
@@ -138,6 +139,7 @@ export default function App() {
             <Route path="/devices/approvals" element={<DeviceApprovals />} />
             <Route path="/devices/posture" element={<DevicePosture />} />
             <Route path="/gateways" element={<Gateways />} />
+            <Route path="/gateways/:gatewayId" element={<GatewayDetail />} />
             <Route path="/sites" element={<Sites />} />
             <Route path="/routed-ranges" element={<RoutedRanges />} />
             <Route path="/kubernetes" element={<Kubernetes />} />

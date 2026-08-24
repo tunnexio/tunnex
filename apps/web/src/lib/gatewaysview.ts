@@ -31,6 +31,7 @@ export interface GatewayRow {
   siteName: string | null;
   isHub: boolean;
   lastSeenAt: string | null;
+  operationalState: "healthy" | "degraded" | "awaiting_first_connection" | "revoked";
 }
 
 export interface GatewayGroup {
@@ -51,30 +52,69 @@ export function toGatewayRow(
   nowMs = Date.now(),
 ): GatewayRow {
   const policyHealth = policyHealthBadge(n);
-  // A policy-clean gateway is not healthy if its liveness report is stale. Keep
-  // the no-last-seen case neutral for a just-enrolled gateway that has not yet
-  // produced its first report.
+  // A policy-clean gateway is not healthy if its liveness report is stale. A
+  // missing first observation is its own awaiting state: active credentials do
+  // not prove that the gateway has ever connected.
   const liveness = n.last_seen_at
     ? gatewayLiveness(n.last_seen_at, nowMs)
     : null;
+  const health =
+    policyHealth ??
+    (liveness?.offline
+      ? { label: "offline", tone: "danger" as const }
+      : null);
+  const ovpnHealth = n.status === "revoked" ? null : (n.ovpn_health ?? null);
+  const operationalState =
+    n.status === "revoked"
+      ? "revoked"
+      : health !== null || ovpnHealth !== null
+        ? "degraded"
+        : !n.last_seen_at
+          ? "awaiting_first_connection"
+          : "healthy";
   return {
     id: n.id,
     name: n.name,
     status: n.status,
     // S14.21: guard moved into policyHealthBadge — this line was the second copy of it.
-    health:
-      policyHealth ??
-      (liveness?.offline
-        ? { label: "offline", tone: "danger" }
-        : null),
-    ovpnHealth: n.status === "revoked" ? null : (n.ovpn_health ?? null),
+    health,
+    ovpnHealth,
     egressMode: n.egress_mode ?? null,
     agentVersion: n.agent_version,
     siteId: n.site_id ?? null,
     siteName: n.site_id ? (siteNames?.[n.site_id] ?? null) : null,
     isHub: n.is_site_hub === true,
     lastSeenAt: n.last_seen_at ?? null,
+    operationalState,
   };
+}
+
+export function gatewayOperationalLabel(row: GatewayRow): string {
+  if (row.operationalState === "awaiting_first_connection") return "awaiting first connection";
+  if (row.operationalState === "degraded") return row.health?.label ?? "OpenVPN degraded";
+  return row.operationalState;
+}
+
+export function gatewayEgressLabel(row: GatewayRow): string {
+  if (row.status === "revoked") {
+    if (row.egressMode === "dual_stack") return "Last reported: Dual-stack";
+    if (row.egressMode === "ipv4_only") return "Last reported: IPv4-only";
+    return "Not reported before revocation";
+  }
+  if (row.egressMode === "dual_stack") return "Dual-stack";
+  if (row.egressMode === "ipv4_only") return "IPv4-only";
+  return "Checking";
+}
+
+export function gatewayEgressDetail(row: GatewayRow): string {
+  if (row.status === "revoked") {
+    if (row.egressMode === "dual_stack") return "Last reported: Dual-stack. This historical capability report will not refresh after revocation.";
+    if (row.egressMode === "ipv4_only") return "Last reported: IPv4-only. This historical capability report will not refresh after revocation.";
+    return "Not reported before revocation. This terminal gateway cannot provide a future capability report.";
+  }
+  if (row.egressMode === "dual_stack") return "IPv4 and IPv6 verified";
+  if (row.egressMode === "ipv4_only") return "IPv4 verified; IPv6 not available";
+  return "Waiting for a verified capability report";
 }
 
 /**
@@ -95,13 +135,12 @@ export function groupGateways(
 ): GatewayGroup[] {
   const rows = nodes.map((n) => toGatewayRow(n, siteNames, nowMs));
   const degraded = rows.filter(
-    (r) =>
-      r.status !== "revoked" && (r.health !== null || r.ovpnHealth !== null),
+    (r) => r.operationalState === "degraded" || r.operationalState === "awaiting_first_connection",
   );
   const healthy = rows.filter(
-    (r) => r.status !== "revoked" && r.health === null && r.ovpnHealth === null,
+    (r) => r.operationalState === "healthy",
   );
-  const revoked = rows.filter((r) => r.status === "revoked");
+  const revoked = rows.filter((r) => r.operationalState === "revoked");
   return [
     { key: "degraded", rows: degraded },
     { key: "healthy", rows: healthy },

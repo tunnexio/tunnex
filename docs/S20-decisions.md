@@ -91,6 +91,7 @@ The inventory is matched by operation, method, and exact path.
 
 | operationId | method + path | RBAC | success | active rendered owner for S20 |
 |---|---|---|---|---|
+| `updateGatewayEndpoint` | `PUT /api/v1/admin/gateway-endpoint` | verified deployment admin (`org:update` or CP admin) | 200 configured URL | enrollment progressive-disclosure editor |
 | `listNodes` | `GET /api/v1/organizations/{orgId}/nodes` | `org:view` | 200 Node array | index/detail loader |
 | `issueJoinToken` | `POST /api/v1/organizations/{orgId}/nodes/join-token` | `org:update` | 201 one-time token | Enroll gateway staged modal |
 | `updateNode` | `PATCH /api/v1/organizations/{orgId}/nodes/{nodeId}` | `org:update` | 200 Node | detail Overview rename |
@@ -101,9 +102,10 @@ The inventory is matched by operation, method, and exact path.
 | `setHubPriority` | `PUT /api/v1/organizations/{orgId}/nodes/{nodeId}/hub-priority` | `site:manage` | 204 | Sites topology workspace; contextual link only here |
 | `enrollAgent` | `POST /api/v1/agent/enroll` | join token credential; public protocol route | 200 certificate/CA | node agent only; intentionally not browser-called |
 
-Deployment-wide `PUT /api/v1/admin/gateway-endpoint` is CP-admin configuration, not an
-organization Gateway mutation; it remains its existing authorized configuration surface
-and is not moved into an org detail route.
+Deployment-wide `PUT /api/v1/admin/gateway-endpoint` is not organization-scoped. It
+remains its existing authorized configuration surface and is not moved into an org
+detail route, but it is included in the exact method/path caller census because it is a
+browser mutation required by Gateway enrollment.
 
 S20 must test that unauthorized controls are absent. Backend authorization remains the
 enforcement boundary; the generated web RBAC policy is the display boundary.
@@ -163,3 +165,70 @@ status meaning is carried by text rather than color alone.
 Sites, Kubernetes, Users & Roles, and Org Settings are explicitly outside this slice.
 S19's opaque enrollment-status contract, truthful Site-to-Site dataplane readiness, and
 the larger Gateway query/detail wire contracts remain named deferrals, not React mocks.
+
+## D20 — Founder parity correction: deployment Gateway control URL
+
+S20 is a UX redesign, not permission to strand an existing capability. The pre-S20
+Gateway surface was the only rendered owner of the deployment-wide Gateway control
+endpoint:
+
+- `GET /api/v1/admin/gateway-endpoint` reads the configured raw mTLS URL;
+- `PUT /api/v1/admin/gateway-endpoint` validates and saves it for deployment admins.
+
+The first S20 enrollment composition hid that surface with
+`showGatewayEndpointSettings={false}`. The optional **Public endpoint** beside a Gateway
+name is the WireGuard `ip:port` peers dial; it is not a substitute for the control-plane
+DNS/URL that node agents reach on port 8443.
+
+**Ruled:** the S20 enrollment flow retains the existing admin GET/PUT contract,
+permission behavior, validation, and save-before-command wiring. Authorized deployment
+admins see **Gateway control URL (DNS hostname)** before token issuance. It remains a
+deployment value: it is neither organization-scoped nor added to the join-token body.
+The saved authoritative URL feeds `TUNNEX_AGENT_URL` in the one-time command. A caller
+for whom the admin read is refused sees no field and cannot reach the PUT. The separate
+optional WireGuard Public endpoint remains unchanged.
+
+**Founder progressive-disclosure correction:** this deployment setting is not a field
+that operators must review or re-save for each Gateway. When it is configured, enrollment
+shows only `Control endpoint: <hostname> · Configured`; an authorized deployment admin can
+explicitly choose **Change** to reveal the existing editor. When it is unconfigured, the
+editor is expanded and a successful save is required before token issuance. Restricted
+operators never receive the editor or PUT affordance; they may enroll only when the public
+metadata confirms that a deployment admin has already configured the endpoint. Loading,
+read failure with Retry, and authorization refusal remain distinct. The command always
+derives `TUNNEX_AGENT_URL` from the persisted setting, while **Public endpoint** remains an
+independent, optional per-Gateway WireGuard address.
+
+**Founder parity review — state coverage and management reachability:** Gateway egress
+is rendered only from the server-owned `Node.egress_mode` projection. The disposable
+fixture supplies typed capability-report inputs for dual-stack and IPv4-only Gateways
+and retains an unreported Gateway for Checking; no React fixture or inference fills the
+field. The index keeps Gateway names linked and adds an explicit per-row **Open details**
+affordance so Overview rename and Lifecycle transfer/revoke/restore/delete operations
+are discoverable. Those mutations remain exclusively in the stable detail workspace;
+their RBAC, lifecycle predicates, confirmation, impact, audit, and recovery behavior are
+not duplicated in the inventory.
+
+**Final Gateway audit dispositions:** the founder approved all seven audit findings for
+the Gateway slice. The inventory and detail loader withdraw prior-organization facts and
+permissions synchronously on organization change, and enrollment query state is removed
+instead of reopening against the next organization. The deployment endpoint refusal uses
+the handler's `gateway_endpoint_admin_required` contract. Mutation failures remain inside
+their open confirmation so the server refusal and retry path are visible. Transfer and
+restore accept only complete, non-negative integer impact responses; an incomplete body
+is a contract error and never becomes a fabricated zero. The disposable egress seed
+explicitly removes report keys from the Checking Gateway, making reseed deterministic.
+The mutation reachability guard matches HTTP method plus exact path for endpoint save,
+token issuance, rename, transfer, revoke, restore, and delete. Finally, S20 uses the
+existing `bg-surface-inset` semantic token for the inventory toolbar; the nonexistent
+`bg-surface-raised` utility is not added to or exempted from the color-token guard.
+
+**Founder state-truthfulness correction:** lifecycle and observed connectivity remain
+separate. An active Node without `last_seen_at` is **awaiting first connection**, not
+healthy, and is excluded from the Healthy filter; the same operational state appears in
+the detail header. Egress is also lifecycle-aware without changing the API: a revoked
+Node with a known report is labeled **Last reported**, while a revoked Node without one
+is **Not reported before revocation**, never Checking. Rows named `mcp-agent-*` remain
+visible because they are real Node rows and deployment Gateway usage is Node-based.
+Separating agent runtimes from Gateways requires an explicit backend classification and
+counting contract; S20 does not invent a React-only filter or alter licence usage.

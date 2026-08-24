@@ -46,6 +46,21 @@ ON CONFLICT (id) DO NOTHING;
 UPDATE nodes SET revoked_at = now() - interval '9 days'
  WHERE id = '01900000-0000-7000-8000-0000000f0005' AND revoked_at IS NULL;
 
+-- Egress capability review states. These are the same typed fields written by an
+-- authenticated gateway capability report and consumed by the server-owned
+-- Node.egress_mode projection; React never derives or substitutes them.
+-- Explicitly remove the egress keys from gw-ap-south so an idempotent reseed
+-- restores the intended `checking` state even after a prior capability report.
+UPDATE nodes
+   SET capabilities = capabilities || '{"egress_nat":true,"egress_ipv6":true}'::jsonb
+ WHERE id = '01900000-0000-7000-8000-0000000f0001';
+UPDATE nodes
+   SET capabilities = capabilities || '{"egress_nat":true,"egress_ipv6":false}'::jsonb
+ WHERE id = '01900000-0000-7000-8000-0000000f0002';
+UPDATE nodes
+   SET capabilities = capabilities - 'egress_nat' - 'egress_ipv6'
+ WHERE id = '01900000-0000-7000-8000-0000000f0003';
+
 -- ── SITES ───────────────────────────────────────────────────────────────────────────────────────────────
 -- FOUR: the hub's own site plus three spokes. Three spokes is the minimum that renders as a RING rather than
 -- a line, and ≥2 sites with approved subnets is what crosses the multi-site threshold so routes compile at
@@ -778,7 +793,8 @@ DELETE FROM memberships WHERE user_id = '01900000-0000-7000-8000-00000000b001';
 -- Two agent gateways. Both are real `nodes` rows so the surface's node-half resolves.
 INSERT INTO nodes (id, org_id, name, cert_serial, agent_version, owner_user_id)
 VALUES
-  -- STATE 1 — the healthy case: owned, addressed, attributable.
+  -- STATE 1 — owned, addressed, attributable, but without a Gateway report;
+  -- the Gateway workspace therefore renders `awaiting first connection`, never healthy.
   ('01900000-0000-7000-8000-00000000a001', '01900000-0000-7000-8000-000000000001',
    'mcp-agent-prod', 'fixture-serial-ag001', '1.4.0',
    (SELECT id FROM users WHERE email = 'owner@demo.tunnex.local')),
