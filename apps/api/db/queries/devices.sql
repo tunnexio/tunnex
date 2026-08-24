@@ -177,9 +177,10 @@ RETURNING node_id;
 -- The approval queue (S7.3): devices awaiting admin approval, oldest first.
 -- device_health joined (S7.5.3): a pending device may already be reporting posture
 -- (both facts surface independently — the D7 orthogonality).
-SELECT sqlc.embed(d), ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes,
+SELECT sqlc.embed(d), u.email AS owner_email, ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes,
        dh.evaluated_state, dh.failed_checks, dh.os_version, dh.disk_encrypted, dh.reported_at
 FROM devices d
+LEFT JOIN users u ON u.id = d.user_id
 LEFT JOIN device_status ds ON ds.device_id = d.id
 LEFT JOIN device_health dh ON dh.device_id = d.id
 WHERE d.org_id = $1 AND d.status = 'pending' AND d.deleted_at IS NULL AND d.kind <> 'agent'

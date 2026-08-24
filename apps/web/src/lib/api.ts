@@ -77,6 +77,11 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
   return e?.error?.message ?? fallback;
 }
 
+/** Read the cursor envelope while remaining tolerant of legacy array fixtures. */
+export function listItems<T>(value: T[] | { items?: T[] } | undefined): T[] {
+  return Array.isArray(value) ? value : value?.items ?? [];
+}
+
 // Loaded<T> normalizes a GET result. openapi-fetch is a STANDING FOOTGUN: it returns
 // {data:undefined, error} on a non-2xx (it does NOT throw) and REJECTS on a network
 // failure — two paths that, if a component only reads `data`, silently render a

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Badge,
   Button,
@@ -22,6 +23,14 @@ import {
 import { AreaChart, Donut, Histogram, NodeLink } from "../components/viz";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import { Icon, ICON_PATHS, type IconName } from "../components/Icon";
+import {
+  S18AddAgentVisualScenario,
+  S18DetailVisualScenario,
+  S18IndexVisualScenario,
+  S18ManagementVisualScenario,
+  S18RulesVisualScenario,
+  type S18VisualScenario,
+} from "./S18VisualScenarios";
 
 // ⛔ THE VISUAL GALLERY — THE SUBJECT OF THE VIEWPORT LEG.
 //
@@ -102,10 +111,41 @@ export default function VisualGallery() {
   const [showModal, setShowModal] = useState(true);
   // Live so the gallery shows a switch that actually moves — a static one hides the state it exists to show.
   const [galleryOvpn, setGalleryOvpn] = useState(false);
+  const [search] = useSearchParams();
+  const s18 = search.get("scenario") as S18VisualScenario | null;
+
+  if (s18?.startsWith("index-")) {
+    return <div className="tnx-page p-6" data-visual-gallery data-s18-scenario={s18}><S18IndexVisualScenario scenario={s18 as Extract<S18VisualScenario, `index-${string}`>} /></div>;
+  }
+  if (s18?.startsWith("detail-")) {
+    return <div className="tnx-page p-6" data-visual-gallery data-s18-scenario={s18}><S18DetailVisualScenario scenario={s18 as Extract<S18VisualScenario, `detail-${string}`>} /></div>;
+  }
+  if (s18?.startsWith("add-")) {
+    return <div className="tnx-page p-6" data-visual-gallery data-s18-scenario={s18}><S18AddAgentVisualScenario scenario={s18 as Extract<S18VisualScenario, `add-${string}`>} /></div>;
+  }
+  if (s18?.startsWith("policies-") || s18?.startsWith("mcp-")) {
+    return <div className="tnx-page p-6" data-visual-gallery data-s18-scenario={s18}><S18ManagementVisualScenario scenario={s18 as Extract<S18VisualScenario, `policies-${string}` | `mcp-${string}`>} /></div>;
+  }
+  if (s18?.startsWith("rules-")) {
+    return <div className="tnx-page p-6" data-visual-gallery data-s18-scenario={s18}><S18RulesVisualScenario scenario={s18 as Extract<S18VisualScenario, `rules-${string}`>} /></div>;
+  }
 
   return (
     <div className="tnx-page flex flex-col gap-3.5 p-6" data-visual-gallery>
       <PageHeader title="Visual gallery" />
+
+      <GalleryGroup title="S18 AI Agents — route components with development fixtures">
+        <div className="flex max-w-5xl flex-wrap gap-2 text-xs">
+          {([
+            "index-populated", "index-empty", "index-loading", "index-error", "index-partial", "index-denied", "index-community", "index-filtered",
+            "detail-overview", "detail-runtime", "detail-mcp", "detail-access", "detail-activity",
+            "add-details", "add-review", "add-token", "add-waiting",
+            "policies-empty", "policies-populated", "policies-loading", "policies-error", "policies-denied",
+            "mcp-empty", "mcp-populated", "mcp-loading", "mcp-error", "mcp-denied",
+            "rules-populated", "rules-empty", "rules-error", "rules-denied",
+          ] as S18VisualScenario[]).map((scenario) => <Link key={scenario} className="rounded border border-white/15 px-2 py-1 text-accent-400 hover:border-accent-400 hover:text-white" to={`?scenario=${scenario}${scenario === "index-filtered" ? "&q=support&sort=name&dir=desc" : scenario.startsWith("detail-") ? `&tab=${scenario.slice("detail-".length)}` : ""}`}>{scenario}</Link>)}
+        </div>
+      </GalleryGroup>
 
       <GalleryGroup title="Buttons">
         {(["primary", "ghost", "danger"] as const).map((v) => (

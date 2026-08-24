@@ -27,6 +27,7 @@ import {
   StatusDot,
 } from "../components/ui";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
+import { DevicesTabRail } from "../components/DevicesTabRail";
 import {
   addressLabel,
   applyDeviceFilter,
@@ -276,32 +277,6 @@ export default function Devices() {
   }
 
   /**
-   * ⛔ APPROVE / REJECT WERE UNREACHABLE FROM THE SCREEN THAT SHOWS PENDING DEVICES.
-   *
-   * This page lists a device with a `pending` badge and its Actions cell rendered `null` — Revoke was offered
-   * for `active` only. The endpoints existed and their sole call site was the Device-approval card on Access
-   * Policies, so an operator looking at the pending device had to already know it was governed from another
-   * screen entirely.
-   *
-   * > **A STATE A SURFACE DISPLAYS AND CANNOT ACT ON IS A DEAD END** — and `pending` is the one state on this
-   * > roster that exists precisely because someone must decide about it.
-   */
-  async function decide(id: string, action: "approve" | "reject") {
-    if (!org) return;
-    setError(null);
-    const { error } = await api.POST(
-      action === "approve"
-        ? "/api/v1/organizations/{orgId}/devices/{deviceId}/approve"
-        : "/api/v1/organizations/{orgId}/devices/{deviceId}/reject",
-      { params: { path: { orgId: org.id, deviceId: id } } },
-    );
-    if (error) {
-      setError(apiErrorMessage(error, `Could not ${action} the device.`));
-      return;
-    }
-  }
-
-  /**
    * ⛔ REMOVE IS NOT REVOKE, AND THE ORDER MATTERS. Revoke kills the credential; remove takes the dead row
    * off the roster. The server refuses to remove anything that is not already revoked, because removing a
    * LIVE device would leave a working credential with no surface to revoke it from.
@@ -379,6 +354,7 @@ export default function Devices() {
           Add device
         </Button>
       </div>
+      <DevicesTabRail />
 
       <ErrorText>{error}</ErrorText>
 
@@ -591,37 +567,7 @@ export default function Devices() {
           caption="Devices"
           rows={shown}
           rowKey={(d) => d.id}
-          // ⛔ THE VERBS LEAVE THE ROWS — and APPROVE / REJECT ARRIVE, which this screen never had.
-          // `unavailable` states each rule rather than encoding it in a button that simply does not render:
-          // a pending device's Actions cell used to be blank, which says nothing about why.
           rowActions={[
-            {
-              key: "approve",
-              label: "Approve",
-              unavailable: (d) =>
-                d.status === "pending"
-                  ? null
-                  : "Only a device awaiting approval can be approved.",
-              run: (ds) => {
-                void runBatch(() =>
-                  Promise.all(ds.map((d) => decide(d.id, "approve"))),
-                );
-              },
-            },
-            {
-              key: "reject",
-              label: "Reject",
-              danger: true,
-              unavailable: (d) =>
-                d.status === "pending"
-                  ? null
-                  : "Only a device awaiting approval can be rejected.",
-              run: (ds) => {
-                void runBatch(() =>
-                  Promise.all(ds.map((d) => decide(d.id, "reject"))),
-                );
-              },
-            },
             {
               key: "revoke",
               label: "Revoke",
@@ -751,7 +697,7 @@ export default function Devices() {
                 if (!posturePlatformSupported(d.platform))
                   return (
                     <span className="text-xs text-slate-600 italic">
-                      n/a on this platform
+                      Not supported
                     </span>
                   );
                 const pb = postureBadge(d);

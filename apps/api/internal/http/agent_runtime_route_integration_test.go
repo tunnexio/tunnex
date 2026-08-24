@@ -22,6 +22,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
+	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 )
@@ -209,10 +210,10 @@ func TestAgentRuntimeRoutesPostgresContract(t *testing.T) {
 		t.Fatalf("quota clear status/body=%d/%s", rr.Code, body)
 	}
 
-	// The released contract is enterprise-only: permission is evaluated first,
-	// then the open edition refuses without exposing the agent rows.
+	// Base agent inventory and runtime are available on Community. A missing
+	// runtime dependency remains an operational service error, never a plan gate.
 	openRouter, err := NewRouter(slog.Default(), Deps{
-		System: q, Orgs: tenancy.NewService(pool), Licence: licence.NewTestManager("community", time.Now().Add(time.Hour)),
+		System: q, Orgs: tenancy.NewService(pool), Nodes: nodes.NewService(pool, nil, nil), Licence: licence.NewTestManager("community", time.Now().Add(time.Hour)),
 		Policy: NewPolicyPort(pool, nil), AuthFn: func(*http.Request) *authctx.Principal { return principal },
 	})
 	if err != nil {
@@ -222,15 +223,15 @@ func TestAgentRuntimeRoutesPostgresContract(t *testing.T) {
 	openResp := httptest.NewRecorder()
 	openRouter.ServeHTTP(openResp, openReq)
 	openBody, _ := io.ReadAll(openResp.Result().Body)
-	if openResp.Code != http.StatusForbidden || strings.Contains(string(openBody), device.String()) || strings.Contains(string(openBody), "10.99.0.") {
-		t.Fatalf("open-edition agents status/body=%d/%s", openResp.Code, openBody)
+	if openResp.Code != http.StatusOK || strings.Contains(string(openBody), "edition_required") {
+		t.Fatalf("community agents status/body=%d/%s", openResp.Code, openBody)
 	}
 	openRuntimeReq := httptest.NewRequest(http.MethodGet, "/api/v1/agent/runtime/poll?applied_revision=2&client_version=v1", strings.NewReader(""))
 	openRuntimeReq.Header.Set("Authorization", "Bearer "+token)
 	openRuntimeResp := httptest.NewRecorder()
 	openRouter.ServeHTTP(openRuntimeResp, openRuntimeReq)
-	if openRuntimeResp.Code != http.StatusForbidden || !strings.Contains(openRuntimeResp.Body.String(), "edition_required") || strings.Contains(openRuntimeResp.Body.String(), device.String()) {
-		t.Fatalf("open-edition runtime status/body=%d/%s", openRuntimeResp.Code, openRuntimeResp.Body.String())
+	if strings.Contains(openRuntimeResp.Body.String(), "edition_required") {
+		t.Fatalf("community runtime must not report an obsolete edition gate: status/body=%d/%s", openRuntimeResp.Code, openRuntimeResp.Body.String())
 	}
 
 	unauthRouter, err := NewRouter(slog.Default(), Deps{System: q, Orgs: tenancy.NewService(pool), Policy: NewPolicyPort(pool, nil)})

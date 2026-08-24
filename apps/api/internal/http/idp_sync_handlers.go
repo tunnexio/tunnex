@@ -126,8 +126,12 @@ func (s apiServer) MapIdpGroup(ctx context.Context, req api.MapIdpGroupRequestOb
 	if err != nil {
 		return nil, err
 	}
+	group, err := s.groupListResponse(ctx, req.OrgId, g.ID)
+	if err != nil {
+		return nil, err
+	}
 	return api.MapIdpGroup200JSONResponse{
-		Body:    toAPIGroup(g),
+		Body:    group,
 		Headers: api.MapIdpGroup200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }

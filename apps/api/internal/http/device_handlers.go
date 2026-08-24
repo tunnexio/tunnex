@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
@@ -62,9 +63,6 @@ func (s apiServer) ListDevices(ctx context.Context, req api.ListDevicesRequestOb
 	}
 	out := make([]api.Device, 0, len(devs))
 	for _, d := range devs {
-		if !s.deviceHealthEnabled {
-			d.Health = nil // open build: never surface leftover enterprise posture rows
-		}
 		ad := toAPIDeviceWithStatus(d)
 		// Computed for EVERY mode now, not just static — the mode discrimination lives inside ProfileStale,
 		// where the ranges half stays static-only and the address half does not. Gating out here is what hid
@@ -297,6 +295,10 @@ func toAPIDevice(d sqlc.Device) api.Device {
 
 func toAPIDeviceWithStatus(d devices.DeviceWithStatus) api.Device {
 	out := toAPIDevice(d.Device)
+	if d.OwnerEmail != nil {
+		email := openapi_types.Email(*d.OwnerEmail)
+		out.OwnerEmail = &email
+	}
 	out.LastHandshakeAt = d.LastHandshakeAt
 	out.RxBytes = d.RxBytes
 	out.TxBytes = d.TxBytes

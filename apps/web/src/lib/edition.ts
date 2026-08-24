@@ -20,26 +20,16 @@
  * is precisely how the first sweep would have missed Access Rules a second time.
  */
 export const ENTERPRISE_PATHS: readonly string[] = [
-  // S15.3 — the agent surface. ⛔ The client must KNOW this is enterprise, so a 403 renders as ABSENCE
-  // rather than as a failure: edition_required is a SUCCESSFUL refusal.
-  "/api/v1/organizations/{orgId}/agents",
   "/api/v1/organizations/{orgId}/access-events",
   "/api/v1/organizations/{orgId}/access-log/health",
-  "/api/v1/organizations/{orgId}/device-approval",
-  "/api/v1/organizations/{orgId}/devices/pending",
   // ⛔ ADDED S14.5 BY A WIDENED CENSUS. These three were enterprise on the SERVER all along —
   // `ApproveDevice`/`RejectDevice` call `deviceApprovalEditionRequired()` and `ReportDeviceHealth` gates on
   // `deviceHealthEnabled` — and were missed here because the census matched `(enterprise)` alone while their
   // summaries read `(…, enterprise)`. The gate existed; the client did not know about it.
-  "/api/v1/organizations/{orgId}/devices/{deviceId}/approve",
-  "/api/v1/organizations/{orgId}/devices/{deviceId}/health",
-  "/api/v1/organizations/{orgId}/devices/{deviceId}/reject",
   "/api/v1/organizations/{orgId}/groups",
   "/api/v1/organizations/{orgId}/groups/{groupId}",
   "/api/v1/organizations/{orgId}/groups/{groupId}/members",
   "/api/v1/organizations/{orgId}/groups/{groupId}/members/{userId}",
-  "/api/v1/organizations/{orgId}/health-checks",
-  "/api/v1/organizations/{orgId}/health-checks/{checkKind}",
   "/api/v1/organizations/{orgId}/idp-sync/{provider}",
   "/api/v1/organizations/{orgId}/idp-sync/{provider}/groups",
   "/api/v1/organizations/{orgId}/idp-sync/{provider}/groups/{groupId}",

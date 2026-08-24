@@ -260,23 +260,22 @@ describe("the CUT panels are ABSENT, not hidden", () => {
   });
 });
 
-describe("⛔ EDITION IS A FOURTH STATE — an enterprise-only card is ABSENT, never an error", () => {
+describe("licence capability state does not suppress base operational cards", () => {
   // The defect this fixes: `/devices/pending` is enterprise-only, so the OPEN edition gets
   // `403 edition_required` — a SUCCESSFUL REFUSAL. Read through loadOne alone it became `failed`, and the
   // card rendered a red "could not load" for a feature the org was never sold.
   //
   // A design that carefully enumerates states pushes the danger onto the state nobody enumerated, and it gets
   // absorbed by whichever existing state is nearest — which is almost never the harmless one.
-  it("[open edition] the Pending-approvals card is not rendered at all", async () => {
+  it("[Community] the Pending-approvals card remains visible; access is determined by the server", async () => {
     edition = "open";
     show();
     await waitFor(() => expect(screen.getByText("Members")).toBeTruthy());
-    expect(screen.queryByText("Pending approvals")).toBeNull();
-    // And no error treatment anywhere in its place.
+    expect(screen.getByText("Pending approvals")).toBeTruthy();
     expect(screen.queryByText("could not load")).toBeNull();
   });
 
-  it("[enterprise] the card IS rendered", async () => {
+  it("[licensed plan] the card remains rendered", async () => {
     edition = "enterprise";
     show();
     await waitFor(() =>
@@ -284,12 +283,11 @@ describe("⛔ EDITION IS A FOURTH STATE — an enterprise-only card is ABSENT, n
     );
   });
 
-  it("[edition still unknown] the card is absent — absent-until-known, never a flash", async () => {
-    // A slow /meta must not briefly render an enterprise surface to an open-edition org.
+  it("[licence status pending] the base card remains rendered without inventing a plan restriction", async () => {
     edition = null;
     show();
     await waitFor(() => expect(screen.getByText("Members")).toBeTruthy());
-    expect(screen.queryByText("Pending approvals")).toBeNull();
+    expect(screen.getByText("Pending approvals")).toBeTruthy();
   });
 });
 

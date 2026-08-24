@@ -21,9 +21,20 @@ VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: ListAgentGroups :many
-SELECT * FROM agent_groups
-WHERE org_id = $1 AND archived_at IS NULL
-ORDER BY lower(name), id;
+-- agent_group_members is unique today, but the list contract must remain exact
+-- if a bounded enrichment introduces another join.
+SELECT g.*, count(DISTINCT d.id)::bigint AS member_count
+FROM agent_groups g
+LEFT JOIN agent_group_members m
+  ON m.org_id = g.org_id AND m.agent_group_id = g.id
+LEFT JOIN devices d
+  ON d.id = m.device_id
+  AND d.org_id = m.org_id
+  AND d.kind = 'agent'
+  AND d.deleted_at IS NULL
+WHERE g.org_id = $1 AND g.archived_at IS NULL
+GROUP BY g.id
+ORDER BY lower(g.name), g.id;
 
 -- name: GetAgentGroup :one
 SELECT * FROM agent_groups

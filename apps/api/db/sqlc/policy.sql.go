@@ -732,20 +732,41 @@ func (q *Queries) ListResourcesByOrg(ctx context.Context, orgID uuid.UUID) ([]Re
 }
 
 const listUserGroupsByOrg = `-- name: ListUserGroupsByOrg :many
-SELECT id, org_id, name, description, created_at, updated_at, origin, idp_provider, idp_group_id FROM user_groups
-WHERE org_id = $1
-ORDER BY name
+SELECT g.id, g.org_id, g.name, g.description, g.created_at, g.updated_at, g.origin, g.idp_provider, g.idp_group_id, count(DISTINCT u.id)::bigint AS member_count
+FROM user_groups g
+LEFT JOIN group_members gm
+  ON gm.org_id = g.org_id AND gm.group_id = g.id
+LEFT JOIN users u
+  ON u.id = gm.user_id AND u.deleted_at IS NULL
+WHERE g.org_id = $1
+GROUP BY g.id
+ORDER BY g.name
 `
 
-func (q *Queries) ListUserGroupsByOrg(ctx context.Context, orgID uuid.UUID) ([]UserGroup, error) {
+type ListUserGroupsByOrgRow struct {
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Origin      string    `json:"origin"`
+	IdpProvider *string   `json:"idp_provider"`
+	IdpGroupID  *string   `json:"idp_group_id"`
+	MemberCount int64     `json:"member_count"`
+}
+
+// Membership is unique per (group_id, user_id), but keep this aggregate
+// duplicate-safe if a future bounded list enriches it with another join.
+func (q *Queries) ListUserGroupsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListUserGroupsByOrgRow, error) {
 	rows, err := q.db.Query(ctx, listUserGroupsByOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []UserGroup{}
+	items := []ListUserGroupsByOrgRow{}
 	for rows.Next() {
-		var i UserGroup
+		var i ListUserGroupsByOrgRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -756,6 +777,7 @@ func (q *Queries) ListUserGroupsByOrg(ctx context.Context, orgID uuid.UUID) ([]U
 			&i.Origin,
 			&i.IdpProvider,
 			&i.IdpGroupID,
+			&i.MemberCount,
 		); err != nil {
 			return nil, err
 		}

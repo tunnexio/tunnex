@@ -15,11 +15,11 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
-// policyPort is the enterprise Zero Trust policy capability. It is nil in the
-// open build, so every handler returns the edition_required envelope (same shape
-// as the org cap / SSO). It returns sqlc rows; the handlers map them to API types.
+// policyPort is the one-binary Zero Trust policy service. Production wiring always
+// provides it; a nil port is an internal configuration fault, never a plan decision.
+// It returns sqlc rows; the handlers map them to API types.
 type policyPort interface {
-	ListGroups(ctx context.Context, orgID uuid.UUID) ([]sqlc.UserGroup, error)
+	ListGroups(ctx context.Context, orgID uuid.UUID) ([]sqlc.ListUserGroupsByOrgRow, error)
 	CreateGroup(ctx context.Context, orgID uuid.UUID, name, description string) (sqlc.UserGroup, error)
 	UpdateGroup(ctx context.Context, orgID, groupID uuid.UUID, name, description string) (sqlc.UserGroup, error)
 	DeleteGroup(ctx context.Context, orgID, groupID uuid.UUID) error
@@ -52,8 +52,8 @@ type policyPort interface {
 // The two refusal paths must never be conflated in status/error surfaces.
 const EgressPolicyDenied = "egress_policy_denied"
 
-func policyEditionRequired() error {
-	return apierr.New(http.StatusForbidden, "edition_required", "Zero Trust policy is a Tunnex Enterprise feature")
+func policyServiceUnavailable() error {
+	return apierr.New(http.StatusServiceUnavailable, "policy_service_unavailable", "Zero Trust policy service is unavailable")
 }
 
 // reqID is a short alias for the request-id header value.
@@ -66,7 +66,7 @@ func (s apiServer) ListGroups(ctx context.Context, req api.ListGroupsRequestObje
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	gs, err := s.policy.ListGroups(ctx, req.OrgId)
 	if err != nil {
@@ -84,7 +84,7 @@ func (s apiServer) ListGroups(ctx context.Context, req api.ListGroupsRequestObje
 	}
 	out := make([]api.UserGroup, 0, len(gs))
 	for _, g := range gs {
-		item := toAPIGroup(g)
+		item := toAPIGroupList(g)
 		if managedAgentCounts != nil {
 			count := int(managedAgentCounts[g.ID])
 			item.ManagedAgentCount = &count
@@ -99,7 +99,7 @@ func (s apiServer) CreateGroup(ctx context.Context, req api.CreateGroupRequestOb
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -108,7 +108,11 @@ func (s apiServer) CreateGroup(ctx context.Context, req api.CreateGroupRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateGroup201JSONResponse{Body: toAPIGroup(g), Headers: api.CreateGroup201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	group, err := s.groupListResponse(ctx, req.OrgId, g.ID)
+	if err != nil {
+		return nil, err
+	}
+	return api.CreateGroup201JSONResponse{Body: group, Headers: api.CreateGroup201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) UpdateGroup(ctx context.Context, req api.UpdateGroupRequestObject) (api.UpdateGroupResponseObject, error) {
@@ -116,7 +120,7 @@ func (s apiServer) UpdateGroup(ctx context.Context, req api.UpdateGroupRequestOb
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -125,7 +129,11 @@ func (s apiServer) UpdateGroup(ctx context.Context, req api.UpdateGroupRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return api.UpdateGroup200JSONResponse{Body: toAPIGroup(g), Headers: api.UpdateGroup200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	group, err := s.groupListResponse(ctx, req.OrgId, g.ID)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateGroup200JSONResponse{Body: group, Headers: api.UpdateGroup200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) DeleteGroup(ctx context.Context, req api.DeleteGroupRequestObject) (api.DeleteGroupResponseObject, error) {
@@ -133,7 +141,7 @@ func (s apiServer) DeleteGroup(ctx context.Context, req api.DeleteGroupRequestOb
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if err := s.policy.DeleteGroup(ctx, req.OrgId, req.GroupId); err != nil {
 		return nil, err
@@ -148,7 +156,7 @@ func (s apiServer) ListGroupMembers(ctx context.Context, req api.ListGroupMember
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	ms, err := s.policy.ListGroupMembers(ctx, req.OrgId, req.GroupId)
 	if err != nil {
@@ -166,7 +174,7 @@ func (s apiServer) AddGroupMember(ctx context.Context, req api.AddGroupMemberReq
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -182,7 +190,7 @@ func (s apiServer) RemoveGroupMember(ctx context.Context, req api.RemoveGroupMem
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if err := s.policy.RemoveGroupMember(ctx, req.OrgId, req.GroupId, req.UserId); err != nil {
 		return nil, err
@@ -197,7 +205,7 @@ func (s apiServer) ListResources(ctx context.Context, req api.ListResourcesReque
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	rs, err := s.policy.ListResources(ctx, req.OrgId)
 	if err != nil {
@@ -215,7 +223,7 @@ func (s apiServer) CreateResource(ctx context.Context, req api.CreateResourceReq
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -232,7 +240,7 @@ func (s apiServer) UpdateResource(ctx context.Context, req api.UpdateResourceReq
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -249,7 +257,7 @@ func (s apiServer) DeleteResource(ctx context.Context, req api.DeleteResourceReq
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if err := s.policy.DeleteResource(ctx, req.OrgId, req.ResourceId); err != nil {
 		return nil, err
@@ -287,7 +295,7 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	rs, err := s.policy.ListPolicyRules(ctx, req.OrgId)
 	if err != nil {
@@ -341,7 +349,7 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 		}
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -385,7 +393,7 @@ func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRul
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
@@ -403,7 +411,7 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
@@ -426,14 +434,14 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 	return api.ExtendGrant200JSONResponse{Body: toAPIRule(r, warn[r.ID], van[r.ID]), Headers: api.ExtendGrant200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
-// SetPolicyRuleEnabled (F3) — enable/disable a rule without deleting it. policy:manage, enterprise-gated;
+// SetPolicyRuleEnabled (F3) — enable/disable a rule without deleting it. policy:manage;
 // disabling is an in-hash policy change (recompile + push). The response echoes the new enabled state.
 func (s apiServer) SetPolicyRuleEnabled(ctx context.Context, req api.SetPolicyRuleEnabledRequestObject) (api.SetPolicyRuleEnabledResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
@@ -463,7 +471,7 @@ func (s apiServer) GetZeroTrustMode(ctx context.Context, req api.GetZeroTrustMod
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	mode, err := s.policy.GetMode(ctx, req.OrgId)
 	if err != nil {
@@ -482,7 +490,7 @@ func (s apiServer) SetZeroTrustMode(ctx context.Context, req api.SetZeroTrustMod
 		return nil, err
 	}
 	if s.policy == nil {
-		return nil, policyEditionRequired()
+		return nil, policyServiceUnavailable()
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
@@ -507,8 +515,8 @@ func (s apiServer) SetZeroTrustMode(ctx context.Context, req api.SetZeroTrustMod
 
 // ── mappers ─────────────────────────────────────────────────────────────────────
 
-func toAPIGroup(g sqlc.UserGroup) api.UserGroup {
-	out := api.UserGroup{Id: g.ID, OrgId: g.OrgID, Name: g.Name, Description: g.Description, CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt}
+func toAPIGroupList(g sqlc.ListUserGroupsByOrgRow) api.UserGroup {
+	out := api.UserGroup{Id: g.ID, OrgId: g.OrgID, Name: g.Name, Description: g.Description, MemberCount: int(g.MemberCount), CreatedAt: g.CreatedAt, UpdatedAt: g.UpdatedAt}
 	if g.Origin != "" { // S7.5.2: distinguish a directory-synced group from a manual one
 		o := api.UserGroupOrigin(g.Origin)
 		out.Origin = &o
@@ -519,6 +527,25 @@ func toAPIGroup(g sqlc.UserGroup) api.UserGroup {
 	}
 	out.IdpGroupId = g.IdpGroupID
 	return out
+}
+
+// groupListResponse reuses the bounded list projection after a mutation, so an
+// update cannot manufacture member_count: 0 for a group that already has
+// members. The list is organization-scoped and is the canonical count source.
+func (s apiServer) groupListResponse(ctx context.Context, orgID, groupID uuid.UUID) (api.UserGroup, error) {
+	if s.system == nil {
+		return api.UserGroup{}, apierr.Internal()
+	}
+	groups, err := s.system.ListUserGroupsByOrg(ctx, orgID)
+	if err != nil {
+		return api.UserGroup{}, err
+	}
+	for _, group := range groups {
+		if group.ID == groupID {
+			return toAPIGroupList(group), nil
+		}
+	}
+	return api.UserGroup{}, apierr.NotFound("group_not_found", "group not found")
 }
 
 func toAPIResource(r sqlc.Resource) api.Resource {

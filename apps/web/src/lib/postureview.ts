@@ -269,7 +269,7 @@ export function checkModeOf(
 //
 // So the text says WHAT IS TRUE OF ALL OF THEM — no address is assigned — and never guesses the cause.
 // "released" would be wrong for a device that never had one; "revoked" would be wrong for three of four.
-export const NO_ADDRESS = "none assigned";
+export const NO_ADDRESS = "—";
 
 /** The address cell's text. A string, never an empty one — absence is stated, not left as blank pixels. */
 export function addressLabel(assignedIp: string | undefined | null): string {

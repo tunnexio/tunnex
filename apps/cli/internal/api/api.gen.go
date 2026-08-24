@@ -122,6 +122,19 @@ const (
 	AgentMCPOAuthConsentStartStatePendingConsent AgentMCPOAuthConsentStartState = "pending_consent"
 )
 
+// Defines values for AgentMCPProfileArchiveConflictCode.
+const (
+	McpProfileInUse AgentMCPProfileArchiveConflictCode = "mcp_profile_in_use"
+)
+
+// Defines values for AgentMCPProfileAssignmentState.
+const (
+	AgentMCPProfileAssignmentStateActive      AgentMCPProfileAssignmentState = "active"
+	AgentMCPProfileAssignmentStateQuarantined AgentMCPProfileAssignmentState = "quarantined"
+	AgentMCPProfileAssignmentStateReplaced    AgentMCPProfileAssignmentState = "replaced"
+	AgentMCPProfileAssignmentStateUnassigned  AgentMCPProfileAssignmentState = "unassigned"
+)
+
 // Defines values for AgentMCPToolApprovalRequestState.
 const (
 	AgentMCPToolApprovalRequestStateApproved AgentMCPToolApprovalRequestState = "approved"
@@ -639,8 +652,8 @@ const (
 
 // Defines values for UpdateAgentProfileRequestStatus.
 const (
-	Active    UpdateAgentProfileRequestStatus = "active"
-	Suspended UpdateAgentProfileRequestStatus = "suspended"
+	UpdateAgentProfileRequestStatusActive    UpdateAgentProfileRequestStatus = "active"
+	UpdateAgentProfileRequestStatusSuspended UpdateAgentProfileRequestStatus = "suspended"
 )
 
 // Defines values for UpgradeStatusApprovalMode.
@@ -667,11 +680,11 @@ const (
 
 // Defines values for UpgradeStatusRollbackState.
 const (
-	Available         UpgradeStatusRollbackState = "available"
-	Failed            UpgradeStatusRollbackState = "failed"
-	InProgress        UpgradeStatusRollbackState = "in_progress"
-	NotNeeded         UpgradeStatusRollbackState = "not_needed"
-	RestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
+	UpgradeStatusRollbackStateAvailable         UpgradeStatusRollbackState = "available"
+	UpgradeStatusRollbackStateFailed            UpgradeStatusRollbackState = "failed"
+	UpgradeStatusRollbackStateInProgress        UpgradeStatusRollbackState = "in_progress"
+	UpgradeStatusRollbackStateNotNeeded         UpgradeStatusRollbackState = "not_needed"
+	UpgradeStatusRollbackStateRestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
 )
 
 // Defines values for UpgradeStatusState.
@@ -711,6 +724,54 @@ const (
 const (
 	Google    StartSsoLoginParamsProvider = "google"
 	Microsoft StartSsoLoginParamsProvider = "microsoft"
+)
+
+// Defines values for ListAgentMCPAssignmentsParamsState.
+const (
+	ListAgentMCPAssignmentsParamsStateActive      ListAgentMCPAssignmentsParamsState = "active"
+	ListAgentMCPAssignmentsParamsStateQuarantined ListAgentMCPAssignmentsParamsState = "quarantined"
+	ListAgentMCPAssignmentsParamsStateReplaced    ListAgentMCPAssignmentsParamsState = "replaced"
+	ListAgentMCPAssignmentsParamsStateUnassigned  ListAgentMCPAssignmentsParamsState = "unassigned"
+)
+
+// Defines values for ListAgentsParamsLifecycle.
+const (
+	ListAgentsParamsLifecycleActive    ListAgentsParamsLifecycle = "active"
+	ListAgentsParamsLifecyclePending   ListAgentsParamsLifecycle = "pending"
+	ListAgentsParamsLifecycleRevoked   ListAgentsParamsLifecycle = "revoked"
+	ListAgentsParamsLifecycleSuspended ListAgentsParamsLifecycle = "suspended"
+)
+
+// Defines values for ListAgentsParamsRuntime.
+const (
+	ListAgentsParamsRuntimeDegraded      ListAgentsParamsRuntime = "degraded"
+	ListAgentsParamsRuntimeHealthy       ListAgentsParamsRuntime = "healthy"
+	ListAgentsParamsRuntimeNotConfigured ListAgentsParamsRuntime = "not_configured"
+	ListAgentsParamsRuntimePending       ListAgentsParamsRuntime = "pending"
+)
+
+// Defines values for ListAgentsParamsMcp.
+const (
+	Assigned   ListAgentsParamsMcp = "assigned"
+	Unassigned ListAgentsParamsMcp = "unassigned"
+)
+
+// Defines values for ListAgentsParamsAccess.
+const (
+	Active  ListAgentsParamsAccess = "active"
+	None    ListAgentsParamsAccess = "none"
+	Pending ListAgentsParamsAccess = "pending"
+)
+
+// Defines values for ListAgentsParamsSort.
+const (
+	Name ListAgentsParamsSort = "name"
+)
+
+// Defines values for ListAgentsParamsDir.
+const (
+	Asc  ListAgentsParamsDir = "asc"
+	Desc ListAgentsParamsDir = "desc"
 )
 
 // Defines values for TestAgentAccessParamsProtocol.
@@ -1042,6 +1103,18 @@ type AgentCredentialRotationStatusState string
 // AgentCredentialRotationStatusWireguardState defines model for AgentCredentialRotationStatus.WireguardState.
 type AgentCredentialRotationStatusWireguardState string
 
+// AgentEffectiveMCPProfile defines model for AgentEffectiveMCPProfile.
+type AgentEffectiveMCPProfile struct {
+	Assigned bool `json:"assigned"`
+
+	// Endpoint Credential-free MCP upstream endpoint.
+	Endpoint    *string             `json:"endpoint"`
+	GroupId     *openapi_types.UUID `json:"group_id"`
+	GroupName   *string             `json:"group_name"`
+	ProfileId   *openapi_types.UUID `json:"profile_id"`
+	ProfileName *string             `json:"profile_name"`
+}
+
 // AgentEffectivePermissions Server-computed authority for this exact agent; clients must not infer it from the organization role.
 type AgentEffectivePermissions struct {
 	Assign            bool `json:"assign"`
@@ -1057,6 +1130,9 @@ type AgentGroup struct {
 	CreatedAt   time.Time          `json:"created_at"`
 	Description string             `json:"description"`
 	Id          openapi_types.UUID `json:"id"`
+
+	// MemberCount Exact current active managed-agent membership count.
+	MemberCount int                `json:"member_count"`
 	Name        string             `json:"name"`
 	OrgId       openapi_types.UUID `json:"org_id"`
 	UpdatedAt   time.Time          `json:"updated_at"`
@@ -1080,6 +1156,14 @@ type AgentJITAccessSetting struct {
 	ApprovedRequests int  `json:"approved_requests"`
 	Enabled          bool `json:"enabled"`
 	PendingRequests  int  `json:"pending_requests"`
+}
+
+// AgentListPage defines model for AgentListPage.
+type AgentListPage struct {
+	Items []Agent `json:"items"`
+
+	// NextCursor Opaque keyset cursor for the next page, or null when this response is final. No total is implied or returned: a client must not infer one from a loaded batch.
+	NextCursor *string `json:"next_cursor"`
 }
 
 // AgentMCPInventory defines model for AgentMCPInventory.
@@ -1123,21 +1207,73 @@ type AgentMCPOAuthConsentStartState string
 
 // AgentMCPProfile defines model for AgentMCPProfile.
 type AgentMCPProfile struct {
-	CreatedAt time.Time          `json:"created_at"`
-	Endpoint  string             `json:"endpoint"`
-	Id        openapi_types.UUID `json:"id"`
-	Name      string             `json:"name"`
-	OrgId     openapi_types.UUID `json:"org_id"`
-	UpdatedAt time.Time          `json:"updated_at"`
+	ArchivedAt *time.Time         `json:"archived_at"`
+	CreatedAt  time.Time          `json:"created_at"`
+	Endpoint   string             `json:"endpoint"`
+	Id         openapi_types.UUID `json:"id"`
+	Name       string             `json:"name"`
+	OrgId      openapi_types.UUID `json:"org_id"`
+	UpdatedAt  time.Time          `json:"updated_at"`
 }
+
+// AgentMCPProfileArchiveConflict defines model for AgentMCPProfileArchiveConflict.
+type AgentMCPProfileArchiveConflict struct {
+	ActiveGroupCount   int32                              `json:"active_group_count"`
+	AffectedAgentCount int32                              `json:"affected_agent_count"`
+	Code               AgentMCPProfileArchiveConflictCode `json:"code"`
+}
+
+// AgentMCPProfileArchiveConflictCode defines model for AgentMCPProfileArchiveConflict.Code.
+type AgentMCPProfileArchiveConflictCode string
 
 // AgentMCPProfileAssignment defines model for AgentMCPProfileAssignment.
 type AgentMCPProfileAssignment struct {
-	AssignedAt time.Time          `json:"assigned_at"`
-	GroupId    openapi_types.UUID `json:"group_id"`
-	Id         openapi_types.UUID `json:"id"`
-	OrgId      openapi_types.UUID `json:"org_id"`
-	ProfileId  openapi_types.UUID `json:"profile_id"`
+	AssignedAt       time.Time                      `json:"assigned_at"`
+	EndedAt          *time.Time                     `json:"ended_at"`
+	GroupId          openapi_types.UUID             `json:"group_id"`
+	GroupName        string                         `json:"group_name"`
+	Id               openapi_types.UUID             `json:"id"`
+	OrgId            openapi_types.UUID             `json:"org_id"`
+	ProfileId        openapi_types.UUID             `json:"profile_id"`
+	ProfileName      string                         `json:"profile_name"`
+	QuarantineReason *string                        `json:"quarantine_reason"`
+	State            AgentMCPProfileAssignmentState `json:"state"`
+}
+
+// AgentMCPProfileAssignmentState defines model for AgentMCPProfileAssignment.State.
+type AgentMCPProfileAssignmentState string
+
+// AgentMCPProfileImpact defines model for AgentMCPProfileImpact.
+type AgentMCPProfileImpact struct {
+	AffectedAgentCount          int32                `json:"affected_agent_count"`
+	AffectedAgentIds            []openapi_types.UUID `json:"affected_agent_ids"`
+	Conflict                    *string              `json:"conflict"`
+	CurrentProfileId            *openapi_types.UUID  `json:"current_profile_id"`
+	DesiredRuntimeUpdatesQueued bool                 `json:"desired_runtime_updates_queued"`
+	EffectiveUpstreamChanges    bool                 `json:"effective_upstream_changes"`
+	GroupId                     openapi_types.UUID   `json:"group_id"`
+	MutationAllowed             bool                 `json:"mutation_allowed"`
+	ProposedProfileId           *openapi_types.UUID  `json:"proposed_profile_id"`
+}
+
+// AgentMCPProfileImpactRequest defines model for AgentMCPProfileImpactRequest.
+type AgentMCPProfileImpactRequest struct {
+	ProfileId *openapi_types.UUID `json:"profile_id"`
+	Unassign  *bool               `json:"unassign,omitempty"`
+}
+
+// AgentMCPProfileMutationResult defines model for AgentMCPProfileMutationResult.
+type AgentMCPProfileMutationResult struct {
+	AffectedAgentCount          int32                      `json:"affected_agent_count"`
+	AffectedAgentIds            []openapi_types.UUID       `json:"affected_agent_ids"`
+	Assignment                  *AgentMCPProfileAssignment `json:"assignment"`
+	Conflict                    *string                    `json:"conflict"`
+	CurrentProfileId            *openapi_types.UUID        `json:"current_profile_id"`
+	DesiredRuntimeUpdatesQueued bool                       `json:"desired_runtime_updates_queued"`
+	EffectiveUpstreamChanges    bool                       `json:"effective_upstream_changes"`
+	GroupId                     openapi_types.UUID         `json:"group_id"`
+	MutationAllowed             bool                       `json:"mutation_allowed"`
+	ProposedProfileId           *openapi_types.UUID        `json:"proposed_profile_id"`
 }
 
 // AgentMCPToolApprovalRequest defines model for AgentMCPToolApprovalRequest.
@@ -1780,12 +1916,15 @@ type Device struct {
 	NeedsReexport *bool              `json:"needs_reexport,omitempty"`
 	NodeId        openapi_types.UUID `json:"node_id"`
 	Online        *bool              `json:"online,omitempty"`
-	Platform      *string            `json:"platform,omitempty"`
-	PublicKey     string             `json:"public_key"`
-	RxBytes       *int64             `json:"rx_bytes,omitempty"`
-	Status        DeviceStatus       `json:"status"`
-	TxBytes       *int64             `json:"tx_bytes,omitempty"`
-	UserId        openapi_types.UUID `json:"user_id"`
+
+	// OwnerEmail Server-resolved device owner attribution for approval review. Null when the owner record is unavailable; clients must not infer an owner.
+	OwnerEmail *openapi_types.Email `json:"owner_email"`
+	Platform   *string              `json:"platform,omitempty"`
+	PublicKey  string               `json:"public_key"`
+	RxBytes    *int64               `json:"rx_bytes,omitempty"`
+	Status     DeviceStatus         `json:"status"`
+	TxBytes    *int64               `json:"tx_bytes,omitempty"`
+	UserId     openapi_types.UUID   `json:"user_id"`
 }
 
 // DeviceHealthFailedChecksKind defines model for Device.HealthFailedChecks.Kind.
@@ -2885,6 +3024,11 @@ type RuntimeMCPToolPolicy struct {
 	Version int64 `json:"version"`
 }
 
+// SetAgentGroupMCPProfileRequest defines model for SetAgentGroupMCPProfileRequest.
+type SetAgentGroupMCPProfileRequest struct {
+	ProfileId openapi_types.UUID `json:"profile_id"`
+}
+
 // SetAgentJITAccessSettingRequest defines model for SetAgentJITAccessSettingRequest.
 type SetAgentJITAccessSettingRequest struct {
 	Enabled bool `json:"enabled"`
@@ -3123,11 +3267,14 @@ type UserGroup struct {
 	IdpProvider *UserGroupIdpProvider `json:"idp_provider,omitempty"`
 
 	// ManagedAgentCount Present for policy managers: current live agent-profile assignments cleared if this group is deleted; removing one group member withdraws that person's authority over the same agents without clearing the assignment.
-	ManagedAgentCount *int               `json:"managed_agent_count,omitempty"`
-	Name              string             `json:"name"`
-	OrgId             openapi_types.UUID `json:"org_id"`
-	Origin            *UserGroupOrigin   `json:"origin,omitempty"`
-	UpdatedAt         time.Time          `json:"updated_at"`
+	ManagedAgentCount *int `json:"managed_agent_count,omitempty"`
+
+	// MemberCount Exact current visible group membership count.
+	MemberCount int                `json:"member_count"`
+	Name        string             `json:"name"`
+	OrgId       openapi_types.UUID `json:"org_id"`
+	Origin      *UserGroupOrigin   `json:"origin,omitempty"`
+	UpdatedAt   time.Time          `json:"updated_at"`
 }
 
 // UserGroupIdpProvider defines model for UserGroup.IdpProvider.
@@ -3221,11 +3368,66 @@ type ListAgentAccessRequestsParams struct {
 	PageSize          *int                     `form:"page_size,omitempty" json:"page_size,omitempty"`
 }
 
+// ListAgentMCPAssignmentsParams defines parameters for ListAgentMCPAssignments.
+type ListAgentMCPAssignmentsParams struct {
+	State *ListAgentMCPAssignmentsParamsState `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// ListAgentMCPAssignmentsParamsState defines parameters for ListAgentMCPAssignments.
+type ListAgentMCPAssignmentsParamsState string
+
 // GetAgentPolicyTemplateDestinationImpactParams defines parameters for GetAgentPolicyTemplateDestinationImpact.
 type GetAgentPolicyTemplateDestinationImpactParams struct {
 	DestinationKind string             `form:"destination_kind" json:"destination_kind"`
 	DestinationId   openapi_types.UUID `form:"destination_id" json:"destination_id"`
 }
+
+// ListAgentsParams defines parameters for ListAgents.
+type ListAgentsParams struct {
+	// Q Case-insensitive search across agent name, owner email, and gateway name.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Lifecycle Repeatable lifecycle filter. Values are ORed.
+	Lifecycle *[]ListAgentsParamsLifecycle `form:"lifecycle,omitempty" json:"lifecycle,omitempty"`
+
+	// Runtime Repeatable managed-runtime state filter. Values are ORed.
+	Runtime *[]ListAgentsParamsRuntime `form:"runtime,omitempty" json:"runtime,omitempty"`
+
+	// Mcp Repeatable effective MCP-profile filter. Values are ORed.
+	Mcp *[]ListAgentsParamsMcp `form:"mcp,omitempty" json:"mcp,omitempty"`
+
+	// Access Repeatable JIT access state filter. Values are ORed.
+	Access *[]ListAgentsParamsAccess `form:"access,omitempty" json:"access,omitempty"`
+
+	// GatewayId Repeatable gateway identifier filter. Values are ORed.
+	GatewayId *[]openapi_types.UUID `form:"gateway_id,omitempty" json:"gateway_id,omitempty"`
+
+	// Sort Allowlisted sort key. The current contract exposes only a stable name index.
+	Sort  *ListAgentsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Dir   *ListAgentsParamsDir  `form:"dir,omitempty" json:"dir,omitempty"`
+	Limit *int                  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Opaque keyset cursor returned by the preceding response. It is valid only for the same filters and sort direction.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListAgentsParamsLifecycle defines parameters for ListAgents.
+type ListAgentsParamsLifecycle string
+
+// ListAgentsParamsRuntime defines parameters for ListAgents.
+type ListAgentsParamsRuntime string
+
+// ListAgentsParamsMcp defines parameters for ListAgents.
+type ListAgentsParamsMcp string
+
+// ListAgentsParamsAccess defines parameters for ListAgents.
+type ListAgentsParamsAccess string
+
+// ListAgentsParamsSort defines parameters for ListAgents.
+type ListAgentsParamsSort string
+
+// ListAgentsParamsDir defines parameters for ListAgents.
+type ListAgentsParamsDir string
 
 // TestAgentAccessParams defines parameters for TestAgentAccess.
 type TestAgentAccessParams struct {
@@ -3371,6 +3573,12 @@ type CreateAgentGroupJSONRequestBody = CreateAgentGroupRequest
 
 // UpdateAgentGroupJSONRequestBody defines body for UpdateAgentGroup for application/json ContentType.
 type UpdateAgentGroupJSONRequestBody = UpdateAgentGroupRequest
+
+// ReplaceAgentGroupMCPProfileJSONRequestBody defines body for ReplaceAgentGroupMCPProfile for application/json ContentType.
+type ReplaceAgentGroupMCPProfileJSONRequestBody = SetAgentGroupMCPProfileRequest
+
+// PreviewAgentGroupMCPProfileImpactJSONRequestBody defines body for PreviewAgentGroupMCPProfileImpact for application/json ContentType.
+type PreviewAgentGroupMCPProfileImpactJSONRequestBody = AgentMCPProfileImpactRequest
 
 // AddAgentGroupMemberJSONRequestBody defines body for AddAgentGroupMember for application/json ContentType.
 type AddAgentGroupMemberJSONRequestBody = AddAgentGroupMemberRequest
@@ -3889,6 +4097,19 @@ type ClientInterface interface {
 
 	UpdateAgentGroup(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body UpdateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// UnassignAgentGroupMCPProfile request
+	UnassignAgentGroupMCPProfile(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceAgentGroupMCPProfileWithBody request with any body
+	ReplaceAgentGroupMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReplaceAgentGroupMCPProfile(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body ReplaceAgentGroupMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewAgentGroupMCPProfileImpactWithBody request with any body
+	PreviewAgentGroupMCPProfileImpactWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PreviewAgentGroupMCPProfileImpact(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgentGroupMembers request
 	ListAgentGroupMembers(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3908,6 +4129,9 @@ type ClientInterface interface {
 
 	SetOrganizationAgentJITAccessEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAgentMCPAssignments request
+	ListAgentMCPAssignments(ctx context.Context, orgId openapi_types.UUID, params *ListAgentMCPAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgentMCPProfiles request
 	ListAgentMCPProfiles(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -3915,6 +4139,9 @@ type ClientInterface interface {
 	CreateAgentMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ArchiveAgentMCPProfile request
+	ArchiveAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AssignAgentMCPProfileWithBody request with any body
 	AssignAgentMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3980,7 +4207,7 @@ type ClientInterface interface {
 	SetOrganizationAgentRuntimeEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentRuntimeEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAgents request
-	ListAgents(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ListAgents(ctx context.Context, orgId openapi_types.UUID, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// IssueAgentBootstrapTokenWithBody request with any body
 	IssueAgentBootstrapTokenWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4000,6 +4227,9 @@ type ClientInterface interface {
 
 	// RequestAgentCredentialRotation request
 	RequestAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentEffectiveMCPProfile request
+	GetAgentEffectiveMCPProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentMCPInventory request
 	GetAgentMCPInventory(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5652,6 +5882,66 @@ func (c *Client) UpdateAgentGroup(ctx context.Context, orgId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) UnassignAgentGroupMCPProfile(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnassignAgentGroupMCPProfileRequest(c.Server, orgId, groupId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceAgentGroupMCPProfileWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceAgentGroupMCPProfileRequestWithBody(c.Server, orgId, groupId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceAgentGroupMCPProfile(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body ReplaceAgentGroupMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceAgentGroupMCPProfileRequest(c.Server, orgId, groupId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewAgentGroupMCPProfileImpactWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAgentGroupMCPProfileImpactRequestWithBody(c.Server, orgId, groupId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewAgentGroupMCPProfileImpact(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAgentGroupMCPProfileImpactRequest(c.Server, orgId, groupId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAgentGroupMembers(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentGroupMembersRequest(c.Server, orgId, groupId)
 	if err != nil {
@@ -5736,6 +6026,18 @@ func (c *Client) SetOrganizationAgentJITAccessEnabled(ctx context.Context, orgId
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListAgentMCPAssignments(ctx context.Context, orgId openapi_types.UUID, params *ListAgentMCPAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentMCPAssignmentsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAgentMCPProfiles(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentMCPProfilesRequest(c.Server, orgId)
 	if err != nil {
@@ -5762,6 +6064,18 @@ func (c *Client) CreateAgentMCPProfileWithBody(ctx context.Context, orgId openap
 
 func (c *Client) CreateAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateAgentMCPProfileRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ArchiveAgentMCPProfile(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewArchiveAgentMCPProfileRequest(c.Server, orgId, profileId)
 	if err != nil {
 		return nil, err
 	}
@@ -6060,8 +6374,8 @@ func (c *Client) SetOrganizationAgentRuntimeEnabled(ctx context.Context, orgId o
 	return c.Client.Do(req)
 }
 
-func (c *Client) ListAgents(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListAgentsRequest(c.Server, orgId)
+func (c *Client) ListAgents(ctx context.Context, orgId openapi_types.UUID, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentsRequest(c.Server, orgId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6146,6 +6460,18 @@ func (c *Client) GetAgentCredentialRotation(ctx context.Context, orgId openapi_t
 
 func (c *Client) RequestAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRequestAgentCredentialRotationRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentEffectiveMCPProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentEffectiveMCPProfileRequest(c.Server, orgId, deviceId)
 	if err != nil {
 		return nil, err
 	}
@@ -10855,6 +11181,155 @@ func NewUpdateAgentGroupRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewUnassignAgentGroupMCPProfileRequest generates requests for UnassignAgentGroupMCPProfile
+func NewUnassignAgentGroupMCPProfileRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/mcp-profile", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReplaceAgentGroupMCPProfileRequest calls the generic ReplaceAgentGroupMCPProfile builder with application/json body
+func NewReplaceAgentGroupMCPProfileRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, body ReplaceAgentGroupMCPProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceAgentGroupMCPProfileRequestWithBody(server, orgId, groupId, "application/json", bodyReader)
+}
+
+// NewReplaceAgentGroupMCPProfileRequestWithBody generates requests for ReplaceAgentGroupMCPProfile with any type of body
+func NewReplaceAgentGroupMCPProfileRequestWithBody(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/mcp-profile", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewAgentGroupMCPProfileImpactRequest calls the generic PreviewAgentGroupMCPProfileImpact builder with application/json body
+func NewPreviewAgentGroupMCPProfileImpactRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPreviewAgentGroupMCPProfileImpactRequestWithBody(server, orgId, groupId, "application/json", bodyReader)
+}
+
+// NewPreviewAgentGroupMCPProfileImpactRequestWithBody generates requests for PreviewAgentGroupMCPProfileImpact with any type of body
+func NewPreviewAgentGroupMCPProfileImpactRequestWithBody(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/mcp-profile-impact", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListAgentGroupMembersRequest generates requests for ListAgentGroupMembers
 func NewListAgentGroupMembersRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -11079,6 +11554,62 @@ func NewSetOrganizationAgentJITAccessEnabledRequestWithBody(server string, orgId
 	return req, nil
 }
 
+// NewListAgentMCPAssignmentsRequest generates requests for ListAgentMCPAssignments
+func NewListAgentMCPAssignmentsRequest(server string, orgId openapi_types.UUID, params *ListAgentMCPAssignmentsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-mcp-assignments", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListAgentMCPProfilesRequest generates requests for ListAgentMCPProfiles
 func NewListAgentMCPProfilesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -11156,6 +11687,47 @@ func NewCreateAgentMCPProfileRequestWithBody(server string, orgId openapi_types.
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewArchiveAgentMCPProfileRequest generates requests for ArchiveAgentMCPProfile
+func NewArchiveAgentMCPProfileRequest(server string, orgId openapi_types.UUID, profileId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "profileId", runtime.ParamLocationPath, profileId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-mcp-profiles/%s/archive", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -11860,7 +12432,7 @@ func NewSetOrganizationAgentRuntimeEnabledRequestWithBody(server string, orgId o
 }
 
 // NewListAgentsRequest generates requests for ListAgents
-func NewListAgentsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+func NewListAgentsRequest(server string, orgId openapi_types.UUID, params *ListAgentsParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -11883,6 +12455,172 @@ func NewListAgentsRequest(server string, orgId openapi_types.UUID) (*http.Reques
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "q", runtime.ParamLocationQuery, *params.Q); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Lifecycle != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "lifecycle", runtime.ParamLocationQuery, *params.Lifecycle); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Runtime != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "runtime", runtime.ParamLocationQuery, *params.Runtime); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Mcp != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mcp", runtime.ParamLocationQuery, *params.Mcp); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Access != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "access", runtime.ParamLocationQuery, *params.Access); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.GatewayId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "gateway_id", runtime.ParamLocationQuery, *params.GatewayId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "sort", runtime.ParamLocationQuery, *params.Sort); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dir", runtime.ParamLocationQuery, *params.Dir); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -12110,6 +12848,47 @@ func NewRequestAgentCredentialRotationRequest(server string, orgId openapi_types
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAgentEffectiveMCPProfileRequest generates requests for GetAgentEffectiveMCPProfile
+func NewGetAgentEffectiveMCPProfileRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/effective-mcp-profile", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -17678,6 +18457,19 @@ type ClientWithResponsesInterface interface {
 
 	UpdateAgentGroupWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body UpdateAgentGroupJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentGroupResponse, error)
 
+	// UnassignAgentGroupMCPProfileWithResponse request
+	UnassignAgentGroupMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*UnassignAgentGroupMCPProfileResponse, error)
+
+	// ReplaceAgentGroupMCPProfileWithBodyWithResponse request with any body
+	ReplaceAgentGroupMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPProfileResponse, error)
+
+	ReplaceAgentGroupMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body ReplaceAgentGroupMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPProfileResponse, error)
+
+	// PreviewAgentGroupMCPProfileImpactWithBodyWithResponse request with any body
+	PreviewAgentGroupMCPProfileImpactWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAgentGroupMCPProfileImpactResponse, error)
+
+	PreviewAgentGroupMCPProfileImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAgentGroupMCPProfileImpactResponse, error)
+
 	// ListAgentGroupMembersWithResponse request
 	ListAgentGroupMembersWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupMembersResponse, error)
 
@@ -17697,6 +18489,9 @@ type ClientWithResponsesInterface interface {
 
 	SetOrganizationAgentJITAccessEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentJITAccessEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentJITAccessEnabledResponse, error)
 
+	// ListAgentMCPAssignmentsWithResponse request
+	ListAgentMCPAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentMCPAssignmentsParams, reqEditors ...RequestEditorFn) (*ListAgentMCPAssignmentsResponse, error)
+
 	// ListAgentMCPProfilesWithResponse request
 	ListAgentMCPProfilesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPProfilesResponse, error)
 
@@ -17704,6 +18499,9 @@ type ClientWithResponsesInterface interface {
 	CreateAgentMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentMCPProfileResponse, error)
 
 	CreateAgentMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAgentMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentMCPProfileResponse, error)
+
+	// ArchiveAgentMCPProfileWithResponse request
+	ArchiveAgentMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAgentMCPProfileResponse, error)
 
 	// AssignAgentMCPProfileWithBodyWithResponse request with any body
 	AssignAgentMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignAgentMCPProfileResponse, error)
@@ -17769,7 +18567,7 @@ type ClientWithResponsesInterface interface {
 	SetOrganizationAgentRuntimeEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAgentRuntimeEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAgentRuntimeEnabledResponse, error)
 
 	// ListAgentsWithResponse request
-	ListAgentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error)
+	ListAgentsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error)
 
 	// IssueAgentBootstrapTokenWithBodyWithResponse request with any body
 	IssueAgentBootstrapTokenWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueAgentBootstrapTokenResponse, error)
@@ -17789,6 +18587,9 @@ type ClientWithResponsesInterface interface {
 
 	// RequestAgentCredentialRotationWithResponse request
 	RequestAgentCredentialRotationWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RequestAgentCredentialRotationResponse, error)
+
+	// GetAgentEffectiveMCPProfileWithResponse request
+	GetAgentEffectiveMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentEffectiveMCPProfileResponse, error)
 
 	// GetAgentMCPInventoryWithResponse request
 	GetAgentMCPInventoryWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentMCPInventoryResponse, error)
@@ -19721,6 +20522,75 @@ func (r UpdateAgentGroupResponse) StatusCode() int {
 	return 0
 }
 
+type UnassignAgentGroupMCPProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPProfileMutationResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UnassignAgentGroupMCPProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnassignAgentGroupMCPProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReplaceAgentGroupMCPProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPProfileMutationResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceAgentGroupMCPProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceAgentGroupMCPProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PreviewAgentGroupMCPProfileImpactResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPProfileImpact
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewAgentGroupMCPProfileImpactResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewAgentGroupMCPProfileImpactResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAgentGroupMembersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -19835,6 +20705,29 @@ func (r SetOrganizationAgentJITAccessEnabledResponse) StatusCode() int {
 	return 0
 }
 
+type ListAgentMCPAssignmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AgentMCPProfileAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentMCPAssignmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentMCPAssignmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAgentMCPProfilesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -19875,6 +20768,30 @@ func (r CreateAgentMCPProfileResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateAgentMCPProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ArchiveAgentMCPProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPProfile
+	JSON409      *AgentMCPProfileArchiveConflict
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ArchiveAgentMCPProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ArchiveAgentMCPProfileResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -20228,7 +21145,7 @@ func (r SetOrganizationAgentRuntimeEnabledResponse) StatusCode() int {
 type ListAgentsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]Agent
+	JSON200      *AgentListPage
 	JSONDefault  *Error
 }
 
@@ -20357,6 +21274,29 @@ func (r RequestAgentCredentialRotationResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RequestAgentCredentialRotationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentEffectiveMCPProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentEffectiveMCPProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentEffectiveMCPProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentEffectiveMCPProfileResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -23872,6 +24812,49 @@ func (c *ClientWithResponses) UpdateAgentGroupWithResponse(ctx context.Context, 
 	return ParseUpdateAgentGroupResponse(rsp)
 }
 
+// UnassignAgentGroupMCPProfileWithResponse request returning *UnassignAgentGroupMCPProfileResponse
+func (c *ClientWithResponses) UnassignAgentGroupMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*UnassignAgentGroupMCPProfileResponse, error) {
+	rsp, err := c.UnassignAgentGroupMCPProfile(ctx, orgId, groupId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnassignAgentGroupMCPProfileResponse(rsp)
+}
+
+// ReplaceAgentGroupMCPProfileWithBodyWithResponse request with arbitrary body returning *ReplaceAgentGroupMCPProfileResponse
+func (c *ClientWithResponses) ReplaceAgentGroupMCPProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPProfileResponse, error) {
+	rsp, err := c.ReplaceAgentGroupMCPProfileWithBody(ctx, orgId, groupId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceAgentGroupMCPProfileResponse(rsp)
+}
+
+func (c *ClientWithResponses) ReplaceAgentGroupMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body ReplaceAgentGroupMCPProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPProfileResponse, error) {
+	rsp, err := c.ReplaceAgentGroupMCPProfile(ctx, orgId, groupId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceAgentGroupMCPProfileResponse(rsp)
+}
+
+// PreviewAgentGroupMCPProfileImpactWithBodyWithResponse request with arbitrary body returning *PreviewAgentGroupMCPProfileImpactResponse
+func (c *ClientWithResponses) PreviewAgentGroupMCPProfileImpactWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAgentGroupMCPProfileImpactResponse, error) {
+	rsp, err := c.PreviewAgentGroupMCPProfileImpactWithBody(ctx, orgId, groupId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAgentGroupMCPProfileImpactResponse(rsp)
+}
+
+func (c *ClientWithResponses) PreviewAgentGroupMCPProfileImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAgentGroupMCPProfileImpactResponse, error) {
+	rsp, err := c.PreviewAgentGroupMCPProfileImpact(ctx, orgId, groupId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAgentGroupMCPProfileImpactResponse(rsp)
+}
+
 // ListAgentGroupMembersWithResponse request returning *ListAgentGroupMembersResponse
 func (c *ClientWithResponses) ListAgentGroupMembersWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupMembersResponse, error) {
 	rsp, err := c.ListAgentGroupMembers(ctx, orgId, groupId, reqEditors...)
@@ -23933,6 +24916,15 @@ func (c *ClientWithResponses) SetOrganizationAgentJITAccessEnabledWithResponse(c
 	return ParseSetOrganizationAgentJITAccessEnabledResponse(rsp)
 }
 
+// ListAgentMCPAssignmentsWithResponse request returning *ListAgentMCPAssignmentsResponse
+func (c *ClientWithResponses) ListAgentMCPAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentMCPAssignmentsParams, reqEditors ...RequestEditorFn) (*ListAgentMCPAssignmentsResponse, error) {
+	rsp, err := c.ListAgentMCPAssignments(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentMCPAssignmentsResponse(rsp)
+}
+
 // ListAgentMCPProfilesWithResponse request returning *ListAgentMCPProfilesResponse
 func (c *ClientWithResponses) ListAgentMCPProfilesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPProfilesResponse, error) {
 	rsp, err := c.ListAgentMCPProfiles(ctx, orgId, reqEditors...)
@@ -23957,6 +24949,15 @@ func (c *ClientWithResponses) CreateAgentMCPProfileWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseCreateAgentMCPProfileResponse(rsp)
+}
+
+// ArchiveAgentMCPProfileWithResponse request returning *ArchiveAgentMCPProfileResponse
+func (c *ClientWithResponses) ArchiveAgentMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ArchiveAgentMCPProfileResponse, error) {
+	rsp, err := c.ArchiveAgentMCPProfile(ctx, orgId, profileId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseArchiveAgentMCPProfileResponse(rsp)
 }
 
 // AssignAgentMCPProfileWithBodyWithResponse request with arbitrary body returning *AssignAgentMCPProfileResponse
@@ -24167,8 +25168,8 @@ func (c *ClientWithResponses) SetOrganizationAgentRuntimeEnabledWithResponse(ctx
 }
 
 // ListAgentsWithResponse request returning *ListAgentsResponse
-func (c *ClientWithResponses) ListAgentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error) {
-	rsp, err := c.ListAgents(ctx, orgId, reqEditors...)
+func (c *ClientWithResponses) ListAgentsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAgentsParams, reqEditors ...RequestEditorFn) (*ListAgentsResponse, error) {
+	rsp, err := c.ListAgents(ctx, orgId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -24234,6 +25235,15 @@ func (c *ClientWithResponses) RequestAgentCredentialRotationWithResponse(ctx con
 		return nil, err
 	}
 	return ParseRequestAgentCredentialRotationResponse(rsp)
+}
+
+// GetAgentEffectiveMCPProfileWithResponse request returning *GetAgentEffectiveMCPProfileResponse
+func (c *ClientWithResponses) GetAgentEffectiveMCPProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentEffectiveMCPProfileResponse, error) {
+	rsp, err := c.GetAgentEffectiveMCPProfile(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentEffectiveMCPProfileResponse(rsp)
 }
 
 // GetAgentMCPInventoryWithResponse request returning *GetAgentMCPInventoryResponse
@@ -27764,6 +28774,105 @@ func ParseUpdateAgentGroupResponse(rsp *http.Response) (*UpdateAgentGroupRespons
 	return response, nil
 }
 
+// ParseUnassignAgentGroupMCPProfileResponse parses an HTTP response from a UnassignAgentGroupMCPProfileWithResponse call
+func ParseUnassignAgentGroupMCPProfileResponse(rsp *http.Response) (*UnassignAgentGroupMCPProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnassignAgentGroupMCPProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPProfileMutationResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceAgentGroupMCPProfileResponse parses an HTTP response from a ReplaceAgentGroupMCPProfileWithResponse call
+func ParseReplaceAgentGroupMCPProfileResponse(rsp *http.Response) (*ReplaceAgentGroupMCPProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceAgentGroupMCPProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPProfileMutationResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewAgentGroupMCPProfileImpactResponse parses an HTTP response from a PreviewAgentGroupMCPProfileImpactWithResponse call
+func ParsePreviewAgentGroupMCPProfileImpactResponse(rsp *http.Response) (*PreviewAgentGroupMCPProfileImpactResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewAgentGroupMCPProfileImpactResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPProfileImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAgentGroupMembersResponse parses an HTTP response from a ListAgentGroupMembersWithResponse call
 func ParseListAgentGroupMembersResponse(rsp *http.Response) (*ListAgentGroupMembersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -27922,6 +29031,39 @@ func ParseSetOrganizationAgentJITAccessEnabledResponse(rsp *http.Response) (*Set
 	return response, nil
 }
 
+// ParseListAgentMCPAssignmentsResponse parses an HTTP response from a ListAgentMCPAssignmentsWithResponse call
+func ParseListAgentMCPAssignmentsResponse(rsp *http.Response) (*ListAgentMCPAssignmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentMCPAssignmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AgentMCPProfileAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAgentMCPProfilesResponse parses an HTTP response from a ListAgentMCPProfilesWithResponse call
 func ParseListAgentMCPProfilesResponse(rsp *http.Response) (*ListAgentMCPProfilesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -27975,6 +29117,46 @@ func ParseCreateAgentMCPProfileResponse(rsp *http.Response) (*CreateAgentMCPProf
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseArchiveAgentMCPProfileResponse parses an HTTP response from a ArchiveAgentMCPProfileWithResponse call
+func ParseArchiveAgentMCPProfileResponse(rsp *http.Response) (*ArchiveAgentMCPProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ArchiveAgentMCPProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AgentMCPProfileArchiveConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -28491,7 +29673,7 @@ func ParseListAgentsResponse(rsp *http.Response) (*ListAgentsResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []Agent
+		var dest AgentListPage
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -28657,6 +29839,39 @@ func ParseRequestAgentCredentialRotationResponse(rsp *http.Response) (*RequestAg
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentCredentialRotationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentEffectiveMCPProfileResponse parses an HTTP response from a GetAgentEffectiveMCPProfileWithResponse call
+func ParseGetAgentEffectiveMCPProfileResponse(rsp *http.Response) (*GetAgentEffectiveMCPProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentEffectiveMCPProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentEffectiveMCPProfile
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

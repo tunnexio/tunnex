@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "../lib/useOrg";
 import { api, apiErrorMessage, type Org } from "../lib/api";
+
+function agentListItems<T>(value: T[] | { items?: T[] } | undefined): T[] {
+  return Array.isArray(value) ? value : value?.items ?? [];
+}
 import { relativeAge } from "../lib/format";
 import {
   Button,
@@ -9,7 +13,6 @@ import {
   ErrorText,
   PageHeader,
 } from "../components/ui";
-import { isEnterprise, type Edition } from "../lib/edition";
 import {
   ATTRIBUTION_NOTE,
   FLOW_LOG_CUTS,
@@ -40,7 +43,6 @@ export default function AccessEvents() {
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5).
   const { org: currentOrg } = useOrg();
   const [org, setOrg] = useState<Org | null>(null);
-  const [edition, setEdition] = useState<Edition>("unknown");
   const [rows, setRows] = useState<AccessEvent[] | null>(null);
   const [health, setHealth] = useState<AccessLogHealth | null>(null);
   const [deniesOnly, setDeniesOnly] = useState(false);
@@ -64,15 +66,16 @@ export default function AccessEvents() {
     setSelected(null);
     setError(null);
     (async () => {
-      const { data: meta } = await api.GET("/api/v1/meta");
-      if (epoch !== loadEpoch.current) return;
-      setEdition(meta?.edition === "enterprise" ? "enterprise" : "open");
       setOrg(currentOrg);
-      if (currentOrg && meta?.edition === "enterprise") {
-        const { data } = await api.GET("/api/v1/organizations/{orgId}/agents", {
-          params: { path: { orgId: currentOrg.id } },
-        });
-        if (epoch === loadEpoch.current) setAgents((data as AgentRow[] | undefined) ?? []);
+      if (!currentOrg) return;
+      // Base agent inventory is available on Community and higher plans. The
+      // access-event filter is populated from the same source without using
+      // legacy edition metadata as an entitlement oracle.
+      const { data } = await api.GET("/api/v1/organizations/{orgId}/agents", {
+        params: { path: { orgId: currentOrg.id } },
+      });
+      if (epoch === loadEpoch.current) {
+        setAgents(agentListItems(data) as AgentRow[]);
       }
     })();
     return () => {
@@ -114,7 +117,7 @@ export default function AccessEvents() {
   );
 
   useEffect(() => {
-    if (!org || !isEnterprise(edition)) return;
+    if (!org) return;
     void load(true);
     void (async () => {
       const epoch = loadEpoch.current;
@@ -125,23 +128,10 @@ export default function AccessEvents() {
       if (epoch === loadEpoch.current && data) setHealth(data as AccessLogHealth);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [org, edition, deniesOnly, agentId]);
+  }, [org, deniesOnly, agentId]);
 
   if (currentOrg && (!org || currentOrg.id !== org.id)) {
     return <p className="text-sm text-slate-500">Loading access events…</p>;
-  }
-
-  if (!isEnterprise(edition)) {
-    return (
-      <div>
-        <PageHeader title="Access events" />
-        <Card className="mt-4">
-          <p className="text-sm text-slate-400">
-            The Zero Trust flow log is a Tunnex Enterprise feature.
-          </p>
-        </Card>
-      </div>
-    );
   }
 
   const events = rows ?? [];

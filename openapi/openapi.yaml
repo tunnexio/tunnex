@@ -648,22 +648,90 @@ paths:
         schema: { type: string, format: uuid }
     get:
       operationId: listAgents
-      summary: List the org's AI agents (enterprise)
+      summary: List the organization's AI agents
       description: >-
         S15.3 — the agents enrolled in this organization, each with the human who authorised it and whether
-        its activity is attributable. ⛔ ENTERPRISE: the open edition receives 403 edition_required, which is
-        a SUCCESSFUL REFUSAL — the surface renders ABSENCE, never an error.
+        its activity is attributable. AI Agents inventory is available on Community and every licensed tier.
         ⛔ This endpoint says which agents EXIST and who owns them. It says nothing about what they may do:
         reachability is set by grants on Access Policies, and per-tool control does not exist in this
         product.
       tags: [agents]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive search across agent name, owner email, and gateway name.
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - name: lifecycle
+          in: query
+          required: false
+          description: Repeatable lifecycle filter. Values are ORed.
+          schema:
+            type: array
+            items: { type: string, enum: [active, pending, suspended, revoked] }
+          style: form
+          explode: true
+        - name: runtime
+          in: query
+          required: false
+          description: Repeatable managed-runtime state filter. Values are ORed.
+          schema:
+            type: array
+            items: { type: string, enum: [not_configured, pending, healthy, degraded] }
+          style: form
+          explode: true
+        - name: mcp
+          in: query
+          required: false
+          description: Repeatable effective MCP-profile filter. Values are ORed.
+          schema:
+            type: array
+            items: { type: string, enum: [assigned, unassigned] }
+          style: form
+          explode: true
+        - name: access
+          in: query
+          required: false
+          description: Repeatable JIT access state filter. Values are ORed.
+          schema:
+            type: array
+            items: { type: string, enum: [active, pending, none] }
+          style: form
+          explode: true
+        - name: gateway_id
+          in: query
+          required: false
+          description: Repeatable gateway identifier filter. Values are ORed.
+          schema:
+            type: array
+            items: { type: string, format: uuid }
+          style: form
+          explode: true
+        - name: sort
+          in: query
+          required: false
+          description: Allowlisted sort key. The current contract exposes only a stable name index.
+          schema: { type: string, enum: [name], default: name }
+        - name: dir
+          in: query
+          required: false
+          schema: { type: string, enum: [asc, desc], default: asc }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque keyset cursor returned by the preceding response. It is valid only for the same filters and sort direction.
+          schema: { type: string, minLength: 1, maxLength: 512 }
       responses:
         "200":
           description: The agents.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
           content:
             application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/Agent" } }
+              schema: { $ref: "#/components/schemas/AgentListPage" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/agents/bootstrap-token:
@@ -1029,6 +1097,31 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AgentMCPInventory" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/effective-mcp-profile:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAgentEffectiveMCPProfile
+      summary: Get an agent's effective inherited MCP profile
+      description: >-
+        Read-only inheritance projection. Profiles remain assigned only to agent groups; this endpoint
+        identifies the effective profile and its source group and never creates a per-agent assignment.
+      tags: [agents]
+      responses:
+        "200":
+          description: Effective profile, or an explicit unassigned projection.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentEffectiveMCPProfile" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy:
@@ -1898,9 +1991,9 @@ paths:
             application/json: { schema: { $ref: "#/components/schemas/Error" } }
         default: { $ref: "#/components/responses/Error" }
 
-  # ── Device posture (S7.3, ENTERPRISE) ───────────────────────────────────────
+  # ── Device approval (S7.3) ──────────────────────────────────────────────────
   # An org-level approval gate: new devices enroll PENDING (blocked) until approved.
-  # Edition-gated: the open build returns 403 edition_required. RBAC: device:approve.
+  # Community core; RBAC: device:approve.
   /api/v1/organizations/{orgId}/devices/pending:
     parameters:
       - name: orgId
@@ -1909,7 +2002,7 @@ paths:
         schema: { type: string, format: uuid }
     get:
       operationId: listPendingDevices
-      summary: The device-approval queue (enterprise)
+      summary: The device-approval queue
       tags: [devices]
       responses:
         "200":
@@ -1932,7 +2025,7 @@ paths:
         schema: { type: string, format: uuid }
     post:
       operationId: approveDevice
-      summary: Approve a pending device (peer + grants land org-wide within seconds, enterprise)
+      summary: Approve a pending device (peer + grants land org-wide within seconds)
       tags: [devices]
       responses:
         "204":
@@ -1952,7 +2045,7 @@ paths:
         schema: { type: string, format: uuid }
     post:
       operationId: rejectDevice
-      summary: Reject a pending device (revoked, tunnel address freed, enterprise)
+      summary: Reject a pending device (revoked, tunnel address freed)
       tags: [devices]
       responses:
         "204":
@@ -1968,7 +2061,7 @@ paths:
         schema: { type: string, format: uuid }
     get:
       operationId: getDeviceApproval
-      summary: Get the org device-approval mode (enterprise)
+      summary: Get the org device-approval mode
       tags: [devices]
       responses:
         "200":
@@ -1980,7 +2073,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     put:
       operationId: setDeviceApproval
-      summary: Set the org device-approval mode — enabling gates new enrollments (enterprise)
+      summary: Set the org device-approval mode — enabling gates new enrollments
       tags: [devices]
       requestBody:
         required: true
@@ -1996,11 +2089,10 @@ paths:
               schema: { $ref: "#/components/schemas/DeviceApproval" }
         default: { $ref: "#/components/responses/Error" }
 
-  # ── Device health / posture checks (S7.5.3, ENTERPRISE) ─────────────────────
+  # ── Device health / posture checks (S7.5.3) ─────────────────────────────────
   # Per-check org opt-in (default OFF); the desktop client self-reports facts.
   # CLIENT-REPORTED, NOT ATTESTED: deters honest non-compliance and gives an audit
-  # trail; a compromised device can misreport. Edition-gated: the open build
-  # returns 403 edition_required. Config RBAC: device_health:manage; the report
+  # trail; a compromised device can misreport. Config RBAC: device_health:manage; the report
   # endpoint is device-OWNER-authed (self-report).
   /api/v1/organizations/{orgId}/health-checks:
     parameters:
@@ -2010,7 +2102,7 @@ paths:
         schema: { type: string, format: uuid }
     get:
       operationId: listHealthChecks
-      summary: List the org's configured posture checks (enterprise)
+      summary: List the org's configured posture checks
       tags: [devices]
       responses:
         "200":
@@ -2033,7 +2125,7 @@ paths:
         schema: { type: string, enum: [os_version, disk_encryption] }
     put:
       operationId: putHealthCheck
-      summary: Opt the org into a posture check, or change its mode/param (enterprise)
+      summary: Opt the org into a posture check, or change its mode/param
       tags: [devices]
       requestBody:
         required: true
@@ -2050,7 +2142,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteHealthCheck
-      summary: Turn a posture check off (idempotent; blocked devices unblock on their next report, enterprise)
+      summary: Turn a posture check off (idempotent; blocked devices unblock on their next report)
       tags: [devices]
       responses:
         "204":
@@ -2070,7 +2162,7 @@ paths:
         schema: { type: string, format: uuid }
     post:
       operationId: reportDeviceHealth
-      summary: Self-report device posture facts (owner only; server evaluates, enterprise)
+      summary: Self-report device posture facts (owner only; server evaluates)
       tags: [devices]
       requestBody:
         required: true
@@ -3058,7 +3150,7 @@ paths:
       operationId: setOrganizationAgentQuota
       summary: Set the organization managed-agent identity quota
       description: >-
-        Enterprise organization setting. Requires org:update. `max_agent_identities: null` means
+        Organization setting. Requires org:update. `max_agent_identities: null` means
         unlimited. The server counts pending, active, and suspended agent identities organization-wide;
         revoked and deleted identities do not count. No remaining count is returned or inferred.
       tags: [organizations]
@@ -3176,8 +3268,8 @@ paths:
       operationId: setOrganizationAgentRuntimeEnabled
       summary: Enable or disable managed-agent runtime synchronization for an organization
       description: >-
-        Enterprise-only explicit opt-in. Requires agent_runtime:manage. A paid licence unlocks
-        this capability but never enables it implicitly; the default is disabled. Disabling an active
+        Explicit organization opt-in. Requires agent_runtime:manage. It never enables itself; the default is
+        disabled. Disabling an active
         organization makes the next runtime poll/report a terminal uniform refusal so managed tunnels
         offboard instead of preserving synchronization indefinitely.
       tags: [agents]
@@ -3782,6 +3874,8 @@ paths:
       - { name: profileId, in: path, required: true, schema: { type: string, format: uuid } }
     post:
       operationId: assignAgentMCPProfile
+      deprecated: true
+      description: Deprecated compatibility wrapper. New callers must use the group-owned atomic replacement operation.
       summary: Assign an MCP profile to a managed-agent group
       tags: [agent-templates]
       requestBody:
@@ -3789,9 +3883,86 @@ paths:
         content: { application/json: { schema: { $ref: "#/components/schemas/AssignAgentMCPProfileRequest" } } }
       responses:
         "201":
-          description: Assignment created.
+          description: Current active assignment; created or idempotently reused when the selected profile is already active.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
           content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfileAssignment" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-mcp-assignments:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentMCPAssignments
+      summary: List active and historical MCP profile assignments
+      tags: [agent-templates]
+      parameters:
+        - { name: state, in: query, required: false, schema: { type: string, enum: [active, replaced, unassigned, quarantined] } }
+      responses:
+        "200":
+          description: Assignment history and quarantine provenance.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AgentMCPProfileAssignment" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-groups/{groupId}/mcp-profile-impact:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: previewAgentGroupMCPProfileImpact
+      summary: Preview the exact impact of replacing or removing a group MCP profile
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfileImpactRequest" } } }
+      responses:
+        "200":
+          description: Server-owned affected-agent and runtime impact.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfileImpact" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-groups/{groupId}/mcp-profile:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: replaceAgentGroupMCPProfile
+      summary: Atomically set or replace a group MCP profile
+      tags: [agent-templates]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SetAgentGroupMCPProfileRequest" } } }
+      responses:
+        "200":
+          description: Replacement committed with exact impact.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfileMutationResult" } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: unassignAgentGroupMCPProfile
+      summary: Atomically unassign a group MCP profile
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Unassignment committed with recovery information.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfileMutationResult" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-mcp-profiles/{profileId}/archive:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: profileId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: archiveAgentMCPProfile
+      summary: Archive an unused MCP profile
+      description: Refuses while any active group assignment references the profile. A `mcp_profile_in_use` refusal reports the exact blocking active-group and current-agent counts so the operator can unassign before retrying.
+      tags: [agent-templates]
+      responses:
+        "200":
+          description: Profile archived; historical assignments remain visible.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfile" } } }
+        "409":
+          description: Active group assignments still reference this profile; unassign them before retrying archive.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPProfileArchiveConflict" } } }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/agent-groups:
@@ -4032,7 +4203,8 @@ paths:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       operationId: getOrganizationAgentJITAccessSetting
-      summary: Read the explicit JIT access opt-in and server-owned blockers
+      summary: Read the Scale-gated JIT access opt-in and server-owned blockers
+      description: Requires the `agent_jit_access` licence capability. Authorized callers without it receive 403 `feature_required`.
       tags: [agent-access]
       responses:
         "200":
@@ -4042,7 +4214,8 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     put:
       operationId: setOrganizationAgentJITAccessEnabled
-      summary: Enable or disable approval-gated temporary agent access
+      summary: Enable or disable Scale-gated approval-based temporary agent access
+      description: Requires the `agent_jit_access` licence capability. A qualifying plan does not enable the organization opt-in automatically.
       tags: [agent-access]
       requestBody:
         required: true
@@ -4279,18 +4452,22 @@ components:
 
     AgentGroup:
       type: object
-      required: [id, org_id, name, description, created_at, updated_at]
+      required: [id, org_id, name, description, member_count, created_at, updated_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         org_id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        member_count:
+          type: integer
+          minimum: 0
+          description: Exact current active managed-agent membership count.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     AgentMCPProfile:
       type: object
-      required: [id, org_id, name, endpoint, created_at, updated_at]
+      required: [id, org_id, name, endpoint, created_at, updated_at, archived_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
@@ -4299,6 +4476,7 @@ components:
         endpoint: { type: string, format: uri }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        archived_at: { type: string, format: date-time, nullable: true }
     CreateAgentMCPProfileRequest:
       type: object
       required: [name, endpoint]
@@ -4314,14 +4492,61 @@ components:
         group_id: { type: string, format: uuid }
     AgentMCPProfileAssignment:
       type: object
-      required: [id, org_id, profile_id, group_id, assigned_at]
+      required: [id, org_id, profile_id, profile_name, group_id, group_name, state, assigned_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         org_id: { type: string, format: uuid }
         profile_id: { type: string, format: uuid }
+        profile_name: { type: string }
         group_id: { type: string, format: uuid }
+        group_name: { type: string }
+        state: { type: string, enum: [active, replaced, unassigned, quarantined] }
         assigned_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        quarantine_reason: { type: string, nullable: true }
+    AgentMCPProfileImpactRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        profile_id: { type: string, format: uuid, nullable: true }
+        unassign: { type: boolean, default: false }
+    SetAgentGroupMCPProfileRequest:
+      type: object
+      required: [profile_id]
+      additionalProperties: false
+      properties:
+        profile_id: { type: string, format: uuid }
+    AgentMCPProfileImpact:
+      type: object
+      required: [group_id, affected_agent_count, affected_agent_ids, effective_upstream_changes, desired_runtime_updates_queued, mutation_allowed]
+      properties:
+        group_id: { type: string, format: uuid }
+        current_profile_id: { type: string, format: uuid, nullable: true }
+        proposed_profile_id: { type: string, format: uuid, nullable: true }
+        affected_agent_count: { type: integer, format: int32, minimum: 0 }
+        affected_agent_ids: { type: array, items: { type: string, format: uuid } }
+        effective_upstream_changes: { type: boolean }
+        desired_runtime_updates_queued: { type: boolean }
+        mutation_allowed: { type: boolean }
+        conflict: { type: string, nullable: true }
+    AgentMCPProfileMutationResult:
+      allOf:
+        - $ref: "#/components/schemas/AgentMCPProfileImpact"
+        - type: object
+          properties:
+            assignment:
+              allOf:
+                - $ref: "#/components/schemas/AgentMCPProfileAssignment"
+              nullable: true
+    AgentMCPProfileArchiveConflict:
+      type: object
+      required: [code, active_group_count, affected_agent_count]
+      additionalProperties: false
+      properties:
+        code: { type: string, enum: [mcp_profile_in_use] }
+        active_group_count: { type: integer, format: int32, minimum: 1 }
+        affected_agent_count: { type: integer, format: int32, minimum: 0 }
     CreateAgentGroupRequest:
       type: object
       required: [name]
@@ -4355,7 +4580,7 @@ components:
         added_at: { type: string, format: date-time }
     AgentPolicyTemplate:
       type: object
-      required: [id, org_id, name, description, created_at, updated_at]
+      required: [id, org_id, name, description, member_count, created_at, updated_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
@@ -4692,13 +4917,17 @@ components:
     # ── Zero Trust policy (S7.1, enterprise) ──────────────────────────────────
     UserGroup:
       type: object
-      required: [id, org_id, name, description, created_at, updated_at]
+      required: [id, org_id, name, description, member_count, created_at, updated_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         org_id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
+        member_count:
+          type: integer
+          minimum: 0
+          description: Exact current visible group membership count.
         managed_agent_count:
           type: integer
           minimum: 0
@@ -5708,6 +5937,33 @@ components:
         tx_bytes: { type: integer, format: int64, nullable: true }
         status: { type: string }
 
+    AgentListPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Agent" }
+        next_cursor:
+          type: string
+          nullable: true
+          description: >-
+            Opaque keyset cursor for the next page, or null when this response is final. No total is
+            implied or returned: a client must not infer one from a loaded batch.
+
+    AgentEffectiveMCPProfile:
+      type: object
+      required: [assigned]
+      additionalProperties: false
+      properties:
+        assigned: { type: boolean }
+        profile_id: { type: string, format: uuid, nullable: true }
+        profile_name: { type: string, nullable: true }
+        endpoint: { type: string, nullable: true, description: Credential-free MCP upstream endpoint. }
+        group_id: { type: string, format: uuid, nullable: true }
+        group_name: { type: string, nullable: true }
+
     Node:
       type: object
       required: [id, name, status, agent_version, enrolled_at]
@@ -5896,6 +6152,11 @@ components:
       properties:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
+        owner_email:
+          type: string
+          format: email
+          nullable: true
+          description: "Server-resolved device owner attribution for approval review. Null when the owner record is unavailable; clients must not infer an owner."
         node_id: { type: string, format: uuid }
         name: { type: string }
         platform: { type: string }

@@ -13,9 +13,17 @@ SELECT * FROM user_groups
 WHERE id = $1 AND org_id = $2;
 
 -- name: ListUserGroupsByOrg :many
-SELECT * FROM user_groups
-WHERE org_id = $1
-ORDER BY name;
+-- Membership is unique per (group_id, user_id), but keep this aggregate
+-- duplicate-safe if a future bounded list enriches it with another join.
+SELECT g.*, count(DISTINCT u.id)::bigint AS member_count
+FROM user_groups g
+LEFT JOIN group_members gm
+  ON gm.org_id = g.org_id AND gm.group_id = g.id
+LEFT JOIN users u
+  ON u.id = gm.user_id AND u.deleted_at IS NULL
+WHERE g.org_id = $1
+GROUP BY g.id
+ORDER BY g.name;
 
 -- name: UpdateUserGroup :one
 UPDATE user_groups

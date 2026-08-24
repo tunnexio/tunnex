@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   api,
   apiErrorCode,
@@ -12,6 +12,8 @@ import {
   type UserGroup,
   type ResizeConflict,
   type AgentJITAccessSetting,
+  type DeviceApproval,
+  type ZeroTrustMode,
   type AlertingSetting,
   type AlertDestination,
   type AlertDestinationKind,
@@ -65,6 +67,7 @@ import {
 import { LicenceCard } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
 import { MachineCredentials } from "../components/MachineCredentials";
+import { AgentQuotaCard, AgentRuntimeSettingCard } from "../components/AgentOrganizationSettings";
 
 const PROVIDERS = ["google", "microsoft"] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -153,12 +156,30 @@ export default function Settings() {
       ),
     [isAdmin, org],
   );
-  const [section, setSection] = useState<string>(RAIL[0].id);
+  const [section, setSection] = useState<string>(() => sectionFromLocation());
   // ⚠ FALL BACK WHEN THE SELECTION STOPS EXISTING. Switching to an org where you are a plain member must not
   // leave a tab selected that is no longer in the rail — the panel would vanish and nothing would be active.
   const active = shown.some((r) => r.id === section)
     ? section
     : (shown[0]?.id ?? "");
+  const selectSection = useCallback((id: string, replace = false) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("section", id);
+    window.history[replace ? "replaceState" : "pushState"]({}, "", `${url.pathname}${url.search}${url.hash}`);
+    setSection(id);
+  }, []);
+  useEffect(() => {
+    const restore = () => setSection(sectionFromLocation());
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
+  // Do not normalize while the org/role gate is still resolving: an accessible direct link must not be
+  // replaced by the temporary unauthenticated rail. Once the permitted rail is known, invalid and
+  // inaccessible sections fall back to its first reachable panel and the URL tells the same truth.
+  useEffect(() => {
+    if (orgLoading || !org || myRole === undefined || !active || active === section) return;
+    selectSection(active, true);
+  }, [active, myRole, org, orgLoading, section, selectSection]);
   const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
 
   if (currentOrg && org?.id !== currentOrg.id) {
@@ -218,7 +239,7 @@ export default function Settings() {
         <SettingsRail
           sections={shown}
           active={active}
-          onSelect={setSection}
+          onSelect={selectSection}
         />
         <div className="flex min-w-0 flex-col gap-3.5">
         {org && isAdmin && active === "organization" && (
@@ -318,6 +339,12 @@ export default function Settings() {
           </SettingGroup>
         )}
 
+        {org && isAdmin && active === "access-security" && (
+          <SettingGroup id="access-security" title="Access & security" tabpanel>
+            <AccessSecuritySettings key={org.id} orgId={org.id} canEdit={emailVerified} />
+          </SettingGroup>
+        )}
+
         {org && isAdmin && active === "features" && (
           <SettingGroup id="features" title="Features"
             tabpanel>
@@ -328,20 +355,6 @@ export default function Settings() {
                 canEdit={emailVerified}
                 onSaved={(o) => setOrg(o)}
               />
-              {meta?.edition === "enterprise" && (
-                <AgentPolicyTemplatesToggle
-                  org={org}
-                  canEdit={emailVerified}
-                  onSaved={(o) => setOrg(o)}
-                />
-              )}
-              {meta?.edition === "enterprise" && (
-                <AgentJITAccessToggle
-                  key={org.id}
-                  orgId={org.id}
-                  canEdit={emailVerified}
-                />
-              )}
               {can(myRole, "alerting:manage") && (
                 <AlertingToggle
                   key={org.id}
@@ -355,6 +368,16 @@ export default function Settings() {
               {can(myRole, "alerting:manage") && (
                 <AlertDeliveryHistory key={`deliveries-${org.id}`} orgId={org.id} />
               )}
+            </div>
+          </SettingGroup>
+        )}
+
+        {org && isAdmin && active === "ai-agents" && (
+          <SettingGroup id="ai-agents" title="AI Agents" tabpanel>
+            <div className="flex flex-col gap-3.5">
+              <AgentRuntimeSettingCard orgId={org.id} value={org.managed_agent_runtime_enabled} canEdit={can(myRole, "agent_runtime:manage") && emailVerified} onSaved={(enabled) => setOrg((current) => current ? { ...current, managed_agent_runtime_enabled: enabled } : current)} />
+              <AgentQuotaCard orgId={org.id} value={org.max_agent_identities ?? null} canEdit={can(myRole, "org:update") && emailVerified} />
+              <AgentPolicyTemplatesToggle org={org} canEdit={can(myRole, "agent_template:manage") && emailVerified} onSaved={(next) => setOrg(next)} />
             </div>
           </SettingGroup>
         )}
@@ -457,12 +480,72 @@ function AgentPolicyTemplatesToggle({
   );
 }
 
+function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
+  const [approval, setApproval] = useState<DeviceApproval | null>(null);
+  const [licenceFeatures, setLicenceFeatures] = useState<string[] | null>(null);
+  const [zeroTrust, setZeroTrust] = useState<
+    | { kind: "loading" }
+    | { kind: "ready"; mode: ZeroTrustMode["mode"] }
+    | { kind: "error"; message: string }
+  >({ kind: "loading" });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    setError(null);
+    setZeroTrust({ kind: "loading" });
+    const [approvalResult, licenceResult, zeroTrustResult] = await Promise.all([
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/device-approval", { params: { path: { orgId } } })),
+      loadOne(() => api.GET("/api/v1/license")),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", { params: { path: { orgId } } })),
+    ]);
+    if (!approvalResult.ok) setError(approvalResult.error);
+    else setApproval(approvalResult.data as DeviceApproval);
+    if (licenceResult.ok && Array.isArray(licenceResult.data.features)) setLicenceFeatures(licenceResult.data.features);
+    else if (!licenceResult.ok) setError((prior) => prior ?? licenceResult.error);
+    if (!zeroTrustResult.ok) setZeroTrust({ kind: "error", message: zeroTrustResult.error });
+    else if (zeroTrustResult.data.mode === "enforcing" || zeroTrustResult.data.mode === "off") {
+      setZeroTrust({ kind: "ready", mode: zeroTrustResult.data.mode });
+    } else setZeroTrust({ kind: "error", message: "The API returned an invalid Zero Trust mode." });
+  };
+
+  useEffect(() => { void load(); }, [orgId]);
+  const toggleApproval = async () => {
+    if (!approval) return;
+    setBusy(true);
+    const result = await api.PUT("/api/v1/organizations/{orgId}/device-approval", {
+      params: { path: { orgId } }, body: { mode: approval.mode === "on" ? "off" : "on" },
+    });
+    setBusy(false);
+    if (result.error) return setError(apiErrorMessage(result.error, "Could not update device approval."));
+    await load();
+  };
+
+  return <>
+    <SettingRow label="Require device approval" description="When on, future device enrolments wait for an administrator. Existing active devices are grandfathered.">
+      {approval ? <Switch label="Require device approval" checked={approval.mode === "on"} disabled={!canEdit || busy} onChange={() => void toggleApproval()} /> : <span className="text-xs text-slate-500">Loading…</span>}
+    </SettingRow>
+    <SettingRow label="Just-in-time agent access" description="A licensed capability that remains off until this organization explicitly enables it.">
+      {licenceFeatures === null ? <span className="text-xs text-slate-500">Loading…</span> : licenceFeatures.includes("agent_jit_access") ? <AgentJITAccessToggle key={orgId} orgId={orgId} canEdit={canEdit} compact /> : <a className="text-sm font-medium text-accent-400 hover:underline" href="/settings?section=licence">Manage licence &amp; plan</a>}
+    </SettingRow>
+    <SettingRow label="Zero Trust enforcement" description="Current enforcement is read-only here because changes require rule and affected-device impact confirmation.">
+      {zeroTrust.kind === "loading" ? <span className="text-xs text-slate-500">Loading current mode…</span> : zeroTrust.kind === "error" ? <span role="alert" className="text-xs text-danger">Could not load current Zero Trust mode. <a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span> : <span className="inline-flex items-center gap-3 text-sm"><strong className="text-ink-heading">{zeroTrust.mode === "enforcing" ? "Enforcing" : "Off"}</strong><a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span>}
+    </SettingRow>
+    <SettingRow label="Device posture" description="Posture is client-reported, not hardware-attested.">
+      <a className="text-sm font-medium text-accent-400 hover:underline" href="/devices/posture">Manage device posture</a>
+    </SettingRow>
+    <ErrorText>{error}</ErrorText>
+  </>;
+}
+
 function AgentJITAccessToggle({
   orgId,
   canEdit,
+  compact = false,
 }: {
   orgId: string;
   canEdit: boolean;
+  compact?: boolean;
 }) {
   const [setting, setSetting] = useState<AgentJITAccessSetting | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -506,12 +589,7 @@ function AgentJITAccessToggle({
     setBusy(false);
   }
 
-  return (
-    <SettingRow
-      label="Just-in-time agent access"
-      description="Requests need human approval and create one expiring access rule."
-      data-testid="agent-jit-access-settings"
-    >
+  const control = <>
       {/* ⚠ THREE STATES, NOT TWO. A failed load must NOT render a switch: an off-looking switch would be a
           confident claim about a setting we could not read. Retry, loading and the control stay distinct. */}
       {loadError ? (
@@ -536,8 +614,9 @@ function AgentJITAccessToggle({
       ) : (
         <p className="text-xs text-slate-500">Loading…</p>
       )}
-    </SettingRow>
-  );
+  </>;
+  if (compact) return control;
+  return <SettingRow label="Just-in-time agent access" description="Requests need human approval and create one expiring access rule." data-testid="agent-jit-access-settings">{control}</SettingRow>;
 }
 
 function AlertingToggle({
@@ -1946,10 +2025,24 @@ const RAIL: ReadonlyArray<{
     hint: "Sync users and groups from your identity provider.",
   },
   {
+    id: "access-security",
+    needsOrg: true,
+    label: "Access & security",
+    hint: "Control organization-wide access safeguards and capability opt-ins.",
+    adminOnly: true,
+  },
+  {
     id: "features",
     needsOrg: true,
     label: "Features",
     hint: "Enable and configure advanced capabilities.",
+    adminOnly: true,
+  },
+  {
+    id: "ai-agents",
+    needsOrg: true,
+    label: "AI Agents",
+    hint: "Configure managed runtime, capacity, and Agent workspace opt-ins.",
     adminOnly: true,
   },
   {
@@ -1966,6 +2059,10 @@ const RAIL: ReadonlyArray<{
     danger: true,
   },
 ];
+
+function sectionFromLocation() {
+  return new URLSearchParams(window.location.search).get("section") ?? RAIL[0].id;
+}
 
 function SettingsRail({
   sections,

@@ -5,7 +5,6 @@ import {
   GLASS,
   PageHeader,
 } from "../components/ui";
-import { isEnterprise, type Edition } from "../lib/edition";
 import { hubSetView } from "../lib/hubsetview";
 import { assembleTopology, meshFrom } from "../lib/sitesview";
 import { Donut, NodeLink } from "../components/viz";
@@ -16,6 +15,7 @@ import { Link } from "react-router-dom";
 import { UpgradeCenter } from "../components/UpgradeCenter";
 import {
   api,
+  listItems,
   apiErrorMessage,
   loadOne,
   type Device,
@@ -23,7 +23,6 @@ import {
   type Node,
   type OrgOverview,
   type Site,
-  type Meta,
   type HubSet,
   type PolicyRule,
   type ZeroTrustMode,
@@ -74,8 +73,8 @@ export default function Dashboard() {
   const [sitesRes, setSitesRes] = useState<Loaded<Site[]> | null>(null);
   const [pendingRes, setPendingRes] = useState<Loaded<Device[]> | null>(null);
   const [nodesRes, setNodesRes] = useState<Loaded<Node[]> | null>(null);
-  // ⚠ NULL means "not entitled or not loaded", and that is deliberate: the open edition's 403 is a
-  // SUCCESSFUL refusal, so it must not become an error state. The card simply does not render.
+  // Each summary source resolves independently. A missing response never
+  // implies that a product plan is absent.
   const [agentsRes, setAgentsRes] = useState<Loaded<AgentRow[]> | null>(null);
   const [rulesRes, setRulesRes] = useState<Loaded<PolicyRule[]> | null>(null);
   const [devicesRes, setDevicesRes] = useState<Loaded<Device[]> | null>(null);
@@ -90,9 +89,6 @@ export default function Dashboard() {
     K8sService[]
   > | null>(null);
   const [ztRes, setZtRes] = useState<Loaded<ZeroTrustMode> | null>(null);
-  // THE ONE GATING SEAM. `/meta`'s edition is the same value that decides whether every other enterprise
-  // surface exists — read here, never re-derived from an error.
-  const [edition, setEdition] = useState<Edition>("unknown");
 
   useEffect(() => {
     let cancelled = false;
@@ -137,38 +133,21 @@ export default function Dashboard() {
           );
         setData(ov);
 
-        // ⛔ THE SEAM, AND IT DECIDES BEFORE IT FETCHES. Edition first; gated endpoints are called ONLY when
-        // the edition has them. An open-edition org therefore never issues a request that can 403, so there
-        // is no failure to mis-interpret — the render decision is taken at the seam rather than recovered
-        // from an error at the call site. The interpretation is what drifted, twice.
-        const metaRes = (await loadOne(() =>
-          api.GET("/api/v1/meta"),
-        )) as Loaded<Meta>;
-        if (cancelled) return;
-        const ed: Edition = metaRes.ok
-          ? metaRes.data.edition === "enterprise"
-            ? "enterprise"
-            : "open"
-          : "unknown";
-        setEdition(ed);
-
-        if (isEnterprise(ed)) {
-          void loadOne(() =>
-            api.GET("/api/v1/organizations/{orgId}/devices/pending", {
-              params: { path: { orgId: org.id } },
-            }),
-          ).then((r) => !cancelled && setPendingRes(r as Loaded<Device[]>));
-          void loadOne(() =>
-            api.GET("/api/v1/organizations/{orgId}/policies", {
-              params: { path: { orgId: org.id } },
-            }),
-          ).then((r) => !cancelled && setRulesRes(r as Loaded<PolicyRule[]>));
-          void loadOne(() =>
-            api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", {
-              params: { path: { orgId: org.id } },
-            }),
-          ).then((r) => !cancelled && setZtRes(r as Loaded<ZeroTrustMode>));
-        }
+        void loadOne(() =>
+          api.GET("/api/v1/organizations/{orgId}/devices/pending", {
+            params: { path: { orgId: org.id } },
+          }),
+        ).then((r) => !cancelled && setPendingRes(r as Loaded<Device[]>));
+        void loadOne(() =>
+          api.GET("/api/v1/organizations/{orgId}/policies", {
+            params: { path: { orgId: org.id } },
+          }),
+        ).then((r) => !cancelled && setRulesRes(r as Loaded<PolicyRule[]>));
+        void loadOne(() =>
+          api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", {
+            params: { path: { orgId: org.id } },
+          }),
+        ).then((r) => !cancelled && setZtRes(r as Loaded<ZeroTrustMode>));
         // Fired together, awaited independently: each sets its own state, so one failure degrades one card.
         void loadOne(() =>
           api.GET("/api/v1/organizations/{orgId}/sites", {
@@ -180,16 +159,14 @@ export default function Dashboard() {
             params: { path: { orgId: org.id } },
           }),
         ).then((r) => !cancelled && setNodesRes(r as Loaded<Node[]>));
-        // ⛔ ENTERPRISE, AND A 403 IS A SUCCESSFUL REFUSAL — NOT AN ERROR. On the open edition the
-        // endpoint correctly answers edition_required; the card must then be ABSENT, not "unavailable".
-        // Folding a correct refusal into a failure is the defect this repo has already paid for.
+        // Base AI Agents inventory is available on Community and higher plans.
         void api
           .GET("/api/v1/organizations/{orgId}/agents", {
             params: { path: { orgId: org.id } },
           })
           .then(({ data, error }) => {
             if (cancelled || error || !data) return; // 403 lands here and stays silent, by design
-            setAgentsRes({ ok: true, data: data as AgentRow[] });
+            setAgentsRes({ ok: true, data: listItems(data) as AgentRow[] });
           })
           .catch(() => {});
         // Both OPEN endpoints — no gate needed, and the audit that cut them was wrong about the data.
@@ -284,26 +261,19 @@ export default function Dashboard() {
             const sites = statFrom(sitesRes, (r: Site[]) => r.length);
             const pending = statFrom(pendingRes, (r: Device[]) => r.length);
             const rules = statFrom(rulesRes, (r: PolicyRule[]) => r.length);
-            // Edition is UNKNOWN until /meta answers; treat unknown as not-enterprise so a slow load never
-            // flashes an enterprise-only surface. Absent-until-known, same rule as every count on this screen.
-            const enterprise = isEnterprise(edition);
-            // FOUR core cards, plus Access Rules and Pending approvals on enterprise, plus AI Agents when
-            // its read succeeded. ONE definition, read by both the gating below and the grid's column count.
-            // ⚠ THE AGENT TERM IS THE CONDITION ITSELF, not `enterprise`: the card renders on `ok` alone, so
-            // counting it on edition would re-span the row for a card that is not there — the two-column
-            // hole the re-span was ruled to prevent.
-            const STAT_CARDS = (enterprise ? 6 : 4) + (agentsRes?.ok ? 1 : 0);
+            // A summary card is visible only after its own source succeeds. This
+            // preserves permission-before-entitlement behavior without using
+            // legacy `/meta` edition metadata as a UI gate.
+            const STAT_CARDS =
+              4 +
+              (agentsRes?.ok ? 1 : 0) +
+              (rulesRes?.ok ? 1 : 0) +
+              (pendingRes?.ok ? 1 : 0);
 
             // NEEDS ATTENTION is COMPOSED, not fetched — every item names the source that produced it, and an
             // item appears only when its source has been READ. A source still loading contributes nothing;
             // a source that FAILED contributes nothing either, because "nothing needs attention" and "we could
             // not check" must not render identically. The panel says "loading" until every source has answered.
-            // ⛔ WAIT ONLY ON SOURCES THAT WILL ACTUALLY ARRIVE.
-            //
-            // `pendingRes` is enterprise-gated and is NEVER FETCHED on the open edition, so it stays `null`
-            // forever — and `null` was the "still loading" signal. The panel hung on "Loading…" permanently,
-            // waiting for a request that was deliberately never made.
-            //
 
             // Sub-lines are QUALIFICATIONS, and each is `null` when there is nothing honest to say. A sub-line
             // is never filler: an unqualified number is a smaller claim than a wrongly-qualified one.
@@ -348,18 +318,16 @@ export default function Dashboard() {
                     Settled from the SOURCE prototype, not from the README's generic "4-up" sentence (which
                     describes the other screens) and not from the screenshot alone. */}
                 {/* ⛔ THE ROW RE-SPANS TO FILL 12. RULED, and the argument matters more than the choice:
-                    a fixed six-slot row leaves the open edition with five cards and a two-column hole, which
-                    is the SAME ragged-row defect already fixed for the panels — and worse here, because a gap
-                    in a stat row reads as a card that failed to render rather than as a capability the org
-                    does not have. Absence should be invisible when the thing absent was never offered.
+                    a fixed six-slot row leaves a gap when a source cannot be shown, which reads as a card
+                    that failed to render rather than as a capability the operator cannot use.
                     Six cards -> span 2 each. Five -> the row is a 5-column grid. Either way it fills. */}
                 {/* ⛔ THE ROW RE-SPANS TO FILL, AND IT COLLAPSES BEFORE IT OVERFLOWS.
                     Six (or five) fixed columns at 390px gives ~60px per card and the page scrolls sideways —
                     which the viewport leg caught on its FIRST baseline (390px viewport, 455px capture).
-                    The edition-dependent count only applies once there is room for it. */}
+                    The source-dependent count only applies once there is room for it. */}
                 {/* ⛔ THE COLUMN COUNT IS DERIVED FROM THE CARD COUNT, IN ONE PLACE.
-                    It was hard-coded `lg:grid-cols-6` while SEVEN cards were rendered — enterprise adds both
-                    Access Rules and Pending approvals — so the seventh wrapped to a second row and sat alone
+                    It was hard-coded `lg:grid-cols-6` while seven cards were rendered — Access Rules and
+                    Pending approvals added two sources — so the seventh wrapped to a second row and sat alone
                     beneath five empty columns. It read as a card that failed to render rather than as a row
                     that did not fit.
 
@@ -406,12 +374,7 @@ export default function Dashboard() {
                         : `${degraded} reporting degraded kinds`
                     }
                   />
-                  {/* ⛔ ENTERPRISE, AND RENDERED ONLY ON `ok` — NOT ON "enterprise". The agents fetch
-                      swallows every error, 403 and genuine failure alike, so `agentsRes` stays `null` in
-                      both cases. Gating on the EDITION would make a failed read on enterprise render a
-                      permanent "loading" card — which is the exact `pendingRes` defect documented above,
-                      reintroduced from the other direction. `ok` is the only state that means the number
-                      is known. */}
+                  {/* Render only after the Agent inventory answers successfully. */}
                   {agentsRes?.ok && (
                     <Stat
                       label="AI Agents"
@@ -426,11 +389,7 @@ export default function Dashboard() {
                     value={sites}
                     sub={siteSub}
                   />
-                  {/* ⛔ ENTERPRISE. `/policies` and `/zero-trust-mode` are both gated, so on the open edition
-                      this card is ABSENT — not "0", not "could not load" in red. It was the SECOND instance of
-                      the same conflation in this slice, still live after the first was fixed at one call
-                      site: only an enumeration finds the rest (src/lib/edition.ts). */}
-                  {enterprise && (
+                  {rulesRes?.ok && (
                     <Stat
                       label="Access Rules"
                       icon="shield"
@@ -438,9 +397,7 @@ export default function Dashboard() {
                       sub={zeroTrust === null ? null : zeroTrust}
                     />
                   )}
-                  {/* Sixth card only where the capability exists. On the open edition the row is five wide —
-                      which is the honest layout, not a gap where a broken card used to be. */}
-                  {enterprise && (
+                  {pendingRes?.ok && (
                     <Stat
                       label="Pending approvals"
                       icon="user-plus"

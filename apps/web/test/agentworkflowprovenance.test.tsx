@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import { AgentWorkflowProvenancePanel } from "../src/pages/Agents";
+import { AgentWorkflowProvenancePanel } from "../src/components/AgentWorkflowProvenance";
 
 describe("F15 workflow provenance panel", () => {
   it("renders the verified chain but keeps unverified claim material absent", () => {

@@ -151,20 +151,25 @@ type AgentMcpOauthConnection struct {
 }
 
 type AgentMcpProfile struct {
-	ID        uuid.UUID `json:"id"`
-	OrgID     uuid.UUID `json:"org_id"`
-	Name      string    `json:"name"`
-	Endpoint  string    `json:"endpoint"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         uuid.UUID          `json:"id"`
+	OrgID      uuid.UUID          `json:"org_id"`
+	Name       string             `json:"name"`
+	Endpoint   string             `json:"endpoint"`
+	CreatedAt  time.Time          `json:"created_at"`
+	UpdatedAt  time.Time          `json:"updated_at"`
+	ArchivedAt pgtype.Timestamptz `json:"archived_at"`
 }
 
 type AgentMcpProfileAssignment struct {
-	ID           uuid.UUID `json:"id"`
-	OrgID        uuid.UUID `json:"org_id"`
-	ProfileID    uuid.UUID `json:"profile_id"`
-	AgentGroupID uuid.UUID `json:"agent_group_id"`
-	AssignedAt   time.Time `json:"assigned_at"`
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	ProfileID        uuid.UUID          `json:"profile_id"`
+	AgentGroupID     uuid.UUID          `json:"agent_group_id"`
+	AssignedAt       time.Time          `json:"assigned_at"`
+	State            string             `json:"state"`
+	EndedAt          pgtype.Timestamptz `json:"ended_at"`
+	EndedByUserID    pgtype.UUID        `json:"ended_by_user_id"`
+	QuarantineReason *string            `json:"quarantine_reason"`
 }
 
 // F16 step-up permits. Exact policy identity plus request digest only; raw MCP arguments, results, OAuth tokens, and secrets are never retained.

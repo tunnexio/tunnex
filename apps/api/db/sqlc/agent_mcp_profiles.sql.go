@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const assignAgentMCPProfile = `-- name: AssignAgentMCPProfile :one
 INSERT INTO agent_mcp_profile_assignments (org_id, profile_id, agent_group_id)
 VALUES ($1, $2, $3)
-RETURNING id, org_id, profile_id, agent_group_id, assigned_at
+RETURNING id, org_id, profile_id, agent_group_id, assigned_at, state, ended_at, ended_by_user_id, quarantine_reason
 `
 
 type AssignAgentMCPProfileParams struct {
@@ -33,6 +34,10 @@ func (q *Queries) AssignAgentMCPProfile(ctx context.Context, arg AssignAgentMCPP
 		&i.ProfileID,
 		&i.AgentGroupID,
 		&i.AssignedAt,
+		&i.State,
+		&i.EndedAt,
+		&i.EndedByUserID,
+		&i.QuarantineReason,
 	)
 	return i, err
 }
@@ -40,7 +45,7 @@ func (q *Queries) AssignAgentMCPProfile(ctx context.Context, arg AssignAgentMCPP
 const createAgentMCPProfile = `-- name: CreateAgentMCPProfile :one
 INSERT INTO agent_mcp_profiles (org_id, name, endpoint)
 VALUES ($1, $2, $3)
-RETURNING id, org_id, name, endpoint, created_at, updated_at
+RETURNING id, org_id, name, endpoint, created_at, updated_at, archived_at
 `
 
 type CreateAgentMCPProfileParams struct {
@@ -59,12 +64,13 @@ func (q *Queries) CreateAgentMCPProfile(ctx context.Context, arg CreateAgentMCPP
 		&i.Endpoint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const getAgentMCPProfile = `-- name: GetAgentMCPProfile :one
-SELECT id, org_id, name, endpoint, created_at, updated_at FROM agent_mcp_profiles WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, endpoint, created_at, updated_at, archived_at FROM agent_mcp_profiles WHERE id = $1 AND org_id = $2
 `
 
 type GetAgentMCPProfileParams struct {
@@ -82,12 +88,69 @@ func (q *Queries) GetAgentMCPProfile(ctx context.Context, arg GetAgentMCPProfile
 		&i.Endpoint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
+const listActiveMCPAssignmentsForDevice = `-- name: ListActiveMCPAssignmentsForDevice :many
+SELECT a.id, a.org_id, a.profile_id, a.agent_group_id, p.name AS profile_name,
+       p.endpoint, g.name AS group_name, a.assigned_at
+FROM agent_mcp_profile_assignments a
+JOIN agent_mcp_profiles p ON p.id = a.profile_id AND p.org_id = a.org_id
+JOIN agent_groups g ON g.id = a.agent_group_id AND g.org_id = a.org_id
+JOIN agent_group_members m ON m.org_id = a.org_id AND m.agent_group_id = a.agent_group_id
+WHERE a.org_id = $1 AND m.device_id = $2 AND a.state = 'active'
+ORDER BY a.assigned_at DESC, a.id DESC
+`
+
+type ListActiveMCPAssignmentsForDeviceParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+type ListActiveMCPAssignmentsForDeviceRow struct {
+	ID           uuid.UUID `json:"id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	ProfileID    uuid.UUID `json:"profile_id"`
+	AgentGroupID uuid.UUID `json:"agent_group_id"`
+	ProfileName  string    `json:"profile_name"`
+	Endpoint     string    `json:"endpoint"`
+	GroupName    string    `json:"group_name"`
+	AssignedAt   time.Time `json:"assigned_at"`
+}
+
+func (q *Queries) ListActiveMCPAssignmentsForDevice(ctx context.Context, arg ListActiveMCPAssignmentsForDeviceParams) ([]ListActiveMCPAssignmentsForDeviceRow, error) {
+	rows, err := q.db.Query(ctx, listActiveMCPAssignmentsForDevice, arg.OrgID, arg.DeviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveMCPAssignmentsForDeviceRow{}
+	for rows.Next() {
+		var i ListActiveMCPAssignmentsForDeviceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.ProfileID,
+			&i.AgentGroupID,
+			&i.ProfileName,
+			&i.Endpoint,
+			&i.GroupName,
+			&i.AssignedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAgentMCPProfileAssignments = `-- name: ListAgentMCPProfileAssignments :many
-SELECT a.id, a.org_id, a.profile_id, a.agent_group_id, a.assigned_at, p.name AS profile_name, p.endpoint, g.name AS group_name
+SELECT a.id, a.org_id, a.profile_id, a.agent_group_id, a.assigned_at, a.state, a.ended_at, a.ended_by_user_id, a.quarantine_reason, p.name AS profile_name, p.endpoint, g.name AS group_name
 FROM agent_mcp_profile_assignments a
 JOIN agent_mcp_profiles p ON p.id = a.profile_id AND p.org_id = a.org_id
 JOIN agent_groups g ON g.id = a.agent_group_id AND g.org_id = a.org_id
@@ -96,14 +159,18 @@ ORDER BY a.assigned_at DESC, a.id DESC
 `
 
 type ListAgentMCPProfileAssignmentsRow struct {
-	ID           uuid.UUID `json:"id"`
-	OrgID        uuid.UUID `json:"org_id"`
-	ProfileID    uuid.UUID `json:"profile_id"`
-	AgentGroupID uuid.UUID `json:"agent_group_id"`
-	AssignedAt   time.Time `json:"assigned_at"`
-	ProfileName  string    `json:"profile_name"`
-	Endpoint     string    `json:"endpoint"`
-	GroupName    string    `json:"group_name"`
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	ProfileID        uuid.UUID          `json:"profile_id"`
+	AgentGroupID     uuid.UUID          `json:"agent_group_id"`
+	AssignedAt       time.Time          `json:"assigned_at"`
+	State            string             `json:"state"`
+	EndedAt          pgtype.Timestamptz `json:"ended_at"`
+	EndedByUserID    pgtype.UUID        `json:"ended_by_user_id"`
+	QuarantineReason *string            `json:"quarantine_reason"`
+	ProfileName      string             `json:"profile_name"`
+	Endpoint         string             `json:"endpoint"`
+	GroupName        string             `json:"group_name"`
 }
 
 func (q *Queries) ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAgentMCPProfileAssignmentsRow, error) {
@@ -121,6 +188,10 @@ func (q *Queries) ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid
 			&i.ProfileID,
 			&i.AgentGroupID,
 			&i.AssignedAt,
+			&i.State,
+			&i.EndedAt,
+			&i.EndedByUserID,
+			&i.QuarantineReason,
 			&i.ProfileName,
 			&i.Endpoint,
 			&i.GroupName,
@@ -136,7 +207,7 @@ func (q *Queries) ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid
 }
 
 const listAgentMCPProfiles = `-- name: ListAgentMCPProfiles :many
-SELECT id, org_id, name, endpoint, created_at, updated_at FROM agent_mcp_profiles WHERE org_id = $1 ORDER BY lower(name), id
+SELECT id, org_id, name, endpoint, created_at, updated_at, archived_at FROM agent_mcp_profiles WHERE org_id = $1 ORDER BY archived_at NULLS FIRST, lower(name), id
 `
 
 func (q *Queries) ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]AgentMcpProfile, error) {
@@ -155,6 +226,7 @@ func (q *Queries) ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]
 			&i.Endpoint,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -170,7 +242,7 @@ const listAgentMCPProfilesForDevice = `-- name: ListAgentMCPProfilesForDevice :m
 SELECT p.id, p.org_id, p.name, p.endpoint
 FROM agent_mcp_profiles p
 JOIN agent_mcp_profile_assignments a
-  ON a.profile_id = p.id AND a.org_id = p.org_id
+  ON a.profile_id = p.id AND a.org_id = p.org_id AND a.state = 'active'
 JOIN agent_group_members m
   ON m.agent_group_id = a.agent_group_id AND m.org_id = a.org_id
 WHERE p.org_id = $1 AND m.device_id = $2

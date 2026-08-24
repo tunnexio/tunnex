@@ -44,7 +44,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 
 // ── groups ──────────────────────────────────────────────────────────────────────
 
-func (s *Service) ListGroups(ctx context.Context, orgID uuid.UUID) ([]sqlc.UserGroup, error) {
+func (s *Service) ListGroups(ctx context.Context, orgID uuid.UUID) ([]sqlc.ListUserGroupsByOrgRow, error) {
 	return s.q.ListUserGroupsByOrg(ctx, orgID)
 }
 

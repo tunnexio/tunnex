@@ -65,42 +65,37 @@ describe("D-a4 mode-enable confirm = pure function of the rule COUNT", () => {
   });
 });
 
-describe("policyGate — enterprise + RBAC + verified-email", () => {
-  it("open edition → nothing, even for an owner", () => {
+describe("policyGate — Community base policy + RBAC + verified-email", () => {
+  it("Community owner can view and manage core policy", () => {
     const g = policyGate({
       role: "owner",
       emailVerified: true,
-      edition: "open",
-    });
-    expect(g.isEnterprise).toBe(false);
-    expect(g.canView).toBe(false);
-    expect(g.canManagePolicy).toBe(false);
-    expect(g.canManageDevices).toBe(false);
-  });
-  it("enterprise member → no view (policy is admin/owner only)", () => {
-    const g = policyGate({
-      role: "member",
-      emailVerified: true,
-      edition: "enterprise",
-    });
-    expect(g.canView).toBe(false);
-    expect(g.canManagePolicy).toBe(false);
-  });
-  it("enterprise admin, verified → view + manage", () => {
-    const g = policyGate({
-      role: "admin",
-      emailVerified: true,
-      edition: "enterprise",
     });
     expect(g.canView).toBe(true);
     expect(g.canManagePolicy).toBe(true);
     expect(g.canManageDevices).toBe(true);
   });
-  it("enterprise admin, UNVERIFIED email → can view but NOT manage (mirrors server)", () => {
+  it("member → no view (policy is admin/owner only)", () => {
+    const g = policyGate({
+      role: "member",
+      emailVerified: true,
+    });
+    expect(g.canView).toBe(false);
+    expect(g.canManagePolicy).toBe(false);
+  });
+  it("admin, verified → view + manage", () => {
+    const g = policyGate({
+      role: "admin",
+      emailVerified: true,
+    });
+    expect(g.canView).toBe(true);
+    expect(g.canManagePolicy).toBe(true);
+    expect(g.canManageDevices).toBe(true);
+  });
+  it("admin, UNVERIFIED email → can view but NOT manage (mirrors server)", () => {
     const g = policyGate({
       role: "admin",
       emailVerified: false,
-      edition: "enterprise",
     });
     expect(g.canView).toBe(true);
     expect(g.canManagePolicy).toBe(false);
@@ -581,85 +576,72 @@ describe("notices reduction — derived from staleRuleIds (single source of trut
   });
 });
 
-describe("[75]+[101] accessView — upsell needs only edition; role in-flight is not the gate", () => {
+describe("[75]+[101] accessView — Community Rules needs an organization and a resolved role", () => {
   const base = {
     fatal: false,
     loadError: false,
-    editionReady: true,
-    isEnterprise: true,
+    accessReady: true,
     roleError: false,
     roleResolved: true,
     canView: true,
     role: "owner" as const,
   };
 
-  // ⛔ [75] IS REVERSED, AND IT PINNED THE DEFECT. It asserted "non-enterprise + members-fail -> upsell, NOT
-  // role_retry", on the reasoning that role is irrelevant once the edition gate fires. THAT REASONING IS THE
-  // BUG (S14.12 D2): the server answers `forbidden` to an open-edition MEMBER and `edition_required` to an
-  // open-edition OWNER, so the role decides WHICH refusal is true — and when the role failed to load we do
-  // not know which. `upsell` there asserts "you would get this if you upgraded", which is FALSE for a member.
-  it("⛔ non-enterprise + role UNKNOWN -> role_retry, because which refusal is true depends on the role", () => {
+  it("role UNKNOWN -> role_retry", () => {
     expect(
       accessView({
         ...base,
-        isEnterprise: false,
         roleError: true,
         roleResolved: false,
       }),
     ).toBe("role_retry");
   });
 
-  it("⛔ OPEN + MEMBER -> member_gate, NEVER upsell — the S14.12 defect, measured on the open stack", () => {
-    // GET /policies as member@ on :8081 answers 403 forbidden, not edition_required. Selling Enterprise to a
-    // caller whose role forbids the feature on ANY edition is the S14.5 halt running forward.
+  it("Community member -> member_gate", () => {
     expect(
       accessView({
         ...base,
-        isEnterprise: false,
         role: "member",
         canView: false,
       }),
     ).toBe("member_gate");
   });
 
-  it("OPEN + OWNER -> upsell — the upsell reaches whoever could actually use it", () => {
-    // Both arms of the same gate. Without this, "always member_gate" would satisfy the assertion above.
+  it("Community owner -> admin body", () => {
     expect(
       accessView({
         ...base,
-        isEnterprise: false,
         role: "owner",
-        canView: false,
+        canView: true,
       }),
-    ).toBe("upsell");
+    ).toBe("admin_body");
   });
 
-  it("ENTERPRISE + member -> member_gate — the role answer is the same on both editions", () => {
+  it("member -> member_gate", () => {
     expect(
       accessView({
         ...base,
-        isEnterprise: true,
         role: "member",
         canView: false,
       }),
     ).toBe("member_gate");
   });
-  it("[101] enterprise + role in-flight → role_loading, NOT member_gate", () => {
+  it("[101] role in-flight → role_loading, NOT member_gate", () => {
     expect(accessView({ ...base, roleResolved: false, canView: false })).toBe(
       "role_loading",
     );
   });
-  it("enterprise + roleError → role_retry", () => {
+  it("roleError → role_retry", () => {
     expect(accessView({ ...base, roleError: true, roleResolved: false })).toBe(
       "role_retry",
     );
   });
-  it("enterprise admin resolved → admin_body; member resolved → member_gate", () => {
+  it("owner resolved → admin_body; member resolved → member_gate", () => {
     expect(accessView({ ...base, canView: true })).toBe("admin_body");
     expect(accessView({ ...base, canView: false })).toBe("member_gate");
   });
-  it("meta/org not ready → loading; fatal → fatal; loadError → load_retry", () => {
-    expect(accessView({ ...base, editionReady: false })).toBe("loading");
+  it("organization not ready → loading; fatal → fatal; loadError → load_retry", () => {
+    expect(accessView({ ...base, accessReady: false })).toBe("loading");
     expect(accessView({ ...base, fatal: true })).toBe("fatal");
     expect(accessView({ ...base, loadError: true })).toBe("load_retry");
   });
@@ -1124,9 +1106,17 @@ describe("rulesEmptyState — three claims about knowledge, never one message", 
     expect(c.text).toMatch(/nothing is being denied/i);
   });
 
-  it("an UNKNOWN mode is `failed` — the consequence sentence depends on it", () => {
+  it("a resolved failure wins over an unresolved companion; only no-known-failure nulls are `loading`", () => {
     expect(
       rulesEmptyState({ rulesResult: ok(0), modeResult: bad, renderedCount: 0 })
+        .kind,
+    ).toBe("failed");
+    expect(
+      rulesEmptyState({ rulesResult: bad, modeResult: null, renderedCount: 0 })
+        .kind,
+    ).toBe("failed");
+    expect(
+      rulesEmptyState({ rulesResult: null, modeResult: bad, renderedCount: 0 })
         .kind,
     ).toBe("failed");
     expect(
@@ -1135,10 +1125,30 @@ describe("rulesEmptyState — three claims about knowledge, never one message", 
         modeResult: null,
         renderedCount: 0,
       }).kind,
+    ).toBe("loading");
+  });
+
+  it("a successful populated Rules inventory stays `rows` when only mode fails", () => {
+    expect(
+      rulesEmptyState({
+        rulesResult: ok(3),
+        modeResult: bad,
+        renderedCount: 3,
+      }).kind,
+    ).toBe("rows");
+  });
+
+  it("a failed Rules read remains `failed` even if stale rows were supplied", () => {
+    expect(
+      rulesEmptyState({
+        rulesResult: bad,
+        modeResult: ok("off" as const),
+        renderedCount: 3,
+      }).kind,
     ).toBe("failed");
   });
 
-  it("rows present → `rows`, and the three empty copies are all DISTINCT", () => {
+  it("both successful populated reads yield `rows`, and the empty copies are DISTINCT", () => {
     expect(
       rulesEmptyState({
         rulesResult: ok(3),
@@ -1182,7 +1192,7 @@ describe("flowGraphState — the threshold is a variable, not a constant", () =>
   it("the threshold is DERIVED, so it is pinned — changing it silently must fail", () => {
     // The derivation lives beside the constant; this pins the value so a bump is a deliberate edit with a
     // test change, never a drive-by.
-    expect(FLOW_GRAPH_MAX_RULES).toBe(24);
+    expect(FLOW_GRAPH_MAX_RULES).toBe(20);
   });
 });
 

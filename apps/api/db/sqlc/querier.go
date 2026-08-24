@@ -779,6 +779,7 @@ type Querier interface {
 	// ListActiveK8sServicesForOrg is the compiler's resolution source: id -> current VIP (+ proto/ports), LIVE
 	// only. A soft-deleted Service is absent, so a grant referencing it compiles to nothing (honest, not silent).
 	ListActiveK8sServicesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActiveK8sServicesForOrgRow, error)
+	ListActiveMCPAssignmentsForDevice(ctx context.Context, arg ListActiveMCPAssignmentsForDeviceParams) ([]ListActiveMCPAssignmentsForDeviceRow, error)
 	// S7.2 push targeting: every active gateway in the org. A policy change is org-wide,
 	// and member-removal can orphan a device whose node would drop out of a device-join
 	// query — so the push set is ALL active nodes (an unaffected node's re-fetch recompiles
@@ -840,7 +841,9 @@ type Querier interface {
 	ListAgentAccessRequests(ctx context.Context, arg ListAgentAccessRequestsParams) ([]AgentAccessRequest, error)
 	ListAgentAccessRequestsForActor(ctx context.Context, arg ListAgentAccessRequestsForActorParams) ([]AgentAccessRequest, error)
 	ListAgentGroupMembers(ctx context.Context, arg ListAgentGroupMembersParams) ([]ListAgentGroupMembersRow, error)
-	ListAgentGroups(ctx context.Context, orgID uuid.UUID) ([]AgentGroup, error)
+	// agent_group_members is unique today, but the list contract must remain exact
+	// if a bounded enrichment introduces another join.
+	ListAgentGroups(ctx context.Context, orgID uuid.UUID) ([]ListAgentGroupsRow, error)
 	ListAgentMCPOAuthConnections(ctx context.Context, arg ListAgentMCPOAuthConnectionsParams) ([]ListAgentMCPOAuthConnectionsRow, error)
 	ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAgentMCPProfileAssignmentsRow, error)
 	ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]AgentMcpProfile, error)
@@ -1156,7 +1159,9 @@ type Querier interface {
 	// ListUsedVIPsInCluster returns the LIVE VIPs in a cluster (the used-set ipalloc allocates around).
 	// org_id-scoped for tenant isolation (defence-in-depth; the caller already authorized the cluster).
 	ListUsedVIPsInCluster(ctx context.Context, arg ListUsedVIPsInClusterParams) ([]string, error)
-	ListUserGroupsByOrg(ctx context.Context, orgID uuid.UUID) ([]UserGroup, error)
+	// Membership is unique per (group_id, user_id), but keep this aggregate
+	// duplicate-safe if a future bounded list enriches it with another join.
+	ListUserGroupsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListUserGroupsByOrgRow, error)
 	// ListVIPRangesForOrg feeds the subnetguard collector: EVERY disjointness check (cluster-VIP creation,
 	// pool resize, site-subnet approval) must include the org's VIP ranges so disjointness stays bidirectional
 	// (the validator-input-filtering law). Returns the raw cidr text.
