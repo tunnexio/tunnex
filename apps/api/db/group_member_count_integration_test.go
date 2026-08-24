@@ -103,9 +103,12 @@ func TestBoundedGroupMemberCountsPostgres(t *testing.T) {
 	exec(`INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'count-node',$3)`, node, orgA, "count-node-"+node.String())
 	exec(`INSERT INTO agent_groups (id,org_id,name) VALUES ($1,$2,'agent-zero'),($3,$2,'agent-one'),($4,$2,'agent-many')`, agentZero, orgA, agentOneGroup, agentMany)
 	agentOne, agentTwo, deletedAgent := uuid.New(), uuid.New(), uuid.New()
-	for _, id := range []uuid.UUID{agentOne, agentTwo, deletedAgent} {
-		exec(`INSERT INTO devices (id,org_id,user_id,node_id,name,public_key,assigned_ip,status,kind) VALUES ($1,$2,$3,$4,$5,$6,$7,'active','agent')`, id, orgA, ownerA, node, "agent-"+id.String()[:8], "key-"+id.String(), "10.250.0."+id.String()[:1])
-		exec(`INSERT INTO agent_group_members (org_id,agent_group_id,device_id,created_by_user_id) VALUES ($1,$2,$3,$4)`, orgA, agentMany, id, ownerA)
+	for _, fixture := range []struct {
+		id uuid.UUID
+		ip string
+	}{{agentOne, "10.250.0.10"}, {agentTwo, "10.250.0.11"}, {deletedAgent, "10.250.0.12"}} {
+		exec(`INSERT INTO devices (id,org_id,user_id,node_id,name,public_key,assigned_ip,status,kind) VALUES ($1,$2,$3,$4,$5,$6,$7,'active','agent')`, fixture.id, orgA, ownerA, node, "agent-"+fixture.id.String()[:8], "key-"+fixture.id.String(), fixture.ip)
+		exec(`INSERT INTO agent_group_members (org_id,agent_group_id,device_id,created_by_user_id) VALUES ($1,$2,$3,$4)`, orgA, agentMany, fixture.id, ownerA)
 	}
 	exec(`INSERT INTO agent_group_members (org_id,agent_group_id,device_id,created_by_user_id) VALUES ($1,$2,$3,$4)`, orgA, agentOneGroup, agentOne, ownerA)
 	exec(`UPDATE devices SET deleted_at=now() WHERE id=$1`, deletedAgent)
