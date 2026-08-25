@@ -214,6 +214,10 @@ func toAPINode(n sqlc.Node) api.Node {
 		AgentVersion: n.AgentVersion,
 		EnrolledAt:   n.EnrolledAt,
 	}
+	if n.EnrolledKind != nil {
+		kind := api.NodeEnrolledKind(*n.EnrolledKind)
+		out.EnrolledKind = &kind
+	}
 	if n.LastSeenAt.Valid {
 		t := n.LastSeenAt.Time
 		out.LastSeenAt = &t

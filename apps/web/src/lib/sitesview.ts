@@ -1,4 +1,4 @@
-import type { Node, Site, SiteSubnet } from "./api";
+import type { HubSet, Node, Site, SiteSubnet } from "./api";
 import { can } from "./rbac";
 import type { Role } from "./api";
 import {
@@ -297,7 +297,7 @@ export interface Mesh {
 export function meshFrom(
   cards: SiteCard[],
   nodes: Node[],
-  hubGeneration?: number,
+  hubSet?: Pick<HubSet, "generation" | "members"> | null,
   /**
    * ⛔ DID THE CALLER ACTUALLY LOAD SUBNETS? Overview renders this same mesh but does NOT fetch per-site
    * subnets, and with them absent the sub-line would read "no approved subnet" for every site — asserting a
@@ -307,17 +307,37 @@ export function meshFrom(
    */
   subnetsKnown = true,
 ): Mesh {
-  const hubNode = nodes.find((n) => n.is_site_hub && n.status === "active");
+  const servedMembers = (hubSet?.members ?? []).map((member) => ({
+    member,
+    node: nodes.find((node) => node.id === member.node_id),
+  }));
+  const fallbackHub = nodes.find(
+    (node) => node.is_site_hub && node.status === "active",
+  );
+  const primary =
+    servedMembers.find(({ member }) => member.role === "primary") ??
+    servedMembers[0] ??
+    (fallbackHub
+      ? { member: { node_id: fallbackHub.id, role: "primary" as const }, node: fallbackHub }
+      : undefined);
+  const standbyMembers = servedMembers.filter(
+    ({ member }) => member.node_id !== primary?.member.node_id,
+  );
   const out: Mesh = { nodes: [], links: [] };
-  if (hubNode) {
+  if (primary) {
     out.nodes.push({
       id: "__hub",
-      label: hubNode.name,
+      label: primary.node?.name ?? `Gateway ${primary.member.node_id.slice(0, 8)}`,
       kind: "hub",
-      // The handoff's hub sub-line is `HA set gen 7 · pri +1` — the SET's identity, not the node's role.
-      // We serve that generation, so it goes here rather than the constant "transit hub" I had invented.
-      sub:
-        hubGeneration != null ? `HA set gen ${hubGeneration}` : "· transit hub",
+      sub: hubSet ? `primary · HA set gen ${hubSet.generation}` : "primary · transit hub",
+    });
+  }
+  for (const standby of standbyMembers) {
+    out.nodes.push({
+      id: `__hub:${standby.member.node_id}`,
+      label: standby.node?.name ?? `Gateway ${standby.member.node_id.slice(0, 8)}`,
+      kind: "hub-standby",
+      sub: hubSet ? `standby · HA set gen ${hubSet.generation}` : "standby",
     });
   }
   for (const c of cards) {
@@ -351,8 +371,8 @@ export function meshFrom(
     // A directly-attached one-site gateway still has a real local-VPC attachment. It is
     // not a site-to-site WireGuard handshake, so it gets a neutral connected marker and
     // never inherits a site-link health/down verdict.
-    const localAttachment = hubNode != null && gw != null && gw.id === hubNode.id;
-    const linked = hubNode != null && gw != null && (gw.id !== hubNode.id || localAttachment);
+    const localAttachment = primary != null && gw != null && gw.id === primary.member.node_id;
+    const linked = primary != null && gw != null && (gw.id !== primary.member.node_id || localAttachment);
     const tone: VizLink["tone"] | undefined = !linked
       ? undefined // no link exists → no link STATE exists either
       : localAttachment

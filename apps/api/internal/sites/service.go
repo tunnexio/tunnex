@@ -118,6 +118,9 @@ func (s *Service) ListSubnets(ctx context.Context, orgID, siteID uuid.UUID) ([]s
 // — an unconditional UPDATE would strand the prior site with no gateway (the RouteLAN retry orphan). A bind
 // to the SAME site is an idempotent no-op (RouteLAN's resume path relies on it).
 func (s *Service) BindNode(ctx context.Context, orgID, siteID, nodeID uuid.UUID) error {
+	if err := s.requireGatewayCarrier(ctx, orgID, nodeID); err != nil {
+		return err
+	}
 	cur, err := s.q.GetNodeSiteBinding(ctx, sqlc.GetNodeSiteBindingParams{ID: nodeID, OrgID: orgID})
 	if err == pgx.ErrNoRows {
 		return apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
@@ -163,6 +166,25 @@ func (s *Service) BindNode(ctx context.Context, orgID, siteID, nodeID uuid.UUID)
 	}
 	// Still unbound → the claim's EXISTS(site) clause failed: the site is not in this org.
 	return apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
+}
+
+// requireGatewayCarrier is the shared carrier boundary for both direct Site binding and
+// Route a LAN. An AI Agent is a Node identity but not a LAN gateway; accepting it here
+// would create a Site whose routes can never be truthfully served. Legacy NULL kind is
+// deliberately fail-closed: the control plane has no authoritative declaration that it
+// is a gateway, so the operator must enroll an explicitly declared gateway instead.
+func (s *Service) requireGatewayCarrier(ctx context.Context, orgID, nodeID uuid.UUID) error {
+	node, err := s.q.GetNodeForOrg(ctx, sqlc.GetNodeForOrgParams{ID: nodeID, OrgID: orgID})
+	if err == pgx.ErrNoRows {
+		return apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
+	}
+	if err != nil {
+		return err
+	}
+	if node.Status != "active" || node.EnrolledKind == nil || *node.EnrolledKind != "gateway" {
+		return apierr.Conflict("node_not_gateway_eligible", "this node is not an active gateway eligible to carry a Site LAN")
+	}
+	return nil
 }
 
 // UnbindNode detaches a node from its site — the SITE entity survives (the point of D6:

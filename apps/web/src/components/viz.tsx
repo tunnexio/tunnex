@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { EmptyState } from "./ui";
 import {
   allocationLabel,
@@ -320,7 +320,8 @@ export function Histogram({
 export interface Node {
   id: string;
   label: string;
-  kind: "hub" | "spoke";
+  /** `hub` is the authoritative primary; `hub-standby` is a served HA member. */
+  kind: "hub" | "hub-standby" | "spoke";
   /** One line of true facts under the label. The wireframe's `kind · ip · status`, minus the ip we do not serve. */
   sub?: string;
   /**
@@ -364,6 +365,225 @@ export interface Link {
   note?: string;
 }
 
+export interface PositionedNode {
+  id: string;
+  x: number;
+  y: number;
+  r: number;
+}
+
+export interface NodeLinkLayout {
+  positions: Map<string, PositionedNode>;
+  box: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * Deterministic geometry for a hub-and-spoke view. HA members occupy a bounded central grid;
+ * Sites occupy an outer ring. This deliberately does not add links between HA members: membership
+ * does not attest a live dataplane relationship.
+ */
+export function nodeLinkLayout(nodes: Node[], targetAspect?: number): NodeLinkLayout {
+  const primary = nodes.find((n) => n.kind === "hub");
+  const hubs = primary
+    ? [primary, ...nodes.filter((n) => n.kind === "hub-standby")]
+    : [];
+  const spokes = nodes.filter((n) => n.kind === "spoke");
+  const positions = new Map<string, PositionedNode>();
+  const center = { x: 300, y: 162 };
+
+  if (hubs.length === 1) {
+    positions.set(hubs[0]!.id, { ...center, id: hubs[0]!.id, r: 34 });
+  } else if (hubs.length > 1) {
+    const columns = hubs.length <= 2 ? 2 : Math.min(3, hubs.length);
+    const rows = Math.ceil(hubs.length / columns);
+    const gapX = 120;
+    const gapY = 104;
+    const firstX = center.x - ((columns - 1) * gapX) / 2;
+    const firstY = center.y - ((rows - 1) * gapY) / 2;
+    hubs.forEach((hub, i) => {
+      positions.set(hub.id, {
+        id: hub.id,
+        x: firstX + (i % columns) * gapX,
+        y: firstY + Math.floor(i / columns) * gapY,
+        r: hub.kind === "hub" ? 34 : 30,
+      });
+    });
+  }
+
+  const k = spokes.length;
+  if (hubs.length === 0 && k === 1) {
+    positions.set(spokes[0]!.id, { ...center, id: spokes[0]!.id, r: 16 });
+  } else {
+    const rx = hubs.length > 1 ? 236 : k <= 1 ? 155 : k === 2 ? 185 : 200;
+    const ry = hubs.length > 1 ? 155 : k <= 2 ? 0 : 105;
+    spokes.forEach((spoke, i) => {
+      const a = k === 1 ? 0 : (i / k) * Math.PI * 2 - Math.PI / 2;
+      const value = typeof spoke.value === "number" ? Math.max(0, spoke.value) : 0;
+      positions.set(spoke.id, {
+        id: spoke.id,
+        x: center.x + Math.cos(a) * rx,
+        y: center.y + Math.sin(a) * ry,
+        r: 16 + Math.sqrt(value) * 3.2,
+      });
+    });
+  }
+
+  const bounds = () => {
+    const pts = [...positions.values()];
+    const padX = 76;
+    const padTop = 48;
+    const padBottom = 68;
+    const minX = pts.length ? Math.min(...pts.map((p) => p.x - p.r)) : 0;
+    const maxX = pts.length ? Math.max(...pts.map((p) => p.x + p.r)) : 600;
+    const minY = pts.length ? Math.min(...pts.map((p) => p.y - p.r)) : 0;
+    const maxY = pts.length ? Math.max(...pts.map((p) => p.y + p.r)) : 320;
+    return {
+      x: minX - padX,
+      y: minY - padTop,
+      width: maxX - minX + padX * 2,
+      height: maxY - minY + padTop + padBottom,
+    };
+  };
+  const initialBox = bounds();
+  // Fit uses the actual rendered container aspect, not fixture coordinates. Bound the horizontal
+  // expansion so sparse graphs remain legible instead of turning their node rings into oversized discs.
+  if (targetAspect && initialBox.height > 0) {
+    const currentAspect = initialBox.width / initialBox.height;
+    const stretch = Math.min(1.75, Math.max(1, targetAspect / currentAspect));
+    if (stretch > 1) {
+      for (const position of positions.values())
+        position.x = center.x + (position.x - center.x) * stretch;
+    }
+  }
+  return {
+    positions,
+    box: bounds(),
+  };
+}
+
+/** Shortens an SVG label without dropping the full accessible name. */
+export function nodeLinkVisibleLabel(label: string | null | undefined, max = 18): string {
+  const readable = label?.trim() || "Unnamed node";
+  return readable.length > max ? `${readable.slice(0, Math.max(1, max - 1))}…` : readable;
+}
+
+/** Returns a line whose endpoints touch the visible node rings rather than their centres. */
+export function nodeLinkEdge(
+  from: PositionedNode,
+  to: PositionedNode,
+): { x1: number; y1: number; x2: number; y2: number } {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return { x1: from.x, y1: from.y, x2: to.x, y2: to.y };
+  const ux = dx / length;
+  const uy = dy / length;
+  return {
+    x1: from.x + ux * from.r,
+    y1: from.y + uy * from.r,
+    x2: to.x - ux * to.r,
+    y2: to.y - uy * to.r,
+  };
+}
+
+export interface NodeLinkRoute {
+  /** Boundary-terminated points, in draw order. */
+  points: Array<{ x: number; y: number }>;
+  /** SVG path used by both the visible edge and its moving linked-state packet. */
+  path: string;
+}
+
+const HA_EDGE_CLEARANCE = 48;
+
+function distanceToSegment(
+  point: { x: number; y: number },
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return Math.hypot(point.x - start.x, point.y - start.y);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
+}
+
+function boundaryRoute(
+  from: PositionedNode,
+  to: PositionedNode,
+  waypoints: Array<{ x: number; y: number }>,
+): Array<{ x: number; y: number }> {
+  const centers = [from, ...waypoints, to];
+  const firstTarget = centers[1]!;
+  const lastSource = centers[centers.length - 2]!;
+  const firstLength = Math.hypot(firstTarget.x - from.x, firstTarget.y - from.y);
+  const lastLength = Math.hypot(to.x - lastSource.x, to.y - lastSource.y);
+  if (firstLength === 0 || lastLength === 0) return [];
+  return [
+    {
+      x: from.x + ((firstTarget.x - from.x) / firstLength) * from.r,
+      y: from.y + ((firstTarget.y - from.y) / firstLength) * from.r,
+    },
+    ...waypoints,
+    {
+      x: to.x - ((to.x - lastSource.x) / lastLength) * to.r,
+      y: to.y - ((to.y - lastSource.y) / lastLength) * to.r,
+    },
+  ];
+}
+
+function routeLength(points: Array<{ x: number; y: number }>): number {
+  return points.slice(1).reduce((total, point, index) => total + Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y), 0);
+}
+
+/**
+ * Routes a Site edge around unrelated HA members. Hub badges and labels are deliberately included
+ * in the clearance envelope: a line through a readable card is still an overlap even if it misses
+ * the circular ring. The deterministic outside lanes work for the bounded central HA grid without
+ * creating an implied primary-to-standby dataplane link.
+ */
+export function nodeLinkRoute(
+  from: PositionedNode,
+  to: PositionedNode,
+  haMembers: PositionedNode[],
+): NodeLinkRoute {
+  const obstacles = haMembers.filter((member) => member.id !== from.id && member.id !== to.id);
+  const direct = boundaryRoute(from, to, []);
+  const clears = (points: Array<{ x: number; y: number }>) =>
+    points.length >= 2 && obstacles.every((obstacle) =>
+      points.slice(1).every((point, index) =>
+        distanceToSegment(obstacle, points[index]!, point) >= obstacle.r + HA_EDGE_CLEARANCE,
+      ),
+    );
+  if (clears(direct)) {
+    return { points: direct, path: `M ${direct[0]!.x} ${direct[0]!.y} L ${direct[1]!.x} ${direct[1]!.y}` };
+  }
+
+  const minX = Math.min(...obstacles.map((member) => member.x - member.r - HA_EDGE_CLEARANCE)) - 20;
+  const maxX = Math.max(...obstacles.map((member) => member.x + member.r + HA_EDGE_CLEARANCE)) + 20;
+  const minY = Math.min(...obstacles.map((member) => member.y - member.r - HA_EDGE_CLEARANCE)) - 20;
+  const maxY = Math.max(...obstacles.map((member) => member.y + member.r + HA_EDGE_CLEARANCE)) + 20;
+  const candidates = [
+    [{ x: from.x, y: minY }, { x: to.x, y: minY }],
+    [{ x: from.x, y: maxY }, { x: to.x, y: maxY }],
+    [{ x: minX, y: from.y }, { x: minX, y: to.y }],
+    [{ x: maxX, y: from.y }, { x: maxX, y: to.y }],
+    [{ x: minX, y: from.y }, { x: minX, y: minY }, { x: to.x, y: minY }],
+    [{ x: maxX, y: from.y }, { x: maxX, y: minY }, { x: to.x, y: minY }],
+    [{ x: minX, y: from.y }, { x: minX, y: maxY }, { x: to.x, y: maxY }],
+    [{ x: maxX, y: from.y }, { x: maxX, y: maxY }, { x: to.x, y: maxY }],
+  ];
+  const route = candidates
+    .map((waypoints, order) => ({ points: boundaryRoute(from, to, waypoints), order }))
+    .filter(({ points }) => clears(points))
+    .sort((a, b) => routeLength(a.points) - routeLength(b.points) || a.order - b.order)[0]?.points;
+
+  // The central grid is bounded and the candidates above cover every outside lane. Keeping this
+  // fallback explicit avoids pretending a partial route is safe if a future layout exceeds that shape.
+  const points = route ?? direct;
+  return { points, path: `M ${points.map((point) => `${point.x} ${point.y}`).join(" L ")}` };
+}
+
 // ⛔ TONES TAKEN FROM THE WIREFRAME'S OWN `TONE` MAP, NOT INVENTED.
 //
 // I had these as ok/warn/danger — a green, an amber and a red. The design is NEAR-MONOCHROME: an `ok` edge
@@ -376,14 +596,14 @@ export interface Link {
 // below carry the actual claim. Colour is spent where it is scarce and therefore meaningful.
 export const LINK_STROKE: Record<LinkTone, string> = {
   linked: "#C9C9C4",
-  degraded: "#3A3A3A",
-  down: "#303030",
+  degraded: "#C39A4E",
+  down: "#D06A6A",
 };
 // `down` is dashed as well as red, so the state survives a monochrome print and a red-green viewer.
 export const LINK_DASH: Record<LinkTone, string | undefined> = {
   linked: undefined,
-  degraded: "6 7",
-  down: "6 7",
+  degraded: "10 7",
+  down: "2 5",
 };
 
 // ring / fill / dot per tone — the wireframe's TONE map, verbatim.
@@ -420,6 +640,7 @@ export function NodeLink({
   empty = "No sites yet.",
   selectedId,
   onSelect,
+  maxHeight,
 }: {
   label: string;
   source: VizSource;
@@ -430,10 +651,28 @@ export function NodeLink({
   /** Controlled selection. Undefined = the diagram is inert, exactly as it was before S14.5. */
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
+  /** Lets a dense page keep the graph and its adjacent inventory in the same viewport without changing topology geometry. */
+  maxHeight?: number;
 }) {
-  const hub = nodes.find((n) => n.kind === "hub");
-  const spokes = nodes.filter((n) => n.kind !== "hub");
-  const pos = new Map<string, { x: number; y: number }>();
+  const host = useRef<HTMLDivElement>(null);
+  const [hostWidth, setHostWidth] = useState(0);
+  useEffect(() => {
+    const element = host.current;
+    if (!element) return;
+    const update = () => setHostWidth(element.getBoundingClientRect().width);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const baseLayout = useMemo(() => nodeLinkLayout(nodes), [nodes]);
+  const renderedHeight = Math.min(baseLayout.box.height, maxHeight ?? baseLayout.box.height);
+  const layout = useMemo(
+    () => nodeLinkLayout(nodes, hostWidth > 0 ? hostWidth / renderedHeight : undefined),
+    [hostWidth, nodes, renderedHeight],
+  );
+  const pos = layout.positions;
   // The wireframe's frame: 600x320, hub dead centre at (300,162). Spokes ring it. Starting at -90° puts
   // the first spoke at twelve o'clock, which is where a reader looks first; a lone spoke then sits ABOVE the
   // hub rather than at an arbitrary angle.
@@ -451,55 +690,10 @@ export function NodeLink({
   // the placed nodes removed the empty space by MAGNIFYING everything: a two-node bounding box stretched to
   // the panel width rendered 150px rings and oversized labels.
   //
-  // THE SCALE IS A CONTRACT. The design's svg is `viewBox 0 0 600 320` at `height: 320px`, so ONE USER UNIT
-  // IS ONE PIXEL and a hub ring is 68px ON PURPOSE. Fitting the box breaks that silently, because the shapes
-  // stay in proportion to EACH OTHER while every one of them is the wrong size — nothing looks distorted, it
-  // is just all wrong together, which is the hardest kind to notice.
-  //
-  // SO: the FRAME stays fixed, the PLACEMENT adapts to the count, and the content is TRANSLATED to centre.
-  // Sparse then reads as sparse — airy and balanced — rather than as broken or as zoomed.
-  const HUB = { x: 300, y: 162 };
-  const k = spokes.length;
-  if (hub) pos.set(hub.id, HUB);
-  if (!hub && k === 1) {
-    pos.set(spokes[0]!.id, HUB);
-  } else {
-    // One spoke needs distance, not an orbit. Two want opposite sides. Three or more want a ring.
-    const rx = k <= 1 ? 155 : k === 2 ? 185 : 200;
-    const ry = k <= 2 ? 0 : 105;
-    spokes.forEach((sp, i) => {
-      // Twelve o'clock first for a real ring; a LONE spoke goes RIGHT, because a relationship reads
-      // left-to-right and straight-up reads as a stack.
-      const a = k === 1 ? 0 : (i / k) * Math.PI * 2 - Math.PI / 2;
-      pos.set(sp.id, {
-        x: HUB.x + Math.cos(a) * rx,
-        y: HUB.y + Math.sin(a) * ry,
-      });
-    });
-  }
-
-  // ⛔ FIT THE BOX *AND* THE PIXEL HEIGHT TO THE SAME NUMBER — that is what keeps the scale at 1:1.
-  //
-  // Fitting the viewBox ALONE magnified everything (attempt 2). Pinning a 600x320 box ALONE left a 320px-tall
-  // panel with two small rings adrift in it (attempt 3). Both were half the answer.
-  //
-  // `preserveAspectRatio="xMidYMid meet"` scales to fit the TIGHTER of the two axes. So if the viewBox height
-  // in USER UNITS equals the element height in PIXELS, the scale is exactly 1 — the design's contract, a 68px
-  // hub ring — and the horizontal remainder is simply empty space, centred. The frame follows the content in
-  // SIZE without ever changing its SCALE.
-  const pts = [...pos.values()];
-  const PAD_X = 34 + 42; // widest ring + room for the label, which is wider than its circle
-  const PAD_TOP = 34 + 14;
-  const PAD_BOTTOM = 34 + 34; // label at r+15 and sub-line at r+27 are drawn BELOW the ring
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const boxX = pts.length ? Math.min(...xs) - PAD_X : 0;
-  const boxY = pts.length ? Math.min(...ys) - PAD_TOP : 0;
-  const boxW = pts.length ? Math.max(...xs) - Math.min(...xs) + PAD_X * 2 : 600;
-  const boxH = pts.length
-    ? Math.max(...ys) - Math.min(...ys) + PAD_TOP + PAD_BOTTOM
-    : 320;
-
+  // THE RING SCALE IS A CONTRACT. Fitting must not shrink the viewBox around a sparse graph, because that
+  // magnifies the same geometry into oversized discs. Instead the layout widens only its x positions from
+  // actual container bounds (with a clamp) and recomputes its viewBox. Node radii remain unchanged.
+  const { x: boxX, y: boxY, width: boxW, height: boxH } = layout.box;
   const interactive = onSelect != null;
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
 
@@ -517,10 +711,11 @@ export function NodeLink({
           HOLLOW RINGS on a dark fill. The gallery could not catch either: it renders every specimen inside
           `w-80`, where the same element is a tidy 192px and a solid dot reads as a deliberate dot.
           A COMPONENT CONSTRAINED BY ITS HARNESS IS NOT A COMPONENT THAT HAS BEEN TESTED AT SIZE. */}
+      <div ref={host} className="min-w-0">
       <svg
         viewBox={`${boxX} ${boxY} ${boxW} ${boxH}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ height: `${boxH}px` }}
+        style={{ height: `${Math.min(boxH, maxHeight ?? boxH)}px` }}
         className="w-full"
         role="presentation"
       >
@@ -541,17 +736,23 @@ export function NodeLink({
           const endpoint = nodes.find((n) => n.id === l.to);
           const c = typeof endpoint?.value === "number" ? endpoint.value : 0;
           const w = (touches ? 1.0 : 0) + 1.5 + c / 12;
-          const dim = selectedId && !touches ? 0.18 : 1;
+          const dim = selectedId && !touches ? 0.5 : 1;
+          const edge = nodeLinkRoute(
+            a,
+            b,
+            nodes
+              .filter((node) => node.kind === "hub" || node.kind === "hub-standby")
+              .map((node) => pos.get(node.id)!)
+              .filter(Boolean),
+          );
           return (
-            <g key={`${l.from}-${l.to}`} opacity={dim}>
-              <line
+            <g key={`${l.from}-${l.to}`} data-edge={`${l.from}:${l.to}`} opacity={dim}>
+              <path
                 // Entry only: EVERY edge draws itself in, healthy or dead. `tnx-draw` sets its own
                 // stroke-dasharray, so a tone that wants a dash pattern keeps it via the overlay below.
                 className={LINK_DASH[l.tone] ? undefined : "tnx-draw"}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
+                d={edge.path}
+                fill="none"
                 stroke={LINK_STROKE[l.tone]}
                 strokeDasharray={LINK_DASH[l.tone]}
                 strokeWidth={w}
@@ -562,12 +763,10 @@ export function NodeLink({
                   Motion is reserved for the one state that is genuinely current. */}
               {l.tone === "linked" && (
                 <>
-                  <line
+                  <path
                     className="tnx-edge"
-                    x1={a.x}
-                    y1={a.y}
-                    x2={b.x}
-                    y2={b.y}
+                    d={edge.path}
+                    fill="none"
                     stroke="url(#tnxMeshEdge)"
                     strokeWidth={w}
                   />
@@ -586,7 +785,7 @@ export function NodeLink({
                     r="2.6"
                     fill="#E6E6E2"
                     style={{
-                      offsetPath: `path("M ${b.x} ${b.y} L ${a.x} ${a.y}")`,
+                      offsetPath: `path("M ${[...edge.points].reverse().map((point) => `${point.x} ${point.y}`).join(" L ")}")`,
                       animationDuration: `${2.4 + (i % 3) * 0.4}s`,
                       animationDelay: `${i * 0.35}s`,
                     }}
@@ -599,7 +798,7 @@ export function NodeLink({
         {nodes.map((n) => {
           const p = pos.get(n.id)!;
           const isSel = n.id === selectedId;
-          const isHub = n.kind === "hub";
+          const isHub = n.kind === "hub" || n.kind === "hub-standby";
           // ⛔ RADIUS FROM THE HANDOFF'S FORMULA, not a constant I chose: `r = 16 + sqrt(count) * 3.2`
           // (dc.html meshData). The hub is a fixed 34, as it is there.
           //
@@ -607,10 +806,11 @@ export function NodeLink({
           // (40, 28, 22, 12, 6) so its rings differ visibly. Ours is GATEWAYS PER SITE — 0 or 1 today — so
           // the rings are nearly uniform. The encoding is the design's; the flatness is our network's, and
           // faking a spread would be drawing a distribution we do not have.
-          const count = typeof n.value === "number" ? Math.max(0, n.value) : 0;
-          const r = isHub ? 34 : 16 + Math.sqrt(count) * 3.2;
+          const r = p.r;
           const dim = selectedId && !isSel ? 0.3 : 1;
           const state = n.tone ?? n.note ?? "no link";
+          const visibleLabel = nodeLinkVisibleLabel(n.label);
+          const visibleSub = n.sub ? nodeLinkVisibleLabel(n.sub, 24) : undefined;
           return (
             // ⛔ SELECTION LIVES ON THE NODE, and it is still keyboard-operable.
             //
@@ -625,6 +825,8 @@ export function NodeLink({
             // the sr-only list below still enumerates every link state as text.
             <g
               key={n.id}
+              data-node-id={n.id}
+              data-node-kind={n.kind}
               opacity={dim}
               role={interactive ? "button" : undefined}
               tabIndex={interactive ? 0 : undefined}
@@ -651,6 +853,7 @@ export function NodeLink({
                   : undefined
               }
             >
+              <title>{`${n.label}${n.sub ? ` — ${n.sub}` : ""}`}</title>
               {isSel && (
                 <circle
                   cx={p.x}
@@ -695,7 +898,11 @@ export function NodeLink({
                 fontWeight="700"
                 fontFamily={isHub ? "JetBrains Mono, monospace" : "inherit"}
               >
-                {isHub ? "HUB" : (n.value ?? "")}
+                {n.kind === "hub"
+                  ? "PRIMARY"
+                  : n.kind === "hub-standby"
+                    ? "STANDBY"
+                    : (n.value ?? "")}
               </text>
               <text
                 x={p.x}
@@ -705,7 +912,7 @@ export function NodeLink({
                 fontSize="10.5"
                 fontWeight="600"
               >
-                {n.label}
+                {visibleLabel}
               </text>
               {n.sub && (
                 <text
@@ -716,13 +923,14 @@ export function NodeLink({
                   fontSize="8"
                   fontFamily="JetBrains Mono, monospace"
                 >
-                  {n.sub}
+                  {visibleSub}
                 </text>
               )}
             </g>
           );
         })}
       </svg>
+      </div>
       {/* ⛔ THE LEGEND AND THE READOUT SHARE ONE ROW, INSIDE THE MAP — the handoff's structure (dc.html
           L456-465): three swatches, a flex spacer, then the selected-node box on the right.
 
@@ -741,19 +949,7 @@ export function NodeLink({
               key={tone}
               className="flex items-center gap-1.5 font-mono text-micro text-ink-tertiary"
             >
-              <span
-                aria-hidden
-                className="inline-block w-[18px]"
-                style={
-                  LINK_DASH[tone]
-                    ? { borderTop: `2px dashed ${LINK_STROKE[tone]}` }
-                    : {
-                        height: 2,
-                        borderRadius: 2,
-                        background: LINK_STROKE[tone],
-                      }
-                }
-              />
+              <svg aria-hidden width="20" height="6" viewBox="0 0 20 6"><path d="M 0 3 L 20 3" fill="none" stroke={LINK_STROKE[tone]} strokeWidth="2" strokeDasharray={LINK_DASH[tone]} strokeLinecap="round" /></svg>
               {tone}
             </span>
           ))}

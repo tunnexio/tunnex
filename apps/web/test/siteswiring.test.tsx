@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 
 // SLICE 5 — Sites. First of the two SHEDDERS, and the shedder constraint drives how these are written.
 //
@@ -21,6 +22,8 @@ import { render, screen, waitFor, cleanup } from "@testing-library/react";
 afterEach(cleanup); // docs/laws.md — no globals/setup file, so auto-cleanup never registers
 
 let sitesFail = false;
+let haTopology = false;
+let routeLanTopology = false;
 
 const SITES = [{ id: "s1", name: "aws-site" }];
 const SUBNETS = [
@@ -31,6 +34,22 @@ const SUBNETS = [
     status: "approved",
   },
   { id: "sub-pending", site_id: "s1", cidr: "10.50.0.0/16", status: "pending" },
+];
+
+const HA_SITES = [
+  { id: "site-primary", name: "us-east-dc" },
+  { id: "site-standby", name: "eu-lan" },
+  { id: "site-spoke", name: "ap-lan" },
+  { id: "site-unbound", name: "sa-lan" },
+];
+const HA_NODES = [
+  { id: "hub-primary", name: "gw-us-east", status: "active", site_id: "site-primary", is_site_hub: true },
+  { id: "hub-standby", name: "gw-eu-west", status: "active", site_id: "site-standby" },
+  { id: "spoke", name: "gw-ap-south", status: "active", site_id: "site-spoke" },
+];
+const ROUTE_LAN_NODES = [
+  { id: "gateway-carrier", name: "gw-unbound-1", status: "active", enrolled_kind: "gateway" },
+  { id: "agent-not-carrier", name: "mcp-agent-prod", status: "active", enrolled_kind: "agent" },
 ];
 
 vi.mock("../src/lib/api", async () => {
@@ -57,12 +76,23 @@ vi.mock("../src/lib/api", async () => {
               data: undefined,
               error: { error: { code: "boom", message: "nope" } },
             };
-          return { data: SITES };
+          return { data: haTopology ? HA_SITES : SITES };
         }
-        if (path.endsWith("/nodes")) return { data: [] };
+        if (path.endsWith("/nodes")) return { data: routeLanTopology ? ROUTE_LAN_NODES : haTopology ? HA_NODES : [] };
         if (path.includes("/subnets")) return { data: SUBNETS };
         if (path.endsWith("/site-subnets/pending")) return { data: [] };
-        if (path.endsWith("/hub-set")) return { data: null };
+        if (path.endsWith("/hub-set"))
+          return haTopology
+            ? {
+                data: {
+                  generation: 9,
+                  members: [
+                    { node_id: "hub-primary", role: "primary" },
+                    { node_id: "hub-standby", role: "standby" },
+                  ],
+                },
+              }
+            : { data: null };
         if (path.endsWith("/dns-forwards")) return { data: [] };
         return { data: [] };
       }),
@@ -78,18 +108,32 @@ import { AuthProvider } from "../src/lib/auth";
 import { crossesMultiSiteThreshold } from "../src/lib/sitesview";
 
 // The REAL AuthProvider — stubbing the context puts the TEST's role gate under assertion, not the PRODUCT's.
-const withAuth = (ui: React.ReactElement) =>
+const withAuth = (ui: React.ReactElement, initialEntries = ["/sites"], initialIndex?: number) =>
   // ⛔ THE ORG PROVIDER IS PART OF THE AUTHENTICATED SHELL (S12.5), so it is part of the harness that
   // stands in for it. A page rendered without it throws — deliberately: `useOrg()` refuses to guess, and a
   // test that quietly rendered without an org would be exercising a state production never reaches.
   render(
     <AuthProvider>
-      <OrgProvider>{ui}</OrgProvider>
+      <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
+        <OrgProvider>{ui}<LocationProbe /><HistoryControls /></OrgProvider>
+      </MemoryRouter>
     </AuthProvider>,
   );
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.search}</output>;
+}
+
+function HistoryControls() {
+  const navigate = useNavigate();
+  return <><button type="button" onClick={() => navigate(-1)}>History back</button><button type="button" onClick={() => navigate(1)}>History forward</button></>;
+}
+
 beforeEach(() => {
   sitesFail = false;
+  haTopology = false;
+  routeLanTopology = false;
 });
 
 describe("Sites — wiring: a routed range must not lie about REACHABILITY (destination: `subnets`)", () => {
@@ -180,6 +224,113 @@ describe("Sites — wiring: a routed range must not lie about REACHABILITY (dest
     expect(crossesMultiSiteThreshold("s2", {})).toBe(false);
     // Already multi-site -> the crossing happened earlier; do not re-confirm.
     expect(crossesMultiSiteThreshold("s3", { s1: 1, s2: 1 })).toBe(false);
+  });
+});
+
+describe("Sites — served HA topology", () => {
+  it("renders the fixture-shaped primary and standby as distinct keyboard-reachable topology members", async () => {
+    haTopology = true;
+    withAuth(<Sites />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /gw-us-east.*primary/i })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /gw-eu-west.*standby/i })).toBeTruthy();
+    });
+    expect(document.querySelectorAll('[data-node-kind="hub"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-node-kind="hub-standby"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-node-kind="spoke"]')).toHaveLength(4);
+  });
+});
+
+describe("Sites map search is an observable focus interaction", () => {
+  it("lists a Site result and keyboard-selects it into URL-backed context", async () => {
+    withAuth(<Sites />, ["/sites"]);
+    const input = await screen.findByRole("combobox", { name: "Search Sites or Gateways" });
+    fireEvent.change(input, { target: { value: "aws" } });
+    const result = await screen.findByRole("option", { name: /aws-site.*Site/ });
+    expect(result).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByLabelText(/Selected Site: aws-site/)).toBeTruthy());
+    expect(screen.getByTestId("location").textContent).toContain("site=s1");
+  });
+
+  it("names an eligible unbound Gateway instead of inventing a topology location", async () => {
+    routeLanTopology = true;
+    withAuth(<Sites />, ["/sites"]);
+    const input = await screen.findByRole("combobox", { name: "Search Sites or Gateways" });
+    fireEvent.change(input, { target: { value: "unbound" } });
+    expect(await screen.findByRole("option", { name: /gw-unbound-1.*Eligible unbound Gateway/ })).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByText("Unbound Gateway")).toBeTruthy();
+    expect(screen.getByText(/No Site is bound/)).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).toContain("gateway=gateway-carrier");
+  });
+});
+
+describe("Sites — URL-backed workspace state", () => {
+  it("canonicalizes a stale direct operational-section URL with replace semantics", async () => {
+    withAuth(<Sites />, ["/sites?section=ha&site=s1&gateway=g1&q=aws&dns=1"]);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Hub availability" }).getAttribute("aria-current")).toBe("page"),
+    );
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=ha"));
+  });
+
+  it.each(["approvals", "dns"])("canonicalizes stale direct %s URLs", async (targetSection) => {
+    withAuth(<Sites />, [`/sites?section=${targetSection}&site=s1&q=aws&dns=1`]);
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe(`?section=${targetSection}`));
+  });
+
+  it("keeps the canonical operational URL through Back and Forward", async () => {
+    withAuth(
+      <Sites />,
+      ["/sites?section=overview&site=s1", "/sites?section=dns&site=s1&dns=1"],
+      1,
+    );
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=dns"));
+    fireEvent.click(screen.getByRole("button", { name: "History back" }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=overview&site=s1"));
+    fireEvent.click(screen.getByRole("button", { name: "History forward" }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=dns"));
+  });
+
+  it("clears Overview-only context when changing to an operational section", async () => {
+    withAuth(<Sites />, ["/sites?site=s1&gateway=g1&q=aws&dns=1"]);
+    await screen.findByRole("button", { name: "Pending approvals" });
+    fireEvent.click(screen.getByRole("button", { name: "Pending approvals" }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=approvals"));
+  });
+
+  it("uses selected-Site approved-range guidance for the DNS resolver without prefilling it", async () => {
+    withAuth(<Sites />, ["/sites?section=overview&site=s1&dns=1"]);
+    const resolver = await screen.findByLabelText("Resolver IP");
+    expect(resolver.getAttribute("placeholder")).toBe("Resolver IP inside 172.31.0.0/16");
+    expect((resolver as HTMLInputElement).value).toBe("");
+  });
+
+  it("keeps the selected-Site summary compact while every existing detail mutation remains reachable", async () => {
+    haTopology = true;
+    withAuth(<Sites />, ["/sites?site=site-primary"]);
+
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Selected Site: us-east-dc" })).toBeTruthy(),
+    );
+    expect(screen.getByRole("link", { name: "View details" }).getAttribute("href")).toBe("#site-details");
+    expect(screen.getByRole("button", { name: "Advertise subnet" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unbind gateway" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete site" })).toBeTruthy();
+    expect(screen.getByText("Danger zone")).toBeTruthy();
+  });
+});
+
+describe("Sites — Route a LAN carrier eligibility", () => {
+  it("offers only a server-declared active gateway, never an AI Agent Node", async () => {
+    routeLanTopology = true;
+    withAuth(<Sites />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Route a LAN" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Route a LAN" }));
+    expect(screen.getByRole("option", { name: "gw-unbound-1" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "mcp-agent-prod" })).toBeNull();
   });
 });
 

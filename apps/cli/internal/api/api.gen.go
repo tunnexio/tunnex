@@ -548,6 +548,12 @@ const (
 	Ipv4Only  NodeEgressMode = "ipv4_only"
 )
 
+// Defines values for NodeEnrolledKind.
+const (
+	NodeEnrolledKindAgent   NodeEnrolledKind = "agent"
+	NodeEnrolledKindGateway NodeEnrolledKind = "gateway"
+)
+
 // Defines values for NodeOvpnHealth.
 const (
 	OvpnBinaryAbsent    NodeOvpnHealth = "ovpn_binary_absent"
@@ -2631,9 +2637,12 @@ type Node struct {
 	EgressMode *NodeEgressMode `json:"egress_mode"`
 
 	// Endpoint The public host:port peers dial to reach this gateway. ⛔ EMPTY MEANS NO PEER CAN CONNECT: a config issued for such a gateway carries `Endpoint = ` and wg-quick refuses it. Surfaced so a client can refuse to issue an unusable config rather than emitting one.
-	Endpoint   *string            `json:"endpoint"`
-	EnrolledAt time.Time          `json:"enrolled_at"`
-	Id         openapi_types.UUID `json:"id"`
+	Endpoint   *string   `json:"endpoint"`
+	EnrolledAt time.Time `json:"enrolled_at"`
+
+	// EnrolledKind The immutable enrollment declaration. gateway is eligible to carry a Site LAN; agent is an AI Agent identity and cannot be bound to a Site. NULL is a legacy undetermined declaration and is not eligible for new Site binding.
+	EnrolledKind *NodeEnrolledKind  `json:"enrolled_kind"`
+	Id           openapi_types.UUID `json:"id"`
 
 	// IsSiteHub S8.3 (D2): true iff this gateway is the org's transit HUB — a PROJECTION of the ONE hub election (`electSiteHub`, the endpoint-bearing gateway with the lowest id; single hub v1). Backend-derived so the UI never re-elects the hub in TS. Absent/false for non-gateway nodes and NAT-only meshes.
 	IsSiteHub  *bool      `json:"is_site_hub,omitempty"`
@@ -2674,6 +2683,9 @@ type Node struct {
 
 // NodeEgressMode Gateway egress capability used for newly generated profiles. dual_stack means verified IPv4 and IPv6 egress; ipv4_only means verified IPv4 egress with IPv6 blocked by the client kill-switch; checking means the gateway has not reported enough capability yet.
 type NodeEgressMode string
+
+// NodeEnrolledKind The immutable enrollment declaration. gateway is eligible to carry a Site LAN; agent is an AI Agent identity and cannot be bound to a Site. NULL is a legacy undetermined declaration and is not eligible for new Site binding.
+type NodeEnrolledKind string
 
 // NodeOvpnHealth S9.1 (4d): the OpenVPN server's refuse-loudly kind, present ONLY when an OVPN-enabled gateway is not serving. ovpn_certs_absent / ovpn_binary_absent = missing material or binary; ovpn_transit_conflict (WF-OVPN-2) = the server tun's transit range overlaps the device pool or a pushed route on this gateway (a local disjointness guard). A DIFFERENT axis from policy health — surfaced so an operator sees WHY. Absent when healthy (resolves on its own once the material/binary/config is corrected).
 type NodeOvpnHealth string

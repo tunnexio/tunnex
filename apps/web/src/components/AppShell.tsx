@@ -8,7 +8,7 @@ import {
   writeNavCollapse,
   type NavCollapse,
 } from "../lib/navcollapse";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Logo, PRODUCT_TAGLINE, Tagline } from "../brand";
 import { useAuth } from "../lib/auth";
 import { useResendVerification } from "../lib/useResendVerification";
@@ -477,7 +477,20 @@ export function AppShell() {
   const { state, logout } = useAuth();
   const { navMode, columns } = useLayoutCapability();
   const navigate = useNavigate();
+  const location = useLocation();
+  const pageRef = useRef<HTMLElement>(null);
+  const lastRoute = useRef<{ pathname: string; section: string | null } | null>(null);
   const email = state.status === "authed" ? state.user.email : "";
+
+  useEffect(() => {
+    const section = new URLSearchParams(location.search).get("section");
+    const previous = lastRoute.current;
+    // The shell owns the scroll container. Reset only on a real page or workspace-section transition;
+    // site/query selection keeps its local context instead of jumping away from the selected inventory row.
+    if (previous && (previous.pathname !== location.pathname || previous.section !== section))
+      pageRef.current?.scrollTo({ top: 0, behavior: "auto" });
+    lastRoute.current = { pathname: location.pathname, section };
+  }, [location.pathname, location.search]);
 
   async function onLogout() {
     // ⛔ THE DESKTOP ARM IS GONE (S14.20 step 4) — this shell is dashboard chrome and the client
@@ -525,6 +538,7 @@ export function AppShell() {
             computed, asserted, and never consumable — dormant machinery in our own new code (docs/laws.md).
             Padding and gap are the README's: 20px 24px 28px, flex column, gap 14. */}
           <main
+            ref={pageRef}
             className="tnx-page flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-4 pb-[30px] pt-6 sm:px-6 sm:pt-[34px]"
             data-columns={columns}
           >

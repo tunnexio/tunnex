@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -71,6 +72,7 @@ interface Raw {
 }
 
 export default function Sites() {
+  const [params, setParams] = useSearchParams();
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
   const { state } = useAuth();
   const myId = state.status === "authed" ? state.user.id : "";
@@ -82,8 +84,64 @@ export default function Sites() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
   const [routingLan, setRoutingLan] = useState(false); // S8.5 D1 one-screen "route a LAN" affordance
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchIndex, setSearchIndex] = useState(0);
+  const priorOrgId = useRef<string | null>(null);
+  const selectedSiteId = params.get("site");
+  const selectedGatewayId = params.get("gateway");
+  const dnsFocus = params.get("dns") === "1";
+  const query = params.get("q") ?? "";
+  const requestedSection = params.get("section") ?? "overview";
+  const section = ["overview", "approvals", "ha", "dns"].includes(requestedSection)
+    ? requestedSection
+    : "overview";
+
+  const updateQuery = useCallback((next: { site?: string | null; gateway?: string | null; q?: string | null; section?: string | null; dns?: string | null }) => {
+    setParams((current) => {
+      const updated = new URLSearchParams(current);
+      for (const [key, value] of Object.entries(next)) {
+        if (value) updated.set(key, value);
+        else updated.delete(key);
+      }
+      return updated;
+    });
+  }, [setParams]);
+
+  // A selected Site, Gateway focus, search term, and DNS disclosure all belong to
+  // Overview. Canonicalize a pasted/reloaded task URL before rendering a different
+  // workspace so browser history never preserves an impossible mixed state.
+  useEffect(() => {
+    if (section === "overview") return;
+    if (!params.has("site") && !params.has("gateway") && !params.has("q") && !params.has("dns")) return;
+    setParams((current) => {
+      const normalized = new URLSearchParams(current);
+      normalized.delete("site");
+      normalized.delete("gateway");
+      normalized.delete("q");
+      normalized.delete("dns");
+      return normalized;
+    }, { replace: true });
+  }, [params, section, setParams]);
+
+  useEffect(() => {
+    const nextOrgId = currentOrg?.id ?? null;
+    if (priorOrgId.current && priorOrgId.current !== nextOrgId) {
+      setMeta(null);
+      setOrg(null);
+      setMyRole(undefined);
+      setRaw(null);
+      setLoadError(null);
+      setRegistering(false);
+      setRoutingLan(false);
+      updateQuery({ site: null });
+    }
+    priorOrgId.current = nextOrgId;
+  }, [currentOrg?.id, updateQuery]);
 
   const reload = useCallback(async () => {
+    setMeta(null);
+    setOrg(null);
+    setMyRole(undefined);
     setLoadError(null);
     setRaw(null);
     const mRes = await loadOne(() => api.GET("/api/v1/meta"));
@@ -199,19 +257,64 @@ export default function Sites() {
         m[sid] = subs.filter((s) => s.status === "approved").length;
     return m;
   }, [raw]);
-  const unboundNodes = useMemo(
+  const unboundGatewayNodes = useMemo(
     () =>
-      raw ? raw.nodes.filter((n) => !n.site_id && n.status === "active") : [],
+      raw
+        ? raw.nodes.filter(
+            (n) => !n.site_id && n.status === "active" && n.enrolled_kind === "gateway",
+          )
+        : [],
     [raw],
   );
   const allGateways = useMemo(() => cards.flatMap((c) => c.gateways), [cards]);
 
-  // The mesh's selection. Drives the actions panel and the card list below it (D3).
-  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
   const selectedCard = cards.find((c) => c.id === selectedSiteId) ?? null;
+  const visibleCards = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return cards;
+    return cards.filter((card) =>
+      card.name.toLowerCase().includes(needle) ||
+      card.gateways.some((gateway) => gateway.name.toLowerCase().includes(needle)),
+    );
+  }, [cards, query]);
+
+  const searchResults = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle || !raw) return [];
+    const results: Array<{ id: string; label: string; detail: string; siteId: string | null; gatewayId: string | null; unbound: boolean }> = [];
+    for (const card of cards) {
+      if (card.name.toLowerCase().includes(needle))
+        results.push({ id: `site:${card.id}`, label: card.name, detail: "Site", siteId: card.id, gatewayId: null, unbound: false });
+      for (const gateway of card.gateways)
+        if (gateway.name.toLowerCase().includes(needle))
+          results.push({ id: `gateway:${gateway.id}`, label: gateway.name, detail: `Gateway bound to ${card.name}`, siteId: card.id, gatewayId: gateway.id, unbound: false });
+    }
+    for (const node of unboundGatewayNodes)
+      if (node.name.toLowerCase().includes(needle))
+        results.push({ id: `unbound:${node.id}`, label: node.name, detail: "Eligible unbound Gateway", siteId: null, gatewayId: node.id, unbound: true });
+    return results;
+  }, [cards, query, raw, unboundGatewayNodes]);
+
+  function selectSearchResult(result: typeof searchResults[number]) {
+    setSearchOpen(false);
+    setSearchIndex(0);
+    if (result.unbound) {
+      updateQuery({ site: null, gateway: result.gatewayId });
+      return;
+    }
+    updateQuery({ site: result.siteId, gateway: result.gatewayId });
+  }
+
+  useEffect(() => {
+    if (selectedSiteId && cards.length > 0 && !cards.some((card) => card.id === selectedSiteId)) {
+      updateQuery({ site: null });
+    }
+  }, [cards, selectedSiteId, updateQuery]);
+
+  const selectSite = useCallback((siteId: string | null) => updateQuery({ site: siteId, gateway: null }), [updateQuery]);
 
   const mesh = useMemo(
-    () => meshFrom(cards, raw?.nodes ?? [], raw?.hubSet?.generation),
+    () => meshFrom(cards, raw?.nodes ?? [], raw?.hubSet),
     [cards, raw],
   );
 
@@ -223,9 +326,9 @@ export default function Sites() {
         actions={
           view === "body" && gate.canManage ? (
           <div className="flex items-center gap-2.5">
-            {unboundNodes.length > 0 && (
+            {unboundGatewayNodes.length > 0 && (
               <Button variant="ghost" onClick={() => setRoutingLan(true)}>
-                Route a LAN (one screen)
+                Route a LAN
               </Button>
             )}
             <Button onClick={() => setRegistering(true)}>Add site</Button>
@@ -243,13 +346,29 @@ export default function Sites() {
 
       {view === "body" && raw != null && org != null && (
         <>
-          {/* README: grid-template-columns 8fr 4fr, gap 12, align-items start. `min-w-0` on both tracks
-              because a grid item defaults to min-width:auto and a long CIDR or zone name would otherwise
-              push the track wider than its share — the same class as the 65px header overflow. */}
-          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[8fr_4fr]">
+          <nav aria-label="Sites workspace" className="flex flex-wrap gap-1 rounded-lg border border-line bg-ink-900 p-1">
+            {[
+              ["overview", "Overview"],
+              ["approvals", "Pending approvals"],
+              ["ha", "Hub availability"],
+              ["dns", "DNS overview"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-current={section === id ? "page" : undefined}
+                onClick={() => updateQuery(id === "overview" ? { section: id } : { section: id, site: null, gateway: null, q: null, dns: null })}
+                className={`rounded-md px-3 py-1.5 text-cell ${section === id ? "bg-ink-700 text-ink-heading" : "text-ink-tertiary hover:text-ink-heading"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          {section === "overview" && (
             <div className="flex min-w-0 flex-col gap-3">
               <Panel
                 title="Network map"
+                className="min-w-0"
                 actions={
                   /* D2 (ruled): scoped to the MAP, not the page. The mesh's edges are handshake-derived, so
                      the claim is true here. Over the subnet queue it would not be — those are control-plane
@@ -263,8 +382,49 @@ export default function Sites() {
                     trace a link" because we do not implement hover tracing — describing an interaction the
                     component does not have is the same class of lie as a chart with no source. */}
                 <p className="-mt-1.5 text-micro text-ink-faint">
-                  Click a node to inspect · the hub is derived by the backend
+                  Select a Site to focus it · Hub membership is derived by the backend
                 </p>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Input
+                    aria-label="Search Sites or Gateways"
+                    role="combobox"
+                    aria-expanded={searchOpen && query.trim().length > 0}
+                    aria-controls="site-search-results"
+                    value={query}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      updateQuery({ q: next, site: null, gateway: null });
+                      setSearchOpen(true);
+                      setSearchIndex(0);
+                    }}
+                    onFocus={() => setSearchOpen(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") return setSearchOpen(false);
+                      if (event.key === "ArrowDown") { event.preventDefault(); setSearchIndex((i) => Math.min(i + 1, Math.max(0, searchResults.length - 1))); }
+                      if (event.key === "ArrowUp") { event.preventDefault(); setSearchIndex((i) => Math.max(0, i - 1)); }
+                      if (event.key === "Enter") {
+                        const exact = searchResults.find((r) => r.label.toLowerCase() === query.trim().toLowerCase());
+                        const result = exact ?? (searchResults.length === 1 ? searchResults[0] : searchResults[searchIndex]);
+                        if (result) { event.preventDefault(); selectSearchResult(result); }
+                      }
+                    }}
+                    placeholder="Find a Site or Gateway"
+                    className="max-w-sm"
+                  />
+                  <Button variant="ghost" onClick={() => { updateQuery({ q: null, site: null, gateway: null }); setSearchOpen(false); }}>
+                    Fit overview
+                  </Button>
+                  <span className="text-micro text-ink-faint">{cards.length} Sites · overview only</span>
+                </div>
+                {searchOpen && query.trim() && (
+                  <div id="site-search-results" role="listbox" aria-label="Site and Gateway search results" className="mb-3 max-w-xl overflow-hidden rounded-lg border border-line bg-ink-800">
+                    {searchResults.length ? searchResults.map((result, index) => (
+                      <button key={result.id} type="button" role="option" aria-selected={index === searchIndex} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSearchResult(result)} className={`flex w-full items-center justify-between gap-3 border-b border-line px-3 py-2 text-left text-cell last:border-0 ${index === searchIndex ? "bg-ink-700 text-ink-heading" : "text-ink-body hover:bg-ink-700"}`}>
+                        <span className="font-medium">{result.label}</span><span className="text-micro text-ink-tertiary">{result.detail}</span>
+                      </button>
+                    )) : <p className="px-3 py-2 text-cell text-ink-tertiary">No Sites or loaded Gateways match. Clear the search to restore the overview.</p>}
+                  </div>
+                )}
                 <NodeLink
                   label="Site topology"
                   source={{ endpoint: "/api/v1/organizations/{orgId}/sites" }}
@@ -272,7 +432,8 @@ export default function Sites() {
                   nodes={mesh.nodes}
                   links={mesh.links}
                   selectedId={selectedSiteId}
-                  onSelect={setSelectedSiteId}
+                  onSelect={selectSite}
+                  maxHeight={300}
                   empty="Route a LAN to draw your first site here."
                 />
                 <p className="text-micro text-ink-faint">
@@ -281,62 +442,71 @@ export default function Sites() {
                   the handshake is current, not that traffic is flowing.
                 </p>
               </Panel>
+              <SelectedSiteStrip card={selectedCard} selectedGatewayId={selectedGatewayId} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />
 
-              <DNSForwardsPanel
-                view={raw.forwards}
-                siteCount={raw.sites.length}
-              />
-            </div>
-
-            <div className="flex min-w-0 flex-col gap-3">
-              {gate.canManage && (
-                <PendingQueue
-                  orgId={org.id}
-                  approvedCountBySite={approvedCountBySite}
-                  allGateways={allGateways}
-                  ceiling={meta?.protocol_version ?? 0}
-                  onDone={reload}
-                />
-              )}
-              <SiteActionsPanel
-                card={selectedCard}
-                canManage={gate.canManage}
-                orgId={org.id}
-                unboundNodes={unboundNodes}
-                hasSites={cards.length > 0}
-                onDone={reload}
-              />
-              <HubSetSection
-                orgId={org.id}
-                canManage={gate.canManage}
-                hubSet={raw.hubSet}
-                gateways={allGateways}
-                onDone={reload}
-              />
-            </div>
-          </div>
-
-          {/* D3 (ruled): the mesh sits ABOVE the list and scopes it; it does not replace it. The wireframe
+              {/* D3 (ruled): the mesh sits ABOVE the list and scopes it; it does not replace it. The wireframe
               drew only a diagram because a drawing never had to manage anything.
 
               ⛔ THE LIST IS A TABLE AND THE DETAIL IS ONE CARD. Rendering a full card per site made the page
               grow with the network — 10 sites was 3,200px of scroll, and the two teaching accordions were
               identical on every one of them. Now: every site is one row, and the SELECTED site alone expands
               into the card that carries the forms. */}
-          <SiteList
-            cards={cards}
-            canManage={gate.canManage}
-            selectedId={selectedSiteId}
-            onSelect={setSelectedSiteId}
-          />
+              <SiteList
+                cards={visibleCards}
+                canManage={gate.canManage}
+                query={query}
+                selectedId={selectedSiteId}
+                onSelect={selectSite}
+              />
 
-          {selectedCard && (
-            <SiteCardView
-              card={selectedCard}
-              canManage={gate.canManage}
+              {selectedCard && (
+                <div id="site-details">
+                  <SiteCardView
+                    card={selectedCard}
+                    canManage={gate.canManage}
+                    orgId={org.id}
+                    unboundNodes={unboundGatewayNodes}
+                    dnsFocus={dnsFocus}
+                    onDone={reload}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {section === "approvals" && (
+            gate.canManage ? (
+              <PendingQueue
+                orgId={org.id}
+                approvedCountBySite={approvedCountBySite}
+                allGateways={allGateways}
+                ceiling={meta?.protocol_version ?? 0}
+                siteNames={Object.fromEntries(raw.sites.map((site) => [site.id, site.name]))}
+                onDone={reload}
+              />
+            ) : (
+              <Panel title="Pending subnet approvals">
+                <p className="text-cell text-ink-tertiary">You can view Sites, but approving routed ranges requires site:manage and a verified email.</p>
+              </Panel>
+            )
+          )}
+
+          {section === "ha" && (
+            <HubSetSection
               orgId={org.id}
-              unboundNodes={unboundNodes}
+              canManage={gate.canManage}
+              hubSet={raw.hubSet}
+              gateways={allGateways}
               onDone={reload}
+            />
+          )}
+
+          {section === "dns" && (
+            <DNSForwardsPanel
+              view={raw.forwards}
+              siteCount={raw.sites.length}
+              canManage={gate.canManage}
+              onManageSite={(siteId) => updateQuery({ section: "overview", site: siteId, gateway: null, q: null, dns: "1" })}
             />
           )}
         </>
@@ -355,7 +525,7 @@ export default function Sites() {
       {routingLan && org && (
         <RouteLANModal
           orgId={org.id}
-          nodes={unboundNodes}
+          nodes={unboundGatewayNodes}
           onDone={reload}
           onClose={() => setRoutingLan(false)}
         />
@@ -372,12 +542,17 @@ export default function Sites() {
 function DNSForwardsPanel({
   view,
   siteCount,
+  canManage,
+  onManageSite,
 }: {
   view: OrgForwardsView;
   siteCount: number;
+  canManage: boolean;
+  onManageSite: (siteId: string) => void;
 }) {
   return (
-    <Panel title="Cross-site DNS forwarding">
+    <Panel title="DNS overview" className="min-w-0">
+      <p className="-mt-1 text-cell text-ink-tertiary">Organization-wide forwarding inventory and conflicts. Manage each resolver from its Site.</p>
       {/* ⛔ THE PARTIAL-LOAD BANNER COMES FIRST, above the rows it qualifies. Below them it would be read
           after the list had already been believed. */}
       {view.failedSites.length > 0 && (
@@ -396,34 +571,43 @@ function DNSForwardsPanel({
             : "No zones read from the sites that answered."}
         </EmptyState>
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <div className="overflow-x-auto">
+          <div className="min-w-[680px]">
+            <div className="grid grid-cols-[minmax(12rem,1.3fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)_7rem_8.5rem] gap-3 border-b border-line px-2.5 py-1.5 text-micro uppercase tracking-wide text-ink-faint">
+              <span>Zone</span>
+              <span>Resolver</span>
+              <span>Site</span>
+              <span className="text-right">Status</span>
+              <span className="text-right">Action</span>
+            </div>
+            <ul className="flex flex-col gap-1.5 pt-1.5">
           {view.rows.map((r) => {
             const clashes = view.conflicts.includes(r.domain);
             return (
               <li
                 key={`${r.siteId}-${r.domain}`}
-                className="flex items-baseline gap-2 rounded-md border border-line bg-ink-800 px-2.5 py-2"
+                className={`grid grid-cols-1 gap-2 rounded-md border px-2.5 py-2 sm:grid-cols-[minmax(12rem,1.3fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)_7rem_8.5rem] sm:items-center sm:gap-3 ${clashes ? "border-danger/40 bg-danger/5" : "border-line bg-ink-800"}`}
               >
-                <span className="font-mono text-cell text-ink-body">
-                  {r.domain} to {r.resolverIp}
-                </span>
-                <span className="ml-auto text-micro text-ink-tertiary">
-                  via {r.siteName}
-                </span>
-                {clashes && <Badge tone="danger">conflict</Badge>}
+                <span className="font-mono text-cell text-ink-body"><span className="mr-2 text-micro text-ink-faint sm:hidden">Zone</span>{r.domain}</span>
+                <span className="font-mono text-cell text-ink-tertiary"><span className="mr-2 text-micro text-ink-faint sm:hidden">Resolver</span>{r.resolverIp}</span>
+                <span className="text-cell text-ink-tertiary"><span className="mr-2 text-micro text-ink-faint sm:hidden">Site</span>{r.siteName}</span>
+                <span className="sm:justify-self-end">{clashes ? <Badge tone="danger">conflict</Badge> : <Badge tone="neutral">configured</Badge>}</span>
+                {canManage ? <Button className="w-[8.5rem] sm:justify-self-end" variant="ghost" size="sm" onClick={() => onManageSite(r.siteId)}>Manage in Site</Button> : <span className="text-right text-micro text-ink-faint">Read-only</span>}
               </li>
             );
           })}
-        </ul>
+            </ul>
+          </div>
+        </div>
       )}
 
       {/* ⛔ ONLY CLAIM A CLEAN BILL OF HEALTH WHEN THE READ WAS COMPLETE. "No conflicts found" and "no
           conflicts exist" are different claims and only the second is reassuring. */}
       {view.conflicts.length > 0 && (
-        <p className="text-cell text-danger">
-          {view.conflicts.join(", ")} resolves differently depending on the
-          site. The server allows one resolver per zone across the org, so a
-          device gets whichever route reaches it first.
+        <p className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-cell text-danger">
+          {view.conflicts.join(", ")} has conflicting resolvers across Sites.
+          Resolution order is not deterministic; correct the conflicting zone
+          before relying on it.
         </p>
       )}
 
@@ -433,102 +617,6 @@ function DNSForwardsPanel({
         (409 dns_domain_conflict). Removing a zone withdraws it from every
         gateway on the next reconcile.
       </p>
-    </Panel>
-  );
-}
-
-// ── S14.5 — SITE ACTIONS, SCOPED TO THE SELECTION ───────────────────────────────────────────────────────
-//
-// The wireframe titles this "Site actions — ap-lan", i.e. it is already selection-scoped there. With nothing
-// selected it says so rather than presenting controls with no object, which is the shape that produces
-// "unbind, from what?".
-function SiteActionsPanel({
-  card,
-  canManage,
-  orgId,
-  unboundNodes,
-  hasSites,
-  onDone,
-}: {
-  card: SiteCard | null;
-  canManage: boolean;
-  orgId: string;
-  unboundNodes: Node[];
-  hasSites: boolean;
-  onDone: () => void;
-}) {
-  const [unbinding, setUnbinding] = useState(false);
-  const [binding, setBinding] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const bound = card?.gateways.find((g) => g.status === "active") ?? null;
-
-  return (
-    <Panel title={card ? `Site actions: ${card.name}` : "Site actions"}>
-      {!hasSites ? (
-        <EmptyState>Actions appear here once a site exists.</EmptyState>
-      ) : !card ? (
-        <EmptyState>Select a site in the network map to act on it.</EmptyState>
-      ) : !canManage ? (
-        <p className="text-cell text-ink-tertiary">
-          Managing sites needs the site:manage permission and a verified email.
-        </p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {bound ? (
-            <Button variant="ghost" onClick={() => setUnbinding(true)}>
-              Unbind {bound.name} (replace)
-            </Button>
-          ) : (
-            <Button
-              variant="ghost"
-              disabled={unboundNodes.length === 0}
-              onClick={() => setBinding(true)}
-            >
-              {unboundNodes.length === 0
-                ? "No unbound gateway to bind"
-                : "Bind a gateway"}
-            </Button>
-          )}
-          <Button variant="danger" onClick={() => setDeleting(true)}>
-            Remove site
-          </Button>
-        </div>
-      )}
-
-      {card && canManage && (
-        <p className="text-micro text-ink-faint">
-          Removing a site deletes the rules that reference it and releases its
-          subnets. The counts come from the server&rsquo;s cascade preview and
-          you type the site name to confirm.
-        </p>
-      )}
-
-      {unbinding && card && bound && (
-        <UnbindConfirm
-          orgId={orgId}
-          siteId={card.id}
-          gateways={card.gateways}
-          onDone={onDone}
-          onClose={() => setUnbinding(false)}
-        />
-      )}
-      {binding && card && (
-        <BindGatewayModal
-          orgId={orgId}
-          siteId={card.id}
-          nodes={unboundNodes}
-          onDone={onDone}
-          onClose={() => setBinding(false)}
-        />
-      )}
-      {deleting && card && (
-        <DeleteSiteModal
-          orgId={orgId}
-          site={card}
-          onDone={onDone}
-          onClose={() => setDeleting(false)}
-        />
-      )}
     </Panel>
   );
 }
@@ -690,41 +778,35 @@ function HubSetSection({
   const HA_MIN_GATEWAYS = 2;
   if (!view && gateways.length < HA_MIN_GATEWAYS) {
     return (
-      <Card className="mt-6">
-        <h2 className="text-sm font-semibold text-slate-300">
-          Hub high-availability
-        </h2>
+      <Panel title="Hub high-availability">
         <p className="mt-1 text-xs text-slate-500">
           High availability needs {HA_MIN_GATEWAYS} or more gateways. You have{" "}
           {gateways.length}. Enrol another gateway and bind it to a site, then
           pin the candidates here to create the hub set.
         </p>
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <Card className="mt-6">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-slate-300">
-          Hub high-availability
-        </h2>
-        {view && (
-          <span className="text-[11px] text-slate-500">
-            hub set v{view.generation}
-          </span>
-        )}
-      </div>
-
-      {view ? (
+    <Panel
+      title="Hub high-availability"
+      className="min-w-0"
+      actions={view ? <span className="text-micro text-ink-tertiary">hub set v{view.generation}</span> : undefined}
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-line bg-ink-800 p-3">
+          {view ? (
         <>
           {view.promotionInEffect && (
             <p className="mt-2 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-xs text-amber-300">
               Failover in effect: the configured primary is unreachable, and a
               standby is carrying transit. The hub restores when it recovers.
-              See the audit log (
-              <span className="font-mono">hub_set.promotion</span>) for the
-              timeline.
+              See the{" "}
+              <Link className="text-accent-400 underline underline-offset-2 hover:text-ink-primary" to="/audit">
+                audit log
+              </Link>{" "}
+              (<span className="font-mono">hub_set.promotion</span>) for the timeline.
             </p>
           )}
           <ul className="mt-2 space-y-1">
@@ -765,18 +847,19 @@ function HubSetSection({
             Refreshed on load.
           </p>
         </>
-      ) : (
-        canManage && (
+          ) : (
+            canManage && (
           <p className="mt-2 text-xs text-slate-500">
             No HA hub set. Pin two or more gateways below to create one. The
             pinned gateways become the ordered hub candidates (primary +
             standbys) and the CP fails transit over if the primary goes stale.
           </p>
-        )
-      )}
+            )
+          )}
+        </div>
 
-      {canManage && (
-        <div className="mt-3 border-t border-white/5 pt-3">
+        {canManage && (
+        <div className="border-t border-line pt-4">
           <p className="text-[11px] text-slate-500">
             Pin a gateway as a hub candidate (lower number = more preferred).
             Pinning creates/edits the HA hub set.
@@ -790,7 +873,7 @@ function HubSetSection({
               );
               const nextPin = pins.length ? Math.max(...pins) + 1 : 1; // append after the current candidates
               return (
-                <li key={g.id} className="flex items-center gap-2 text-sm">
+                <li key={g.id} className="flex flex-wrap items-center gap-2 border-b border-line/70 py-2 text-sm last:border-0">
                   <span className="text-slate-300">{g.name}</span>
                   {pinned && (
                     <span className="text-[11px] text-slate-500">
@@ -823,9 +906,44 @@ function HubSetSection({
             })}
           </ul>
         </div>
-      )}
+        )}
+      </div>
       <ErrorText>{err}</ErrorText>
-    </Card>
+    </Panel>
+  );
+}
+
+function SelectedSiteStrip({ card, selectedGatewayId, unboundGateway, onRouteLan }: { card: SiteCard | null; selectedGatewayId: string | null; unboundGateway: Node | null; onRouteLan: () => void }) {
+  if (unboundGateway) {
+    return <section aria-label="Selected Site" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell"><span className="font-semibold text-ink-heading">{unboundGateway.name}</span><Badge tone="neutral">Unbound Gateway</Badge><span className="text-ink-tertiary">No Site is bound. Its location is not shown on this topology.</span><Button className="ml-auto" variant="ghost" onClick={onRouteLan}>Route a LAN</Button></section>;
+  }
+  if (!card) {
+    return (
+      <section
+        aria-label="Selected Site"
+        className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell text-ink-tertiary"
+      >
+        <span className="font-medium text-ink-heading">Select a Site</span>
+        <span>Choose one from the map or inventory to inspect its configuration and actions.</span>
+      </section>
+    );
+  }
+  const activeGateway = card.gateways.find((gateway) => gateway.id === selectedGatewayId) ?? card.gateways.find((gateway) => gateway.status === "active");
+  const state = activeGateway?.health?.label ?? (activeGateway ? "Gateway active" : "No active Gateway");
+  const tone = activeGateway?.health?.tone as "ok" | "warn" | "danger" | "neutral" | undefined;
+  return (
+    <section
+      aria-label={`Selected Site: ${card.name}`}
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell"
+    >
+      <span className="font-semibold text-ink-heading">{card.name}</span>
+      <Badge tone={tone ?? "neutral"}>{state}</Badge>
+      <span className="text-ink-tertiary">{activeGateway ? `Gateway: ${activeGateway.name}` : `${card.gateways.length} gateway${card.gateways.length === 1 ? "" : "s"}`}</span>
+      <span className="text-ink-tertiary">{card.subnets.length} range{card.subnets.length === 1 ? "" : "s"}</span>
+      <a className="ml-auto text-accent-400 underline underline-offset-2 hover:text-ink-primary" href="#site-details">
+        View details
+      </a>
+    </section>
   );
 }
 
@@ -853,11 +971,13 @@ function HubSetSection({
 function SiteList({
   cards,
   canManage,
+  query,
   selectedId,
   onSelect,
 }: {
   cards: SiteCard[];
   canManage: boolean;
+  query: string;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }) {
@@ -943,34 +1063,22 @@ function SiteList({
   ];
 
   return (
-    <Panel title="Sites">
+    <Panel title={`Sites · ${cards.length}`}>
       <DataTable
         caption="Sites"
         columns={columns}
         rows={cards}
         rowKey={(c: SiteCard) => c.id}
         empty={
-          canManage
+          query.trim()
+            ? "No Sites or Gateways match this search. Clear the search to restore the inventory."
+            : canManage
             ? "No sites yet. Use Route a LAN above, or Add site for an empty one."
             : "No sites yet. An owner or admin can add one."
         }
         // The page blanks to a retry on any failed load, so reaching this render means the read succeeded.
         failed={false}
       />
-      {/* ⛔ ONCE, NOT PER SITE. This text is identical for every site, so rendering it inside each card made
-          the page longer without making it say more. */}
-      <details className="rounded-lg border border-line bg-ink-800 px-3 py-2">
-        <summary className="cursor-pointer text-cell text-ink-body">
-          Cloud fabric setup, one console visit per side (why a behind-host may
-          not reach yet)
-        </summary>
-        <p className="mt-2 text-micro text-ink-tertiary">
-          A behind-host reply needs a route back to the device pool. Add it once
-          per side, in the cloud console, never on the gateway. On failover the
-          VPC route still points at ONE gateway ENI, so it must be re-pointed at
-          the promoted hub.
-        </p>
-      </details>
     </Panel>
   );
 }
@@ -980,14 +1088,20 @@ function SiteCardView({
   canManage,
   orgId,
   unboundNodes,
+  dnsFocus,
   onDone,
 }: {
   card: SiteCard;
   canManage: boolean;
   orgId: string;
   unboundNodes: Node[];
+  dnsFocus: boolean;
   onDone: () => void;
 }) {
+  const approvedSubnet = card.subnets.find((subnet) => subnet.status === "approved")?.cidr;
+  const resolverHint = approvedSubnet
+    ? `Resolver IP inside ${approvedSubnet}`
+    : "Resolver IP inside an approved subnet";
   const [modal, setModal] = useState<
     "subnet" | "bind" | "unbind" | "delete" | null
   >(null);
@@ -998,9 +1112,12 @@ function SiteCardView({
   } | null>(null); // WF-5
   const hasGateway = card.gateways.length > 0;
   return (
-    <Card>
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-white">{card.name}</h2>
+    <Card className="space-y-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line pb-3">
+        <div>
+          <p className="text-micro uppercase tracking-wide text-ink-faint">Selected Site</p>
+          <h2 className="text-title font-semibold text-ink-heading">{card.name}</h2>
+        </div>
         <span className="text-xs text-slate-500">
           {card.gateways.length === 1
             ? "1 gateway"
@@ -1008,18 +1125,25 @@ function SiteCardView({
         </span>
       </div>
 
-      {card.gateways.length === 0 ? (
-        <p className="mt-2 text-xs text-slate-500">No gateway bound.</p>
-      ) : (
-        <ul className="mt-2 space-y-1">
+      <section>
+        <h3 className="text-cell font-semibold text-ink-heading">Gateways</h3>
+        {card.gateways.length === 0 ? (
+          <p className="mt-1 text-xs text-slate-500">No gateway bound.</p>
+        ) : (
+          <ul className="mt-2 space-y-1">
           {card.gateways.map((g) => (
             <GatewayRow key={g.id} g={g} />
           ))}
-        </ul>
-      )}
+          </ul>
+        )}
+      </section>
 
-      {card.subnets.length > 0 && (
-        <div role="list" className="mt-3 flex flex-wrap gap-2">
+      <section>
+        <h3 className="text-cell font-semibold text-ink-heading">Routed ranges</h3>
+        {card.subnets.length === 0 ? (
+          <p className="mt-1 text-xs text-slate-500">No ranges advertised.</p>
+        ) : (
+        <div role="list" className="mt-2 flex flex-wrap gap-2">
           {card.subnets.map((s) => (
             <span
               key={s.id}
@@ -1053,7 +1177,8 @@ function SiteCardView({
             </span>
           ))}
         </div>
-      )}
+        )}
+      </section>
 
       {/* WF-3: guided cloud-fabric setup, SURFACED IN-UI (not docs-only). STATIC per cloud — the SDN
           steps that get a behind-host's packet to this gateway are un-codeable, so we show the copy-paste
@@ -1126,11 +1251,17 @@ function SiteCardView({
 
       {/* S8.4 D7: cross-site DNS forwarding — rides the same card as the fabric steps (one site, one story). */}
       {canManage && card.subnets.some((s) => s.status === "approved") && (
-        <DNSForwardSection orgId={orgId} siteId={card.id} />
+        <DNSForwardSection
+          orgId={orgId}
+          siteId={card.id}
+          open={dnsFocus}
+          resolverHint={resolverHint}
+        />
       )}
 
       {canManage && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <>
+        <div className="flex flex-wrap gap-2 border-t border-line pt-4">
           <Button variant="ghost" onClick={() => setModal("subnet")}>
             Advertise subnet
           </Button>
@@ -1149,10 +1280,12 @@ function SiteCardView({
               Bind gateway
             </Button>
           )}
-          <Button variant="danger" onClick={() => setModal("delete")}>
-            Delete site
-          </Button>
         </div>
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2.5">
+          <div><h3 className="text-cell font-semibold text-danger">Danger zone</h3><p className="mt-0.5 text-micro text-ink-tertiary">Deleting this Site removes its record and server-reported dependent ranges and rules. It cannot be undone; create, bind, and advertise again to recover.</p></div>
+          <Button variant="danger" onClick={() => setModal("delete")}>Delete site</Button>
+        </section>
+        </>
       )}
 
       {modal === "subnet" && (
@@ -1217,7 +1350,12 @@ export function GatewayRow({ g }: { g: GatewayView }) {
   const online = gatewayOnline(g.status, live.offline, g.health);
   return (
     <li className="flex items-center gap-2 text-sm">
-      <span className="text-slate-200">{g.name}</span>
+      <a
+        className="text-slate-200 hover:text-accent-400 hover:underline"
+        href={`/gateways/${g.id}`}
+      >
+        {g.name}
+      </a>
       {g.isHub && (
         <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
           hub
@@ -1642,9 +1780,13 @@ function RemoveSubnetConfirm({
 function DNSForwardSection({
   orgId,
   siteId,
+  open,
+  resolverHint,
 }: {
   orgId: string;
   siteId: string;
+  open: boolean;
+  resolverHint: string;
 }) {
   const [forwards, setForwards] = useState<
     { domain: string; resolver_ip: string }[]
@@ -1703,7 +1845,7 @@ function DNSForwardSection({
     load().catch(() => {});
   }
   return (
-    <details className="mt-3 rounded-lg border border-white/5 bg-ink-900/60 px-3 py-2 text-xs text-slate-400">
+    <details open={open} className="mt-3 rounded-lg border border-white/5 bg-ink-900/60 px-3 py-2 text-xs text-slate-400">
       <summary className="cursor-pointer text-slate-300">
         Cross-site DNS forwarding: resolve this site's names from other sites
       </summary>
@@ -1720,7 +1862,7 @@ function DNSForwardSection({
               <button
                 type="button"
                 className="ml-auto text-slate-500 hover:text-rose-400"
-                aria-label={`Remove ${f.domain}`}
+                aria-label={`Remove ${f.domain} resolver`}
                 onClick={() => remove(f.domain)}
               >
                 ✕
@@ -1732,6 +1874,7 @@ function DNSForwardSection({
           )}
         </ul>
         <div className="flex flex-wrap items-end gap-2">
+          <Field label="DNS zone">
           <Input
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
@@ -1739,13 +1882,16 @@ function DNSForwardSection({
             className="w-40"
             maxLength={253}
           />
+          </Field>
+          <Field label="Resolver IP">
           <Input
             value={resolverIp}
             onChange={(e) => setResolverIp(e.target.value)}
-            placeholder="10.20.0.53"
+            placeholder={resolverHint}
             className="w-36"
             maxLength={45}
           />
+          </Field>
           <Button
             variant="ghost"
             onClick={add}
@@ -1909,12 +2055,14 @@ function PendingQueue({
   approvedCountBySite,
   allGateways,
   ceiling,
+  siteNames,
   onDone,
 }: {
   orgId: string;
   approvedCountBySite: Record<string, number>;
   allGateways: GatewayView[];
   ceiling: number;
+  siteNames: Record<string, string>;
   onDone: () => void;
 }) {
   const [pending, setPending] = useState<SiteSubnet[] | null>(null);
@@ -1978,29 +2126,45 @@ function PendingQueue({
 
   if (loadErr)
     return (
-      <Card className="mt-6">
+      <Panel title="Pending subnet approvals">
         <LoadRetry error={loadErr} onRetry={loadQueue} />
-      </Card>
+      </Panel>
     );
-  if (pending == null) return null; // queue still loading — the topology below renders regardless
-  if (pending.length === 0) return null; // nothing awaiting approval → no queue section
+  if (pending == null)
+    return (
+      <Panel title="Pending subnet approvals">
+        <p role="status" className="text-cell text-ink-faint">Loading pending subnet approvals…</p>
+      </Panel>
+    );
+  if (pending.length === 0)
+    return (
+      <Panel title="Pending subnet approvals">
+        <EmptyState>No advertised subnets are awaiting approval.</EmptyState>
+      </Panel>
+    );
 
   return (
-    <Card className="mt-6">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Pending subnet approvals
-      </h2>
+    <Panel title="Pending subnet approvals">
       <p className="mt-1 text-xs text-slate-500">
         Advertised subnets route only once approved (disjointness is checked on
         approval).
       </p>
-      <ul className="mt-3 space-y-2">
+      <div className="mt-3 overflow-x-auto">
+        <div className="min-w-[520px]">
+          <div className="grid grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_auto] gap-3 border-b border-line px-2.5 py-1.5 text-micro uppercase tracking-wide text-ink-faint">
+            <span>CIDR</span>
+            <span>Site</span>
+            <span>State</span>
+            <span>Action</span>
+          </div>
+          <ul className="space-y-1.5 pt-1.5">
         {pending.map((s) => (
-          <li key={s.id} className="flex items-center gap-3 text-sm">
+          <li key={s.id} className="grid grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_auto] items-center gap-3 rounded-md border border-line bg-ink-800 px-2.5 py-2 text-sm">
             <span className="font-mono text-slate-200">{s.cidr}</span>
+            <span className="text-ink-tertiary">{siteNames[s.site_id] ?? "Site unavailable"}</span>
+            <span className="text-ink-tertiary">Pending · not routed</span>
             <Button
               variant="ghost"
-              className="ml-auto"
               onClick={() => onApproveClick(s)}
             >
               Approve
@@ -2008,6 +2172,8 @@ function PendingQueue({
           </li>
         ))}
       </ul>
+        </div>
+      </div>
       <ErrorText>{rowErr}</ErrorText>
 
       {confirm && (
@@ -2038,6 +2204,6 @@ function PendingQueue({
           </ul>
         </Modal>
       )}
-    </Card>
+    </Panel>
   );
 }

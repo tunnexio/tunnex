@@ -770,7 +770,7 @@ export default function Dashboard() {
                             assembleTopology(sitesRes.data, {}, nodesRes.data),
                             nodesRes.data,
                             hubSetRes?.ok
-                              ? hubSetRes.data?.generation
+                              ? hubSetRes.data
                               : undefined,
                             false,
                           );

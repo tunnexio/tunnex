@@ -391,6 +391,57 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
     expect(m.nodes).toHaveLength(2); // the hub AND the site, both present
     expect(m.nodes.find((n) => n.label === "hq-lan")?.note).toBe("local VPC attachment");
   });
+
+  it("renders every served HA member as a distinct central node without inventing a standby link", () => {
+    const primary = { id: "h1", name: "gw-primary", status: "active" } as never;
+    const standby = { id: "h2", name: "gw-standby", status: "active" } as never;
+    const m = meshFrom(
+      [
+        mkCard("a", "primary-site", [primary]),
+        mkCard("b", "standby-site", [standby]),
+        mkCard("c", "spoke-site", [{ id: "s1", name: "gw-spoke", status: "active" }] as never),
+      ],
+      [
+        { id: "h1", name: "gw-primary", status: "active", is_site_hub: true } as Node,
+        { id: "h2", name: "gw-standby", status: "active" } as Node,
+        { id: "s1", name: "gw-spoke", status: "active" } as Node,
+      ],
+      {
+        generation: 9,
+        members: [
+          { node_id: "h1", role: "primary" },
+          { node_id: "h2", role: "standby" },
+        ],
+      } as never,
+    );
+
+    expect(m.nodes.filter((n) => n.kind === "hub").map((n) => n.label)).toEqual(["gw-primary"]);
+    expect(m.nodes.filter((n) => n.kind === "hub-standby").map((n) => n.label)).toEqual(["gw-standby"]);
+    expect(m.links).toContainEqual({ from: "__hub", to: "b", tone: "linked", note: undefined });
+    expect(m.links.some((link) => link.from.includes("standby"))).toBe(false);
+  });
+
+  it("keeps a ten-gateway fixture as a Site aggregate overview, never a gateway mesh", () => {
+    const gateways = Array.from({ length: 10 }, (_, index) => ({
+      id: `gw-${index}`,
+      name: `gateway-${index}`,
+      status: "active",
+    })) as never[];
+    const cards = ["a", "b", "c", "d"].map((id, index) =>
+      mkCard(id, `site-${id}`, gateways.filter((_, gatewayIndex) => gatewayIndex % 4 === index)),
+    );
+    const m = meshFrom(
+      cards,
+      [
+        { id: "gw-0", name: "gateway-0", status: "active", is_site_hub: true } as Node,
+        { id: "gw-1", name: "gateway-1", status: "active" } as Node,
+      ],
+      { generation: 1, members: [{ node_id: "gw-0", role: "primary" }, { node_id: "gw-1", role: "standby" }] } as never,
+    );
+    expect(m.nodes).toHaveLength(6); // four Sites + two served HA members, never ten gateway circles
+    expect(m.nodes.filter((node) => node.kind === "spoke")).toHaveLength(4);
+    expect(m.links).toHaveLength(4);
+  });
 });
 
 describe("meshFrom — a node with no link has no link STATE either", () => {

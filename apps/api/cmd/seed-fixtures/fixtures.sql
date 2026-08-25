@@ -31,17 +31,54 @@
 BEGIN;
 
 -- ── GATEWAYS ────────────────────────────────────────────────────────────────────────────────────────────
--- 5: three site-bound, one UNBOUND (so `Route a LAN` stays reachable), one REVOKED (the revoked-badge path).
--- `endpoint` + `wg_public_key` are the hub-election capability gate (electSiteHubSet), so only the intended
--- hub carries both.
+-- 8 fixture gateways: three topology-review additions bring the normal base-seed fleet to ten, spread across
+-- existing Sites. The map still renders Site aggregates only; these rows prove it cannot explode into a
+-- gateway/device graph when the inventory grows.
+-- `endpoint` + a strict WireGuard public key are the hub-election capability gate. The seeded primary and
+-- standby carry both; the persisted Hub Set below remains the authoritative membership/order.
 INSERT INTO nodes (id, org_id, name, status, cert_serial, agent_version, enrolled_at, last_seen_at, wg_public_key, endpoint)
 VALUES
-  ('01900000-0000-7000-8000-0000000f0001', '01900000-0000-7000-8000-000000000001', 'gw-us-east',   'active',  'FIXTURE-01', '0.3.0', now() - interval '30 days', now() - interval '20 seconds', 'ZmlY3R1cmVLZXlIVUIwMDAwMDAwMDAwMDAwMDAwMDA9', '198.51.100.10:51820'),
-  ('01900000-0000-7000-8000-0000000f0002', '01900000-0000-7000-8000-000000000001', 'gw-eu-west',   'active',  'FIXTURE-02', '0.3.0', now() - interval '22 days', now() - interval '35 seconds', 'ZmlY3R1cmVLZXlFVTAwMDAwMDAwMDAwMDAwMDAwMDA9', ''),
-  ('01900000-0000-7000-8000-0000000f0003', '01900000-0000-7000-8000-000000000001', 'gw-ap-south',  'active',  'FIXTURE-03', '0.2.9', now() - interval '14 days', now() - interval '25 seconds', 'ZmlY3R1cmVLZXlBUDAwMDAwMDAwMDAwMDAwMDAwMDA9', ''),
+  ('01900000-0000-7000-8000-0000000f0001', '01900000-0000-7000-8000-000000000001', 'gw-us-east',   'active',  'FIXTURE-01', '0.3.0', now() - interval '30 days', now() - interval '20 seconds', 'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=', '198.51.100.10:51820'),
+  ('01900000-0000-7000-8000-0000000f0002', '01900000-0000-7000-8000-000000000001', 'gw-eu-west',   'active',  'FIXTURE-02', '0.3.0', now() - interval '22 days', now() - interval '35 seconds', 'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY=', ''),
+  ('01900000-0000-7000-8000-0000000f0003', '01900000-0000-7000-8000-000000000001', 'gw-ap-south',  'active',  'FIXTURE-03', '0.2.9', now() - interval '14 days', now() - interval '25 seconds', 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY=', ''),
   ('01900000-0000-7000-8000-0000000f0004', '01900000-0000-7000-8000-000000000001', 'gw-unbound-1', 'active',  'FIXTURE-04', '0.3.0', now() - interval '2 days',  now() - interval '15 seconds', 'ZmlY3R1cmVLZXlVTjAwMDAwMDAwMDAwMDAwMDAwMDA9', ''),
-  ('01900000-0000-7000-8000-0000000f0005', '01900000-0000-7000-8000-000000000001', 'gw-retired-1', 'revoked', 'FIXTURE-05', '0.2.4', now() - interval '90 days', now() - interval '9 days',   '',                                             '')
+  ('01900000-0000-7000-8000-0000000f0005', '01900000-0000-7000-8000-000000000001', 'gw-retired-1', 'revoked', 'FIXTURE-05', '0.2.4', now() - interval '90 days', now() - interval '9 days',   '',                                             ''),
+  ('01900000-0000-7000-8000-0000000f0101', '01900000-0000-7000-8000-000000000001', 'gw-us-east-edge', 'active', 'FIXTURE-06', '0.3.0', now() - interval '10 days', now() - interval '30 seconds', 'Zml4dHVyZS1leHRyYS1ndy0wMS1rZXktMDAwMDAwMDA=', ''),
+  ('01900000-0000-7000-8000-0000000f0102', '01900000-0000-7000-8000-000000000001', 'gw-eu-west-edge', 'active', 'FIXTURE-07', '0.3.0', now() - interval '9 days', now() - interval '7 minutes', 'Zml4dHVyZS1leHRyYS1ndy0wMi1rZXktMDAwMDAwMDA=', ''),
+  ('01900000-0000-7000-8000-0000000f0103', '01900000-0000-7000-8000-000000000001', 'gw-ap-south-edge', 'active', 'FIXTURE-08', '0.3.0', now() - interval '8 days', now() - interval '40 seconds', 'Zml4dHVyZS1leHRyYS1ndy0wMy1rZXktMDAwMDAwMDA=', '')
 ON CONFLICT (id) DO NOTHING;
+
+-- The Hub Set query admits only strict 32-byte base64 WireGuard public-key shape. Refresh the two HA
+-- candidates (and the stale spoke peer) on every idempotent reseed so an earlier fixture revision cannot
+-- leave an apparently configured but server-ineligible HA topology.
+UPDATE nodes
+SET wg_public_key = CASE id
+  WHEN '01900000-0000-7000-8000-0000000f0001' THEN 'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE='
+  WHEN '01900000-0000-7000-8000-0000000f0002' THEN 'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY='
+  WHEN '01900000-0000-7000-8000-0000000f0003' THEN 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY='
+  ELSE wg_public_key
+END
+WHERE id IN (
+  '01900000-0000-7000-8000-0000000f0001',
+  '01900000-0000-7000-8000-0000000f0002',
+  '01900000-0000-7000-8000-0000000f0003'
+);
+
+-- Route a LAN must use an explicit server-owned carrier declaration, never a name
+-- convention. Refresh these values on every idempotent reseed so pre-marker fixture
+-- rows cannot be mistaken for an AI Agent or a legacy-undetermined Node.
+UPDATE nodes
+SET enrolled_kind = 'gateway'
+WHERE id IN (
+  '01900000-0000-7000-8000-0000000f0001',
+  '01900000-0000-7000-8000-0000000f0002',
+  '01900000-0000-7000-8000-0000000f0003',
+  '01900000-0000-7000-8000-0000000f0004',
+  '01900000-0000-7000-8000-0000000f0005',
+  '01900000-0000-7000-8000-0000000f0101',
+  '01900000-0000-7000-8000-0000000f0102',
+  '01900000-0000-7000-8000-0000000f0103'
+);
 
 UPDATE nodes SET revoked_at = now() - interval '9 days'
  WHERE id = '01900000-0000-7000-8000-0000000f0005' AND revoked_at IS NULL;
@@ -78,6 +115,9 @@ ON CONFLICT (id) DO NOTHING;
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0001' WHERE id = '01900000-0000-7000-8000-0000000f0001';
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0002' WHERE id = '01900000-0000-7000-8000-0000000f0002';
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0003' WHERE id = '01900000-0000-7000-8000-0000000f0003';
+UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0001' WHERE id = '01900000-0000-7000-8000-0000000f0101';
+UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0002' WHERE id = '01900000-0000-7000-8000-0000000f0102';
+UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0003' WHERE id = '01900000-0000-7000-8000-0000000f0103';
 
 -- ── SUBNETS ─────────────────────────────────────────────────────────────────────────────────────────────
 -- Four APPROVED (routed) + one PENDING (populates the approval queue with a live Approve) + one PENDING that
@@ -102,10 +142,10 @@ ON CONFLICT (id) DO NOTHING;
 --   sa-lan    no gateway at all   → no row  → intended NO LINK (absent edge, not a red one)
 INSERT INTO node_peer_status (node_id, public_key, last_handshake_at, rx_bytes, tx_bytes, updated_at)
 VALUES
-  ('01900000-0000-7000-8000-0000000f0001', 'ZmlY3R1cmVLZXlFVTAwMDAwMDAwMDAwMDAwMDAwMDA9', now() - interval '40 seconds', 184320041, 91238400, now()),
-  ('01900000-0000-7000-8000-0000000f0002', 'ZmlY3R1cmVLZXlIVUIwMDAwMDAwMDAwMDAwMDAwMDA9', now() - interval '45 seconds', 90118400,  183001200, now()),
-  ('01900000-0000-7000-8000-0000000f0001', 'ZmlY3R1cmVLZXlBUDAwMDAwMDAwMDAwMDAwMDAwMDA9', now() - interval '20 minutes', 4194304,   2097152,   now() - interval '20 minutes'),
-  ('01900000-0000-7000-8000-0000000f0003', 'ZmlY3R1cmVLZXlIVUIwMDAwMDAwMDAwMDAwMDAwMDA9', now() - interval '20 minutes', 2097152,   4194304,   now() - interval '20 minutes')
+  ('01900000-0000-7000-8000-0000000f0001', 'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY=', now() - interval '40 seconds', 184320041, 91238400, now()),
+  ('01900000-0000-7000-8000-0000000f0002', 'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=', now() - interval '45 seconds', 90118400,  183001200, now()),
+  ('01900000-0000-7000-8000-0000000f0001', 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY=', now() - interval '20 minutes', 4194304,   2097152,   now() - interval '20 minutes'),
+  ('01900000-0000-7000-8000-0000000f0003', 'MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=', now() - interval '20 minutes', 2097152,   4194304,   now() - interval '20 minutes')
 ON CONFLICT (node_id, public_key) DO UPDATE
   SET last_handshake_at = EXCLUDED.last_handshake_at,
       updated_at        = EXCLUDED.updated_at;
@@ -121,10 +161,13 @@ ON CONFLICT (node_id, public_key) DO UPDATE
 UPDATE nodes SET last_seen_at = now() - interval '20 seconds'
  WHERE id IN ('01900000-0000-7000-8000-0000000f0001',
               '01900000-0000-7000-8000-0000000f0002',
-              '01900000-0000-7000-8000-0000000f0004');
+              '01900000-0000-7000-8000-0000000f0004',
+              '01900000-0000-7000-8000-0000000f0101',
+              '01900000-0000-7000-8000-0000000f0103');
 -- ap-south stays STALE on purpose: it is the one gateway whose offline rendering we need to see.
 UPDATE nodes SET last_seen_at = now() - interval '20 minutes'
- WHERE id = '01900000-0000-7000-8000-0000000f0003';
+ WHERE id IN ('01900000-0000-7000-8000-0000000f0003',
+              '01900000-0000-7000-8000-0000000f0102');
 
 -- ── HA HUB SET ──────────────────────────────────────────────────────────────────────────────────────────
 -- Two pinned candidates, which is what crosses the HA panel's threshold so it renders the SET rather than the
@@ -151,20 +194,19 @@ UPDATE nodes SET hub_priority = 2 WHERE id = '01900000-0000-7000-8000-0000000f00
 -- pgx as SQL NULL against a NOT NULL column, so an org with a demotion that drops below two configured hubs
 -- fails EVERY tick forever. 42 consecutive failures in the CP log before it was noticed.
 --
--- THE HONEST WAY TO GET A DEMOTED MEMBER IS TO EARN ONE: put ap-south in the hub set with the capability the
--- elector requires, leave its handshake stale, and THE CONTROLLER DEMOTES IT. Derived, not declared — the
--- same rule this file already follows for every health kind.
+-- S20's topology review needs a deterministic PRIMARY + STANDBY centre with enough outer Sites to exercise
+-- label/edge separation. Keep ap-south as a real stale spoke, not a third pinned HA member. That gives the
+-- server-owned Hub Set exactly two members without fabricating a demotion.
 --
--- The endpoints below are what makes that possible: `electSiteHubSet` gates on endpoint + wg_public_key, and
--- eu-west and ap-south had keys but NO endpoint, so the elected set never reached two members and the
--- controller's demotion branch never ran at all.
+-- `electSiteHubSet` gates HA membership on endpoint + wg_public_key. eu-west therefore receives a persisted
+-- endpoint before the two-member Hub Set is written; ap-south remains an ordinary stale spoke.
 UPDATE nodes SET endpoint = '203.0.113.20:51820' WHERE id = '01900000-0000-7000-8000-0000000f0002' AND (endpoint IS NULL OR endpoint = '');
 UPDATE nodes SET endpoint = '203.0.113.30:51820' WHERE id = '01900000-0000-7000-8000-0000000f0003' AND (endpoint IS NULL OR endpoint = '');
-UPDATE nodes SET hub_priority = 3 WHERE id = '01900000-0000-7000-8000-0000000f0003';
+UPDATE nodes SET hub_priority = NULL WHERE id = '01900000-0000-7000-8000-0000000f0003';
 
 INSERT INTO org_hub_set (org_id, configured, generation, updated_at)
 VALUES ('01900000-0000-7000-8000-000000000001',
-        ARRAY['01900000-0000-7000-8000-0000000f0001','01900000-0000-7000-8000-0000000f0002','01900000-0000-7000-8000-0000000f0003']::uuid[],
+        ARRAY['01900000-0000-7000-8000-0000000f0001','01900000-0000-7000-8000-0000000f0002']::uuid[],
         7, now())
 ON CONFLICT (org_id) DO UPDATE
   SET configured = EXCLUDED.configured,
@@ -812,6 +854,13 @@ VALUES
    'mcp-agent-departed', 'fixture-serial-ag002', '1.2.0',
    '01900000-0000-7000-8000-00000000b001')
 ON CONFLICT (id) DO NOTHING;
+
+UPDATE nodes
+SET enrolled_kind = 'agent'
+WHERE id IN (
+  '01900000-0000-7000-8000-00000000a001',
+  '01900000-0000-7000-8000-00000000a002'
+);
 
 -- The agent device rows — `kind='agent'`, which is what makes the surface recognise them.
 --
