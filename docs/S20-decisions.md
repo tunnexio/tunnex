@@ -559,3 +559,79 @@ Non-Overview sections are canonical task URLs: direct/reloaded `approvals`, `ha`
 replacement. Only Overview owns that local context. DNS resolver guidance never borrows
 another Site's address: it names the selected Site's approved CIDR when one is already
 served, otherwise it uses neutral approved-subnet guidance; it never pre-fills a value.
+
+## D32 — Kubernetes console discovery and first-slice boundaries
+
+Kubernetes is the next S20 slice after the founder-approved Gateway and Sites work. This
+record is decision-first only: it authorizes no Kubernetes product code until the current
+surface, contracts, and destructive effects below have been reconciled into the slice
+implementation. It preserves the existing single binary and Community-core model; no
+Kubernetes read or base mutation may consult `meta.edition`, `isEnterprise`, build tags, or
+legacy product terminology.
+
+### Current API and active caller inventory
+
+| Operation | Current authorization and handler | Rendered caller / current ownership | State and recovery truth |
+|---|---|---|---|
+| `listK8sClusters`, `getK8sCluster` | `org:view`; `k8s_handlers.go` | `/kubernetes` loader; no stable selected-cluster URL yet | list/read failure is retryable, not an empty inventory |
+| `listK8sServicesForOrg`, `listK8sServices`, `getK8sService` | `org:view`; `k8s_handlers.go` | `/kubernetes` loader/table | FQDN is served/constructed only by the server path, never guessed by React |
+| `registerK8sCluster` | `k8s:manage`; `RegisterK8sCluster` | **Register cluster** modal | requires a same-Site active ready connector; typed CIDR/DNS/name refusal remains in-dialog |
+| `setK8sClusterConnector` | `k8s:manage`; `SetK8sClusterConnector` | per-cluster **Change connector** modal | connector must be active, bound to the cluster Site, and report WireGuard key/endpoint; success is reconciled desired state, not workload readiness |
+| `exposeK8sService` | `k8s:manage`; `ExposeK8sService` | per-cluster **Expose Service** modal | allocates a stable identity/VIP; a single port is required and typed refusal stays visible |
+| `unexposeK8sService` | `k8s:manage`; `UnexposeK8sService` | Service-row **Unexpose** confirmation | blocked by live Agent Access requests or immutable agent-template references; success withdraws VIP/DNS on next compile |
+| `deregisterK8sCluster` | `k8s:manage`; `DeregisterK8sCluster` | typed-name **Deregister** confirmation | blocked by live Agent Access requests; success cascades Services/rules and frees VIP/DNS range |
+
+All mutation callers are absent, rather than disabled, for a principal without `k8s:manage`.
+Operator-managed clusters/services are a separate server-owned ownership boundary:
+`managed_by_operator=true` withholds direct destructive/action controls and links the
+operator back to its CR. It must not be treated as an RBAC denial or plan restriction.
+
+### Destructive-effect and audit record
+
+| Action | Verified server/database effect | Current audit and recovery | S20 console requirement |
+|---|---|---|---|
+| Change connector | validates same-org, active, bound, ready Node; unique connector assignment; pushes desired state after committed audit | `k8s.cluster_connector_set`; select another eligible connector to recover | distinguish **connector configured** from EndpointSlice/DP readiness; keep retry/refusal in the modal |
+| Unexpose Service | soft-deletes the Service; live VIP map and DNS answer vanish on next compile; VIP is reusable; agent-access/template references refuse first | `k8s.service_unexposed`; re-expose creates a new identity | confirmation must name Service/FQDN/VIP, dependent blocker counts when served, withdrawal timing, and recovery as re-expose—not an undo |
+| Deregister cluster | FK cascade removes exposed Services and policy rules; frees cluster VIP range/reserved DNS VIP/DNS zone; live Agent Access requests refuse first | `k8s.cluster_deregistered` records `services_deleted`/`grants_deleted`; recreate cluster, connector, Services and grants to recover | use exact server-derived cascade count before/after; never claim rollback/restore exists |
+
+Register/expose are consequential but additive: both are transactional and audited
+(`k8s.cluster_registered`, `k8s.service_exposed`). Their success means registered/exposed
+control-plane intent; it never proves a ready EndpointSlice, policy grant, client DNS, or
+dataplane flow. Existing `k8s_endpoints_unavailable` node health is an operational error
+with a named recovery link, not a generic healthy/empty state.
+
+### Target information architecture within existing contracts
+
+`/kubernetes` remains the one console route in the first slice, with URL-backed query,
+selected cluster, and subworkspace state only where current reads make that truthful:
+**Clusters**, **Services**, and **Operations/health**. The index is the operational list;
+the selected cluster detail context owns connector, Service inventory/exposure, DNS/VIP
+identity, operator ownership, and a compact danger zone. Existing modal mutations remain
+single-owner flows. Search/filter/sort are local over the authoritative bounded lists until
+an API cursor contract exists; the UI must not promise a total or fabricate pagination.
+
+The page must preserve distinct calm loading, populated, no-cluster, no-service,
+permission-denied, operator-managed/read-only, unavailable connector/EndpointSlice,
+partial-enrichment, and retryable-error states. An organization switch synchronously clears
+prior clusters, Services, Sites, Nodes, role, selection, errors, and open mutation context
+before the next organization read resolves. Keyboard navigation uses the shared table/modal
+semantics; narrow views stack cluster context and make tables intentionally scroll only
+inside their container.
+
+### Current omissions and named deferrals
+
+The current contracts do **not** serve a bounded Kubernetes query envelope, exact
+per-Service ready endpoint status, EndpointSlice observation freshness per Service,
+operator/CR reconciliation status, or a server-owned deregister/unexpose preview response
+with every impact count. S20 must not synthesize those facts. The current UI can present
+the handlers' exact conflict responses; an OpenAPI-first preview/status projection is a
+named **S20.3 Kubernetes operations/readiness contract** follow-up if a future workflow
+requires proactive counts or live readiness.
+
+`fixtures.sql` currently contains only a deleted-Service warning fixture, not a complete
+Kubernetes operational scenario. Before founder review, add an idempotent disposable-only
+`tunnex-s18-review` fixture with: a ready connected cluster connector; a connector
+unavailable state; an exposed Service; an operator-managed cluster/service; a cluster with
+no Services; and a restricted `k8s:manage` persona. No fixture must claim endpoint or
+dataplane readiness without the corresponding server-owned report. The original
+`tunnex-agents` stack, database, licence, and JIT state remain out of scope.
