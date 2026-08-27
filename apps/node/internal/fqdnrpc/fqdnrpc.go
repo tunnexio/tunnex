@@ -56,13 +56,18 @@ type Request struct {
 	Hostname    string       `json:"hostname"`
 	RecordTypes []RecordType `json:"record_types"`
 	Deadline    time.Time    `json:"deadline"`
-	// ResolverConfig is an immutable, server-managed direct resolver snapshot
-	// bound to this Site/Gateway request. Nil is a refusal, never permission to
-	// consult resolv.conf, net.DefaultResolver, public DNS, or the control plane.
-	ResolverConfig *ResolverConfig `json:"resolver_config"`
+	// ResolverConfig* are the immutable server-managed direct resolver snapshot
+	// bound to this Site/Gateway request. Their JSON names deliberately mirror
+	// the durable mailbox/control payload. Missing/invalid values are a refusal,
+	// never permission to consult resolv.conf, net.DefaultResolver, public DNS,
+	// or the control plane.
+	ResolverConfigID      string             `json:"resolver_config_id"`
+	ResolverConfigVersion int64              `json:"resolver_config_version"`
+	ResolverEndpoints     []ResolverEndpoint `json:"resolver_endpoints"`
 }
 
 type ResolverConfig struct {
+	ID        string             `json:"id"`
 	Version   int64              `json:"version"`
 	Endpoints []ResolverEndpoint `json:"endpoints"`
 }
@@ -96,18 +101,20 @@ const (
 // gateway observation, not a control-plane receipt timestamp, so stale/replay
 // detection remains possible after a disconnect or delayed response post.
 type Response struct {
-	Version     int          `json:"version"`
-	RequestID   string       `json:"request_id"`
-	OrgID       string       `json:"org_id"`
-	ResourceID  string       `json:"resource_id"`
-	SiteID      string       `json:"site_id"`
-	GatewayID   string       `json:"gateway_id"`
-	Hostname    string       `json:"hostname"`
-	RecordTypes []RecordType `json:"record_types"`
-	Status      Status       `json:"status"`
-	ErrorCode   string       `json:"error_code,omitempty"`
-	ObservedAt  time.Time    `json:"observed_at"`
-	Records     []Record     `json:"records,omitempty"`
+	Version               int          `json:"version"`
+	RequestID             string       `json:"request_id"`
+	OrgID                 string       `json:"org_id"`
+	ResourceID            string       `json:"resource_id"`
+	SiteID                string       `json:"site_id"`
+	GatewayID             string       `json:"gateway_id"`
+	ResolverConfigID      string       `json:"resolver_config_id,omitempty"`
+	ResolverConfigVersion int64        `json:"resolver_config_version,omitempty"`
+	Hostname              string       `json:"hostname"`
+	RecordTypes           []RecordType `json:"record_types"`
+	Status                Status       `json:"status"`
+	ErrorCode             string       `json:"error_code,omitempty"`
+	ObservedAt            time.Time    `json:"observed_at"`
+	Records               []Record     `json:"records,omitempty"`
 }
 
 // Resolver is deliberately injected. The production agent uses its selected
@@ -171,7 +178,7 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 }
 
 func validResolverConfig(config ResolverConfig) bool {
-	if config.Version < 1 || len(config.Endpoints) == 0 || len(config.Endpoints) > 8 {
+	if !isUUID(config.ID) || config.Version < 1 || len(config.Endpoints) == 0 || len(config.Endpoints) > 8 {
 		return false
 	}
 	seen := map[string]bool{}
@@ -413,11 +420,7 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 	var records []Record
 	var err error
 	if bound, ok := r.resolver.(BoundResolver); ok {
-		if req.ResolverConfig == nil {
-			err = errResolverConfig
-		} else {
-			records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, *req.ResolverConfig)
-		}
+		records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, Endpoints: req.ResolverEndpoints})
 	} else if plain, ok := r.resolver.(Resolver); ok {
 		records, err = plain.Resolve(lookupCtx, req.Hostname, req.RecordTypes)
 	} else {
@@ -452,6 +455,7 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 func responseFor(req Request, status Status, code string, observed time.Time) Response {
 	return Response{Version: Version, RequestID: req.RequestID, OrgID: req.OrgID,
 		ResourceID: req.ResourceID, SiteID: req.SiteID, GatewayID: req.GatewayID,
+		ResolverConfigID: req.ResolverConfigID, ResolverConfigVersion: req.ResolverConfigVersion,
 		Hostname: req.Hostname, RecordTypes: append([]RecordType(nil), req.RecordTypes...),
 		Status: status, ErrorCode: code, ObservedAt: observed}
 }
@@ -510,9 +514,9 @@ func validateRecords(req Request, records []Record) string {
 
 func requestFingerprint(req Request) string {
 	config := ""
-	if req.ResolverConfig != nil {
-		config = strconv.FormatInt(req.ResolverConfig.Version, 10)
-		for _, endpoint := range req.ResolverConfig.Endpoints {
+	if req.ResolverConfigID != "" {
+		config = req.ResolverConfigID + "|" + strconv.FormatInt(req.ResolverConfigVersion, 10)
+		for _, endpoint := range req.ResolverEndpoints {
 			config += "|" + endpoint.Address + ":" + strconv.Itoa(endpoint.Port) + "/" + endpoint.Transport
 		}
 	}

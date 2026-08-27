@@ -91,7 +91,7 @@ func TestLocalResolverKeepsUsableAddressFamilyWhenOtherLookupsFail(t *testing.T)
 }
 
 func TestDirectResolverUsesOnlyBoundEndpointsAndFailsClosed(t *testing.T) {
-	config := ResolverConfig{Version: 4, Endpoints: []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}, {Address: "10.20.0.54", Port: 53, Transport: "tcp"}}}
+	config := ResolverConfig{ID: "66666666-6666-6666-6666-666666666666", Version: 4, Endpoints: []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}, {Address: "10.20.0.54", Port: 53, Transport: "tcp"}}}
 	calls := 0
 	direct := DirectResolver{exchange: func(_ context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
 		calls++
@@ -132,6 +132,28 @@ func TestResponderDirectResolverRefusesMissingBoundConfig(t *testing.T) {
 	r.now = func() time.Time { return now }
 	if got := r.Handle(context.Background(), testGateway, testRequest(now)); got.Status != StatusServFail || got.ErrorCode != "resolver_unavailable" {
 		t.Fatalf("missing bound config must fail closed without host DNS fallback: %+v", got)
+	}
+}
+
+func TestGatewayDNSRPCResolverSnapshotWireMirrorsMailbox(t *testing.T) {
+	request := testRequest(time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC))
+	request.ResolverConfigID = "66666666-6666-6666-6666-666666666666"
+	request.ResolverConfigVersion = 3
+	request.ResolverEndpoints = []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}}
+	b, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Request
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ResolverConfigID != request.ResolverConfigID || got.ResolverConfigVersion != 3 || len(got.ResolverEndpoints) != 1 || got.ResolverEndpoints[0].Address != "10.20.0.53" {
+		t.Fatalf("control payload lost bound resolver snapshot: %+v", got)
+	}
+	response := responseFor(request, StatusNoError, "", time.Now())
+	if response.ResolverConfigID != request.ResolverConfigID || response.ResolverConfigVersion != request.ResolverConfigVersion {
+		t.Fatalf("response must echo resolver config identity: %+v", response)
 	}
 }
 
