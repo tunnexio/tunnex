@@ -194,6 +194,7 @@ func TestGatewayDNSRPCTransportClassifiesGatewayCompatibilityAndDisconnectRespon
 		{"unsupported version", GatewayDNSRPCUnsupportedVersion, ErrGatewayDNSRPCVersion},
 		{"disconnected", GatewayDNSRPCDisconnected, ErrGatewayDNSRPCUnavailable},
 		{"deadline", GatewayDNSRPCDeadlineExceeded, ErrTimeout},
+		{"direct endpoint disagreement", GatewayDNSRPCDisagreement, ErrDisagreement},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := rpcWork()

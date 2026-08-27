@@ -301,6 +301,8 @@ func isTerminalTransportResponse(response GatewayDNSResponse, err error) bool {
 		return errors.Is(err, ErrTimeout)
 	case GatewayDNSRPCDisconnected, GatewayDNSRPCUnavailable:
 		return errors.Is(err, ErrGatewayDNSRPCUnavailable)
+	case GatewayDNSRPCDisagreement:
+		return errors.Is(err, ErrDisagreement)
 	default:
 		return false
 	}

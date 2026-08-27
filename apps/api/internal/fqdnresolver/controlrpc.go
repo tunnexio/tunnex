@@ -81,6 +81,10 @@ const (
 	GatewayDNSRPCDeadlineExceeded   GatewayDNSRPCErrorCode = "deadline_exceeded"
 	GatewayDNSRPCDisconnected       GatewayDNSRPCErrorCode = "disconnected"
 	GatewayDNSRPCUnavailable        GatewayDNSRPCErrorCode = "resolver_unavailable"
+	// ResolverDisagreement means the selected direct endpoints returned
+	// non-equivalent usable answers. It is terminal for this refresh: choosing
+	// one endpoint would silently broaden authority.
+	GatewayDNSRPCDisagreement GatewayDNSRPCErrorCode = "resolver_disagreement"
 )
 
 // GatewayDNSRecord is the transport-neutral, JSON-safe record form mirrored
@@ -256,6 +260,8 @@ func (r GatewayDNSResponse) error() error {
 		return ErrTimeout
 	case GatewayDNSRPCDisconnected, GatewayDNSRPCUnavailable:
 		return ErrGatewayDNSRPCUnavailable
+	case GatewayDNSRPCDisagreement:
+		return ErrDisagreement
 	default:
 		return ErrGatewayDNSRPCMalformed
 	}
