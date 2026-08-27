@@ -34,6 +34,7 @@ var (
 	ErrAnswerOverflow    = errors.New("fqdn resolver answer overflow")
 	ErrCNAMEChain        = errors.New("fqdn resolver invalid CNAME chain")
 	ErrNoUsableAddresses = errors.New("fqdn resolver has no usable addresses")
+	ErrLastGoodExpired   = errors.New("fqdn resolver last-good expired")
 )
 
 // Context identifies the Site/Gateway resolver selected by the server. A public
@@ -110,14 +111,40 @@ type Generation struct {
 	ResolvedAt time.Time
 }
 
+// WithdrawalCause is stable input for the persistence adapter. A withdrawal
+// replaces, rather than supplements, the active generation in one transaction.
+type WithdrawalCause string
+
+const (
+	WithdrawalNXDOMAIN       WithdrawalCause = "nxdomain"
+	WithdrawalSERVFAIL       WithdrawalCause = "servfail"
+	WithdrawalTimeout        WithdrawalCause = "timeout"
+	WithdrawalDisagreement   WithdrawalCause = "disagreement"
+	WithdrawalOverflow       WithdrawalCause = "overflow"
+	WithdrawalLastGoodExpiry WithdrawalCause = "last_good_expired"
+	WithdrawalInvalidAnswer  WithdrawalCause = "invalid_answer"
+	WithdrawalUnboundContext WithdrawalCause = "unbound_context"
+)
+
+// Withdrawal is the atomic removal instruction for a formerly active
+// generation. PreviousGenerationID is zero when no generation was published.
+// LastGood is intentionally not part of this instruction: it is diagnostics
+// only and must never be persisted as an authorization source.
+type Withdrawal struct {
+	Cause                WithdrawalCause
+	At                   time.Time
+	PreviousGenerationID uint64
+}
+
 func (g Generation) clone() Generation {
 	g.Addresses = append([]netip.Addr(nil), g.Addresses...)
 	return g
 }
 
 // Snapshot is the lifecycle projection for policy compilation and diagnostics.
-// Active is nil for every failure condition: stale information is diagnostic only
-// and never authorizes new traffic.
+// Active is nil for every failure condition; Withdrawal is the corresponding
+// atomic removal instruction. LastGood is diagnostic only and never authorizes
+// new traffic.
 type Snapshot struct {
 	State       State
 	Active      *Generation
@@ -125,6 +152,7 @@ type Snapshot struct {
 	LastRefresh time.Time
 	LastGoodAt  time.Time
 	Failure     error
+	Withdrawal  *Withdrawal
 }
 
 func (s Snapshot) clone() Snapshot {
@@ -135,6 +163,10 @@ func (s Snapshot) clone() Snapshot {
 	if s.LastGood != nil {
 		g := s.LastGood.clone()
 		s.LastGood = &g
+	}
+	if s.Withdrawal != nil {
+		w := *s.Withdrawal
+		s.Withdrawal = &w
 	}
 	return s
 }
@@ -188,8 +220,13 @@ func (l *Lifecycle) Refresh(ctx context.Context, now time.Time, r Resolver, reso
 }
 
 func (l *Lifecycle) withdraw(now time.Time, err error) {
+	previousGenerationID := uint64(0)
+	if l.s.Active != nil {
+		previousGenerationID = l.s.Active.ID
+	}
 	l.s.Active = nil
 	l.s.Failure = err
+	l.s.Withdrawal = &Withdrawal{Cause: withdrawalCause(err), At: now, PreviousGenerationID: previousGenerationID}
 	// NXDOMAIN is a distinct, operator-visible terminal answer even while the
 	// previous generation remains available as bounded diagnostic history.
 	if errors.Is(err, ErrNXDOMAIN) {
@@ -207,11 +244,37 @@ func (l *Lifecycle) withdraw(now time.Time, err error) {
 
 func (l *Lifecycle) expireLastGood(now time.Time) {
 	if l.s.LastGood != nil && now.Sub(l.s.LastGoodAt) > LastGoodMaxAge {
+		previousGenerationID := l.s.LastGood.ID
+		if l.s.Active != nil {
+			previousGenerationID = l.s.Active.ID
+		}
+		l.s.Active = nil
 		l.s.LastGood = nil
 		l.s.LastGoodAt = time.Time{}
-		if l.s.Active == nil && l.s.State == StateStale {
+		l.s.Failure = ErrLastGoodExpired
+		l.s.Withdrawal = &Withdrawal{Cause: WithdrawalLastGoodExpiry, At: now, PreviousGenerationID: previousGenerationID}
+		if l.s.State == StateHealthy || l.s.State == StateStale {
 			l.s.State = StateFailed
 		}
+	}
+}
+
+func withdrawalCause(err error) WithdrawalCause {
+	switch {
+	case errors.Is(err, ErrNXDOMAIN):
+		return WithdrawalNXDOMAIN
+	case errors.Is(err, ErrSERVFAIL):
+		return WithdrawalSERVFAIL
+	case errors.Is(err, ErrTimeout):
+		return WithdrawalTimeout
+	case errors.Is(err, ErrDisagreement):
+		return WithdrawalDisagreement
+	case errors.Is(err, ErrAnswerOverflow):
+		return WithdrawalOverflow
+	case errors.Is(err, ErrUnboundContext):
+		return WithdrawalUnboundContext
+	default:
+		return WithdrawalInvalidAnswer
 	}
 }
 
@@ -288,15 +351,36 @@ func resolveResponse(hostname string, response Response) (canonicalResult, error
 			name = next
 			continue
 		}
-		set := map[netip.Addr]bool{}
+		// A and AAAA are independently useful, but each family is all-or-
+		// nothing. Silently dropping one prohibited or malformed answer would
+		// publish a corrupted partial family; a valid sibling family may still
+		// be used.
+		var aRecords, aaaaRecords []Record
 		for _, r := range addresses {
-			if !r.Address.IsValid() || (r.Type == TypeA && !r.Address.Is4()) || (r.Type == TypeAAAA && !r.Address.Is6()) || prohibited(r.Address.Unmap()) {
+			if r.Type == TypeA {
+				aRecords = append(aRecords, r)
+			} else {
+				aaaaRecords = append(aaaaRecords, r)
+			}
+		}
+		set := map[netip.Addr]bool{}
+		for _, family := range [][]Record{aRecords, aaaaRecords} {
+			invalid := false
+			for _, r := range family {
+				if !r.Address.IsValid() || (r.Type == TypeA && !r.Address.Is4()) || (r.Type == TypeAAAA && !r.Address.Is6()) || prohibited(r.Address.Unmap()) {
+					invalid = true
+					break
+				}
+			}
+			if invalid {
 				continue
 			}
-			if r.TTL < minTTL {
-				minTTL = r.TTL
+			for _, r := range family {
+				if r.TTL < minTTL {
+					minTTL = r.TTL
+				}
+				set[r.Address.Unmap()] = true
 			}
-			set[r.Address.Unmap()] = true
 		}
 		if len(set) == 0 {
 			return canonicalResult{}, ErrNoUsableAddresses
