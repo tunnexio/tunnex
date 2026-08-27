@@ -27,6 +27,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/dnsforward"
 	"github.com/tunnexio/tunnex/apps/node/internal/egress"
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
+	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/identity"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 	"github.com/tunnexio/tunnex/apps/node/internal/ovpnserver"
@@ -285,6 +286,23 @@ func main() {
 		select {
 		case policyKick <- struct{}{}:
 		default: // a kick is already pending — the apply reads the latest policy anyway
+		}
+	})
+	// S21: the control plane brokers a DNS request through desired state only to
+	// the selected Site gateway. The responder binds every request to this
+	// gateway's node id and posts the answer back over this same mTLS channel.
+	// DNS errors are reported as typed fail-closed outcomes; they never alter the
+	// currently applied policy or fall back to a control-plane/public resolver.
+	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.LocalResolver{})
+	r.OnDNSResolve(func(ds reconcile.DesiredState) {
+		if ds.DNSResolveRequest == nil {
+			return
+		}
+		response := dnsResponder.Handle(ctx, ds.NodeID, *ds.DNSResolveRequest)
+		if err := client.ReportDNSResolution(ctx, response); err != nil {
+			// Do not log hostname or answer data. The request id is enough to
+			// correlate the retried, cached response at the control plane.
+			logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
 		}
 	})
 
@@ -667,7 +685,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint
 		if hp := ovpnHealth.Load(); hp != nil {
 			ovpnH = *hp
 		}
-		ps := control.PolicyStatus{Version: v, Hash: h, RefusedVersion: egressMgr.RefusedVersion(), SiteLinkStale: siteLinkStale.Load(), SiteSubnetUnreachable: siteSubnetUnreachable.Load(), ConntrackFlushUnavailable: egressMgr.ConntrackFlushFailing(), K8sEndpointsUnavailable: egressMgr.EndpointsUnavailable(), MaxSupportedVersion: nodepolicy.MaxSupportedVersion, OVPNHealth: ovpnH}
+		ps := control.PolicyStatus{Version: v, Hash: h, RefusedVersion: egressMgr.RefusedVersion(), SiteLinkStale: siteLinkStale.Load(), SiteSubnetUnreachable: siteSubnetUnreachable.Load(), ConntrackFlushUnavailable: egressMgr.ConntrackFlushFailing(), K8sEndpointsUnavailable: egressMgr.EndpointsUnavailable(), MaxSupportedVersion: nodepolicy.MaxSupportedVersion, OVPNHealth: ovpnH, DNSResolveRPCVersion: fqdnrpc.Version}
 		if applyErr != nil {
 			ps.Error = applyErr.Error()
 			if len(ps.Error) > 300 { // bound so a verbose nft error can't overflow the report body (finding #4)

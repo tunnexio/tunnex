@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"math/big"
@@ -15,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 )
 
 // testCA is a throwaway CA that mimics the control plane's cert issuance.
@@ -22,6 +25,43 @@ type testCA struct {
 	cert *x509.Certificate
 	key  *rsa.PrivateKey
 	pem  []byte
+}
+
+func TestClientReportDNSResolutionUsesAuthenticatedControlChannel(t *testing.T) {
+	ca := newTestCA(t)
+	var got fqdnrpc.Response
+	mux := http.NewServeMux()
+	mux.HandleFunc("/agent/dns-resolution", func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) != 1 {
+			t.Fatal("DNS response must use the mTLS agent channel")
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srvKeyPEM, srvCSR, _ := GenerateKeyAndCSR("tunnex-control")
+	blk, _ := pem.Decode(srvCSR)
+	srvCertPEM, _ := ca.sign(t, blk.Bytes, x509.ExtKeyUsageServerAuth)
+	srvCert, _ := tls.X509KeyPair([]byte(srvCertPEM), srvKeyPEM)
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(ca.pem)
+	srv := httptest.NewUnstartedServer(mux)
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{srvCert}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool}
+	srv.StartTLS()
+	defer srv.Close()
+	certPEM, keyPEM := ca.clientCert(t, "gw-1")
+	client, err := NewClient(srv.URL, "tunnex-control", "gw-1", certPEM, keyPEM, ca.pem)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	response := fqdnrpc.Response{Version: fqdnrpc.Version, RequestID: "55555555-5555-5555-5555-555555555555", OrgID: "11111111-1111-1111-1111-111111111111", ResourceID: "22222222-2222-2222-2222-222222222222", SiteID: "33333333-3333-3333-3333-333333333333", GatewayID: "44444444-4444-4444-4444-444444444444", Hostname: "api.example.test", RecordTypes: []fqdnrpc.RecordType{fqdnrpc.RecordA, fqdnrpc.RecordAAAA, fqdnrpc.RecordCNAME}, Status: fqdnrpc.StatusNoError, ObservedAt: time.Now().UTC()}
+	if err := client.ReportDNSResolution(t.Context(), response); err != nil {
+		t.Fatalf("report: %v", err)
+	}
+	if got.RequestID != response.RequestID || got.GatewayID != response.GatewayID || got.Status != fqdnrpc.StatusNoError {
+		t.Fatalf("bound response not delivered: %+v", got)
+	}
 }
 
 func newTestCA(t *testing.T) *testCA {

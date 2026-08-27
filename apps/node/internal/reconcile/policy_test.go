@@ -7,7 +7,9 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
+	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
@@ -86,6 +88,33 @@ func TestRunOnceDeliversPolicyToSink(t *testing.T) {
 	}
 	if len(got) != 3 || got[2] == nil || got[2].Version != 6 {
 		t.Fatalf("policy must be delivered even when the backend converge fails: %+v", got)
+	}
+}
+
+func TestRunOnceDeliversBrokeredDNSRequestOnlyWhenPresent(t *testing.T) {
+	be := &fakeBackend{}
+	cl := &fakeClient{}
+	r := New(be, "priv", "pub", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	var delivered []DesiredState
+	r.OnDNSResolve(func(ds DesiredState) { delivered = append(delivered, ds) })
+	cl.set(DesiredState{Version: 1})
+	if _, err := r.runOnce(context.Background(), cl); err != nil {
+		t.Fatalf("absent request reconcile: %v", err)
+	}
+	if len(delivered) != 0 {
+		t.Fatalf("absent request must not invoke responder: %+v", delivered)
+	}
+	cl.set(DesiredState{Version: 2, NodeID: "44444444-4444-4444-4444-444444444444", DNSResolveRequest: &fqdnrpc.Request{
+		Version: fqdnrpc.Version, RequestID: "55555555-5555-5555-5555-555555555555",
+		OrgID: "11111111-1111-1111-1111-111111111111", ResourceID: "22222222-2222-2222-2222-222222222222",
+		SiteID: "33333333-3333-3333-3333-333333333333", GatewayID: "44444444-4444-4444-4444-444444444444",
+		Hostname: "api.example.test", RecordTypes: []fqdnrpc.RecordType{fqdnrpc.RecordA, fqdnrpc.RecordAAAA, fqdnrpc.RecordCNAME}, Deadline: time.Now().Add(time.Second),
+	}})
+	if _, err := r.runOnce(context.Background(), cl); err != nil {
+		t.Fatalf("present request reconcile: %v", err)
+	}
+	if len(delivered) != 1 || delivered[0].DNSResolveRequest == nil || delivered[0].DNSResolveRequest.RequestID != "55555555-5555-5555-5555-555555555555" {
+		t.Fatalf("brokered request was not delivered intact: %+v", delivered)
 	}
 }
 
