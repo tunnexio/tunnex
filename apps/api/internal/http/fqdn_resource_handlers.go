@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
@@ -169,7 +171,16 @@ func (s apiServer) SetFQDNResourceEnabled(ctx context.Context, req api.SetFQDNRe
 	if err := svc.SetSetting(ctx, req.OrgId, req.Body.Enabled, uid, sys, cause); err != nil {
 		return nil, err
 	}
+	// The setting transaction is durable before this wake. An opt-out therefore
+	// withdraws FQDN tuples from the next authoritative desired-state fetch.
+	s.notifyFQDNSettingCommitted(ctx, req.OrgId)
 	return api.SetFQDNResourceEnabled200JSONResponse{Enabled: req.Body.Enabled}, nil
+}
+
+func (s apiServer) notifyFQDNSettingCommitted(ctx context.Context, orgID uuid.UUID) {
+	if s.fqdnSettingNotify != nil {
+		s.fqdnSettingNotify.InvalidateOrg(ctx, orgID)
+	}
 }
 
 func (s apiServer) GetFQDNResolverContextConfig(ctx context.Context, req api.GetFQDNResolverContextConfigRequestObject) (api.GetFQDNResolverContextConfigResponseObject, error) {

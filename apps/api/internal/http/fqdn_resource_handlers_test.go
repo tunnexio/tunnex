@@ -12,6 +12,12 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
+type fqdnSettingNotifyRecorder struct{ orgs []uuid.UUID }
+
+func (n *fqdnSettingNotifyRecorder) InvalidateOrg(_ context.Context, orgID uuid.UUID) {
+	n.orgs = append(n.orgs, orgID)
+}
+
 func TestFQDNEnableChecksPermissionBeforeEntitlement(t *testing.T) {
 	org := uuid.New()
 	req := api.SetFQDNResourceEnabledRequestObject{OrgId: org, Body: &api.FQDNResourceSetting{Enabled: true}}
@@ -39,5 +45,14 @@ func TestFQDNResolverConfigProjectionPreservesDirectEndpoints(t *testing.T) {
 	}
 	if got.ResolverContext.ResolverConfig.Version != 3 || len(got.ResolverContext.ResolverConfig.Endpoints) != 2 || got.ResolverContext.ResolverConfig.Endpoints[1].Transport != "tcp" {
 		t.Fatalf("unexpected resolver config projection: %#v", got.ResolverContext.ResolverConfig)
+	}
+}
+
+func TestFQDNSettingCommitWakeIsScopedToCommittedOrganization(t *testing.T) {
+	org := uuid.New()
+	notify := &fqdnSettingNotifyRecorder{}
+	apiServer{fqdnSettingNotify: notify}.notifyFQDNSettingCommitted(context.Background(), org)
+	if len(notify.orgs) != 1 || notify.orgs[0] != org {
+		t.Fatalf("committed FQDN setting wake = %v, want only %s", notify.orgs, org)
 	}
 }

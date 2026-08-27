@@ -279,6 +279,10 @@ func main() {
 	nodeSvc.SetPolicyProvider(apphttp.NewNodePolicyProvider(pool, licenceMgr))
 	nodes.LogPolicyHealthTuning(logger) // S7.4b: assumed R + derived T (operator discoverability)
 	pushHub := nodepush.New()
+	// One post-commit invalidator serves both resolver lifecycle transitions and
+	// explicit organization FQDN opt-in changes. Reusing it keeps every policy
+	// withdrawal on the same active-node wake path.
+	fqdnInvalidator := policy.NewFQDNInvalidator(pool, pushHub)
 	deviceSvc := devices.NewService(pool, pushHub, logger).WithLicence(licenceMgr)
 	// WF-OVPN-6: device-approval ENFORCEMENT follows the edition (enterprise only). The open build never
 	// enforces approval, so a stored device_approval='on' can't trap new devices when the admin surface is
@@ -473,6 +477,7 @@ func main() {
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
 		FQDNResources:         fqdnresources.New(pool),
+		FQDNSettingNotify:     fqdnInvalidator,
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
 		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),
@@ -539,7 +544,7 @@ func main() {
 	// bounded DNS attempt.
 	fqdnCtx, stopFQDNScheduler := context.WithCancel(electorCtx)
 	fqdnStore := fqdnresolver.NewPostgresStore(pool).WithAfterCommit(fqdnresolver.Hooks{
-		Policy: policy.NewFQDNInvalidator(pool, pushHub),
+		Policy: fqdnInvalidator,
 	})
 	fqdnMailbox := fqdnresolver.NewPostgresGatewayDNSMailbox(pool).WithNotifier(agentCh)
 	agentCh.SetGatewayDNSMailbox(fqdnMailbox)
