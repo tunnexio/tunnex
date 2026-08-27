@@ -70,6 +70,12 @@ func TestMatchesTupleScoped(t *testing.T) {
 	}
 }
 
+func TestTupleFromAllowRejectsMixedFamilies(t *testing.T) {
+	if _, ok := tupleFromAllow(nodepolicy.AllowEntry{SrcIP: "10.99.0.7", DstCIDR: "2001:db8::7/128", Protocol: "tcp", PortLow: 443, PortHigh: 443}); ok {
+		t.Fatal("a tuple that no nft address-family chain can enforce must not flush conntrack")
+	}
+}
+
 // TestRemovedTuplesDiff — the diff finds grants that LEFT the allow set (expired/deleted), keeps the ones
 // that stayed. The kept neighbor is never in the removed set.
 func TestRemovedTuplesDiff(t *testing.T) {

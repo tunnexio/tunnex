@@ -233,6 +233,27 @@ func TestRenderAllowRuleIDOnlyInLogClause(t *testing.T) {
 	}
 }
 
+func TestForwardRulesRenderDualStackExactHosts(t *testing.T) {
+	m := New("wg0")
+	pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing, Allow: []nodepolicy.AllowEntry{
+		{SrcIP: "10.99.0.7", DstCIDR: "203.0.113.41/32", Protocol: "tcp", PortLow: 443, PortHigh: 443},
+		{SrcIP: "fd42:99::7", DstCIDR: "2001:db8:21::41/128", Protocol: "udp", PortLow: 53, PortHigh: 53},
+	}}
+	v4, v6 := m.forwardRules(pol, true)
+	if !strings.Contains(v4, "ip saddr 10.99.0.7 ct original ip daddr 203.0.113.41/32 tcp dport 443") {
+		t.Fatalf("v4 exact-host allow missing: %s", v4)
+	}
+	if strings.Contains(v4, "2001:db8:21::41") {
+		t.Fatalf("v6 tuple leaked into ip table: %s", v4)
+	}
+	if !strings.Contains(v6, "ip6 saddr fd42:99::7 ct original ip6 daddr 2001:db8:21::41/128 udp dport 53") {
+		t.Fatalf("v6 exact-host allow missing: %s", v6)
+	}
+	if strings.Contains(v6, "203.0.113.41") {
+		t.Fatalf("v4 tuple leaked into ip6 table: %s", v6)
+	}
+}
+
 // forwardRules: flow logging OFF (default) renders NO log clause — the enforcement ruleset
 // is exactly pre-S7.5.1 (safety default). Logging ON adds the rule_id + deny log clauses
 // while every verdict line still ends accept/drop.

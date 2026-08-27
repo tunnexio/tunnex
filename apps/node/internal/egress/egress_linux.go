@@ -559,9 +559,9 @@ func (m *Manager) resolvedVIPOriginalDstExclusion() string {
 //     NO wg0<->wg0 blanket — device↔device is permitted only by an explicit rule (the
 //     S7.1 structural guard, now on the wire). Egress is likewise gated: a device reaches
 //     off-pool/internet only via an allow whose dst covers it (e.g. a 0.0.0.0/0 resource),
-//     which the masquerade then NATs. v6 is left as pure default-deny (drop + ct only):
-//     spokes are v4 (the pool is v4), so there is no v6 device traffic to permit, and
-//     dropping it is strictly safer than the blanket mesh.
+//     which the masquerade then NATs. Native IPv6 source/destination tuples render in
+//     the ip6 table; this is required for an FQDN generation that resolves to a /128.
+//     Mixed-family tuples are not meaningful packets and stay default-denied.
 //
 // Every forward rule carries a `counter` (S7.2): per-rule packet/byte counts, near-free
 // (a native nft primitive). REPORTING is deferred (the flow-log candidate); emitting now
@@ -614,25 +614,33 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 			ifClause("iifname", tun, false), ifClause("oifname", tun, true))
 		return v4, v6
 	}
-	var b strings.Builder
+	var v4Rules, v6Rules strings.Builder
 	g := m.flowLogGroup
 	for _, e := range pol.Allow {
-		// Compute ONE form (review #9): the logged variant when logging is on, else the plain
-		// one — never both (allowMatch re-parses src/dst via netip, so the throwaway call
-		// doubled the per-rule work every reconcile).
-		var line string
+		// Render each tuple in its one applicable family. The other family rejects it
+		// before emitting text, so an address can never be accepted by both tables.
+		var v4Line, v6Line string
 		var ok bool
 		if g > 0 {
-			line, ok = renderAllowLogged(e, g)
+			v4Line, ok = renderAllowLogged(e, g)
 		} else {
-			line, ok = renderAllow(e)
+			v4Line, ok = renderAllow(e)
 		}
 		if ok {
-			b.WriteString(line)
+			v4Rules.WriteString(v4Line)
+		}
+		if g > 0 {
+			v6Line, ok = renderAllowLoggedFamily(e, g, true)
+		} else {
+			v6Line, ok = renderAllowFamily(e, true)
+		}
+		if ok {
+			v6Rules.WriteString(v6Line)
 		}
 	}
-	b.WriteString(denyDrop(g))     // count (+ log when on) the default-deny drops
-	return b.String(), denyDrop(g) // enforcing v6 = default-deny: no allows, just the deny tail
+	v4Rules.WriteString(denyDrop(g))
+	v6Rules.WriteString(denyDrop(g))
+	return v4Rules.String(), v6Rules.String()
 }
 
 // denyDrop is the default-deny tail. g==0: the original counter (relies on the chain's
@@ -653,9 +661,12 @@ func denyDrop(group int) string {
 // append the verdict (and, for the logged form, an observation clause) to it. Every field
 // is re-emitted through netip as a canonical NUMERIC string (never the raw control-plane
 // string) so nothing can inject nft statements into this root ruleset — the same hardening
-// as ifaceRE. Ports are integers. A v6 destination is skipped (v4 spokes have no route to
-// it; v6 stays default-deny).
-func allowMatch(e nodepolicy.AllowEntry) (string, bool) {
+// as ifaceRE. Ports are integers. Each invocation targets exactly one nft address family.
+func allowMatch(e nodepolicy.AllowEntry) (string, bool) { return allowMatchFamily(e, false) }
+
+// allowMatchFamily renders one address family. v6 selects native IPv6; IPv4-mapped
+// IPv6 is rejected rather than being rendered in the wrong nft family.
+func allowMatchFamily(e nodepolicy.AllowEntry, v6 bool) (string, bool) {
 	// SOURCE match: a DEVICE source is a bare host ("10.99.0.7"); a SITE source (v5, S8.2) is a LAN CIDR
 	// ("10.1.0.0/24"). Accept BOTH, fail closed on anything else. Re-emit canonically (never the raw CP
 	// string) so nothing can inject nft statements. The v4 renderer used ParseAddr only — a CIDR source
@@ -663,19 +674,19 @@ func allowMatch(e nodepolicy.AllowEntry) (string, bool) {
 	var srcMatch string
 	if strings.Contains(e.SrcIP, "/") {
 		p, err := netip.ParsePrefix(e.SrcIP)
-		if err != nil || !p.Addr().Is4() {
+		if err != nil || p.Addr().Is6() != v6 || (!v6 && !p.Addr().Is4()) {
 			return "", false
 		}
 		srcMatch = p.Masked().String()
 	} else {
 		a, err := netip.ParseAddr(e.SrcIP)
-		if err != nil || !a.Is4() {
+		if err != nil || a.Is6() != v6 || (!v6 && !a.Is4()) {
 			return "", false
 		}
 		srcMatch = a.String()
 	}
 	dst, err := netip.ParsePrefix(e.DstCIDR)
-	if err != nil || !dst.Addr().Is4() {
+	if err != nil || dst.Addr().Is6() != v6 || (!v6 && !dst.Addr().Is4()) {
 		return "", false
 	}
 	// CONVENTION (fail-closed rendering): this renderer REFUSES any unknown or half-
@@ -726,12 +737,20 @@ func allowMatch(e nodepolicy.AllowEntry) (string, bool) {
 	// An UNTRACKED packet has no ct entry so `ct original` cannot match → it falls to policy-drop (fail-closed);
 	// `ct state invalid` is dropped explicitly ahead of the grants (rulesetWith) so an invalid packet carrying
 	// a stale ct entry can never be adjudicated by this match.
-	return fmt.Sprintf("    ip saddr %s ct original ip daddr %s%s counter", srcMatch, dst.Masked().String(), clause), true
+	family := "ip"
+	if v6 {
+		family = "ip6"
+	}
+	return fmt.Sprintf("    %s saddr %s ct original %s daddr %s%s counter", family, srcMatch, family, dst.Masked().String(), clause), true
 }
 
 // renderAllow is the ENFORCEMENT-ONLY accept line (no observation). rule_id-INDEPENDENT.
 func renderAllow(e nodepolicy.AllowEntry) (string, bool) {
-	m, ok := allowMatch(e)
+	return renderAllowFamily(e, false)
+}
+
+func renderAllowFamily(e nodepolicy.AllowEntry, v6 bool) (string, bool) {
+	m, ok := allowMatchFamily(e, v6)
 	if !ok {
 		return "", false
 	}
@@ -745,6 +764,10 @@ func renderAllow(e nodepolicy.AllowEntry) (string, bool) {
 // only sees a flow's FIRST packet → one log per flow-start (D1). group is the nflog group
 // the flowlog reader listens on.
 func renderAllowLogged(e nodepolicy.AllowEntry, group int) (string, bool) {
+	return renderAllowLoggedFamily(e, group, false)
+}
+
+func renderAllowLoggedFamily(e nodepolicy.AllowEntry, group int, v6 bool) (string, bool) {
 	// rule_id is the ONE renderer field that isn't a number — validate it to the canonical UUID
 	// shape before it enters the root nft ruleset (the A-1 fail-closed discipline, review #7).
 	// A non-conforming rule_id renders the accept WITHOUT a log clause: NOT an empty prefix
@@ -753,9 +776,9 @@ func renderAllowLogged(e nodepolicy.AllowEntry, group int) (string, bool) {
 	// correctly accepted. In practice the compiler always stamps a DB uuid; this defends a
 	// future/compromised artifact, matching allowMatch's netip re-emission of src/dst/port.
 	if !ruleIDRE.MatchString(e.RuleID) {
-		return renderAllow(e)
+		return renderAllowFamily(e, v6)
 	}
-	m, ok := allowMatch(e)
+	m, ok := allowMatchFamily(e, v6)
 	if !ok {
 		return "", false
 	}

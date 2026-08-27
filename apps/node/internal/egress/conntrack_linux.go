@@ -52,6 +52,12 @@ func tupleFromAllow(e nodepolicy.AllowEntry) (flowTuple, bool) {
 	if !ok {
 		return flowTuple{}, false
 	}
+	// nft evaluates an allow inside one address-family table. A mixed-family
+	// artifact cannot have been enforced, so it must not drive a conntrack
+	// deletion in either family.
+	if src.Addr().Is6() != dst.Addr().Is6() {
+		return flowTuple{}, false
+	}
 	t := flowTuple{src: src, dst: dst, ruleID: e.RuleID}
 	switch e.Protocol {
 	case "tcp":
