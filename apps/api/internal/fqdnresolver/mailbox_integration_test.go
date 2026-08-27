@@ -66,8 +66,9 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal',$3,$4)`, resource, org, site, gateway)
 
 	now := time.Now().UTC().Truncate(time.Second)
+	currentNow := now
 	mailbox := NewPostgresGatewayDNSMailbox(pool)
-	mailbox.now = func() time.Time { return now }
+	mailbox.now = func() time.Time { return currentNow }
 	request := GatewayDNSRequest{Version: GatewayDNSRPCVersion, RequestID: uuid.New(), OrgID: org, ResourceID: resource, SiteID: site, GatewayID: gateway, Hostname: "orders.internal", RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: now.Add(time.Minute)}
 	if err := mailbox.Enqueue(ctx, request); err != nil {
 		t.Fatal(err)
@@ -119,6 +120,34 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	late := responseFor(second, now, Record{Name: second.Hostname, Type: TypeA, Address: netip.MustParseAddr("10.2.3.5"), TTL: time.Minute})
 	if err := mailbox.Complete(ctx, org, gateway, late); !errors.Is(err, ErrSuperseded) {
 		t.Fatalf("reselected context completion=%v want ErrSuperseded", err)
+	}
+	if pending, err := mailbox.PendingForGateway(ctx, org, gateway, 10); err != nil || len(pending) != 0 {
+		t.Fatalf("superseded request remained deliverable to prior gateway: pending=%#v err=%v", pending, err)
+	}
+	var state string
+	if err := pool.QueryRow(ctx, `SELECT state FROM fqdn_gateway_dns_requests WHERE request_id=$1`, second.RequestID).Scan(&state); err != nil || state != "expired" {
+		t.Fatalf("superseded request state=%q err=%v, want durable expired", state, err)
+	}
+
+	// A late response under an otherwise-current context must also commit terminal
+	// expiry. Without this, a retry could keep a stale request pending forever.
+	stale := second
+	stale.RequestID = uuid.New()
+	stale.SiteID, stale.GatewayID = reselectedSite, reselectedGateway
+	stale.Deadline = now.Add(time.Second)
+	if err := mailbox.Enqueue(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	currentNow = now.Add(2 * time.Second)
+	staleResponse := responseFor(stale, now, Record{Name: stale.Hostname, Type: TypeA, Address: netip.MustParseAddr("10.2.3.6"), TTL: time.Minute})
+	if err := mailbox.Complete(ctx, org, reselectedGateway, staleResponse); !errors.Is(err, ErrGatewayDNSRPCStale) {
+		t.Fatalf("late response completion=%v want ErrGatewayDNSRPCStale", err)
+	}
+	if pending, err := mailbox.PendingForGateway(ctx, org, reselectedGateway, 10); err != nil || len(pending) != 0 {
+		t.Fatalf("stale request remained pending: pending=%#v err=%v", pending, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT state FROM fqdn_gateway_dns_requests WHERE request_id=$1`, stale.RequestID).Scan(&state); err != nil || state != "expired" {
+		t.Fatalf("stale request state=%q err=%v, want durable expired", state, err)
 	}
 }
 

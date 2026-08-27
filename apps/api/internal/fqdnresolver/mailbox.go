@@ -139,12 +139,22 @@ FROM fqdn_gateway_dns_requests WHERE request_id=$1 FOR UPDATE`, response.Request
 	}
 	if err := validateCurrentMailboxContext(ctx, tx, request); err != nil {
 		if errors.Is(err, ErrSuperseded) {
-			_, _ = tx.Exec(ctx, `UPDATE fqdn_gateway_dns_requests SET state='expired',expired_at=now() WHERE request_id=$1 AND state='pending'`, request.RequestID)
+			if _, updateErr := tx.Exec(ctx, `UPDATE fqdn_gateway_dns_requests SET state='expired',expired_at=now() WHERE request_id=$1 AND state='pending'`, request.RequestID); updateErr != nil {
+				return updateErr
+			}
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return commitErr
+			}
 		}
 		return err
 	}
 	if m.now().After(request.Deadline) {
-		_, _ = tx.Exec(ctx, `UPDATE fqdn_gateway_dns_requests SET state='expired',expired_at=now() WHERE request_id=$1 AND state='pending'`, request.RequestID)
+		if _, err := tx.Exec(ctx, `UPDATE fqdn_gateway_dns_requests SET state='expired',expired_at=now() WHERE request_id=$1 AND state='pending'`, request.RequestID); err != nil {
+			return err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
 		return ErrGatewayDNSRPCStale
 	}
 	if _, validationErr := validateGatewayDNSResponse(request, response, m.now(), m.maxAge); validationErr != nil && !isTerminalTransportResponse(response, validationErr) {
