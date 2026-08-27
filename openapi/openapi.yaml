@@ -5273,16 +5273,17 @@ components:
 
     FQDNResourceImpact:
       type: object
-      required: [resource_id, referencing_rule_count, generation_withdrawal_required]
+      required: [resource_id, referencing_rule_count, referencing_rule_ids, generation_withdrawal_required]
       additionalProperties: false
       properties:
         resource_id: { type: string, format: uuid }
         referencing_rule_count: { type: integer, minimum: 0, description: "Server-computed active policy-rule impact; never browser-inferred." }
+        referencing_rule_ids: { type: array, items: { type: string, format: uuid }, description: "Exact policy rule identities blocking deletion, projected by the server for truthful recovery UI." }
         generation_withdrawal_required: { type: boolean, description: "True only when a live FQDN generation exists and must be withdrawn before deletion." }
 
     PolicyRule:
       type: object
-      required: [id, org_id, src_kind, dst_kind, created_at, cidr_outside_org_ranges, dst_k8s_service_vanished, enabled, managed_by_operator, managed_by_agent_template, managed_by_agent_access]
+      required: [id, org_id, src_kind, dst_kind, created_at, cidr_outside_org_ranges, dst_k8s_service_vanished, fqdn_destination_status, enabled, managed_by_operator, managed_by_agent_template, managed_by_agent_access]
       additionalProperties: false
       properties:
         # S10.2 D2 cond 1: true = created/managed by the GitOps operator (a machine credential); the dashboard
@@ -5317,11 +5318,16 @@ components:
         src_agent_group_id: { type: string, format: uuid, nullable: true, description: "F09 — set when src_kind=agent_group: the reusable managed-agent group expanded by the compiler." }
         # S8.7 warn-not-refuse: true when src_cidr is not inside any current org range (site subnet / routed range / device pool) — a rule matching nothing (a silent no-op wearing a rule's face). DERIVED at read time from CURRENT ranges, so it sheds once the range lands. false for non-cidr sources.
         cidr_outside_org_ranges: { type: boolean }
-        dst_kind: { type: string, enum: [resource, group, site, k8s_service] }
+        dst_kind: { type: string, enum: [resource, group, site, k8s_service, fqdn_resource] }
         dst_resource_id: { type: string, format: uuid, nullable: true }
         dst_group_id: { type: string, format: uuid, nullable: true }
         dst_site_id: { type: string, format: uuid, nullable: true }
         dst_k8s_service_id: { type: string, format: uuid, nullable: true, description: "Set when dst_kind=k8s_service (S10.3): the exposed Service the grant reaches; the compiler resolves it to the Service's CURRENT VIP." }
+        dst_fqdn_resource_id: { type: string, format: uuid, nullable: true, description: "Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated." }
+        fqdn_destination_status:
+          type: string
+          enum: [not_applicable, pending_compiler]
+          description: "Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic."
         # S10.3 warn-not-refuse: true when dst_kind=k8s_service but the Service is gone (unexposed/cluster deregistered) — the grant compiles to nothing (a silent no-op wearing a rule's face). DERIVED at read time from the LIVE Services, so it sheds if the Service returns. false otherwise.
         dst_k8s_service_vanished: { type: boolean }
         # S7.5.4: null = permanent; set = a temporary grant that lapses at this instant.
@@ -5340,11 +5346,12 @@ components:
         src_site_id: { type: string, format: uuid, nullable: true, description: "Required when src_kind=site (S8.2); the compiler resolves it to the source site's approved subnet CIDRs (the LAN source)." }
         src_cidr: { type: string, nullable: true, description: "Required when src_kind=cidr (S8.7): a literal source CIDR, e.g. 172.31.17.64/32. Validated well-formed; org-range meaningfulness is a read-time warning, not a creation refusal (warn-not-refuse)." }
         src_device_id: { type: string, format: uuid, nullable: true, description: "Required when src_kind=agent (S15.3): the agent DEVICE whose /32 is the source. An agent is a peer, so a grant names exactly one device — never a node, which would grant every device behind that gateway." }
-        dst_kind: { type: string, enum: [resource, group, site, k8s_service] }
+        dst_kind: { type: string, enum: [resource, group, site, k8s_service, fqdn_resource] }
         dst_resource_id: { type: string, format: uuid, nullable: true, description: Required when dst_kind=resource. }
         dst_group_id: { type: string, format: uuid, nullable: true, description: Required when dst_kind=group. }
         dst_site_id: { type: string, format: uuid, nullable: true, description: "Required when dst_kind=site (S8.1); the compiler resolves it to the site's approved subnet CIDRs." }
         dst_k8s_service_id: { type: string, format: uuid, nullable: true, description: "Required when dst_kind=k8s_service (S10.3); the compiler resolves it to the exposed Service's CURRENT VIP." }
+        dst_fqdn_resource_id: { type: string, format: uuid, nullable: true, description: "Required when dst_kind=fqdn_resource. Must name an FQDN resource in this organization." }
         expires_at: { type: string, format: date-time, nullable: true, description: "Set = a temporary grant that expires at this time (must be future); omit for a permanent grant." }
 
     # ── S8.1 site-to-site ──

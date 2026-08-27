@@ -1626,7 +1626,7 @@ func (q *Queries) SetDeviceProvisioning(ctx context.Context, arg SetDeviceProvis
 const setOrgDeviceApproval = `-- name: SetOrgDeviceApproval :one
 UPDATE organizations SET device_approval = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled
 `
 
 type SetOrgDeviceApprovalParams struct {
@@ -1657,6 +1657,7 @@ func (q *Queries) SetOrgDeviceApproval(ctx context.Context, arg SetOrgDeviceAppr
 		&i.AgentPolicyTemplatesEnabled,
 		&i.AgentJitAccessEnabled,
 		&i.AlertingEnabled,
+		&i.FqdnResourcesEnabled,
 	)
 	return i, err
 }

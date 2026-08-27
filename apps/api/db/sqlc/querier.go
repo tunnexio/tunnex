@@ -349,7 +349,6 @@ type Querier interface {
 	// (the token's column is NOT NULL); a NULL here means the node predates the marker — UNDETERMINED.
 	CreateNode(ctx context.Context, arg CreateNodeParams) (Node, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
-	// ── policy_rules (allow grants) ─────────────────────────────────────────────────
 	// S7.5.4: src_kind ∈ {group,user}; S8.2: +site; S8.7: +cidr (exactly one of src_group_id/src_user_id/
 	// src_site_id/src_cidr, CHECK-enforced). expires_at NULL = permanent, set = a temporary grant. S8.1: dst_kind
 	// ∈ {resource,group,site}; S10.3: +k8s_service (exactly one of dst_resource_id/dst_group_id/dst_site_id/
@@ -554,6 +553,9 @@ type Querier interface {
 	// lint:cross-org — SSO callback resolves the config by (provider, client_id)
 	// before an org context exists; org_id is a column on the returned row.
 	GetEnabledSSOConfigByProvider(ctx context.Context, arg GetEnabledSSOConfigByProviderParams) (SsoConfig, error)
+	// ── policy_rules (allow grants) ─────────────────────────────────────────────────
+	// A policy destination may only name a resource owned by this organization.
+	GetFQDNResourceForPolicy(ctx context.Context, arg GetFQDNResourceForPolicyParams) (uuid.UUID, error)
 	// S7.5.2 IdP-group sync. Enterprise. All tenant-scoped by org_id.
 	// The reconciler reads the desired membership from a DirectoryProvider (Graph/etc.) and drives
 	// these to converge group_members(origin='idp_sync') — NEVER touching manual rows (disjoint by D1).

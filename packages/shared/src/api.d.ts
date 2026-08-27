@@ -4166,6 +4166,8 @@ export interface components {
             resource_id: string;
             /** @description Server-computed active policy-rule impact; never browser-inferred. */
             referencing_rule_count: number;
+            /** @description Exact policy rule identities blocking deletion, projected by the server for truthful recovery UI. */
+            referencing_rule_ids: string[];
             /** @description True only when a live FQDN generation exists and must be withdrawn before deletion. */
             generation_withdrawal_required: boolean;
         };
@@ -4207,7 +4209,7 @@ export interface components {
             src_agent_group_id?: string | null;
             cidr_outside_org_ranges: boolean;
             /** @enum {string} */
-            dst_kind: "resource" | "group" | "site" | "k8s_service";
+            dst_kind: "resource" | "group" | "site" | "k8s_service" | "fqdn_resource";
             /** Format: uuid */
             dst_resource_id?: string | null;
             /** Format: uuid */
@@ -4219,6 +4221,16 @@ export interface components {
              * @description Set when dst_kind=k8s_service (S10.3): the exposed Service the grant reaches; the compiler resolves it to the Service's CURRENT VIP.
              */
             dst_k8s_service_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated.
+             */
+            dst_fqdn_resource_id?: string | null;
+            /**
+             * @description Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic.
+             * @enum {string}
+             */
+            fqdn_destination_status: "not_applicable" | "pending_compiler";
             dst_k8s_service_vanished: boolean;
             /** Format: date-time */
             expires_at?: string | null;
@@ -4251,7 +4263,7 @@ export interface components {
              */
             src_device_id?: string | null;
             /** @enum {string} */
-            dst_kind: "resource" | "group" | "site" | "k8s_service";
+            dst_kind: "resource" | "group" | "site" | "k8s_service" | "fqdn_resource";
             /**
              * Format: uuid
              * @description Required when dst_kind=resource.
@@ -4272,6 +4284,11 @@ export interface components {
              * @description Required when dst_kind=k8s_service (S10.3); the compiler resolves it to the exposed Service's CURRENT VIP.
              */
             dst_k8s_service_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Required when dst_kind=fqdn_resource. Must name an FQDN resource in this organization.
+             */
+            dst_fqdn_resource_id?: string | null;
             /**
              * Format: date-time
              * @description Set = a temporary grant that expires at this time (must be future); omit for a permanent grant.
@@ -5467,7 +5484,7 @@ export interface components {
             mode: "warn" | "require";
             /** @description Check parameters. os_version: {"min":{"macos":"14.0","windows":"10.0"}} — a platform absent from "min" is not enforced. disk_encryption: none.
              *      */
-            param?: Record<string, never> | null;
+            param?: Record<string, never>;
             /** @description On PUT only: how many devices' LAST report would fail this check (best-effort blast radius). The config write itself blocks nothing — a device's gate only ever flips on its own next report (D4 grandfather).
              *      */
             would_fail_count?: number;
@@ -5475,7 +5492,7 @@ export interface components {
         HealthCheckInput: {
             /** @enum {string} */
             mode: "warn" | "require";
-            param?: Record<string, never> | null;
+            param?: Record<string, never>;
         };
         /** @description Client-reported posture facts (S7.5.3). NOT attestation — a compromised device can misreport; posture checks deter honest non-compliance and give an audit trail (defense-in-depth, not a guarantee).
          *      */

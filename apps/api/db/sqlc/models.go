@@ -539,6 +539,52 @@ type DomainClaim struct {
 	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
+type FqdnResource struct {
+	ID             uuid.UUID   `json:"id"`
+	OrgID          uuid.UUID   `json:"org_id"`
+	Name           string      `json:"name"`
+	Fqdn           string      `json:"fqdn"`
+	Protocol       string      `json:"protocol"`
+	PortLow        *int32      `json:"port_low"`
+	PortHigh       *int32      `json:"port_high"`
+	ResolverNodeID pgtype.UUID `json:"resolver_node_id"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+	Label          *string     `json:"label"`
+	ResolverSiteID pgtype.UUID `json:"resolver_site_id"`
+}
+
+type FqdnResourceAnswerGeneration struct {
+	ID             uuid.UUID          `json:"id"`
+	OrgID          uuid.UUID          `json:"org_id"`
+	ResourceID     uuid.UUID          `json:"resource_id"`
+	Generation     int64              `json:"generation"`
+	ResolverNodeID uuid.UUID          `json:"resolver_node_id"`
+	State          string             `json:"state"`
+	EffectiveTtl   pgtype.Interval    `json:"effective_ttl"`
+	ResolvedAt     time.Time          `json:"resolved_at"`
+	LastGoodAt     pgtype.Timestamptz `json:"last_good_at"`
+	ActivatedAt    pgtype.Timestamptz `json:"activated_at"`
+	EndedAt        pgtype.Timestamptz `json:"ended_at"`
+	FailureCode    *string            `json:"failure_code"`
+	CreatedAt      time.Time          `json:"created_at"`
+	ResolverSiteID pgtype.UUID        `json:"resolver_site_id"`
+}
+
+type FqdnResourceGenerationAnswer struct {
+	GenerationID uuid.UUID  `json:"generation_id"`
+	OrgID        uuid.UUID  `json:"org_id"`
+	Address      netip.Addr `json:"address"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+type FqdnResourceRuleReference struct {
+	PolicyRuleID uuid.UUID `json:"policy_rule_id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	ResourceID   uuid.UUID `json:"resource_id"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type GroupMember struct {
 	OrgID         uuid.UUID `json:"org_id"`
 	GroupID       uuid.UUID `json:"group_id"`
@@ -993,6 +1039,7 @@ type Organization struct {
 	AgentPolicyTemplatesEnabled bool               `json:"agent_policy_templates_enabled"`
 	AgentJitAccessEnabled       bool               `json:"agent_jit_access_enabled"`
 	AlertingEnabled             bool               `json:"alerting_enabled"`
+	FqdnResourcesEnabled        bool               `json:"fqdn_resources_enabled"`
 }
 
 type OvpnClientCert struct {
@@ -1035,25 +1082,26 @@ type PlatformSecret struct {
 }
 
 type PolicyRule struct {
-	ID               uuid.UUID          `json:"id"`
-	OrgID            uuid.UUID          `json:"org_id"`
-	SrcGroupID       pgtype.UUID        `json:"src_group_id"`
-	DstKind          string             `json:"dst_kind"`
-	DstResourceID    pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID       pgtype.UUID        `json:"dst_group_id"`
-	CreatedAt        time.Time          `json:"created_at"`
-	SrcKind          string             `json:"src_kind"`
-	SrcUserID        pgtype.UUID        `json:"src_user_id"`
-	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
-	DstSiteID        pgtype.UUID        `json:"dst_site_id"`
-	SrcSiteID        pgtype.UUID        `json:"src_site_id"`
-	SrcCidr          *string            `json:"src_cidr"`
-	Disabled         bool               `json:"disabled"`
-	DstK8sServiceID  pgtype.UUID        `json:"dst_k8s_service_id"`
-	ManagedByMachine pgtype.UUID        `json:"managed_by_machine"`
-	SrcDeviceID      pgtype.UUID        `json:"src_device_id"`
-	DstK8sClusterID  pgtype.UUID        `json:"dst_k8s_cluster_id"`
-	SrcAgentGroupID  pgtype.UUID        `json:"src_agent_group_id"`
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	SrcGroupID        pgtype.UUID        `json:"src_group_id"`
+	DstKind           string             `json:"dst_kind"`
+	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
+	CreatedAt         time.Time          `json:"created_at"`
+	SrcKind           string             `json:"src_kind"`
+	SrcUserID         pgtype.UUID        `json:"src_user_id"`
+	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
+	DstSiteID         pgtype.UUID        `json:"dst_site_id"`
+	SrcSiteID         pgtype.UUID        `json:"src_site_id"`
+	SrcCidr           *string            `json:"src_cidr"`
+	Disabled          bool               `json:"disabled"`
+	DstK8sServiceID   pgtype.UUID        `json:"dst_k8s_service_id"`
+	ManagedByMachine  pgtype.UUID        `json:"managed_by_machine"`
+	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
+	DstK8sClusterID   pgtype.UUID        `json:"dst_k8s_cluster_id"`
+	SrcAgentGroupID   pgtype.UUID        `json:"src_agent_group_id"`
+	DstFqdnResourceID pgtype.UUID        `json:"dst_fqdn_resource_id"`
 }
 
 type PoolVipOwnershipDelivery struct {

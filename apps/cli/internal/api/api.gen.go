@@ -306,10 +306,11 @@ const (
 
 // Defines values for CreatePolicyRuleRequestDstKind.
 const (
-	CreatePolicyRuleRequestDstKindGroup      CreatePolicyRuleRequestDstKind = "group"
-	CreatePolicyRuleRequestDstKindK8sService CreatePolicyRuleRequestDstKind = "k8s_service"
-	CreatePolicyRuleRequestDstKindResource   CreatePolicyRuleRequestDstKind = "resource"
-	CreatePolicyRuleRequestDstKindSite       CreatePolicyRuleRequestDstKind = "site"
+	CreatePolicyRuleRequestDstKindFqdnResource CreatePolicyRuleRequestDstKind = "fqdn_resource"
+	CreatePolicyRuleRequestDstKindGroup        CreatePolicyRuleRequestDstKind = "group"
+	CreatePolicyRuleRequestDstKindK8sService   CreatePolicyRuleRequestDstKind = "k8s_service"
+	CreatePolicyRuleRequestDstKindResource     CreatePolicyRuleRequestDstKind = "resource"
+	CreatePolicyRuleRequestDstKindSite         CreatePolicyRuleRequestDstKind = "site"
 )
 
 // Defines values for CreatePolicyRuleRequestSrcKind.
@@ -622,10 +623,17 @@ const (
 
 // Defines values for PolicyRuleDstKind.
 const (
-	PolicyRuleDstKindGroup      PolicyRuleDstKind = "group"
-	PolicyRuleDstKindK8sService PolicyRuleDstKind = "k8s_service"
-	PolicyRuleDstKindResource   PolicyRuleDstKind = "resource"
-	PolicyRuleDstKindSite       PolicyRuleDstKind = "site"
+	PolicyRuleDstKindFqdnResource PolicyRuleDstKind = "fqdn_resource"
+	PolicyRuleDstKindGroup        PolicyRuleDstKind = "group"
+	PolicyRuleDstKindK8sService   PolicyRuleDstKind = "k8s_service"
+	PolicyRuleDstKindResource     PolicyRuleDstKind = "resource"
+	PolicyRuleDstKindSite         PolicyRuleDstKind = "site"
+)
+
+// Defines values for PolicyRuleFqdnDestinationStatus.
+const (
+	NotApplicable   PolicyRuleFqdnDestinationStatus = "not_applicable"
+	PendingCompiler PolicyRuleFqdnDestinationStatus = "pending_compiler"
 )
 
 // Defines values for PolicyRuleSrcKind.
@@ -1874,6 +1882,9 @@ type CreateOrganizationRequest struct {
 
 // CreatePolicyRuleRequest defines model for CreatePolicyRuleRequest.
 type CreatePolicyRuleRequest struct {
+	// DstFqdnResourceId Required when dst_kind=fqdn_resource. Must name an FQDN resource in this organization.
+	DstFqdnResourceId *openapi_types.UUID `json:"dst_fqdn_resource_id"`
+
 	// DstGroupId Required when dst_kind=group.
 	DstGroupId *openapi_types.UUID `json:"dst_group_id"`
 
@@ -2175,8 +2186,11 @@ type FQDNResourceImpact struct {
 	GenerationWithdrawalRequired bool `json:"generation_withdrawal_required"`
 
 	// ReferencingRuleCount Server-computed active policy-rule impact; never browser-inferred.
-	ReferencingRuleCount int                `json:"referencing_rule_count"`
-	ResourceId           openapi_types.UUID `json:"resource_id"`
+	ReferencingRuleCount int `json:"referencing_rule_count"`
+
+	// ReferencingRuleIds Exact policy rule identities blocking deletion, projected by the server for truthful recovery UI.
+	ReferencingRuleIds []openapi_types.UUID `json:"referencing_rule_ids"`
+	ResourceId         openapi_types.UUID   `json:"resource_id"`
 }
 
 // FQDNResourceRequest defines model for FQDNResourceRequest.
@@ -2895,7 +2909,10 @@ type PolicyRule struct {
 	AgentAccessRequestId *openapi_types.UUID `json:"agent_access_request_id"`
 	CidrOutsideOrgRanges bool                `json:"cidr_outside_org_ranges"`
 	CreatedAt            time.Time           `json:"created_at"`
-	DstGroupId           *openapi_types.UUID `json:"dst_group_id"`
+
+	// DstFqdnResourceId Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated.
+	DstFqdnResourceId *openapi_types.UUID `json:"dst_fqdn_resource_id"`
+	DstGroupId        *openapi_types.UUID `json:"dst_group_id"`
 
 	// DstK8sServiceId Set when dst_kind=k8s_service (S10.3): the exposed Service the grant reaches; the compiler resolves it to the Service's CURRENT VIP.
 	DstK8sServiceId       *openapi_types.UUID `json:"dst_k8s_service_id"`
@@ -2905,7 +2922,10 @@ type PolicyRule struct {
 	DstSiteId             *openapi_types.UUID `json:"dst_site_id"`
 	Enabled               bool                `json:"enabled"`
 	ExpiresAt             *time.Time          `json:"expires_at"`
-	Id                    openapi_types.UUID  `json:"id"`
+
+	// FqdnDestinationStatus Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic.
+	FqdnDestinationStatus PolicyRuleFqdnDestinationStatus `json:"fqdn_destination_status"`
+	Id                    openapi_types.UUID              `json:"id"`
 
 	// ManagedByAgentAccess True when the row is owned by an approved F10 JIT agent-access request. Ordinary rule mutation surfaces must treat it as read-only.
 	ManagedByAgentAccess bool `json:"managed_by_agent_access"`
@@ -2931,6 +2951,9 @@ type PolicyRule struct {
 
 // PolicyRuleDstKind defines model for PolicyRule.DstKind.
 type PolicyRuleDstKind string
+
+// PolicyRuleFqdnDestinationStatus Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic.
+type PolicyRuleFqdnDestinationStatus string
 
 // PolicyRuleSrcKind defines model for PolicyRule.SrcKind.
 type PolicyRuleSrcKind string
