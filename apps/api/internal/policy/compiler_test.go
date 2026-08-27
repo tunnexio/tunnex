@@ -102,20 +102,43 @@ func TestFQDNResourceExpandsActiveGenerationWithExactL4Scope(t *testing.T) {
 		Rules:              []policy.Rule{{ID: ruleID, SrcGroupID: gAdmins, DstKind: "fqdn_resource"}},
 	}
 	c := policy.Compile(snap)[nodeA]
-	if c.Mesh || c.Version != 8 {
-		t.Fatalf("FQDN artifact must be enforcing v8, got mesh=%v version=%d", c.Mesh, c.Version)
+	if c.Mesh || c.Version != 9 {
+		t.Fatalf("FQDN artifact must be enforcing v9, got mesh=%v version=%d", c.Mesh, c.Version)
 	}
 	if len(c.Allow) != 2 || !hasAllow(c.Allow, "10.99.0.10", "8.8.8.8/32") || !hasAllow(c.Allow, "10.99.0.10", "2001:4860:4860::8888/128") {
 		t.Fatalf("active answers must expand to exact hosts, got %+v", c.Allow)
 	}
 	for _, allow := range c.Allow {
-		if allow.Protocol != policyspec.ProtoTCP || allow.PortLow != 443 || allow.PortHigh != 443 {
+		if allow.Protocol != policyspec.ProtoTCP || allow.PortLow != 443 || allow.PortHigh != 443 || !allow.FQDNManaged {
 			t.Fatalf("answer lost resource L4 scope: %+v", allow)
 		}
 	}
 	wantIdentity := policy.FQDNGenerationIdentityWithResolverConfig(resourceID, "api.example.com", siteID, gatewayID, configID, 1, []string{"2001:4860:4860::8888", "8.8.8.8"})
 	if got := c.FQDNGenerations; len(got) != 1 || got[0].Generation != wantIdentity || !reflect.DeepEqual(got[0].Answers, []string{"2001:4860:4860::8888/128", "8.8.8.8/32"}) {
 		t.Fatalf("generation identity must be canonical and present in artifact: %+v", got)
+	}
+}
+
+func TestFQDNProvenanceSurvivesOrdinaryTupleDeduplication(t *testing.T) {
+	resourceID, ruleID, ordinaryRuleID := uuid.New(), uuid.New(), uuid.New()
+	siteID, gatewayID, configID := uuid.New(), uuid.New(), uuid.New()
+	snap := policy.Snapshot{
+		Mode: policy.ModeEnforcing, FQDNResourcesLicensed: true, FQDNResourcesEnabled: true,
+		Devices:     []policy.Device{{ID: uuid.New(), UserID: uAlice, NodeID: nodeA, AssignedIP: "10.99.0.10"}},
+		Memberships: []policy.Membership{{GroupID: gAdmins, UserID: uAlice}},
+		Resources:   []policy.Resource{{ID: uuid.New(), CIDR: "8.8.8.8/32", Protocol: "tcp", PortLow: 443, PortHigh: 443}},
+		FQDNResources: []policy.FQDNResource{{ID: resourceID, FQDN: "api.example.com", Protocol: "tcp", PortLow: 443, PortHigh: 443,
+			Active: &policy.FQDNGeneration{ResourceID: resourceID, SelectedSiteID: siteID, SelectedGatewayID: gatewayID, ResolverConfigID: configID, ResolverConfigVersion: 1, Answers: []string{"8.8.8.8"}}}},
+		Rules: []policy.Rule{
+			{ID: ordinaryRuleID, SrcGroupID: gAdmins, DstKind: "resource"},
+			{ID: ruleID, SrcGroupID: gAdmins, DstKind: "fqdn_resource"},
+		},
+		FQDNRuleReferences: []policy.FQDNRuleReference{{PolicyRuleID: ruleID, FQDNResourceID: resourceID}},
+	}
+	snap.Rules[0].DstResourceID = snap.Resources[0].ID
+	compiled := policy.Compile(snap)[nodeA]
+	if len(compiled.Allow) != 1 || !compiled.Allow[0].FQDNManaged || compiled.Version != 9 {
+		t.Fatalf("shared ordinary/FQDN tuple must retain FQDN ownership provenance: %+v", compiled)
 	}
 }
 
@@ -190,7 +213,7 @@ func TestFQDNReferenceAndSnapshotGatesFailClosed(t *testing.T) {
 			Active: &policy.FQDNGeneration{ResourceID: resourceID, SelectedSiteID: siteID, SelectedGatewayID: gatewayID, ResolverConfigID: configID, ResolverConfigVersion: 1, Answers: []string{"8.8.8.8"}}}},
 		FQDNRuleReferences: []policy.FQDNRuleReference{{PolicyRuleID: ruleID, FQDNResourceID: resourceID}},
 	}
-	if got := policy.Compile(base)[nodeA]; len(got.Allow) != 1 || got.Version != 8 {
+	if got := policy.Compile(base)[nodeA]; len(got.Allow) != 1 || !got.Allow[0].FQDNManaged || got.Version != 9 {
 		t.Fatalf("complete licensed+opted-in FQDN snapshot must compile, got %+v", got)
 	}
 
@@ -215,7 +238,7 @@ func TestFQDNReferenceAndSnapshotGatesFailClosed(t *testing.T) {
 			s.FQDNRuleReferences = append([]policy.FQDNRuleReference(nil), base.FQDNRuleReferences...)
 			mutate(&s)
 			got := policy.Compile(s)[nodeA]
-			if len(got.Allow) != 0 || len(got.FQDNGenerations) != 0 || got.Version == 8 {
+			if len(got.Allow) != 0 || len(got.FQDNGenerations) != 0 || got.Version == 9 {
 				t.Fatalf("%s must withdraw FQDN enforcement, got %+v", name, got)
 			}
 		})
@@ -1139,11 +1162,13 @@ func TestB1DeviceGrantIsTransportAgnostic(t *testing.T) {
 
 	// (2) checkpoint: the AllowEntry field set is a conscious B1 boundary. A new field here is a
 	// deliberate decision — if it can encode transport, an OVPN grant could diverge from a WG grant
-	// at the same /32. Observability fields (RuleID, SrcDeviceID) are hash-EXCLUDED and listed so
-	// the guard is exact.
+	// at the same /32. FQDNManaged is the S21 tuple-provenance interlock, not a
+	// transport discriminator: it is false for this ordinary device grant and is
+	// consumed only by the gateway's selective hostname-tuple recovery. Observability
+	// fields (RuleID, SrcDeviceID) are hash-EXCLUDED and listed so the guard is exact.
 	want := map[string]bool{
 		"SrcIP": true, "DstCIDR": true, "Protocol": true, "PortLow": true, "PortHigh": true,
-		"RuleID": true, "SrcDeviceID": true,
+		"RuleID": true, "SrcDeviceID": true, "FQDNManaged": true,
 	}
 	rt := reflect.TypeOf(policyspec.AllowEntry{})
 	for i := 0; i < rt.NumField(); i++ {

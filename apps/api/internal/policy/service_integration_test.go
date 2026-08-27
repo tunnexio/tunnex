@@ -122,7 +122,7 @@ func TestBuildSnapshotConsumesOnlyActiveSelectedFQDNGeneration(t *testing.T) {
 		t.Fatalf("active FQDN snapshot missing or not gated correctly: %#v", snap)
 	}
 	compiled, exists := policy.Compile(snap)[f.node]
-	if !exists || len(compiled.Allow) != 1 || compiled.Allow[0].DstCIDR != "10.20.30.40/32" || compiled.Version != 8 {
+	if !exists || len(compiled.Allow) != 1 || compiled.Allow[0].DstCIDR != "10.20.30.40/32" || !compiled.Allow[0].FQDNManaged || compiled.Version != 9 {
 		t.Fatalf("active selected FQDN generation did not compile: %#v", compiled)
 	}
 

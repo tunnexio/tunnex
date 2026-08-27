@@ -37,12 +37,13 @@ func TestNMinusOneAgentsCanStillApply(t *testing.T) {
 	// And the artifact must not be stamped ABOVE the CP's own protocol version — an artifact no agent could
 	// ever apply, including a brand-new one.
 	for name, c := range map[string]Compiled{
-		"zero-config":  zeroConfig,
-		"site-source":  {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24", Protocol: "any"}}},
-		"with-routes":  {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
-		"with-pool":    {PoolCIDR: "10.99.0.0/24"},
-		"with-k8s-vip": {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
-		"with-fqdn":    {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
+		"zero-config":       zeroConfig,
+		"site-source":       {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24", Protocol: "any"}}},
+		"with-routes":       {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
+		"with-pool":         {PoolCIDR: "10.99.0.0/24"},
+		"with-k8s-vip":      {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
+		"with-fqdn":         {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
+		"with-fqdn-managed": {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
 	} {
 		v := RequiredVersion(c)
 		if v > ProtocolVersion {
@@ -69,6 +70,7 @@ func TestNewContentRaisesRequiredVersion(t *testing.T) {
 		"k8s vip map (v7)":      {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
 		"k8s dns zone (v7)":     {K8sDNSZones: []K8sDNSZone{{Zone: "prod.k8s.local", ListenVIP: "100.64.0.2"}}},
 		"fqdn generations (v8)": {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
+		"fqdn ownership (v9)":   {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
 	} {
 		if got := RequiredVersion(c); got <= base {
 			t.Fatalf("%s does not raise RequiredVersion above the baseline v%d (got v%d) — an old agent "+
@@ -91,5 +93,23 @@ func TestFQDNGenerationCrossesTheV8CompatibilityBoundary(t *testing.T) {
 	}}}
 	if got := RequiredVersion(artifact); got <= preFQDNMax {
 		t.Fatalf("FQDN generation artifact stamps v%d; a v%d agent would accept a shape it cannot render", got, preFQDNMax)
+	}
+}
+
+// TestFQDNManagedCrossesTheV9CompatibilityBoundary pins the D5 ownership
+// interlock. A v8 agent can match expanded hostname tuples, but cannot mark
+// their conntrack flows for selective withdrawal, so it must loudly refuse the
+// v9 artifact rather than silently broadening recovery.
+func TestFQDNManagedCrossesTheV9CompatibilityBoundary(t *testing.T) {
+	const preFQDNManagedMax = 8
+	artifact := Compiled{Allow: []AllowEntry{{
+		SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP,
+		PortLow: 443, PortHigh: 443, FQDNManaged: true,
+	}}}
+	if ProtocolVersion <= preFQDNManagedMax {
+		t.Fatalf("FQDN ownership requires a protocol bump above v%d; got v%d", preFQDNManagedMax, ProtocolVersion)
+	}
+	if got := RequiredVersion(artifact); got <= preFQDNManagedMax {
+		t.Fatalf("FQDN-managed artifact stamps v%d; a v%d agent would accept tuples without selective withdrawal", got, preFQDNManagedMax)
 	}
 }

@@ -424,13 +424,13 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		PortLow, PortHigh int
 	}
 	type nodeAcc struct {
-		set         map[allowKey]bool
+		set         map[allowKey]int
 		list        []policyspec.AllowEntry
 		generations map[string]policyspec.FQDNGeneration
 	}
 	acc := map[uuid.UUID]*nodeAcc{}
 	for nodeID := range nodeSet {
-		acc[nodeID] = &nodeAcc{set: map[allowKey]bool{}, generations: map[string]policyspec.FQDNGeneration{}}
+		acc[nodeID] = &nodeAcc{set: map[allowKey]int{}, generations: map[string]policyspec.FQDNGeneration{}}
 	}
 	add := func(nodeID uuid.UUID, e policyspec.AllowEntry) {
 		// Every caller's target is in nodeSet by construction (devices + SiteNodes + the seeded hub) —
@@ -438,10 +438,17 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		// error the acc lookup surfaces immediately, never a silent artifact for an unvetted node.
 		a := acc[nodeID]
 		k := allowKey{e.SrcIP, e.DstCIDR, e.Protocol, e.PortLow, e.PortHigh}
-		if a.set[k] {
-			return // first rule to grant this tuple keeps the rule_id stamp
+		if index, exists := a.set[k]; exists {
+			// Preserve the first rule's observability metadata, but retain FQDN
+			// provenance when any current grant for this tuple came from an active
+			// FQDN generation. Otherwise a v9 gateway could treat it as an
+			// ordinary CIDR tuple during retirement recovery.
+			if e.FQDNManaged {
+				a.list[index].FQDNManaged = true
+			}
+			return
 		}
-		a.set[k] = true
+		a.set[k] = len(a.list)
 		a.list = append(a.list, e)
 	}
 	addGeneration := func(nodeID uuid.UUID, g policyspec.FQDNGeneration) {
@@ -560,7 +567,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 				for _, node := range devGrantNodes(d.NodeID, uuid.Nil) {
 					addGeneration(node, generation)
 					for _, answer := range answers {
-						add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()})
+						add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String(), FQDNManaged: true})
 					}
 				}
 			case "group":
@@ -715,7 +722,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			generation, answers, active := activeFQDNGeneration(res)
 			if fqdnEnabled && referenced && !fqdnAmbiguousRule[r.ID] && found && active {
 				for _, answer := range answers {
-					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, FQDNManaged: true})
 				}
 				for node := range enforceNodes {
 					addGeneration(node, generation)
@@ -743,12 +750,13 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			for _, sc := range srcCIDRs {
 				for _, d := range dsts {
 					add(node, policyspec.AllowEntry{
-						SrcIP:    sc, // a CIDR — the site LAN source (the v5 content trigger, RequiredVersion)
-						DstCIDR:  d.DstCIDR,
-						Protocol: d.Protocol,
-						PortLow:  d.PortLow,
-						PortHigh: d.PortHigh,
-						RuleID:   r.ID.String(),
+						SrcIP:       sc, // a CIDR — the site LAN source (the v5 content trigger, RequiredVersion)
+						DstCIDR:     d.DstCIDR,
+						Protocol:    d.Protocol,
+						PortLow:     d.PortLow,
+						PortHigh:    d.PortHigh,
+						RuleID:      r.ID.String(),
+						FQDNManaged: d.FQDNManaged,
 					})
 				}
 			}
@@ -955,6 +963,9 @@ func sortAllows(a []policyspec.AllowEntry) {
 		if a[i].PortLow != a[j].PortLow {
 			return a[i].PortLow < a[j].PortLow
 		}
-		return a[i].PortHigh < a[j].PortHigh
+		if a[i].PortHigh != a[j].PortHigh {
+			return a[i].PortHigh < a[j].PortHigh
+		}
+		return !a[i].FQDNManaged && a[j].FQDNManaged
 	})
 }

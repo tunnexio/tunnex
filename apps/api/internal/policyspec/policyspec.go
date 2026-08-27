@@ -202,9 +202,14 @@ type AffectedDevice struct {
 // emits no map, requires no bump, and its agents never see v7 (the zero-config golden).
 // v8 (S21): an artifact carrying FQDN answer generations has expanded an
 // approved hostname into concrete /32 and /128 enforcement tuples. Generation
-// identity is part of the hash so withdrawal/rebinding cannot be hash-blind; an
-// older agent must refuse this content loudly.
-const ProtocolVersion = 8
+// identity is part of the hash so withdrawal/rebinding cannot be hash-blind.
+//
+// v9 (S21 D5): FQDN-expanded tuples carry FQDNManaged provenance. The gateway
+// uses it to reserve the S21 conntrack ownership mark and flush only retired
+// hostname tuples. A v8 gateway cannot safely distinguish those tuples from an
+// ordinary CIDR grant, so it must refuse the v9 artifact loudly rather than
+// silently broadening restart recovery.
+const ProtocolVersion = 9
 
 // SupportedWindow is the AGENT-VERSION CONTRACT the upgrade path commits to (S11 D1): the current protocol
 // version and the one before it. An agent at either must be able to run against this control plane, which is
@@ -234,6 +239,11 @@ const SupportedWindow = 2
 // leaves this function untouched is a silent-accept bug — the artifact would carry new content at an old
 // version and old agents would accept it. The D2 checklist asks "RequiredVersion updated? y/n".
 func RequiredVersion(c Compiled) int {
+	for _, entry := range c.Allow {
+		if entry.FQDNManaged {
+			return 9
+		}
+	}
 	if len(c.FQDNGenerations) > 0 {
 		return 8
 	}
@@ -295,6 +305,12 @@ type AllowEntry struct {
 	// user, CP-side) WITHOUT any src_ip->device DB reconstruction. NEVER enforcement —
 	// EXCLUDED from CanonicalHash. Empty on v1/v2 wire / a src with no grant.
 	SrcDeviceID string `json:"src_device_id,omitempty"`
+	// FQDNManaged (v9, S21 D5) is enforcement provenance. It is true only for
+	// concrete /32 or /128 tuples expanded from an active FQDN generation. The
+	// gateway assigns the reserved S21 conntrack mark to those flows so a
+	// withdrawn generation can flush exactly its retired tuples. It is part of
+	// CanonicalHash: changing the provenance changes required recovery behavior.
+	FQDNManaged bool `json:"fqdn_managed,omitempty"`
 }
 
 // SubjectAttribution is observability-only identity metadata captured in the

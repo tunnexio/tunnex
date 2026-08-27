@@ -13,11 +13,12 @@ import (
 // tags match the v1 AllowEntry EXACTLY, so artifacts with identical grants hash
 // IDENTICALLY across the v2/v3 field additions (the added metadata never touches this).
 type hashAllow struct {
-	SrcIP    string   `json:"src_ip"`
-	DstCIDR  string   `json:"dst_cidr"`
-	Protocol Protocol `json:"protocol"`
-	PortLow  int      `json:"port_low,omitempty"`
-	PortHigh int      `json:"port_high,omitempty"`
+	SrcIP       string   `json:"src_ip"`
+	DstCIDR     string   `json:"dst_cidr"`
+	Protocol    Protocol `json:"protocol"`
+	PortLow     int      `json:"port_low,omitempty"`
+	PortHigh    int      `json:"port_high,omitempty"`
+	FQDNManaged bool     `json:"fqdn_managed,omitempty"`
 }
 
 // hashView is the enforcement projection of a whole Compiled. Same rule as hashAllow:
@@ -43,7 +44,7 @@ func projectForHash(c Compiled) hashView {
 	if c.Allow != nil {
 		v.Allow = make([]hashAllow, len(c.Allow))
 		for i, e := range c.Allow {
-			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh}
+			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh, FQDNManaged: e.FQDNManaged}
 		}
 	}
 	if c.FQDNGenerations != nil {
