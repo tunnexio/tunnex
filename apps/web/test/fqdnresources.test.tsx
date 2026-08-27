@@ -7,18 +7,20 @@ let role = "admin";
 let impact: Record<string, unknown> = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true };
 let resourceLoadError = "";
 let settingLoadError = "";
+let orgId = "org-a";
 
-vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org-a", name: "Org A" } }) }));
+vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: orgId, name: orgId === "org-a" ? "Org A" : "Org B" } }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a" } } }) }));
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
-  return { ...actual, api: { GET: vi.fn(async (path: string) => {
+  return { ...actual, api: { GET: vi.fn(async (path: string, options?: { params?: { path?: { orgId?: string } } }) => {
+    const requestOrg = options?.params?.path?.orgId;
     if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role }] };
     if (path.endsWith("/fqdn-resources/setting")) return settingLoadError ? { error: { error: { message: settingLoadError } } } : { data: { enabled: false } };
     if (path.endsWith("/impact")) return { data: impact };
     if (path.endsWith("/fqdn-resources")) return resourceLoadError ? { error: { error: { message: resourceLoadError } } } : { data: fqdnResources };
-    if (path.endsWith("/sites")) return { data: [{ id: "site-a", name: "HQ" }] };
-    if (path.endsWith("/nodes")) return { data: [{ id: "gateway-a", name: "HQ gateway", status: "active", enrolled_kind: "gateway", site_id: "site-a" }] };
+    if (path.endsWith("/sites")) return { data: requestOrg === "org-b" ? [{ id: "site-b", name: "Branch" }] : [{ id: "site-a", name: "HQ" }] };
+    if (path.endsWith("/nodes")) return { data: requestOrg === "org-b" ? [{ id: "gateway-b", name: "Branch gateway", status: "active", enrolled_kind: "gateway", site_id: "site-b" }] : [{ id: "gateway-a", name: "HQ gateway", status: "active", enrolled_kind: "gateway", site_id: "site-a" }] };
     if (path.endsWith("/resources")) return { data: [] };
     return { data: [] };
   }), POST: vi.fn(async () => ({ data: {} })), PATCH: vi.fn(async () => ({ data: {} })), PUT: vi.fn(async () => ({ data: {} })), DELETE: vi.fn(async () => ({ data: {} })) } };
@@ -28,7 +30,7 @@ import { api } from "../src/lib/api";
 import AccessResources from "../src/pages/AccessResources";
 
 function page() { return render(<MemoryRouter><AccessResources /></MemoryRouter>); }
-beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true }; resourceLoadError = ""; settingLoadError = ""; fqdnResources = []; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); vi.mocked(api.PUT).mockClear(); vi.mocked(api.DELETE).mockClear(); });
+beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true }; resourceLoadError = ""; settingLoadError = ""; orgId = "org-a"; fqdnResources = []; vi.mocked(api.GET).mockClear(); vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); vi.mocked(api.PUT).mockClear(); vi.mocked(api.DELETE).mockClear(); });
 afterEach(cleanup);
 
 describe("FQDN access resources", () => {
@@ -58,6 +60,25 @@ describe("FQDN access resources", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
     await waitFor(() => expect(vi.mocked(api.POST)).toHaveBeenCalled());
     expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { fqdn: "orders.internal.example.com", protocol: "tcp", port_low: 443, port_high: null, resolver_context: { site_id: "site-a", gateway_id: "gateway-a" } } });
+  });
+
+  it("withdraws prior-org resolver selection and dialog state before loading the new organization", async () => {
+    const rendered = page();
+    fireEvent.click(await screen.findByRole("button", { name: "Create FQDN resource" }));
+    await screen.findByRole("option", { name: "HQ" });
+    fireEvent.change(screen.getByLabelText("Resolver site (optional)"), { target: { value: "site-a" } });
+    fireEvent.change(screen.getByLabelText("Gateway"), { target: { value: "gateway-a" } });
+    orgId = "org-b";
+    rendered.rerender(<MemoryRouter><AccessResources /></MemoryRouter>);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Create FQDN resource" }));
+    expect((screen.getByLabelText("Resolver site (optional)") as HTMLSelectElement).value).toBe("");
+    await screen.findByRole("option", { name: "Branch" });
+    expect(screen.queryByRole("option", { name: "HQ" })).toBeNull();
+    expect(vi.mocked(api.POST)).not.toHaveBeenCalled();
+    const getCalls = vi.mocked(api.GET).mock.calls as unknown as unknown[][];
+    expect(getCalls.some((call) => JSON.stringify(call).includes('"org-b"'))).toBe(true);
   });
 
   it("keeps inventory and narrow-form controls accessible on responsive layouts", async () => {
