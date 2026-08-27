@@ -23,6 +23,12 @@ const (
 	// (owner/admin) capability, deliberately not a members-level read.
 	PermPolicyView   Permission = "policy:view"
 	PermPolicyManage Permission = "policy:manage"
+	// FQDN resources are a separate, resolver-backed destination capability. They
+	// must never inherit policy permissions implicitly: callers need an explicit
+	// FQDN read or manage grant before the later entitlement and organization
+	// opt-in gates can disclose or mutate resolver-backed state (S21 D7).
+	PermFQDNResourceView   Permission = "fqdn_resource:view"
+	PermFQDNResourceManage Permission = "fqdn_resource:manage"
 	// PermDeviceApprove governs device posture (S7.3, enterprise): approving/rejecting a
 	// pending device AND flipping the org device-approval gate. A distinct capability from
 	// policy:manage because device-trust is its own governance domain (an org may require
@@ -177,6 +183,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberManage:                true,
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
+		PermFQDNResourceView:            true,
+		PermFQDNResourceManage:          true,
 		PermDeviceApprove:               true,
 		PermDeviceRestore:               true,
 		PermDeviceTransfer:              true,
@@ -207,6 +215,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberManage:                true,
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
+		PermFQDNResourceView:            true,
+		PermFQDNResourceManage:          true,
 		PermDeviceApprove:               true,
 		PermDeviceRestore:               true,
 		PermDeviceTransfer:              true,
@@ -294,7 +304,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermOrgView, PermMemberList, PermPolicyView, PermAgentViewPrivileged:
+	case PermOrgView, PermMemberList, PermPolicyView, PermFQDNResourceView, PermAgentViewPrivileged:
 		return false
 	default:
 		return true

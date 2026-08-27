@@ -5095,6 +5095,80 @@ components:
         port_high: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
         label: { type: string, nullable: true, maxLength: 60, description: "Free-text note describing what this destination IS. Operator-asserted; never inferred." }
 
+    # S21 FQDN resources are deliberately additive to the established static-CIDR
+    # Resource contract. Routes remain unpublished until the migration, resolver
+    # lifecycle, entitlement, and compiler consumers are implemented together.
+    # Do not overload Resource.cidr with a hostname: it would make existing CIDR
+    # readers silently miscompile a hostname as an address prefix.
+    FQDNResource:
+      type: object
+      required: [id, org_id, name, destination_kind, fqdn, protocol, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        name: { type: string }
+        destination_kind:
+          type: string
+          enum: [fqdn]
+          description: "Exactly one destination kind. This contract is only for normalized FQDN destinations; static CIDR resources retain the existing Resource contract."
+        fqdn:
+          type: string
+          description: "Normalized lower-case IDNA ASCII FQDN without a trailing dot. Never a URL, IP literal, wildcard, port, underscore, or empty label."
+        protocol: { type: string, enum: [any, tcp, udp] }
+        port_low: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
+        port_high: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
+        label: { type: string, nullable: true }
+        resolver_context:
+          allOf: [{ $ref: "#/components/schemas/FQDNResolverContext" }]
+          nullable: true
+          description: "Null means saved draft: it must not compile or authorize traffic."
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    FQDNResourceRequest:
+      type: object
+      required: [name, fqdn, protocol]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        fqdn: { type: string, minLength: 1, maxLength: 253, description: "Input normalized and validated by the server against the FQDN-only contract." }
+        protocol: { type: string, enum: [any, tcp, udp] }
+        port_low: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
+        port_high: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
+        label: { type: string, nullable: true, maxLength: 60 }
+        resolver_context:
+          allOf: [{ $ref: "#/components/schemas/FQDNResolverContextRequest" }]
+          nullable: true
+          description: "An explicit selected Site/Gateway resolver context. Null saves an unbound draft only."
+
+    FQDNResolverContext:
+      type: object
+      required: [site_id, gateway_id, site_name, gateway_name]
+      additionalProperties: false
+      properties:
+        site_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+        site_name: { type: string }
+        gateway_name: { type: string }
+
+    FQDNResolverContextRequest:
+      type: object
+      required: [site_id, gateway_id]
+      additionalProperties: false
+      properties:
+        site_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+
+    FQDNResourceImpact:
+      type: object
+      required: [resource_id, referencing_rule_count, generation_withdrawal_required]
+      additionalProperties: false
+      properties:
+        resource_id: { type: string, format: uuid }
+        referencing_rule_count: { type: integer, minimum: 0, description: "Server-computed active policy-rule impact; never browser-inferred." }
+        generation_withdrawal_required: { type: boolean, description: "True only when a live FQDN generation exists and must be withdrawn before deletion." }
+
     PolicyRule:
       type: object
       required: [id, org_id, src_kind, dst_kind, created_at, cidr_outside_org_ranges, dst_k8s_service_vanished, enabled, managed_by_operator, managed_by_agent_template, managed_by_agent_access]

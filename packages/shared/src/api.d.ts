@@ -4005,6 +4005,65 @@ export interface components {
             /** @description Free-text note describing what this destination IS. Operator-asserted; never inferred. */
             label?: string | null;
         };
+        FQDNResource: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            name: string;
+            /**
+             * @description Exactly one destination kind. This contract is only for normalized FQDN destinations; static CIDR resources retain the existing Resource contract.
+             * @enum {string}
+             */
+            destination_kind: "fqdn";
+            /** @description Normalized lower-case IDNA ASCII FQDN without a trailing dot. Never a URL, IP literal, wildcard, port, underscore, or empty label. */
+            fqdn: string;
+            /** @enum {string} */
+            protocol: "any" | "tcp" | "udp";
+            port_low?: number | null;
+            port_high?: number | null;
+            label?: string | null;
+            /** @description Null means saved draft: it must not compile or authorize traffic. */
+            resolver_context?: components["schemas"]["FQDNResolverContext"] | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        FQDNResourceRequest: {
+            name: string;
+            /** @description Input normalized and validated by the server against the FQDN-only contract. */
+            fqdn: string;
+            /** @enum {string} */
+            protocol: "any" | "tcp" | "udp";
+            port_low?: number | null;
+            port_high?: number | null;
+            label?: string | null;
+            /** @description An explicit selected Site/Gateway resolver context. Null saves an unbound draft only. */
+            resolver_context?: components["schemas"]["FQDNResolverContextRequest"] | null;
+        };
+        FQDNResolverContext: {
+            /** Format: uuid */
+            site_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            site_name: string;
+            gateway_name: string;
+        };
+        FQDNResolverContextRequest: {
+            /** Format: uuid */
+            site_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+        };
+        FQDNResourceImpact: {
+            /** Format: uuid */
+            resource_id: string;
+            /** @description Server-computed active policy-rule impact; never browser-inferred. */
+            referencing_rule_count: number;
+            /** @description True only when a live FQDN generation exists and must be withdrawn before deletion. */
+            generation_withdrawal_required: boolean;
+        };
         PolicyRule: {
             managed_by_operator: boolean;
             /** @description True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces. */
