@@ -109,6 +109,27 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 		t.Fatalf("cross-org completion=%v want identity", err)
 	}
 
+	// A configuration revision invalidates already-pending pull work before a
+	// reconnecting gateway can query its retired endpoint snapshot.
+	pendingOldConfig := request
+	pendingOldConfig.RequestID = uuid.New()
+	if err := mailbox.Enqueue(ctx, pendingOldConfig); err != nil {
+		t.Fatal(err)
+	}
+	config2 := uuid.New()
+	exec(`UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config)
+	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,2,'active')`, config2, org, site, gateway)
+	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.54'::inet,53,'tcp')`, config2, org)
+	if pending, err := mailbox.PendingForGateway(ctx, org, gateway, 10); err != nil || len(pending) != 0 {
+		t.Fatalf("retired config request remained deliverable: pending=%#v err=%v", pending, err)
+	}
+	var oldState string
+	if err := pool.QueryRow(ctx, `SELECT state FROM fqdn_gateway_dns_requests WHERE request_id=$1`, pendingOldConfig.RequestID).Scan(&oldState); err != nil || oldState != "expired" {
+		t.Fatalf("retired config request state=%q err=%v want expired", oldState, err)
+	}
+	request.ResolverConfigID, request.ResolverConfigVersion = config2, 2
+	request.ResolverEndpoints = []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.0.54"), Port: 53, Transport: "tcp"}}
+
 	// A response for a context that was reselected between request and
 	// completion is expired, not published under the newly selected gateway.
 	second := request

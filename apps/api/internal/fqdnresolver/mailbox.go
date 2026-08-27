@@ -84,7 +84,28 @@ func (m *PostgresGatewayDNSMailbox) PendingForGateway(ctx context.Context, orgID
 	if m == nil || m.pool == nil || orgID == uuid.Nil || gatewayID == uuid.Nil || limit <= 0 {
 		return nil, nil
 	}
-	if _, err := m.pool.Exec(ctx, `UPDATE fqdn_gateway_dns_requests SET state='expired',expired_at=now() WHERE org_id=$1 AND gateway_id=$2 AND state='pending' AND deadline<now()`, orgID, gatewayID); err != nil {
+	// Do not hand a reconnecting gateway an old resolver endpoint revision. A
+	// request is deliverable only while its resource still selects this exact
+	// active configuration. This guards the pull path itself, not merely the
+	// later completion check, so endpoint replacement/removal fails closed
+	// before the gateway can query a retired resolver.
+	if _, err := m.pool.Exec(ctx, `
+UPDATE fqdn_gateway_dns_requests q
+SET state='expired',expired_at=now()
+WHERE q.org_id=$1 AND q.gateway_id=$2 AND q.state='pending'
+  AND (
+    q.deadline < now()
+    OR NOT EXISTS (
+      SELECT 1
+      FROM fqdn_resources r
+      JOIN fqdn_resolver_context_configs c
+        ON c.id=q.resolver_config_id AND c.org_id=q.org_id
+       AND c.state='active' AND c.version=q.resolver_config_version
+       AND c.site_id=q.site_id AND c.gateway_id=q.gateway_id
+      WHERE r.id=q.resource_id AND r.org_id=q.org_id
+        AND r.resolver_site_id=q.site_id AND r.resolver_node_id=q.gateway_id
+    )
+  )`, orgID, gatewayID); err != nil {
 		return nil, err
 	}
 	rows, err := m.pool.Query(ctx, `
