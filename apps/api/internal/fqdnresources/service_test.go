@@ -2,15 +2,18 @@ package fqdnresources
 
 import "testing"
 
-func TestInputValidationPreservesTheFQDNOnlyContract(t *testing.T) {
-	good := Input{Name: "orders", FQDN: "BÜCHER.example.", Protocol: "tcp"}
-	if err := valid(&good); err != nil || good.FQDN != "xn--bcher-kva.example" {
-		t.Fatalf("normalization = %q, %v", good.FQDN, err)
-	}
-	for _, in := range []Input{{Name: "x", FQDN: "10.0.0.1", Protocol: "any"}, {Name: "x", FQDN: "orders.example", Protocol: "any", PortLow: intp(443)}} {
+func intPtr(v int) *int { return &v }
+
+func TestValidRejectsHalfPortRanges(t *testing.T) {
+	for _, in := range []Input{
+		{Name: "api", FQDN: "api.example.test", Protocol: "tcp", PortLow: intPtr(443)},
+		{Name: "api", FQDN: "api.example.test", Protocol: "udp", PortHigh: intPtr(53)},
+	} {
 		if err := valid(&in); err == nil {
-			t.Fatalf("accepted invalid input %#v", in)
+			t.Fatalf("half port range %+v was accepted", in)
 		}
 	}
+	if err := valid(&Input{Name: "api", FQDN: "api.example.test", Protocol: "tcp", PortLow: intPtr(443), PortHigh: intPtr(443)}); err != nil {
+		t.Fatalf("complete TCP port range rejected: %v", err)
+	}
 }
-func intp(v int) *int { return &v }

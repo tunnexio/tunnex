@@ -458,23 +458,27 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 	// Destination shape: exactly one dst_* set, matching dst_kind.
 	switch in.DstKind {
 	case "resource":
-		if in.DstResourceID == nil || in.DstGroupID != nil || in.DstSiteID != nil {
+		if in.DstResourceID == nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=resource requires dst_resource_id (and no dst_group_id/dst_site_id)")
 		}
 	case "group":
-		if in.DstGroupID == nil || in.DstResourceID != nil || in.DstSiteID != nil {
+		if in.DstGroupID == nil || in.DstResourceID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=group requires dst_group_id (and no dst_resource_id/dst_site_id)")
 		}
 	case "site":
-		if in.DstSiteID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstK8sServiceID != nil {
+		if in.DstSiteID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstK8sServiceID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=site requires dst_site_id (and no dst_resource_id/dst_group_id/dst_k8s_service_id)")
 		}
 	case "k8s_service": // S10.3: a grant reaching an exposed K8s Service (governance is enterprise)
-		if in.DstK8sServiceID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil {
+		if in.DstK8sServiceID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=k8s_service requires dst_k8s_service_id (and no dst_resource_id/dst_group_id/dst_site_id)")
 		}
+	case "fqdn_resource":
+		if in.DstFQDNResourceID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil {
+			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=fqdn_resource requires dst_fqdn_resource_id (and no other dst_ id)")
+		}
 	default:
-		return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind must be resource, group, site, or k8s_service")
+		return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind must be resource, group, site, k8s_service, or fqdn_resource")
 	}
 	// ⛔ THE FIRST CROSS-FIELD CHECK THIS FUNCTION HAS EVER HAD, AND ITS ABSENCE WAS THE DEFECT.
 	//
@@ -596,13 +600,21 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 				return e
 			}
 		}
+		if in.DstFQDNResourceID != nil {
+			if _, e := q.GetFQDNResourceForPolicy(ctx, sqlc.GetFQDNResourceForPolicyParams{ID: *in.DstFQDNResourceID, OrgID: orgID}); e != nil {
+				if errors.Is(e, pgx.ErrNoRows) {
+					return apierr.BadRequest("fqdn_resource_not_found", "dst FQDN resource not found")
+				}
+				return e
+			}
+		}
 		var e error
 		r, e = q.CreatePolicyRule(ctx, sqlc.CreatePolicyRuleParams{
 			OrgID: orgID, SrcKind: srcKind, SrcGroupID: toPgUUIDVal(in.SrcGroupID), SrcUserID: toPgUUID(in.SrcUserID),
 			SrcSiteID: toPgUUID(in.SrcSiteID), SrcCidr: in.SrcCIDR,
 			SrcDeviceID: toPgUUID(in.SrcAgentDeviceID),
 			DstKind:     in.DstKind, DstResourceID: toPgUUID(in.DstResourceID), DstGroupID: toPgUUID(in.DstGroupID),
-			DstSiteID: toPgUUID(in.DstSiteID), DstK8sServiceID: toPgUUID(in.DstK8sServiceID), ExpiresAt: toPgTimestamptz(in.ExpiresAt),
+			DstSiteID: toPgUUID(in.DstSiteID), DstK8sServiceID: toPgUUID(in.DstK8sServiceID), DstFqdnResourceID: toPgUUID(in.DstFQDNResourceID), ExpiresAt: toPgTimestamptz(in.ExpiresAt),
 			ManagedByMachine: pgtype.UUID{Bytes: managedByMachine, Valid: managedByMachine != uuid.Nil},
 		})
 		if e != nil {

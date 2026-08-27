@@ -355,16 +355,17 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
 	in := policyspec.RuleInput{
-		SrcUserID:        req.Body.SrcUserId,
-		SrcSiteID:        req.Body.SrcSiteId,   // S8.2: src_kind=site
-		SrcCIDR:          req.Body.SrcCidr,     // S8.7: src_kind=cidr
-		SrcAgentDeviceID: req.Body.SrcDeviceId, // S15.3: src_kind=agent
-		DstKind:          string(req.Body.DstKind),
-		DstResourceID:    req.Body.DstResourceId,
-		DstGroupID:       req.Body.DstGroupId,
-		DstSiteID:        req.Body.DstSiteId,       // S8.1: dst_kind=site
-		DstK8sServiceID:  req.Body.DstK8sServiceId, // S10.3: dst_kind=k8s_service
-		ExpiresAt:        req.Body.ExpiresAt,
+		SrcUserID:         req.Body.SrcUserId,
+		SrcSiteID:         req.Body.SrcSiteId,   // S8.2: src_kind=site
+		SrcCIDR:           req.Body.SrcCidr,     // S8.7: src_kind=cidr
+		SrcAgentDeviceID:  req.Body.SrcDeviceId, // S15.3: src_kind=agent
+		DstKind:           string(req.Body.DstKind),
+		DstResourceID:     req.Body.DstResourceId,
+		DstGroupID:        req.Body.DstGroupId,
+		DstSiteID:         req.Body.DstSiteId,       // S8.1: dst_kind=site
+		DstK8sServiceID:   req.Body.DstK8sServiceId, // S10.3: dst_kind=k8s_service
+		DstFQDNResourceID: req.Body.DstFqdnResourceId,
+		ExpiresAt:         req.Body.ExpiresAt,
 	}
 	if req.Body.SrcKind != nil {
 		in.SrcKind = string(*req.Body.SrcKind)
@@ -600,8 +601,14 @@ func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...po
 	out := api.PolicyRule{
 		Id: r.ID, OrgId: r.OrgID, SrcKind: api.PolicyRuleSrcKind(r.SrcKind),
 		DstKind: api.PolicyRuleDstKind(r.DstKind), CreatedAt: r.CreatedAt,
-		CidrOutsideOrgRanges:   cidrOutside,              // S8.7 warn-not-refuse (D1); always false for non-cidr sources
-		DstK8sServiceVanished:  k8sVanished,              // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
+		CidrOutsideOrgRanges:  cidrOutside, // S8.7 warn-not-refuse (D1); always false for non-cidr sources
+		DstK8sServiceVanished: k8sVanished, // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
+		FqdnDestinationStatus: func() api.PolicyRuleFqdnDestinationStatus {
+			if r.DstKind == "fqdn_resource" {
+				return api.PendingCompiler
+			}
+			return api.NotApplicable
+		}(),
 		Enabled:                !r.Disabled,              // F3: positive framing — a rule is enabled unless disabled
 		ManagedByOperator:      r.ManagedByMachine.Valid, // S10.2 D2 cond 1: GitOps-managed → badge + warn-on-edit
 		ManagedByAgentTemplate: owner.agentTemplate,
@@ -648,6 +655,10 @@ func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...po
 	if r.DstK8sServiceID.Valid { // S10.3: dst_kind=k8s_service
 		u := uuid.UUID(r.DstK8sServiceID.Bytes)
 		out.DstK8sServiceId = &u
+	}
+	if r.DstFqdnResourceID.Valid {
+		u := uuid.UUID(r.DstFqdnResourceID.Bytes)
+		out.DstFqdnResourceId = &u
 	}
 	if r.ExpiresAt.Valid {
 		t := r.ExpiresAt.Time

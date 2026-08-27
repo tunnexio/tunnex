@@ -117,13 +117,14 @@ type RuleInput struct {
 	// SrcAgentDeviceID (S15.3) — set iff SrcKind=="agent": the agent DEVICE whose /32 is the source.
 	// ⚠ Named distinctly from AllowEntry.SrcDeviceID (observability metadata) so the two cannot be confused:
 	// this one is POLICY INPUT and decides what the rule matches.
-	SrcAgentDeviceID *uuid.UUID
-	DstKind          string // resource | group | site (S8.1) | k8s_service (S10.3)
-	DstResourceID    *uuid.UUID
-	DstGroupID       *uuid.UUID
-	DstSiteID        *uuid.UUID // S8.1: set iff DstKind=="site"
-	DstK8sServiceID  *uuid.UUID // S10.3: set iff DstKind=="k8s_service"
-	ExpiresAt        *time.Time // nil = permanent; set = temporary grant
+	SrcAgentDeviceID  *uuid.UUID
+	DstKind           string // resource | group | site (S8.1) | k8s_service (S10.3) | fqdn_resource (S21)
+	DstResourceID     *uuid.UUID
+	DstGroupID        *uuid.UUID
+	DstSiteID         *uuid.UUID // S8.1: set iff DstKind=="site"
+	DstK8sServiceID   *uuid.UUID // S10.3: set iff DstKind=="k8s_service"
+	DstFQDNResourceID *uuid.UUID // S21: set iff DstKind=="fqdn_resource"; resolver-backed destination identity
+	ExpiresAt         *time.Time // nil = permanent; set = temporary grant
 
 }
 

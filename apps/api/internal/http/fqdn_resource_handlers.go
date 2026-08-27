@@ -62,7 +62,8 @@ func (s apiServer) CreateFQDNResource(ctx context.Context, req api.CreateFQDNRes
 	if err != nil {
 		return nil, err
 	}
-	r, err := svc.Create(ctx, req.OrgId, fqdnInput(*req.Body))
+	uid, sys, cause := auditActor(ctx)
+	r, err := svc.Create(ctx, req.OrgId, fqdnInput(*req.Body), uid, sys, cause)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +80,8 @@ func (s apiServer) UpdateFQDNResource(ctx context.Context, req api.UpdateFQDNRes
 	if err != nil {
 		return nil, err
 	}
-	r, err := svc.Update(ctx, req.OrgId, req.ResourceId, fqdnInput(*req.Body))
+	uid, sys, cause := auditActor(ctx)
+	r, err := svc.Update(ctx, req.OrgId, req.ResourceId, fqdnInput(*req.Body), uid, sys, cause)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +99,7 @@ func (s apiServer) GetFQDNResourceImpact(ctx context.Context, req api.GetFQDNRes
 	if err != nil {
 		return nil, err
 	}
-	return api.GetFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, ReferencingRuleCount: i.ReferencingRuleCount, GenerationWithdrawalRequired: i.GenerationWithdrawalRequired}, nil
+	return api.GetFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, ReferencingRuleCount: i.ReferencingRuleCount, ReferencingRuleIds: i.ReferencingRuleIDs, GenerationWithdrawalRequired: i.GenerationWithdrawalRequired}, nil
 }
 func (s apiServer) DeleteFQDNResource(ctx context.Context, req api.DeleteFQDNResourceRequestObject) (api.DeleteFQDNResourceResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
@@ -107,7 +109,8 @@ func (s apiServer) DeleteFQDNResource(ctx context.Context, req api.DeleteFQDNRes
 	if err != nil {
 		return nil, err
 	}
-	if err := svc.Delete(ctx, req.OrgId, req.ResourceId); err != nil {
+	uid, sys, cause := auditActor(ctx)
+	if err := svc.Delete(ctx, req.OrgId, req.ResourceId, uid, sys, cause); err != nil {
 		return nil, err
 	}
 	return api.DeleteFQDNResource204Response{}, nil
@@ -142,7 +145,8 @@ func (s apiServer) SetFQDNResourceEnabled(ctx context.Context, req api.SetFQDNRe
 	if err != nil {
 		return nil, err
 	}
-	if err := svc.SetSetting(ctx, req.OrgId, req.Body.Enabled); err != nil {
+	uid, sys, cause := auditActor(ctx)
+	if err := svc.SetSetting(ctx, req.OrgId, req.Body.Enabled, uid, sys, cause); err != nil {
 		return nil, err
 	}
 	return api.SetFQDNResourceEnabled200JSONResponse{Enabled: req.Body.Enabled}, nil
