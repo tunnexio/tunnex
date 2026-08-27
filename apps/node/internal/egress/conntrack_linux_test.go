@@ -21,8 +21,8 @@ func TestFQDNBaselineRestartFlushesRetiredDualStackTuples(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
 	active := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing,
 		Allow: []nodepolicy.AllowEntry{
-			{SrcIP: "10.99.0.10/32", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v4"},
-			{SrcIP: "2001:db8:99::10/128", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v6"},
+			{SrcIP: "10.99.0.10/32", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v4", FQDNManaged: true},
+			{SrcIP: "2001:db8:99::10/128", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v6", FQDNManaged: true},
 		}, FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: "r", Name: "api.example.com", Generation: "g1", Answers: []string{"203.0.113.10/32", "2001:db8:203::10/128"}}}}
 	m1 := &Manager{apply: func(context.Context, string) error { return nil }, now: time.Now, ctFlush: func(context.Context, []flowTuple) (int, error) { return 0, nil }}
 	m1.SetFQDNBaselinePath(path)
@@ -54,7 +54,43 @@ func TestFQDNBaselineRestartFlushesRetiredDualStackTuples(t *testing.T) {
 	}
 }
 
-func TestFQDNBaselineMissingOrCorruptFailsClosedBeforePolicy(t *testing.T) {
+func TestFQDNBaselineMissingWithoutProvenHistoryDoesNotFlush(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+	m := &Manager{apply: func(context.Context, string) error {
+		t.Fatal("CIDR-only/new gateway must not install recovery deny")
+		return nil
+	}, now: time.Now}
+	m.SetFQDNBaselinePath(path)
+	if m.fqdnRecoveryRequired {
+		t.Fatal("missing baseline without history must not flush innocent traffic")
+	}
+	if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnversionedFQDNBaselineRefusesWithoutBroadFlush(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+	if err := os.WriteFile(path, []byte(`{"state":"committed","generations":[{"resource_id":"r","name":"api.example.com","generation":"old","answers":["203.0.113.10/32"]}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	flushed := false
+	m := &Manager{apply: func(context.Context, string) error {
+		t.Fatal("unversioned state must not install automatic recovery")
+		return nil
+	}, now: time.Now,
+		ctFlushRecovery: func(context.Context) (int, error) { flushed = true; return 0, nil }}
+	m.SetFQDNBaselinePath(path)
+	pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing, FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: "r"}}}
+	if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", pol); err == nil {
+		t.Fatal("unversioned FQDN state must require controlled recovery")
+	}
+	if flushed {
+		t.Fatal("unversioned state must never broad/selectively guess old ownership")
+	}
+}
+
+func TestFQDNBaselineMissingOrCorruptWithProvenHistoryFailsClosedBeforePolicy(t *testing.T) {
 	for _, tc := range []struct{ name, content string }{{"missing", ""}, {"corrupt", "not-json"}, {"pending", `{"state":"pending"}`}} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
@@ -62,6 +98,9 @@ func TestFQDNBaselineMissingOrCorruptFailsClosedBeforePolicy(t *testing.T) {
 				if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if err := writeFQDNHistory(path + ".history"); err != nil {
+				t.Fatal(err)
 			}
 			var order []string
 			m := &Manager{apply: func(_ context.Context, rules string) error {
@@ -81,7 +120,7 @@ func TestFQDNBaselineMissingOrCorruptFailsClosedBeforePolicy(t *testing.T) {
 				t.Fatalf("recovery: %v", err)
 			}
 			if got := strings.Join(order, ","); got != "deny,flush" {
-				t.Fatalf("must deny before broad flush, got %s", got)
+				t.Fatalf("must deny before selective FQDN flush, got %s", got)
 			}
 			if m.fqdnRecoveryRequired {
 				t.Fatal("successful recovery must clear gate")
@@ -111,6 +150,32 @@ func con(src, dst string, proto uint8, dport uint16) conntrack.Con {
 		Src: ipp(src), Dst: ipp(dst),
 		Proto: &conntrack.ProtoTuple{Number: u8p(proto), DstPort: u16p(dport)},
 	}}
+}
+
+func markedCon(src, dst string, proto uint8, dport uint16, mark uint32) conntrack.Con {
+	c := con(src, dst, proto, dport)
+	c.Mark = &mark
+	return c
+}
+
+func TestFQDNConntrackMarkIsolatedFromUnrelatedBits(t *testing.T) {
+	if FQDNConntrackMark&^FQDNConntrackMarkMask != 0 {
+		t.Fatal("FQDN mark must fit its reserved mask")
+	}
+	if FQDNConntrackMarkMask&0x00ffffff != 0 {
+		t.Fatal("reserved FQDN field must not consume lower unrelated bits")
+	}
+	marked := markedCon("10.99.0.10", "203.0.113.10", 6, 443, FQDNConntrackMark|0x80000042)
+	if !hasFQDNConntrackMark(marked) {
+		t.Fatal("S21-marked flow must be selected")
+	}
+	innocent := markedCon("10.99.0.11", "203.0.113.11", 6, 443, 0x80000042)
+	if hasFQDNConntrackMark(innocent) {
+		t.Fatal("unrelated mark bits must not select innocent flow")
+	}
+	if got := (uint32(0x80000042) &^ FQDNConntrackMarkMask) | FQDNConntrackMark; got != 0x81000042 {
+		t.Fatalf("mark update must preserve unrelated bits, got %#x", got)
+	}
 }
 
 // TestMatchesTupleScoped — the INNOCENT-NEIGHBOR centerpiece (S8.7 Slice 2): the flush filter matches the
@@ -239,8 +304,8 @@ func TestFQDNWithdrawalFlushesDualStackOnlyAfterAtomicApply(t *testing.T) {
 		Version: nodepolicy.MaxSupportedVersion,
 		Mode:    nodepolicy.ModeEnforcing,
 		Allow: []nodepolicy.AllowEntry{
-			{SrcIP: "10.99.0.10", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v4"},
-			{SrcIP: "2001:db8:99::10", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v6"},
+			{SrcIP: "10.99.0.10", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v4", FQDNManaged: true},
+			{SrcIP: "2001:db8:99::10", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v6", FQDNManaged: true},
 		},
 		FQDNGenerations: []nodepolicy.FQDNGeneration{{
 			ResourceID: "resource-api", Name: "api.example.com", Generation: "content-a",

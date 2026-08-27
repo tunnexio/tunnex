@@ -45,6 +45,14 @@ var ifaceRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,15}$`)
 // field that isn't numeric (review #7). A non-match drops the id rather than widening trust.
 var ruleIDRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
+// FQDNConntrackMarkMask reserves bits 24..27 of ct mark for S21 FQDN
+// ownership. FQDNConntrackMark uses value 1 in that field. The nft expression
+// clears and sets only this mask, preserving every unrelated mark bit.
+const (
+	FQDNConntrackMarkMask uint32 = 0x0f000000
+	FQDNConntrackMark     uint32 = 0x01000000
+)
+
 // Manager reconciles the tunnex nft tables for one WG interface. It also holds the
 // latest compiled Zero Trust policy (S7.2): the reconcile loop feeds it via SetPolicy
 // on every desired-state fetch, and the forward chain is rendered from it — nil or
@@ -114,12 +122,9 @@ type Manager struct {
 	// ctFlush deletes the conntrack entries matching a removed-grant tuple set (S8.7 Slice 2), scoped exactly
 	// to those tuples; injectable so the innocent-neighbor red asserts the scope without a live conntrack.
 	ctFlush func(context.Context, []flowTuple) (int, error)
-	// ctFlushRecovery is intentionally broader than ctFlush. It is used only when
-	// the durable FQDN baseline is absent or corrupt after restart: without the
-	// retired tuples a selective flush would be an unsafe guess. Reconcile first
-	// installs deny-all, then flushes both conntrack families before it can install
-	// the new policy. This can interrupt unrelated host flows; availability loses
-	// to revocation safety until a valid baseline has been written again.
+	// ctFlushRecovery deletes only S21-owned FQDN conntrack entries. It is used
+	// after deny-all when a proven prior FQDN baseline is absent/corrupt; unrelated
+	// host/CNI/CIDR flows retain their existing conntrack marks and survive.
 	ctFlushRecovery func(context.Context) (int, error)
 	// nftRun runs an arbitrary `nft <args...>` (list/insert/delete) and returns stdout;
 	// injectable for the DOCKER-USER foreign-chain reconcile tests (WF-4). Distinct from
@@ -179,8 +184,11 @@ type Manager struct {
 	flushErr error
 	// fqdnBaselinePath stores a committed active FQDN generation and its exact
 	// enforcement tuples. A pending/missing/corrupt file is never trusted.
-	fqdnBaselinePath     string
-	fqdnRecoveryRequired bool
+	fqdnBaselinePath       string
+	fqdnRecoveryRequired   bool
+	fqdnHistoryKnown       bool
+	fqdnHistorySeen        bool
+	fqdnRecoveryImpossible bool
 }
 
 // New builds a Manager for the given WireGuard interface (e.g. wg0).
@@ -189,7 +197,7 @@ func New(wgIface string) *Manager {
 	// The real conntrack flusher (S8.7 Slice 2); injectable so the scoped-flush wiring is unit-testable
 	// without a live conntrack table (the innocent-neighbor red).
 	m.ctFlush = flushTuples
-	m.ctFlushRecovery = flushAllConntrack
+	m.ctFlushRecovery = flushFQDNMarkedConntrack
 	m.runIP = runIP              // S10.3 A1: the real `ip addr` runner; injectable for the DNS-VIP reconcile red
 	m.localIPs = defaultLocalIPs // WF-K5 M6: the real gateway-local address set; injectable for the local-endpoint refusal red
 	m.log = slog.Default()
@@ -201,9 +209,9 @@ func New(wgIface string) *Manager {
 }
 
 // SetFQDNBaselinePath restores the last committed FQDN tuple baseline. This
-// must be called before the first policy reconcile. Missing/corrupt/pending
-// state deliberately does not look like an empty baseline: it requires the
-// deny-all + full conntrack recovery path before enforcement resumes.
+// must be called before the first policy reconcile. The sibling history marker
+// distinguishes a new/CIDR-only gateway from a gateway that has proven prior
+// FQDN enforcement. Only the latter needs selective marked-flow recovery.
 func (m *Manager) SetFQDNBaselinePath(path string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -211,13 +219,16 @@ func (m *Manager) SetFQDNBaselinePath(path string) {
 	if path == "" {
 		return
 	}
+	m.fqdnHistorySeen, m.fqdnHistoryKnown = readFQDNHistory(path + ".history")
 	state, err := readFQDNBaseline(path)
 	if err != nil {
-		m.fqdnRecoveryRequired = true
+		m.fqdnRecoveryRequired = m.fqdnHistoryKnown && m.fqdnHistorySeen
+		m.fqdnRecoveryImpossible = !m.fqdnHistoryKnown || hasUnversionedFQDNBaseline(path)
 		return
 	}
 	m.appliedAllow = append([]nodepolicy.AllowEntry(nil), state.Allow...)
 	m.fqdnRecoveryRequired = false
+	m.fqdnRecoveryImpossible = false
 }
 
 // SetEndpointSource injects the K8s ready-endpoint view (WF-K5). Called once at wiring time by a K8s gateway
@@ -442,12 +453,14 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 }
 
 func (m *Manager) recoverFQDNBaseline(ctx context.Context, subnet string, pol *nodepolicy.Compiled) error {
+	if m.fqdnRecoveryImpossible && policyHasFQDN(pol) {
+		return fmt.Errorf("fqdn baseline history is unversioned or corrupt: controlled operator recovery required")
+	}
 	if !m.requiresFQDNRecovery(pol) {
 		return nil
 	}
 	// Do not let ct established,related keep unknown retired answers alive.
-	// The denial is a separate atomic nft apply, before the broad recovery
-	// sweep, so an error never reopens traffic around an unknown baseline.
+	// The denial is atomic and precedes the selective S21-marked recovery sweep.
 	deny := &nodepolicy.Compiled{Version: pol.Version, Mode: nodepolicy.ModeEnforcing}
 	if err := m.apply(ctx, m.rulesetWith(subnet, deny)); err != nil {
 		return fmt.Errorf("fqdn restart deny-all apply: %w", err)
@@ -468,6 +481,10 @@ func (m *Manager) requiresFQDNRecovery(pol *nodepolicy.Compiled) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.fqdnBaselinePath != "" && m.fqdnRecoveryRequired
+}
+
+func policyHasFQDN(pol *nodepolicy.Compiled) bool {
+	return pol != nil && len(pol.FQDNGenerations) > 0
 }
 
 func poolCIDRForForward(policyPool, wgPool string) string {
@@ -685,7 +702,9 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 		// before emitting text, so an address can never be accepted by both tables.
 		var v4Line, v6Line string
 		var ok bool
-		if g > 0 {
+		if e.FQDNManaged {
+			v4Line, ok = renderFQDNManagedAllow(e, g, false)
+		} else if g > 0 {
 			v4Line, ok = renderAllowLogged(e, g)
 		} else {
 			v4Line, ok = renderAllow(e)
@@ -693,7 +712,9 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 		if ok {
 			v4Rules.WriteString(v4Line)
 		}
-		if g > 0 {
+		if e.FQDNManaged {
+			v6Line, ok = renderFQDNManagedAllow(e, g, true)
+		} else if g > 0 {
 			v6Line, ok = renderAllowLoggedFamily(e, g, true)
 		} else {
 			v6Line, ok = renderAllowFamily(e, true)
@@ -705,6 +726,25 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 	v4Rules.WriteString(denyDrop(g))
 	v6Rules.WriteString(denyDrop(g))
 	return v4Rules.String(), v6Rules.String()
+}
+
+func fqdnMarkClause() string {
+	return fmt.Sprintf(" ct mark set ((ct mark & 0x%08x) | 0x%08x)", ^FQDNConntrackMarkMask, FQDNConntrackMark)
+}
+
+// renderFQDNManagedAllow marks only a new flow accepted by an FQDN-expanded
+// tuple. The mark is connection state, so later established packets retain it
+// and selective restart recovery can identify only S21-owned flows.
+func renderFQDNManagedAllow(e nodepolicy.AllowEntry, group int, v6 bool) (string, bool) {
+	m, ok := allowMatchFamily(e, v6)
+	if !ok {
+		return "", false
+	}
+	line := m + fqdnMarkClause()
+	if group > 0 && ruleIDRE.MatchString(e.RuleID) {
+		line += logClause(flowlog.EncodePrefix(e.RuleID), group)
+	}
+	return line + " accept\n", true
 }
 
 // denyDrop is the default-deny tail. g==0: the original counter (relies on the chain's
@@ -951,6 +991,13 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 		// treating a possibly stale tuple file as current.
 		m.applyErr = err
 		return err
+	}
+	if policyHasFQDN(pol) && m.fqdnBaselinePath != "" {
+		if err := writeFQDNHistory(m.fqdnBaselinePath + ".history"); err != nil {
+			m.applyErr = err
+			return err
+		}
+		m.fqdnHistorySeen, m.fqdnHistoryKnown = true, true
 	}
 	return nil
 }

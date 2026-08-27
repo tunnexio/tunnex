@@ -34,11 +34,12 @@ import (
 // flowTuple is a removed grant's EXACT conntrack match spec. A conntrack entry is flushed iff its ORIGIN
 // tuple falls inside src AND dst AND (proto unset or equal) AND (ports unset or in range) — never wider.
 type flowTuple struct {
-	src, dst netip.Prefix
-	proto    uint8  // 0 = any L4 (the grant is protocol-agnostic — a site subnet)
-	portLow  uint16 // 0 = any port (proto-any or an L3 grant)
-	portHigh uint16
-	ruleID   string // the revoked grant identity, stamped on the VerdictTerminated event
+	src, dst    netip.Prefix
+	proto       uint8  // 0 = any L4 (the grant is protocol-agnostic — a site subnet)
+	portLow     uint16 // 0 = any port (proto-any or an L3 grant)
+	portHigh    uint16
+	ruleID      string // the revoked grant identity, stamped on the VerdictTerminated event
+	fqdnManaged bool   // requires the reserved S21 ownership mark before deletion
 }
 
 // tupleFromAllow builds the flush spec for a removed AllowEntry. ok=false for a malformed src/dst — NEVER
@@ -58,7 +59,7 @@ func tupleFromAllow(e nodepolicy.AllowEntry) (flowTuple, bool) {
 	if src.Addr().Is6() != dst.Addr().Is6() {
 		return flowTuple{}, false
 	}
-	t := flowTuple{src: src, dst: dst, ruleID: e.RuleID}
+	t := flowTuple{src: src, dst: dst, ruleID: e.RuleID, fqdnManaged: e.FQDNManaged}
 	switch e.Protocol {
 	case "tcp":
 		t.proto = 6
@@ -113,6 +114,9 @@ func matchesTuple(c conntrack.Con, t flowTuple) bool {
 		if dp := *c.Origin.Proto.DstPort; dp < t.portLow || dp > t.portHigh {
 			return false
 		}
+	}
+	if t.fqdnManaged && !hasFQDNConntrackMark(c) {
+		return false
 	}
 	return true
 }
@@ -178,16 +182,17 @@ func flushTuples(ctx context.Context, tuples []flowTuple) (int, error) {
 	})
 }
 
-// flushAllConntrack is the restart-recovery primitive for a missing or corrupt
-// persisted FQDN baseline. The old FQDN answer tuples are unknowable in that
-// state, so a selective match would leave a security hole. It is called only
-// after an atomic deny-all replacement and before a new policy is installed.
-// This intentionally interrupts all IPv4/IPv6 conntrack flows on the gateway;
-// the caller surfaces the error and does not resume policy traffic on failure.
-func flushAllConntrack(ctx context.Context) (int, error) {
-	return sweepConntrack(ctx, []conntrack.Family{conntrack.IPv4, conntrack.IPv6}, func(conntrack.Con) (string, bool) {
-		return "fqdn_restart_recovery", true
+// flushFQDNMarkedConntrack is restart recovery for a missing/corrupt baseline.
+// It examines both address families, but deletes only entries carrying the
+// reserved S21 FQDN ownership field. Unrelated CIDR, host and CNI flows survive.
+func flushFQDNMarkedConntrack(ctx context.Context) (int, error) {
+	return sweepConntrack(ctx, []conntrack.Family{conntrack.IPv4, conntrack.IPv6}, func(c conntrack.Con) (string, bool) {
+		return "fqdn_restart_recovery", hasFQDNConntrackMark(c)
 	})
+}
+
+func hasFQDNConntrackMark(c conntrack.Con) bool {
+	return c.Mark != nil && (*c.Mark&FQDNConntrackMarkMask) == FQDNConntrackMark
 }
 
 // familiesOf returns the conntrack address families the removed tuples span (IPv4 and/or IPv6). The flush

@@ -34,9 +34,10 @@ const (
 // v7 (S10.3): this agent renders the VIP map (VIP->ClusterIP DNAT + DNS-rewrite), so it applies v7; an
 // agent still at 6 refuses a VIP-map-carrying artifact rather than leaving the exposed Service dead-while-green.
 // v8 (S21): FQDN generations are expanded by the control plane into ordinary
-// /32 and /128 allows. This agent understands the generation identity in the
-// hash and continues to enforce the concrete tuples.
-const MaxSupportedVersion = 8
+// /32 and /128 allows. v9 adds FQDNManaged ownership provenance: a v8-or-older
+// agent must refuse it rather than enforce FQDN tuples without selective
+// conntrack withdrawal capability.
+const MaxSupportedVersion = 9
 
 // AllowEntry is one compiled default-deny grant: SrcIP (a device /32 host) may reach
 // DstCIDR on Protocol within [PortLow,PortHigh]. PortLow==0 means all ports.
@@ -55,6 +56,10 @@ type AllowEntry struct {
 	// on flow events (device attribution without an src_ip->device DB guess). NEVER
 	// enforcement — EXCLUDED from CanonicalHash. MUST mirror policyspec field order/tags.
 	SrcDeviceID string `json:"src_device_id,omitempty"`
+	// FQDNManaged is v9 enforcement provenance. It is set only for concrete
+	// tuples expanded from an active FQDN generation. Gateways reserve an S21
+	// conntrack ownership mark for these flows; ordinary CIDR grants never get it.
+	FQDNManaged bool `json:"fqdn_managed,omitempty"`
 }
 
 // SubjectAttribution mirrors policyspec.SubjectAttribution. It is installed
@@ -159,11 +164,12 @@ type DNSForward struct {
 // (rule_id) is DELIBERATELY ABSENT so staleness is metadata-blind and the v2 bump does
 // not disturb existing pushed/applied hashes. Field order + tags match the v1 shape.
 type hashAllow struct {
-	SrcIP    string `json:"src_ip"`
-	DstCIDR  string `json:"dst_cidr"`
-	Protocol string `json:"protocol"`
-	PortLow  int    `json:"port_low,omitempty"`
-	PortHigh int    `json:"port_high,omitempty"`
+	SrcIP       string `json:"src_ip"`
+	DstCIDR     string `json:"dst_cidr"`
+	Protocol    string `json:"protocol"`
+	PortLow     int    `json:"port_low,omitempty"`
+	PortHigh    int    `json:"port_high,omitempty"`
+	FQDNManaged bool   `json:"fqdn_managed,omitempty"`
 }
 
 type hashView struct {
@@ -180,7 +186,7 @@ func projectForHash(c *Compiled) hashView {
 	if c.Allow != nil {
 		v.Allow = make([]hashAllow, len(c.Allow))
 		for i, e := range c.Allow {
-			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh}
+			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh, FQDNManaged: e.FQDNManaged}
 		}
 	}
 	if c.FQDNGenerations != nil {

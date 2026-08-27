@@ -877,3 +877,15 @@ func TestZeroOVPNConfigByteIdentical(t *testing.T) {
 		t.Fatalf("zero-config must emit NO interface-set syntax; got:\n%s", rs)
 	}
 }
+
+func TestFQDNManagedAllowUsesReservedConntrackOwnershipMark(t *testing.T) {
+	m := New("wg0")
+	m.SetPolicy(&nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing, Allow: []nodepolicy.AllowEntry{
+		{SrcIP: "10.99.0.10", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, FQDNManaged: true},
+		{SrcIP: "10.99.0.11", DstCIDR: "203.0.113.11/32", Protocol: "tcp", PortLow: 443, PortHigh: 443},
+	}})
+	rs := m.ruleset("10.99.0.1/24")
+	if got := strings.Count(rs, "ct mark set ((ct mark & 0xf0ffffff) | 0x01000000)"); got != 1 {
+		t.Fatalf("only FQDN-expanded tuple may set reserved mark, got %d:\n%s", got, rs)
+	}
+}
