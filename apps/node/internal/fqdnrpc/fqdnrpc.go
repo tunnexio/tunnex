@@ -134,6 +134,13 @@ type BoundResolver interface {
 
 var errResolverConfig = errors.New("resolver configuration unavailable")
 
+// resolverStatusError carries an authoritative DNS terminal outcome from a
+// configured endpoint. It is distinct from transport/configuration failure so
+// NXDOMAIN and SERVFAIL withdraw with their truthful lifecycle causes.
+type resolverStatusError struct{ status Status }
+
+func (e resolverStatusError) Error() string { return string(e.status) }
+
 // DirectResolver sends DNS packets only to server-managed literal IP endpoints.
 // Each configured endpoint must return the same bounded observation; timeout,
 // malformed response, transport failure, or disagreement fails the request
@@ -150,6 +157,10 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 	for _, endpoint := range config.Endpoints {
 		records, err := d.resolveEndpoint(ctx, endpoint, hostname, types)
 		if err != nil {
+			var statusErr resolverStatusError
+			if errors.As(err, &statusErr) {
+				return nil, err
+			}
 			return nil, errResolverConfig
 		}
 		records = canonicalRecords(records)
@@ -349,8 +360,17 @@ func directExchange(ctx context.Context, endpoint ResolverEndpoint, hostname str
 	if err := decoded.Unpack(response); err != nil {
 		return nil, err
 	}
-	if !decoded.Header.Response || decoded.Header.ID != msg.Header.ID || decoded.Header.RCode != dnsmessage.RCodeSuccess {
+	if !decoded.Header.Response || decoded.Header.ID != msg.Header.ID {
 		return nil, fmt.Errorf("invalid dns response")
+	}
+	switch decoded.Header.RCode {
+	case dnsmessage.RCodeSuccess:
+	case dnsmessage.RCodeNameError:
+		return nil, resolverStatusError{status: StatusNXDomain}
+	case dnsmessage.RCodeServerFailure:
+		return nil, resolverStatusError{status: StatusServFail}
+	default:
+		return nil, fmt.Errorf("dns rcode %d", decoded.Header.RCode)
 	}
 	var out []Record
 	for _, answer := range decoded.Answers {
@@ -501,7 +521,10 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 	resp := responseFor(req, StatusNoError, "", observed)
 	if err != nil {
 		var dnsErr *net.DNSError
-		if errors.Is(err, errResolverConfig) {
+		var statusErr resolverStatusError
+		if errors.As(err, &statusErr) {
+			resp = responseFor(req, statusErr.status, "", observed)
+		} else if errors.Is(err, errResolverConfig) {
 			resp = responseFor(req, StatusServFail, "resolver_unavailable", observed)
 		} else if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
 			resp = responseFor(req, StatusNXDomain, "", observed)

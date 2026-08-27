@@ -153,6 +153,25 @@ func TestResponderDirectResolverRefusesMissingBoundConfig(t *testing.T) {
 	}
 }
 
+func TestResponderPreservesConfiguredResolverNXDOMAINAndSERVFAIL(t *testing.T) {
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	for _, want := range []Status{StatusNXDomain, StatusServFail} {
+		t.Run(string(want), func(t *testing.T) {
+			direct := DirectResolver{exchange: func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error) {
+				return nil, resolverStatusError{status: want}
+			}}
+			r := NewResponder(direct)
+			r.now = func() time.Time { return now }
+			req := testRequest(now)
+			req.ResolverConfigID, req.ResolverConfigVersion = "66666666-6666-6666-6666-666666666666", 1
+			req.ResolverEndpoints = []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}}
+			if got := r.Handle(context.Background(), testGateway, req); got.Status != want || got.ErrorCode != "" {
+				t.Fatalf("resolver %s must stay terminal DNS status, got %+v", want, got)
+			}
+		})
+	}
+}
+
 func TestGatewayDNSRPCResolverSnapshotWireMirrorsMailbox(t *testing.T) {
 	request := testRequest(time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC))
 	request.ResolverConfigID = "66666666-6666-6666-6666-666666666666"
