@@ -219,13 +219,20 @@ func validateCurrentMailboxContext(ctx context.Context, tx pgx.Tx, request Gatew
 		return ErrSuperseded
 	}
 	var resourceOrg, selectedSite, selectedGateway, siteOrg, gatewayOrg, gatewaySite uuid.UUID
+	var rpcVersion int
 	err := tx.QueryRow(ctx, `
-SELECT r.org_id,r.resolver_site_id,r.resolver_node_id,s.org_id,n.org_id,n.site_id
+SELECT r.org_id,r.resolver_site_id,r.resolver_node_id,s.org_id,n.org_id,n.site_id,
+       CASE
+         WHEN jsonb_typeof(n.capabilities->'dns_resolve_rpc_version') = 'number'
+           AND (n.capabilities->>'dns_resolve_rpc_version') ~ '^[0-9]+$'
+         THEN (n.capabilities->>'dns_resolve_rpc_version')::integer
+         ELSE 0
+       END
 FROM fqdn_resources r
 JOIN sites s ON s.id=r.resolver_site_id
 JOIN nodes n ON n.id=r.resolver_node_id
 WHERE r.id=$1 FOR UPDATE`, request.ResourceID).
-		Scan(&resourceOrg, &selectedSite, &selectedGateway, &siteOrg, &gatewayOrg, &gatewaySite)
+		Scan(&resourceOrg, &selectedSite, &selectedGateway, &siteOrg, &gatewayOrg, &gatewaySite, &rpcVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrSuperseded
 	}
@@ -234,6 +241,9 @@ WHERE r.id=$1 FOR UPDATE`, request.ResourceID).
 	}
 	if resourceOrg != request.OrgID || siteOrg != request.OrgID || gatewayOrg != request.OrgID || selectedSite != request.SiteID || selectedGateway != request.GatewayID || gatewaySite != request.SiteID {
 		return ErrSuperseded
+	}
+	if rpcVersion < int(GatewayDNSRPCVersion) {
+		return ErrGatewayDNSRPCVersion
 	}
 	var configID uuid.UUID
 	var configVersion int64
@@ -301,8 +311,6 @@ func isTerminalTransportResponse(response GatewayDNSResponse, err error) bool {
 		return errors.Is(err, ErrTimeout)
 	case GatewayDNSRPCDisconnected, GatewayDNSRPCUnavailable:
 		return errors.Is(err, ErrGatewayDNSRPCUnavailable)
-	case GatewayDNSRPCDisagreement:
-		return errors.Is(err, ErrDisagreement)
 	default:
 		return false
 	}

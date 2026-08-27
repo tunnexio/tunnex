@@ -531,18 +531,21 @@ func main() {
 	defer stopElector()
 	elector := &leader.Elector{}
 	go elector.Run(electorCtx, pool, logger)
-	// FQDN resolution is deliberately a selected Site+Gateway transport.  The
-	// currently separate agent-control request/response adapter plugs into this
-	// server-owned port; until then the concrete transport fails closed and never
-	// consults a public/control-plane resolver.  Like all writing schedulers, only
-	// the confirmed leader ticks it and shutdown cancels any bounded DNS attempt.
+	// FQDN resolution is deliberately a selected Site+Gateway transport. The
+	// durable mailbox rides the existing authenticated agent-pull channel: it
+	// never substitutes a public/control-plane resolver, and it wakes only the
+	// selected gateway after the request transaction commits. Like all writing
+	// schedulers, only the confirmed leader ticks it and shutdown cancels any
+	// bounded DNS attempt.
 	fqdnCtx, stopFQDNScheduler := context.WithCancel(electorCtx)
 	fqdnStore := fqdnresolver.NewPostgresStore(pool).WithAfterCommit(fqdnresolver.Hooks{
 		Policy: policy.NewFQDNInvalidator(pool, pushHub),
 	})
+	fqdnMailbox := fqdnresolver.NewPostgresGatewayDNSMailbox(pool).WithNotifier(agentCh)
+	agentCh.SetGatewayDNSMailbox(fqdnMailbox)
 	fqdnScheduler := fqdnresolver.NewScheduler(
 		fqdnStore,
-		fqdnresolver.NewSelectedTransport(fqdnresolver.UnavailableSelectedLookup{}),
+		fqdnresolver.NewGatewayDNSRPCTransport(fqdnMailbox),
 		fqdnresolver.SchedulerConfig{MayTick: func() bool {
 			return elector.IsLeader() && elector.ConfirmLeader(fqdnCtx, pool)
 		}},

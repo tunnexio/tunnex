@@ -62,7 +62,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	org, site, gateway, resource := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	exec(`INSERT INTO organizations(id,name,slug,pool_cidr,fqdn_resources_enabled) VALUES($1,'mailbox',$2,'10.252.0.0/24',true)`, org, "mailbox-"+org.String()[:8])
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'selected')`, site, org)
-	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'gateway',$3,$4)`, gateway, org, "mailbox-"+gateway.String(), site)
+	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,capabilities) VALUES($1,$2,'gateway',$3,$4,'{"dns_resolve_rpc_version":1}')`, gateway, org, "mailbox-"+gateway.String(), site)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal',$3,$4)`, resource, org, site, gateway)
 	config := uuid.New()
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, config, org, site, gateway)
@@ -139,7 +139,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	}
 	reselectedSite, reselectedGateway := uuid.New(), uuid.New()
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'reselected')`, reselectedSite, org)
-	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'reselected-gateway',$3,$4)`, reselectedGateway, org, "mailbox-"+reselectedGateway.String(), reselectedSite)
+	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,capabilities) VALUES($1,$2,'reselected-gateway',$3,$4,'{"dns_resolve_rpc_version":1}')`, reselectedGateway, org, "mailbox-"+reselectedGateway.String(), reselectedSite)
 	reselectedConfig := uuid.New()
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, reselectedConfig, org, reselectedSite, reselectedGateway)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.1.53'::inet,53,'tcp')`, reselectedConfig, org)
@@ -155,6 +155,19 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT state FROM fqdn_gateway_dns_requests WHERE request_id=$1`, second.RequestID).Scan(&state); err != nil || state != "expired" {
 		t.Fatalf("superseded request state=%q err=%v, want durable expired", state, err)
 	}
+
+	// A selected pre-v1 gateway is a compatibility refusal, never a request
+	// that waits for an agent unable to safely consume the config-bound RPC.
+	exec(`UPDATE nodes SET capabilities='{}'::jsonb WHERE id=$1`, reselectedGateway)
+	unsupported := second
+	unsupported.RequestID = uuid.New()
+	unsupported.SiteID, unsupported.GatewayID = reselectedSite, reselectedGateway
+	unsupported.ResolverConfigID, unsupported.ResolverConfigVersion = reselectedConfig, 1
+	unsupported.ResolverEndpoints = []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.1.53"), Port: 53, Transport: "tcp"}}
+	if err := mailbox.Enqueue(ctx, unsupported); !errors.Is(err, ErrGatewayDNSRPCVersion) {
+		t.Fatalf("pre-RPC gateway enqueue=%v want compatibility refusal", err)
+	}
+	exec(`UPDATE nodes SET capabilities='{"dns_resolve_rpc_version":1}'::jsonb WHERE id=$1`, reselectedGateway)
 
 	// A late response under an otherwise-current context must also commit terminal
 	// expiry. Without this, a retry could keep a stale request pending forever.
