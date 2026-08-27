@@ -645,8 +645,14 @@ const (
 
 // Defines values for PolicyRuleFqdnDestinationStatus.
 const (
-	NotApplicable   PolicyRuleFqdnDestinationStatus = "not_applicable"
-	PendingCompiler PolicyRuleFqdnDestinationStatus = "pending_compiler"
+	ActiveGeneration      PolicyRuleFqdnDestinationStatus = "active_generation"
+	FeatureUnavailable    PolicyRuleFqdnDestinationStatus = "feature_unavailable"
+	GenerationPending     PolicyRuleFqdnDestinationStatus = "generation_pending"
+	GenerationUnavailable PolicyRuleFqdnDestinationStatus = "generation_unavailable"
+	GenerationWithdrawn   PolicyRuleFqdnDestinationStatus = "generation_withdrawn"
+	NotApplicable         PolicyRuleFqdnDestinationStatus = "not_applicable"
+	OptInDisabled         PolicyRuleFqdnDestinationStatus = "opt_in_disabled"
+	ProjectionUnavailable PolicyRuleFqdnDestinationStatus = "projection_unavailable"
 )
 
 // Defines values for PolicyRuleSrcKind.
@@ -2972,7 +2978,7 @@ type PolicyRule struct {
 	Enabled               bool                `json:"enabled"`
 	ExpiresAt             *time.Time          `json:"expires_at"`
 
-	// FqdnDestinationStatus Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic.
+	// FqdnDestinationStatus Truthful server projection for an FQDN destination. active_generation means the entitled, opted-in organization has a current active selected-resolver generation. generation_withdrawn and generation_unavailable grant no traffic. projection_unavailable means the server could not read the authoritative FQDN projection and never implies traffic is granted.
 	FqdnDestinationStatus PolicyRuleFqdnDestinationStatus `json:"fqdn_destination_status"`
 	Id                    openapi_types.UUID              `json:"id"`
 
@@ -3001,7 +3007,7 @@ type PolicyRule struct {
 // PolicyRuleDstKind defines model for PolicyRule.DstKind.
 type PolicyRuleDstKind string
 
-// PolicyRuleFqdnDestinationStatus Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic.
+// PolicyRuleFqdnDestinationStatus Truthful server projection for an FQDN destination. active_generation means the entitled, opted-in organization has a current active selected-resolver generation. generation_withdrawn and generation_unavailable grant no traffic. projection_unavailable means the server could not read the authoritative FQDN projection and never implies traffic is granted.
 type PolicyRuleFqdnDestinationStatus string
 
 // PolicyRuleSrcKind defines model for PolicyRule.SrcKind.

@@ -539,6 +539,26 @@ type DomainClaim struct {
 	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
+type FqdnGatewayDnsRequest struct {
+	RequestID             uuid.UUID          `json:"request_id"`
+	ProtocolVersion       int16              `json:"protocol_version"`
+	OrgID                 uuid.UUID          `json:"org_id"`
+	ResourceID            uuid.UUID          `json:"resource_id"`
+	SiteID                uuid.UUID          `json:"site_id"`
+	GatewayID             uuid.UUID          `json:"gateway_id"`
+	Hostname              string             `json:"hostname"`
+	RecordTypes           []byte             `json:"record_types"`
+	Deadline              time.Time          `json:"deadline"`
+	State                 string             `json:"state"`
+	Response              []byte             `json:"response"`
+	CreatedAt             time.Time          `json:"created_at"`
+	CompletedAt           pgtype.Timestamptz `json:"completed_at"`
+	ExpiredAt             pgtype.Timestamptz `json:"expired_at"`
+	ResolverConfigID      pgtype.UUID        `json:"resolver_config_id"`
+	ResolverConfigVersion *int64             `json:"resolver_config_version"`
+	ResolverEndpoints     []byte             `json:"resolver_endpoints"`
+}
+
 type FqdnResolverContextConfig struct {
 	ID        uuid.UUID          `json:"id"`
 	OrgID     uuid.UUID          `json:"org_id"`

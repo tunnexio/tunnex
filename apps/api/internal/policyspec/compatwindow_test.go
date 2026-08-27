@@ -42,6 +42,7 @@ func TestNMinusOneAgentsCanStillApply(t *testing.T) {
 		"with-routes":  {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
 		"with-pool":    {PoolCIDR: "10.99.0.0/24"},
 		"with-k8s-vip": {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
+		"with-fqdn":    {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
 	} {
 		v := RequiredVersion(c)
 		if v > ProtocolVersion {
@@ -62,15 +63,33 @@ func TestNMinusOneAgentsCanStillApply(t *testing.T) {
 func TestNewContentRaisesRequiredVersion(t *testing.T) {
 	base := RequiredVersion(Compiled{Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32"}}})
 	for name, c := range map[string]Compiled{
-		"site source (v5)":  {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24"}}},
-		"routes (v5)":       {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
-		"pool cidr (v6)":    {PoolCIDR: "10.99.0.0/24"},
-		"k8s vip map (v7)":  {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
-		"k8s dns zone (v7)": {K8sDNSZones: []K8sDNSZone{{Zone: "prod.k8s.local", ListenVIP: "100.64.0.2"}}},
+		"site source (v5)":      {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24"}}},
+		"routes (v5)":           {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
+		"pool cidr (v6)":        {PoolCIDR: "10.99.0.0/24"},
+		"k8s vip map (v7)":      {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
+		"k8s dns zone (v7)":     {K8sDNSZones: []K8sDNSZone{{Zone: "prod.k8s.local", ListenVIP: "100.64.0.2"}}},
+		"fqdn generations (v8)": {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
 	} {
 		if got := RequiredVersion(c); got <= base {
 			t.Fatalf("%s does not raise RequiredVersion above the baseline v%d (got v%d) — an old agent "+
 				"would ACCEPT an artifact it cannot render, and mis-enforce silently", name, base, got)
 		}
+	}
+}
+
+// TestFQDNGenerationCrossesTheV8CompatibilityBoundary is the generic
+// compatibility-window red for S21. A v7 agent has no FQDN generation identity
+// or content-hash projection, so it must refuse rather than accept expanded
+// tuples without their resolver-owned provenance.
+func TestFQDNGenerationCrossesTheV8CompatibilityBoundary(t *testing.T) {
+	const preFQDNMax = 7
+	if ProtocolVersion <= preFQDNMax {
+		t.Fatalf("FQDN generations require a protocol bump above v%d; got v%d", preFQDNMax, ProtocolVersion)
+	}
+	artifact := Compiled{FQDNGenerations: []FQDNGeneration{{
+		ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"},
+	}}}
+	if got := RequiredVersion(artifact); got <= preFQDNMax {
+		t.Fatalf("FQDN generation artifact stamps v%d; a v%d agent would accept a shape it cannot render", got, preFQDNMax)
 	}
 }

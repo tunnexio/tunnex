@@ -4295,10 +4295,10 @@ export interface components {
              */
             dst_fqdn_resource_id?: string | null;
             /**
-             * @description Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic.
+             * @description Truthful server projection for an FQDN destination. active_generation means the entitled, opted-in organization has a current active selected-resolver generation. generation_withdrawn and generation_unavailable grant no traffic. projection_unavailable means the server could not read the authoritative FQDN projection and never implies traffic is granted.
              * @enum {string}
              */
-            fqdn_destination_status: "not_applicable" | "pending_compiler";
+            fqdn_destination_status: "not_applicable" | "feature_unavailable" | "opt_in_disabled" | "generation_pending" | "active_generation" | "generation_withdrawn" | "generation_unavailable" | "projection_unavailable";
             dst_k8s_service_vanished: boolean;
             /** Format: date-time */
             expires_at?: string | null;

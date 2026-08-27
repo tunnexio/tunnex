@@ -5402,8 +5402,8 @@ components:
         dst_fqdn_resource_id: { type: string, format: uuid, nullable: true, description: "Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated." }
         fqdn_destination_status:
           type: string
-          enum: [not_applicable, pending_compiler]
-          description: "Truthful server projection. pending_compiler means this rule is stored and reference-safe but this release does not yet compile resolver generations into enforcement; it grants no traffic."
+          enum: [not_applicable, feature_unavailable, opt_in_disabled, generation_pending, active_generation, generation_withdrawn, generation_unavailable, projection_unavailable]
+          description: "Truthful server projection for an FQDN destination. active_generation means the entitled, opted-in organization has a current active selected-resolver generation. generation_withdrawn and generation_unavailable grant no traffic. projection_unavailable means the server could not read the authoritative FQDN projection and never implies traffic is granted."
         # S10.3 warn-not-refuse: true when dst_kind=k8s_service but the Service is gone (unexposed/cluster deregistered) — the grant compiles to nothing (a silent no-op wearing a rule's face). DERIVED at read time from the LIVE Services, so it sheds if the Service returns. false otherwise.
         dst_k8s_service_vanished: { type: boolean }
         # S7.5.4: null = permanent; set = a temporary grant that lapses at this instant.
