@@ -248,8 +248,8 @@ describe("Access — F06 agent sources are first-class", () => {
   });
 });
 
-describe("Access — FQDN destinations are discoverable but never represented as enforced", () => {
-  it("renders the FQDN name and pending-compiler no-traffic status from the server projection", async () => {
+describe("Access — FQDN destination status is the server projection", () => {
+  it("renders the FQDN name and generation-pending no-traffic status from the server projection", async () => {
     rulesForTest = [{
       id: "fqdn-rule",
       enabled: true,
@@ -257,12 +257,40 @@ describe("Access — FQDN destinations are discoverable but never represented as
       src_group_id: "g1",
       dst_kind: "fqdn_resource",
       dst_fqdn_resource_id: "fqdn-1",
-      fqdn_destination_status: "pending_compiler",
+      fqdn_destination_status: "generation_pending" as any,
     }];
     fqdnResourcesForTest = [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" }];
     withAuth(<Access />);
     expect(await screen.findByText("Orders API")).toBeTruthy();
-    expect(screen.getByText("PENDING COMPILER · NO TRAFFIC")).toBeTruthy();
+    expect(screen.getByText("FQDN GENERATION PENDING · NO TRAFFIC")).toBeTruthy();
+  });
+
+  it("renders active generation distinct from no-traffic and unknown projections", async () => {
+    rulesForTest = [{
+      id: "active-fqdn-rule",
+      enabled: true,
+      src_kind: "group",
+      src_group_id: "g1",
+      dst_kind: "fqdn_resource",
+      dst_fqdn_resource_id: "fqdn-1",
+      fqdn_destination_status: "active_generation" as any,
+    }, {
+      id: "unknown-fqdn-rule",
+      enabled: true,
+      src_kind: "group",
+      src_group_id: "g1",
+      dst_kind: "fqdn_resource",
+      dst_fqdn_resource_id: "fqdn-2",
+      fqdn_destination_status: "projection_unavailable" as any,
+    }];
+    fqdnResourcesForTest = [
+      { id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" },
+      { id: "fqdn-2", name: "Billing API", fqdn: "billing.example.com", state: "failed" },
+    ];
+    withAuth(<Access />);
+    expect(await screen.findByText("FQDN ACTIVE GENERATION")).toBeTruthy();
+    expect(screen.getByText("FQDN PROJECTION UNAVAILABLE · ENFORCEMENT UNKNOWN")).toBeTruthy();
+    expect(screen.queryByText(/FQDN ACTIVE GENERATION.*NO TRAFFIC/)).toBeNull();
   });
 
   it("selects an FQDN destination in Add rule and submits its identity, not a CIDR resource", async () => {
@@ -273,7 +301,7 @@ describe("Access — FQDN destinations are discoverable but never represented as
     fireEvent.click(add);
     fireEvent.focus(screen.getByRole("combobox", { name: "Destination" }));
     fireEvent.click(await screen.findByRole("button", { name: /Orders API/ }));
-    expect(screen.getAllByText(/Pending compiler.*grants no traffic/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/server determines whether this rule has an active selected-resolver generation/i).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(postedBodies).toHaveLength(1));
     expect(postedBodies[0]).toMatchObject({ dst_kind: "fqdn_resource", dst_fqdn_resource_id: "fqdn-1" });
@@ -288,7 +316,7 @@ describe("Access — FQDN destinations are discoverable but never represented as
       src_group_id: "g1",
       dst_kind: "fqdn_resource",
       dst_fqdn_resource_id: "fqdn-1",
-      fqdn_destination_status: "pending_compiler",
+      fqdn_destination_status: "generation_pending" as any,
     }];
     fqdnResourcesForTest = [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" }];
 
@@ -296,7 +324,7 @@ describe("Access — FQDN destinations are discoverable but never represented as
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Engineering" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog", { name: "Edit rule" });
-    expect(within(dialog).getAllByText(/Pending compiler.*grants no traffic/i).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText(/server resolves and projects generation status after save/i).length).toBeGreaterThan(0);
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(postedBodies).toHaveLength(1));

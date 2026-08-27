@@ -207,8 +207,17 @@ export interface RuleRow {
    * the Service returns. Distinct from `broken` — a valid rule that warns.
    */
   k8sServiceVanished: boolean;
-  /** Server projection: stored FQDN target is not compiled in this release and grants no traffic. */
-  fqdnPendingCompiler: boolean;
+  /**
+   * Server-owned FQDN destination projection. `active_generation` means that the
+   * selected resolver has a current generation; it does not by itself claim a
+   * connection is permitted. Every other FQDN state is rendered explicitly so
+   * an unavailable projection is never mistaken for healthy enforcement.
+   *
+   * `pending_compiler` is retained only to read an older generated client during
+   * a rolling upgrade. Lane 3's generated contract replaces it with
+   * `generation_pending`.
+   */
+  fqdnDestinationStatus: FQDNDestinationStatus;
   /**
    * S10.2 D2 cond 1: this grant is managed by the GitOps operator (created via a TunnexGrant CR, a machine
    * credential). Rendered VERBATIM from the served `managed_by_operator`. The row badges it and the edit/
@@ -219,6 +228,89 @@ export interface RuleRow {
   managedByAgentTemplate: boolean;
   managedByAgentAccess: boolean;
   agentAccessRequestId?: string | null;
+}
+
+/** Matches Lane 3's generated PolicyRule FQDN projection vocabulary. */
+export type FQDNDestinationStatus =
+  | "not_applicable"
+  | "feature_unavailable"
+  | "opt_in_disabled"
+  | "generation_pending"
+  | "active_generation"
+  | "generation_withdrawn"
+  | "generation_unavailable"
+  | "projection_unavailable"
+  // Compatibility-only while a web build can still receive the pre-Lane-3 API.
+  | "pending_compiler";
+
+export interface FQDNDestinationPresentation {
+  label: string;
+  searchText: string;
+  title: string;
+  tone: "positive" | "attention" | "danger" | "muted";
+}
+
+/**
+ * Present the server's projection verbatim in operator language. This never
+ * derives resolver health, entitlement, or enforcement in React.
+ */
+export function fqdnDestinationPresentation(
+  status: FQDNDestinationStatus,
+): FQDNDestinationPresentation | null {
+  switch (status) {
+    case "not_applicable":
+      return null;
+    case "active_generation":
+      return {
+        label: "FQDN ACTIVE GENERATION",
+        searchText: "fqdn active generation",
+        title: "The server reports a current selected-resolver FQDN generation. This alone does not prove a connection is permitted; rule lifecycle and Zero Trust enforcement still apply.",
+        tone: "positive",
+      };
+    case "feature_unavailable":
+      return {
+        label: "FQDN FEATURE UNAVAILABLE · NO TRAFFIC",
+        searchText: "fqdn feature unavailable no traffic",
+        title: "The server reports that the FQDN resource capability is unavailable. This destination grants no traffic.",
+        tone: "attention",
+      };
+    case "opt_in_disabled":
+      return {
+        label: "FQDN OPT-IN DISABLED · NO TRAFFIC",
+        searchText: "fqdn opt-in disabled no traffic",
+        title: "The server reports that organization FQDN enforcement opt-in is disabled. This destination grants no traffic.",
+        tone: "attention",
+      };
+    case "generation_pending":
+    case "pending_compiler":
+      return {
+        label: "FQDN GENERATION PENDING · NO TRAFFIC",
+        searchText: "fqdn generation pending no traffic",
+        title: "The server reports this FQDN generation is not active yet. This destination grants no traffic.",
+        tone: "attention",
+      };
+    case "generation_withdrawn":
+      return {
+        label: "FQDN GENERATION WITHDRAWN · NO TRAFFIC",
+        searchText: "fqdn generation withdrawn no traffic",
+        title: "The server withdrew the FQDN generation. This destination grants no traffic until a new generation is active.",
+        tone: "danger",
+      };
+    case "generation_unavailable":
+      return {
+        label: "FQDN GENERATION UNAVAILABLE · NO TRAFFIC",
+        searchText: "fqdn generation unavailable no traffic",
+        title: "The server has no active FQDN generation for this destination. This destination grants no traffic.",
+        tone: "danger",
+      };
+    case "projection_unavailable":
+      return {
+        label: "FQDN PROJECTION UNAVAILABLE · ENFORCEMENT UNKNOWN",
+        searchText: "fqdn projection unavailable enforcement unknown",
+        title: "The server could not read the authoritative FQDN projection. This does not imply traffic is granted or denied.",
+        tone: "muted",
+      };
+  }
 }
 
 // loaded flags say whether each referent SET loaded successfully. When a set failed to
@@ -458,12 +550,34 @@ export function ruleRow(
     broken: src.state !== "ok" || dst.state !== "ok",
     cidrOutsideRanges: rule.cidr_outside_org_ranges,
     k8sServiceVanished: rule.dst_k8s_service_vanished,
-    fqdnPendingCompiler: rule.fqdn_destination_status === "pending_compiler",
+    // Lane 3 owns the generated API union. The explicit compatibility cast lets
+    // this isolated console lane render the new server values before its client
+    // artifact is integrated, without treating an unknown value as active.
+    fqdnDestinationStatus: rule.dst_kind === "fqdn_resource"
+      ? fqdnStatusFromServer(rule.fqdn_destination_status)
+      : "not_applicable",
     managedByOperator: rule.managed_by_operator,
     managedByAgentTemplate: rule.managed_by_agent_template,
     managedByAgentAccess: rule.managed_by_agent_access,
     agentAccessRequestId: rule.agent_access_request_id,
   };
+}
+
+function fqdnStatusFromServer(value: unknown): FQDNDestinationStatus {
+  switch (value) {
+    case "feature_unavailable":
+    case "opt_in_disabled":
+    case "generation_pending":
+    case "active_generation":
+    case "generation_withdrawn":
+    case "generation_unavailable":
+    case "projection_unavailable":
+    case "pending_compiler":
+      return value;
+    default:
+      // A missing or future projection must never look like an active generation.
+      return "projection_unavailable";
+  }
 }
 
 // ── S7.5.4 temporary-grant expiry (the linger model — expired grants stay VISIBLE) ────
@@ -1395,7 +1509,7 @@ export function ruleEffectSummary(i: {
   const wide = i.dstKind === "group" || i.dstKind === "site";
   if (i.dstKind === "fqdn_resource") {
     return {
-      text: `${subject} → FQDN resource ${i.dstLabel} will be stored as a rule reference. The server reports pending compiler for this destination, so it grants no traffic in this release.`,
+      text: `${subject} → FQDN resource ${i.dstLabel} will be stored as a rule reference. The server resolves and projects generation status after save; this preview does not claim enforcement or traffic availability.`,
       wide: false,
     };
   }

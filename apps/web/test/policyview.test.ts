@@ -33,6 +33,7 @@ import {
   FLOW_GRAPH_MAX_RULES,
   ruleBody,
   grantControls,
+  fqdnDestinationPresentation,
   type LoadState,
 } from "../src/lib/policyview";
 import { loadOne, type Loaded } from "../src/lib/api";
@@ -252,20 +253,39 @@ describe("D-a6 rule label — NEVER omit; DELETED ≠ UNRESOLVED", () => {
     expect(row.dst.label).toMatch(/refresh/i);
   });
 
-  it("renders an FQDN destination by name and carries the server's pending-compiler projection", () => {
+  it("renders an FQDN destination by name and carries the server's generation-pending projection", () => {
     const rule = {
       id: "fqdn-rule",
       src_group_id: "g-eng",
       dst_kind: "fqdn_resource",
       dst_fqdn_resource_id: "fqdn-1",
-      fqdn_destination_status: "pending_compiler",
+      fqdn_destination_status: "generation_pending" as any,
     } as PolicyRule;
     const row = ruleRow(rule, groups, resources, [], [], {
       ...LOADED,
       fqdnResourcesLoaded: true,
     }, [], [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com" } as any]);
     expect(row.dst.label).toBe("Orders API");
-    expect(row.fqdnPendingCompiler).toBe(true);
+    expect(row.fqdnDestinationStatus).toBe("generation_pending");
+  });
+
+  it("keeps active, unavailable, and all no-traffic FQDN projections distinct", () => {
+    expect(fqdnDestinationPresentation("active_generation")).toMatchObject({
+      label: "FQDN ACTIVE GENERATION",
+      tone: "positive",
+    });
+    for (const status of ["feature_unavailable", "opt_in_disabled", "generation_pending", "generation_unavailable"] as const) {
+      expect(fqdnDestinationPresentation(status)?.label).toContain("NO TRAFFIC");
+    }
+    expect(fqdnDestinationPresentation("generation_withdrawn")).toMatchObject({
+      label: "FQDN GENERATION WITHDRAWN · NO TRAFFIC",
+      tone: "danger",
+    });
+    expect(fqdnDestinationPresentation("projection_unavailable")).toMatchObject({
+      label: "FQDN PROJECTION UNAVAILABLE · ENFORCEMENT UNKNOWN",
+      tone: "muted",
+    });
+    expect(fqdnDestinationPresentation("projection_unavailable")?.title).not.toMatch(/active|healthy/i);
   });
 });
 

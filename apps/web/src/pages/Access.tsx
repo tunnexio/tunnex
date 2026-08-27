@@ -81,6 +81,7 @@ import {
   ruleEffectSummary,
   ruleEffectCaution,
   ruleSourceReady,
+  fqdnDestinationPresentation,
 } from "../lib/policyview";
 import { ManagedBadge } from "../components/ManagedBadge";
 import { AccessTabRail } from "../components/AccessTabRail";
@@ -88,6 +89,15 @@ import { AccessTabRail } from "../components/AccessTabRail";
 // Every GET here goes through loadOne — a raw api.GET whose emptiness is user-meaningful is
 // review-refused (S7.4a review): a fetch failure must render a legible retry, never a
 // reassuring empty state. (LoadRetry — the shared legible-retry affordance — lives in components/LoadRetry.)
+
+function fqdnDestinationBadgeClass(tone: "positive" | "attention" | "danger" | "muted") {
+  switch (tone) {
+    case "positive": return "border-emerald-800/50 bg-emerald-950/40 text-emerald-400";
+    case "attention": return "border-warn/40 bg-warn/10 text-warn";
+    case "danger": return "border-rose-800/50 bg-rose-950/40 text-rose-400";
+    case "muted": return "border-border bg-white/5 text-ink-tertiary";
+  }
+}
 
 export default function Access() {
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
@@ -1790,10 +1800,13 @@ function RulesSection({
                             ),
                           )
                         : null;
+                    const fqdn = fqdnDestinationPresentation(
+                      row.fqdnDestinationStatus,
+                    );
                     return [
                       row.cidrOutsideRanges ? "outside ranges" : "",
                       row.k8sServiceVanished ? "vanished" : "",
-                      row.fqdnPendingCompiler ? "pending compiler no traffic" : "",
+                      fqdn?.searchText ?? "",
                       empty ?? "",
                     ]
                       .filter(Boolean)
@@ -1817,6 +1830,9 @@ function RulesSection({
                             ),
                           )
                         : null;
+                    const fqdn = fqdnDestinationPresentation(
+                      row.fqdnDestinationStatus,
+                    );
                     return (
                       <span className="flex flex-wrap items-center gap-1">
                         {/* S8.7 warn-not-refuse (D1): the SERVER's read-time judgment, rendered verbatim —
@@ -1839,12 +1855,12 @@ function RulesSection({
                             VANISHED
                           </span>
                         )}
-                        {row.fqdnPendingCompiler && (
+                        {fqdn && (
                           <span
-                            className="rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-warn"
-                            title="The server reports this FQDN destination is pending compiler. It is stored safely but grants no traffic in this release."
+                            className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${fqdnDestinationBadgeClass(fqdn.tone)}`}
+                            title={fqdn.title}
                           >
-                            PENDING COMPILER · NO TRAFFIC
+                            {fqdn.label}
                           </span>
                         )}
                         {/* ⛔ src_group_empty (S14.12) — measured at compiler.go:399: a group with zero
@@ -2381,7 +2397,7 @@ function RuleFormModal({
         />
         {dstKind === "fqdn_resource" && (
           <p role="status" className="rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-xs text-warn">
-            Pending compiler — this FQDN destination is stored as a rule reference, but the server reports that this release does not compile it into enforcement. It grants no traffic.
+            FQDN destination — the server determines whether this rule has an active selected-resolver generation after it is saved. Capability, organization opt-in, rule lifecycle, and Zero Trust enforcement still apply; this form cannot confirm traffic is permitted.
           </p>
         )}
         <EntityPicker
