@@ -6,6 +6,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +16,91 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
+
+func TestFQDNBaselineRestartFlushesRetiredDualStackTuples(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+	active := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing,
+		Allow: []nodepolicy.AllowEntry{
+			{SrcIP: "10.99.0.10/32", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v4"},
+			{SrcIP: "2001:db8:99::10/128", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v6"},
+		}, FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: "r", Name: "api.example.com", Generation: "g1", Answers: []string{"203.0.113.10/32", "2001:db8:203::10/128"}}}}
+	m1 := &Manager{apply: func(context.Context, string) error { return nil }, now: time.Now, ctFlush: func(context.Context, []flowTuple) (int, error) { return 0, nil }}
+	m1.SetFQDNBaselinePath(path)
+	if err := m1.applyAndTrack(context.Background(), "active", active); err != nil {
+		t.Fatalf("persist active baseline: %v", err)
+	}
+	var flushed []flowTuple
+	m2 := &Manager{apply: func(context.Context, string) error { return nil }, now: time.Now, ctFlush: func(_ context.Context, tuples []flowTuple) (int, error) {
+		flushed = append(flushed, tuples...)
+		return len(tuples), nil
+	}}
+	m2.SetFQDNBaselinePath(path)
+	if m2.fqdnRecoveryRequired {
+		t.Fatal("committed baseline must be usable after restart")
+	}
+	if err := m2.applyAndTrack(context.Background(), "withdraw", &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}); err != nil {
+		t.Fatalf("withdraw after restart: %v", err)
+	}
+	m2.drainFlush(context.Background())
+	if len(flushed) != 2 {
+		t.Fatalf("restart withdrawal must flush every retired dual-stack tuple, got %+v", flushed)
+	}
+	seen := map[string]bool{}
+	for _, tuple := range flushed {
+		seen[tuple.ruleID] = true
+	}
+	if !seen["v4"] || !seen["v6"] {
+		t.Fatalf("families lost on restart: %+v", flushed)
+	}
+}
+
+func TestFQDNBaselineMissingOrCorruptFailsClosedBeforePolicy(t *testing.T) {
+	for _, tc := range []struct{ name, content string }{{"missing", ""}, {"corrupt", "not-json"}, {"pending", `{"state":"pending"}`}} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+			if tc.content != "" {
+				if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var order []string
+			m := &Manager{apply: func(_ context.Context, rules string) error {
+				order = append(order, "deny")
+				if !strings.Contains(rules, "tunnex_default_drop") {
+					t.Fatalf("recovery must install deny-all first: %s", rules)
+				}
+				return nil
+			}, now: time.Now,
+				ctFlushRecovery: func(context.Context) (int, error) { order = append(order, "flush"); return 2, nil }}
+			m.SetFQDNBaselinePath(path)
+			if !m.fqdnRecoveryRequired {
+				t.Fatal("missing/corrupt state must require recovery")
+			}
+			pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}
+			if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", pol); err != nil {
+				t.Fatalf("recovery: %v", err)
+			}
+			if got := strings.Join(order, ","); got != "deny,flush" {
+				t.Fatalf("must deny before broad flush, got %s", got)
+			}
+			if m.fqdnRecoveryRequired {
+				t.Fatal("successful recovery must clear gate")
+			}
+		})
+	}
+}
+
+func TestFQDNBaselineRecoveryFlushFailureKeepsGateClosed(t *testing.T) {
+	m := &Manager{apply: func(context.Context, string) error { return nil }, now: time.Now, fqdnBaselinePath: "/configured", fqdnRecoveryRequired: true,
+		ctFlushRecovery: func(context.Context) (int, error) { return 0, errors.New("netlink unavailable") }}
+	pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}
+	if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", pol); err == nil {
+		t.Fatal("recovery flush failure must refuse policy traffic")
+	}
+	if !m.fqdnRecoveryRequired {
+		t.Fatal("failed recovery must remain closed for retry")
+	}
+}
 
 func ipp(s string) *net.IP  { p := net.ParseIP(s); return &p }
 func u8p(v uint8) *uint8    { return &v }

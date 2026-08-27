@@ -200,6 +200,10 @@ func main() {
 	// review #6), then reconcile on an interval (heals a flushed table). Torn down on
 	// shutdown (full-sweep). No-op / not-capable off Linux.
 	egressMgr := egress.New(wgIface)
+	// The FQDN baseline survives agent restarts. A missing/corrupt file does
+	// not silently become an empty generation: egress performs its documented
+	// deny-all + conntrack recovery before accepting the first policy.
+	egressMgr.SetFQDNBaselinePath(filepath.Join(certDir, "fqdn-policy-baseline.json"))
 	defer egressMgr.Teardown(context.Background())
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
 	// affect the tunnel (DNS-down ≠ tunnel-down, D2/D5). The table is (re)programmed from every policy.

@@ -114,6 +114,13 @@ type Manager struct {
 	// ctFlush deletes the conntrack entries matching a removed-grant tuple set (S8.7 Slice 2), scoped exactly
 	// to those tuples; injectable so the innocent-neighbor red asserts the scope without a live conntrack.
 	ctFlush func(context.Context, []flowTuple) (int, error)
+	// ctFlushRecovery is intentionally broader than ctFlush. It is used only when
+	// the durable FQDN baseline is absent or corrupt after restart: without the
+	// retired tuples a selective flush would be an unsafe guess. Reconcile first
+	// installs deny-all, then flushes both conntrack families before it can install
+	// the new policy. This can interrupt unrelated host flows; availability loses
+	// to revocation safety until a valid baseline has been written again.
+	ctFlushRecovery func(context.Context) (int, error)
 	// nftRun runs an arbitrary `nft <args...>` (list/insert/delete) and returns stdout;
 	// injectable for the DOCKER-USER foreign-chain reconcile tests (WF-4). Distinct from
 	// `apply` (the atomic `-f -` full-table replace) — the Docker-owned chain can't be
@@ -170,6 +177,10 @@ type Manager struct {
 	// flushErr is the last conntrack-flush error (CAP_NET_ADMIN absent / netlink fault), surfaced never
 	// silent — the rule removal already succeeded, the lingering flows are degraded-not-broken.
 	flushErr error
+	// fqdnBaselinePath stores a committed active FQDN generation and its exact
+	// enforcement tuples. A pending/missing/corrupt file is never trusted.
+	fqdnBaselinePath     string
+	fqdnRecoveryRequired bool
 }
 
 // New builds a Manager for the given WireGuard interface (e.g. wg0).
@@ -178,6 +189,7 @@ func New(wgIface string) *Manager {
 	// The real conntrack flusher (S8.7 Slice 2); injectable so the scoped-flush wiring is unit-testable
 	// without a live conntrack table (the innocent-neighbor red).
 	m.ctFlush = flushTuples
+	m.ctFlushRecovery = flushAllConntrack
 	m.runIP = runIP              // S10.3 A1: the real `ip addr` runner; injectable for the DNS-VIP reconcile red
 	m.localIPs = defaultLocalIPs // WF-K5 M6: the real gateway-local address set; injectable for the local-endpoint refusal red
 	m.log = slog.Default()
@@ -186,6 +198,26 @@ func New(wgIface string) *Manager {
 	// classify sees sourceOK=false → no DNAT (fail-closed), which is exactly right for a gateway that can't
 	// read endpoints.
 	return m
+}
+
+// SetFQDNBaselinePath restores the last committed FQDN tuple baseline. This
+// must be called before the first policy reconcile. Missing/corrupt/pending
+// state deliberately does not look like an empty baseline: it requires the
+// deny-all + full conntrack recovery path before enforcement resumes.
+func (m *Manager) SetFQDNBaselinePath(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fqdnBaselinePath = path
+	if path == "" {
+		return
+	}
+	state, err := readFQDNBaseline(path)
+	if err != nil {
+		m.fqdnRecoveryRequired = true
+		return
+	}
+	m.appliedAllow = append([]nodepolicy.AllowEntry(nil), state.Allow...)
+	m.fqdnRecoveryRequired = false
 }
 
 // SetEndpointSource injects the K8s ready-endpoint view (WF-K5). Called once at wiring time by a K8s gateway
@@ -364,6 +396,9 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 	// kernel → the PREVIOUS ruleset stays in force (decision 4a/4b). On failure we DO NOT
 	// update applied* (staleness stays visible); on success we record what is in force.
 	pol := m.policy.Load() // load ONCE: the ruleset rendered and the status recorded are the same policy
+	if err := m.recoverFQDNBaseline(ctx, subnet, pol); err != nil {
+		return false, false, err
+	}
 	if err := m.applyAndTrack(ctx, m.rulesetWith(subnet, pol), pol); err != nil {
 		return false, false, err // no nftables / IPv4 NAT support, or a bad ruleset → not egress-capable
 	}
@@ -404,6 +439,35 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 	subnet6 := wgSubnet6(ctx, m.wgIface)
 	v6Ready := subnet6 != "" && hasDefaultRoute6(ctx) && ensureIPForward6() == nil
 	return true, v6Ready, nil
+}
+
+func (m *Manager) recoverFQDNBaseline(ctx context.Context, subnet string, pol *nodepolicy.Compiled) error {
+	if !m.requiresFQDNRecovery(pol) {
+		return nil
+	}
+	// Do not let ct established,related keep unknown retired answers alive.
+	// The denial is a separate atomic nft apply, before the broad recovery
+	// sweep, so an error never reopens traffic around an unknown baseline.
+	deny := &nodepolicy.Compiled{Version: pol.Version, Mode: nodepolicy.ModeEnforcing}
+	if err := m.apply(ctx, m.rulesetWith(subnet, deny)); err != nil {
+		return fmt.Errorf("fqdn restart deny-all apply: %w", err)
+	}
+	if _, err := m.ctFlushRecovery(ctx); err != nil {
+		return fmt.Errorf("fqdn restart conntrack recovery: %w", err)
+	}
+	m.mu.Lock()
+	m.fqdnRecoveryRequired = false
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) requiresFQDNRecovery(pol *nodepolicy.Compiled) bool {
+	if pol == nil || pol.Mode != nodepolicy.ModeEnforcing {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.fqdnBaselinePath != "" && m.fqdnRecoveryRequired
 }
 
 func poolCIDRForForward(policyPool, wgPool string) string {
@@ -811,6 +875,17 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	// + logs), NOT Zero Trust policy staleness — so it must NOT set policy_error/failingSince
 	// (finding #6: a nftless open-build gateway must not report itself policy-stale).
 	isPolicy := pol != nil && pol.Mode == nodepolicy.ModeEnforcing
+	// Write a pending marker before nft. If this process dies before the
+	// matching committed marker, the next process performs restart recovery
+	// instead of trusting an ambiguous tuple baseline.
+	if isPolicy {
+		m.mu.Lock()
+		baselinePath := m.fqdnBaselinePath
+		m.mu.Unlock()
+		if err := writeFQDNBaseline(baselinePath, "pending", pol); err != nil {
+			return err
+		}
+	}
 	err := m.apply(ctx, ruleset)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -870,6 +945,13 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	// while-DOWN gap (a grant revoked before this baseline existed) is the S8.7b boot-reconcile deferral.
 	m.pendingFlush = removedTuples(m.appliedAllow, pol.Allow)
 	m.appliedAllow = pol.Allow
+	if err := writeFQDNBaseline(m.fqdnBaselinePath, "committed", pol); err != nil {
+		// nft has already atomically installed the policy. Leaving the pending
+		// marker forces the next boot through deny-all + recovery rather than
+		// treating a possibly stale tuple file as current.
+		m.applyErr = err
+		return err
+	}
 	return nil
 }
 

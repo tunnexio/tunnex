@@ -23,6 +23,10 @@ func (m *Manager) Teardown(_ context.Context) {}
 // SetPolicy is a no-op off Linux (no forward chain to program).
 func (m *Manager) SetPolicy(_ *nodepolicy.Compiled) {}
 
+// SetFQDNBaselinePath is a no-op off Linux: this build has no gateway
+// enforcement or conntrack state to reconcile.
+func (m *Manager) SetFQDNBaselinePath(_ string) {}
+
 // DeviceForIP off Linux resolves nothing (no flow logging off Linux).
 func (m *Manager) DeviceForIP(_ string) string { return "" }
 

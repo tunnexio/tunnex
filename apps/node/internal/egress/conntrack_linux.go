@@ -178,6 +178,18 @@ func flushTuples(ctx context.Context, tuples []flowTuple) (int, error) {
 	})
 }
 
+// flushAllConntrack is the restart-recovery primitive for a missing or corrupt
+// persisted FQDN baseline. The old FQDN answer tuples are unknowable in that
+// state, so a selective match would leave a security hole. It is called only
+// after an atomic deny-all replacement and before a new policy is installed.
+// This intentionally interrupts all IPv4/IPv6 conntrack flows on the gateway;
+// the caller surfaces the error and does not resume policy traffic on failure.
+func flushAllConntrack(ctx context.Context) (int, error) {
+	return sweepConntrack(ctx, []conntrack.Family{conntrack.IPv4, conntrack.IPv6}, func(conntrack.Con) (string, bool) {
+		return "fqdn_restart_recovery", true
+	})
+}
+
 // familiesOf returns the conntrack address families the removed tuples span (IPv4 and/or IPv6). The flush
 // dumps ONLY these — never a family with no matching tuple ([17]), so a v6-less kernel is never touched for
 // an all-v4 removal ([11]).
