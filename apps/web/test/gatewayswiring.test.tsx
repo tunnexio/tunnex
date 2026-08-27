@@ -6,9 +6,11 @@ const mocks = vi.hoisted(() => {
     allowed: true,
     configured: true,
     url: "https://gateway-control.example.com:8443",
+    readError: false,
   };
   const meta = {
     gatewayControlURL: "https://gateway-control.example.com:8443",
+    publicBaseURL: "https://cp.example.com",
   };
   return {
     admin,
@@ -17,12 +19,15 @@ const mocks = vi.hoisted(() => {
       if (path === "/api/v1/meta") {
         return {
           data: {
-            public_base_url: "https://cp.example.com",
+            public_base_url: meta.publicBaseURL,
             gateway_control_url: meta.gatewayControlURL || undefined,
           },
         };
       }
       if (path === "/api/v1/admin/gateway-endpoint") {
+        if (admin.readError) {
+          return { error: { error: { code: "settings_unavailable" } } };
+        }
         return admin.allowed
           ? { data: { configured: admin.configured, url: admin.url } }
           : { error: { error: { code: "gateway_endpoint_admin_required" } } };
@@ -58,7 +63,9 @@ beforeEach(() => {
   mocks.admin.allowed = true;
   mocks.admin.configured = true;
   mocks.admin.url = "https://gateway-control.example.com:8443";
+  mocks.admin.readError = false;
   mocks.meta.gatewayControlURL = "https://gateway-control.example.com:8443";
+  mocks.meta.publicBaseURL = "https://cp.example.com";
 });
 
 const org = { id: "org-1", name: "Acme" } as never;
@@ -83,7 +90,7 @@ describe("Gateway enrollment ceremony", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 
-  it("first-time setup saves through the existing PUT and the command uses the saved authoritative URL", async () => {
+  it("first-time setup saves through the existing PUT and later commands use the saved authoritative URL", async () => {
     mocks.admin.configured = false;
     mocks.admin.url = "";
     mocks.meta.gatewayControlURL = "";
@@ -95,7 +102,7 @@ describe("Gateway enrollment ceremony", () => {
     expect(
       (screen.getByRole("button", { name: "Generate join token" }) as HTMLButtonElement)
         .disabled,
-    ).toBe(true);
+    ).toBe(false);
     fireEvent.change(controlURL, {
       target: { value: "https://gateway-new.example.com:8443" },
     });
@@ -169,8 +176,52 @@ describe("Gateway enrollment ceremony", () => {
     expect(mocks.apiPut).not.toHaveBeenCalled();
   });
 
-  it("issues the one-time token only after submit and preserves one-time secrecy", async () => {
+  it("uses the configured metadata fallback when the endpoint read is unconfigured", async () => {
+    mocks.admin.configured = false;
+    mocks.admin.url = "";
+    mocks.meta.gatewayControlURL = "";
     render(<Gateways org={org} initiallyOpen hideHeader />);
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Generate join token" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(screen.getByText(/No explicit Gateway control URL is saved/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Generate join token" }));
+    expect(await screen.findByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeTruthy();
+    expect(screen.getByText(/TUNNEX_AGENT_URL="https:\/\/cp.example.com:8443"/)).toBeTruthy();
+    expect(mocks.apiPut).not.toHaveBeenCalled();
+  });
+
+  it("keeps a metadata-configured command issuable when the admin endpoint read fails", async () => {
+    mocks.admin.readError = true;
+    render(<Gateways org={org} initiallyOpen hideHeader />);
+
+    expect(await screen.findByText("Could not load the Gateway control endpoint.")).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Generate join token" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Generate join token" }));
+    expect(await screen.findByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeTruthy();
+    expect(screen.getByText(/TUNNEX_AGENT_URL="https:\/\/gateway-control.example.com:8443"/)).toBeTruthy();
+    expect(mocks.apiPut).not.toHaveBeenCalled();
+  });
+
+  it("issues the one-time token only after submit and preserves one-time secrecy", async () => {
+    const onEnrollmentAcknowledged = vi.fn();
+    render(
+      <Gateways
+        org={org}
+        initiallyOpen
+        hideHeader
+        onEnrollmentAcknowledged={onEnrollmentAcknowledged}
+      />,
+    );
     expect(mocks.apiPost).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Gateway name (optional)"), {
       target: { value: "edge-london" },
@@ -190,6 +241,7 @@ describe("Gateway enrollment ceremony", () => {
     expect(screen.getByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "I’ve saved it" }));
     expect(screen.queryByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeNull();
+    expect(onEnrollmentAcknowledged).toHaveBeenCalledOnce();
   });
 
   it("surfaces a failed token issue instead of claiming a command exists", async () => {

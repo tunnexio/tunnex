@@ -274,6 +274,7 @@ export default function GatewaysPage() {
             org={org}
             initiallyOpen
             hideHeader
+            onEnrollmentAcknowledged={closeEnrollment}
           />
         </Modal>
       )}

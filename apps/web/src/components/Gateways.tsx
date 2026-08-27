@@ -163,6 +163,7 @@ export function Gateways({
   initiallyOpen = false,
   hideHeader = false,
   showGatewayEndpointSettings = true,
+  onEnrollmentAcknowledged,
 }: {
   org: Org;
   /** Open the enrollment details immediately when the page owns the surrounding modal. */
@@ -171,6 +172,8 @@ export function Gateways({
   hideHeader?: boolean;
   /** Show the deployment-wide control endpoint status/editor in enrollment. */
   showGatewayEndpointSettings?: boolean;
+  /** Close an embedding enrollment workspace after the one-time secret is acknowledged. */
+  onEnrollmentAcknowledged?: () => void;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
   const [nodeName, setNodeName] = useState("");
@@ -300,9 +303,8 @@ export function Gateways({
     !showGatewayEndpointSettings || gatewayEndpointState !== "loading";
   const gatewayEndpointReady =
     gatewayEndpointSettled &&
-    gatewayEndpointState !== "error" &&
-    Boolean(gatewayControlURL) &&
-    ep.ok;
+    ep.ok &&
+    (gatewayEndpointState !== "restricted" || Boolean(gatewayControlURL));
 
   async function issue() {
     setBusy(true);
@@ -460,11 +462,13 @@ export function Gateways({
       {open &&
         metaLoaded &&
         gatewayEndpointSettled &&
-        gatewayEndpointState !== "error" &&
         !gatewayControlURL &&
-        gatewayEndpointState !== "restricted" && (
-          <p className="mt-2 text-xs text-amber-300">
-            Save the deployment-wide Gateway control endpoint before generating a join token.
+        gatewayEndpointState !== "error" && (
+          <p className="mt-2 text-xs text-ink-faint">
+            No explicit Gateway control URL is saved. This command derives the
+            raw mTLS endpoint from the configured control-plane URL on port
+            8443. A deployment admin can save an explicit endpoint for future
+            commands.
           </p>
         )}
       {open && ep.ok && ep.usedFallback && metaError && (
@@ -539,6 +543,7 @@ export function Gateways({
             setToken(null);
             setPinnedName(null);
             setPinnedEndpoint(null);
+            onEnrollmentAcknowledged?.();
           }}
         />
       )}
