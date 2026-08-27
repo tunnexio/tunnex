@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -85,7 +85,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	if err := mailbox.Enqueue(ctx, bad); !errors.Is(err, ErrSuperseded) {
 		t.Fatalf("cross-org context enqueue=%v want ErrSuperseded", err)
 	}
-	if pending, err := mailbox.PendingForGateway(ctx, org, gateway, 10); err != nil || len(pending) != 1 || !reflect.DeepEqual(pending[0], request) {
+	if pending, err := mailbox.PendingForGateway(ctx, org, gateway, 10); err != nil || len(pending) != 1 || !sameMailboxRequest(pending[0], request) {
 		t.Fatalf("gateway pending=%#v err=%v want %#v", pending, err, request)
 	}
 	if other, err := mailbox.PendingForGateway(ctx, uuid.New(), gateway, 10); err != nil || len(other) != 0 {
@@ -120,4 +120,13 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	if err := mailbox.Complete(ctx, org, gateway, late); !errors.Is(err, ErrSuperseded) {
 		t.Fatalf("reselected context completion=%v want ErrSuperseded", err)
 	}
+}
+
+// PostgreSQL scans timestamptz using the local Location while request creation
+// uses UTC. Equal compares the persisted instant without discarding any other
+// identity field of the durable request.
+func sameMailboxRequest(got, want GatewayDNSRequest) bool {
+	return got.Version == want.Version && got.RequestID == want.RequestID && got.OrgID == want.OrgID &&
+		got.ResourceID == want.ResourceID && got.SiteID == want.SiteID && got.GatewayID == want.GatewayID &&
+		got.Hostname == want.Hostname && slices.Equal(got.RecordTypes, want.RecordTypes) && got.Deadline.Equal(want.Deadline)
 }
