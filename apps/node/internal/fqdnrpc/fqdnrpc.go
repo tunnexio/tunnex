@@ -13,9 +13,13 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 // Version is the first brokered FQDN-resolution wire version. A zero/missing
@@ -52,6 +56,21 @@ type Request struct {
 	Hostname    string       `json:"hostname"`
 	RecordTypes []RecordType `json:"record_types"`
 	Deadline    time.Time    `json:"deadline"`
+	// ResolverConfig is an immutable, server-managed direct resolver snapshot
+	// bound to this Site/Gateway request. Nil is a refusal, never permission to
+	// consult resolv.conf, net.DefaultResolver, public DNS, or the control plane.
+	ResolverConfig *ResolverConfig `json:"resolver_config"`
+}
+
+type ResolverConfig struct {
+	Version   int64              `json:"version"`
+	Endpoints []ResolverEndpoint `json:"endpoints"`
+}
+
+type ResolverEndpoint struct {
+	Address   string `json:"address"`
+	Port      int    `json:"port"`
+	Transport string `json:"transport"` // udp | tcp
 }
 
 // Record is one response record. Data is a canonical IP literal for A/AAAA and
@@ -96,6 +115,183 @@ type Response struct {
 // public resolver as a fallback.
 type Resolver interface {
 	Resolve(context.Context, string, []RecordType) ([]Record, error)
+}
+
+// BoundResolver receives the immutable endpoint snapshot that the control
+// plane bound to this Site/Gateway request. It must never select a resolver
+// itself. DirectResolver below is the production implementation.
+type BoundResolver interface {
+	ResolveBound(context.Context, string, []RecordType, ResolverConfig) ([]Record, error)
+}
+
+var errResolverConfig = errors.New("resolver configuration unavailable")
+
+// DirectResolver sends DNS packets only to server-managed literal IP endpoints.
+// Each configured endpoint must return the same bounded observation; timeout,
+// malformed response, transport failure, or disagreement fails the request
+// closed. It deliberately has no net.Resolver field or system fallback.
+type DirectResolver struct {
+	exchange func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error)
+}
+
+func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) ([]Record, error) {
+	if !validResolverConfig(config) {
+		return nil, errResolverConfig
+	}
+	var canonical []Record
+	for _, endpoint := range config.Endpoints {
+		var records []Record
+		for _, typ := range types {
+			if typ == RecordCNAME {
+				continue
+			}
+			exchange := d.exchange
+			if exchange == nil {
+				exchange = directExchange
+			}
+			got, err := exchange(ctx, endpoint, hostname, typ)
+			if err != nil {
+				return nil, errResolverConfig
+			}
+			records = append(records, got...)
+		}
+		records = canonicalRecords(records)
+		if code := validateRecords(Request{Hostname: hostname, RecordTypes: types}, records); code != "" {
+			return nil, errResolverConfig
+		}
+		if canonical == nil {
+			canonical = records
+			continue
+		}
+		if !sameRecords(canonical, records) {
+			return nil, errResolverConfig
+		}
+	}
+	return canonical, nil
+}
+
+func validResolverConfig(config ResolverConfig) bool {
+	if config.Version < 1 || len(config.Endpoints) == 0 || len(config.Endpoints) > 8 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, endpoint := range config.Endpoints {
+		ip, err := netip.ParseAddr(endpoint.Address)
+		if err != nil || !ip.IsValid() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || endpoint.Port < 1 || endpoint.Port > 65535 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+			return false
+		}
+		key := ip.String() + ":" + strconv.Itoa(endpoint.Port) + ":" + endpoint.Transport
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+	}
+	return true
+}
+
+func canonicalRecords(in []Record) []Record {
+	out := append([]Record(nil), in...)
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		return a.Name+"|"+string(a.Type)+"|"+a.Address+"|"+a.Target+"|"+strconv.Itoa(a.TTLSeconds) < b.Name+"|"+string(b.Type)+"|"+b.Address+"|"+b.Target+"|"+strconv.Itoa(b.TTLSeconds)
+	})
+	return out
+}
+
+func sameRecords(a, b []Record) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func directExchange(ctx context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
+	name, err := dnsmessage.NewName(hostname + ".")
+	if err != nil {
+		return nil, err
+	}
+	qtype := dnsmessage.TypeA
+	if typ == RecordAAAA {
+		qtype = dnsmessage.TypeAAAA
+	}
+	msg := dnsmessage.Message{Header: dnsmessage.Header{ID: uint16(time.Now().UnixNano()), RecursionDesired: true}, Questions: []dnsmessage.Question{{Name: name, Type: qtype, Class: dnsmessage.ClassINET}}}
+	payload, err := msg.Pack()
+	if err != nil {
+		return nil, err
+	}
+	address := net.JoinHostPort(endpoint.Address, strconv.Itoa(endpoint.Port))
+	var response []byte
+	if endpoint.Transport == "udp" {
+		conn, err := (&net.Dialer{}).DialContext(ctx, "udp", address)
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+		if _, err := conn.Write(payload); err != nil {
+			return nil, err
+		}
+		buf := make([]byte, 4096)
+		n, err := conn.Read(buf)
+		if err != nil {
+			return nil, err
+		}
+		response = buf[:n]
+	} else {
+		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+		frame := append([]byte{byte(len(payload) >> 8), byte(len(payload))}, payload...)
+		if _, err := conn.Write(frame); err != nil {
+			return nil, err
+		}
+		var size [2]byte
+		if _, err := conn.Read(size[:]); err != nil {
+			return nil, err
+		}
+		n := int(size[0])<<8 | int(size[1])
+		if n == 0 || n > 65535 {
+			return nil, fmt.Errorf("invalid dns tcp frame")
+		}
+		response = make([]byte, n)
+		for off := 0; off < n; {
+			got, err := conn.Read(response[off:])
+			if err != nil {
+				return nil, err
+			}
+			off += got
+		}
+	}
+	var decoded dnsmessage.Message
+	if err := decoded.Unpack(response); err != nil {
+		return nil, err
+	}
+	if !decoded.Header.Response || decoded.Header.ID != msg.Header.ID || decoded.Header.RCode != dnsmessage.RCodeSuccess {
+		return nil, fmt.Errorf("invalid dns response")
+	}
+	var out []Record
+	for _, answer := range decoded.Answers {
+		name := strings.TrimSuffix(strings.ToLower(answer.Header.Name.String()), ".")
+		switch body := answer.Body.(type) {
+		case *dnsmessage.AResource:
+			if typ == RecordA {
+				out = append(out, Record{Name: name, Type: RecordA, Address: netip.AddrFrom4(body.A).String(), TTLSeconds: int(answer.Header.TTL)})
+			}
+		case *dnsmessage.AAAAResource:
+			if typ == RecordAAAA {
+				out = append(out, Record{Name: name, Type: RecordAAAA, Address: netip.AddrFrom16(body.AAAA).String(), TTLSeconds: int(answer.Header.TTL)})
+			}
+		case *dnsmessage.CNAMEResource:
+			out = append(out, Record{Name: name, Type: RecordCNAME, Target: strings.TrimSuffix(strings.ToLower(body.CNAME.String()), "."), TTLSeconds: int(answer.Header.TTL)})
+		}
+	}
+	return out, nil
 }
 
 // LocalResolver resolves through the selected gateway's configured local DNS
@@ -164,7 +360,7 @@ func (r LocalResolver) Resolve(ctx context.Context, hostname string, types []Rec
 // with changed tenant/resource/site/gateway/hostname input is refused and never
 // reaches DNS.
 type Responder struct {
-	resolver Resolver
+	resolver any // Resolver or BoundResolver; production uses BoundResolver only.
 	now      func() time.Time
 	mu       sync.Mutex
 	seen     map[string]cached
@@ -176,7 +372,7 @@ type cached struct {
 	expiresAt   time.Time
 }
 
-func NewResponder(resolver Resolver) *Responder {
+func NewResponder(resolver any) *Responder {
 	return &Responder{resolver: resolver, now: time.Now, seen: make(map[string]cached)}
 }
 
@@ -214,13 +410,27 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 		deadline = max
 	}
 	lookupCtx, cancel := context.WithDeadline(ctx, deadline)
-	records, err := r.resolver.Resolve(lookupCtx, req.Hostname, req.RecordTypes)
+	var records []Record
+	var err error
+	if bound, ok := r.resolver.(BoundResolver); ok {
+		if req.ResolverConfig == nil {
+			err = errResolverConfig
+		} else {
+			records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, *req.ResolverConfig)
+		}
+	} else if plain, ok := r.resolver.(Resolver); ok {
+		records, err = plain.Resolve(lookupCtx, req.Hostname, req.RecordTypes)
+	} else {
+		err = errResolverConfig
+	}
 	cancel()
 	observed := r.now().UTC()
 	resp := responseFor(req, StatusNoError, "", observed)
 	if err != nil {
 		var dnsErr *net.DNSError
-		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		if errors.Is(err, errResolverConfig) {
+			resp = responseFor(req, StatusServFail, "resolver_unavailable", observed)
+		} else if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
 			resp = responseFor(req, StatusNXDomain, "", observed)
 		} else if errors.Is(err, context.DeadlineExceeded) || !observed.Before(req.Deadline) {
 			resp = responseFor(req, StatusServFail, "deadline_exceeded", observed)
@@ -299,8 +509,15 @@ func validateRecords(req Request, records []Record) string {
 }
 
 func requestFingerprint(req Request) string {
-	s := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%s|%s|%s", req.Version, req.OrgID, req.ResourceID,
-		req.SiteID, req.GatewayID, req.Hostname, strings.Join(recordTypeNames(req.RecordTypes), ","), req.Deadline.UTC().Format(time.RFC3339Nano), req.RequestID)
+	config := ""
+	if req.ResolverConfig != nil {
+		config = strconv.FormatInt(req.ResolverConfig.Version, 10)
+		for _, endpoint := range req.ResolverConfig.Endpoints {
+			config += "|" + endpoint.Address + ":" + strconv.Itoa(endpoint.Port) + "/" + endpoint.Transport
+		}
+	}
+	s := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%s|%s|%s|%s", req.Version, req.OrgID, req.ResourceID,
+		req.SiteID, req.GatewayID, req.Hostname, strings.Join(recordTypeNames(req.RecordTypes), ","), req.Deadline.UTC().Format(time.RFC3339Nano), req.RequestID, config)
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }

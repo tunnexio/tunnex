@@ -90,6 +90,51 @@ func TestLocalResolverKeepsUsableAddressFamilyWhenOtherLookupsFail(t *testing.T)
 	}
 }
 
+func TestDirectResolverUsesOnlyBoundEndpointsAndFailsClosed(t *testing.T) {
+	config := ResolverConfig{Version: 4, Endpoints: []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}, {Address: "10.20.0.54", Port: 53, Transport: "tcp"}}}
+	calls := 0
+	direct := DirectResolver{exchange: func(_ context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
+		calls++
+		if hostname != "api.example.test" || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+			t.Fatalf("unexpected direct query endpoint=%+v hostname=%q", endpoint, hostname)
+		}
+		if typ == RecordA {
+			return []Record{{Name: hostname, Type: RecordA, Address: "10.20.0.8", TTLSeconds: 30}}, nil
+		}
+		return []Record{{Name: hostname, Type: RecordAAAA, Address: "fd00::8", TTLSeconds: 30}}, nil
+	}}
+	got, err := direct.ResolveBound(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, config)
+	if err != nil || calls != 4 || len(got) != 2 {
+		t.Fatalf("direct bound lookup got=%+v err=%v calls=%d", got, err, calls)
+	}
+	// Every bound endpoint is authoritative. A disagreement cannot silently pick
+	// one or ask the host resolver as a tiebreaker.
+	direct.exchange = func(_ context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
+		if typ == RecordA && endpoint.Transport == "tcp" {
+			return []Record{{Name: hostname, Type: RecordA, Address: "10.20.0.9", TTLSeconds: 30}}, nil
+		}
+		if typ == RecordA {
+			return []Record{{Name: hostname, Type: RecordA, Address: "10.20.0.8", TTLSeconds: 30}}, nil
+		}
+		return []Record{{Name: hostname, Type: RecordAAAA, Address: "fd00::8", TTLSeconds: 30}}, nil
+	}
+	if _, err := direct.ResolveBound(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, config); !errors.Is(err, errResolverConfig) {
+		t.Fatalf("disagreeing configured endpoints must fail closed, got %v", err)
+	}
+	if _, err := direct.ResolveBound(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, ResolverConfig{}); !errors.Is(err, errResolverConfig) {
+		t.Fatalf("missing config must not use system resolver, got %v", err)
+	}
+}
+
+func TestResponderDirectResolverRefusesMissingBoundConfig(t *testing.T) {
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	r := NewResponder(DirectResolver{})
+	r.now = func() time.Time { return now }
+	if got := r.Handle(context.Background(), testGateway, testRequest(now)); got.Status != StatusServFail || got.ErrorCode != "resolver_unavailable" {
+		t.Fatalf("missing bound config must fail closed without host DNS fallback: %+v", got)
+	}
+}
+
 type fakeResolver struct {
 	mu      sync.Mutex
 	calls   int

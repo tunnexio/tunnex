@@ -297,7 +297,10 @@ func main() {
 	// gateway's node id and posts the answer back over this same mTLS channel.
 	// DNS errors are reported as typed fail-closed outcomes; they never alter the
 	// currently applied policy or fall back to a control-plane/public resolver.
-	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.LocalResolver{})
+	// DirectResolver accepts only the immutable resolver endpoint snapshot bound
+	// into an authenticated gateway DNS RPC request. It never consults host DNS,
+	// resolv.conf, public DNS, or the control plane as a fallback.
+	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{})
 	r.OnDNSResolve(func(ds reconcile.DesiredState) {
 		if ds.DNSResolveRequest == nil {
 			return
