@@ -12,8 +12,11 @@
 package policy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/netip"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -79,7 +82,7 @@ type Rule struct {
 	SrcCIDR         string    // S8.7: src_kind='cidr' — a LITERAL source CIDR, placed on its containing site's gateway
 	SrcDeviceID     uuid.UUID // S15.3: src_kind='agent' — the agent DEVICE whose /32 is the source
 	SrcAgentGroupID uuid.UUID // F09: src_kind='agent_group' — current active managed-agent members
-	DstKind         string
+	DstKind         string    // resource | fqdn_resource | group | site | k8s_service
 	DstResourceID   uuid.UUID
 	DstGroupID      uuid.UUID
 	DstSiteID       uuid.UUID // S8.1: dst_kind='site' — resolved to the site's subnet CIDRs
@@ -106,19 +109,42 @@ type SiteNode struct {
 	Endpoint string // public WG endpoint; a non-empty endpoint makes this gateway hub-eligible (B1/Item 7)
 }
 
-// Resource is a static destination (a CIDR + optional L4 scope).
+// Resource is a legacy static CIDR destination (with optional L4 scope).
+// It MUST NOT carry FQDN data: FQDN resources have a separate identity and
+// rule-reference relation so a hostname can never be mistaken for a CIDR.
 type Resource struct {
-	ID   uuid.UUID
-	CIDR string
-	// FQDN is mutually exclusive with CIDR. The storage/API lane normalizes and
-	// validates it; the compiler treats an invalid or incomplete generation as
-	// no destination, preserving default deny.
-	FQDN             string
-	ActiveGeneration string
-	Answers          []string
-	Protocol         string // any | tcp | udp
-	PortLow          int    // 0 => unset
-	PortHigh         int    // 0 => unset
+	ID       uuid.UUID
+	CIDR     string
+	Protocol string // any | tcp | udp
+	PortLow  int    // 0 => unset
+	PortHigh int    // 0 => unset
+}
+
+// FQDNResource is the distinct S21 destination identity. Active is populated
+// only from Lane 2's immutable selected Site+Gateway generation; no resolver
+// state, last-good answer, or legacy Resource is accepted here.
+type FQDNResource struct {
+	ID       uuid.UUID
+	FQDN     string
+	Protocol string
+	PortLow  int
+	PortHigh int
+	Active   *FQDNGeneration
+}
+
+type FQDNGeneration struct {
+	ResourceID        uuid.UUID
+	SelectedSiteID    uuid.UUID
+	SelectedGatewayID uuid.UUID
+	Answers           []string
+}
+
+// FQDNRuleReference is the owned compiler seam for Lane 1's separate
+// fqdn_resource_rule_references relation. Exactly one matching reference is
+// required for a fqdn_resource rule; missing or ambiguous rows withdraw it.
+type FQDNRuleReference struct {
+	PolicyRuleID   uuid.UUID
+	FQDNResourceID uuid.UUID
 }
 
 // ExposedService (S10.3) is a Kubernetes Service exposed to the fabric: a STABLE identity resolved to its
@@ -181,9 +207,16 @@ func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
 
 // Snapshot is the full org policy state the compiler consumes.
 type Snapshot struct {
-	Mode                  string
-	Rules                 []Rule
-	Resources             []Resource
+	Mode               string
+	Rules              []Rule
+	Resources          []Resource
+	FQDNResources      []FQDNResource
+	FQDNRuleReferences []FQDNRuleReference
+	// FQDNResourcesLicensed is the entitlement decision captured with this
+	// snapshot. FQDN data is never compiled unless this and the org's explicit
+	// opt-in are both true; absent data therefore fails closed.
+	FQDNResourcesLicensed bool
+	FQDNResourcesEnabled  bool
 	ExposedServices       []ExposedService // S10.3: dst_kind='k8s_service' resolution (id → current VIP)
 	Memberships           []Membership
 	AgentGroupMemberships []AgentGroupMembership
@@ -296,6 +329,29 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	resourceByID := make(map[uuid.UUID]Resource, len(s.Resources))
 	for _, r := range s.Resources {
 		resourceByID[r.ID] = r
+	}
+	fqdnEnabled := s.FQDNResourcesLicensed && s.FQDNResourcesEnabled
+	fqdnResourceByID := make(map[uuid.UUID]FQDNResource, len(s.FQDNResources))
+	for _, r := range s.FQDNResources {
+		// Duplicate resource identities are ambiguous input, never last-write-wins.
+		if _, exists := fqdnResourceByID[r.ID]; exists {
+			fqdnResourceByID[r.ID] = FQDNResource{}
+			continue
+		}
+		fqdnResourceByID[r.ID] = r
+	}
+	fqdnReferenceForRule := map[uuid.UUID]uuid.UUID{}
+	fqdnAmbiguousRule := map[uuid.UUID]bool{}
+	for _, ref := range s.FQDNRuleReferences {
+		if ref.PolicyRuleID == uuid.Nil || ref.FQDNResourceID == uuid.Nil {
+			fqdnAmbiguousRule[ref.PolicyRuleID] = true
+			continue
+		}
+		if _, exists := fqdnReferenceForRule[ref.PolicyRuleID]; exists {
+			fqdnAmbiguousRule[ref.PolicyRuleID] = true
+			continue
+		}
+		fqdnReferenceForRule[ref.PolicyRuleID] = ref.FQDNResourceID
 	}
 	// S10.3: exposed Services keyed by their STABLE id — a grant resolves to the CURRENT VIP here, never a
 	// snapshotted address, so a re-allocated VIP follows the identity and a vanished Service resolves to nothing.
@@ -474,23 +530,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			switch r.DstKind {
 			case "resource":
 				res, ok := resourceByID[r.DstResourceID]
-				if !ok {
-					continue
-				}
-				if res.FQDN != "" {
-					generation, answers, ok := activeFQDNGeneration(res)
-					if !ok {
-						continue // draft, withdrawn, stale, or malformed answers: deny
-					}
-					for _, node := range devGrantNodes(d.NodeID, uuid.Nil) {
-						addGeneration(node, generation)
-						for _, answer := range answers {
-							add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()})
-						}
-					}
-					continue
-				}
-				if res.CIDR == "" {
+				if !ok || res.CIDR == "" {
 					continue
 				}
 				// A3b: a resource inside a site's approved subnet is site-fronted — the grant also lands
@@ -506,6 +546,19 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 						RuleID:      r.ID.String(),
 						SrcDeviceID: d.ID.String(),
 					})
+				}
+			case "fqdn_resource":
+				resourceID, referenced := fqdnReferenceForRule[r.ID]
+				res, found := fqdnResourceByID[resourceID]
+				generation, answers, active := activeFQDNGeneration(res)
+				if !fqdnEnabled || !referenced || fqdnAmbiguousRule[r.ID] || !found || !active {
+					continue // missing, ambiguous, inactive, or withdrawn: default deny
+				}
+				for _, node := range devGrantNodes(d.NodeID, uuid.Nil) {
+					addGeneration(node, generation)
+					for _, answer := range answers {
+						add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()})
+					}
 				}
 			case "group":
 				for _, dstIP := range groupDeviceIPs[r.DstGroupID] {
@@ -649,18 +702,20 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		switch r.DstKind {
 		case "resource":
 			if res, ok := resourceByID[r.DstResourceID]; ok {
-				if res.FQDN != "" {
-					generation, answers, active := activeFQDNGeneration(res)
-					if active {
-						for _, answer := range answers {
-							dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
-						}
-						for node := range enforceNodes {
-							addGeneration(node, generation)
-						}
-					}
-				} else if res.CIDR != "" {
+				if res.CIDR != "" {
 					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+				}
+			}
+		case "fqdn_resource":
+			resourceID, referenced := fqdnReferenceForRule[r.ID]
+			res, found := fqdnResourceByID[resourceID]
+			generation, answers, active := activeFQDNGeneration(res)
+			if fqdnEnabled && referenced && !fqdnAmbiguousRule[r.ID] && found && active {
+				for _, answer := range answers {
+					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+				}
+				for node := range enforceNodes {
+					addGeneration(node, generation)
 				}
 			}
 		case "group":
@@ -716,13 +771,17 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 // lifecycle code supplies only selected-context, last-known-good generations; a
 // partial DB read or bad fixture must still withdraw rather than accidentally
 // turn a hostname into a broad CIDR allow.
-func activeFQDNGeneration(r Resource) (policyspec.FQDNGeneration, []string, bool) {
-	if r.ID == uuid.Nil || r.FQDN == "" || r.CIDR != "" || r.ActiveGeneration == "" || len(r.Answers) == 0 || len(r.Answers) > 32 || !validFQDNL4Scope(r) {
+func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, bool) {
+	if r.ID == uuid.Nil || r.FQDN == "" || r.Active == nil || r.Active.ResourceID != r.ID || r.Active.SelectedSiteID == uuid.Nil || r.Active.SelectedGatewayID == uuid.Nil || len(r.Active.Answers) == 0 || len(r.Active.Answers) > 32 || !validFQDNL4Scope(r) {
 		return policyspec.FQDNGeneration{}, nil, false
 	}
+	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r.FQDN), "."))
+	if name == "" || r.FQDN != name {
+		return policyspec.FQDNGeneration{}, nil, false // Lane 1 publishes normalized names only.
+	}
 	seen := map[string]bool{}
-	answers := make([]string, 0, len(r.Answers))
-	for _, raw := range r.Answers {
+	answers := make([]string, 0, len(r.Active.Answers))
+	for _, raw := range r.Active.Answers {
 		addr, err := netip.ParseAddr(raw)
 		if err != nil || !usableFQDNAnswer(addr) {
 			return policyspec.FQDNGeneration{}, nil, false
@@ -734,15 +793,48 @@ func activeFQDNGeneration(r Resource) (policyspec.FQDNGeneration, []string, bool
 		}
 	}
 	sort.Strings(answers)
-	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: r.FQDN, Generation: r.ActiveGeneration, Answers: answers}, answers, true
+	identity := fqdnGenerationIdentity(r.ID, name, r.Active.SelectedSiteID, r.Active.SelectedGatewayID, answers)
+	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, Answers: answers}, answers, true
+}
+
+// FQDNGenerationIdentity binds an immutable generation to its FQDN resource,
+// selected resolver authority and canonical answers. It intentionally does not
+// use a sequence number or timestamp: replaying the same selected generation
+// yields the same identity on every compiler.
+func FQDNGenerationIdentity(resourceID uuid.UUID, fqdn string, siteID, gatewayID uuid.UUID, answers []string) string {
+	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), "."))
+	if resourceID == uuid.Nil || siteID == uuid.Nil || gatewayID == uuid.Nil || name == "" || fqdn != name || len(answers) == 0 || len(answers) > 32 {
+		return ""
+	}
+	canonical := make([]string, 0, len(answers))
+	seen := make(map[string]bool, len(answers))
+	for _, raw := range answers {
+		addr, err := netip.ParseAddr(raw)
+		if err != nil || !usableFQDNAnswer(addr) {
+			return ""
+		}
+		prefix := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if !seen[prefix] {
+			seen[prefix] = true
+			canonical = append(canonical, prefix)
+		}
+	}
+	sort.Strings(canonical)
+	return fqdnGenerationIdentity(resourceID, name, siteID, gatewayID, canonical)
+}
+
+func fqdnGenerationIdentity(resourceID uuid.UUID, fqdn string, siteID, gatewayID uuid.UUID, answers []string) string {
+	parts := append([]string{resourceID.String(), strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), ".")), siteID.String(), gatewayID.String()}, answers...)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
 }
 
 // validFQDNL4Scope makes the compiler's FQDN branch default deny if a
 // cross-lane read bypasses the resource validator. In particular, a malformed
 // protocol must never fall through normProto's legacy CIDR compatibility default
 // and become an unscoped "any" grant.
-func validFQDNL4Scope(r Resource) bool {
-	if r.Protocol == "any" || r.Protocol == "" {
+func validFQDNL4Scope(r FQDNResource) bool {
+	if r.Protocol == "any" {
 		return r.PortLow == 0 && r.PortHigh == 0
 	}
 	if r.Protocol != "tcp" && r.Protocol != "udp" {

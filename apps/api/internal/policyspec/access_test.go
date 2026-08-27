@@ -60,3 +60,14 @@ func TestEvaluateAccessUsesOnlyActiveFQDNGenerationAnswers(t *testing.T) {
 		t.Fatalf("an unbound hostname must remain default denied: %+v", got)
 	}
 }
+
+func TestEvaluateAccessFQDNWithdrawalRemainsUnresolved(t *testing.T) {
+	device := uuid.New()
+	compiled := &Compiled{Version: 4, Mode: "enforcing",
+		Subjects: []SubjectAttribution{{SrcIP: "10.99.0.7", DeviceID: device.String()}},
+	}
+	got := EvaluateAccess(compiled, device, "10.99.0.7", "api.example.com", "tcp", 443)
+	if got.Allowed || len(got.DestinationAnswers) != 0 || got.PolicyVersion != 4 {
+		t.Fatalf("withdrawn FQDN generation must be unresolved and denied: %+v", got)
+	}
+}
