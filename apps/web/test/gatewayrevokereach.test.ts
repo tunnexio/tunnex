@@ -22,41 +22,55 @@ import { stripJsComments } from "./support/source";
 // ⛔ COMMENTS STRIPPED, AND A CENSUS-OF-CENSUSES CAUGHT THAT I HAD NOT. The doc comment above CONTAINS the
 // endpoint path this test hunts for, so a raw read would have matched its own prose — reporting the action
 // present because I had described it. The guard would have passed with the button deleted.
-const page = stripJsComments(readFileSync("src/pages/Gateways.tsx", "utf8"));
+const index = stripJsComments(readFileSync("src/pages/Gateways.tsx", "utf8"));
+const detail = stripJsComments(readFileSync("src/pages/GatewayDetail.tsx", "utf8"));
 
-describe("revoking a gateway is reachable from the Gateways page", () => {
-  it("⛔ the page itself calls the revoke endpoint — not only the component it switches off", () => {
+describe("revoking a gateway is reachable from the active Gateway workspace", () => {
+  it("the inventory opens a stable detail route and the detail owns the revoke call", () => {
+    expect(index).toContain("`/gateways/${row.id}`");
     expect(
-      page.includes("/api/v1/organizations/{orgId}/nodes/{nodeId}/revoke"),
-      "The page renders EnrolCeremony with renderList={false}, so any action living only in that " +
-        "component is unreachable here. The ceiling notice tells an operator to 'revoke a gateway you no " +
-        "longer use' — and revoking genuinely frees a licence slot — so the button has to be on this page.",
+      detail.includes("/api/v1/organizations/{orgId}/nodes/{nodeId}/revoke"),
+      "The stable detail workspace is the active lifecycle owner; the enrollment component's hidden list is not.",
     ).toBe(true);
   });
 
-  it("⛔ the action is a COLUMN, so it renders on every table — healthy included", () => {
-    // ⚠ THE HEALTHY TABLE IS THE CASE THAT WAS BROKEN. A healthy-but-unused gateway is exactly the one an
-    // operator retires to free a slot; an action offered only on "needs attention" would leave the
-    // ceiling's own remedy unreachable for the gateways it is about.
-    expect(page).toMatch(/key:\s*"actions"/);
-    // The columns array feeds every DataTable on the page, so a column cannot be present for one group and
-    // absent for another — which is why this is a column rather than a per-group control.
-    const columnsAt = page.indexOf("const columns");
-    const actionsAt = page.indexOf('key: "actions"');
-    expect(actionsAt).toBeGreaterThan(columnsAt);
+  it("offers revocation for any active gateway only after the homed count is authoritative zero", () => {
+    expect(detail).toMatch(/node\.status === "active" && canManage && homed === 0/);
+    expect(detail).toMatch(/server checks again transactionally/i);
+    expect(detail).toContain("Move devices");
   });
 
   it("⚠ an already-revoked gateway is not offered a revoke — there is no un-revoke", () => {
-    // ⛔ THE ASSERTION CHANGED SHAPE WHEN DELETE SHIPPED (S12.12 D2), and only the shape. It used to read
-    // `status === "revoked" ? null` — the revoked branch rendered NOTHING, which was the right answer while
-    // there was nothing a revoked gateway could be offered. There is now: delete. So the branch still must
-    // not offer a revoke, and the test says exactly that rather than pinning the literal `null` it happened
-    // to be expressed as. A census that matches an implementation detail fails on the refactor and passes on
-    // the regression.
-    const branchAt = page.indexOf('r.status === "revoked" ?');
-    expect(branchAt).toBeGreaterThan(-1);
-    const branch = page.slice(branchAt, page.indexOf('confirmRevoke === r.id ?', branchAt));
-    expect(branch).not.toMatch(/setConfirmRevoke/);
-    expect(branch).toMatch(/setConfirmDelete/);
+    expect(detail).toMatch(/node\.status === "revoked" && canRestore/);
+    expect(detail).toMatch(/node\.status === "revoked" && canManage/);
+    expect(detail).not.toMatch(/node\.status === "revoked"[^\n]+setDialog\("revoke"\)/);
+    expect(detail).toContain("cannot be reactivated");
+  });
+});
+
+describe("S20 Gateway mutation-to-rendered-caller census", () => {
+  const enrollment = stripJsComments(
+    readFileSync("src/components/Gateways.tsx", "utf8"),
+  );
+  const callers = [
+    ["PUT", "/api/v1/admin/gateway-endpoint", enrollment],
+    ["POST", "/api/v1/organizations/{orgId}/nodes/join-token", enrollment],
+    ["PATCH", "/api/v1/organizations/{orgId}/nodes/{nodeId}", detail],
+    ["POST", "/api/v1/organizations/{orgId}/nodes/{nodeId}/transfer-devices", detail],
+    ["POST", "/api/v1/organizations/{orgId}/nodes/{nodeId}/revoke", detail],
+    ["POST", "/api/v1/organizations/{orgId}/nodes/{nodeId}/restore-devices", detail],
+    ["DELETE", "/api/v1/organizations/{orgId}/nodes/{nodeId}", detail],
+  ] as const;
+
+  for (const [method, path, owner] of callers) {
+    it(`${method} ${path} has an active Gateway owner`, () => {
+      const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      expect(owner).toMatch(new RegExp(`api\\.${method}\\(\\s*"${escapedPath}"`));
+    });
+  }
+
+  it("the enrollment component no longer carries hidden lifecycle callers", () => {
+    expect(enrollment).not.toContain("/revoke");
+    expect(enrollment).not.toContain("/restore-devices");
   });
 });

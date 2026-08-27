@@ -75,7 +75,9 @@ const EXEMPT: Record<string, string> = {
 // COVERED — a screen enters this list when it has BOTH a wiring test and a failure-path test.
 const COVERED: Record<string, string> = {
   "Gateways.tsx":
-    "test/gatewayswiring.test.tsx — revoke wiring + revoked-suppression + failed-revoke surfaced",
+    "test/gatewayworkspace.test.tsx + gatewayswiring.test.tsx — URL-backed operational inventory, error/empty separation, enrollment reachability",
+  "GatewayDetail.tsx":
+    "test/gatewayworkspace.test.tsx — stable detail route, permission-hidden lifecycle controls, impact-read failure and confirm-before-revoke",
   "Devices.tsx":
     "test/deviceswiring.test.tsx — posture/re-export suppression on revoked + failed-load surfaced, distinct from empty",
   "Kubernetes.tsx":
@@ -156,8 +158,7 @@ describe("screen census", () => {
     const unaccounted = screens.filter(
       (s) => !(s in COVERED) && !(s in PENDING) && !(s in EXEMPT),
     );
-    // `Gateways.tsx` lives in components/ but IS the gateway screen; it is accounted for in COVERED and is not
-    // enumerated here, which is why it never appears in `unaccounted`.
+    // The legacy enrollment component is not a page; the S20 inventory/detail pages are both accounted for.
     expect(
       unaccounted,
       `unaccounted screens (add a wiring+failure test, or a PENDING/EXEMPT entry WITH A REASON): ${unaccounted.join(", ")}`,
@@ -186,7 +187,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(9);
+    expect(Object.keys(COVERED).length).toBe(10);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -206,7 +207,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 19 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(21);
+  it("the ledger is a snapshot of today — 22 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(22);
   });
 });

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -10,7 +11,6 @@ import {
   type Site,
   type K8sCluster,
   type K8sService,
-  type AgentPolicyTemplateDestinationImpact,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
@@ -31,12 +31,13 @@ import { Icon, type IconName } from "../components/Icon";
 import { roleFromMembers } from "../lib/policyview";
 import {
   assembleClusters,
-  clusterReachability,
+  clusterConnectorState,
   k8sGate,
   managedEditWarning,
   objectControls,
   statTiles,
   type ClusterCard,
+  type ServiceRow,
 } from "../lib/k8sview";
 // ⛔ EXPLICIT IMPORT, and it is load-bearing: without it `Node` resolves to the DOM's global `Node`, so
 // `site_id` and `policy_degraded_kind` "do not exist" with no hint that a different type was found.
@@ -70,10 +71,30 @@ export default function Kubernetes() {
   const [raw, setRaw] = useState<Raw | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
+  const selectedClusterRef = useRef<HTMLDivElement>(null);
+  const priorSelectedRef = useRef<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const requestedSection = params.get("section");
+  const section = requestedSection === "services" || requestedSection === "operations" ? requestedSection : "clusters";
+  const query = params.get("q") ?? "";
+  const selectedId = params.get("cluster");
+
+  useEffect(() => {
+    if (requestedSection !== null && requestedSection !== section) {
+      const next = new URLSearchParams(params);
+      next.set("section", section);
+      setParams(next, { replace: true });
+    }
+  }, [params, requestedSection, section, setParams]);
 
   const reload = useCallback(async () => {
     setLoadError(null);
     setRaw(null);
+    setRegistering(false);
+    setExposeFor(null);
+    setConnectorFor(null);
+    setDeregisterFor(null);
+    setUnexposeFor(null);
     // ⛔ THE ORG COMES FROM THE SEAM, NOT FROM INDEX ZERO (S12.5). This used to fetch the org list here and
     // take `[0]`, which meant a user in two organizations could reach only one of them and the switcher in
     // the header would have had nothing to switch.
@@ -177,48 +198,7 @@ export default function Kubernetes() {
   const [exposeFor, setExposeFor] = useState<ClusterCard | null>(null);
   const [connectorFor, setConnectorFor] = useState<ClusterCard | null>(null);
   const [deregisterFor, setDeregisterFor] = useState<ClusterCard | null>(null);
-  const [rowErr, setRowErr] = useState<string | null>(null);
-
-  async function unexpose(service: Pick<K8sService, "id" | "name">) {
-    setRowErr(null);
-    const impact = (await loadOne(() =>
-      api.GET(
-        "/api/v1/organizations/{orgId}/agent-policy-template-destination-impact",
-        {
-          params: {
-            path: { orgId: orgId ?? "" },
-            query: {
-              destination_kind: "k8s_service",
-              destination_id: service.id,
-            },
-          },
-        },
-      ),
-    )) as Loaded<AgentPolicyTemplateDestinationImpact>;
-    if (!impact.ok)
-      return setRowErr(
-        "Could not read immutable template impact; the Service was not unexposed.",
-      );
-    if (impact.data.version_count > 0)
-      return setRowErr(
-        `${impact.data.version_count} immutable agent policy template ${impact.data.version_count === 1 ? "version references" : "versions reference"} ${service.name}; unexpose is blocked.`,
-      );
-    if (
-      !window.confirm(
-        `Unexpose ${service.name}? No immutable agent policy template version references it. Its VIP and DNS answer will be withdrawn.`,
-      )
-    )
-      return;
-    const { error } = await api.DELETE(
-      "/api/v1/organizations/{orgId}/k8s/services/{serviceId}",
-      { params: { path: { orgId: orgId ?? "", serviceId: service.id } } },
-    );
-    if (error)
-      return setRowErr(
-        apiErrorMessage(error, "Could not unexpose the Service."),
-      );
-    reload();
-  }
+  const [unexposeFor, setUnexposeFor] = useState<ServiceRow | null>(null);
 
   // Every exposed Service, flattened WITH its cluster, so the table is one scannable list rather than a list
   // per card. §6.2: the SERVICE list is the scaling surface, so it gets the table; the cluster list does not.
@@ -227,13 +207,36 @@ export default function Kubernetes() {
       cards.flatMap((c) =>
         c.services.map((sv) => ({
           ...sv,
+          clusterId: c.id,
           clusterName: c.name,
-          reachable: clusterReachability({ connectorNodeId: c.connectorNodeId, gateways })
-            .reachable,
+          configured: clusterConnectorState({ connectorNodeId: c.connectorNodeId, gateways })
+            .configured,
         })),
       ),
     [cards, gateways],
   );
+  const visibleCards = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return needle === "" ? cards : cards.filter((card) => card.name.toLowerCase().includes(needle));
+  }, [cards, query]);
+  const selected = cards.find((card) => card.id === selectedId) ?? null;
+  useEffect(() => {
+    if (!selected || section !== "clusters" || priorSelectedRef.current === selected.id) return;
+    priorSelectedRef.current = selected.id;
+    // A navigation-owned target, not a global scroll reset: ordinary data rerenders retain operator position.
+    selectedClusterRef.current?.scrollIntoView?.({ block: "start", behavior: "auto" });
+  }, [selected, section]);
+  useEffect(() => {
+    if (selectedId && raw && !selected) updateQuery({ cluster: null });
+  }, [raw, selected, selectedId]);
+  function updateQuery(changes: Record<string, string | null>) {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null || value === "") next.delete(key);
+      else next.set(key, value);
+    }
+    setParams(next);
+  }
 
   const clusterColumns = [
     {
@@ -242,7 +245,7 @@ export default function Kubernetes() {
       cell: (c: ClusterCard) => (
         <span className="flex flex-col gap-0.5">
           <span className="flex items-center gap-2">
-            <span className="font-mono text-ink-primary">{c.name}</span>
+          <button type="button" className="font-mono text-ink-primary underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400" onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}>{c.name}</button>
             {c.managedByOperator && <ManagedBadge />}
           </span>
           {/* The handoff's sub-line, and it carries the REASON the address is untouchable. */}
@@ -258,7 +261,7 @@ export default function Kubernetes() {
       key: "site",
       header: "Fronted by",
       cell: (c: ClusterCard) => {
-        const reach = clusterReachability({ connectorNodeId: c.connectorNodeId, gateways });
+        const connector = clusterConnectorState({ connectorNodeId: c.connectorNodeId, gateways });
         const name = siteName.get(c.siteId) ?? null;
         return (
           <span className="flex flex-col gap-0.5">
@@ -272,8 +275,8 @@ export default function Kubernetes() {
             </span>
             {/* ⛔ D9 SITS HERE, ON THE THING IT IS ABOUT. The claim is about the GATEWAY fronting the site, so
                 it belongs in this column and not on the Service rows, which would read as a fact about them. */}
-            {!reach.reachable && reach.why !== null && (
-              <span className="text-micro text-warn">{reach.why}</span>
+            {!connector.configured && connector.why !== null && (
+              <span className="text-micro text-warn">{connector.why}</span>
             )}
           </span>
         );
@@ -304,7 +307,7 @@ export default function Kubernetes() {
     },
     {
       key: "owner",
-      header: "Owner",
+      header: "Managed by",
       cell: (c: ClusterCard) => (
         <Badge tone="neutral">
           {c.managedByOperator ? "OPERATOR" : "DASHBOARD"}
@@ -335,19 +338,7 @@ export default function Kubernetes() {
           </span>
         ) : (
           <span className="flex items-center justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setExposeFor(c)}>
-              Expose Service
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConnectorFor(c)}>
-              {c.connectorNodeId === null ? "Select connector" : "Change connector"}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setDeregisterFor(c)}
-            >
-              Deregister
-            </Button>
+            <Button size="sm" variant="ghost" onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}>Manage</Button>
           </span>
         ),
     },
@@ -386,7 +377,7 @@ export default function Kubernetes() {
     },
     {
       key: "owner",
-      header: "Owner",
+      header: "Managed by",
       cell: (r: SvcRow) => (
         <Badge tone="neutral">
           {r.managedByOperator ? "OPERATOR" : "DASHBOARD"}
@@ -407,7 +398,7 @@ export default function Kubernetes() {
             edit the CR, not here
           </span>
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => unexpose(r)}>
+          <Button size="sm" variant="ghost" onClick={() => setUnexposeFor(r)}>
             Unexpose
           </Button>
         ),
@@ -429,10 +420,29 @@ export default function Kubernetes() {
             subtitle="Clusters, exposed Services and the VIPs clients reach them at. A Service is reached by name over the tunnel, never by its ClusterIP."
           />
         </div>
-        {raw && gate.canManage && raw.sites.length > 0 && (
+        {section === "clusters" && raw && gate.canManage && raw.sites.length > 0 && (
           <Button onClick={() => setRegistering(true)}>Register cluster</Button>
         )}
       </div>
+
+      <nav aria-label="Kubernetes workspace" className="flex flex-wrap gap-1 border-b border-line pb-2">
+        {([
+          ["clusters", "Clusters"],
+          ["services", "Exposed services"],
+          ["operations", "Setup & diagnostics"],
+        ] as const).map(([id, label]) => (
+          <Button
+            key={id}
+            size="sm"
+            variant="ghost"
+            aria-current={section === id ? "page" : undefined}
+            className={section === id ? "bg-white/10 text-ink-heading" : ""}
+            onClick={() => updateQuery({ section: id, cluster: id === "operations" ? null : selectedId })}
+          >
+            {label}
+          </Button>
+        ))}
+      </nav>
 
       {loadError && <LoadRetry error={loadError} onRetry={reload} />}
       {!loadError && raw === null && (
@@ -451,8 +461,15 @@ export default function Kubernetes() {
 
       {raw && !loadError && cards.length > 0 && (
         <>
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {tiles.map((t) => (
+          {section === "clusters" && <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="min-w-[14rem] flex-1 text-sm text-ink-tertiary">
+              Search clusters
+              <Input value={query} onChange={(event) => updateQuery({ q: event.target.value })} placeholder="Cluster name" />
+            </label>
+            <span className="text-micro text-ink-faint">{visibleCards.length} matching cluster{visibleCards.length === 1 ? "" : "s"}</span>
+          </div>}
+          {section === "clusters" && <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {tiles.slice(0, 2).map((t) => (
               <li
                 key={t.label}
                 className="rounded-card border border-line bg-surface px-3.5 py-3"
@@ -475,35 +492,64 @@ export default function Kubernetes() {
                 <p className="text-micro text-ink-faint">{t.hint}</p>
               </li>
             ))}
-          </ul>
+          </ul>}
 
-          <Panel title={`Clusters (${cards.length})`}>
+          {section === "clusters" && <Panel title={`Clusters (${visibleCards.length})`}>
             <DataTable
               caption="Registered Kubernetes clusters"
               columns={clusterColumns}
-              rows={cards}
+              rows={visibleCards}
               rowKey={(c: ClusterCard) => c.id}
               empty="No clusters registered."
               failed={false}
             />
-          </Panel>
+          </Panel>}
 
-          <ErrorText>{rowErr}</ErrorText>
+          {section === "clusters" && selected && (
+            <div ref={selectedClusterRef} tabIndex={-1} aria-label={`Selected cluster: ${selected.name}`}>
+            <Panel title={selected.name}>
+              <div className="grid gap-3 text-cell text-ink-tertiary sm:grid-cols-3">
+                <p><strong className="text-ink-body">Site</strong><br />{siteName.get(selected.siteId) ?? "Site record unavailable"}</p>
+                <p><strong className="text-ink-body">Services</strong><br />{selected.services.length} exposed</p>
+                <p><strong className="text-ink-body">Connector</strong><br />{selected.connectorNodeId ? (nodeName.get(selected.connectorNodeId) ?? "Unavailable") : "Not selected"}</p>
+              </div>
+              <p className="mt-3 text-micro text-ink-faint">Connector configuration is control-plane state, not workload readiness. Use the operator and workload telemetry for endpoint readiness.</p>
+              {gate.canManage && !objectControls(selected.managedByOperator).withheld && <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setConnectorFor(selected)}>{selected.connectorNodeId === null ? "Select connector" : "Change connector"}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setExposeFor(selected)}>Expose service</Button>
+              </div>}
+              {gate.canManage && !objectControls(selected.managedByOperator).withheld && <div className="mt-4 flex items-center justify-between gap-3 border-t border-danger/30 pt-3">
+                <span className="text-micro text-ink-faint">Deregistering permanently removes this cluster and its exposed Services. Recovery is to register it again.</span>
+                <Button size="sm" variant="danger" onClick={() => setDeregisterFor(selected)}>Deregister</Button>
+              </div>}
+            </Panel></div>
+          )}
 
-          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[8fr_4fr]">
+
+          {section === "services" && <div className="flex flex-wrap items-end justify-between gap-3">
+            <Field label="Cluster filter">
+              <Select value={selectedId ?? ""} onChange={(event) => updateQuery({ cluster: event.target.value || null })} width="auto">
+                <option value="">All clusters</option>
+                {cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}
+              </Select>
+            </Field>
+            {gate.canManage && selected && !objectControls(selected.managedByOperator).withheld && <Button onClick={() => setExposeFor(selected)}>Expose service</Button>}
+          </div>}
+
+          <div className={section === "operations" ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 items-start gap-3"}>
             <div className="flex min-w-0 flex-col gap-3">
-              <Panel title={`Exposed Services (${serviceRows.length})`}>
+              {section === "services" && <Panel title={`Exposed Services (${serviceRows.length})`}>
                 <DataTable
                   caption="Exposed Kubernetes Services"
                   columns={serviceColumns}
-                  rows={serviceRows}
+                  rows={selectedId ? serviceRows.filter((row) => row.clusterId === selectedId) : serviceRows}
                   rowKey={(r: SvcRow) => r.id}
                   empty="No Services exposed yet. Exposing one allocates a VIP and gives it a name clients can reach."
                   failed={false}
                 />
-              </Panel>
+              </Panel>}
 
-              <Panel title="How a client reaches a Service">
+              {section === "operations" && <Panel title="How Kubernetes access works">
                 {/* The handoff's HORIZONTAL flow, not a numbered list: the point is that these are four hops in
                     sequence, and a vertical list reads as four independent facts. */}
                 <div className="flex flex-wrap items-center gap-1.5 text-micro">
@@ -544,11 +590,11 @@ export default function Kubernetes() {
                   destination match cannot miss the post-DNAT pod IP and a broad
                   grant cannot slip past.
                 </p>
-              </Panel>
+              </Panel>}
             </div>
 
-            <div className="flex min-w-0 flex-col gap-3">
-              <Panel title="Installing the operator">
+            {section === "operations" && <div className="flex min-w-0 flex-col gap-3">
+              <Panel title="Operator and connector setup">
                 {/* ⛔ NAMED AS COPY, NOT A CAPABILITY. This screen installs nothing. */}
                 <p className="text-micro text-ink-tertiary">
                   Reference only. Run these yourself; this screen does not
@@ -568,7 +614,7 @@ helm install op tunnex/operator \\
                 </p>
               </Panel>
 
-              <Panel title="Not shown, and why">
+              <Panel title="Current control-plane visibility">
                 <ul className="flex flex-col gap-1.5 text-micro text-ink-tertiary">
                   <li>
                     <strong className="text-ink-body">
@@ -602,36 +648,8 @@ helm install op tunnex/operator \\
                   </li>
                 </ul>
               </Panel>
-            </div>
+            </div>}
           </div>
-
-          <Panel title="Refusals this surface reports verbatim">
-            <p className="text-micro text-ink-faint">
-              Disjointness is an org-wide fact, so the control plane owns it,
-              not a cluster.
-            </p>
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {[
-                [
-                  "409 vip_range_overlap",
-                  "A cluster's VIP range must be disjoint from the device pool, every site subnet, and other clusters' ranges.",
-                ],
-                [
-                  "409 vip_range_exhausted",
-                  "No address left to allocate. Unexposing frees a VIP for immediate reuse.",
-                ],
-                [
-                  "409 service_exists",
-                  "That namespace and name pair is already exposed: one stable identity per Service.",
-                ],
-              ].map(([code, why]) => (
-                <div key={code}>
-                  <dt className="font-mono text-micro text-ink-body">{code}</dt>
-                  <dd className="text-micro text-ink-tertiary">{why}</dd>
-                </div>
-              ))}
-            </dl>
-          </Panel>
         </>
       )}
 
@@ -666,6 +684,14 @@ helm install op tunnex/operator \\
           orgId={orgId}
           card={deregisterFor}
           onClose={() => setDeregisterFor(null)}
+          onDone={reload}
+        />
+      )}
+      {unexposeFor && orgId && (
+        <UnexposeServiceModal
+          orgId={orgId}
+          service={unexposeFor}
+          onClose={() => setUnexposeFor(null)}
           onDone={reload}
         />
       )}
@@ -750,7 +776,7 @@ function RegisterClusterModal({
         </>
       }
     >
-      <Field label="Fronting site gateway">
+      <Field label="Fronting Site">
         <Select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
           {sites.map((s) => (
             <option key={s.id} value={s.id}>
@@ -759,7 +785,7 @@ function RegisterClusterModal({
           ))}
         </Select>
       </Field>
-      <Field label="In-cluster Tunnex connector">
+      <Field label="In-cluster connector node">
         <Select value={connectorNodeId} onChange={(e) => setConnectorNodeId(e.target.value)}>
           {connectors.length === 0 ? (
             <option value="">No active endpoint-bearing connector is bound to this site</option>
@@ -867,7 +893,7 @@ function SetConnectorModal({
       <p className="mb-3 text-cell text-ink-tertiary">
         The connector is the selected in-cluster Tunnex node. It resolves ready pod endpoints and receives the encrypted service handoff from the existing site edge gateway.
       </p>
-      <Field label="In-cluster Tunnex connector">
+      <Field label="In-cluster connector node">
         <Select value={connectorNodeId} onChange={(e) => setConnectorNodeId(e.target.value)}>
           {connectors.length === 0 ? (
             <option value="">No active endpoint-bearing connector is bound to this site</option>
@@ -1004,6 +1030,67 @@ function ExposeServiceModal({
   );
 }
 
+function UnexposeServiceModal({
+  orgId,
+  service,
+  onClose,
+  onDone,
+}: {
+  orgId: string;
+  service: Pick<ServiceRow, "id" | "name" | "fqdn" | "vip">;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    const { error } = await api.DELETE(
+      "/api/v1/organizations/{orgId}/k8s/services/{serviceId}",
+      { params: { path: { orgId, serviceId: service.id } } },
+    );
+    setBusy(false);
+    if (error)
+      return setErr(apiErrorMessage(error, "Could not unexpose the Service."));
+    onClose();
+    onDone();
+  }
+
+  return (
+    <Modal
+      title={`Unexpose ${service.name}`}
+      onDismiss={onClose}
+      actions={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={submit} disabled={busy}>
+            {busy ? "Unexposing…" : "Unexpose"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-2 text-sm text-ink-tertiary">
+        <p>
+          Unexpose <span className="font-medium text-ink-heading">{service.name}</span>{" "}
+          at <span className="font-mono text-ink-body">{service.fqdn}</span> ({" "}
+          <span className="font-mono text-ink-body">{service.vip}</span>). Its VIP and DNS
+          answer withdraw on the next compile.
+        </p>
+        <p>
+          This is not an undo. Immutable Agent Policy Template references and live Agent
+          Access requests may refuse the change. If it succeeds, recovery is to expose the
+          Service again; that creates a new Service identity.
+        </p>
+      </div>
+      <ErrorText>{err}</ErrorText>
+    </Modal>
+  );
+}
+
 function DeregisterClusterModal({
   orgId,
   card,
@@ -1056,13 +1143,22 @@ function DeregisterClusterModal({
         </>
       }
     >
-      <p className="text-sm text-slate-400">
-        This removes the cluster, unexposes all {card.services.length} of its
-        Services, and deletes any rule that reached one. Its VIP range and DNS
-        zone are freed for reuse. Type the cluster name{" "}
-        <span className="font-mono text-slate-300">{card.name}</span> to
-        confirm.
-      </p>
+      <div className="flex flex-col gap-2 text-sm text-ink-tertiary">
+        <p>
+          This deletes the cluster, its exposed Services, and dependent policy
+          rules. Its VIP range, reserved DNS VIP, and DNS zone are freed for
+          reuse. Live Agent Access requests may refuse this change.
+        </p>
+        <p>
+          There is no rollback or restore. Recovery requires registering the
+          cluster again, choosing an in-cluster connector node, exposing its
+          Services again, and recreating grants.
+        </p>
+        <p>
+          Type the cluster name <span className="font-mono text-ink-body">{card.name}</span>{" "}
+          to confirm.
+        </p>
+      </div>
       <div className="mt-3">
         <Field label="Cluster name">
           <Input

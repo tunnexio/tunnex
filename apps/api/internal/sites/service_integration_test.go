@@ -73,8 +73,8 @@ func TestReplaceNodePreservesSiteEntity(t *testing.T) {
 		}
 	}
 	ex(`INSERT INTO organizations (id, name, slug) VALUES ($1,'S',$2)`, org, "site-"+org.String()[:8])
-	ex(`INSERT INTO nodes (id, org_id, name, cert_serial) VALUES ($1,$2,'gw-a',$3)`, nodeA, org, "cs-a-"+nodeA.String()[:8])
-	ex(`INSERT INTO nodes (id, org_id, name, cert_serial) VALUES ($1,$2,'gw-b',$3)`, nodeB, org, "cs-b-"+nodeB.String()[:8])
+	ex(`INSERT INTO nodes (id, org_id, name, cert_serial, enrolled_kind) VALUES ($1,$2,'gw-a',$3,'gateway')`, nodeA, org, "cs-a-"+nodeA.String()[:8])
+	ex(`INSERT INTO nodes (id, org_id, name, cert_serial, enrolled_kind) VALUES ($1,$2,'gw-b',$3,'gateway')`, nodeB, org, "cs-b-"+nodeB.String()[:8])
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
 
 	site, err := svc.RegisterSite(ctx, org, "hq")
@@ -137,7 +137,7 @@ func TestDeleteSiteCascadesAndAudits(t *testing.T) {
 	}
 	ex(`INSERT INTO organizations (id, name, slug) VALUES ($1,'S',$2)`, org, "del-"+org.String()[:8])
 	ex(`INSERT INTO users (id, email, name) VALUES ($1,$2,'U')`, user, "del-"+user.String()[:8]+"@t.io")
-	ex(`INSERT INTO nodes (id, org_id, name, cert_serial) VALUES ($1,$2,'gw',$3)`, node, org, "cs-"+node.String()[:8])
+	ex(`INSERT INTO nodes (id, org_id, name, cert_serial, enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, node, org, "cs-"+node.String()[:8])
 	ex(`INSERT INTO user_groups (id, org_id, name) VALUES ($1,$2,'g')`, grp, org)
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
 
@@ -325,7 +325,7 @@ func TestUnbindSiteNode(t *testing.T) {
 		t.Fatalf("org: %v", e)
 	}
 	for i, node := range []uuid.UUID{nodeA, nodeB} {
-		if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,$3,$4)`,
+		if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,$3,$4,'gateway')`,
 			node, org, "gw"+string(rune('A'+i)), "cs-ub-"+node.String()[:8]); e != nil {
 			t.Fatalf("node: %v", e)
 		}
@@ -721,7 +721,7 @@ func TestRoutedChannelIncludesK8s(t *testing.T) {
 		t.Fatal(e)
 	}
 	connID := uuid.New()
-	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,site_id,name,cert_serial) VALUES ($1,$2,$3,$4,$5)`, connID, org, site, "k8s-connector-"+connID.String()[:8], connID.String()); e != nil {
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,site_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,$3,$4,$5,'gateway')`, connID, org, site, "k8s-connector-"+connID.String()[:8], connID.String()); e != nil {
 		t.Fatal(e)
 	}
 	// A registered cluster with a VIP range + reserved DNS VIP (.2, inside the range).
@@ -803,8 +803,8 @@ func TestRouteLANByteIdentical(t *testing.T) {
 	ex(`INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'A',$2,'10.99.0.0/24')`, orgA, "rla-"+orgA.String()[:8])
 	ex(`INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'B',$2,'10.99.0.0/24')`, orgB, "rlb-"+orgB.String()[:8])
 	ex(`INSERT INTO users (id,email) VALUES ($1,$2)`, actor, "a-"+actor.String()[:8]+"@ex.com")
-	ex(`INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'gw',$3)`, nodeA, orgA, "cs-a-"+nodeA.String()[:8])
-	ex(`INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'gw',$3)`, nodeB, orgB, "cs-b-"+nodeB.String()[:8])
+	ex(`INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, nodeA, orgA, "cs-a-"+nodeA.String()[:8])
+	ex(`INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, nodeB, orgB, "cs-b-"+nodeB.String()[:8])
 	t.Cleanup(func() {
 		for _, org := range []uuid.UUID{orgA, orgB} {
 			_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
@@ -876,6 +876,51 @@ func TestRouteLANByteIdentical(t *testing.T) {
 	}
 }
 
+// TestGatewayCarrierEligibility closes the Route a LAN/UI seam at the service boundary:
+// an AI Agent is a Node row, but cannot be made into a Site carrier by a crafted request.
+func TestGatewayCarrierEligibility(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, actor, agent, gateway := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	ex := func(sql string, args ...any) {
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("seed %q: %v", sql, err)
+		}
+	}
+	ex(`INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'carrier',$2,'10.99.0.0/24')`, org, "carrier-"+org.String()[:8])
+	ex(`INSERT INTO users (id,email) VALUES ($1,$2)`, actor, "carrier-"+actor.String()[:8]+"@example.test")
+	ex(`INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'agent-node',$3,'agent')`, agent, org, "agent-"+agent.String()[:8])
+	ex(`INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gateway-node',$3,'gateway')`, gateway, org, "gateway-"+gateway.String()[:8])
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
+	})
+
+	site, err := svc.RegisterSite(ctx, org, "site")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := svc.BindNode(ctx, org, site.ID, agent); !hasCode(err, "node_not_gateway_eligible") {
+		t.Fatalf("BindNode(agent) error = %v, want node_not_gateway_eligible", err)
+	}
+	if _, _, err := svc.RouteLAN(ctx, actor, org, agent, "agent-lan", netip.MustParsePrefix("10.88.0.0/24")); !hasCode(err, "node_not_gateway_eligible") {
+		t.Fatalf("RouteLAN(agent) error = %v, want node_not_gateway_eligible", err)
+	}
+	var sites int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM sites WHERE org_id=$1`, org).Scan(&sites); err != nil || sites != 1 {
+		t.Fatalf("agent RouteLAN must not create a site: count=%d err=%v", sites, err)
+	}
+	if _, _, err := svc.RouteLAN(ctx, actor, org, gateway, "gateway-lan", netip.MustParsePrefix("10.77.0.0/24")); err != nil {
+		t.Fatalf("RouteLAN(gateway): %v", err)
+	}
+}
+
+func hasCode(err error, want string) bool {
+	var apiErr *apierr.Error
+	return errors.As(err, &apiErr) && apiErr.Code == want
+}
+
 // TestBindNodeRefusesRehome (S8.5 #2 standalone) — BindNode must NEVER silently re-home a bound gateway:
 // a second bind to a DIFFERENT site refuses `node_already_bound_to_site`, the gateway stays on site1, and
 // a re-bind to the SAME site is an idempotent no-op (RouteLAN's resume relies on it).
@@ -887,7 +932,7 @@ func TestBindNodeRefusesRehome(t *testing.T) {
 	if _, e := pool.Exec(ctx, `INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'S',$2,'10.99.0.0/24')`, org, "rh-"+org.String()[:8]); e != nil {
 		t.Fatalf("seed org: %v", e)
 	}
-	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'gw',$3)`, node, org, "cs-"+node.String()[:8]); e != nil {
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, node, org, "cs-"+node.String()[:8]); e != nil {
 		t.Fatalf("seed node: %v", e)
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
@@ -930,7 +975,7 @@ func TestRouteLANResumeRetrySafe(t *testing.T) {
 	if _, e := pool.Exec(ctx, `INSERT INTO users (id,email) VALUES ($1,$2)`, actor, "a-"+actor.String()[:8]+"@ex.com"); e != nil {
 		t.Fatalf("seed actor: %v", e)
 	}
-	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'gw',$3)`, node, org, "cs-"+node.String()[:8]); e != nil {
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, node, org, "cs-"+node.String()[:8]); e != nil {
 		t.Fatalf("seed node: %v", e)
 	}
 	t.Cleanup(func() {
@@ -996,7 +1041,7 @@ func TestRouteLANResumeLeavesForeignPending(t *testing.T) {
 	if _, e := pool.Exec(ctx, `INSERT INTO users (id,email) VALUES ($1,$2)`, actor, "a-"+actor.String()[:8]+"@ex.com"); e != nil {
 		t.Fatalf("seed actor: %v", e)
 	}
-	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'gw',$3)`, node, org, "cs-"+node.String()[:8]); e != nil {
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, node, org, "cs-"+node.String()[:8]); e != nil {
 		t.Fatalf("seed node: %v", e)
 	}
 	t.Cleanup(func() {
@@ -1041,7 +1086,7 @@ func TestRouteLANResumeSameCIDRNoDup(t *testing.T) {
 	if _, e := pool.Exec(ctx, `INSERT INTO users (id,email) VALUES ($1,$2)`, actor, "a-"+actor.String()[:8]+"@ex.com"); e != nil {
 		t.Fatalf("seed actor: %v", e)
 	}
-	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'gw',$3)`, node, org, "cs-"+node.String()[:8]); e != nil {
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, node, org, "cs-"+node.String()[:8]); e != nil {
 		t.Fatalf("seed node: %v", e)
 	}
 	t.Cleanup(func() {
@@ -1077,7 +1122,7 @@ func TestBindNodeConcurrentClaimNoOrphan(t *testing.T) {
 	if _, e := pool.Exec(ctx, `INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'S',$2,'cc-'||$3)`, org, org, org.String()[:8]); e != nil {
 		t.Fatalf("seed org: %v", e)
 	}
-	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'gw',$3)`, node, org, "cs-"+node.String()[:8]); e != nil {
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, node, org, "cs-"+node.String()[:8]); e != nil {
 		t.Fatalf("seed node: %v", e)
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
@@ -1136,7 +1181,7 @@ func TestUnbindSiteNodeBodyless(t *testing.T) {
 		t.Fatalf("org: %v", e)
 	}
 	for i, n := range []uuid.UUID{nodeA, nodeB} {
-		if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,$3,$4)`,
+		if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,$3,$4,'gateway')`,
 			n, org, "gw"+string(rune('A'+i)), "cs-bl-"+n.String()[:8]); e != nil {
 			t.Fatalf("node: %v", e)
 		}

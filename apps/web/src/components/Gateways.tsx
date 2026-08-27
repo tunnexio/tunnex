@@ -1,14 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   api,
   apiErrorCode,
   apiErrorMessage,
-  type Node,
   type Org,
   type Meta,
 } from "../lib/api";
-import { policyHealthBadge, badgeClass } from "../lib/healthview";
-import { relativeAge } from "../lib/format";
 import { CeilingUpgrade, ceilingKind } from "./CeilingUpgrade";
 import { Button, Card, ErrorText, Field, Input } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
@@ -87,6 +84,20 @@ export type CpEndpoints =
     }
   | { ok: false; reason: string };
 
+type GatewayEndpointAdminState =
+  | "loading"
+  | "authorized"
+  | "restricted"
+  | "error";
+
+function controlEndpointHostname(value: string): string {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return value;
+  }
+}
+
 // cpEndpoints derives the public CP urls the remote agent dials from the CP's OWN configured public base URL
 // (meta.public_base_url — AUTHORITATIVE), NOT window.location: the browser URL is whatever path the admin
 // happened to use (a tunnel / internal alias / bare IP), which would bake an unreachable endpoint into the
@@ -149,37 +160,22 @@ export function cpEndpoints(
  */
 export function Gateways({
   org,
-  nodes,
-  onNodesChanged,
-  renderList = true,
+  initiallyOpen = false,
+  hideHeader = false,
+  showGatewayEndpointSettings = true,
+  onEnrollmentAcknowledged,
 }: {
   org: Org;
-  nodes: Node[];
-  onNodesChanged?: () => void;
-  /**
-   * ⛔ S14.6: the PAGE owns the fleet list now, and this component keeps the ENROLMENT CEREMONY.
-   *
-   * Set false when a caller renders its own list. The alternative was to extract the ceremony into a third
-   * component in the same commit that added the health grouping — a move and a rewrite together, which is
-   * the diff nobody can read. One prop, one seam, and the extraction can happen on its own later.
-   *
-   * DEFAULT TRUE so the component's existing contract is unchanged for anyone still rendering it whole.
-   */
-  renderList?: boolean;
+  /** Open the enrollment details immediately when the page owns the surrounding modal. */
+  initiallyOpen?: boolean;
+  /** Hide the legacy card heading/toggle when embedded in the S20 enrollment modal. */
+  hideHeader?: boolean;
+  /** Show the deployment-wide control endpoint status/editor in enrollment. */
+  showGatewayEndpointSettings?: boolean;
+  /** Close an embedding enrollment workspace after the one-time secret is acknowledged. */
+  onEnrollmentAcknowledged?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  // WF-S11-9: which gateway is awaiting a revoke confirmation. Two-step rather than a window.confirm — the
-  // consequence needs naming in the UI, and a native dialog cannot say "every device homed here loses its
-  // tunnel". Mirrors the MfaSettings disable ceremony.
-  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<string | null>(null);
-  // S13.1 Slice 7: which REVOKED gateway is having its devices restored, and onto which replacement.
-  // WF-S11-9 is the precedent that makes this non-optional: a capability that exists only in the API is a
-  // capability the product does not have, and that finding was about this exact page.
-  const [restoreFrom, setRestoreFrom] = useState<string | null>(null);
-  const [restoreTarget, setRestoreTarget] = useState<string>("");
-  const [restoring, setRestoring] = useState(false);
-  const [restoreResult, setRestoreResult] = useState<string | null>(null);
+  const [open, setOpen] = useState(initiallyOpen);
   const [nodeName, setNodeName] = useState("");
   const [endpoint, setEndpoint] = useState(""); // D4a: admin-entered public ip:port (blank = NAT'd spoke)
   const [pinnedEndpoint, setPinnedEndpoint] = useState<string | null>(null);
@@ -212,7 +208,11 @@ export function Gateways({
   const [metaError, setMetaError] = useState(false);
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [gatewayControlURL, setGatewayControlURL] = useState<string | undefined>(undefined);
-  const [gatewayEndpointAccess, setGatewayEndpointAccess] = useState(false);
+  const [gatewayEndpointState, setGatewayEndpointState] =
+    useState<GatewayEndpointAdminState>("loading");
+  const [gatewayEndpointConfigured, setGatewayEndpointConfigured] = useState(false);
+  const [gatewayEndpointEditing, setGatewayEndpointEditing] = useState(false);
+  const [gatewayEndpointReadError, setGatewayEndpointReadError] = useState<string | null>(null);
   const [gatewayEndpointDraft, setGatewayEndpointDraft] = useState("");
   const [gatewayEndpointBusy, setGatewayEndpointBusy] = useState(false);
   useEffect(() => {
@@ -221,8 +221,10 @@ export function Gateways({
       .then(({ data }) => {
         setPublicBaseURL((data as Meta | undefined)?.public_base_url);
         const configuredGateway = (data as Meta | undefined)?.gateway_control_url?.trim() || "";
-        setGatewayControlURL(configuredGateway || undefined);
-        setGatewayEndpointDraft(configuredGateway);
+        if (configuredGateway) {
+          setGatewayControlURL(configuredGateway);
+          setGatewayEndpointDraft(configuredGateway);
+        }
         setNodeAgentImage((data as Meta | undefined)?.node_agent_image);
         setMetaError(false);
       })
@@ -232,15 +234,49 @@ export function Gateways({
   // ONE derivation of the CP urls (re-review budget-rule reduce). Recomputed each render — cheap + pure.
   const ep = cpEndpoints(publicBaseURL, window.location.origin, gatewayControlURL);
 
-  useEffect(() => {
-    api.GET("/api/v1/admin/gateway-endpoint").then(({ data }) => {
-      if (data) {
-        setGatewayEndpointAccess(true);
-        setGatewayEndpointDraft(data.url);
-        setGatewayControlURL(data.configured ? data.url : undefined);
+  const loadGatewayEndpoint = useCallback(async () => {
+    if (!showGatewayEndpointSettings) return;
+    setGatewayEndpointState("loading");
+    setGatewayEndpointReadError(null);
+    try {
+      const { data, error: readError } = await api.GET(
+        "/api/v1/admin/gateway-endpoint",
+      );
+      if (readError) {
+        if (apiErrorCode(readError) === "gateway_endpoint_admin_required") {
+          setGatewayEndpointState("restricted");
+          return;
+        }
+        setGatewayEndpointState("error");
+        setGatewayEndpointReadError(
+          apiErrorMessage(
+            readError,
+            "Could not load the Gateway control endpoint.",
+          ),
+        );
+        return;
       }
-    }).catch(() => setGatewayEndpointAccess(false));
-  }, []);
+      if (!data) {
+        setGatewayEndpointState("error");
+        setGatewayEndpointReadError(
+          "Could not load the Gateway control endpoint.",
+        );
+        return;
+      }
+      setGatewayEndpointState("authorized");
+      setGatewayEndpointConfigured(data.configured);
+      setGatewayEndpointDraft(data.url);
+      setGatewayControlURL(data.configured ? data.url : undefined);
+      setGatewayEndpointEditing(!data.configured);
+    } catch {
+      setGatewayEndpointState("error");
+      setGatewayEndpointReadError("Could not reach the API.");
+    }
+  }, [showGatewayEndpointSettings]);
+
+  useEffect(() => {
+    void loadGatewayEndpoint();
+  }, [loadGatewayEndpoint]);
 
   async function saveGatewayEndpoint() {
     setGatewayEndpointBusy(true);
@@ -252,12 +288,23 @@ export function Gateways({
         return;
       }
       setGatewayControlURL(data.url);
+      setGatewayEndpointDraft(data.url);
+      setGatewayEndpointConfigured(true);
+      setGatewayEndpointEditing(false);
+      setGatewayEndpointState("authorized");
     } catch {
       setError("Could not reach the API.");
     } finally {
       setGatewayEndpointBusy(false);
     }
   }
+
+  const gatewayEndpointSettled =
+    !showGatewayEndpointSettings || gatewayEndpointState !== "loading";
+  const gatewayEndpointReady =
+    gatewayEndpointSettled &&
+    ep.ok &&
+    (gatewayEndpointState !== "restricted" || Boolean(gatewayControlURL));
 
   async function issue() {
     setBusy(true);
@@ -296,104 +343,80 @@ export function Gateways({
     }
   }
 
-  // WF-S11-9: the API has always had POST /nodes/{nodeId}/revoke, and the UI never exposed it — so the
-  // documented gateway-recovery path (revoke, then re-enroll) was unreachable from the product. Revocation is
-  // the mechanism the whole security model rests on (short certs + refused renewal), which makes a
-  // revoke-you-cannot-reach worse than a missing convenience.
-  async function revoke(nodeId: string) {
-    setError(null);
-    setRevoking(nodeId);
-    try {
-      const { error: e } = await api.POST(
-        "/api/v1/organizations/{orgId}/nodes/{nodeId}/revoke",
-        {
-          params: { path: { orgId: org.id, nodeId } },
-        },
-      );
-      if (e) {
-        setError(apiErrorMessage(e, "Could not revoke the gateway."));
-        return;
-      }
-      setConfirmRevoke(null);
-      onNodesChanged?.();
-    } catch {
-      setError("Could not reach the API.");
-    } finally {
-      setRevoking(null);
-    }
-  }
-
-  // S13.1 Slice 7. Revoking a gateway cascade-revokes every device homed on it, and re-key REFUSES a revoked
-  // node (D3) — a proof of possession must never overturn a human decision. So the ONLY way those users come
-  // back is a human asking, which is what this is: a deliberate operator act, permissioned (device:restore) and
-  // audited with the actor, naming the LIVE gateway they are restored onto. Restoring onto the revoked gateway
-  // is refused by the server, because active devices pointing at a dead gateway read healthy everywhere and
-  // work nowhere.
-  async function restoreDevices(sourceNodeId: string) {
-    setError(null);
-    setRestoring(true);
-    try {
-      const { data, error: e } = await api.POST(
-        "/api/v1/organizations/{orgId}/nodes/{nodeId}/restore-devices",
-        {
-          params: { path: { orgId: org.id, nodeId: sourceNodeId } },
-          body: { target_node_id: restoreTarget },
-        },
-      );
-      if (e) {
-        setError(
-          apiErrorMessage(e, "Could not restore this gateway's devices."),
-        );
-        return;
-      }
-      const restored = data?.restored ?? 0;
-      const readdressed = data?.readdressed ?? 0;
-      // The re-address count is stated rather than buried: each of those users must re-import a config, and
-      // the device list marks them "config out of date". Reporting only the total would hide the work.
-      setRestoreResult(
-        restored === 0
-          ? "No devices needed restoring — nothing was revoked as a cascade from this gateway."
-          : `Restored ${restored} device${restored === 1 ? "" : "s"}` +
-              (readdressed > 0
-                ? `. ${readdressed} could not reclaim its original address and must re-import a config — they are marked "config out of date" in Devices.`
-                : ", each keeping its original address, so existing configs keep working."),
-      );
-      setRestoreFrom(null);
-      setRestoreTarget("");
-      onNodesChanged?.();
-    } catch {
-      setError("Could not reach the API.");
-    } finally {
-      setRestoring(false);
-    }
-  }
-
-  const liveGateways = nodes.filter((n) => n.status === "active");
-
   return (
     <Card>
-      {gatewayEndpointAccess && (
+      {showGatewayEndpointSettings && gatewayEndpointState === "loading" && (
+        <p className="mb-4 text-sm text-slate-400">
+          Checking Gateway control endpoint…
+        </p>
+      )}
+      {showGatewayEndpointSettings && gatewayEndpointState === "error" && (
+        <div className="mb-4 rounded-lg border border-danger/30 bg-danger/5 p-4">
+          <ErrorText>{gatewayEndpointReadError}</ErrorText>
+          <Button className="mt-3" variant="ghost" onClick={() => void loadGatewayEndpoint()}>
+            Retry
+          </Button>
+        </div>
+      )}
+      {showGatewayEndpointSettings &&
+        gatewayEndpointState !== "loading" &&
+        gatewayEndpointState !== "error" &&
+        Boolean(gatewayControlURL) &&
+        !gatewayEndpointEditing &&
+        gatewayControlURL && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-ink-900 px-4 py-3">
+            <p className="text-sm text-slate-300">
+              Control endpoint: <span className="font-medium text-white">{controlEndpointHostname(gatewayControlURL)}</span>
+              {" · "}<span className="text-slate-200">Configured</span>
+            </p>
+            {gatewayEndpointState === "authorized" && (
+              <Button variant="ghost" onClick={() => setGatewayEndpointEditing(true)}>
+                Change
+              </Button>
+            )}
+          </div>
+        )}
+      {showGatewayEndpointSettings &&
+        gatewayEndpointState === "restricted" &&
+        !gatewayControlURL && (
+          <div className="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200">
+            A deployment admin must configure the Gateway control endpoint before a join token can be issued.
+          </div>
+        )}
+      {showGatewayEndpointSettings && gatewayEndpointState === "authorized" && gatewayEndpointEditing && (
         <div className="mb-4 rounded-lg border border-white/10 bg-ink-900 p-4">
-          <div className="text-sm font-semibold text-white">Gateway control endpoint</div>
-          <p className="mt-1 text-xs text-slate-400">Deployment-wide raw mTLS URL used in new join commands. Keep this hostname DNS-only or behind TCP passthrough on port 8443.</p>
+          <div className="text-sm font-semibold text-white">Gateway control URL (DNS hostname)</div>
+          <p className="mt-1 text-xs text-slate-400">Deployment-wide raw mTLS endpoint used in new join commands. Gateways reach this DNS hostname on port 8443; keep it DNS-only or behind TCP passthrough.</p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div className="min-w-[18rem] flex-1">
-              <Field label="Gateway control URL">
+              <Field label="Gateway control URL (DNS hostname)">
                 <Input value={gatewayEndpointDraft} onChange={(e) => setGatewayEndpointDraft(e.target.value)} placeholder="https://agent.example.com:8443" maxLength={300} />
               </Field>
             </div>
             <Button onClick={saveGatewayEndpoint} disabled={gatewayEndpointBusy || gatewayEndpointDraft.trim() === ""}>
               {gatewayEndpointBusy ? "Saving…" : "Save endpoint"}
             </Button>
+            {gatewayEndpointConfigured && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setGatewayEndpointDraft(gatewayControlURL ?? "");
+                  setGatewayEndpointEditing(false);
+                }}
+                disabled={gatewayEndpointBusy}
+              >
+                Cancel
+              </Button>
+            )}
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between">
+      {!hideHeader && <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-300">Gateways</h2>
         <Button variant="ghost" onClick={() => setOpen((v) => !v)}>
           Enroll gateway
         </Button>
-      </div>
+      </div>}
 
       {open && (
         <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-white/5 pt-3">
@@ -417,10 +440,10 @@ export function Gateways({
               />
             </Field>
           </div>
-          <Button onClick={issue} disabled={busy || !metaLoaded || !ep.ok}>
+          <Button onClick={issue} disabled={busy || !metaLoaded || !gatewayEndpointReady}>
             {busy
               ? "Generating…"
-              : !metaLoaded
+              : !metaLoaded || !gatewayEndpointSettled
                 ? "Checking control plane…"
                 : "Generate join token"}
           </Button>
@@ -436,6 +459,18 @@ export function Gateways({
           before enrolling a gateway.
         </ErrorText>
       )}
+      {open &&
+        metaLoaded &&
+        gatewayEndpointSettled &&
+        !gatewayControlURL &&
+        gatewayEndpointState !== "error" && (
+          <p className="mt-2 text-xs text-ink-faint">
+            No explicit Gateway control URL is saved. This command derives the
+            raw mTLS endpoint from the configured control-plane URL on port
+            8443. A deployment admin can save an explicit endpoint for future
+            commands.
+          </p>
+        )}
       {open && ep.ok && ep.usedFallback && metaError && (
         <p className="mt-2 text-xs text-amber-400">
           Couldn't confirm the control plane's public URL (metadata unavailable)
@@ -451,178 +486,6 @@ export function Gateways({
         <CeilingUpgrade message={error} kind={ceiling} />
       ) : (
         <ErrorText>{error}</ErrorText>
-      )}
-
-      {renderList && (
-        <ul className="mt-3 space-y-2">
-          {nodes.map((n) => (
-            <li
-              key={n.id}
-              className="flex items-center justify-between rounded-lg border border-white/5 bg-ink-900 px-4 py-2.5"
-            >
-              <div>
-                <span className="text-sm text-white">{n.name}</span>
-                <span className="ml-2 font-mono text-xs text-slate-500">
-                  {n.agent_version}
-                </span>
-                {n.status === "revoked" && (
-                  <span className="ml-2 text-xs text-rose-400">revoked</span>
-                )}
-                {/* WF-S11-10: no health badge on a revoked gateway — `revoked` IS its state, and a degradation
-                  badge beside it describes a gateway that is no longer meant to work. Matches the same
-                  suppression Devices.tsx has always applied to device rows; this list never had it, which stayed
-                  invisible only while the badges were vague ("degraded") rather than instructional. */}
-                {/* S14.21: `n.status !== "revoked" &&` removed — policyHealthBadge now refuses a verdict
-                  for a revoked node itself, so restating it here implied the callee does not. */}
-                {(() => {
-                  const b = policyHealthBadge(n);
-                  return b ? (
-                    <span className={`ml-2 text-xs ${badgeClass(b.tone)}`}>
-                      {b.label}
-                    </span>
-                  ) : null;
-                })()}
-                {/* S9.1 4d: OpenVPN refuse-loudly surfaced (a different axis from policy health) — an
-                  OVPN-enabled gateway missing its material/binary shows WHY, and keeps serving WireGuard. */}
-                {n.ovpn_health && (
-                  <span
-                    className="ml-2 text-xs text-amber-400"
-                    title="This gateway has OpenVPN enabled but is not serving it. Resolves on its own once the material, binary or config is corrected."
-                  >
-                    {n.ovpn_health === "ovpn_binary_absent"
-                      ? "OpenVPN: binary missing"
-                      : n.ovpn_health === "ovpn_transit_conflict"
-                        ? "OpenVPN: address conflict"
-                        : "OpenVPN: certs missing"}
-                  </span>
-                )}
-                {n.egress_mode && (
-                  <span
-                    className={`ml-2 text-xs ${n.egress_mode === "dual_stack" ? "text-emerald-400" : n.egress_mode === "ipv4_only" ? "text-sky-300" : "text-slate-400"}`}
-                    title={
-                      n.egress_mode === "dual_stack"
-                        ? "IPv4 and IPv6 egress verified; new full-tunnel profiles use both."
-                        : n.egress_mode === "ipv4_only"
-                          ? "IPv4 egress verified; IPv6 is blocked by the client kill-switch for full-tunnel profiles."
-                          : "Waiting for the gateway to report egress capability."
-                    }
-                  >
-                    {n.egress_mode === "dual_stack"
-                      ? "Egress: dual-stack"
-                      : n.egress_mode === "ipv4_only"
-                        ? "Egress: IPv4-only"
-                        : "Egress: checking"}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-500">
-                  {n.last_seen_at
-                    ? `last seen ${relativeAge(n.last_seen_at)}`
-                    : "never connected"}
-                </span>
-                {/* WF-S11-9. Two-step, because this is irreversible AND wider than it looks: revoking a gateway
-                  refuses its cert renewal, so every device homed there loses its tunnel and any site transit
-                  through it stops. A one-click danger button next to a "last seen" label is a misclick away
-                  from an outage. */}
-                {n.status === "active" &&
-                  (confirmRevoke === n.id ? (
-                    <span className="flex items-center gap-2">
-                      <span className="text-xs text-rose-300">
-                        Revoke {n.name}? Devices homed here lose their tunnel.
-                        This cannot be undone.
-                      </span>
-                      <Button
-                        variant="danger"
-                        onClick={() => revoke(n.id)}
-                        disabled={revoking === n.id}
-                      >
-                        {revoking === n.id ? "Revoking…" : "Confirm revoke"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => setConfirmRevoke(null)}
-                        disabled={revoking === n.id}
-                      >
-                        Cancel
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setConfirmRevoke(n.id)}
-                    >
-                      Revoke
-                    </Button>
-                  ))}
-                {/* S13.1 Slice 7 — only on a REVOKED gateway, because that is the only state whose devices are
-                  stranded: re-key brings back a gateway that expired, and D3 refuses to re-key one that was
-                  revoked. Withheld entirely when there is no live gateway to restore onto, rather than offered
-                  and then refused. */}
-                {n.status === "revoked" &&
-                  liveGateways.length > 0 &&
-                  (restoreFrom === n.id ? (
-                    <span className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">
-                        Restore its devices onto
-                      </span>
-                      <select
-                        className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200"
-                        value={restoreTarget}
-                        onChange={(e) => setRestoreTarget(e.target.value)}
-                        aria-label="Replacement gateway"
-                      >
-                        <option value="">Choose a gateway…</option>
-                        {liveGateways.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        variant="primary"
-                        onClick={() => restoreDevices(n.id)}
-                        disabled={restoring || restoreTarget === ""}
-                      >
-                        {restoring ? "Restoring…" : "Restore devices"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setRestoreFrom(null);
-                          setRestoreTarget("");
-                        }}
-                        disabled={restoring}
-                      >
-                        Cancel
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setRestoreResult(null);
-                        setRestoreFrom(n.id);
-                      }}
-                    >
-                      Restore devices
-                    </Button>
-                  ))}
-              </div>
-            </li>
-          ))}
-          {restoreResult && (
-            <li className="text-xs text-emerald-300" role="status">
-              {restoreResult}
-            </li>
-          )}
-          {nodes.length === 0 && (
-            <li className="text-sm text-slate-500">
-              No gateway enrolled yet. Enroll one to start serving WireGuard
-              peers.
-            </li>
-          )}
-        </ul>
       )}
 
       {/* One-time join-token CEREMONY — the token authenticates a new agent on its
@@ -680,6 +543,7 @@ export function Gateways({
             setToken(null);
             setPinnedName(null);
             setPinnedEndpoint(null);
+            onEnrollmentAcknowledged?.();
           }}
         />
       )}

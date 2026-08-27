@@ -6,7 +6,15 @@ import {
   within,
   fireEvent,
 } from "@testing-library/react";
-import { Donut, Histogram, NodeLink } from "../src/components/viz";
+import {
+  Donut,
+  Histogram,
+  NodeLink,
+  nodeLinkEdge,
+  nodeLinkLayout,
+  nodeLinkRoute,
+  nodeLinkVisibleLabel,
+} from "../src/components/viz";
 
 // S14.3 SLICE C — THE VISUALIZATION CONTRACT.
 //
@@ -277,6 +285,108 @@ describe("THE NUMBERS ARE TEXT, NOT ONLY GEOMETRY", () => {
       />,
     );
     expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
+describe("NodeLink responsive fit", () => {
+  it("widens the deterministic topology from the rendered container aspect without enlarging node rings", () => {
+    const nodes = [
+      { id: "primary", label: "gw-primary", kind: "hub" as const },
+      { id: "standby", label: "gw-standby", kind: "hub-standby" as const },
+      { id: "site", label: "long-site-name", kind: "spoke" as const, value: 2 },
+    ];
+    const base = nodeLinkLayout(nodes);
+    const fitted = nodeLinkLayout(nodes, 4);
+    expect(fitted.box.width).toBeGreaterThan(base.box.width);
+    expect(fitted.positions.get("primary")?.r).toBe(base.positions.get("primary")?.r);
+    expect(fitted.positions.get("site")?.r).toBe(base.positions.get("site")?.r);
+    // Same inputs produce the same expanded geometry across reloads.
+    expect(nodeLinkLayout(nodes, 4)).toEqual(fitted);
+  });
+});
+
+describe("NodeLink — deterministic HA hub layout", () => {
+  const haNodes = [
+    { id: "primary", label: "gateway-primary-with-a-long-name", kind: "hub" as const, sub: "primary · HA set gen 9" },
+    { id: "standby", label: "gateway-standby-with-a-long-name", kind: "hub-standby" as const, sub: "standby · HA set gen 9" },
+    { id: "s1", label: "northwest-branch-office-with-a-long-name", kind: "spoke" as const, value: 1 },
+    { id: "s2", label: "europe-branch", kind: "spoke" as const, value: 1, tone: "linked" as const },
+    { id: "s3", label: "asia-branch", kind: "spoke" as const, value: 1, tone: "down" as const },
+    { id: "s4", label: "unbound-site", kind: "spoke" as const, value: 0, note: "no gateway bound" },
+  ];
+
+  it("separates primary, standby, and spokes deterministically, including long labels", () => {
+    const first = nodeLinkLayout(haNodes);
+    const second = nodeLinkLayout(haNodes);
+    expect([...first.positions.entries()]).toEqual([...second.positions.entries()]);
+
+    const positioned = [...first.positions.values()];
+    for (let i = 0; i < positioned.length; i++) {
+      for (let j = i + 1; j < positioned.length; j++) {
+        const a = positioned[i]!;
+        const b = positioned[j]!;
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(a.r + b.r + 12);
+      }
+    }
+    expect(nodeLinkVisibleLabel(haNodes[0].label)).toMatch(/…$/);
+    expect(first.box.width).toBeGreaterThan(0);
+    expect(first.box.height).toBeGreaterThan(0);
+  });
+
+  it("terminates edges at node boundaries and preserves full accessible names at narrow width", () => {
+    const layout = nodeLinkLayout(haNodes);
+    const primary = layout.positions.get("primary")!;
+    const spoke = layout.positions.get("s2")!;
+    const edge = nodeLinkEdge(primary, spoke);
+    expect(Math.hypot(edge.x1 - primary.x, edge.y1 - primary.y)).toBeCloseTo(primary.r);
+    expect(Math.hypot(edge.x2 - spoke.x, edge.y2 - spoke.y)).toBeCloseTo(spoke.r);
+
+    render(
+      <div style={{ width: 320 }}>
+        <NodeLink
+          label="HA topology"
+          source={SRC}
+          failed={false}
+          nodes={haNodes}
+          links={[
+            { from: "primary", to: "s1", tone: "linked" },
+            { from: "primary", to: "s2", tone: "linked" },
+            { from: "primary", to: "s3", tone: "down", note: "no fresh handshake" },
+          ]}
+          onSelect={() => {}}
+          empty="none"
+        />
+      </div>,
+    );
+    expect(screen.getByRole("button", { name: /gateway-primary-with-a-long-name/ })).toBeTruthy();
+    expect(document.querySelectorAll('[data-node-kind="hub-standby"]')).toHaveLength(1);
+    expect(document.querySelectorAll("[data-edge]")).toHaveLength(3);
+    for (const edge of document.querySelectorAll("[data-edge] path")) {
+      expect(edge.getAttribute("fill")).toBe("none");
+    }
+    expect(document.querySelector("svg")?.getAttribute("class")).toContain("w-full");
+  });
+
+  it("routes every Site edge clear of unrelated HA cards, badges, and labels", () => {
+    const layout = nodeLinkLayout(haNodes);
+    const primary = layout.positions.get("primary")!;
+    const standby = layout.positions.get("standby")!;
+    const euSite = layout.positions.get("s2")!;
+    const route = nodeLinkRoute(primary, euSite, [primary, standby]);
+
+    expect(route.points).toHaveLength(4);
+    for (let i = 1; i < route.points.length; i++) {
+      const start = route.points[i - 1]!;
+      const end = route.points[i]!;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lengthSquared = dx * dx + dy * dy;
+      const t = Math.max(0, Math.min(1, ((standby.x - start.x) * dx + (standby.y - start.y) * dy) / lengthSquared));
+      const clearance = Math.hypot(standby.x - (start.x + t * dx), standby.y - (start.y + t * dy));
+      // ring + badge/label envelope: the line must clear the whole readable standby card, not merely its ring.
+      expect(clearance).toBeGreaterThanOrEqual(standby.r + 48);
+    }
+    expect(route.path).toMatch(/^M .* L .* L .* L /);
   });
 });
 

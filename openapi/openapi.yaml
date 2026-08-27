@@ -5974,6 +5974,15 @@ components:
         status: { type: string, enum: [active, revoked] }
         agent_version: { type: string }
         enrolled_at: { type: string, format: date-time }
+        enrolled_kind:
+          type: string
+          nullable: true
+          enum: [gateway, agent]
+          description: >-
+            The immutable enrollment declaration. gateway is eligible to carry a
+            Site LAN; agent is an AI Agent identity and cannot be bound to a Site.
+            NULL is a legacy undetermined declaration and is not eligible for new
+            Site binding.
         last_seen_at: { type: string, format: date-time }
         policy_degraded:
           type: boolean

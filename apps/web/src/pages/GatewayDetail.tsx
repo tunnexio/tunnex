@@ -1,0 +1,310 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  Field,
+  Input,
+  Loading,
+  Modal,
+  PageHeader,
+  Select,
+} from "../components/ui";
+import { LoadRetry } from "../components/LoadRetry";
+import { api, apiErrorMessage } from "../lib/api";
+import { relativeAge } from "../lib/format";
+import {
+  gatewayEgressDetail,
+  gatewayOperationalLabel,
+  groupNotes,
+  toGatewayRow,
+} from "../lib/gatewaysview";
+import { useGatewayInventory } from "../lib/useGatewayInventory";
+
+type DetailTab = "overview" | "health" | "lifecycle";
+type Dialog = "rename" | "transfer" | "revoke" | "restore" | "delete" | null;
+
+const detailTab = (value: string | null): DetailTab =>
+  value === "health" || value === "lifecycle" ? value : "overview";
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-micro uppercase tracking-wide text-ink-faint">{label}</dt>
+      <dd className="mt-1 break-words text-cell text-ink-body">{children}</dd>
+    </div>
+  );
+}
+
+function requiredImpactCount(data: unknown, field: string): number {
+  if (typeof data === "object" && data !== null) {
+    const value = (data as Record<string, unknown>)[field];
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  }
+  throw new Error("The API returned an incomplete impact response. Refresh the gateway before retrying.");
+}
+
+export default function GatewayDetail() {
+  const { gatewayId = "" } = useParams();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab = detailTab(params.get("tab"));
+  const { org, state, reload, canManage, canTransfer, canRestore } = useGatewayInventory();
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [draft, setDraft] = useState("");
+  const [target, setTarget] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const mutationScope = `${org?.id ?? ""}:${gatewayId}`;
+  const mutationScopeRef = useRef(mutationScope);
+  mutationScopeRef.current = mutationScope;
+
+  useEffect(() => {
+    setDialog(null);
+    setDraft("");
+    setTarget("");
+    setBusy(false);
+    setError("");
+    setNotice("");
+  }, [gatewayId, org?.id]);
+
+  const node = state.kind === "ready" ? state.nodes.find((item) => item.id === gatewayId) : undefined;
+  const row = node ? toGatewayRow(node, state.siteNames) : null;
+  const destinations = useMemo(
+    () =>
+      state.kind === "ready"
+        ? state.nodes.filter((candidate) => candidate.id !== gatewayId && candidate.status === "active")
+        : [],
+    [gatewayId, state],
+  );
+  const homed = state.kind === "ready" && state.homedCounts !== null ? state.homedCounts[gatewayId] ?? 0 : null;
+  const targetNode = destinations.find((candidate) => candidate.id === target);
+
+  const selectTab = (next: DetailTab) => {
+    const nextParams = new URLSearchParams(params);
+    if (next === "overview") nextParams.delete("tab");
+    else nextParams.set("tab", next);
+    setParams(nextParams);
+  };
+
+  async function mutate(
+    call: () => Promise<{ data?: unknown; error?: unknown }>,
+    fallback: string,
+    success: (data: unknown) => string,
+  ) {
+    const startedInScope = mutationScope;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await call();
+      if (mutationScopeRef.current !== startedInScope) return false;
+      if (result.error) {
+        setError(apiErrorMessage(result.error, fallback));
+        return false;
+      }
+      try {
+        setNotice(success(result.data));
+      } catch (responseError) {
+        setError(responseError instanceof Error ? responseError.message : fallback);
+        return false;
+      }
+      setDialog(null);
+      setTarget("");
+      await reload();
+      return true;
+    } catch {
+      if (mutationScopeRef.current !== startedInScope) return false;
+      setError("Could not reach the API.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const rename = () =>
+    mutate(
+      () =>
+        api.PATCH("/api/v1/organizations/{orgId}/nodes/{nodeId}", {
+          params: { path: { orgId: org!.id, nodeId: gatewayId } },
+          body: { name: draft.trim() },
+        }),
+      "Could not rename the gateway.",
+      () => "Gateway name updated. Audit Log records the old and new labels.",
+    );
+
+  const openDialog = (next: Exclude<Dialog, null>) => {
+    setError("");
+    setDialog(next);
+  };
+
+  if (state.kind === "loading") return <Card><Loading label="Loading gateway workspace…" /></Card>;
+  if (state.kind === "error") return <LoadRetry error={state.error ?? "Could not load gateways."} onRetry={reload} />;
+  if (!node || !row) {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Gateway not found" subtitle="The authoritative Gateway inventory does not contain this identifier." />
+        <Card><EmptyState action={<Link className="text-accent-400 hover:underline" to="/gateways">Return to Gateways</Link>}>It may have been deleted or belong to another organization.</EmptyState></Card>
+      </div>
+    );
+  }
+
+  // The list contract is organization-scoped but Node intentionally carries no org_id.
+  const activeOrgId = org?.id ?? "";
+  const tabs: Array<{ id: DetailTab; label: string }> = [
+    { id: "overview", label: "Overview" },
+    { id: "health", label: "Health" },
+    { id: "lifecycle", label: "Lifecycle" },
+  ];
+  const status = row.operationalState;
+  const statusLabel = gatewayOperationalLabel(row);
+
+  return (
+    <div className="space-y-5">
+      <Link className="inline-flex text-cell text-ink-tertiary hover:text-ink-heading" to="/gateways">← Gateway inventory</Link>
+      <PageHeader
+        title={node.name}
+        subtitle="Gateway detail workspace"
+        actions={<Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>{statusLabel}</Badge>}
+      />
+      <nav aria-label="Gateway detail sections" className="border-b border-white/10">
+        <div className="flex min-w-max gap-1 overflow-x-auto">
+          {tabs.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              aria-current={tab === item.id ? "page" : undefined}
+              onClick={() => selectTab(item.id)}
+              className={`min-h-10 border-b-2 px-3 py-2 text-sm ${tab === item.id ? "border-accent-400 text-ink-heading" : "border-transparent text-ink-tertiary hover:text-ink-heading"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+      {!dialog && <ErrorText>{error}</ErrorText>}
+      {notice && <div role="status" className="rounded-card border border-ok/30 bg-ok/5 p-3 text-cell text-ink-body">{notice}</div>}
+
+      {tab === "overview" && (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+          <Card>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-heading font-semibold text-ink-heading">Identity</h2>
+                <p className="mt-1 text-cell text-ink-tertiary">Server-owned enrollment identity and topology context.</p>
+              </div>
+              {canManage && node.status !== "revoked" && (
+                <Button variant="ghost" onClick={() => { setDraft(node.name); openDialog("rename"); }}>Rename</Button>
+              )}
+            </div>
+            <dl className="mt-5 grid gap-5 sm:grid-cols-2">
+              <Fact label="Lifecycle"><Badge tone={node.status === "revoked" ? "neutral" : "ok"}>{node.status}</Badge></Fact>
+              <Fact label="Site">{row.siteName ?? "No site assigned"}</Fact>
+              <Fact label="Endpoint">{node.endpoint ?? "Not reported"}</Fact>
+              <Fact label="Agent version">{node.agent_version || "Not reported"}</Fact>
+              <Fact label="Enrolled">{node.enrolled_at ? new Date(node.enrolled_at).toLocaleString() : "Not reported"}</Fact>
+              <Fact label="Last seen">{node.last_seen_at ? `${relativeAge(node.last_seen_at)} (${new Date(node.last_seen_at).toLocaleString()})` : "Never connected"}</Fact>
+            </dl>
+          </Card>
+          <Card>
+            <h2 className="text-heading font-semibold text-ink-heading">Related workspaces</h2>
+            <div className="mt-3 flex flex-col items-start gap-2 text-cell">
+              <Link className="text-accent-400 hover:underline" to="/sites">Manage site topology</Link>
+              <Link className="text-accent-400 hover:underline" to={`/devices?gateway=${gatewayId}`}>View homed devices{homed === null ? "" : ` (${homed})`}</Link>
+              <Link className="text-accent-400 hover:underline" to={`/audit?q=${encodeURIComponent(node.name)}`}>Find Gateway audit evidence</Link>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {tab === "health" && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <h2 className="text-heading font-semibold text-ink-heading">Connectivity</h2>
+            <p className="mt-3 text-cell text-ink-body">{node.last_seen_at ? `Last control-plane observation ${relativeAge(node.last_seen_at)}.` : "This gateway has never reported a successful connection."}</p>
+            <p className="mt-2 text-micro text-ink-tertiary">Lifecycle and connectivity are separate: an active credential does not prove a fresh handshake.</p>
+          </Card>
+          <Card>
+            <h2 className="text-heading font-semibold text-ink-heading">Policy and transit</h2>
+            <div className="mt-3"><Badge tone={row.health ? "warn" : node.status === "revoked" ? "neutral" : "ok"}>{row.health?.label ?? (node.status === "revoked" ? "not evaluated" : "healthy")}</Badge></div>
+            {groupNotes([row]).map((note) => <p key={note} className="mt-2 text-cell text-ink-tertiary">{note}</p>)}
+          </Card>
+          <Card>
+            <h2 className="text-heading font-semibold text-ink-heading">OpenVPN</h2>
+            <p className="mt-3 text-cell text-ink-body">{row.ovpnHealth ? row.ovpnHealth.replace(/^ovpn_/, "").replace(/_/g, " ") : "No OpenVPN failure reported."}</p>
+            <p className="mt-2 text-micro text-ink-tertiary">A separate service axis from WireGuard policy health.</p>
+          </Card>
+          <Card>
+            <h2 className="text-heading font-semibold text-ink-heading">Egress</h2>
+            <p className="mt-3 text-cell text-ink-body">{gatewayEgressDetail(row)}</p>
+          </Card>
+        </div>
+      )}
+
+      {tab === "lifecycle" && (
+        <div className="space-y-4">
+          <Card>
+            <h2 className="text-heading font-semibold text-ink-heading">Homed devices</h2>
+            <p className="mt-2 text-cell text-ink-body">{homed === null ? "Impact count unavailable. Lifecycle actions that depend on it are withheld until the device inventory can be read." : `${homed} active or pending device${homed === 1 ? " is" : "s are"} homed to this gateway.`}</p>
+            {node.status === "active" && homed !== null && homed > 0 && canTransfer && (
+              <Button className="mt-3" onClick={() => openDialog("transfer")}>Move devices</Button>
+            )}
+          </Card>
+          <Card>
+            <h2 className="text-heading font-semibold text-danger">Danger zone</h2>
+            <p className="mt-2 text-cell text-ink-tertiary">Retirement is transfer first, then permanent revocation. A revoked gateway can never be reactivated.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {node.status === "active" && canManage && homed === 0 && <Button variant="danger" onClick={() => openDialog("revoke")}>Revoke gateway</Button>}
+              {node.status === "active" && canManage && homed !== 0 && <p className="text-cell text-ink-tertiary">Revoke becomes available only after the authoritative homed-device count reaches zero.</p>}
+              {node.status === "revoked" && canRestore && destinations.length > 0 && <Button onClick={() => openDialog("restore")}>Restore cascaded devices</Button>}
+              {node.status === "revoked" && canManage && <Button variant="danger" onClick={() => openDialog("delete")}>Delete gateway record</Button>}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {dialog === "rename" && (
+        <Modal title="Rename gateway" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !draft.trim()} onClick={() => void rename()}>Save name</Button></>}>
+          <ErrorText>{error}</ErrorText>
+          <p className="mb-3 text-cell text-ink-tertiary">The name is display metadata. Endpoint and issued device configurations are unchanged.</p>
+          <Field label="Gateway name"><Input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} /></Field>
+        </Modal>
+      )}
+
+      {dialog === "transfer" && (
+        <Modal title="Move homed devices" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !target} onClick={() => void mutate(() => api.POST("/api/v1/organizations/{orgId}/nodes/{nodeId}/transfer-devices", { params: { path: { orgId: activeOrgId, nodeId: gatewayId } }, body: { target_node_id: target } }), "Could not move the devices.", (data) => `${requiredImpactCount(data, "moved")} moved. ${requiredImpactCount(data, "needs_reissue")} require a configuration re-import. The old gateway remains active until you revoke it separately.`)}>Move devices</Button></>}>
+          <ErrorText>{error}</ErrorText>
+          <p className="mb-3 text-cell text-ink-tertiary">Move {homed} device{homed === 1 ? "" : "s"} before revocation. Addresses remain allocated. A different Site changes the policy context those devices inherit.</p>
+          <Field label="Destination gateway"><Select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Choose a live gateway…</option>{destinations.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}{state.siteNames[candidate.site_id ?? ""] ? ` — ${state.siteNames[candidate.site_id!]}` : ""}</option>)}</Select></Field>
+          {targetNode && node.site_id && targetNode.site_id && node.site_id !== targetNode.site_id && <p className="mt-3 text-cell text-warn">Cross-site move: policy scope may grant or remove access. Review the device rules after transfer.</p>}
+        </Modal>
+      )}
+
+      {dialog === "revoke" && (
+        <Modal title="Revoke gateway permanently?" danger onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void mutate(() => api.POST("/api/v1/organizations/{orgId}/nodes/{nodeId}/revoke", { params: { path: { orgId: activeOrgId, nodeId: gatewayId } } }), "Could not revoke the gateway.", () => "Gateway revoked. Its credential cannot renew and it cannot be reactivated; enroll a replacement to recover service.")}>Revoke gateway</Button></>}>
+          <ErrorText>{error}</ErrorText>
+          <p className="text-cell text-ink-tertiary">The bounded inventory reports zero homed active/pending devices. The server checks again transactionally. Revocation is permanent; recovery is a newly enrolled gateway.</p>
+        </Modal>
+      )}
+
+      {dialog === "restore" && (
+        <Modal title="Restore cascaded devices" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !target} onClick={() => void mutate(() => api.POST("/api/v1/organizations/{orgId}/nodes/{nodeId}/restore-devices", { params: { path: { orgId: activeOrgId, nodeId: gatewayId } }, body: { target_node_id: target } }), "Could not restore this gateway's devices.", (data) => `${requiredImpactCount(data, "restored")} cascade-revoked devices restored. ${requiredImpactCount(data, "readdressed")} require a new configuration because their original address was unavailable.`)}>Restore devices</Button></>}>
+          <ErrorText>{error}</ErrorText>
+          <p className="mb-3 text-cell text-ink-tertiary">Only devices revoked as a cascade from this gateway are eligible. Deliberately revoked devices stay revoked.</p>
+          <Field label="Replacement gateway"><Select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Choose a live replacement…</option>{destinations.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</Select></Field>
+        </Modal>
+      )}
+
+      {dialog === "delete" && (
+        <Modal title="Delete revoked gateway record?" danger onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void (async () => { const removed = await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/nodes/{nodeId}", { params: { path: { orgId: activeOrgId, nodeId: gatewayId } } }), "Could not delete the gateway.", () => "Gateway deleted."); if (removed) navigate("/gateways", { replace: true }); })()}>Delete permanently</Button></>}>
+          <ErrorText>{error}</ErrorText>
+          <p className="text-cell text-ink-tertiary">This permanently removes {node.name}, its node telemetry and server credential records, and invalidates the enrollment token that created it. There is no recovery. Audit Log retains the gateway identity.</p>
+        </Modal>
+      )}
+    </div>
+  );
+}

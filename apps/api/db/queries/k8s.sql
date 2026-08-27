@@ -78,7 +78,7 @@ SELECT host(vip) AS vip FROM k8s_services WHERE org_id = $1 AND cluster_id = $2 
 -- ListActiveK8sServicesForOrg is the compiler's resolution source: id -> current VIP (+ proto/ports), LIVE
 -- only. A soft-deleted Service is absent, so a grant referencing it compiles to nothing (honest, not silent).
 -- name: ListActiveK8sServicesForOrg :many
-SELECT s.id, s.cluster_id, s.name, s.namespace, s.protocol, s.port_low, s.port_high,
+SELECT s.id, s.cluster_id, s.name, s.namespace, s.protocol, s.port_low, s.port_high, s.managed_by_machine,
        host(s.vip) AS vip, c.site_id, c.connector_node_id, host(c.vip_range) AS vip_range, c.service_cidr::text AS service_cidr,
        c.name AS cluster_name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
 FROM k8s_services s

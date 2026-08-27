@@ -238,7 +238,7 @@ func (q *Queries) GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K
 }
 
 const listActiveK8sServicesForOrg = `-- name: ListActiveK8sServicesForOrg :many
-SELECT s.id, s.cluster_id, s.name, s.namespace, s.protocol, s.port_low, s.port_high,
+SELECT s.id, s.cluster_id, s.name, s.namespace, s.protocol, s.port_low, s.port_high, s.managed_by_machine,
        host(s.vip) AS vip, c.site_id, c.connector_node_id, host(c.vip_range) AS vip_range, c.service_cidr::text AS service_cidr,
        c.name AS cluster_name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
 FROM k8s_services s
@@ -248,21 +248,22 @@ ORDER BY s.id
 `
 
 type ListActiveK8sServicesForOrgRow struct {
-	ID              uuid.UUID   `json:"id"`
-	ClusterID       uuid.UUID   `json:"cluster_id"`
-	Name            string      `json:"name"`
-	Namespace       string      `json:"namespace"`
-	Protocol        string      `json:"protocol"`
-	PortLow         *int32      `json:"port_low"`
-	PortHigh        *int32      `json:"port_high"`
-	Vip             string      `json:"vip"`
-	SiteID          uuid.UUID   `json:"site_id"`
-	ConnectorNodeID pgtype.UUID `json:"connector_node_id"`
-	VipRange        string      `json:"vip_range"`
-	ServiceCidr     string      `json:"service_cidr"`
-	ClusterName     string      `json:"cluster_name"`
-	DnsZone         string      `json:"dns_zone"`
-	DnsVip          string      `json:"dns_vip"`
+	ID               uuid.UUID   `json:"id"`
+	ClusterID        uuid.UUID   `json:"cluster_id"`
+	Name             string      `json:"name"`
+	Namespace        string      `json:"namespace"`
+	Protocol         string      `json:"protocol"`
+	PortLow          *int32      `json:"port_low"`
+	PortHigh         *int32      `json:"port_high"`
+	ManagedByMachine pgtype.UUID `json:"managed_by_machine"`
+	Vip              string      `json:"vip"`
+	SiteID           uuid.UUID   `json:"site_id"`
+	ConnectorNodeID  pgtype.UUID `json:"connector_node_id"`
+	VipRange         string      `json:"vip_range"`
+	ServiceCidr      string      `json:"service_cidr"`
+	ClusterName      string      `json:"cluster_name"`
+	DnsZone          string      `json:"dns_zone"`
+	DnsVip           string      `json:"dns_vip"`
 }
 
 // ListActiveK8sServicesForOrg is the compiler's resolution source: id -> current VIP (+ proto/ports), LIVE
@@ -284,6 +285,7 @@ func (q *Queries) ListActiveK8sServicesForOrg(ctx context.Context, orgID uuid.UU
 			&i.Protocol,
 			&i.PortLow,
 			&i.PortHigh,
+			&i.ManagedByMachine,
 			&i.Vip,
 			&i.SiteID,
 			&i.ConnectorNodeID,

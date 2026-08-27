@@ -158,6 +158,9 @@ func (s *Service) ListRoutedForwards(ctx context.Context, orgID uuid.UUID, range
 // byte-identical to the long path's advertise-then-refused state — and the typed refusal (with its S8.5
 // teaching text) is returned. name is optional: blank derives a sensible default from the CIDR.
 func (s *Service) RouteLAN(ctx context.Context, actor, orgID, nodeID uuid.UUID, name string, cidr netip.Prefix) (sqlc.Site, sqlc.SiteSubnet, error) {
+	if err := s.requireGatewayCarrier(ctx, orgID, nodeID); err != nil {
+		return sqlc.Site{}, sqlc.SiteSubnet{}, err
+	}
 	// RETRY-SAFE by RESUME, not re-create (S8.5 #2). If this gateway already carries a half-built site from
 	// a prior attempt (a refusal left it site+bound+pending), advance THAT site — never register a second
 	// (which, with the old unconditional BindNode, silently re-homed the gateway and orphaned the first
