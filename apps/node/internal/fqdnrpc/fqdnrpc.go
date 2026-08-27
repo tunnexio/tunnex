@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sort"
@@ -163,7 +164,7 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 			records = append(records, got...)
 		}
 		records = canonicalRecords(records)
-		if code := validateRecords(Request{Hostname: hostname, RecordTypes: types}, records); code != "" {
+		if !validDirectRecords(hostname, types, records) {
 			return nil, errResolverConfig
 		}
 		if canonical == nil {
@@ -202,7 +203,32 @@ func canonicalRecords(in []Record) []Record {
 		a, b := out[i], out[j]
 		return a.Name+"|"+string(a.Type)+"|"+a.Address+"|"+a.Target+"|"+strconv.Itoa(a.TTLSeconds) < b.Name+"|"+string(b.Type)+"|"+b.Address+"|"+b.Target+"|"+strconv.Itoa(b.TTLSeconds)
 	})
-	return out
+	if len(out) < 2 {
+		return out
+	}
+	unique := out[:1]
+	for _, r := range out[1:] {
+		if r != unique[len(unique)-1] {
+			unique = append(unique, r)
+		}
+	}
+	return unique
+}
+
+func validDirectRecords(hostname string, types []RecordType, records []Record) bool {
+	if validateRecords(Request{Hostname: hostname, RecordTypes: types}, records) != "" {
+		return false
+	}
+	addresses, cnames := 0, 0
+	for _, record := range records {
+		switch record.Type {
+		case RecordA, RecordAAAA:
+			addresses++
+		case RecordCNAME:
+			cnames++
+		}
+	}
+	return addresses <= maxRecords && cnames <= 8
 }
 
 func sameRecords(a, b []Record) bool {
@@ -239,6 +265,9 @@ func directExchange(ctx context.Context, endpoint ResolverEndpoint, hostname str
 			return nil, err
 		}
 		defer conn.Close()
+		if deadline, ok := ctx.Deadline(); ok {
+			_ = conn.SetDeadline(deadline)
+		}
 		if _, err := conn.Write(payload); err != nil {
 			return nil, err
 		}
@@ -254,12 +283,15 @@ func directExchange(ctx context.Context, endpoint ResolverEndpoint, hostname str
 			return nil, err
 		}
 		defer conn.Close()
+		if deadline, ok := ctx.Deadline(); ok {
+			_ = conn.SetDeadline(deadline)
+		}
 		frame := append([]byte{byte(len(payload) >> 8), byte(len(payload))}, payload...)
 		if _, err := conn.Write(frame); err != nil {
 			return nil, err
 		}
 		var size [2]byte
-		if _, err := conn.Read(size[:]); err != nil {
+		if _, err := io.ReadFull(conn, size[:]); err != nil {
 			return nil, err
 		}
 		n := int(size[0])<<8 | int(size[1])
@@ -267,12 +299,8 @@ func directExchange(ctx context.Context, endpoint ResolverEndpoint, hostname str
 			return nil, fmt.Errorf("invalid dns tcp frame")
 		}
 		response = make([]byte, n)
-		for off := 0; off < n; {
-			got, err := conn.Read(response[off:])
-			if err != nil {
-				return nil, err
-			}
-			off += got
+		if _, err := io.ReadFull(conn, response); err != nil {
+			return nil, err
 		}
 	}
 	var decoded dnsmessage.Message

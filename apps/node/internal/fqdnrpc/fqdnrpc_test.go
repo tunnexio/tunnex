@@ -124,6 +124,18 @@ func TestDirectResolverUsesOnlyBoundEndpointsAndFailsClosed(t *testing.T) {
 	if _, err := direct.ResolveBound(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, ResolverConfig{}); !errors.Is(err, errResolverConfig) {
 		t.Fatalf("missing config must not use system resolver, got %v", err)
 	}
+	// CNAME can arrive in both the A and AAAA answer sections. The direct
+	// resolver canonicalizes duplicates and refuses a chain that exceeds the
+	// control-plane eight-hop bound rather than letting a later stage guess.
+	direct.exchange = func(_ context.Context, _ ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
+		if typ == RecordA {
+			return []Record{{Name: hostname, Type: RecordCNAME, Target: "edge.example.test", TTLSeconds: 30}, {Name: hostname, Type: RecordA, Address: "10.20.0.8", TTLSeconds: 30}}, nil
+		}
+		return []Record{{Name: hostname, Type: RecordCNAME, Target: "edge.example.test", TTLSeconds: 30}, {Name: hostname, Type: RecordAAAA, Address: "fd00::8", TTLSeconds: 30}}, nil
+	}
+	if got, err := direct.ResolveBound(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, config); err != nil || len(got) != 3 {
+		t.Fatalf("duplicate CNAME must canonicalize: got=%+v err=%v", got, err)
+	}
 }
 
 func TestResponderDirectResolverRefusesMissingBoundConfig(t *testing.T) {
