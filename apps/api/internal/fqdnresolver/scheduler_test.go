@@ -82,7 +82,7 @@ func TestSchedulerWithdrawsEveryResolverFailureAndNeverPublishesLastGood(t *test
 		{"timeout", &fixtureResolver{err: errors.New("down")}, WithdrawalTimeout},
 		{"nxdomain", &fixtureResolver{responses: []Response{{Status: StatusNXDOMAIN}}}, WithdrawalNXDOMAIN},
 		{"servfail", &fixtureResolver{responses: []Response{{Status: StatusSERVFAIL}}}, WithdrawalSERVFAIL},
-		{"unusable", &fixtureResolver{responses: []Response{answer(a("db.internal", "127.0.0.1", time.Minute))}}, WithdrawalInvalidAnswer},
+		{"unusable", &fixtureResolver{responses: []Response{answer(a("db.internal", "127.0.0.1", time.Minute))}}, WithdrawalSERVFAIL},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -93,6 +93,15 @@ func TestSchedulerWithdrawsEveryResolverFailureAndNeverPublishesLastGood(t *test
 				t.Fatalf("published=%d withdrawals=%v", len(store.published), store.withdrawn)
 			}
 		})
+	}
+}
+
+func TestSchedulerRespectsLeaderGate(t *testing.T) {
+	store := &memoryStore{work: []Work{work("orders.internal")}}
+	s := NewScheduler(store, &fixtureResolver{responses: []Response{answer(a("orders.internal", "10.2.3.4", time.Minute))}}, SchedulerConfig{MayTick: func() bool { return false }})
+	s.Tick(context.Background())
+	if store.dueCalls != 0 {
+		t.Fatalf("follower scheduler read due work %d times", store.dueCalls)
 	}
 }
 

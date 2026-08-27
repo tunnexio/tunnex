@@ -35,6 +35,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	apphttp "github.com/tunnexio/tunnex/apps/api/internal/http"
@@ -529,6 +530,20 @@ func main() {
 	defer stopElector()
 	elector := &leader.Elector{}
 	go elector.Run(electorCtx, pool, logger)
+	// FQDN resolution is deliberately a selected Site+Gateway transport.  The
+	// currently separate agent-control request/response adapter plugs into this
+	// server-owned port; until then the concrete transport fails closed and never
+	// consults a public/control-plane resolver.  Like all writing schedulers, only
+	// the confirmed leader ticks it and shutdown cancels any bounded DNS attempt.
+	fqdnCtx, stopFQDNScheduler := context.WithCancel(electorCtx)
+	fqdnScheduler := fqdnresolver.NewScheduler(
+		fqdnresolver.NewPostgresStore(pool),
+		fqdnresolver.NewSelectedTransport(fqdnresolver.UnavailableSelectedLookup{}),
+		fqdnresolver.SchedulerConfig{MayTick: func() bool {
+			return elector.IsLeader() && elector.ConfirmLeader(fqdnCtx, pool)
+		}},
+	)
+	fqdnScheduler.Start(fqdnCtx, nil)
 
 	go func() {
 		t := time.NewTicker(accesslog.RetentionSweepInterval)
@@ -792,6 +807,7 @@ func main() {
 	defer cancel()
 	_ = agentSrv.Shutdown(ctx)
 	pollCancel()         // stop the idp-sync poller
+	stopFQDNScheduler()  // stop bounded FQDN work before releasing DB leadership/pool
 	stopElector()        // release scheduler leadership (and its connection) before the pool closes
 	close(retentionStop) // stop the retention sweep loop
 	if err := srv.Shutdown(ctx); err != nil {

@@ -35,13 +35,65 @@ type Store interface {
 	Withdraw(context.Context, Work, WithdrawalCause, time.Time) error
 }
 
+// AfterCommit receives durable lifecycle changes.  It is intentionally a small
+// port: the scheduler must not import the policy compiler or audit implementation
+// (both are owned by later lanes).  Calls happen only after the serializable
+// transaction has committed; a callback failure cannot make a published answer
+// appear to have been rolled back.
+type AfterCommit interface {
+	Published(context.Context, Work, Generation)
+	Withdrawn(context.Context, Work, WithdrawalCause, time.Time)
+}
+
+// AuditHook and PolicyHook are separately owned consumers of a durable answer
+// transition.  Lane 3 can implement either (or both) without this package
+// importing its compiler, notifier, or audit writer.
+type AuditHook interface {
+	FQDNPublished(context.Context, Work, Generation)
+	FQDNWithdrawn(context.Context, Work, WithdrawalCause, time.Time)
+}
+type PolicyHook interface {
+	InvalidateFQDN(context.Context, Work)
+}
+
+// Hooks adapts optional audit and policy/push consumers to AfterCommit.
+type Hooks struct {
+	Audit  AuditHook
+	Policy PolicyHook
+}
+
+func (h Hooks) Published(ctx context.Context, w Work, g Generation) {
+	if h.Audit != nil {
+		h.Audit.FQDNPublished(ctx, w, g)
+	}
+	if h.Policy != nil {
+		h.Policy.InvalidateFQDN(ctx, w)
+	}
+}
+func (h Hooks) Withdrawn(ctx context.Context, w Work, c WithdrawalCause, at time.Time) {
+	if h.Audit != nil {
+		h.Audit.FQDNWithdrawn(ctx, w, c, at)
+	}
+	if h.Policy != nil {
+		h.Policy.InvalidateFQDN(ctx, w)
+	}
+}
+
 type PostgresStore struct {
 	pool       *pgxpool.Pool
 	retryAfter time.Duration
+	after      AfterCommit
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{pool: pool, retryAfter: MinTTL}
+}
+
+// WithAfterCommit attaches audit/policy-invalidation delivery without coupling
+// this lifecycle package to its eventual consumer implementation.
+func (s *PostgresStore) WithAfterCommit(after AfterCommit) *PostgresStore {
+	s.after = after
+	return s
 }
 
 // Due returns only resources with a server-selected active Site/Gateway pair.
@@ -57,7 +109,7 @@ FROM fqdn_resources r
 JOIN organizations o ON o.id=r.org_id AND o.deleted_at IS NULL AND o.fqdn_resources_enabled
 WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
   AND (
-    NOT EXISTS (SELECT 1 FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active')
+    NOT EXISTS (SELECT 1 FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id)
     OR EXISTS (
       SELECT 1 FROM fqdn_resource_answer_generations g
       WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'
@@ -93,7 +145,7 @@ func (s *PostgresStore) Publish(ctx context.Context, w Work, g Generation) error
 	if !w.Context.valid() || len(g.Addresses) == 0 || len(g.Addresses) > MaxAnswers {
 		return ErrUnboundContext
 	}
-	return s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway uuid.UUID) error {
+	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway uuid.UUID) error {
 		var id uuid.UUID
 		err := tx.QueryRow(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,state,effective_ttl,resolved_at) VALUES ($1,$2,$3,$4,$5,'pending',$6,$7) RETURNING id`, w.OrgID, w.ResourceID, next, gateway, site, g.TTL, g.ResolvedAt).Scan(&id)
 		if err != nil {
@@ -113,13 +165,20 @@ func (s *PostgresStore) Publish(ctx context.Context, w Work, g Generation) error
 		_, err = tx.Exec(ctx, `UPDATE fqdn_resource_answer_generations SET state='active',activated_at=$3,last_good_at=$3 WHERE id=$1 AND org_id=$2`, id, w.OrgID, g.ResolvedAt)
 		return err
 	})
+	if err == nil && s.after != nil {
+		s.after.Published(ctx, w, g)
+	}
+	return err
 }
 
 func (s *PostgresStore) Withdraw(ctx context.Context, w Work, cause WithdrawalCause, at time.Time) error {
 	if !w.Context.valid() {
 		return ErrUnboundContext
 	}
-	return s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway uuid.UUID) error {
+	if !approvedWithdrawalCause(cause) {
+		return fmt.Errorf("invalid D4 withdrawal cause %q", cause)
+	}
+	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway uuid.UUID) error {
 		// Record every D4 outcome, including a first failed attempt. This gives
 		// operators typed history but no empty active generation to compile.
 		var lastGood *time.Time
@@ -132,6 +191,19 @@ func (s *PostgresStore) Withdraw(ctx context.Context, w Work, cause WithdrawalCa
 		_, err := tx.Exec(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,state,effective_ttl,resolved_at,last_good_at,ended_at,failure_code) VALUES ($1,$2,$3,$4,$5,'withdrawn',$6,$7,$8,$7,$9)`, w.OrgID, w.ResourceID, next, gateway, site, MinTTL, at, lastGood, string(cause))
 		return err
 	})
+	if err == nil && s.after != nil {
+		s.after.Withdrawn(ctx, w, cause, at)
+	}
+	return err
+}
+
+func approvedWithdrawalCause(c WithdrawalCause) bool {
+	switch c {
+	case WithdrawalNXDOMAIN, WithdrawalSERVFAIL, WithdrawalTimeout, WithdrawalDisagreement, WithdrawalOverflow, WithdrawalLastGoodExpiry:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID) error) (err error) {

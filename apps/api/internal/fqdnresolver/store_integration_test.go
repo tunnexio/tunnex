@@ -14,6 +14,31 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db"
 )
 
+type committedHook struct {
+	t        *testing.T
+	pool     *pgxpool.Pool
+	resource uuid.UUID
+	publish  int
+	withdraw int
+}
+
+func (h *committedHook) Published(ctx context.Context, _ Work, _ Generation) {
+	h.t.Helper()
+	var active int
+	if err := h.pool.QueryRow(ctx, `SELECT count(*) FROM fqdn_resource_answer_generations WHERE resource_id=$1 AND state='active'`, h.resource).Scan(&active); err != nil || active != 1 {
+		h.t.Fatalf("publish callback ran before commit: active=%d err=%v", active, err)
+	}
+	h.publish++
+}
+func (h *committedHook) Withdrawn(ctx context.Context, _ Work, _ WithdrawalCause, _ time.Time) {
+	h.t.Helper()
+	var active int
+	if err := h.pool.QueryRow(ctx, `SELECT count(*) FROM fqdn_resource_answer_generations WHERE resource_id=$1 AND state='active'`, h.resource).Scan(&active); err != nil || active != 0 {
+		h.t.Fatalf("withdraw callback ran before commit: active=%d err=%v", active, err)
+	}
+	h.withdraw++
+}
+
 // This proof always creates and destroys its own database. It never points at
 // the database named by TUNNEX_TEST_DATABASE_URL, which must therefore be an
 // administrative URL to a disposable PostgreSQL instance.
@@ -61,7 +86,8 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'gateway',$3,$4)`, gateway, org, "scheduler-"+gateway.String(), site)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal',$3,$4)`, resource, org, site, gateway)
 
-	store := NewPostgresStore(pool)
+	hook := &committedHook{t: t, pool: pool, resource: resource}
+	store := NewPostgresStore(pool).WithAfterCommit(hook)
 	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}}
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.4"), addr("fd00::4")}}); err != nil {
@@ -91,6 +117,21 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	}
 	if active != 0 || code != string(WithdrawalTimeout) {
 		t.Fatalf("withdrawal active=%d code=%q", active, code)
+	}
+	if hook.publish != 1 || hook.withdraw != 1 {
+		t.Fatalf("after-commit calls publish=%d withdraw=%d", hook.publish, hook.withdraw)
+	}
+	// A withdrawn row is retryable, but it is not "no active row" every 15s.
+	// The durable retry bound prevents a failed resolver from minting an
+	// unbounded sequence of withdrawn generations.
+	if due, err := store.Due(ctx, now.Add(time.Minute), 10); err != nil || len(due) != 0 {
+		t.Fatalf("withdrawn resource retried before bound: due=%v err=%v", due, err)
+	}
+	if due, err := store.Due(ctx, now.Add(time.Minute+MinTTL), 10); err != nil || len(due) != 1 || due[0].ExpectedGeneration != 2 {
+		t.Fatalf("withdrawn resource was not retried at bound: due=%v err=%v", due, err)
+	}
+	if err := store.Withdraw(ctx, Work{OrgID: org, ResourceID: resource, Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}, ExpectedGeneration: 2}, WithdrawalInvalidAnswer, now.Add(2*time.Minute)); err == nil {
+		t.Fatal("store accepted a non-D4 withdrawal cause")
 	}
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.5")}}); err != ErrSuperseded {
 		t.Fatalf("stale work must not overwrite typed withdrawal: %v", err)

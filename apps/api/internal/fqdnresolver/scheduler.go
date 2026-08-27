@@ -15,6 +15,7 @@ type Scheduler struct {
 	now               func() time.Time
 	interval, timeout time.Duration
 	batch             int
+	mayTick           func() bool
 	mu                sync.Mutex
 	running           bool
 }
@@ -23,6 +24,7 @@ type SchedulerConfig struct {
 	Interval time.Duration
 	Timeout  time.Duration
 	Batch    int
+	MayTick  func() bool
 }
 
 func NewScheduler(store Store, resolver Resolver, cfg SchedulerConfig) *Scheduler {
@@ -35,7 +37,7 @@ func NewScheduler(store Store, resolver Resolver, cfg SchedulerConfig) *Schedule
 	if cfg.Batch <= 0 {
 		cfg.Batch = 32
 	}
-	return &Scheduler{store: store, resolver: resolver, now: time.Now, interval: cfg.Interval, timeout: cfg.Timeout, batch: cfg.Batch}
+	return &Scheduler{store: store, resolver: resolver, now: time.Now, interval: cfg.Interval, timeout: cfg.Timeout, batch: cfg.Batch, mayTick: cfg.MayTick}
 }
 
 // Start performs a bounded startup sweep and then bounded periodic/reconnect
@@ -69,6 +71,9 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	if s.store == nil || s.resolver == nil {
 		return
 	}
+	if s.mayTick != nil && !s.mayTick() {
+		return
+	}
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
@@ -99,8 +104,19 @@ func (s *Scheduler) refresh(parent context.Context, now time.Time, w Work) {
 		return
 	}
 	if snapshot.Withdrawal != nil {
-		if err := s.store.Withdraw(parent, w, snapshot.Withdrawal.Cause, now); err != nil && !errors.Is(err, ErrSuperseded) {
+		// The persisted failure vocabulary is exactly the D4 decision set. Bad
+		// wire answers and an absent transport are resolver failures too, but do
+		// not get to extend that durable/public contract.
+		cause := d4Cause(snapshot.Withdrawal.Cause)
+		if err := s.store.Withdraw(parent, w, cause, now); err != nil && !errors.Is(err, ErrSuperseded) {
 			return
 		}
 	}
+}
+
+func d4Cause(c WithdrawalCause) WithdrawalCause {
+	if approvedWithdrawalCause(c) {
+		return c
+	}
+	return WithdrawalSERVFAIL
 }
