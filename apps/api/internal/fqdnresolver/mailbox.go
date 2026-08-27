@@ -106,8 +106,11 @@ ORDER BY created_at,request_id LIMIT $3`, orgID, gatewayID, limit)
 		if err := json.Unmarshal(types, &request.RecordTypes); err != nil {
 			return nil, fmt.Errorf("decode persisted DNS RPC record types: %w", err)
 		}
-		if err := json.Unmarshal(endpoints, &request.ResolverEndpoints); err != nil || !validGatewayDNSResolverConfig(request) {
+		if err := json.Unmarshal(endpoints, &request.ResolverEndpoints); err != nil {
 			return nil, fmt.Errorf("decode persisted DNS RPC resolver config: %w", err)
+		}
+		if !validGatewayDNSResolverConfig(request) {
+			return nil, ErrGatewayDNSRPCMalformed
 		}
 		out = append(out, request)
 	}
