@@ -51,6 +51,7 @@ var TIERS = map[string]disposition{
 	"idp_sync": {Enterprise, "IdP directory sync. ⚠ Its DEPROVISION half is NOT gated: a licence may stop " +
 		"granting access, it must never stop removing it"},
 	"agent_jit_access": {Enterprise, "expiring owner-approved access grants for managed AI agents"},
+	"fqdn_resources":   {Enterprise, "resolver-backed FQDN enforcement; drafts and reads remain available while explicit opt-in gates compilation"},
 }
 
 // capabilitySeams derives the census's input FROM THE TIER MAP AT RUNTIME, so a feature someone adds is in
@@ -102,11 +103,9 @@ func TestEveryPaidCapabilityHasATierRuling(t *testing.T) {
 	}
 }
 
-// ⛔ THE MODEL'S HEADLINE, ASSERTED RATHER THAN TRUSTED: "gated — four, and only four".
-//
-// ⭐ FOUR NOW. `multi_gateway` became real in S12.1 — the story the founder actually asked for. It was
-// three while the gateway limit existed only in prose.
-func TestTheFourGatesAreExactlyFour(t *testing.T) {
+// The explicit list is intentionally hand-maintained so a commercial product
+// decision cannot hide in a tier-map edit.
+func TestEnterpriseGatesMatchFounderDispositions(t *testing.T) {
 	var ent []string
 	for capability, d := range TIERS {
 		if d.tier == Enterprise {
@@ -114,7 +113,7 @@ func TestTheFourGatesAreExactlyFour(t *testing.T) {
 		}
 	}
 	sort.Strings(ent)
-	want := []string{"agent_jit_access", "idp_sync", "multi_gateway", "multi_org", "sso"}
+	want := []string{"agent_jit_access", "fqdn_resources", "idp_sync", "multi_gateway", "multi_org", "sso"}
 	if strings.Join(ent, ",") != strings.Join(want, ",") {
 		t.Errorf("the Enterprise tier is %v; expected %v.\n\nIf a capability MOVED tiers that is a product "+
 			"decision, and docs/S12.1-licensing-decisions.md must move with it.", ent, want)

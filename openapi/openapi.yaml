@@ -2454,6 +2454,104 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/fqdn-resources:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listFQDNResources
+      summary: List resolver-backed FQDN access resources
+      tags: [policy]
+      responses:
+        "200":
+          description: Drafts and truthful resolver/generation projections.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/FQDNResource" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createFQDNResource
+      summary: Create a normalized FQDN access resource or draft
+      tags: [policy]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceRequest" } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResource" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/fqdn-resources/{resourceId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: resourceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateFQDNResource
+      summary: Update an FQDN resource and selected Site/Gateway pair
+      tags: [policy]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceRequest" } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResource" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteFQDNResource
+      summary: Delete an unreferenced FQDN resource
+      description: Server refuses deletion while a rule reference or active generation exists; read impact first.
+      tags: [policy]
+      responses:
+        "204": { description: Deleted }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/fqdn-resources/{resourceId}/impact:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: resourceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getFQDNResourceImpact
+      summary: Read server-computed FQDN deletion impact
+      tags: [policy]
+      responses:
+        "200": { description: Impact, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceImpact" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/fqdn-resources/setting:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getFQDNResourceSetting
+      summary: Read explicit FQDN enforcement opt-in
+      tags: [policy]
+      responses:
+        "200": { description: Setting, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setFQDNResourceEnabled
+      summary: Set explicit FQDN enforcement opt-in
+      description: Entitlement unlocks enforcement capability; this setting alone gates compilation, never drafts or reads.
+      tags: [policy]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/policies:
     parameters:
       - name: orgId
@@ -5102,7 +5200,7 @@ components:
     # readers silently miscompile a hostname as an address prefix.
     FQDNResource:
       type: object
-      required: [id, org_id, name, destination_kind, fqdn, protocol, created_at, updated_at]
+      required: [id, org_id, name, destination_kind, fqdn, protocol, state, answer_count, created_at, updated_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
@@ -5123,6 +5221,12 @@ components:
           allOf: [{ $ref: "#/components/schemas/FQDNResolverContext" }]
           nullable: true
           description: "Null means saved draft: it must not compile or authorize traffic."
+        generation: { type: integer, format: int64, nullable: true, description: "Active resolver generation only." }
+        state: { type: string, enum: [draft, resolving, healthy, stale, failed, nxdomain] }
+        answer_count: { type: integer, minimum: 0, description: "Active-generation answer count; never an inferred DNS result." }
+        effective_ttl_seconds: { type: integer, nullable: true, minimum: 30, maximum: 3600 }
+        refreshed_at: { type: string, format: date-time, nullable: true }
+        last_good_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -5159,6 +5263,13 @@ components:
       properties:
         site_id: { type: string, format: uuid }
         gateway_id: { type: string, format: uuid }
+
+    FQDNResourceSetting:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean, description: "Persisted false-default opt-in. It gates compilation only." }
 
     FQDNResourceImpact:
       type: object

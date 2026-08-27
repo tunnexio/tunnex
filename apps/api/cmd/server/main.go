@@ -35,6 +35,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	apphttp "github.com/tunnexio/tunnex/apps/api/internal/http"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
@@ -469,6 +470,7 @@ func main() {
 		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPort(pool, pushHub),
+		FQDNResources:         fqdnresources.New(pool),
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
 		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),

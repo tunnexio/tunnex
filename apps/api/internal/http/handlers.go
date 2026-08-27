@@ -18,6 +18,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
@@ -206,8 +207,9 @@ type apiServer struct {
 	mcpToolPolicy      *mcptoolpolicy.Service
 	mcpToolApproval    *mcptoolapproval.Service
 	workflowProvenance *workflowprovenance.Service
-	sso                ssoPort           // nil in the open build
-	policy             policyPort        // nil in the open build (Zero Trust, S7.1)
+	sso                ssoPort    // nil in the open build
+	policy             policyPort // nil in the open build (Zero Trust, S7.1)
+	fqdnResources      *fqdnresources.Service
 	agentTemplates     agentTemplatePort // nil in the open build (F09)
 	agentAccess        agentAccessPort   // licence-gated (F10)
 	accessLog          accessLogPort     // nil in the open build (Zero Trust visibility, S7.5.1)

@@ -1818,6 +1818,93 @@ export interface paths {
         patch: operations["updateResource"];
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/fqdn-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List resolver-backed FQDN access resources */
+        get: operations["listFQDNResources"];
+        put?: never;
+        /** Create a normalized FQDN access resource or draft */
+        post: operations["createFQDNResource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resources/{resourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an unreferenced FQDN resource
+         * @description Server refuses deletion while a rule reference or active generation exists; read impact first.
+         */
+        delete: operations["deleteFQDNResource"];
+        options?: never;
+        head?: never;
+        /** Update an FQDN resource and selected Site/Gateway pair */
+        patch: operations["updateFQDNResource"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resources/{resourceId}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        /** Read server-computed FQDN deletion impact */
+        get: operations["getFQDNResourceImpact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resources/setting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read explicit FQDN enforcement opt-in */
+        get: operations["getFQDNResourceSetting"];
+        /**
+         * Set explicit FQDN enforcement opt-in
+         * @description Entitlement unlocks enforcement capability; this setting alone gates compilation, never drafts or reads.
+         */
+        put: operations["setFQDNResourceEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/policies": {
         parameters: {
             query?: never;
@@ -4025,6 +4112,20 @@ export interface components {
             label?: string | null;
             /** @description Null means saved draft: it must not compile or authorize traffic. */
             resolver_context?: components["schemas"]["FQDNResolverContext"] | null;
+            /**
+             * Format: int64
+             * @description Active resolver generation only.
+             */
+            generation?: number | null;
+            /** @enum {string} */
+            state: "draft" | "resolving" | "healthy" | "stale" | "failed" | "nxdomain";
+            /** @description Active-generation answer count; never an inferred DNS result. */
+            answer_count: number;
+            effective_ttl_seconds?: number | null;
+            /** Format: date-time */
+            refreshed_at?: string | null;
+            /** Format: date-time */
+            last_good_at?: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -4055,6 +4156,10 @@ export interface components {
             site_id: string;
             /** Format: uuid */
             gateway_id: string;
+        };
+        FQDNResourceSetting: {
+            /** @description Persisted false-default opt-in. It gates compilation only. */
+            enabled: boolean;
         };
         FQDNResourceImpact: {
             /** Format: uuid */
@@ -5362,7 +5467,7 @@ export interface components {
             mode: "warn" | "require";
             /** @description Check parameters. os_version: {"min":{"macos":"14.0","windows":"10.0"}} — a platform absent from "min" is not enforced. disk_encryption: none.
              *      */
-            param?: Record<string, never>;
+            param?: Record<string, never> | null;
             /** @description On PUT only: how many devices' LAST report would fail this check (best-effort blast radius). The config write itself blocks nothing — a device's gate only ever flips on its own next report (D4 grandfather).
              *      */
             would_fail_count?: number;
@@ -5370,7 +5475,7 @@ export interface components {
         HealthCheckInput: {
             /** @enum {string} */
             mode: "warn" | "require";
-            param?: Record<string, never>;
+            param?: Record<string, never> | null;
         };
         /** @description Client-reported posture facts (S7.5.3). NOT attestation — a compromised device can misreport; posture checks deter honest non-compliance and give an audit trail (defense-in-depth, not a guarantee).
          *      */
@@ -8489,6 +8594,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Resource"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listFQDNResources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drafts and truthful resolver/generation projections. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResource"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createFQDNResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResource"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteFQDNResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateFQDNResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResource"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResourceImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Impact */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResourceSetting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setFQDNResourceEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResourceSetting"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceSetting"];
                 };
             };
             default: components["responses"]["Error"];
