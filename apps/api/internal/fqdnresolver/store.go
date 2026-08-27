@@ -129,6 +129,17 @@ WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
       WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'
         AND g.activated_at + (g.effective_ttl * 0.8) <= $1
     )
+    OR NOT EXISTS (
+      -- A configuration replacement/removal immediately makes the old
+      -- generation ineligible. Queue a fail-closed refresh/withdrawal rather
+      -- than leaving it active until its TTL timer happens to fire.
+      SELECT 1
+      FROM fqdn_resource_answer_generations g
+      JOIN fqdn_resolver_context_configs c
+        ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.state='active'
+      WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'
+        AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id
+    )
     OR EXISTS (
       SELECT 1 FROM fqdn_resource_answer_generations g
       WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='withdrawn'

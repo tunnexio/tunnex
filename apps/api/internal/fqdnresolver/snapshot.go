@@ -49,6 +49,9 @@ FROM fqdn_resource_answer_generations g
 JOIN fqdn_resources r
   ON r.id=g.resource_id AND r.org_id=g.org_id
  AND r.resolver_site_id=g.resolver_site_id AND r.resolver_node_id=g.resolver_node_id
+JOIN fqdn_resolver_context_configs c
+  ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.state='active'
+ AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id
 JOIN fqdn_resource_generation_answers a
   ON a.generation_id=g.id AND a.org_id=g.org_id
 WHERE g.org_id=$1 AND g.state='active'

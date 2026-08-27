@@ -127,8 +127,19 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if other, err := store.ActiveGenerations(ctx, uuid.New()); err != nil || len(other) != 0 {
 		t.Fatalf("cross-org active projection leaked: rows=%#v err=%v", other, err)
 	}
+	// A resolver endpoint revision is a new authority, not a harmless display
+	// edit. Its predecessor is excluded from compiler input immediately, before
+	// a later refresh can publish answers observed by the new endpoint set.
+	replacementConfig := uuid.New()
+	exec(`UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config)
+	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,2,'active')`, replacementConfig, org, site, gateway)
+	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.54'::inet,53,'tcp')`, replacementConfig, org)
+	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
+		t.Fatalf("replaced resolver config must withdraw compiler projection: rows=%#v err=%v", projection, err)
+	}
 
 	w.ExpectedGeneration = 1
+	w.ResolverConfig = ResolverConfig{ID: replacementConfig.String(), Version: 2, Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.54"), Port: 53, Transport: "tcp"}}}
 	if err := store.Withdraw(ctx, w, WithdrawalTimeout, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
