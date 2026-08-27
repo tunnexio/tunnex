@@ -45,7 +45,8 @@ VALUES
   ('01900000-0000-7000-8000-0000000f0005', '01900000-0000-7000-8000-000000000001', 'gw-retired-1', 'revoked', 'FIXTURE-05', '0.2.4', now() - interval '90 days', now() - interval '9 days',   '',                                             ''),
   ('01900000-0000-7000-8000-0000000f0101', '01900000-0000-7000-8000-000000000001', 'gw-us-east-edge', 'active', 'FIXTURE-06', '0.3.0', now() - interval '10 days', now() - interval '30 seconds', 'Zml4dHVyZS1leHRyYS1ndy0wMS1rZXktMDAwMDAwMDA=', ''),
   ('01900000-0000-7000-8000-0000000f0102', '01900000-0000-7000-8000-000000000001', 'gw-eu-west-edge', 'active', 'FIXTURE-07', '0.3.0', now() - interval '9 days', now() - interval '7 minutes', 'Zml4dHVyZS1leHRyYS1ndy0wMi1rZXktMDAwMDAwMDA=', ''),
-  ('01900000-0000-7000-8000-0000000f0103', '01900000-0000-7000-8000-000000000001', 'gw-ap-south-edge', 'active', 'FIXTURE-08', '0.3.0', now() - interval '8 days', now() - interval '40 seconds', 'Zml4dHVyZS1leHRyYS1ndy0wMy1rZXktMDAwMDAwMDA=', '')
+  ('01900000-0000-7000-8000-0000000f0103', '01900000-0000-7000-8000-000000000001', 'gw-ap-south-edge', 'active', 'FIXTURE-08', '0.3.0', now() - interval '8 days', now() - interval '40 seconds', 'Zml4dHVyZS1leHRyYS1ndy0wMy1rZXktMDAwMDAwMDA=', ''),
+  ('01900000-0000-7000-8000-0000000f0104', '01900000-0000-7000-8000-000000000001', 'gitops-connector-us-east', 'active', 'FIXTURE-09', '0.3.0', now() - interval '7 days', now() - interval '45 seconds', 'Zml4dHVyZS1rOHMtb3BlcmF0b3ItY29ubmVjdG9yLTE=', '198.51.100.19:51820')
 ON CONFLICT (id) DO NOTHING;
 
 -- The Hub Set query admits only strict 32-byte base64 WireGuard public-key shape. Refresh the two HA
@@ -77,7 +78,8 @@ WHERE id IN (
   '01900000-0000-7000-8000-0000000f0005',
   '01900000-0000-7000-8000-0000000f0101',
   '01900000-0000-7000-8000-0000000f0102',
-  '01900000-0000-7000-8000-0000000f0103'
+  '01900000-0000-7000-8000-0000000f0103',
+  '01900000-0000-7000-8000-0000000f0104'
 );
 
 UPDATE nodes SET revoked_at = now() - interval '9 days'
@@ -116,6 +118,7 @@ UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0001' WHERE id = '01
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0002' WHERE id = '01900000-0000-7000-8000-0000000f0002';
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0003' WHERE id = '01900000-0000-7000-8000-0000000f0003';
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0001' WHERE id = '01900000-0000-7000-8000-0000000f0101';
+UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0001' WHERE id = '01900000-0000-7000-8000-0000000f0104';
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0002' WHERE id = '01900000-0000-7000-8000-0000000f0102';
 UPDATE nodes SET site_id = '01900000-0000-7000-8000-0000000e0003' WHERE id = '01900000-0000-7000-8000-0000000f0103';
 
@@ -384,6 +387,23 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ── SOFT-DELETED K8S SERVICE FOR `dst_k8s_service_vanished` WARN STATE ────────────────────────────────
+-- ── KUBERNETES REVIEW STATES ─────────────────────────────────────────────────────────────────────────
+-- These are control-plane records only: connector selection proves desired-state ownership, never a ready
+-- EndpointSlice or a completed dataplane flow. The two live Services prove exact TCP/UDP single-port identity.
+INSERT INTO k8s_clusters (id, org_id, site_id, connector_node_id, name, vip_range, service_cidr, dns_zone, dns_vip, managed_by_machine)
+VALUES
+  ('01900000-0000-7000-8000-000000050010', '01900000-0000-7000-8000-000000000001', '01900000-0000-7000-8000-0000000e0001', '01900000-0000-7000-8000-0000000f0001', 'payments', '100.80.0.0/28', '10.96.0.0/12', 'demo.tunnex.internal', '100.80.0.2', NULL),
+  ('01900000-0000-7000-8000-000000050011', '01900000-0000-7000-8000-000000000001', '01900000-0000-7000-8000-0000000e0002', NULL, 'analytics', '100.80.1.0/28', '10.97.0.0/16', 'demo.tunnex.internal', '100.80.1.2', NULL),
+  ('01900000-0000-7000-8000-000000050012', '01900000-0000-7000-8000-000000000001', '01900000-0000-7000-8000-0000000e0001', '01900000-0000-7000-8000-0000000f0104', 'gitops-platform', '100.80.2.0/28', '10.95.0.0/16', 'demo.tunnex.internal', '100.80.2.2', '01900000-0000-7000-8000-000000050001')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO k8s_services (id, org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, managed_by_machine, created_at)
+VALUES
+  ('01900000-0000-7000-8000-000000030010', '01900000-0000-7000-8000-000000000001', '01900000-0000-7000-8000-000000050010', 'checkout', 'payments', 'tcp', 443, 443, '100.80.0.3', NULL, now() - interval '5 days'),
+  ('01900000-0000-7000-8000-000000030011', '01900000-0000-7000-8000-000000000001', '01900000-0000-7000-8000-000000050010', 'metrics', 'telemetry', 'udp', 8125, 8125, '100.80.0.4', NULL, now() - interval '4 days'),
+  ('01900000-0000-7000-8000-000000030012', '01900000-0000-7000-8000-000000000001', '01900000-0000-7000-8000-000000050012', 'gitops-api', 'platform', 'tcp', 8443, 8443, '100.80.2.3', '01900000-0000-7000-8000-000000050001', now() - interval '3 days')
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO k8s_clusters (id, org_id, site_id, name, vip_range)
 VALUES
   ('01900000-0000-7000-8000-000000050001', '01900000-0000-7000-8000-000000000001', '01900000-0000-7000-8000-0000000e0001', 'us-east-k8s', '10.244.0.0/24')

@@ -420,6 +420,7 @@ func (s *Service) ListServicesForOrg(ctx context.Context, orgID uuid.UUID) ([]Se
 			Svc: sqlc.K8sService{
 				ID: r.ID, ClusterID: r.ClusterID, OrgID: orgID, Name: r.Name, Namespace: r.Namespace,
 				Protocol: r.Protocol, PortLow: r.PortLow, PortHigh: r.PortHigh, Vip: vip,
+				ManagedByMachine: r.ManagedByMachine,
 			},
 			FQDN:    FQDN(r.Name, r.Namespace, r.ClusterName, r.DnsZone),
 			Cluster: r.ClusterName, Zone: r.DnsZone,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 // SLICE 3 — Kubernetes. Ranked above Access by the stated criterion: both survive the redesign intact, but this
 // screen CARRIES ONE OF THE FOUR WALK FINDINGS while Access's case is consequence-based.
@@ -18,8 +19,10 @@ import { render, screen, waitFor, cleanup } from "@testing-library/react";
 afterEach(cleanup); // docs/laws.md — no globals/setup file, so auto-cleanup never registers
 
 let clustersFail = false;
+let currentRole = "admin";
+let operatorManaged = true;
 const CLUSTERS = [
-  { id: "c1", name: "prod-cluster", site_id: "s1", managed_by_operator: true },
+  { id: "c1", name: "prod-cluster", site_id: "s1", managed_by_operator: false },
 ];
 const SERVICES = [
   {
@@ -27,8 +30,12 @@ const SERVICES = [
     cluster_id: "c1",
     namespace: "default",
     name: "api",
-    managed_by_operator: true,
+    managed_by_operator: false,
     vip: "100.64.0.5",
+    fqdn: "api.default.svc.prod-cluster.demo.test",
+    protocol: "tcp",
+    port_low: 443,
+    port_high: 443,
   },
 ];
 
@@ -46,7 +53,7 @@ vi.mock("../src/lib/api", async () => {
           return { data: [{ id: "org-1", name: "Acme" }] };
         if (path.endsWith("/members"))
           return {
-            data: [{ user_id: "u1", role: "admin", email_verified: true }],
+            data: [{ user_id: "u1", role: currentRole, email_verified: true }],
           };
         if (path.endsWith("/k8s/clusters")) {
           if (clustersFail)
@@ -54,9 +61,9 @@ vi.mock("../src/lib/api", async () => {
               data: undefined,
               error: { error: { code: "boom", message: "nope" } },
             };
-          return { data: CLUSTERS };
+          return { data: CLUSTERS.map((cluster) => ({ ...cluster, managed_by_operator: operatorManaged })) };
         }
-        if (path.endsWith("/k8s/services")) return { data: SERVICES };
+        if (path.endsWith("/k8s/services")) return { data: SERVICES.map((service) => ({ ...service, managed_by_operator: operatorManaged })) };
         if (path.endsWith("/sites"))
           return { data: [{ id: "s1", name: "prod-site" }] };
         return { data: [] };
@@ -75,18 +82,22 @@ import { AuthProvider } from "../src/lib/auth";
 // The REAL AuthProvider, not a stub. Kubernetes reads `useAuth()` for its role/verification gate, and stubbing
 // the context would put the test's copy of the gate under assertion instead of the product's — the
 // fixture-restates-production trap this branch already caught once (docs/laws.md).
-const withAuth = (ui: React.ReactElement) =>
+const withAuth = (ui: React.ReactElement, initialEntry = "/kubernetes") =>
   // ⛔ THE ORG PROVIDER IS PART OF THE AUTHENTICATED SHELL (S12.5), so it is part of the harness that
   // stands in for it. A page rendered without it throws — deliberately: `useOrg()` refuses to guess, and a
   // test that quietly rendered without an org would be exercising a state production never reaches.
   render(
-    <AuthProvider>
-      <OrgProvider>{ui}</OrgProvider>
-    </AuthProvider>,
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <AuthProvider>
+        <OrgProvider>{ui}</OrgProvider>
+      </AuthProvider>
+    </MemoryRouter>,
   );
 
 beforeEach(() => {
   clustersFail = false;
+  currentRole = "admin";
+  operatorManaged = true;
 });
 
 // EVERY kind the OpenAPI contract allows. Kept as a literal on purpose: it is a MIRROR of the generated
@@ -177,5 +188,54 @@ describe("Kubernetes — failure path", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy(),
     );
+  });
+});
+
+describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
+  it("keeps org:view inventory useful while a member sees no k8s:manage caller", async () => {
+    currentRole = "member";
+    operatorManaged = false;
+    withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
+
+    expect((await screen.findAllByText("prod-cluster")).length).toBeGreaterThan(0);
+    for (const name of ["Register cluster", "Manage", "Set connector", "Expose Service", "Unexpose", "Deregister"])
+      expect(screen.queryByRole("button", { name })).toBeNull();
+  });
+
+  it("opens the served Service unexpose confirmation with withdrawal and recovery truth", async () => {
+    operatorManaged = false;
+    withAuth(<Kubernetes />, "/kubernetes?section=services");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Unexpose" }));
+    const dialog = await screen.findByRole("dialog", { name: /unexpose api/i });
+    expect(dialog.textContent).toMatch(/api\.default\.svc\.prod-cluster\.demo\.test/);
+    expect(dialog.textContent).toMatch(/100\.64\.0\.5/);
+    expect(dialog.textContent).toMatch(/next compile/i);
+    expect(dialog.textContent).toMatch(/live Agent Access requests may refuse/i);
+    expect(dialog.textContent).toMatch(/new Service identity/i);
+  });
+
+  it("keeps deregister impact and no-rollback recovery inside the typed confirmation", async () => {
+    operatorManaged = false;
+    withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Deregister" }));
+    const dialog = await screen.findByRole("dialog", { name: /deregister prod-cluster/i });
+    expect(dialog.textContent).toMatch(/dependent policy rules/i);
+    expect(dialog.textContent).toMatch(/reserved DNS VIP/i);
+    expect(dialog.textContent).toMatch(/Live Agent Access requests may refuse/i);
+    expect(dialog.textContent).toMatch(/no rollback or restore/i);
+    expect(dialog.textContent).toMatch(/recreating grants/i);
+  });
+
+  it("restores the services and Setup & diagnostics sections from their direct URLs", async () => {
+    operatorManaged = false;
+    const rendered = withAuth(<Kubernetes />, "/kubernetes?section=services");
+    expect(await screen.findByText(/Exposed Services \(1\)/)).toBeTruthy();
+    rendered.unmount();
+
+    withAuth(<Kubernetes />, "/kubernetes?section=operations");
+    expect(await screen.findByText("Operator and connector setup")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Setup & diagnostics" }).getAttribute("aria-current")).toBe("page");
   });
 });

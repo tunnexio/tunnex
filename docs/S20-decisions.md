@@ -635,3 +635,33 @@ unavailable state; an exposed Service; an operator-managed cluster/service; a cl
 no Services; and a restricted `k8s:manage` persona. No fixture must claim endpoint or
 dataplane readiness without the corresponding server-owned report. The original
 `tunnex-agents` stack, database, licence, and JIT state remain out of scope.
+
+### Founder disposition — connector eligibility
+
+For S20, preserve the existing server rule exactly: an **in-cluster connector node** is any
+active, non-revoked, same-Site node that has reported its WireGuard public key and endpoint.
+The console must not infer gateway eligibility from `enrolled_kind`, a node name, or a React
+filter. The Site remains the fronting network location; the selected node is the in-cluster
+connector. A dedicated server-owned connector capability/eligibility projection and its
+server enforcement are deferred to **S20.3**. Connector selection/configuration is not a
+claim that a workload endpoint, DNS response, or dataplane flow is ready.
+
+### Closure amendment — destructive truth and review fixtures
+
+Kubernetes destructive confirmations state only effects the current server contract proves.
+Unexposing names the Service, served FQDN, and synthetic VIP; it warns that VIP/DNS
+withdraw on the next compile, that immutable-template and live Agent Access references
+may refuse the request, and that recovery is a new re-exposure with a new Service identity.
+The console does not invent a proactive blocker count.
+
+Deregistering names the cluster-level cascade without claiming an exact count: the cluster,
+exposed Services, and dependent policy rules are deleted; the VIP range, reserved DNS VIP,
+and DNS zone are freed; live Agent Access can refuse; and there is no rollback. Recovery is
+to re-register, choose a connector, re-expose Services, and recreate grants. Both operations
+retain server errors inside their confirmation with Retry/Cancel.
+
+The disposable-only fixture includes dashboard-managed `payments`/`analytics`, legacy
+`us-east-k8s`, and an operator-managed Kubernetes cluster and Service. Operator ownership is
+server-projected and withholds dashboard mutations; it is neither a licence boundary nor a
+claim of workload readiness. The existing member fixture remains `org:view` readable and
+cannot receive any `k8s:manage` affordance.

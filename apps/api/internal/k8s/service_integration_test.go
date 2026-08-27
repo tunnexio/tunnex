@@ -537,6 +537,55 @@ func TestOwnershipMarkerSetOnMachineCreate(t *testing.T) {
 	}
 }
 
+// TestListServicesForOrgPreservesServiceOwnership proves the list projection keeps the server-owned
+// machine marker for both operator-managed and human-managed Services. The API DTO derives its
+// managed_by_operator flag from this marker, so dropping it here would falsely expose operator-owned
+// Services as dashboard-managed.
+func TestListServicesForOrgPreservesServiceOwnership(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, site := seedOrgSite(t, pool)
+
+	machineID := uuid.New()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO machine_credentials (id, org_id, name, role, token_hash, fingerprint) VALUES ($1,$2,'gitops','operator',$3,'fp')`,
+		machineID, org, []byte(machineID.String())); err != nil {
+		t.Fatal(err)
+	}
+
+	machineCluster, err := svc.RegisterCluster(ctx, org, site, "list-owned-machine", pfx("100.76.0.0/16"), pfx("10.96.0.0/12"), "k8s.acme.com", machineID, uuid.Nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ExposeService(ctx, org, machineCluster.ID, "machine-api", "prod", "tcp", p32(443), p32(443), machineID, uuid.Nil, "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	humanCluster, err := svc.RegisterCluster(ctx, org, site, "list-owned-human", pfx("100.77.0.0/16"), pfx("10.96.0.0/12"), "k8s.acme.com", uuid.Nil, uuid.Nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ExposeService(ctx, org, humanCluster.ID, "human-api", "prod", "udp", p32(8125), p32(8125), uuid.Nil, uuid.Nil, "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	services, err := svc.ListServicesForOrg(ctx, org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed := map[string]bool{}
+	for _, listed := range services {
+		managed[listed.Svc.Name] = listed.Svc.ManagedByMachine.Valid
+	}
+	if !managed["machine-api"] {
+		t.Fatal("ListServicesForOrg must preserve managed_by_machine for an operator-owned Service")
+	}
+	if managed["human-api"] {
+		t.Fatal("ListServicesForOrg must preserve NULL managed_by_machine for a human-owned Service")
+	}
+}
+
 // TestMachineCreateAudits — S10.2 M1: the CREATE paths (register/expose) now audit, machine-aware. A machine
 // create attributes actor_system=operator:<name> + cause (the CR), NEVER a user id; a human create attributes
 // actor_user_id. (F-3a-1 closed: creates were unaudited; with a machine principal that was a hole — "who

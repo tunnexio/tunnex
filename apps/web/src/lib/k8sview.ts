@@ -1,9 +1,8 @@
 import type { K8sCluster, K8sService, Role } from "./api";
 import { can } from "./rbac";
 
-// k8sview — PURE, electron-free view-models for the Kubernetes page (S10.3). The page is a thin render over
-// these. K8s cluster/Service exposure is CONNECTIVITY, so unlike sites it is CORE (all editions) — there is
-// NO enterprise gate here; only the GRANT that reaches a Service (Access page) is enterprise. Every rendered
+// k8sview — PURE, electron-free view-models for the Kubernetes page. K8s cluster/Service exposure is a
+// Community core connectivity surface; named capabilities remain server-authoritative. Every rendered
 // field traces to a wire value (a real K8sCluster/K8sService property); the FQDN is READ from the server
 // (service.fqdn — "copy, don't construct"), never assembled in the client.
 
@@ -189,8 +188,8 @@ export function statTiles(
 }
 
 /**
- * ⛔ D9 — REACHABILITY, NOT LIVENESS. A Service must not read as reachable when its fronting gateway reports
- * no endpoint view, because no VIP can be DNAT-programmed in that state.
+ * Connector configuration is not Service readiness. The server currently reports whether a selected connector
+ * is available to receive desired state, not whether a workload endpoint is live.
  *
  * The predicate is deliberately NOT called "cluster down": `k8s_endpoints_unavailable` is true for an
  * unreachable cluster, an RBAC denial AND a watch that has not synced (measured at the producer,
@@ -205,36 +204,39 @@ export function statTiles(
  * these unit tests; TRIGGER for the wire proof = the first in-cluster agent watching this cluster (S10.3's
  * hostNetwork helm deploy).
  */
-export function clusterReachability(input: {
+export function clusterConnectorState(input: {
   connectorNodeId: string | null;
   gateways: Array<{
     id: string;
     endpointsUnavailable: boolean;
     revoked: boolean;
   }>;
-}): { reachable: boolean; why: string | null } {
+}): { configured: boolean; reachable: boolean; why: string | null } {
   if (input.connectorNodeId === null)
     return {
-      reachable: false,
+      configured: false, reachable: false,
       why: "no in-cluster connector is selected, so Service VIPs are not programmed",
     };
   const connector = input.gateways.find((g) => g.id === input.connectorNodeId);
   if (connector === undefined || connector.revoked)
     return {
-      reachable: false,
+      configured: false, reachable: false,
       why: "the selected in-cluster connector is unavailable, so Service VIPs are not programmed",
     };
   if (connector.endpointsUnavailable)
     return {
-      reachable: false,
+      configured: false, reachable: false,
       why: "the selected in-cluster connector has no endpoint view, so Service VIPs are not programmed",
     };
-  return { reachable: true, why: null };
+  return { configured: true, reachable: true, why: null };
 }
 
+/** @deprecated Use clusterConnectorState: this reports configuration availability, never workload readiness. */
+export const clusterReachability = clusterConnectorState;
+
 /** Recessive styling for an unreachable cluster's rows: recession is the honest encoding for a degraded state. */
-export function serviceRowClass(reachable: boolean): string {
-  return reachable ? "" : "opacity-60";
+export function serviceRowClass(configured: boolean): string {
+  return configured ? "" : "opacity-60";
 }
 
 // ── THE OVERVIEW DONUT ──────────────────────────────────────────────────────────────────────────────────
