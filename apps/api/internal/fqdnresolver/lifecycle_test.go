@@ -141,7 +141,7 @@ func TestRefreshRefusesUnboundContextAndDocumentationRanges(t *testing.T) {
 	if s.Active != nil || !errors.Is(s.Failure, ErrUnboundContext) {
 		t.Fatalf("unbound context must never resolve: %#v", s)
 	}
-	for _, ip := range []string{"192.0.2.1", "198.51.100.1", "203.0.113.1", "169.254.169.254", "100.100.100.200", "2001:db8::1", "::1"} {
+	for _, ip := range []string{"192.0.2.1", "198.51.100.1", "203.0.113.1", "169.254.169.254", "100.100.100.200", "2001:db8::1", "fd00:ec2::254", "::1"} {
 		var bad Lifecycle
 		s := bad.Refresh(context.Background(), time.Now(), &fixtureResolver{responses: []Response{answer(a("x", ip, time.Minute))}}, selected, "x")
 		if s.Active != nil || !errors.Is(s.Failure, ErrNoUsableAddresses) {

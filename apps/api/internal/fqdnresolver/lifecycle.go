@@ -353,5 +353,7 @@ func prohibited(addr netip.Addr) bool {
 	if addr.Is4() {
 		return netip.MustParsePrefix("192.0.2.0/24").Contains(addr) || netip.MustParsePrefix("198.51.100.0/24").Contains(addr) || netip.MustParsePrefix("203.0.113.0/24").Contains(addr) || netip.MustParseAddr("100.100.100.200") == addr
 	}
-	return netip.MustParsePrefix("2001:db8::/32").Contains(addr)
+	// fd00:ec2::254 is AWS's IPv6 instance-metadata endpoint. It is ULA, so
+	// it needs this explicit exception to the otherwise permitted ULA policy.
+	return netip.MustParsePrefix("2001:db8::/32").Contains(addr) || addr == netip.MustParseAddr("fd00:ec2::254")
 }
