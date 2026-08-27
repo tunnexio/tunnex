@@ -27,6 +27,9 @@ export type AccessEvent = components["schemas"]["AccessEvent"];
 export type UserGroup = components["schemas"]["UserGroup"];
 export type GroupMember = components["schemas"]["GroupMember"];
 export type Resource = components["schemas"]["Resource"];
+export type FQDNResource = components["schemas"]["FQDNResource"];
+export type FQDNResourceImpact = components["schemas"]["FQDNResourceImpact"];
+export type FQDNResourceSetting = components["schemas"]["FQDNResourceSetting"];
 export type PolicyRule = components["schemas"]["PolicyRule"];
 export type AgentAccessDiagnostic =
   components["schemas"]["AgentAccessDiagnostic"];
