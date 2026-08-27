@@ -5264,7 +5264,7 @@ components:
           nullable: true
           description: "Null means saved draft: it must not compile or authorize traffic."
         generation: { type: integer, format: int64, nullable: true, description: "Active resolver generation only." }
-        state: { type: string, enum: [draft, resolving, healthy, stale, failed, nxdomain] }
+        state: { type: string, enum: [draft, unconfigured, resolving, healthy, stale, failed, nxdomain], description: "unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic." }
         answer_count: { type: integer, minimum: 0, description: "Active-generation answer count; never an inferred DNS result." }
         effective_ttl_seconds: { type: integer, nullable: true, minimum: 30, maximum: 3600 }
         refreshed_at: { type: string, format: date-time, nullable: true }

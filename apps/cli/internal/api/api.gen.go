@@ -420,12 +420,13 @@ const (
 
 // Defines values for FQDNResourceState.
 const (
-	FQDNResourceStateDraft     FQDNResourceState = "draft"
-	FQDNResourceStateFailed    FQDNResourceState = "failed"
-	FQDNResourceStateHealthy   FQDNResourceState = "healthy"
-	FQDNResourceStateNxdomain  FQDNResourceState = "nxdomain"
-	FQDNResourceStateResolving FQDNResourceState = "resolving"
-	FQDNResourceStateStale     FQDNResourceState = "stale"
+	FQDNResourceStateDraft        FQDNResourceState = "draft"
+	FQDNResourceStateFailed       FQDNResourceState = "failed"
+	FQDNResourceStateHealthy      FQDNResourceState = "healthy"
+	FQDNResourceStateNxdomain     FQDNResourceState = "nxdomain"
+	FQDNResourceStateResolving    FQDNResourceState = "resolving"
+	FQDNResourceStateStale        FQDNResourceState = "stale"
+	FQDNResourceStateUnconfigured FQDNResourceState = "unconfigured"
 )
 
 // Defines values for FQDNResourceRequestProtocol.
@@ -2213,8 +2214,10 @@ type FQDNResource struct {
 
 	// ResolverContext Null means saved draft: it must not compile or authorize traffic.
 	ResolverContext *FQDNResolverContext `json:"resolver_context"`
-	State           FQDNResourceState    `json:"state"`
-	UpdatedAt       time.Time            `json:"updated_at"`
+
+	// State unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic.
+	State     FQDNResourceState `json:"state"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
 // FQDNResourceDestinationKind Exactly one destination kind. This contract is only for normalized FQDN destinations; static CIDR resources retain the existing Resource contract.
@@ -2223,7 +2226,7 @@ type FQDNResourceDestinationKind string
 // FQDNResourceProtocol defines model for FQDNResource.Protocol.
 type FQDNResourceProtocol string
 
-// FQDNResourceState defines model for FQDNResource.State.
+// FQDNResourceState unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic.
 type FQDNResourceState string
 
 // FQDNResourceImpact defines model for FQDNResourceImpact.

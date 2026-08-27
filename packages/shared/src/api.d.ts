@@ -4149,8 +4149,11 @@ export interface components {
              * @description Active resolver generation only.
              */
             generation?: number | null;
-            /** @enum {string} */
-            state: "draft" | "resolving" | "healthy" | "stale" | "failed" | "nxdomain";
+            /**
+             * @description unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic.
+             * @enum {string}
+             */
+            state: "draft" | "unconfigured" | "resolving" | "healthy" | "stale" | "failed" | "nxdomain";
             /** @description Active-generation answer count; never an inferred DNS result. */
             answer_count: number;
             effective_ttl_seconds?: number | null;

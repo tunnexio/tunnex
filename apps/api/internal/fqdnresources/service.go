@@ -160,6 +160,7 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Resource, error) {
 		config, err := s.ResolverConfig(ctx, org, out[i].Context.SiteID, out[i].Context.GatewayID)
 		if err != nil {
 			if isResolverConfigNotFound(err) {
+				markUnconfigured(&out[i])
 				continue // Bound-but-unconfigured is intentionally visible and fail-closed.
 			}
 			return nil, err
@@ -182,8 +183,18 @@ func (s *Service) Get(ctx context.Context, org, id uuid.UUID) (Resource, error) 
 	}
 	if configErr == nil {
 		r.Context.Config = &config
+	} else {
+		markUnconfigured(&r)
 	}
 	return r, nil
+}
+
+func markUnconfigured(r *Resource) {
+	r.State = "unconfigured"
+	r.Generation = nil
+	r.AnswerCount = 0
+	r.EffectiveTTLSeconds = nil
+	r.RefreshedAt = nil
 }
 
 func isResolverConfigNotFound(err error) bool {
