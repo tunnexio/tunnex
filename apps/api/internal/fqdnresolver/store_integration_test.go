@@ -65,7 +65,7 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 112); err != nil {
+	if err := db.MigrateTo(testURL.String(), 116); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -85,10 +85,13 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'selected')`, site, org)
 	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'gateway',$3,$4)`, gateway, org, "scheduler-"+gateway.String(), site)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal',$3,$4)`, resource, org, site, gateway)
+	config := uuid.New()
+	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, config, org, site, gateway)
+	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, config, org)
 
 	hook := &committedHook{t: t, pool: pool, resource: resource}
 	store := NewPostgresStore(pool).WithAfterCommit(hook)
-	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}}
+	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}, ResolverConfig: ResolverConfig{ID: config.String(), Version: 1, Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.53"), Port: 53, Transport: "udp"}}}}
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.4"), addr("fd00::4")}}); err != nil {
 		t.Fatal(err)
@@ -102,6 +105,10 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	}
 	if active != 1 || answers != 2 {
 		t.Fatalf("active=%d answers=%d", active, answers)
+	}
+	var persistedConfig uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT resolver_config_id FROM fqdn_resource_answer_generations WHERE resource_id=$1 AND state='active'`, resource).Scan(&persistedConfig); err != nil || persistedConfig != config {
+		t.Fatalf("active generation config=%s err=%v want=%s", persistedConfig, err, config)
 	}
 	// Lane 3 receives only this durable active snapshot: it is scoped to the
 	// owning organization, carries the selected Site/Gateway authority, and

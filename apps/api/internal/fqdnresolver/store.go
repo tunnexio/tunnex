@@ -6,6 +6,7 @@ package fqdnresolver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -22,9 +23,13 @@ var ErrSuperseded = errors.New("fqdn resolver work was superseded")
 // an API client or a DNS transport: Due reads the selected (site,gateway) pair
 // stored by Lane 1 and Publish/Withdraw check it again while holding the row.
 type Work struct {
-	OrgID, ResourceID  uuid.UUID
-	Hostname           string
-	Context            Context
+	OrgID, ResourceID uuid.UUID
+	Hostname          string
+	Context           Context
+	// ResolverConfig is the immutable endpoint snapshot selected by the server
+	// for this specific refresh. It stays outside Context so existing context
+	// identity comparisons remain exact and configuration changes are explicit.
+	ResolverConfig     ResolverConfig
 	ExpectedGeneration int64
 }
 
@@ -104,9 +109,18 @@ func (s *PostgresStore) Due(ctx context.Context, now time.Time, limit int) ([]Wo
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT r.org_id,r.id,r.fqdn,r.resolver_site_id,r.resolver_node_id,
-       COALESCE((SELECT max(g.generation) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id),0)
+       COALESCE((SELECT max(g.generation) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id),0),
+       cfg.id,cfg.version,cfg.endpoints
 FROM fqdn_resources r
 JOIN organizations o ON o.id=r.org_id AND o.deleted_at IS NULL AND o.fqdn_resources_enabled
+LEFT JOIN LATERAL (
+  SELECT c.id,c.version,
+         jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.ordinal) AS endpoints
+  FROM fqdn_resolver_context_configs c
+  JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id
+  WHERE c.org_id=r.org_id AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id AND c.state='active'
+  GROUP BY c.id,c.version
+) cfg ON true
 WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
   AND (
     NOT EXISTS (SELECT 1 FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id)
@@ -132,22 +146,34 @@ LIMIT $3`, now, s.retryAfter.String(), limit)
 	for rows.Next() {
 		var w Work
 		var site, gateway uuid.UUID
-		if err := rows.Scan(&w.OrgID, &w.ResourceID, &w.Hostname, &site, &gateway, &w.ExpectedGeneration); err != nil {
+		var configID *uuid.UUID
+		var configVersion *int64
+		var endpoints []byte
+		if err := rows.Scan(&w.OrgID, &w.ResourceID, &w.Hostname, &site, &gateway, &w.ExpectedGeneration, &configID, &configVersion, &endpoints); err != nil {
 			return nil, err
 		}
 		w.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
+		if configID != nil && configVersion != nil {
+			w.ResolverConfig.ID = configID.String()
+			w.ResolverConfig.Version = *configVersion
+			if err := json.Unmarshal(endpoints, &w.ResolverConfig.Endpoints); err != nil || !w.ResolverConfig.valid() {
+				// A malformed persisted config is not a reason to consult another
+				// resolver. Leave the snapshot unusable so the scheduler withdraws.
+				w.ResolverConfig = ResolverConfig{}
+			}
+		}
 		out = append(out, w)
 	}
 	return out, rows.Err()
 }
 
 func (s *PostgresStore) Publish(ctx context.Context, w Work, g Generation) error {
-	if !w.Context.valid() || len(g.Addresses) == 0 || len(g.Addresses) > MaxAnswers {
+	if !w.Context.valid() || !w.ResolverConfig.valid() || len(g.Addresses) == 0 || len(g.Addresses) > MaxAnswers {
 		return ErrUnboundContext
 	}
-	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway uuid.UUID) error {
+	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway, config uuid.UUID) error {
 		var id uuid.UUID
-		err := tx.QueryRow(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,state,effective_ttl,resolved_at) VALUES ($1,$2,$3,$4,$5,'pending',$6,$7) RETURNING id`, w.OrgID, w.ResourceID, next, gateway, site, g.TTL, g.ResolvedAt).Scan(&id)
+		err := tx.QueryRow(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,state,effective_ttl,resolved_at) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8) RETURNING id`, w.OrgID, w.ResourceID, next, gateway, site, config, g.TTL, g.ResolvedAt).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -178,7 +204,7 @@ func (s *PostgresStore) Withdraw(ctx context.Context, w Work, cause WithdrawalCa
 	if !approvedWithdrawalCause(cause) {
 		return fmt.Errorf("invalid D4 withdrawal cause %q", cause)
 	}
-	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway uuid.UUID) error {
+	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway, config uuid.UUID) error {
 		// Record every D4 outcome, including a first failed attempt. This gives
 		// operators typed history but no empty active generation to compile.
 		var lastGood *time.Time
@@ -188,7 +214,11 @@ func (s *PostgresStore) Withdraw(ctx context.Context, w Work, cause WithdrawalCa
 		if _, err := tx.Exec(ctx, `UPDATE fqdn_resource_answer_generations SET state='withdrawn',ended_at=$3,failure_code=$4 WHERE org_id=$1 AND resource_id=$2 AND state='active'`, w.OrgID, w.ResourceID, at, string(cause)); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,state,effective_ttl,resolved_at,last_good_at,ended_at,failure_code) VALUES ($1,$2,$3,$4,$5,'withdrawn',$6,$7,$8,$7,$9)`, w.OrgID, w.ResourceID, next, gateway, site, MinTTL, at, lastGood, string(cause))
+		var resolverConfig any
+		if config != uuid.Nil {
+			resolverConfig = config
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,state,effective_ttl,resolved_at,last_good_at,ended_at,failure_code) VALUES ($1,$2,$3,$4,$5,$6,'withdrawn',$7,$8,$9,$8,$10)`, w.OrgID, w.ResourceID, next, gateway, site, resolverConfig, MinTTL, at, lastGood, string(cause))
 		return err
 	})
 	if err == nil && s.after != nil {
@@ -206,7 +236,7 @@ func approvedWithdrawalCause(c WithdrawalCause) bool {
 	}
 }
 
-func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID) error) (err error) {
+func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID, uuid.UUID) error) (err error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return err
@@ -224,6 +254,20 @@ func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64,
 	if site.String() != w.Context.ResolverID || gateway.String() != w.Context.GatewayID {
 		return ErrSuperseded
 	}
+	var config uuid.UUID
+	var version int64
+	err = tx.QueryRow(ctx, `SELECT id,version FROM fqdn_resolver_context_configs WHERE org_id=$1 AND site_id=$2 AND gateway_id=$3 AND state='active' FOR UPDATE`, w.OrgID, site, gateway).Scan(&config, &version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		config = uuid.Nil
+	} else if err != nil {
+		return err
+	}
+	if w.ResolverConfig.valid() {
+		wanted, parseErr := uuid.Parse(w.ResolverConfig.ID)
+		if parseErr != nil || config == uuid.Nil || wanted != config || version != w.ResolverConfig.Version {
+			return ErrSuperseded
+		}
+	}
 	var current int64
 	if err = tx.QueryRow(ctx, `SELECT COALESCE(max(generation),0) FROM fqdn_resource_answer_generations WHERE org_id=$1 AND resource_id=$2`, w.OrgID, w.ResourceID).Scan(&current); err != nil {
 		return err
@@ -231,7 +275,7 @@ func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64,
 	if current != w.ExpectedGeneration {
 		return ErrSuperseded
 	}
-	if err = fn(tx, current+1, site, gateway); err != nil {
+	if err = fn(tx, current+1, site, gateway, config); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

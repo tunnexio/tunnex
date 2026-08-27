@@ -37,33 +37,38 @@ var (
 // RecordTypes deliberately request both independently usable address families
 // and CNAME chain data in one atomic selected-resolver observation.
 type GatewayDNSRequest struct {
-	Version     uint16       `json:"version"`
-	RequestID   uuid.UUID    `json:"request_id"`
-	OrgID       uuid.UUID    `json:"org_id"`
-	ResourceID  uuid.UUID    `json:"resource_id"`
-	SiteID      uuid.UUID    `json:"site_id"`
-	GatewayID   uuid.UUID    `json:"gateway_id"`
-	Hostname    string       `json:"hostname"`
-	RecordTypes []RecordType `json:"record_types"`
-	Deadline    time.Time    `json:"deadline"`
+	Version               uint16             `json:"version"`
+	RequestID             uuid.UUID          `json:"request_id"`
+	OrgID                 uuid.UUID          `json:"org_id"`
+	ResourceID            uuid.UUID          `json:"resource_id"`
+	SiteID                uuid.UUID          `json:"site_id"`
+	GatewayID             uuid.UUID          `json:"gateway_id"`
+	ResolverConfigID      uuid.UUID          `json:"resolver_config_id"`
+	ResolverConfigVersion int64              `json:"resolver_config_version"`
+	ResolverEndpoints     []ResolverEndpoint `json:"resolver_endpoints"`
+	Hostname              string             `json:"hostname"`
+	RecordTypes           []RecordType       `json:"record_types"`
+	Deadline              time.Time          `json:"deadline"`
 }
 
 // GatewayDNSResponse must echo every request identity. ObservedAt is generated
 // by the selected gateway and verified against the request deadline and the
 // broker's current clock; a delayed response is never published.
 type GatewayDNSResponse struct {
-	Version     uint16                 `json:"version"`
-	RequestID   uuid.UUID              `json:"request_id"`
-	OrgID       uuid.UUID              `json:"org_id"`
-	ResourceID  uuid.UUID              `json:"resource_id"`
-	SiteID      uuid.UUID              `json:"site_id"`
-	GatewayID   uuid.UUID              `json:"gateway_id"`
-	Hostname    string                 `json:"hostname"`
-	RecordTypes []RecordType           `json:"record_types"`
-	ObservedAt  time.Time              `json:"observed_at"`
-	Status      Status                 `json:"status"`
-	ErrorCode   GatewayDNSRPCErrorCode `json:"error_code,omitempty"`
-	Records     []GatewayDNSRecord     `json:"records"`
+	Version               uint16                 `json:"version"`
+	RequestID             uuid.UUID              `json:"request_id"`
+	OrgID                 uuid.UUID              `json:"org_id"`
+	ResourceID            uuid.UUID              `json:"resource_id"`
+	SiteID                uuid.UUID              `json:"site_id"`
+	GatewayID             uuid.UUID              `json:"gateway_id"`
+	ResolverConfigID      uuid.UUID              `json:"resolver_config_id"`
+	ResolverConfigVersion int64                  `json:"resolver_config_version"`
+	Hostname              string                 `json:"hostname"`
+	RecordTypes           []RecordType           `json:"record_types"`
+	ObservedAt            time.Time              `json:"observed_at"`
+	Status                Status                 `json:"status"`
+	ErrorCode             GatewayDNSRPCErrorCode `json:"error_code,omitempty"`
+	Records               []GatewayDNSRecord     `json:"records"`
 }
 
 // GatewayDNSRPCErrorCode is the transport-level failure vocabulary mirrored by
@@ -130,7 +135,7 @@ func (t *GatewayDNSRPCTransport) Lookup(context.Context, Context, string) ([]Res
 // requirements. A broker must return one complete observation; it cannot mix
 // answers from another request, Site, gateway, resource, or organization.
 func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Response, error) {
-	if t == nil || t.mailbox == nil || !w.Context.valid() || w.OrgID == uuid.Nil || w.ResourceID == uuid.Nil {
+	if t == nil || t.mailbox == nil || !w.Context.valid() || !w.ResolverConfig.valid() || w.OrgID == uuid.Nil || w.ResourceID == uuid.Nil {
 		return nil, ErrUnboundContext
 	}
 	site, err := uuid.Parse(w.Context.ResolverID)
@@ -149,9 +154,14 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 	req := GatewayDNSRequest{
 		Version: GatewayDNSRPCVersion, RequestID: t.newRequestID(),
 		OrgID: w.OrgID, ResourceID: w.ResourceID, SiteID: site, GatewayID: gateway,
-		Hostname: dnsName(w.Hostname), RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: deadline,
+		ResolverConfigVersion: w.ResolverConfig.Version,
+		ResolverEndpoints:     append([]ResolverEndpoint(nil), w.ResolverConfig.Endpoints...),
+		Hostname:              dnsName(w.Hostname), RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: deadline,
 	}
-	if req.RequestID == uuid.Nil || req.Hostname == "" {
+	if req.ResolverConfigID, err = uuid.Parse(w.ResolverConfig.ID); err != nil {
+		return nil, ErrUnboundContext
+	}
+	if req.RequestID == uuid.Nil || req.Hostname == "" || !validGatewayDNSResolverConfig(req) {
 		return nil, ErrGatewayDNSRPCMalformed
 	}
 	// The durable mailbox receives a context bounded by the same absolute
@@ -174,6 +184,10 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 	return []Response{{Status: response.Status, Records: records}}, nil
 }
 
+func validGatewayDNSResolverConfig(req GatewayDNSRequest) bool {
+	return req.ResolverConfigID != uuid.Nil && req.ResolverConfigVersion > 0 && ResolverConfig{ID: req.ResolverConfigID.String(), Version: req.ResolverConfigVersion, Endpoints: req.ResolverEndpoints}.valid()
+}
+
 func validateGatewayDNSResponse(req GatewayDNSRequest, response GatewayDNSResponse, now time.Time, maxAge time.Duration) ([]Record, error) {
 	if response.Version != GatewayDNSRPCVersion {
 		return nil, fmt.Errorf("%w: got %d want %d", ErrGatewayDNSRPCVersion, response.Version, GatewayDNSRPCVersion)
@@ -181,7 +195,7 @@ func validateGatewayDNSResponse(req GatewayDNSRequest, response GatewayDNSRespon
 	if response.RequestID != req.RequestID {
 		return nil, fmt.Errorf("%w: request id", ErrGatewayDNSRPCReplay)
 	}
-	if response.OrgID != req.OrgID || response.ResourceID != req.ResourceID || response.SiteID != req.SiteID || response.GatewayID != req.GatewayID || dnsName(response.Hostname) != req.Hostname {
+	if response.OrgID != req.OrgID || response.ResourceID != req.ResourceID || response.SiteID != req.SiteID || response.GatewayID != req.GatewayID || response.ResolverConfigID != req.ResolverConfigID || response.ResolverConfigVersion != req.ResolverConfigVersion || dnsName(response.Hostname) != req.Hostname {
 		return nil, ErrGatewayDNSRPCIdentity
 	}
 	if !sameRecordTypes(req.RecordTypes, response.RecordTypes) {

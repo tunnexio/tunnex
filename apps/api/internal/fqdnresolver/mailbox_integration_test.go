@@ -44,7 +44,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 114); err != nil {
+	if err := db.MigrateTo(testURL.String(), 116); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -64,12 +64,15 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'selected')`, site, org)
 	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'gateway',$3,$4)`, gateway, org, "mailbox-"+gateway.String(), site)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal',$3,$4)`, resource, org, site, gateway)
+	config := uuid.New()
+	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, config, org, site, gateway)
+	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, config, org)
 
 	now := time.Now().UTC().Truncate(time.Second)
 	currentNow := now
 	mailbox := NewPostgresGatewayDNSMailbox(pool)
 	mailbox.now = func() time.Time { return currentNow }
-	request := GatewayDNSRequest{Version: GatewayDNSRPCVersion, RequestID: uuid.New(), OrgID: org, ResourceID: resource, SiteID: site, GatewayID: gateway, Hostname: "orders.internal", RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: now.Add(time.Minute)}
+	request := GatewayDNSRequest{Version: GatewayDNSRPCVersion, RequestID: uuid.New(), OrgID: org, ResourceID: resource, SiteID: site, GatewayID: gateway, ResolverConfigID: config, ResolverConfigVersion: 1, ResolverEndpoints: []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.0.53"), Port: 53, Transport: "udp"}}, Hostname: "orders.internal", RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: now.Add(time.Minute)}
 	if err := mailbox.Enqueue(ctx, request); err != nil {
 		t.Fatal(err)
 	}
@@ -116,6 +119,9 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	reselectedSite, reselectedGateway := uuid.New(), uuid.New()
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'reselected')`, reselectedSite, org)
 	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'reselected-gateway',$3,$4)`, reselectedGateway, org, "mailbox-"+reselectedGateway.String(), reselectedSite)
+	reselectedConfig := uuid.New()
+	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, reselectedConfig, org, reselectedSite, reselectedGateway)
+	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.1.53'::inet,53,'tcp')`, reselectedConfig, org)
 	exec(`UPDATE fqdn_resources SET resolver_site_id=$3,resolver_node_id=$4 WHERE id=$1 AND org_id=$2`, resource, org, reselectedSite, reselectedGateway)
 	late := responseFor(second, now, Record{Name: second.Hostname, Type: TypeA, Address: netip.MustParseAddr("10.2.3.5"), TTL: time.Minute})
 	if err := mailbox.Complete(ctx, org, gateway, late); !errors.Is(err, ErrSuperseded) {
@@ -134,6 +140,8 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	stale := second
 	stale.RequestID = uuid.New()
 	stale.SiteID, stale.GatewayID = reselectedSite, reselectedGateway
+	stale.ResolverConfigID, stale.ResolverConfigVersion = reselectedConfig, 1
+	stale.ResolverEndpoints = []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.1.53"), Port: 53, Transport: "tcp"}}
 	stale.Deadline = now.Add(time.Second)
 	if err := mailbox.Enqueue(ctx, stale); err != nil {
 		t.Fatal(err)
@@ -157,5 +165,6 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 func sameMailboxRequest(got, want GatewayDNSRequest) bool {
 	return got.Version == want.Version && got.RequestID == want.RequestID && got.OrgID == want.OrgID &&
 		got.ResourceID == want.ResourceID && got.SiteID == want.SiteID && got.GatewayID == want.GatewayID &&
+		got.ResolverConfigID == want.ResolverConfigID && got.ResolverConfigVersion == want.ResolverConfigVersion && slices.Equal(got.ResolverEndpoints, want.ResolverEndpoints) &&
 		got.Hostname == want.Hostname && slices.Equal(got.RecordTypes, want.RecordTypes) && got.Deadline.Equal(want.Deadline)
 }

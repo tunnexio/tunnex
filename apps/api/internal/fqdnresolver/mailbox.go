@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,10 +40,14 @@ func (m *PostgresGatewayDNSMailbox) WithNotifier(notifier GatewayDNSNotifier) *P
 }
 
 func (m *PostgresGatewayDNSMailbox) Enqueue(ctx context.Context, request GatewayDNSRequest) error {
-	if m == nil || m.pool == nil || request.RequestID == uuid.Nil || request.Deadline.IsZero() || request.Deadline.Before(m.now()) {
+	if m == nil || m.pool == nil || request.RequestID == uuid.Nil || request.Deadline.IsZero() || request.Deadline.Before(m.now()) || !validGatewayDNSResolverConfig(request) {
 		return ErrGatewayDNSRPCMalformed
 	}
 	types, err := json.Marshal(request.RecordTypes)
+	if err != nil {
+		return err
+	}
+	endpoints, err := json.Marshal(request.ResolverEndpoints)
 	if err != nil {
 		return err
 	}
@@ -56,9 +61,9 @@ func (m *PostgresGatewayDNSMailbox) Enqueue(ctx context.Context, request Gateway
 	}
 	command, err := tx.Exec(ctx, `
 INSERT INTO fqdn_gateway_dns_requests
-  (request_id,protocol_version,org_id,resource_id,site_id,gateway_id,hostname,record_types,deadline,state)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending')
-ON CONFLICT (request_id) DO NOTHING`, request.RequestID, request.Version, request.OrgID, request.ResourceID, request.SiteID, request.GatewayID, request.Hostname, types, request.Deadline)
+  (request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_endpoints,hostname,record_types,deadline,state)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending')
+ON CONFLICT (request_id) DO NOTHING`, request.RequestID, request.Version, request.OrgID, request.ResourceID, request.SiteID, request.GatewayID, request.ResolverConfigID, request.ResolverConfigVersion, endpoints, request.Hostname, types, request.Deadline)
 	if err != nil {
 		return err
 	}
@@ -83,7 +88,7 @@ func (m *PostgresGatewayDNSMailbox) PendingForGateway(ctx context.Context, orgID
 		return nil, err
 	}
 	rows, err := m.pool.Query(ctx, `
-SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,hostname,record_types,deadline
+SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_endpoints,hostname,record_types,deadline
 FROM fqdn_gateway_dns_requests
 WHERE org_id=$1 AND gateway_id=$2 AND state='pending' AND deadline>=now()
 ORDER BY created_at,request_id LIMIT $3`, orgID, gatewayID, limit)
@@ -94,12 +99,15 @@ ORDER BY created_at,request_id LIMIT $3`, orgID, gatewayID, limit)
 	var out []GatewayDNSRequest
 	for rows.Next() {
 		var request GatewayDNSRequest
-		var types []byte
-		if err := rows.Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.Hostname, &types, &request.Deadline); err != nil {
+		var types, endpoints []byte
+		if err := rows.Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &endpoints, &request.Hostname, &types, &request.Deadline); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(types, &request.RecordTypes); err != nil {
 			return nil, fmt.Errorf("decode persisted DNS RPC record types: %w", err)
+		}
+		if err := json.Unmarshal(endpoints, &request.ResolverEndpoints); err != nil || !validGatewayDNSResolverConfig(request) {
+			return nil, fmt.Errorf("decode persisted DNS RPC resolver config: %w", err)
 		}
 		out = append(out, request)
 	}
@@ -120,11 +128,11 @@ func (m *PostgresGatewayDNSMailbox) Complete(ctx context.Context, authenticatedO
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var request GatewayDNSRequest
-	var types []byte
+	var types, endpoints []byte
 	err = tx.QueryRow(ctx, `
-SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,hostname,record_types,deadline
+SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_endpoints,hostname,record_types,deadline
 FROM fqdn_gateway_dns_requests WHERE request_id=$1 FOR UPDATE`, response.RequestID).
-		Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.Hostname, &types, &request.Deadline)
+		Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &endpoints, &request.Hostname, &types, &request.Deadline)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrGatewayDNSRPCReplay
 	}
@@ -133,6 +141,9 @@ FROM fqdn_gateway_dns_requests WHERE request_id=$1 FOR UPDATE`, response.Request
 	}
 	if err := json.Unmarshal(types, &request.RecordTypes); err != nil {
 		return err
+	}
+	if err := json.Unmarshal(endpoints, &request.ResolverEndpoints); err != nil || !validGatewayDNSResolverConfig(request) {
+		return ErrGatewayDNSRPCMalformed
 	}
 	if request.OrgID != authenticatedOrg || request.GatewayID != authenticatedGateway {
 		return ErrGatewayDNSRPCIdentity
@@ -180,6 +191,9 @@ FROM fqdn_gateway_dns_requests WHERE request_id=$1 FOR UPDATE`, response.Request
 // another or to a gateway that was reselected/moved after enqueue. Locking the
 // resource row serializes this check with resolver-context edits.
 func validateCurrentMailboxContext(ctx context.Context, tx pgx.Tx, request GatewayDNSRequest) error {
+	if !validGatewayDNSResolverConfig(request) {
+		return ErrSuperseded
+	}
 	var resourceOrg, selectedSite, selectedGateway, siteOrg, gatewayOrg, gatewaySite uuid.UUID
 	err := tx.QueryRow(ctx, `
 SELECT r.org_id,r.resolver_site_id,r.resolver_node_id,s.org_id,n.org_id,n.site_id
@@ -197,7 +211,58 @@ WHERE r.id=$1 FOR UPDATE`, request.ResourceID).
 	if resourceOrg != request.OrgID || siteOrg != request.OrgID || gatewayOrg != request.OrgID || selectedSite != request.SiteID || selectedGateway != request.GatewayID || gatewaySite != request.SiteID {
 		return ErrSuperseded
 	}
+	var configID uuid.UUID
+	var configVersion int64
+	err = tx.QueryRow(ctx, `
+SELECT id,version
+FROM fqdn_resolver_context_configs
+WHERE org_id=$1 AND site_id=$2 AND gateway_id=$3 AND state='active'
+FOR UPDATE`, request.OrgID, request.SiteID, request.GatewayID).Scan(&configID, &configVersion)
+	if errors.Is(err, pgx.ErrNoRows) || configID != request.ResolverConfigID || configVersion != request.ResolverConfigVersion {
+		return ErrSuperseded
+	}
+	if err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `
+SELECT host(address),port,transport
+FROM fqdn_resolver_context_endpoints
+WHERE config_id=$1 AND org_id=$2
+ORDER BY ordinal`, configID, request.OrgID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	endpoints := make([]ResolverEndpoint, 0, len(request.ResolverEndpoints))
+	for rows.Next() {
+		var raw string
+		var endpoint ResolverEndpoint
+		if err := rows.Scan(&raw, &endpoint.Port, &endpoint.Transport); err != nil {
+			return err
+		}
+		address, err := netip.ParseAddr(raw)
+		if err != nil {
+			return ErrSuperseded
+		}
+		endpoint.Address = address
+		endpoints = append(endpoints, endpoint)
+	}
+	if err := rows.Err(); err != nil || !sameResolverEndpoints(request.ResolverEndpoints, endpoints) {
+		return ErrSuperseded
+	}
 	return nil
+}
+
+func sameResolverEndpoints(a, b []ResolverEndpoint) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Address != b[i].Address || a[i].Port != b[i].Port || a[i].Transport != b[i].Transport {
+			return false
+		}
+	}
+	return true
 }
 
 // isTerminalTransportResponse permits only the declared transport failures to

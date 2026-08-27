@@ -48,6 +48,36 @@ type Context struct {
 
 func (c Context) valid() bool { return c.ResolverID != "" && c.GatewayID != "" }
 
+// ResolverEndpoint is one literal DNS transport target selected and persisted
+// by the control plane. Address is never a hostname so carrying this snapshot
+// cannot trigger a recursive host/system resolver lookup before DNS starts.
+type ResolverEndpoint struct {
+	Address   netip.Addr `json:"address"`
+	Port      uint16     `json:"port"`
+	Transport string     `json:"transport"`
+}
+
+// ResolverConfig is an immutable revision. The full, canonically ordered
+// endpoint list binds a Gateway DNS RPC to exactly the configuration the
+// scheduler observed; a changed, absent, or retired revision fails closed.
+type ResolverConfig struct {
+	ID        string             `json:"id"`
+	Version   int64              `json:"version"`
+	Endpoints []ResolverEndpoint `json:"endpoints"`
+}
+
+func (c ResolverConfig) valid() bool {
+	if c.ID == "" || c.Version < 1 || len(c.Endpoints) == 0 || len(c.Endpoints) > 8 {
+		return false
+	}
+	for _, endpoint := range c.Endpoints {
+		if !endpoint.Address.IsValid() || endpoint.Address.IsUnspecified() || endpoint.Address.IsLoopback() || endpoint.Address.IsMulticast() || endpoint.Address.IsLinkLocalUnicast() || endpoint.Port == 0 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+			return false
+		}
+	}
+	return true
+}
+
 type Status string
 
 const (

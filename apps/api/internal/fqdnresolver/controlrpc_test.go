@@ -37,6 +37,14 @@ func rpcWork() Work {
 			ResolverID: "33333333-3333-3333-3333-333333333333",
 			GatewayID:  "44444444-4444-4444-4444-444444444444",
 		},
+		ResolverConfig: ResolverConfig{
+			ID:      "55555555-5555-5555-5555-555555555554",
+			Version: 1,
+			Endpoints: []ResolverEndpoint{
+				{Address: netip.MustParseAddr("10.53.0.53"), Port: 53, Transport: "udp"},
+				{Address: netip.MustParseAddr("fd00::53"), Port: 53, Transport: "tcp"},
+			},
+		},
 	}
 }
 
@@ -56,6 +64,7 @@ func responseFor(request GatewayDNSRequest, now time.Time, records ...Record) Ga
 	return GatewayDNSResponse{
 		Version: request.Version, RequestID: request.RequestID,
 		OrgID: request.OrgID, ResourceID: request.ResourceID, SiteID: request.SiteID, GatewayID: request.GatewayID,
+		ResolverConfigID: request.ResolverConfigID, ResolverConfigVersion: request.ResolverConfigVersion,
 		Hostname: request.Hostname, RecordTypes: append([]RecordType(nil), request.RecordTypes...),
 		ObservedAt: now, Status: StatusNoError, Records: wired,
 	}
@@ -109,6 +118,7 @@ func TestGatewayDNSRPCTransportFailsClosedForIdentityFreshnessReplayAndLimits(t 
 	}{
 		{"version", func(r *GatewayDNSResponse, _ time.Time) { r.Version++ }, ErrGatewayDNSRPCVersion},
 		{"identity", func(r *GatewayDNSResponse, _ time.Time) { r.GatewayID = uuid.New() }, ErrGatewayDNSRPCIdentity},
+		{"resolver config", func(r *GatewayDNSResponse, _ time.Time) { r.ResolverConfigVersion++ }, ErrGatewayDNSRPCIdentity},
 		{"replay", func(r *GatewayDNSResponse, _ time.Time) { r.RequestID = uuid.New() }, ErrGatewayDNSRPCReplay},
 		{"stale", func(r *GatewayDNSResponse, now time.Time) {
 			r.ObservedAt = now.Add(-GatewayDNSResponseMaxAge - time.Second)
@@ -136,6 +146,18 @@ func TestGatewayDNSRPCTransportFailsClosedForIdentityFreshnessReplayAndLimits(t 
 				t.Fatalf("err=%v, want %v", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestGatewayDNSRPCTransportRefusesMissingResolverSnapshot(t *testing.T) {
+	w := rpcWork()
+	w.ResolverConfig = ResolverConfig{}
+	transport, _ := newRPCTestTransport(t, func(context.Context, GatewayDNSRequest) (GatewayDNSResponse, error) {
+		t.Fatal("gateway RPC must not be issued without an explicit resolver configuration")
+		return GatewayDNSResponse{}, nil
+	})
+	if _, err := transport.LookupWork(context.Background(), w); !errors.Is(err, ErrUnboundContext) {
+		t.Fatalf("err=%v want unbound resolver configuration", err)
 	}
 }
 
