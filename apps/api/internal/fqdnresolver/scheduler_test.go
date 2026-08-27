@@ -20,6 +20,21 @@ type memoryStore struct {
 	block     <-chan struct{}
 }
 
+type scopedFixtureResolver struct {
+	got       Work
+	responses []Response
+	err       error
+}
+
+func (r *scopedFixtureResolver) Lookup(_ context.Context, _ Context, _ string) ([]Response, error) {
+	return nil, errors.New("scheduler must use the scoped resolver seam")
+}
+
+func (r *scopedFixtureResolver) LookupWork(_ context.Context, w Work) ([]Response, error) {
+	r.got = w
+	return r.responses, r.err
+}
+
 func (s *memoryStore) Due(_ context.Context, _ time.Time, limit int) ([]Work, error) {
 	s.mu.Lock()
 	s.dueCalls++
@@ -70,6 +85,19 @@ func TestSchedulerUsesOnlySelectedContextAndPublishesBoundedWork(t *testing.T) {
 	}
 	if len(store.published) != 1 || !store.published[0].RefreshAt.Equal(now.Add(store.published[0].TTL*RefreshAt/100)) {
 		t.Fatalf("publication = %#v", store.published)
+	}
+}
+
+func TestSchedulerPassesFullServerOwnedWorkToScopedResolver(t *testing.T) {
+	w := work("orders.internal")
+	store := &memoryStore{work: []Work{w}}
+	resolver := &scopedFixtureResolver{responses: []Response{answer(a(w.Hostname, "10.2.3.4", time.Minute))}}
+	NewScheduler(store, resolver, SchedulerConfig{}).Tick(context.Background())
+	if resolver.got.OrgID != w.OrgID || resolver.got.ResourceID != w.ResourceID || resolver.got.Context != w.Context || resolver.got.Hostname != w.Hostname {
+		t.Fatalf("scoped resolver lost work identity: got %#v want %#v", resolver.got, w)
+	}
+	if len(store.published) != 1 {
+		t.Fatalf("scoped resolver result was not published: %#v", store)
 	}
 }
 

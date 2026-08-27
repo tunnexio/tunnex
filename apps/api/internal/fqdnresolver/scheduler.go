@@ -98,7 +98,13 @@ func (s *Scheduler) refresh(parent context.Context, now time.Time, w Work) {
 	// A fresh lifecycle never reads or republishes last-good state. The store
 	// retains it only in closed historical rows for diagnostics.
 	var l Lifecycle
-	snapshot := l.Refresh(ctx, now, s.resolver, w.Context, w.Hostname)
+	resolver := s.resolver
+	if scoped, ok := s.resolver.(WorkResolver); ok {
+		resolver = resolverFunc(func(ctx context.Context, _ Context, _ string) ([]Response, error) {
+			return scoped.LookupWork(ctx, w)
+		})
+	}
+	snapshot := l.Refresh(ctx, now, resolver, w.Context, w.Hostname)
 	if snapshot.Active != nil {
 		_ = s.store.Publish(parent, w, *snapshot.Active)
 		return
@@ -112,6 +118,12 @@ func (s *Scheduler) refresh(parent context.Context, now time.Time, w Work) {
 			return
 		}
 	}
+}
+
+type resolverFunc func(context.Context, Context, string) ([]Response, error)
+
+func (f resolverFunc) Lookup(ctx context.Context, selected Context, hostname string) ([]Response, error) {
+	return f(ctx, selected, hostname)
 }
 
 func d4Cause(c WithdrawalCause) WithdrawalCause {
