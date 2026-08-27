@@ -101,22 +101,34 @@ type Resolver interface {
 // LocalResolver resolves through the selected gateway's configured local DNS
 // context. It is invoked only by that selected gateway after the full request
 // binding passes validation; no alternative resolver is attempted on failure.
-type LocalResolver struct{ Resolver *net.Resolver }
+type LocalResolver struct {
+	Resolver    *net.Resolver
+	lookupCNAME func(context.Context, string) (string, error)
+	lookupNetIP func(context.Context, string, string) ([]netip.Addr, error)
+}
 
 func (r LocalResolver) Resolve(ctx context.Context, hostname string, types []RecordType) ([]Record, error) {
 	resolver := r.Resolver
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
+	lookupCNAME := r.lookupCNAME
+	if lookupCNAME == nil {
+		lookupCNAME = resolver.LookupCNAME
+	}
+	lookupNetIP := r.lookupNetIP
+	if lookupNetIP == nil {
+		lookupNetIP = resolver.LookupNetIP
+	}
 	var out []Record
-	if cname, err := resolver.LookupCNAME(ctx, hostname); err == nil {
+	if cname, err := lookupCNAME(ctx, hostname); err == nil {
 		cname = strings.TrimSuffix(strings.ToLower(cname), ".")
 		if cname != hostname {
 			out = append(out, Record{Name: hostname, Type: RecordCNAME, Target: cname, TTLSeconds: 30})
 		}
-	} else {
-		return nil, err
 	}
+	var lookupErrs []error
+	usableFamily := false
 	for _, typ := range types {
 		if typ == RecordCNAME {
 			continue // LookupCNAME above already supplied the observed canonical name.
@@ -125,16 +137,24 @@ func (r LocalResolver) Resolve(ctx context.Context, hostname string, types []Rec
 		if typ == RecordAAAA {
 			family = "ip6"
 		}
-		addrs, err := resolver.LookupNetIP(ctx, family, hostname)
+		addrs, err := lookupNetIP(ctx, family, hostname)
 		if err != nil {
-			return nil, err
+			// A and AAAA are independently useful. One family failing must not
+			// discard a usable answer from the other family; the control plane
+			// will reject only the unusable family and publish only what remains.
+			lookupErrs = append(lookupErrs, err)
+			continue
 		}
 		for _, addr := range addrs {
 			if (typ == RecordA && !addr.Is4()) || (typ == RecordAAAA && !addr.Is6()) {
 				continue
 			}
 			out = append(out, Record{Name: hostname, Type: typ, Address: addr.String(), TTLSeconds: 30})
+			usableFamily = true
 		}
+	}
+	if !usableFamily && len(lookupErrs) > 0 {
+		return nil, errors.Join(lookupErrs...)
 	}
 	return out, nil
 }

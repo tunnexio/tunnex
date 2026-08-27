@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +23,71 @@ func testRequest(now time.Time) Request {
 		OrgID: testOrg, ResourceID: testResource, SiteID: testSite,
 		GatewayID: testGateway, Hostname: "api.example.test", RecordTypes: []RecordType{RecordA, RecordAAAA, RecordCNAME},
 		Deadline: now.Add(10 * time.Second)}
+}
+
+func TestLocalResolverKeepsUsableAddressFamilyWhenOtherLookupsFail(t *testing.T) {
+	tests := []struct {
+		name    string
+		lookup  func(context.Context, string, string) ([]netip.Addr, error)
+		want    []RecordType
+		wantErr bool
+	}{
+		{
+			name: "AAAA survives A and CNAME failures",
+			lookup: func(_ context.Context, network, _ string) ([]netip.Addr, error) {
+				if network == "ip4" {
+					return nil, &net.DNSError{IsNotFound: true}
+				}
+				return []netip.Addr{netip.MustParseAddr("fd00::8")}, nil
+			},
+			want: []RecordType{RecordAAAA},
+		},
+		{
+			name: "A survives AAAA and CNAME failures",
+			lookup: func(_ context.Context, network, _ string) ([]netip.Addr, error) {
+				if network == "ip6" {
+					return nil, context.DeadlineExceeded
+				}
+				return []netip.Addr{netip.MustParseAddr("10.10.0.8")}, nil
+			},
+			want: []RecordType{RecordA},
+		},
+		{
+			name: "both family failures remain fail closed",
+			lookup: func(context.Context, string, string) ([]netip.Addr, error) {
+				return nil, &net.DNSError{IsNotFound: true}
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolver := LocalResolver{
+				lookupCNAME: func(context.Context, string) (string, error) {
+					return "", errors.New("CNAME transport failed")
+				},
+				lookupNetIP: tt.lookup,
+			}
+			records, err := resolver.Resolve(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME})
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Resolve unexpectedly succeeded with records=%+v", records)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Resolve: %v", err)
+			}
+			if len(records) != len(tt.want) {
+				t.Fatalf("records = %+v, want types %v", records, tt.want)
+			}
+			for i, typ := range tt.want {
+				if records[i].Type != typ {
+					t.Fatalf("record %d type = %q, want %q (%+v)", i, records[i].Type, typ, records)
+				}
+			}
+		})
+	}
 }
 
 type fakeResolver struct {
