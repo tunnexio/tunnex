@@ -71,6 +71,7 @@ let groupsForTest = [
   { id: "g2", name: "Operations" },
 ];
 let resourcesForTest = [{ id: "res1", name: "10.0.0.0/24" }];
+let fqdnResourcesForTest: Array<Record<string, unknown>> = [];
 let sitesForTest: Array<{ id: string; name: string }> = [];
 let agentsForTest: Array<{
   device_id: string;
@@ -117,6 +118,7 @@ vi.mock("../src/lib/api", async () => {
         }
         if (path.endsWith("/groups")) return { data: groupsForTest };
         if (path.endsWith("/resources")) return { data: resourcesForTest };
+        if (path.endsWith("/fqdn-resources")) return { data: fqdnResourcesForTest };
         if (path.endsWith("/sites")) return { data: sitesForTest };
         if (path.endsWith("/agents")) {
           agentReads += 1;
@@ -163,6 +165,7 @@ beforeEach(() => {
     { id: "g2", name: "Operations" },
   ];
   resourcesForTest = [{ id: "res1", name: "10.0.0.0/24" }];
+  fqdnResourcesForTest = [];
   sitesForTest = [];
   agentsForTest = [];
   postedBodies = [];
@@ -242,6 +245,37 @@ describe("Access — F06 agent sources are first-class", () => {
       src_kind: "agent",
       src_device_id: "agent-1",
     });
+  });
+});
+
+describe("Access — FQDN destinations are discoverable but never represented as enforced", () => {
+  it("renders the FQDN name and pending-compiler no-traffic status from the server projection", async () => {
+    rulesForTest = [{
+      id: "fqdn-rule",
+      enabled: true,
+      src_kind: "group",
+      src_group_id: "g1",
+      dst_kind: "fqdn_resource",
+      dst_fqdn_resource_id: "fqdn-1",
+      fqdn_destination_status: "pending_compiler",
+    }];
+    fqdnResourcesForTest = [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" }];
+    withAuth(<Access />);
+    expect(await screen.findByText("Orders API")).toBeTruthy();
+    expect(screen.getByText("PENDING COMPILER · NO TRAFFIC")).toBeTruthy();
+  });
+
+  it("selects an FQDN destination in Add rule and submits its identity, not a CIDR resource", async () => {
+    fqdnResourcesForTest = [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" }];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    fireEvent.focus(screen.getByRole("combobox", { name: "Destination" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Orders API/ }));
+    expect(screen.getByText(/Pending compiler.*grants no traffic/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(postedBodies).toHaveLength(1));
+    expect(postedBodies[0]).toMatchObject({ dst_kind: "fqdn_resource", dst_fqdn_resource_id: "fqdn-1" });
+    expect(postedBodies[0]).not.toMatchObject({ dst_resource_id: "fqdn-1" });
   });
 });
 

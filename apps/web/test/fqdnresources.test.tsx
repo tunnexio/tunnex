@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 let fqdnResources: Array<Record<string, unknown>> = [];
 let role = "admin";
-let impact: Record<string, unknown> = { resource_id: "fqdn-1", referencing_rule_count: 2, generation_withdrawal_required: true };
+let impact: Record<string, unknown> = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true };
 let resourceLoadError = "";
 
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org-a", name: "Org A" } }) }));
@@ -27,7 +27,7 @@ import { api } from "../src/lib/api";
 import AccessResources from "../src/pages/AccessResources";
 
 function page() { return render(<MemoryRouter><AccessResources /></MemoryRouter>); }
-beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, generation_withdrawal_required: true }; resourceLoadError = ""; fqdnResources = []; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); vi.mocked(api.PUT).mockClear(); vi.mocked(api.DELETE).mockClear(); });
+beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true }; resourceLoadError = ""; fqdnResources = []; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); vi.mocked(api.PUT).mockClear(); vi.mocked(api.DELETE).mockClear(); });
 afterEach(cleanup);
 
 describe("FQDN access resources", () => {
@@ -78,6 +78,18 @@ describe("FQDN access resources", () => {
     expect(vi.mocked(api.DELETE)).not.toHaveBeenCalled();
   });
 
+  it("shows server-projected rule identities and recovery links in detail and delete", async () => {
+    fqdnResources = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.internal.example.com", protocol: "any", state: "healthy", answer_count: 2, resolver_context: null, generation: null }];
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: "Orders" }));
+    expect(await screen.findByText(/Referencing rule identities: rule-a, rule-b/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Review and edit referenced rules/i })).toHaveAttribute("href", "/access");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText(/Referencing rule identities: rule-a, rule-b/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Review referenced rules/i })).toHaveAttribute("href", "/access");
+  });
+
   it("renders exact single, range, and all port scopes in the inventory and detail", async () => {
     fqdnResources = [
       { id: "single", name: "Single", fqdn: "single.example.com", protocol: "tcp", port_low: 443, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 },
@@ -117,7 +129,7 @@ describe("FQDN access resources", () => {
     expect((screen.getByRole("button", { name: "Save FQDN resource" }) as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    impact = { resource_id: "fqdn-1", referencing_rule_count: 0, generation_withdrawal_required: false };
+    impact = { resource_id: "fqdn-1", referencing_rule_count: 0, referencing_rule_ids: [], generation_withdrawal_required: false };
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await screen.findByText(/Server impact: 0 referencing rules/);
     vi.mocked(api.DELETE).mockRejectedValueOnce(new Error("offline"));
