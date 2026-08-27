@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db"
-	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
@@ -74,13 +73,14 @@ func TestAgentPolicyTemplatesMigrationPostgres(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// This proof intentionally stops at schema 0100. Do not use the current
+	// sqlc snapshot loader here: newer organization projections include columns
+	// (for example fqdn_resources_enabled from 0112) that did not exist at the
+	// historical migration boundary. The narrow loader below reads only the
+	// legacy compiler inputs whose 0097 rollback/reapply hash is under test.
 	legacyHash := func() string {
 		t.Helper()
-		snapshot, err := policy.BuildSnapshotWithQueries(ctx, sqlc.New(successPool), legacyOrg)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return policyspec.CanonicalHash(policy.Compile(snapshot)[legacyNode])
+		return legacyPolicyHashAtSchema100(t, ctx, successPool, legacyOrg, legacyNode)
 	}
 	if err := db.MigrateTo(successDSN, 100); err != nil {
 		t.Fatal(err)
@@ -181,6 +181,91 @@ func TestAgentPolicyTemplatesMigrationPostgres(t *testing.T) {
 	if err := refusePool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='policy_rules' AND column_name='src_agent_group_id')`).Scan(&sourceColumnExists); err != nil || !sourceColumnExists {
 		t.Fatalf("refused rollback lost source column=%v err=%v", sourceColumnExists, err)
 	}
+}
+
+// legacyPolicyHashAtSchema100 is deliberately schema-0100 compatible. It is a
+// migration-test seam, not a second production snapshot loader: production
+// policy compilation must use BuildSnapshotWithQueries and the current schema.
+func legacyPolicyHashAtSchema100(t *testing.T, ctx context.Context, pool *pgxpool.Pool, orgID, nodeID uuid.UUID) string {
+	t.Helper()
+	var mode string
+	if err := pool.QueryRow(ctx, `SELECT zero_trust_mode FROM organizations WHERE id=$1`, orgID).Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := policy.Snapshot{Mode: mode}
+
+	rules, err := pool.Query(ctx, `SELECT id,src_kind,src_group_id,dst_kind,dst_resource_id,disabled
+		FROM policy_rules WHERE org_id=$1 ORDER BY id`, orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rules.Close()
+	for rules.Next() {
+		var rule policy.Rule
+		if err := rules.Scan(&rule.ID, &rule.SrcKind, &rule.SrcGroupID, &rule.DstKind, &rule.DstResourceID, &rule.Disabled); err != nil {
+			t.Fatal(err)
+		}
+		snapshot.Rules = append(snapshot.Rules, rule)
+	}
+	if err := rules.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	resources, err := pool.Query(ctx, `SELECT id,cidr::text,protocol,COALESCE(port_low,0),COALESCE(port_high,0)
+		FROM resources WHERE org_id=$1 ORDER BY id`, orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resources.Close()
+	for resources.Next() {
+		var resource policy.Resource
+		if err := resources.Scan(&resource.ID, &resource.CIDR, &resource.Protocol, &resource.PortLow, &resource.PortHigh); err != nil {
+			t.Fatal(err)
+		}
+		snapshot.Resources = append(snapshot.Resources, resource)
+	}
+	if err := resources.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	members, err := pool.Query(ctx, `SELECT group_id,user_id FROM group_members WHERE org_id=$1 ORDER BY group_id,user_id`, orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer members.Close()
+	for members.Next() {
+		var membership policy.Membership
+		if err := members.Scan(&membership.GroupID, &membership.UserID); err != nil {
+			t.Fatal(err)
+		}
+		snapshot.Memberships = append(snapshot.Memberships, membership)
+	}
+	if err := members.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	devices, err := pool.Query(ctx, `SELECT id,user_id,node_id,assigned_ip::text,kind
+		FROM devices WHERE org_id=$1 AND status='active' AND assigned_ip IS NOT NULL ORDER BY id`, orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devices.Close()
+	for devices.Next() {
+		var device policy.Device
+		if err := devices.Scan(&device.ID, &device.UserID, &device.NodeID, &device.AssignedIP, &device.Kind); err != nil {
+			t.Fatal(err)
+		}
+		snapshot.Devices = append(snapshot.Devices, device)
+	}
+	if err := devices.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	compiled, ok := policy.Compile(snapshot)[nodeID]
+	if !ok {
+		t.Fatalf("legacy compiler emitted no artifact for node %s", nodeID)
+	}
+	return policyspec.CanonicalHash(compiled)
 }
 
 func proveAgentPolicyTemplateTenantInvariants(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
