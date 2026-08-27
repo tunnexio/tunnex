@@ -14,6 +14,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
@@ -89,6 +90,50 @@ func TestAffectedNodeIDsTargetsActiveOrgNodes(t *testing.T) {
 	}
 	if ids, _ := svc.AffectedNodeIDs(f.ctx, f.org); len(ids) != 0 {
 		t.Fatalf("revoked node must not be a push target, got %v", ids)
+	}
+}
+
+func TestBuildSnapshotConsumesOnlyActiveSelectedFQDNGeneration(t *testing.T) {
+	pool := testPool(t)
+	f := seed(t, pool)
+	ctx := context.Background()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("seed %q: %v", sql, err)
+		}
+	}
+	site, resource, generation, rule := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'selected')`, site, f.org)
+	exec(`UPDATE nodes SET site_id=$2 WHERE id=$1`, f.node, site)
+	exec(`UPDATE organizations SET fqdn_resources_enabled=true WHERE id=$1`, f.org)
+	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,protocol,port_low,port_high,resolver_site_id,resolver_node_id) VALUES($1,$2,'api','api.example.test','tcp',443,443,$3,$4)`, resource, f.org, site, f.node)
+	exec(`INSERT INTO fqdn_resource_answer_generations(id,org_id,resource_id,generation,resolver_site_id,resolver_node_id,state,effective_ttl,resolved_at) VALUES($1,$2,$3,1,$4,$5,'pending','1 minute',now())`, generation, f.org, resource, site, f.node)
+	exec(`INSERT INTO fqdn_resource_generation_answers(generation_id,org_id,address) VALUES($1,$2,'10.20.30.40/32')`, generation, f.org)
+	exec(`UPDATE fqdn_resource_answer_generations SET state='active',activated_at=now(),last_good_at=now() WHERE id=$1`, generation)
+	exec(`INSERT INTO policy_rules(id,org_id,src_kind,src_user_id,dst_kind,dst_fqdn_resource_id) VALUES($1,$2,'user',$3,'fqdn_resource',$4)`, rule, f.org, f.user, resource)
+
+	svc := policy.NewService(pool).WithFQDNGenerations(fqdnresolver.NewPostgresStore(pool), func() bool { return true })
+	snap, err := svc.BuildSnapshot(ctx, f.org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snap.FQDNResourcesEnabled || !snap.FQDNResourcesLicensed || len(snap.FQDNResources) != 1 || len(snap.FQDNRuleReferences) != 1 {
+		t.Fatalf("active FQDN snapshot missing or not gated correctly: %#v", snap)
+	}
+	compiled, exists := policy.Compile(snap)[f.node]
+	if !exists || len(compiled.Allow) != 1 || compiled.Allow[0].DstCIDR != "10.20.30.40/32" || compiled.Version != 8 {
+		t.Fatalf("active selected FQDN generation did not compile: %#v", compiled)
+	}
+
+	exec(`UPDATE fqdn_resource_answer_generations SET state='withdrawn',ended_at=now(),failure_code='timeout' WHERE id=$1`, generation)
+	snap, err = svc.BuildSnapshot(ctx, f.org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, exists = policy.Compile(snap)[f.node]
+	if len(snap.FQDNResources) != 0 || (exists && len(compiled.Allow) != 0) {
+		t.Fatalf("withdrawn FQDN generation must default deny: snapshot=%#v compiled=%#v", snap.FQDNResources, compiled)
 	}
 }
 

@@ -2,9 +2,12 @@ package http
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
+	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodepush"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 )
@@ -14,6 +17,19 @@ import (
 // <5s spec (S7.2). policy.Service returns sqlc rows, matching policyPort directly.
 func NewPolicyPort(pool *pgxpool.Pool, hub *nodepush.Hub) policyPort {
 	svc := policy.NewService(pool)
+	svc.SetNotifier(hub)
+	return svc
+}
+
+// NewPolicyPortWithFQDN is the production policy port. It shares the same
+// durable active-generation reader and deployment entitlement decision as the
+// node desired-state provider, so Test Access and all other policy consumers
+// cannot disagree about an FQDN rule's current authorization.
+func NewPolicyPortWithFQDN(pool *pgxpool.Pool, hub *nodepush.Hub, licences *licence.Manager) policyPort {
+	svc := policy.NewService(pool).WithFQDNGenerations(
+		fqdnresolver.NewPostgresStore(pool),
+		func() bool { return licence.Has(licences.Evaluate(time.Now()).Tier, licence.FeatFQDNResources) },
+	)
 	svc.SetNotifier(hub)
 	return svc
 }

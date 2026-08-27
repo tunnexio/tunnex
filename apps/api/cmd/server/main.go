@@ -55,6 +55,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpn"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpnca"
+	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
 	"github.com/tunnexio/tunnex/apps/api/internal/secrets"
@@ -275,7 +276,7 @@ func main() {
 	nodeSvc := nodes.NewService(pool, agentCA, sealer).WithLicence(licenceMgr)
 	// S7.2: wire the Zero Trust policy source for the desired state (nil in the open
 	// build -> no policy field -> agents keep the legacy mesh).
-	nodeSvc.SetPolicyProvider(apphttp.NewNodePolicyProvider(pool))
+	nodeSvc.SetPolicyProvider(apphttp.NewNodePolicyProvider(pool, licenceMgr))
 	nodes.LogPolicyHealthTuning(logger) // S7.4b: assumed R + derived T (operator discoverability)
 	pushHub := nodepush.New()
 	deviceSvc := devices.NewService(pool, pushHub, logger).WithLicence(licenceMgr)
@@ -470,7 +471,7 @@ func main() {
 		MCPToolApproval:       mcptoolapproval.New(pool),
 		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
-		Policy:                apphttp.NewPolicyPort(pool, pushHub),
+		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
 		FQDNResources:         fqdnresources.New(pool),
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
 		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
@@ -536,8 +537,11 @@ func main() {
 	// consults a public/control-plane resolver.  Like all writing schedulers, only
 	// the confirmed leader ticks it and shutdown cancels any bounded DNS attempt.
 	fqdnCtx, stopFQDNScheduler := context.WithCancel(electorCtx)
+	fqdnStore := fqdnresolver.NewPostgresStore(pool).WithAfterCommit(fqdnresolver.Hooks{
+		Policy: policy.NewFQDNInvalidator(pool, pushHub),
+	})
 	fqdnScheduler := fqdnresolver.NewScheduler(
-		fqdnresolver.NewPostgresStore(pool),
+		fqdnStore,
 		fqdnresolver.NewSelectedTransport(fqdnresolver.UnavailableSelectedLookup{}),
 		fqdnresolver.SchedulerConfig{MayTick: func() bool {
 			return elector.IsLeader() && elector.ConfirmLeader(fqdnCtx, pool)
