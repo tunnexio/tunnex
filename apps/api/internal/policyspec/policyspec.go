@@ -23,11 +23,12 @@ import (
 // neutral DTO so the open HTTP build can name the enterprise policy port
 // without importing the enterprise compiler package.
 type AccessEvaluation struct {
-	Allowed       bool
-	Mode          string
-	PolicyVersion int
-	PolicyHash    string
-	RuleID        string
+	Allowed            bool
+	Mode               string
+	PolicyVersion      int
+	PolicyHash         string
+	RuleID             string
+	DestinationAnswers []string
 }
 
 // EvaluateAccess matches the same five enforcement fields rendered by the
@@ -44,7 +45,7 @@ func EvaluateAccess(compiled *Compiled, deviceID uuid.UUID, source, destination,
 	}
 	src, srcErr := netip.ParseAddr(source)
 	dst, dstErr := netip.ParseAddr(destination)
-	if srcErr != nil || dstErr != nil || deviceID == uuid.Nil || port < 1 || port > 65535 {
+	if srcErr != nil || deviceID == uuid.Nil || port < 1 || port > 65535 {
 		return out
 	}
 	attributed := false
@@ -55,6 +56,30 @@ func EvaluateAccess(compiled *Compiled, deviceID uuid.UUID, source, destination,
 		}
 	}
 	if !attributed {
+		return out
+	}
+	if dstErr != nil {
+		for _, generation := range compiled.FQDNGenerations {
+			if generation.Name != destination || len(generation.Answers) == 0 {
+				continue
+			}
+			for _, answer := range generation.Answers {
+				prefix, err := netip.ParsePrefix(answer)
+				if err != nil || prefix.Bits() != prefix.Addr().BitLen() {
+					return out // malformed generation is never diagnostic authorization
+				}
+				result := EvaluateAccess(compiled, deviceID, source, prefix.Addr().String(), protocol, port)
+				if !result.Allowed {
+					return out
+				}
+				out.DestinationAnswers = append(out.DestinationAnswers, prefix.Addr().String())
+				if out.RuleID == "" {
+					out.RuleID = result.RuleID
+				}
+			}
+			out.Allowed = len(out.DestinationAnswers) > 0
+			return out
+		}
 		return out
 	}
 	if compiled.Mesh && compiled.Mode == "off" {
@@ -175,7 +200,11 @@ type AffectedDevice struct {
 // green (the PoolCIDR/Routes dead-while-green class) — so a non-empty VIP map triggers RequiredVersion=7
 // and an old gated agent refuses loudly rather than mis-serving. Content-derived: an org with NO cluster
 // emits no map, requires no bump, and its agents never see v7 (the zero-config golden).
-const ProtocolVersion = 7
+// v8 (S21): an artifact carrying FQDN answer generations has expanded an
+// approved hostname into concrete /32 and /128 enforcement tuples. Generation
+// identity is part of the hash so withdrawal/rebinding cannot be hash-blind; an
+// older agent must refuse this content loudly.
+const ProtocolVersion = 8
 
 // SupportedWindow is the AGENT-VERSION CONTRACT the upgrade path commits to (S11 D1): the current protocol
 // version and the one before it. An agent at either must be able to run against this control plane, which is
@@ -205,6 +234,9 @@ const SupportedWindow = 2
 // leaves this function untouched is a silent-accept bug — the artifact would carry new content at an old
 // version and old agents would accept it. The D2 checklist asks "RequiredVersion updated? y/n".
 func RequiredVersion(c Compiled) int {
+	if len(c.FQDNGenerations) > 0 {
+		return 8
+	}
 	//	v7 trigger (S10.3): a non-empty VIP map — an old agent has no VIP->ClusterIP DNAT / DNS-rewrite
 	//	render, so it would leave the exposed K8s Service unreachable while green (dead-while-green). REFUSE.
 	if len(c.VIPMappings) > 0 || len(c.K8sDNSZones) > 0 {
@@ -348,6 +380,22 @@ type Compiled struct {
 	// binds :53 on a reserved DNS VIP and serves that cluster's zone (direct-answer from the VIP map above,
 	// NXDOMAIN for in-zone-but-unexposed). Same out-of-hash / v7-trigger treatment as VIPMappings.
 	K8sDNSZones []K8sDNSZone `json:"k8s_dns_zones,omitempty"`
+	// FQDNGenerations (v8, S21) records the exact active answers expanded into
+	// Allow. It is enforcement-significant: while Allow carries the packet match,
+	// this identity binds that match to the selected resolver generation and makes
+	// withdrawal/rebinding visible in the canonical hash.
+	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
+}
+
+// FQDNGeneration is the active, selected-context answer set for one FQDN
+// resource. Answers are canonical host prefixes (/32 or /128), sorted and
+// deduplicated by the compiler. This is not a DNS forwarder or hostname ACL:
+// the agent still enforces only the expanded L3/L4 Allow tuples.
+type FQDNGeneration struct {
+	ResourceID string   `json:"resource_id"`
+	Name       string   `json:"name"`
+	Generation string   `json:"generation"`
+	Answers    []string `json:"answers"`
 }
 
 // VIPMapping is one exposed K8s Service: clients reach VIP (a /32 in the cluster's synthetic range); the

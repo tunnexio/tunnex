@@ -108,11 +108,17 @@ type SiteNode struct {
 
 // Resource is a static destination (a CIDR + optional L4 scope).
 type Resource struct {
-	ID       uuid.UUID
-	CIDR     string
-	Protocol string // any | tcp | udp
-	PortLow  int    // 0 => unset
-	PortHigh int    // 0 => unset
+	ID   uuid.UUID
+	CIDR string
+	// FQDN is mutually exclusive with CIDR. The storage/API lane normalizes and
+	// validates it; the compiler treats an invalid or incomplete generation as
+	// no destination, preserving default deny.
+	FQDN             string
+	ActiveGeneration string
+	Answers          []string
+	Protocol         string // any | tcp | udp
+	PortLow          int    // 0 => unset
+	PortHigh         int    // 0 => unset
 }
 
 // ExposedService (S10.3) is a Kubernetes Service exposed to the fabric: a STABLE identity resolved to its
@@ -359,12 +365,13 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		PortLow, PortHigh int
 	}
 	type nodeAcc struct {
-		set  map[allowKey]bool
-		list []policyspec.AllowEntry
+		set         map[allowKey]bool
+		list        []policyspec.AllowEntry
+		generations map[string]policyspec.FQDNGeneration
 	}
 	acc := map[uuid.UUID]*nodeAcc{}
 	for nodeID := range nodeSet {
-		acc[nodeID] = &nodeAcc{set: map[allowKey]bool{}}
+		acc[nodeID] = &nodeAcc{set: map[allowKey]bool{}, generations: map[string]policyspec.FQDNGeneration{}}
 	}
 	add := func(nodeID uuid.UUID, e policyspec.AllowEntry) {
 		// Every caller's target is in nodeSet by construction (devices + SiteNodes + the seeded hub) —
@@ -377,6 +384,9 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		}
 		a.set[k] = true
 		a.list = append(a.list, e)
+	}
+	addGeneration := func(nodeID uuid.UUID, g policyspec.FQDNGeneration) {
+		acc[nodeID].generations[g.ResourceID] = g
 	}
 
 	// A3b (S8.6) far-grant placement: site subnets parsed ONCE so a device→dst grant whose destination
@@ -464,7 +474,23 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			switch r.DstKind {
 			case "resource":
 				res, ok := resourceByID[r.DstResourceID]
-				if !ok || res.CIDR == "" {
+				if !ok {
+					continue
+				}
+				if res.FQDN != "" {
+					generation, answers, ok := activeFQDNGeneration(res)
+					if !ok {
+						continue // draft, withdrawn, stale, or malformed answers: deny
+					}
+					for _, node := range devGrantNodes(d.NodeID, uuid.Nil) {
+						addGeneration(node, generation)
+						for _, answer := range answers {
+							add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()})
+						}
+					}
+					continue
+				}
+				if res.CIDR == "" {
 					continue
 				}
 				// A3b: a resource inside a site's approved subnet is site-fronted — the grant also lands
@@ -622,8 +648,20 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		var dsts []policyspec.AllowEntry
 		switch r.DstKind {
 		case "resource":
-			if res, ok := resourceByID[r.DstResourceID]; ok && res.CIDR != "" {
-				dsts = append(dsts, policyspec.AllowEntry{DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+			if res, ok := resourceByID[r.DstResourceID]; ok {
+				if res.FQDN != "" {
+					generation, answers, active := activeFQDNGeneration(res)
+					if active {
+						for _, answer := range answers {
+							dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+						}
+						for node := range enforceNodes {
+							addGeneration(node, generation)
+						}
+					}
+				} else if res.CIDR != "" {
+					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+				}
 			}
 		case "group":
 			for _, dstIP := range groupDeviceIPs[r.DstGroupID] {
@@ -662,11 +700,73 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	for nodeID := range nodeSet {
 		list := acc[nodeID].list
 		sortAllows(list)
-		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list, Subjects: subjects}
+		generations := make([]policyspec.FQDNGeneration, 0, len(acc[nodeID].generations))
+		for _, generation := range acc[nodeID].generations {
+			generations = append(generations, generation)
+		}
+		sort.Slice(generations, func(i, j int) bool { return generations[i].ResourceID < generations[j].ResourceID })
+		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list, Subjects: subjects, FQDNGenerations: generations}
 		c.Version = policyspec.RequiredVersion(c) // content-derived (S8.2 D1b): v5 iff a CIDR source present
 		out[nodeID] = c
 	}
 	return out
+}
+
+// activeFQDNGeneration is a deliberately defensive compiler boundary. Resolver
+// lifecycle code supplies only selected-context, last-known-good generations; a
+// partial DB read or bad fixture must still withdraw rather than accidentally
+// turn a hostname into a broad CIDR allow.
+func activeFQDNGeneration(r Resource) (policyspec.FQDNGeneration, []string, bool) {
+	if r.ID == uuid.Nil || r.FQDN == "" || r.CIDR != "" || r.ActiveGeneration == "" || len(r.Answers) == 0 || len(r.Answers) > 32 || !validFQDNL4Scope(r) {
+		return policyspec.FQDNGeneration{}, nil, false
+	}
+	seen := map[string]bool{}
+	answers := make([]string, 0, len(r.Answers))
+	for _, raw := range r.Answers {
+		addr, err := netip.ParseAddr(raw)
+		if err != nil || !usableFQDNAnswer(addr) {
+			return policyspec.FQDNGeneration{}, nil, false
+		}
+		prefix := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if !seen[prefix] {
+			seen[prefix] = true
+			answers = append(answers, prefix)
+		}
+	}
+	sort.Strings(answers)
+	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: r.FQDN, Generation: r.ActiveGeneration, Answers: answers}, answers, true
+}
+
+// validFQDNL4Scope makes the compiler's FQDN branch default deny if a
+// cross-lane read bypasses the resource validator. In particular, a malformed
+// protocol must never fall through normProto's legacy CIDR compatibility default
+// and become an unscoped "any" grant.
+func validFQDNL4Scope(r Resource) bool {
+	if r.Protocol == "any" || r.Protocol == "" {
+		return r.PortLow == 0 && r.PortHigh == 0
+	}
+	if r.Protocol != "tcp" && r.Protocol != "udp" {
+		return false
+	}
+	if r.PortLow == 0 && r.PortHigh == 0 {
+		return true
+	}
+	return r.PortLow >= 1 && r.PortLow <= r.PortHigh && r.PortHigh <= 65535
+}
+
+func usableFQDNAnswer(addr netip.Addr) bool {
+	if !addr.IsValid() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsMulticast() || addr.IsUnspecified() {
+		return false
+	}
+	// Documentation ranges must never become a real authorization from test or
+	// resolver data. Metadata endpoints are rejected by the resolver lane too;
+	// retaining this guard here makes compiler failure closed.
+	for _, raw := range []string{"192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32", "169.254.169.254/32", "fd00:ec2::254/128"} {
+		if p, err := netip.ParsePrefix(raw); err == nil && p.Contains(addr) {
+			return false
+		}
+	}
+	return true
 }
 
 // AgentRouteCIDRs returns canonical destination prefixes present in compiled

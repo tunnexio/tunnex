@@ -27,11 +27,12 @@ type hashAllow struct {
 // to all agents (A-4) — if that ever changes (EPIC 8), Version becomes a divergence
 // source and this warning fires.
 type hashView struct {
-	Version int         `json:"version"`
-	NodeID  string      `json:"node_id"`
-	Mode    string      `json:"mode"`
-	Mesh    bool        `json:"mesh"`
-	Allow   []hashAllow `json:"allow"`
+	Version         int              `json:"version"`
+	NodeID          string           `json:"node_id"`
+	Mode            string           `json:"mode"`
+	Mesh            bool             `json:"mesh"`
+	Allow           []hashAllow      `json:"allow"`
+	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
 }
 
 // projectForHash maps a Compiled to its enforcement-only projection. Every NEW
@@ -44,6 +45,9 @@ func projectForHash(c Compiled) hashView {
 		for i, e := range c.Allow {
 			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh}
 		}
+	}
+	if c.FQDNGenerations != nil {
+		v.FQDNGenerations = c.FQDNGenerations
 	}
 	return v
 }

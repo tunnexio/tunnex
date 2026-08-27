@@ -55,7 +55,7 @@ const (
 // v4 bump is no longer "safe to safe-ignore" — it is the enforcement boundary the gate protects).
 // v6 (A3b, S8.6): pool_cidr on the site-gateway artifact (device-pool Docker accepts) — an old agent
 // would silently strand device transit on Docker hosts, so the gate refuses (lockstep with policyspec).
-const ProtocolVersion = 7
+const ProtocolVersion = policyspec.ProtocolVersion
 
 const joinTokenTTL = time.Hour
 

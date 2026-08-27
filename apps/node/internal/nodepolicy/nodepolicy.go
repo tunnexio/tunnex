@@ -33,7 +33,10 @@ const (
 // device transit on Docker hosts (the D1 interlock again).
 // v7 (S10.3): this agent renders the VIP map (VIP->ClusterIP DNAT + DNS-rewrite), so it applies v7; an
 // agent still at 6 refuses a VIP-map-carrying artifact rather than leaving the exposed Service dead-while-green.
-const MaxSupportedVersion = 7
+// v8 (S21): FQDN generations are expanded by the control plane into ordinary
+// /32 and /128 allows. This agent understands the generation identity in the
+// hash and continues to enforce the concrete tuples.
+const MaxSupportedVersion = 8
 
 // AllowEntry is one compiled default-deny grant: SrcIP (a device /32 host) may reach
 // DstCIDR on Protocol within [PortLow,PortHigh]. PortLow==0 means all ports.
@@ -102,7 +105,17 @@ type Compiled struct {
 	VIPMappings []VIPMapping `json:"vip_mappings,omitempty"`
 	// K8sDNSZones (v7, S10.3) — DNS-listen table: bind :53 on each ListenVIP and serve that cluster's zone
 	// (direct-answer from the VIP map, NXDOMAIN in-zone-but-unexposed). Mirror of policyspec.Compiled.K8sDNSZones.
-	K8sDNSZones []K8sDNSZone `json:"k8s_dns_zones,omitempty"`
+	K8sDNSZones     []K8sDNSZone     `json:"k8s_dns_zones,omitempty"`
+	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
+}
+
+// FQDNGeneration mirrors policyspec.FQDNGeneration. It participates in the
+// canonical hash, even though packet matching remains the expanded Allow set.
+type FQDNGeneration struct {
+	ResourceID string   `json:"resource_id"`
+	Name       string   `json:"name"`
+	Generation string   `json:"generation"`
+	Answers    []string `json:"answers"`
 }
 
 // VIPMapping mirrors policyspec.VIPMapping — one exposed K8s Service (VIP -> Service identity the agent
@@ -154,11 +167,12 @@ type hashAllow struct {
 }
 
 type hashView struct {
-	Version int         `json:"version"`
-	NodeID  string      `json:"node_id"`
-	Mode    string      `json:"mode"`
-	Mesh    bool        `json:"mesh"`
-	Allow   []hashAllow `json:"allow"`
+	Version         int              `json:"version"`
+	NodeID          string           `json:"node_id"`
+	Mode            string           `json:"mode"`
+	Mesh            bool             `json:"mesh"`
+	Allow           []hashAllow      `json:"allow"`
+	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
 }
 
 func projectForHash(c *Compiled) hashView {
@@ -168,6 +182,9 @@ func projectForHash(c *Compiled) hashView {
 		for i, e := range c.Allow {
 			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh}
 		}
+	}
+	if c.FQDNGenerations != nil {
+		v.FQDNGenerations = c.FQDNGenerations
 	}
 	return v
 }

@@ -88,6 +88,16 @@ func TestCanonicalHashSubjectsAreObservabilityOnly(t *testing.T) {
 	}
 }
 
+func TestCanonicalHashIncludesFQDNGeneration(t *testing.T) {
+	base := &nodepolicy.Compiled{Version: 8, NodeID: "node-a", Mode: nodepolicy.ModeEnforcing, Allow: []nodepolicy.AllowEntry{{SrcIP: "10.99.0.10", DstCIDR: "8.8.8.8/32", Protocol: "tcp", PortLow: 443, PortHigh: 443}},
+		FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: "resource-a", Name: "api.example.com", Generation: "1", Answers: []string{"8.8.8.8/32"}}}}
+	changed := *base
+	changed.FQDNGenerations = []nodepolicy.FQDNGeneration{{ResourceID: "resource-a", Name: "api.example.com", Generation: "2", Answers: []string{"8.8.8.8/32"}}}
+	if nodepolicy.CanonicalHash(base) == nodepolicy.CanonicalHash(&changed) {
+		t.Fatal("an FQDN generation change must change the applied-policy hash")
+	}
+}
+
 // TestCanonicalHashDNSForwardsBlind — S8.4 D5 (agent side): DNSForwards is convenience plumbing, out of
 // the hash, so the agent's applied hash matches the CP's pushed hash whether or not DNS is configured
 // (no false silent_desync from a DNS-only change). Mirror of policyspec's guard.

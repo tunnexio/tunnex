@@ -88,6 +88,80 @@ func TestSubjectAttributionIsHashBlind(t *testing.T) {
 	}
 }
 
+func TestFQDNResourceExpandsActiveGenerationWithExactL4Scope(t *testing.T) {
+	resourceID := uuid.New()
+	ruleID := uuid.New()
+	snap := policy.Snapshot{
+		Mode:        policy.ModeEnforcing,
+		Devices:     []policy.Device{{ID: uuid.New(), UserID: uAlice, NodeID: nodeA, AssignedIP: "10.99.0.10"}},
+		Memberships: []policy.Membership{{GroupID: gAdmins, UserID: uAlice}},
+		Resources:   []policy.Resource{{ID: resourceID, FQDN: "api.example.com", ActiveGeneration: "42", Answers: []string{"2001:4860:4860::8888", "8.8.8.8", "8.8.8.8"}, Protocol: "tcp", PortLow: 443, PortHigh: 443}},
+		Rules:       []policy.Rule{{ID: ruleID, SrcGroupID: gAdmins, DstKind: "resource", DstResourceID: resourceID}},
+	}
+	c := policy.Compile(snap)[nodeA]
+	if c.Mesh || c.Version != 8 {
+		t.Fatalf("FQDN artifact must be enforcing v8, got mesh=%v version=%d", c.Mesh, c.Version)
+	}
+	if len(c.Allow) != 2 || !hasAllow(c.Allow, "10.99.0.10", "8.8.8.8/32") || !hasAllow(c.Allow, "10.99.0.10", "2001:4860:4860::8888/128") {
+		t.Fatalf("active answers must expand to exact hosts, got %+v", c.Allow)
+	}
+	for _, allow := range c.Allow {
+		if allow.Protocol != policyspec.ProtoTCP || allow.PortLow != 443 || allow.PortHigh != 443 {
+			t.Fatalf("answer lost resource L4 scope: %+v", allow)
+		}
+	}
+	if got := c.FQDNGenerations; len(got) != 1 || got[0].Generation != "42" || !reflect.DeepEqual(got[0].Answers, []string{"2001:4860:4860::8888/128", "8.8.8.8/32"}) {
+		t.Fatalf("generation identity must be canonical and present in artifact: %+v", got)
+	}
+}
+
+func TestFQDNWithdrawalAndUnsafeAnswersFailClosed(t *testing.T) {
+	resourceID := uuid.New()
+	base := policy.Snapshot{Mode: policy.ModeEnforcing,
+		Devices:     []policy.Device{{ID: uuid.New(), UserID: uAlice, NodeID: nodeA, AssignedIP: "10.99.0.10"}},
+		Memberships: []policy.Membership{{GroupID: gAdmins, UserID: uAlice}},
+		Rules:       []policy.Rule{{ID: uuid.New(), SrcGroupID: gAdmins, DstKind: "resource", DstResourceID: resourceID}},
+	}
+	for name, resource := range map[string]policy.Resource{
+		"withdrawn":          {ID: resourceID, FQDN: "api.example.com"},
+		"metadata":           {ID: resourceID, FQDN: "api.example.com", ActiveGeneration: "9", Answers: []string{"169.254.169.254"}},
+		"documentation":      {ID: resourceID, FQDN: "api.example.com", ActiveGeneration: "9", Answers: []string{"192.0.2.1"}},
+		"invalid-port-scope": {ID: resourceID, FQDN: "api.example.com", ActiveGeneration: "9", Answers: []string{"8.8.8.8"}, Protocol: "tcp", PortLow: 443},
+		"invalid-protocol":   {ID: resourceID, FQDN: "api.example.com", ActiveGeneration: "9", Answers: []string{"8.8.8.8"}, Protocol: "sctp"},
+	} {
+		s := base
+		s.Resources = []policy.Resource{resource}
+		c := policy.Compile(s)[nodeA]
+		if len(c.Allow) != 0 || len(c.FQDNGenerations) != 0 || c.Mesh {
+			t.Fatalf("%s must withdraw to default deny, got %+v", name, c)
+		}
+	}
+}
+
+func TestFQDNGenerationChangesCanonicalHashDeterministically(t *testing.T) {
+	resourceID := uuid.New()
+	makeArtifact := func(generation string, answers []string) policyspec.Compiled {
+		s := policy.Snapshot{Mode: policy.ModeEnforcing,
+			Devices:     []policy.Device{{ID: uuid.New(), UserID: uAlice, NodeID: nodeA, AssignedIP: "10.99.0.10"}},
+			Memberships: []policy.Membership{{GroupID: gAdmins, UserID: uAlice}},
+			Resources:   []policy.Resource{{ID: resourceID, FQDN: "api.example.com", ActiveGeneration: generation, Answers: answers, Protocol: "udp", PortLow: 53, PortHigh: 53}},
+			Rules:       []policy.Rule{{ID: uuid.New(), SrcGroupID: gAdmins, DstKind: "resource", DstResourceID: resourceID}},
+		}
+		return policy.Compile(s)[nodeA]
+	}
+	a := makeArtifact("7", []string{"8.8.4.4", "8.8.8.8"})
+	b := makeArtifact("7", []string{"8.8.8.8", "8.8.4.4"})
+	if policyspec.CanonicalHash(a) != policyspec.CanonicalHash(b) {
+		t.Fatal("answer ordering must not perturb the canonical hash")
+	}
+	if policyspec.CanonicalHash(a) == policyspec.CanonicalHash(makeArtifact("8", []string{"8.8.4.4", "8.8.8.8"})) {
+		t.Fatal("a new FQDN generation must change the enforcement hash")
+	}
+	if policyspec.CanonicalHash(a) == policyspec.CanonicalHash(makeArtifact("7", []string{"1.1.1.1"})) {
+		t.Fatal("a changed answer set must change the enforcement hash")
+	}
+}
+
 // B2 (structural guard): the enforcing path can NEVER emit Mesh=true, no matter
 // the inputs. Drive a rich enforcing snapshot and assert every node is Mesh=false.
 func TestEnforcingNeverEmitsBlanketMesh(t *testing.T) {
