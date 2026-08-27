@@ -103,6 +103,23 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if active != 1 || answers != 2 {
 		t.Fatalf("active=%d answers=%d", active, answers)
 	}
+	// Lane 3 receives only this durable active snapshot: it is scoped to the
+	// owning organization, carries the selected Site/Gateway authority, and
+	// never consults last-good or pending lifecycle state.
+	projection, err := store.ActiveGenerations(ctx, org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection) != 1 {
+		t.Fatalf("active projection count=%d want 1", len(projection))
+	}
+	got := projection[0]
+	if got.ResourceID != resource || got.Sequence != 1 || got.Context.ResolverID != site.String() || got.Context.GatewayID != gateway.String() || len(got.Addresses) != 2 || got.Addresses[0] != addr("10.2.3.4") || got.Addresses[1] != addr("fd00::4") {
+		t.Fatalf("unexpected active projection: %#v", got)
+	}
+	if other, err := store.ActiveGenerations(ctx, uuid.New()); err != nil || len(other) != 0 {
+		t.Fatalf("cross-org active projection leaked: rows=%#v err=%v", other, err)
+	}
 
 	w.ExpectedGeneration = 1
 	if err := store.Withdraw(ctx, w, WithdrawalTimeout, now.Add(time.Minute)); err != nil {
@@ -117,6 +134,9 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	}
 	if active != 0 || code != string(WithdrawalTimeout) {
 		t.Fatalf("withdrawal active=%d code=%q", active, code)
+	}
+	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
+		t.Fatalf("withdrawn generation must not project to compiler: rows=%#v err=%v", projection, err)
 	}
 	if hook.publish != 1 || hook.withdraw != 1 {
 		t.Fatalf("after-commit calls publish=%d withdraw=%d", hook.publish, hook.withdraw)
@@ -135,5 +155,15 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	}
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.5")}}); err != ErrSuperseded {
 		t.Fatalf("stale work must not overwrite typed withdrawal: %v", err)
+	}
+	// A context edit withdraws the old authority from compiler input immediately.
+	// The resolver will publish a new generation only after it re-reads the new
+	// selected pair; no old Site/Gateway snapshot may survive that handoff.
+	site2, gateway2 := uuid.New(), uuid.New()
+	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'reselected')`, site2, org)
+	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'gateway-reselected',$3,$4)`, gateway2, org, "scheduler-"+gateway2.String(), site2)
+	exec(`UPDATE fqdn_resources SET resolver_site_id=$3,resolver_node_id=$4 WHERE id=$1 AND org_id=$2`, resource, org, site2, gateway2)
+	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
+		t.Fatalf("context-mismatched active generation must not project: rows=%#v err=%v", projection, err)
 	}
 }
