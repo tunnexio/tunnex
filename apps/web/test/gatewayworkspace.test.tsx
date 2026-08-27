@@ -121,6 +121,21 @@ describe("S20 Gateway inventory", () => {
     expect(screen.queryByText(/No gateways are enrolled/)).toBeNull();
   });
 
+  it("keeps exactly one enrollment caller when the fleet is empty", () => {
+    hookResult = {
+      ...hookResult,
+      state: {
+        ...readyState,
+        nodes: [],
+        licence: { tier: "community", gateway_ceiling: 1, gateways_in_use: 0 },
+      },
+    };
+    render(<MemoryRouter><Gateways /></MemoryRouter>);
+
+    expect(screen.getAllByRole("button", { name: "Enroll gateway" })).toHaveLength(1);
+    expect(screen.getByText(/No gateways are enrolled/)).toBeTruthy();
+  });
+
   it("renders server-owned egress modes and an explicit stable detail affordance for every row", () => {
     const nodes = [
       { ...readyState.nodes[0], id: "gw-dual", name: "gw-us-east", egress_mode: "dual_stack" },

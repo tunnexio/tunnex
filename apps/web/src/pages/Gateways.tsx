@@ -244,9 +244,7 @@ export default function GatewaysPage() {
               pageSize={25}
               columns={columns}
               empty={
-                <EmptyState
-                  action={state.nodes.length === 0 && canEnroll && !ceilingReached ? <Button onClick={openEnrollment}>Enroll gateway</Button> : undefined}
-                >
+                <EmptyState>
                   {state.nodes.length === 0
                     ? "No gateways are enrolled. Issue a one-time command to bring the first gateway online."
                     : "No gateways match the current search and health filter."}
