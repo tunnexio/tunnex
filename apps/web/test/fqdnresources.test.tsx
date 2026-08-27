@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 let fqdnResources: Array<Record<string, unknown>> = [];
 let role = "admin";
 let impact: Record<string, unknown> = { resource_id: "fqdn-1", referencing_rule_count: 2, generation_withdrawal_required: true };
+let resourceLoadError = "";
 
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org-a", name: "Org A" } }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a" } } }) }));
@@ -14,19 +15,19 @@ vi.mock("../src/lib/api", async () => {
     if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role }] };
     if (path.endsWith("/fqdn-resources/setting")) return { data: { enabled: false } };
     if (path.endsWith("/impact")) return { data: impact };
-    if (path.endsWith("/fqdn-resources")) return { data: fqdnResources };
+    if (path.endsWith("/fqdn-resources")) return resourceLoadError ? { error: { error: { message: resourceLoadError } } } : { data: fqdnResources };
     if (path.endsWith("/sites")) return { data: [{ id: "site-a", name: "HQ" }] };
     if (path.endsWith("/nodes")) return { data: [{ id: "gateway-a", name: "HQ gateway", status: "active", enrolled_kind: "gateway", site_id: "site-a" }] };
     if (path.endsWith("/resources")) return { data: [] };
     return { data: [] };
-  }), POST: vi.fn(async () => ({ data: {} })), PATCH: vi.fn(async () => ({ data: {} })), DELETE: vi.fn(async () => ({ data: {} })) } };
+  }), POST: vi.fn(async () => ({ data: {} })), PATCH: vi.fn(async () => ({ data: {} })), PUT: vi.fn(async () => ({ data: {} })), DELETE: vi.fn(async () => ({ data: {} })) } };
 });
 
 import { api } from "../src/lib/api";
 import AccessResources from "../src/pages/AccessResources";
 
 function page() { return render(<MemoryRouter><AccessResources /></MemoryRouter>); }
-beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, generation_withdrawal_required: true }; fqdnResources = []; vi.mocked(api.POST).mockClear(); vi.mocked(api.DELETE).mockClear(); });
+beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, generation_withdrawal_required: true }; resourceLoadError = ""; fqdnResources = []; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); vi.mocked(api.PUT).mockClear(); vi.mocked(api.DELETE).mockClear(); });
 afterEach(cleanup);
 
 describe("FQDN access resources", () => {
@@ -57,6 +58,17 @@ describe("FQDN access resources", () => {
     expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { fqdn: "orders.internal.example.com", protocol: "tcp", port_low: 443, port_high: null, resolver_context: { site_id: "site-a", gateway_id: "gateway-a" } } });
   });
 
+  it("keeps inventory and narrow-form controls accessible on responsive layouts", async () => {
+    fqdnResources = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.example.com", protocol: "tcp", port_low: 443, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 }];
+    page();
+    expect(await screen.findByRole("table", { name: "FQDN resources inventory" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Orders" }).className).toContain("focus-visible:outline");
+    fireEvent.click(screen.getByRole("button", { name: "Create FQDN resource" }));
+    fireEvent.change(screen.getByLabelText("Protocol"), { target: { value: "tcp" } });
+    fireEvent.change(screen.getByLabelText("Port scope"), { target: { value: "range" } });
+    expect(screen.getByLabelText("Port").closest(".grid")?.className).toContain("sm:grid-cols-2");
+  });
+
   it("requires the server impact before allowing deletion", async () => {
     fqdnResources = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.internal.example.com", protocol: "any", state: "healthy", answer_count: 2, resolver_context: null, generation: 3 }];
     page();
@@ -64,5 +76,67 @@ describe("FQDN access resources", () => {
     expect(await screen.findByText(/Server impact: 2 referencing rules/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Delete FQDN resource" }) as HTMLButtonElement).disabled).toBe(true);
     expect(vi.mocked(api.DELETE)).not.toHaveBeenCalled();
+  });
+
+  it("renders exact single, range, and all port scopes in the inventory and detail", async () => {
+    fqdnResources = [
+      { id: "single", name: "Single", fqdn: "single.example.com", protocol: "tcp", port_low: 443, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 },
+      { id: "range", name: "Range", fqdn: "range.example.com", protocol: "udp", port_low: 53, port_high: 55, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 },
+      { id: "all", name: "All", fqdn: "all.example.com", protocol: "tcp", port_low: null, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 },
+    ];
+    page();
+    expect(await screen.findByText("TCP port 443")).toBeTruthy();
+    expect(screen.getByText("UDP ports 53–55")).toBeTruthy();
+    expect(screen.getByText("TCP, all ports")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Range" }));
+    expect((await screen.findAllByText("range.example.com")).length).toBeGreaterThan(1);
+    expect(screen.getAllByText(/UDP ports 53–55/).length).toBeGreaterThan(1);
+  });
+
+  it("makes opt-in actionable and preserves an announced recovery path when a mutation fails", async () => {
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: "Enable enforcement" }));
+    await waitFor(() => expect(vi.mocked(api.PUT)).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/fqdn-resources/setting", expect.objectContaining({ body: { enabled: true } })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create FQDN resource" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Orders" } });
+    fireEvent.change(screen.getByLabelText("Exact hostname"), { target: { value: "orders.internal.example.com" } });
+    vi.mocked(api.POST).mockRejectedValueOnce(new Error("offline"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
+    expect((await screen.findAllByRole("alert")).some((alert) => /changes were not confirmed; try again/i.test(alert.textContent ?? ""))).toBe(true);
+    expect((screen.getByRole("button", { name: "Create FQDN resource" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps edit and delete recovery available after PATCH and DELETE failures", async () => {
+    fqdnResources = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.example.com", protocol: "tcp", port_low: 443, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: null }];
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    vi.mocked(api.PATCH).mockRejectedValueOnce(new Error("offline"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save FQDN resource" }));
+    await waitFor(() => expect(vi.mocked(api.PATCH)).toHaveBeenCalled());
+    expect((screen.getByRole("button", { name: "Save FQDN resource" }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    impact = { resource_id: "fqdn-1", referencing_rule_count: 0, generation_withdrawal_required: false };
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await screen.findByText(/Server impact: 0 referencing rules/);
+    vi.mocked(api.DELETE).mockRejectedValueOnce(new Error("offline"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete FQDN resource" }));
+    await waitFor(() => expect(vi.mocked(api.DELETE)).toHaveBeenCalled());
+    expect((screen.getByRole("button", { name: "Delete FQDN resource" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("states unavailable permissions and retries a failed inventory instead of claiming it is empty", async () => {
+    role = "operator";
+    page();
+    expect(await screen.findByRole("alert")).toHaveTextContent("fqdn_resource:view");
+
+    cleanup();
+    role = "admin";
+    resourceLoadError = "inventory down";
+    page();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not load FQDN resources/i);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText(/No FQDN resources yet/)).toBeNull();
   });
 });
