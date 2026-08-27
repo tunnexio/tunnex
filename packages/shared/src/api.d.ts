@@ -1905,6 +1905,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/fqdn-resolver-contexts/{siteId}/{gatewayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the server-managed DNS endpoints for a selected Site/Gateway context
+         * @description Only the returned private endpoint addresses may be queried for this context. A missing configuration is not a fallback to host, public, or control-plane DNS.
+         */
+        get: operations["getFQDNResolverContextConfig"];
+        /**
+         * Atomically replace the server-managed DNS endpoints for a selected Site/Gateway context
+         * @description Retires the prior configuration and creates an immutable active revision. A resolver failure withdraws FQDN access; endpoints are never inferred from host DNS.
+         */
+        put: operations["setFQDNResolverContextConfig"];
+        post?: never;
+        /**
+         * Remove the active DNS resolver endpoint configuration for a selected Site/Gateway context
+         * @description Existing resolver history remains visible. Bound FQDN resources fail closed until an authorized operator saves a new configuration.
+         */
+        delete: operations["deleteFQDNResolverContextConfig"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/policies": {
         parameters: {
             query?: never;
@@ -4150,12 +4182,45 @@ export interface components {
             gateway_id: string;
             site_name: string;
             gateway_name: string;
+            /** @description The active, server-managed direct DNS configuration. Null means this bound context cannot resolve and must fail closed. */
+            resolver_config?: components["schemas"]["FQDNResolverContextConfig"] | null;
         };
         FQDNResolverContextRequest: {
             /** Format: uuid */
             site_id: string;
             /** Format: uuid */
             gateway_id: string;
+        };
+        FQDNResolverEndpoint: {
+            /**
+             * Format: ip
+             * @description Literal private or public resolver address selected by the tenant; hostnames are not permitted.
+             */
+            address: string;
+            /** @default 53 */
+            port: number;
+            /** @enum {string} */
+            transport: "udp" | "tcp";
+        };
+        FQDNResolverContextConfig: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            site_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: int64 */
+            version: number;
+            /** @enum {string} */
+            state: "active" | "retired";
+            endpoints: components["schemas"]["FQDNResolverEndpoint"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        FQDNResolverContextConfigRequest: {
+            endpoints: components["schemas"]["FQDNResolverEndpoint"][];
         };
         FQDNResourceSetting: {
             /** @description Persisted false-default opt-in. It gates compilation only. */
@@ -8786,6 +8851,83 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FQDNResourceSetting"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResolverContextConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active resolver configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResolverContextConfig"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setFQDNResolverContextConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResolverContextConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Active resolver configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResolverContextConfig"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteFQDNResolverContextConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration removed and future resolution withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

@@ -29,6 +29,26 @@ func toAPIFQDNResource(r fqdnresources.Resource) api.FQDNResource {
 	out := api.FQDNResource{Id: r.ID, OrgId: r.OrgID, Name: r.Name, Fqdn: r.FQDN, Protocol: api.FQDNResourceProtocol(r.Protocol), PortLow: r.PortLow, PortHigh: r.PortHigh, Label: r.Label, Generation: r.Generation, State: api.FQDNResourceState(r.State), AnswerCount: r.AnswerCount, EffectiveTtlSeconds: r.EffectiveTTLSeconds, RefreshedAt: r.RefreshedAt, LastGoodAt: r.LastGoodAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, DestinationKind: "fqdn"}
 	if r.Context != nil {
 		out.ResolverContext = &api.FQDNResolverContext{SiteId: r.Context.SiteID, GatewayId: r.Context.GatewayID, SiteName: r.Context.SiteName, GatewayName: r.Context.GatewayName}
+		if r.Context.Config != nil {
+			config := toAPIFQDNResolverConfig(*r.Context.Config)
+			out.ResolverContext.ResolverConfig = &config
+		}
+	}
+	return out
+}
+
+func toAPIFQDNResolverConfig(c fqdnresources.ResolverConfig) api.FQDNResolverContextConfig {
+	endpoints := make([]api.FQDNResolverEndpoint, len(c.Endpoints))
+	for i, endpoint := range c.Endpoints {
+		endpoints[i] = api.FQDNResolverEndpoint{Address: endpoint.Address, Port: endpoint.Port, Transport: api.FQDNResolverEndpointTransport(endpoint.Transport)}
+	}
+	return api.FQDNResolverContextConfig{Id: c.ID, OrgId: c.OrgID, SiteId: c.SiteID, GatewayId: c.GatewayID, Version: c.Version, State: api.FQDNResolverContextConfigState(c.State), Endpoints: endpoints, CreatedAt: c.CreatedAt}
+}
+
+func fqdnResolverEndpoints(in []api.FQDNResolverEndpoint) []fqdnresources.ResolverEndpoint {
+	out := make([]fqdnresources.ResolverEndpoint, len(in))
+	for i, endpoint := range in {
+		out[i] = fqdnresources.ResolverEndpoint{Address: endpoint.Address, Port: endpoint.Port, Transport: string(endpoint.Transport)}
 	}
 	return out
 }
@@ -150,4 +170,53 @@ func (s apiServer) SetFQDNResourceEnabled(ctx context.Context, req api.SetFQDNRe
 		return nil, err
 	}
 	return api.SetFQDNResourceEnabled200JSONResponse{Enabled: req.Body.Enabled}, nil
+}
+
+func (s apiServer) GetFQDNResolverContextConfig(ctx context.Context, req api.GetFQDNResolverContextConfigRequestObject) (api.GetFQDNResolverContextConfigResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceView); err != nil {
+		return nil, err
+	}
+	svc, err := s.fqdnService()
+	if err != nil {
+		return nil, err
+	}
+	config, err := svc.ResolverConfig(ctx, req.OrgId, req.SiteId, req.GatewayId)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetFQDNResolverContextConfig200JSONResponse(toAPIFQDNResolverConfig(config)), nil
+}
+
+func (s apiServer) SetFQDNResolverContextConfig(ctx context.Context, req api.SetFQDNResolverContextConfigRequestObject) (api.SetFQDNResolverContextConfigResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	svc, err := s.fqdnService()
+	if err != nil {
+		return nil, err
+	}
+	uid, sys, cause := auditActor(ctx)
+	config, err := svc.SetResolverConfig(ctx, req.OrgId, req.SiteId, req.GatewayId, uid, sys, cause, fqdnResolverEndpoints(req.Body.Endpoints))
+	if err != nil {
+		return nil, err
+	}
+	return api.SetFQDNResolverContextConfig200JSONResponse(toAPIFQDNResolverConfig(config)), nil
+}
+
+func (s apiServer) DeleteFQDNResolverContextConfig(ctx context.Context, req api.DeleteFQDNResolverContextConfigRequestObject) (api.DeleteFQDNResolverContextConfigResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
+		return nil, err
+	}
+	svc, err := s.fqdnService()
+	if err != nil {
+		return nil, err
+	}
+	uid, sys, cause := auditActor(ctx)
+	if err := svc.DeleteResolverConfig(ctx, req.OrgId, req.SiteId, req.GatewayId, uid, sys, cause); err != nil {
+		return nil, err
+	}
+	return api.DeleteFQDNResolverContextConfig204Response{}, nil
 }

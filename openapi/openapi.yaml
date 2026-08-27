@@ -2552,6 +2552,48 @@ paths:
         "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/fqdn-resolver-contexts/{siteId}/{gatewayId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: siteId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: gatewayId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getFQDNResolverContextConfig
+      summary: Read the server-managed DNS endpoints for a selected Site/Gateway context
+      description: Only the returned private endpoint addresses may be queried for this context. A missing configuration is not a fallback to host, public, or control-plane DNS.
+      tags: [policy]
+      responses:
+        "200": { description: Active resolver configuration, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResolverContextConfig" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setFQDNResolverContextConfig
+      summary: Atomically replace the server-managed DNS endpoints for a selected Site/Gateway context
+      description: Retires the prior configuration and creates an immutable active revision. A resolver failure withdraws FQDN access; endpoints are never inferred from host DNS.
+      tags: [policy]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResolverContextConfigRequest" } } }
+      responses:
+        "200": { description: Active resolver configuration, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResolverContextConfig" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteFQDNResolverContextConfig
+      summary: Remove the active DNS resolver endpoint configuration for a selected Site/Gateway context
+      description: Existing resolver history remains visible. Bound FQDN resources fail closed until an authorized operator saves a new configuration.
+      tags: [policy]
+      responses:
+        "204": { description: Configuration removed and future resolution withdrawn. }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/policies:
     parameters:
       - name: orgId
@@ -5255,6 +5297,10 @@ components:
         gateway_id: { type: string, format: uuid }
         site_name: { type: string }
         gateway_name: { type: string }
+        resolver_config:
+          allOf: [{ $ref: "#/components/schemas/FQDNResolverContextConfig" }]
+          nullable: true
+          description: "The active, server-managed direct DNS configuration. Null means this bound context cannot resolve and must fail closed."
 
     FQDNResolverContextRequest:
       type: object
@@ -5263,6 +5309,36 @@ components:
       properties:
         site_id: { type: string, format: uuid }
         gateway_id: { type: string, format: uuid }
+
+    FQDNResolverEndpoint:
+      type: object
+      required: [address, port, transport]
+      additionalProperties: false
+      properties:
+        address: { type: string, format: ip, description: "Literal private or public resolver address selected by the tenant; hostnames are not permitted." }
+        port: { type: integer, minimum: 1, maximum: 65535, default: 53 }
+        transport: { type: string, enum: [udp, tcp] }
+
+    FQDNResolverContextConfig:
+      type: object
+      required: [id, org_id, site_id, gateway_id, version, state, endpoints, created_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        gateway_id: { type: string, format: uuid }
+        version: { type: integer, format: int64, minimum: 1 }
+        state: { type: string, enum: [active, retired] }
+        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+        created_at: { type: string, format: date-time }
+
+    FQDNResolverContextConfigRequest:
+      type: object
+      required: [endpoints]
+      additionalProperties: false
+      properties:
+        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
 
     FQDNResourceSetting:
       type: object

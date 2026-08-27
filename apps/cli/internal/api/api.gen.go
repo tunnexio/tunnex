@@ -394,6 +394,18 @@ const (
 	ExposeK8sServiceRequestProtocolUdp ExposeK8sServiceRequestProtocol = "udp"
 )
 
+// Defines values for FQDNResolverContextConfigState.
+const (
+	FQDNResolverContextConfigStateActive  FQDNResolverContextConfigState = "active"
+	FQDNResolverContextConfigStateRetired FQDNResolverContextConfigState = "retired"
+)
+
+// Defines values for FQDNResolverEndpointTransport.
+const (
+	FQDNResolverEndpointTransportTcp FQDNResolverEndpointTransport = "tcp"
+	FQDNResolverEndpointTransportUdp FQDNResolverEndpointTransport = "udp"
+)
+
 // Defines values for FQDNResourceDestinationKind.
 const (
 	Fqdn FQDNResourceDestinationKind = "fqdn"
@@ -801,9 +813,9 @@ const (
 
 // Defines values for ListAgentsParamsAccess.
 const (
-	ListAgentsParamsAccessActive  ListAgentsParamsAccess = "active"
-	ListAgentsParamsAccessNone    ListAgentsParamsAccess = "none"
-	ListAgentsParamsAccessPending ListAgentsParamsAccess = "pending"
+	Active  ListAgentsParamsAccess = "active"
+	None    ListAgentsParamsAccess = "none"
+	Pending ListAgentsParamsAccess = "pending"
 )
 
 // Defines values for ListAgentsParamsSort.
@@ -819,8 +831,8 @@ const (
 
 // Defines values for TestAgentAccessParamsProtocol.
 const (
-	Tcp TestAgentAccessParamsProtocol = "tcp"
-	Udp TestAgentAccessParamsProtocol = "udp"
+	TestAgentAccessParamsProtocolTcp TestAgentAccessParamsProtocol = "tcp"
+	TestAgentAccessParamsProtocolUdp TestAgentAccessParamsProtocol = "udp"
 )
 
 // AcceptInviteRequest defines model for AcceptInviteRequest.
@@ -2130,8 +2142,31 @@ type ExtendGrantRequest struct {
 type FQDNResolverContext struct {
 	GatewayId   openapi_types.UUID `json:"gateway_id"`
 	GatewayName string             `json:"gateway_name"`
-	SiteId      openapi_types.UUID `json:"site_id"`
-	SiteName    string             `json:"site_name"`
+
+	// ResolverConfig The active, server-managed direct DNS configuration. Null means this bound context cannot resolve and must fail closed.
+	ResolverConfig *FQDNResolverContextConfig `json:"resolver_config"`
+	SiteId         openapi_types.UUID         `json:"site_id"`
+	SiteName       string                     `json:"site_name"`
+}
+
+// FQDNResolverContextConfig defines model for FQDNResolverContextConfig.
+type FQDNResolverContextConfig struct {
+	CreatedAt time.Time                      `json:"created_at"`
+	Endpoints []FQDNResolverEndpoint         `json:"endpoints"`
+	GatewayId openapi_types.UUID             `json:"gateway_id"`
+	Id        openapi_types.UUID             `json:"id"`
+	OrgId     openapi_types.UUID             `json:"org_id"`
+	SiteId    openapi_types.UUID             `json:"site_id"`
+	State     FQDNResolverContextConfigState `json:"state"`
+	Version   int64                          `json:"version"`
+}
+
+// FQDNResolverContextConfigState defines model for FQDNResolverContextConfig.State.
+type FQDNResolverContextConfigState string
+
+// FQDNResolverContextConfigRequest defines model for FQDNResolverContextConfigRequest.
+type FQDNResolverContextConfigRequest struct {
+	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
 }
 
 // FQDNResolverContextRequest defines model for FQDNResolverContextRequest.
@@ -2139,6 +2174,17 @@ type FQDNResolverContextRequest struct {
 	GatewayId openapi_types.UUID `json:"gateway_id"`
 	SiteId    openapi_types.UUID `json:"site_id"`
 }
+
+// FQDNResolverEndpoint defines model for FQDNResolverEndpoint.
+type FQDNResolverEndpoint struct {
+	// Address Literal private or public resolver address selected by the tenant; hostnames are not permitted.
+	Address   string                        `json:"address"`
+	Port      int                           `json:"port"`
+	Transport FQDNResolverEndpointTransport `json:"transport"`
+}
+
+// FQDNResolverEndpointTransport defines model for FQDNResolverEndpoint.Transport.
+type FQDNResolverEndpointTransport string
 
 // FQDNResource defines model for FQDNResource.
 type FQDNResource struct {
@@ -3797,6 +3843,9 @@ type CreateDeviceJSONRequestBody = CreateDeviceRequest
 // ReportDeviceHealthJSONRequestBody defines body for ReportDeviceHealth for application/json ContentType.
 type ReportDeviceHealthJSONRequestBody = DeviceHealthReport
 
+// SetFQDNResolverContextConfigJSONRequestBody defines body for SetFQDNResolverContextConfig for application/json ContentType.
+type SetFQDNResolverContextConfigJSONRequestBody = FQDNResolverContextConfigRequest
+
 // CreateFQDNResourceJSONRequestBody defines body for CreateFQDNResource for application/json ContentType.
 type CreateFQDNResourceJSONRequestBody = FQDNResourceRequest
 
@@ -4505,6 +4554,17 @@ type ClientInterface interface {
 
 	// RevokeDevice request
 	RevokeDevice(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteFQDNResolverContextConfig request
+	DeleteFQDNResolverContextConfig(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetFQDNResolverContextConfig request
+	GetFQDNResolverContextConfig(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetFQDNResolverContextConfigWithBody request with any body
+	SetFQDNResolverContextConfigWithBody(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetFQDNResolverContextConfig(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, body SetFQDNResolverContextConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListFQDNResources request
 	ListFQDNResources(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7151,6 +7211,54 @@ func (c *Client) RejectDevice(ctx context.Context, orgId openapi_types.UUID, dev
 
 func (c *Client) RevokeDevice(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRevokeDeviceRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteFQDNResolverContextConfig(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteFQDNResolverContextConfigRequest(c.Server, orgId, siteId, gatewayId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetFQDNResolverContextConfig(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFQDNResolverContextConfigRequest(c.Server, orgId, siteId, gatewayId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetFQDNResolverContextConfigWithBody(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetFQDNResolverContextConfigRequestWithBody(c.Server, orgId, siteId, gatewayId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetFQDNResolverContextConfig(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, body SetFQDNResolverContextConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetFQDNResolverContextConfigRequest(c.Server, orgId, siteId, gatewayId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -14772,6 +14880,163 @@ func NewRevokeDeviceRequest(server string, orgId openapi_types.UUID, deviceId op
 	return req, nil
 }
 
+// NewDeleteFQDNResolverContextConfigRequest generates requests for DeleteFQDNResolverContextConfig
+func NewDeleteFQDNResolverContextConfigRequest(server string, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "siteId", runtime.ParamLocationPath, siteId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "gatewayId", runtime.ParamLocationPath, gatewayId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/fqdn-resolver-contexts/%s/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetFQDNResolverContextConfigRequest generates requests for GetFQDNResolverContextConfig
+func NewGetFQDNResolverContextConfigRequest(server string, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "siteId", runtime.ParamLocationPath, siteId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "gatewayId", runtime.ParamLocationPath, gatewayId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/fqdn-resolver-contexts/%s/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetFQDNResolverContextConfigRequest calls the generic SetFQDNResolverContextConfig builder with application/json body
+func NewSetFQDNResolverContextConfigRequest(server string, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, body SetFQDNResolverContextConfigJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetFQDNResolverContextConfigRequestWithBody(server, orgId, siteId, gatewayId, "application/json", bodyReader)
+}
+
+// NewSetFQDNResolverContextConfigRequestWithBody generates requests for SetFQDNResolverContextConfig with any type of body
+func NewSetFQDNResolverContextConfigRequestWithBody(server string, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "siteId", runtime.ParamLocationPath, siteId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "gatewayId", runtime.ParamLocationPath, gatewayId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/fqdn-resolver-contexts/%s/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListFQDNResourcesRequest generates requests for ListFQDNResources
 func NewListFQDNResourcesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -19311,6 +19576,17 @@ type ClientWithResponsesInterface interface {
 	// RevokeDeviceWithResponse request
 	RevokeDeviceWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeDeviceResponse, error)
 
+	// DeleteFQDNResolverContextConfigWithResponse request
+	DeleteFQDNResolverContextConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteFQDNResolverContextConfigResponse, error)
+
+	// GetFQDNResolverContextConfigWithResponse request
+	GetFQDNResolverContextConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFQDNResolverContextConfigResponse, error)
+
+	// SetFQDNResolverContextConfigWithBodyWithResponse request with any body
+	SetFQDNResolverContextConfigWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetFQDNResolverContextConfigResponse, error)
+
+	SetFQDNResolverContextConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, body SetFQDNResolverContextConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*SetFQDNResolverContextConfigResponse, error)
+
 	// ListFQDNResourcesWithResponse request
 	ListFQDNResourcesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListFQDNResourcesResponse, error)
 
@@ -22683,6 +22959,74 @@ func (r RevokeDeviceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RevokeDeviceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteFQDNResolverContextConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteFQDNResolverContextConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteFQDNResolverContextConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetFQDNResolverContextConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *FQDNResolverContextConfig
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFQDNResolverContextConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFQDNResolverContextConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetFQDNResolverContextConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *FQDNResolverContextConfig
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetFQDNResolverContextConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetFQDNResolverContextConfigResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -26397,6 +26741,41 @@ func (c *ClientWithResponses) RevokeDeviceWithResponse(ctx context.Context, orgI
 		return nil, err
 	}
 	return ParseRevokeDeviceResponse(rsp)
+}
+
+// DeleteFQDNResolverContextConfigWithResponse request returning *DeleteFQDNResolverContextConfigResponse
+func (c *ClientWithResponses) DeleteFQDNResolverContextConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteFQDNResolverContextConfigResponse, error) {
+	rsp, err := c.DeleteFQDNResolverContextConfig(ctx, orgId, siteId, gatewayId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteFQDNResolverContextConfigResponse(rsp)
+}
+
+// GetFQDNResolverContextConfigWithResponse request returning *GetFQDNResolverContextConfigResponse
+func (c *ClientWithResponses) GetFQDNResolverContextConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFQDNResolverContextConfigResponse, error) {
+	rsp, err := c.GetFQDNResolverContextConfig(ctx, orgId, siteId, gatewayId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFQDNResolverContextConfigResponse(rsp)
+}
+
+// SetFQDNResolverContextConfigWithBodyWithResponse request with arbitrary body returning *SetFQDNResolverContextConfigResponse
+func (c *ClientWithResponses) SetFQDNResolverContextConfigWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetFQDNResolverContextConfigResponse, error) {
+	rsp, err := c.SetFQDNResolverContextConfigWithBody(ctx, orgId, siteId, gatewayId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetFQDNResolverContextConfigResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetFQDNResolverContextConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, body SetFQDNResolverContextConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*SetFQDNResolverContextConfigResponse, error) {
+	rsp, err := c.SetFQDNResolverContextConfig(ctx, orgId, siteId, gatewayId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetFQDNResolverContextConfigResponse(rsp)
 }
 
 // ListFQDNResourcesWithResponse request returning *ListFQDNResourcesResponse
@@ -31810,6 +32189,98 @@ func ParseRevokeDeviceResponse(rsp *http.Response) (*RevokeDeviceResponse, error
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteFQDNResolverContextConfigResponse parses an HTTP response from a DeleteFQDNResolverContextConfigWithResponse call
+func ParseDeleteFQDNResolverContextConfigResponse(rsp *http.Response) (*DeleteFQDNResolverContextConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteFQDNResolverContextConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetFQDNResolverContextConfigResponse parses an HTTP response from a GetFQDNResolverContextConfigWithResponse call
+func ParseGetFQDNResolverContextConfigResponse(rsp *http.Response) (*GetFQDNResolverContextConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFQDNResolverContextConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FQDNResolverContextConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetFQDNResolverContextConfigResponse parses an HTTP response from a SetFQDNResolverContextConfigWithResponse call
+func ParseSetFQDNResolverContextConfigResponse(rsp *http.Response) (*SetFQDNResolverContextConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetFQDNResolverContextConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FQDNResolverContextConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

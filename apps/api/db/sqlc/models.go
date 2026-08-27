@@ -539,6 +539,27 @@ type DomainClaim struct {
 	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
+type FqdnResolverContextConfig struct {
+	ID        uuid.UUID          `json:"id"`
+	OrgID     uuid.UUID          `json:"org_id"`
+	SiteID    uuid.UUID          `json:"site_id"`
+	GatewayID uuid.UUID          `json:"gateway_id"`
+	Version   int64              `json:"version"`
+	State     string             `json:"state"`
+	CreatedAt time.Time          `json:"created_at"`
+	RetiredAt pgtype.Timestamptz `json:"retired_at"`
+	CreatedBy pgtype.UUID        `json:"created_by"`
+}
+
+type FqdnResolverContextEndpoint struct {
+	ConfigID  uuid.UUID  `json:"config_id"`
+	OrgID     uuid.UUID  `json:"org_id"`
+	Ordinal   int16      `json:"ordinal"`
+	Address   netip.Addr `json:"address"`
+	Port      int32      `json:"port"`
+	Transport string     `json:"transport"`
+}
+
 type FqdnResource struct {
 	ID             uuid.UUID   `json:"id"`
 	OrgID          uuid.UUID   `json:"org_id"`
@@ -555,20 +576,21 @@ type FqdnResource struct {
 }
 
 type FqdnResourceAnswerGeneration struct {
-	ID             uuid.UUID          `json:"id"`
-	OrgID          uuid.UUID          `json:"org_id"`
-	ResourceID     uuid.UUID          `json:"resource_id"`
-	Generation     int64              `json:"generation"`
-	ResolverNodeID uuid.UUID          `json:"resolver_node_id"`
-	State          string             `json:"state"`
-	EffectiveTtl   pgtype.Interval    `json:"effective_ttl"`
-	ResolvedAt     time.Time          `json:"resolved_at"`
-	LastGoodAt     pgtype.Timestamptz `json:"last_good_at"`
-	ActivatedAt    pgtype.Timestamptz `json:"activated_at"`
-	EndedAt        pgtype.Timestamptz `json:"ended_at"`
-	FailureCode    *string            `json:"failure_code"`
-	CreatedAt      time.Time          `json:"created_at"`
-	ResolverSiteID pgtype.UUID        `json:"resolver_site_id"`
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	ResourceID       uuid.UUID          `json:"resource_id"`
+	Generation       int64              `json:"generation"`
+	ResolverNodeID   uuid.UUID          `json:"resolver_node_id"`
+	State            string             `json:"state"`
+	EffectiveTtl     pgtype.Interval    `json:"effective_ttl"`
+	ResolvedAt       time.Time          `json:"resolved_at"`
+	LastGoodAt       pgtype.Timestamptz `json:"last_good_at"`
+	ActivatedAt      pgtype.Timestamptz `json:"activated_at"`
+	EndedAt          pgtype.Timestamptz `json:"ended_at"`
+	FailureCode      *string            `json:"failure_code"`
+	CreatedAt        time.Time          `json:"created_at"`
+	ResolverSiteID   pgtype.UUID        `json:"resolver_site_id"`
+	ResolverConfigID pgtype.UUID        `json:"resolver_config_id"`
 }
 
 type FqdnResourceGenerationAnswer struct {

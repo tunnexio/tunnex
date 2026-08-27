@@ -6,6 +6,7 @@ package fqdnresources
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 type Context struct {
 	SiteID, GatewayID     uuid.UUID
 	SiteName, GatewayName string
+	Config                *ResolverConfig
 }
 type Input struct {
 	Name, FQDN, Protocol string
@@ -148,14 +150,45 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Resource, error) {
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if out[i].Context == nil {
+			continue
+		}
+		config, err := s.ResolverConfig(ctx, org, out[i].Context.SiteID, out[i].Context.GatewayID)
+		if err != nil {
+			if isResolverConfigNotFound(err) {
+				continue // Bound-but-unconfigured is intentionally visible and fail-closed.
+			}
+			return nil, err
+		}
+		out[i].Context.Config = &config
+	}
+	return out, nil
 }
 func (s *Service) Get(ctx context.Context, org, id uuid.UUID) (Resource, error) {
 	r, err := scan(s.pool.QueryRow(ctx, resourceQuery+` WHERE r.org_id=$1 AND r.id=$2`, org, id))
 	if err == pgx.ErrNoRows {
 		return Resource{}, apierr.NotFound("fqdn_resource_not_found", "FQDN resource not found")
 	}
-	return r, err
+	if err != nil || r.Context == nil {
+		return r, err
+	}
+	config, configErr := s.ResolverConfig(ctx, org, r.Context.SiteID, r.Context.GatewayID)
+	if configErr != nil && !isResolverConfigNotFound(configErr) {
+		return r, configErr
+	}
+	if configErr == nil {
+		r.Context.Config = &config
+	}
+	return r, nil
+}
+
+func isResolverConfigNotFound(err error) bool {
+	var e *apierr.Error
+	return errors.As(err, &e) && e.Code == "fqdn_resolver_config_not_found"
 }
 func (s *Service) Impact(ctx context.Context, org, id uuid.UUID) (Impact, error) {
 	var i Impact

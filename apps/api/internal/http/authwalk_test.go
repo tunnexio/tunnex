@@ -81,6 +81,8 @@ var walkBodies = map[string]string{
 	"setsitednsforward": `{"domain":"corp.local","resolver_ip":"10.20.0.53"}`,
 	"bindsitenode":      `{"node_id":"00000000-0000-0000-0000-000000000000"}`,
 	"setzerotrustmode":  `{"mode":"off"}`,
+	// S21 resolver configuration is management-gated before endpoint validation.
+	"setfqdnresolvercontextconfig": `{"endpoints":[{"address":"10.20.0.53","port":53,"transport":"udp"}]}`,
 	// S10.3 Kubernetes gated ops (k8s:manage; each still 401s sessionless. deregister/unexpose have no body).
 	"registerk8scluster":     `{"site_id":"00000000-0000-0000-0000-000000000000","name":"walk","vip_range":"100.64.0.0/16","service_cidr":"10.96.0.0/12","dns_zone":"k8s.example.com"}`,
 	"setk8sclusterconnector": `{"node_id":"00000000-0000-0000-0000-000000000000"}`,
@@ -152,6 +154,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{provider}", "google")
 			reqPath = strings.ReplaceAll(reqPath, "{userId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{nodeId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{gatewayId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{deviceId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{credentialId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{groupId}", uuid.NewString())
