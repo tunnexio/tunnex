@@ -203,7 +203,7 @@ function FQDNResources({ orgId, role }: { orgId: string; role: Member["role"] | 
 }
 
 function StateBadge({ state }: { state: FQDNResource["state"] }) {
-  const copy: Record<FQDNResource["state"], string> = { draft: "Draft — unbound, no authorization", resolving: "Resolving — awaiting server result", healthy: "Healthy — active generation", stale: "Stale — last result is not current", failed: "Failed — no usable result", nxdomain: "NXDOMAIN — hostname absent" };
+  const copy: Record<FQDNResource["state"], string> = { draft: "Draft — unbound, no authorization", unconfigured: "Unconfigured — resolver context needs configuration", resolving: "Resolving — awaiting server result", healthy: "Healthy — active generation", stale: "Stale — last result is not current", failed: "Failed — no usable result", nxdomain: "NXDOMAIN — hostname absent" };
   return <span aria-label={copy[state]} className="text-xs text-ink-tertiary">{state === "nxdomain" ? "NXDOMAIN" : state}</span>;
 }
 
