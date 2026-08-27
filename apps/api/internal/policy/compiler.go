@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"net/netip"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -133,10 +134,12 @@ type FQDNResource struct {
 }
 
 type FQDNGeneration struct {
-	ResourceID        uuid.UUID
-	SelectedSiteID    uuid.UUID
-	SelectedGatewayID uuid.UUID
-	Answers           []string
+	ResourceID            uuid.UUID
+	SelectedSiteID        uuid.UUID
+	SelectedGatewayID     uuid.UUID
+	ResolverConfigID      uuid.UUID
+	ResolverConfigVersion int64
+	Answers               []string
 }
 
 // FQDNRuleReference is the owned compiler seam for Lane 1's separate
@@ -772,7 +775,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 // partial DB read or bad fixture must still withdraw rather than accidentally
 // turn a hostname into a broad CIDR allow.
 func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, bool) {
-	if r.ID == uuid.Nil || r.FQDN == "" || r.Active == nil || r.Active.ResourceID != r.ID || r.Active.SelectedSiteID == uuid.Nil || r.Active.SelectedGatewayID == uuid.Nil || len(r.Active.Answers) == 0 || len(r.Active.Answers) > 32 || !validFQDNL4Scope(r) {
+	if r.ID == uuid.Nil || r.FQDN == "" || r.Active == nil || r.Active.ResourceID != r.ID || r.Active.SelectedSiteID == uuid.Nil || r.Active.SelectedGatewayID == uuid.Nil || r.Active.ResolverConfigID == uuid.Nil || r.Active.ResolverConfigVersion < 1 || len(r.Active.Answers) == 0 || len(r.Active.Answers) > 32 || !validFQDNL4Scope(r) {
 		return policyspec.FQDNGeneration{}, nil, false
 	}
 	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r.FQDN), "."))
@@ -793,8 +796,8 @@ func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, 
 		}
 	}
 	sort.Strings(answers)
-	identity := fqdnGenerationIdentity(r.ID, name, r.Active.SelectedSiteID, r.Active.SelectedGatewayID, answers)
-	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, Answers: answers}, answers, true
+	identity := FQDNGenerationIdentityWithResolverConfig(r.ID, name, r.Active.SelectedSiteID, r.Active.SelectedGatewayID, r.Active.ResolverConfigID, r.Active.ResolverConfigVersion, answers)
+	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, ResolverConfigID: r.Active.ResolverConfigID.String(), ResolverConfigVersion: r.Active.ResolverConfigVersion, Answers: answers}, answers, true
 }
 
 // FQDNGenerationIdentity binds an immutable generation to its FQDN resource,
@@ -825,6 +828,42 @@ func FQDNGenerationIdentity(resourceID uuid.UUID, fqdn string, siteID, gatewayID
 
 func fqdnGenerationIdentity(resourceID uuid.UUID, fqdn string, siteID, gatewayID uuid.UUID, answers []string) string {
 	parts := append([]string{resourceID.String(), strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), ".")), siteID.String(), gatewayID.String()}, answers...)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+// fqdnGenerationIdentityWithResolverConfig additionally binds the policy
+// artifact to the immutable direct-DNS configuration used to obtain the
+// active answer generation. This means a configuration revision change cannot
+// be treated as an identical FQDN policy even if its current answers happen to
+// match; old generations are rejected by the snapshot reader until re-resolved.
+func FQDNGenerationIdentityWithResolverConfig(resourceID uuid.UUID, fqdn string, siteID, gatewayID, configID uuid.UUID, configVersion int64, answers []string) string {
+	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), "."))
+	if resourceID == uuid.Nil || siteID == uuid.Nil || gatewayID == uuid.Nil || configID == uuid.Nil || configVersion < 1 || name == "" || fqdn != name || len(answers) == 0 || len(answers) > 32 {
+		return ""
+	}
+	canonical := make([]string, 0, len(answers))
+	seen := make(map[string]bool, len(answers))
+	for _, raw := range answers {
+		addr, err := netip.ParseAddr(strings.TrimSuffix(raw, "/32"))
+		if err != nil {
+			prefix, prefixErr := netip.ParsePrefix(raw)
+			if prefixErr != nil || prefix.Bits() != prefix.Addr().BitLen() {
+				return ""
+			}
+			addr = prefix.Addr()
+		}
+		if !usableFQDNAnswer(addr) {
+			return ""
+		}
+		prefix := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if !seen[prefix] {
+			seen[prefix] = true
+			canonical = append(canonical, prefix)
+		}
+	}
+	sort.Strings(canonical)
+	parts := append([]string{resourceID.String(), name, siteID.String(), gatewayID.String(), configID.String(), strconv.FormatInt(configVersion, 10)}, canonical...)
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
 }

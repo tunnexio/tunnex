@@ -7,6 +7,7 @@ package fqdnresolver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"time"
@@ -24,9 +25,13 @@ type ActiveGeneration struct {
 	PortLow, PortHigh  *int32
 	Sequence           int64
 	Context            Context
-	TTL                time.Duration
-	ResolvedAt         time.Time
-	Addresses          []netip.Addr
+	// ResolverConfig is the immutable direct-endpoint revision that produced
+	// this generation. Compiler consumers must reject an active row when its
+	// current context no longer has this exact active revision.
+	ResolverConfig ResolverConfig
+	TTL            time.Duration
+	ResolvedAt     time.Time
+	Addresses      []netip.Addr
 }
 
 // ActiveGenerationReader is the read-only dependency Lane 3 consumes when it
@@ -44,19 +49,24 @@ func (s *PostgresStore) ActiveGenerations(ctx context.Context, orgID uuid.UUID) 
 	rows, err := s.pool.Query(ctx, `
 SELECT g.org_id,g.resource_id,r.fqdn,r.protocol,r.port_low,r.port_high,
        g.generation,g.resolver_site_id,g.resolver_node_id,g.effective_ttl,g.resolved_at,
+       cfg.id,cfg.version,
+       jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.ordinal),
        array_agg(host(a.address) ORDER BY a.address)
 FROM fqdn_resource_answer_generations g
 JOIN fqdn_resources r
   ON r.id=g.resource_id AND r.org_id=g.org_id
  AND r.resolver_site_id=g.resolver_site_id AND r.resolver_node_id=g.resolver_node_id
-JOIN fqdn_resolver_context_configs c
-  ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.state='active'
- AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id
+JOIN fqdn_resolver_context_configs cfg
+  ON cfg.id=g.resolver_config_id AND cfg.org_id=g.org_id
+ AND cfg.site_id=g.resolver_site_id AND cfg.gateway_id=g.resolver_node_id
+ AND cfg.state='active'
+JOIN fqdn_resolver_context_endpoints e
+  ON e.config_id=cfg.id AND e.org_id=cfg.org_id
 JOIN fqdn_resource_generation_answers a
   ON a.generation_id=g.id AND a.org_id=g.org_id
 WHERE g.org_id=$1 AND g.state='active'
 GROUP BY g.org_id,g.resource_id,r.fqdn,r.protocol,r.port_low,r.port_high,
-         g.generation,g.resolver_site_id,g.resolver_node_id,g.effective_ttl,g.resolved_at
+         g.generation,g.resolver_site_id,g.resolver_node_id,g.effective_ttl,g.resolved_at,cfg.id,cfg.version
 ORDER BY g.resource_id`, orgID)
 	if err != nil {
 		return nil, err
@@ -67,13 +77,17 @@ ORDER BY g.resource_id`, orgID)
 	for rows.Next() {
 		var g ActiveGeneration
 		var site, gateway uuid.UUID
+		var config uuid.UUID
+		var configVersion int64
+		var endpointJSON []byte
 		var raw []string
 		if err := rows.Scan(&g.OrgID, &g.ResourceID, &g.Hostname, &g.Protocol, &g.PortLow, &g.PortHigh,
-			&g.Sequence, &site, &gateway, &g.TTL, &g.ResolvedAt, &raw); err != nil {
+			&g.Sequence, &site, &gateway, &g.TTL, &g.ResolvedAt, &config, &configVersion, &endpointJSON, &raw); err != nil {
 			return nil, err
 		}
 		g.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
-		if !g.Context.valid() || len(raw) == 0 || len(raw) > MaxAnswers {
+		g.ResolverConfig = ResolverConfig{ID: config.String(), Version: configVersion}
+		if err := json.Unmarshal(endpointJSON, &g.ResolverConfig.Endpoints); err != nil || !g.Context.valid() || !g.ResolverConfig.valid() || len(raw) == 0 || len(raw) > MaxAnswers {
 			return nil, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)
 		}
 		g.Addresses = make([]netip.Addr, 0, len(raw))

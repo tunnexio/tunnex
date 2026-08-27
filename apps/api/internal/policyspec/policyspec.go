@@ -392,10 +392,12 @@ type Compiled struct {
 // deduplicated by the compiler. This is not a DNS forwarder or hostname ACL:
 // the agent still enforces only the expanded L3/L4 Allow tuples.
 type FQDNGeneration struct {
-	ResourceID string   `json:"resource_id"`
-	Name       string   `json:"name"`
-	Generation string   `json:"generation"`
-	Answers    []string `json:"answers"`
+	ResourceID            string   `json:"resource_id"`
+	Name                  string   `json:"name"`
+	Generation            string   `json:"generation"`
+	ResolverConfigID      string   `json:"resolver_config_id"`
+	ResolverConfigVersion int64    `json:"resolver_config_version"`
+	Answers               []string `json:"answers"`
 }
 
 // VIPMapping is one exposed K8s Service: clients reach VIP (a /32 in the cluster's synthetic range); the

@@ -40,11 +40,12 @@ func (f *fakeFQDNGenerationReader) ActiveGenerations(_ context.Context, org uuid
 }
 
 func TestAppendActiveFQDNGenerationsFailsClosed(t *testing.T) {
-	org, resource, site, gateway := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	org, resource, site, gateway, config := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	reader := &fakeFQDNGenerationReader{rows: []fqdnresolver.ActiveGeneration{{
 		OrgID: org, ResourceID: resource, Hostname: "api.example.test", Protocol: "tcp",
 		Sequence: 7, Context: fqdnresolver.Context{ResolverID: site.String(), GatewayID: gateway.String()},
-		Addresses: []netip.Addr{netip.MustParseAddr("10.1.2.3"), netip.MustParseAddr("fd00::3")},
+		ResolverConfig: fqdnresolver.ResolverConfig{ID: config.String(), Version: 1, Endpoints: []fqdnresolver.ResolverEndpoint{{Address: netip.MustParseAddr("10.20.0.53"), Port: 53, Transport: "udp"}}},
+		Addresses:      []netip.Addr{netip.MustParseAddr("10.1.2.3"), netip.MustParseAddr("fd00::3")},
 	}}}
 	snap := Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}
 	if err := appendActiveFQDNGenerations(context.Background(), &snap, reader, org); err != nil {
@@ -76,5 +77,15 @@ func TestAppendActiveFQDNGenerationsFailsClosed(t *testing.T) {
 	reader.rows[0].Context.GatewayID = "not-a-uuid"
 	if err := appendActiveFQDNGenerations(context.Background(), &Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}, reader, org); err == nil {
 		t.Fatal("malformed selected context must fail closed")
+	}
+	reader.rows[0].Context.GatewayID = gateway.String()
+	reader.rows[0].ResolverConfig.Version = 0
+	if err := appendActiveFQDNGenerations(context.Background(), &Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}, reader, org); err == nil {
+		t.Fatal("active generation without an immutable resolver config revision must fail closed")
+	}
+	reader.rows[0].ResolverConfig.Version = 1
+	reader.rows[0].ResolverConfig.Endpoints = nil
+	if err := appendActiveFQDNGenerations(context.Background(), &Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}, reader, org); err == nil {
+		t.Fatal("active generation without direct resolver endpoints must fail closed")
 	}
 }

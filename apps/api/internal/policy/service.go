@@ -1358,6 +1358,15 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration) (FQDNReso
 	if g.ResourceID == uuid.Nil || g.Hostname == "" || len(g.Addresses) == 0 || len(g.Addresses) > fqdnresolver.MaxAnswers {
 		return FQDNResource{}, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)
 	}
+	configID, err := uuid.Parse(g.ResolverConfig.ID)
+	if err != nil || configID == uuid.Nil || g.ResolverConfig.Version < 1 || len(g.ResolverConfig.Endpoints) == 0 || len(g.ResolverConfig.Endpoints) > 8 {
+		return FQDNResource{}, fmt.Errorf("invalid resolver configuration snapshot for active FQDN generation %s", g.ResourceID)
+	}
+	for _, endpoint := range g.ResolverConfig.Endpoints {
+		if !endpoint.Address.IsValid() || endpoint.Address.IsUnspecified() || endpoint.Address.IsLoopback() || endpoint.Address.IsMulticast() || endpoint.Address.IsLinkLocalUnicast() || endpoint.Port == 0 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+			return FQDNResource{}, fmt.Errorf("invalid resolver endpoint snapshot for active FQDN generation %s", g.ResourceID)
+		}
+	}
 	answers := make([]string, 0, len(g.Addresses))
 	for _, address := range g.Addresses {
 		if !address.IsValid() {
@@ -1372,10 +1381,12 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration) (FQDNReso
 		PortLow:  derefI32(g.PortLow),
 		PortHigh: derefI32(g.PortHigh),
 		Active: &FQDNGeneration{
-			ResourceID:        g.ResourceID,
-			SelectedSiteID:    site,
-			SelectedGatewayID: gateway,
-			Answers:           answers,
+			ResourceID:            g.ResourceID,
+			SelectedSiteID:        site,
+			SelectedGatewayID:     gateway,
+			ResolverConfigID:      configID,
+			ResolverConfigVersion: g.ResolverConfig.Version,
+			Answers:               answers,
 		},
 	}, nil
 }
