@@ -129,6 +129,71 @@ func TestFlushWiringOnRemoval(t *testing.T) {
 	}
 }
 
+// TestFQDNWithdrawalFlushesDualStackOnlyAfterAtomicApply pins the runtime half
+// of S21's active-generation withdrawal. The compiler has already expanded the
+// selected resolver answers into ordinary allow tuples; when the replacement
+// snapshot withdraws those answers, both native families are queued for teardown
+// only after nft accepted the complete replacement ruleset. A failed replacement
+// leaves the prior ruleset and its conntrack entries untouched.
+func TestFQDNWithdrawalFlushesDualStackOnlyAfterAtomicApply(t *testing.T) {
+	var flushed [][]flowTuple
+	applyErr := error(nil)
+	m := &Manager{
+		apply: func(context.Context, string) error { return applyErr },
+		now:   time.Now,
+		ctFlush: func(_ context.Context, tuples []flowTuple) (int, error) {
+			flushed = append(flushed, append([]flowTuple(nil), tuples...))
+			return len(tuples), nil
+		},
+	}
+	ctx := context.Background()
+	active := &nodepolicy.Compiled{
+		Version: nodepolicy.MaxSupportedVersion,
+		Mode:    nodepolicy.ModeEnforcing,
+		Allow: []nodepolicy.AllowEntry{
+			{SrcIP: "10.99.0.10", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v4"},
+			{SrcIP: "2001:db8:99::10", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v6"},
+		},
+		FQDNGenerations: []nodepolicy.FQDNGeneration{{
+			ResourceID: "resource-api", Name: "api.example.com", Generation: "content-a",
+			Answers: []string{"203.0.113.10/32", "2001:db8:203::10/128"},
+		}},
+	}
+	if err := m.applyAndTrack(ctx, "active", active); err != nil {
+		t.Fatalf("baseline apply: %v", err)
+	}
+	m.drainFlush(ctx)
+	if len(flushed) != 0 {
+		t.Fatalf("first active generation must not flush: %+v", flushed)
+	}
+
+	withdrawn := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}
+	applyErr = errors.New("nft rejected replacement")
+	if err := m.applyAndTrack(ctx, "withdrawn", withdrawn); !errors.Is(err, applyErr) {
+		t.Fatalf("failed withdrawal apply = %v, want %v", err, applyErr)
+	}
+	m.drainFlush(ctx)
+	if len(flushed) != 0 {
+		t.Fatalf("failed atomic replacement must not flush still-enforced answers: %+v", flushed)
+	}
+
+	applyErr = nil
+	if err := m.applyAndTrack(ctx, "withdrawn", withdrawn); err != nil {
+		t.Fatalf("successful withdrawal apply: %v", err)
+	}
+	m.drainFlush(ctx)
+	if len(flushed) != 1 || len(flushed[0]) != 2 {
+		t.Fatalf("withdrawal must flush both retired family tuples after apply, got %+v", flushed)
+	}
+	got := map[string]bool{}
+	for _, tuple := range flushed[0] {
+		got[tuple.ruleID] = true
+	}
+	if !got["fqdn-v4"] || !got["fqdn-v6"] {
+		t.Fatalf("withdrawal must retain exact dual-stack tuple identity, got %+v", flushed[0])
+	}
+}
+
 // TestFlushFailureSurfacedNotSilent — a flush error (e.g. CAP_NET_ADMIN absent, netlink fault) is recorded
 // in flushErr (surfaced) and does NOT fail the apply — the rule removal already succeeded; lingering flows
 // are degraded-not-broken, never silent.

@@ -136,3 +136,62 @@ func TestPolicyApplyFailureDoesNotBlockPeerConverge(t *testing.T) {
 		t.Fatalf("policy leg should have been attempted on both fetches, got %d", applyAttempts)
 	}
 }
+
+// TestRunOnceReconnectWithdrawsFQDNGeneration is the S21 reconnect boundary:
+// a control-plane outage leaves the last applied data plane alone, but the first
+// successful full resync after reconnect delivers the replacement FQDN snapshot
+// as one complete artifact. The agent never keeps a retired answer merely because
+// it was disconnected while the resolver withdrew that generation.
+func TestRunOnceReconnectWithdrawsFQDNGeneration(t *testing.T) {
+	be := &fakeBackend{}
+	cl := &fakeClient{watch: make(chan struct{})}
+	r := New(be, "priv", "pub", slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	var got []*nodepolicy.Compiled
+	r.OnPolicy(func(p *nodepolicy.Compiled) { got = append(got, p) })
+
+	active := &nodepolicy.Compiled{
+		Version: nodepolicy.MaxSupportedVersion,
+		Mode:    nodepolicy.ModeEnforcing,
+		Allow: []nodepolicy.AllowEntry{
+			{SrcIP: "10.99.0.10", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443},
+			{SrcIP: "2001:db8:99::10", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443},
+		},
+		FQDNGenerations: []nodepolicy.FQDNGeneration{{
+			ResourceID: "resource-api", Name: "api.example.com", Generation: "content-a",
+			Answers: []string{"203.0.113.10/32", "2001:db8:203::10/128"},
+		}},
+	}
+	cl.set(DesiredState{Version: 41, Peers: []Peer{p1}, Policy: active})
+	if _, err := r.runOnce(context.Background(), cl); err != nil {
+		t.Fatalf("initial full sync: %v", err)
+	}
+	if len(got) != 1 || len(got[0].FQDNGenerations) != 1 {
+		t.Fatalf("initial active FQDN snapshot was not delivered: %+v", got)
+	}
+
+	// An outage must be fail-static: no synthetic nil/empty policy is delivered
+	// that could rewrite the last-known artifact before the control plane returns.
+	cl.setErr(errors.New("control plane unavailable"))
+	if _, err := r.runOnce(context.Background(), cl); err == nil {
+		t.Fatal("outage must surface")
+	}
+	if len(got) != 1 {
+		t.Fatalf("outage must not overwrite the last policy snapshot, deliveries=%d", len(got))
+	}
+
+	// Reconnect is a full snapshot, not a delta. The resolver-withdrawn
+	// generation and its concrete tuples are absent together.
+	cl.setErr(nil)
+	withdrawn := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}
+	cl.set(DesiredState{Version: 42, Peers: []Peer{p1}, Policy: withdrawn})
+	if _, err := r.runOnce(context.Background(), cl); err != nil {
+		t.Fatalf("reconnect full sync: %v", err)
+	}
+	if len(got) != 2 || got[1] == nil || len(got[1].FQDNGenerations) != 0 || len(got[1].Allow) != 0 {
+		t.Fatalf("reconnect must deliver the withdrawn FQDN snapshot atomically, got %+v", got)
+	}
+	if r.version.Load() != 42 {
+		t.Fatalf("reconnect must advance watch version to full snapshot version, got %d", r.version.Load())
+	}
+}
