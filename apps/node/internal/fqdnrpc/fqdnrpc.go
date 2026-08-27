@@ -148,20 +148,9 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 	}
 	var canonical []Record
 	for _, endpoint := range config.Endpoints {
-		var records []Record
-		for _, typ := range types {
-			if typ == RecordCNAME {
-				continue
-			}
-			exchange := d.exchange
-			if exchange == nil {
-				exchange = directExchange
-			}
-			got, err := exchange(ctx, endpoint, hostname, typ)
-			if err != nil {
-				return nil, errResolverConfig
-			}
-			records = append(records, got...)
+		records, err := d.resolveEndpoint(ctx, endpoint, hostname, types)
+		if err != nil {
+			return nil, errResolverConfig
 		}
 		records = canonicalRecords(records)
 		if !validDirectRecords(hostname, types, records) {
@@ -175,7 +164,60 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 			return nil, errResolverConfig
 		}
 	}
+	addresses := 0
+	for _, record := range canonical {
+		if record.Type == RecordA || record.Type == RecordAAAA {
+			addresses++
+		}
+	}
+	if addresses == 0 {
+		return nil, errResolverConfig
+	}
 	return canonical, nil
+}
+
+func (d DirectResolver) resolveEndpoint(ctx context.Context, endpoint ResolverEndpoint, hostname string, types []RecordType) ([]Record, error) {
+	exchange := d.exchange
+	if exchange == nil {
+		exchange = directExchange
+	}
+	current := hostname
+	seen := map[string]bool{}
+	var all []Record
+	for depth := 0; depth <= 8; depth++ {
+		if seen[current] {
+			return nil, fmt.Errorf("cname loop")
+		}
+		seen[current] = true
+		var step []Record
+		for _, typ := range types {
+			if typ == RecordCNAME {
+				continue
+			}
+			got, err := exchange(ctx, endpoint, current, typ)
+			if err != nil {
+				return nil, err
+			}
+			step = append(step, got...)
+		}
+		step = canonicalRecords(step)
+		all = append(all, step...)
+		targets := map[string]bool{}
+		for _, record := range step {
+			if record.Type == RecordCNAME && record.Name == current {
+				targets[record.Target] = true
+			}
+		}
+		if len(targets) == 0 {
+			return canonicalRecords(all), nil
+		}
+		if len(targets) != 1 {
+			return nil, fmt.Errorf("cname disagreement")
+		}
+		for current = range targets {
+		}
+	}
+	return nil, fmt.Errorf("cname depth exceeded")
 }
 
 func validResolverConfig(config ResolverConfig) bool {
