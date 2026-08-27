@@ -430,14 +430,66 @@ func jitteredTTL(hostname string, ttl time.Duration) time.Duration {
 	return clampTTL(time.Duration(float64(ttl) * factor))
 }
 
+var (
+	publicIPv6       = netip.MustParsePrefix("2000::/3")
+	metadataIPv4     = netip.MustParseAddr("100.100.100.200")
+	metadataIPv6     = netip.MustParseAddr("fd00:ec2::254")
+	nonPublicIPv6Net = []netip.Prefix{
+		netip.MustParsePrefix("2001::/23"),     // IETF protocol assignments
+		netip.MustParsePrefix("2001:2::/48"),   // benchmarking
+		netip.MustParsePrefix("2001:10::/28"),  // ORCHID
+		netip.MustParsePrefix("2001:20::/28"),  // ORCHIDv2
+		netip.MustParsePrefix("2001:db8::/32"), // documentation
+		netip.MustParsePrefix("2002::/16"),     // deprecated 6to4
+		netip.MustParsePrefix("3ffe::/16"),     // deprecated 6bone
+	}
+	nonPublicIPv4Net = []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/8"),
+		netip.MustParsePrefix("100.64.0.0/10"), // shared CGNAT space
+		netip.MustParsePrefix("192.0.0.0/24"),
+		netip.MustParsePrefix("192.0.2.0/24"), // documentation
+		netip.MustParsePrefix("192.88.99.0/24"),
+		netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
+		netip.MustParsePrefix("198.51.100.0/24"), // documentation
+		netip.MustParsePrefix("203.0.113.0/24"),  // documentation
+		netip.MustParsePrefix("240.0.0.0/4"),
+	}
+)
+
+// prohibited is deliberately an allow-list: the selected resolver may return
+// only public addresses or RFC1918/ULA private addresses.  Global-unicast on
+// its own is too broad (for example it includes CGNAT and benchmarking space).
 func prohibited(addr netip.Addr) bool {
+	addr = addr.Unmap()
 	if !addr.IsValid() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsMulticast() || addr.IsUnspecified() {
 		return true
 	}
-	if addr.Is4() {
-		return netip.MustParsePrefix("192.0.2.0/24").Contains(addr) || netip.MustParsePrefix("198.51.100.0/24").Contains(addr) || netip.MustParsePrefix("203.0.113.0/24").Contains(addr) || netip.MustParseAddr("100.100.100.200") == addr
+	if addr.IsPrivate() {
+		// fd00:ec2::254 is AWS's IPv6 instance-metadata endpoint. It is ULA,
+		// so it needs an explicit exception to the otherwise permitted ULA rule.
+		return addr == metadataIPv6
 	}
-	// fd00:ec2::254 is AWS's IPv6 instance-metadata endpoint. It is ULA, so
-	// it needs this explicit exception to the otherwise permitted ULA policy.
-	return netip.MustParsePrefix("2001:db8::/32").Contains(addr) || addr == netip.MustParseAddr("fd00:ec2::254")
+	if addr.Is4() {
+		if addr == metadataIPv4 || !addr.IsGlobalUnicast() {
+			return true
+		}
+		for _, prefix := range nonPublicIPv4Net {
+			if prefix.Contains(addr) {
+				return true
+			}
+		}
+		return false
+	}
+	// Native public IPv6 is the IANA global-unicast allocation, except the
+	// explicitly non-public documentation range. Everything else outside the
+	// explicit ULA exception above is withheld fail closed.
+	if !publicIPv6.Contains(addr) {
+		return true
+	}
+	for _, prefix := range nonPublicIPv6Net {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }

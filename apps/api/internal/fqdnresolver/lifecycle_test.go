@@ -239,13 +239,18 @@ func TestRefreshFailsClosedForDisagreementOverflowAndCNAMELoop(t *testing.T) {
 	}
 }
 
-func TestRefreshRefusesUnboundContextAndDocumentationRanges(t *testing.T) {
+func TestRefreshRefusesUnboundContextAndNonPublicRanges(t *testing.T) {
 	var l Lifecycle
 	s := l.Refresh(context.Background(), time.Now(), &fixtureResolver{responses: []Response{answer(a("x", "10.0.0.1", time.Minute))}}, Context{}, "x")
 	if s.Active != nil || !errors.Is(s.Failure, ErrUnboundContext) {
 		t.Fatalf("unbound context must never resolve: %#v", s)
 	}
-	for _, ip := range []string{"192.0.2.1", "198.51.100.1", "203.0.113.1", "169.254.169.254", "100.100.100.200", "2001:db8::1", "fd00:ec2::254", "::1"} {
+	for _, ip := range []string{
+		"192.0.2.1", "198.51.100.1", "203.0.113.1", // documentation
+		"169.254.169.254", "100.100.100.200", // link-local and metadata
+		"100.64.0.1", "198.18.0.1", "192.0.0.1", "240.0.0.1", // non-public v4
+		"2001:2::1", "2001:db8::1", "fd00:ec2::254", "::1", // special, documentation, metadata, loopback
+	} {
 		var bad Lifecycle
 		record := a("x", ip, time.Minute)
 		if addr(ip).Is6() {
@@ -255,5 +260,21 @@ func TestRefreshRefusesUnboundContextAndDocumentationRanges(t *testing.T) {
 		if s.Active != nil || !errors.Is(s.Failure, ErrNoUsableAddresses) {
 			t.Fatalf("%s must be prohibited: %#v", ip, s)
 		}
+	}
+}
+
+func TestRefreshPermitsOnlyPublicOrRFC1918ULAAddresses(t *testing.T) {
+	for _, ip := range []string{"8.8.8.8", "10.2.3.4", "172.16.0.1", "192.168.1.1", "2606:4700:4700::1111", "fd00::7"} {
+		t.Run(ip, func(t *testing.T) {
+			var l Lifecycle
+			record := a("allowed.internal", ip, time.Minute)
+			if addr(ip).Is6() {
+				record = aaaa("allowed.internal", ip, time.Minute)
+			}
+			s := l.Refresh(context.Background(), time.Now(), &fixtureResolver{responses: []Response{answer(record)}}, selected, "allowed.internal")
+			if s.Active == nil || len(s.Active.Addresses) != 1 || s.Active.Addresses[0] != addr(ip) {
+				t.Fatalf("%s must remain eligible under the D4 allow-list: %#v", ip, s)
+			}
+		})
 	}
 }
