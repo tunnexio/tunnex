@@ -62,8 +62,9 @@ func TestFQDNResourceAnswerGenerationMigrationPostgres(t *testing.T) {
 	site := uuid.New()
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'resolver site')`, site, org)
 	exec(`UPDATE nodes SET site_id=$3 WHERE id=$1 AND org_id=$2`, node, org, site)
-	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,protocol,port_low,port_high,resolver_node_id) VALUES($1,$2,'orders','orders.internal.example','tcp',443,443,$3)`, resource, org, node)
-	exec(`UPDATE fqdn_resources SET resolver_site_id=$3 WHERE id=$1 AND org_id=$2`, resource, org, site)
+	// 0112 makes resolver Site and gateway an atomic selected context.  Seed
+	// both in the initial insert rather than creating an invalid half-context.
+	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,protocol,port_low,port_high,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal.example','tcp',443,443,$3,$4)`, resource, org, site, node)
 	otherSite := uuid.New()
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'other resolver site')`, otherSite, org)
 	if _, err := pool.Exec(ctx, `UPDATE fqdn_resources SET resolver_site_id=$3 WHERE id=$1 AND org_id=$2`, resource, org, otherSite); err == nil {
@@ -80,7 +81,7 @@ func TestFQDNResourceAnswerGenerationMigrationPostgres(t *testing.T) {
 	gen := uuid.New()
 	exec(`INSERT INTO fqdn_resource_answer_generations(id,org_id,resource_id,generation,resolver_node_id,resolver_site_id,state,effective_ttl,resolved_at) VALUES($1,$2,$3,1,$4,$5,'pending',interval '30 seconds',now())`, gen, org, resource, node, site)
 	for i := 1; i <= 32; i++ {
-		exec(`INSERT INTO fqdn_resource_generation_answers(generation_id,org_id,address) VALUES($1,$2,('10.250.1.' || $3::text)::inet)`, gen, org, i)
+		exec(`INSERT INTO fqdn_resource_generation_answers(generation_id,org_id,address) VALUES($1,$2,('10.250.1.' || $3::int::text)::inet)`, gen, org, i)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO fqdn_resource_generation_answers(generation_id,org_id,address) VALUES($1,$2,'10.250.1.33')`, gen, org); err == nil {
 		t.Fatal("33rd answer must be refused")
