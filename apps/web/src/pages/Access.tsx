@@ -2206,9 +2206,7 @@ function RuleFormModal({
               ? "resource"
               : editing?.dst_kind === "site"
                 ? "site"
-                : editing?.dst_kind === "fqdn_resource"
-                  ? "fqdn_resource"
-                  : undefined,
+                : undefined,
           hasGroups,
           hasResources: resources.length > 0,
           hasSites: sites.length > 0,

@@ -6,6 +6,7 @@ let fqdnResources: Array<Record<string, unknown>> = [];
 let role = "admin";
 let impact: Record<string, unknown> = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true };
 let resourceLoadError = "";
+let settingLoadError = "";
 
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org-a", name: "Org A" } }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a" } } }) }));
@@ -13,7 +14,7 @@ vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return { ...actual, api: { GET: vi.fn(async (path: string) => {
     if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role }] };
-    if (path.endsWith("/fqdn-resources/setting")) return { data: { enabled: false } };
+    if (path.endsWith("/fqdn-resources/setting")) return settingLoadError ? { error: { error: { message: settingLoadError } } } : { data: { enabled: false } };
     if (path.endsWith("/impact")) return { data: impact };
     if (path.endsWith("/fqdn-resources")) return resourceLoadError ? { error: { error: { message: resourceLoadError } } } : { data: fqdnResources };
     if (path.endsWith("/sites")) return { data: [{ id: "site-a", name: "HQ" }] };
@@ -27,7 +28,7 @@ import { api } from "../src/lib/api";
 import AccessResources from "../src/pages/AccessResources";
 
 function page() { return render(<MemoryRouter><AccessResources /></MemoryRouter>); }
-beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true }; resourceLoadError = ""; fqdnResources = []; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); vi.mocked(api.PUT).mockClear(); vi.mocked(api.DELETE).mockClear(); });
+beforeEach(() => { role = "admin"; impact = { resource_id: "fqdn-1", referencing_rule_count: 2, referencing_rule_ids: ["rule-a", "rule-b"], generation_withdrawal_required: true }; resourceLoadError = ""; settingLoadError = ""; fqdnResources = []; vi.mocked(api.POST).mockClear(); vi.mocked(api.PATCH).mockClear(); vi.mocked(api.PUT).mockClear(); vi.mocked(api.DELETE).mockClear(); });
 afterEach(cleanup);
 
 describe("FQDN access resources", () => {
@@ -50,6 +51,7 @@ describe("FQDN access resources", () => {
     fireEvent.change(screen.getByLabelText("Protocol"), { target: { value: "tcp" } });
     fireEvent.change(screen.getByLabelText("Port scope"), { target: { value: "single" } });
     fireEvent.change(screen.getByLabelText("Port"), { target: { value: "443" } });
+    await screen.findByRole("option", { name: "HQ" });
     fireEvent.change(screen.getByLabelText("Resolver site (optional)"), { target: { value: "site-a" } });
     await screen.findByRole("option", { name: "HQ gateway" });
     fireEvent.change(screen.getByLabelText("Gateway"), { target: { value: "gateway-a" } });
@@ -83,11 +85,11 @@ describe("FQDN access resources", () => {
     page();
     fireEvent.click(await screen.findByRole("button", { name: "Orders" }));
     expect(await screen.findByText(/Referencing rule identities: rule-a, rule-b/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Review and edit referenced rules/i })).toHaveAttribute("href", "/access");
+    expect(screen.getByRole("link", { name: /Review and edit referenced rules/i }).getAttribute("href")).toBe("/access");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByText(/Referencing rule identities: rule-a, rule-b/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Review referenced rules/i })).toHaveAttribute("href", "/access");
+    expect(screen.getByRole("link", { name: /Review referenced rules/i }).getAttribute("href")).toBe("/access");
   });
 
   it("renders exact single, range, and all port scopes in the inventory and detail", async () => {
@@ -116,7 +118,7 @@ describe("FQDN access resources", () => {
     vi.mocked(api.POST).mockRejectedValueOnce(new Error("offline"));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
     expect((await screen.findAllByRole("alert")).some((alert) => /changes were not confirmed; try again/i.test(alert.textContent ?? ""))).toBe(true);
-    expect((screen.getByRole("button", { name: "Create FQDN resource" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("keeps edit and delete recovery available after PATCH and DELETE failures", async () => {
@@ -141,14 +143,27 @@ describe("FQDN access resources", () => {
   it("states unavailable permissions and retries a failed inventory instead of claiming it is empty", async () => {
     role = "operator";
     page();
-    expect(await screen.findByRole("alert")).toHaveTextContent("fqdn_resource:view");
+    expect((await screen.findAllByRole("alert")).some((alert) => alert.textContent?.includes("fqdn_resource:view"))).toBe(true);
+    expect(screen.queryByRole("button", { name: "Create FQDN resource" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enable enforcement" })).toBeNull();
 
     cleanup();
     role = "admin";
     resourceLoadError = "inventory down";
     page();
-    expect(await screen.findByRole("alert")).toHaveTextContent(/could not load FQDN resources/i);
+    expect((await screen.findAllByRole("alert")).some((alert) => /could not load FQDN resources/i.test(alert.textContent ?? ""))).toBe(true);
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(screen.queryByText(/No FQDN resources yet/)).toBeNull();
+  });
+
+  it("keeps resources readable but never presents an unavailable enforcement setting as disabled", async () => {
+    fqdnResources = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.example.com", protocol: "tcp", port_low: 443, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: null }];
+    settingLoadError = "fqdn_resources feature is unavailable";
+
+    page();
+    expect(await screen.findByText("Orders")).toBeTruthy();
+    expect(screen.getByText(/FQDN enforcement setting is unavailable/i)).toBeTruthy();
+    expect(screen.queryByText(/Enforcement opt-in:.*not enabled/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enable enforcement" })).toBeNull();
   });
 });

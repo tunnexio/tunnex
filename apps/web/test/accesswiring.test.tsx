@@ -268,14 +268,45 @@ describe("Access — FQDN destinations are discoverable but never represented as
   it("selects an FQDN destination in Add rule and submits its identity, not a CIDR resource", async () => {
     fqdnResourcesForTest = [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" }];
     withAuth(<Access />);
-    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    const add = await screen.findByRole("button", { name: "Add rule" });
+    await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(add);
     fireEvent.focus(screen.getByRole("combobox", { name: "Destination" }));
     fireEvent.click(await screen.findByRole("button", { name: /Orders API/ }));
-    expect(screen.getByText(/Pending compiler.*grants no traffic/i)).toBeTruthy();
+    expect(screen.getAllByText(/Pending compiler.*grants no traffic/i).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(postedBodies).toHaveLength(1));
     expect(postedBodies[0]).toMatchObject({ dst_kind: "fqdn_resource", dst_fqdn_resource_id: "fqdn-1" });
     expect(postedBodies[0]).not.toMatchObject({ dst_resource_id: "fqdn-1" });
+  });
+
+  it("hydrates an FQDN destination in Edit and preserves its typed identity through the swap", async () => {
+    rulesForTest = [{
+      id: "fqdn-rule",
+      enabled: true,
+      src_kind: "group",
+      src_group_id: "g1",
+      dst_kind: "fqdn_resource",
+      dst_fqdn_resource_id: "fqdn-1",
+      fqdn_destination_status: "pending_compiler",
+    }];
+    fqdnResourcesForTest = [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" }];
+
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Engineering" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit rule" });
+    expect(within(dialog).getAllByText(/Pending compiler.*grants no traffic/i).length).toBeGreaterThan(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(postedBodies).toHaveLength(1));
+    expect(postedBodies[0]).toMatchObject({
+      src_kind: "group",
+      src_group_id: "g1",
+      dst_kind: "fqdn_resource",
+      dst_fqdn_resource_id: "fqdn-1",
+    });
+    expect(postedBodies[0]).not.toMatchObject({ dst_resource_id: expect.anything() });
   });
 });
 
