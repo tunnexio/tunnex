@@ -22,10 +22,12 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   Modal,
   PageHeader,
   StatusDot,
 } from "../components/ui";
+import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import { DevicesTabRail } from "../components/DevicesTabRail";
 import {
@@ -71,6 +73,8 @@ export default function Devices() {
   const [org, setOrg] = useState<Org | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(true);
+  const [devicesLoadError, setDevicesLoadError] = useState<string | null>(null);
   // OWNER sub-line. A SECOND-CLASS read: `Device` serves `user_id` and no email, so the roster supplies the
   // label. An empty map means the sub-line is simply absent — never an id, never "unknown owner".
   const [ownerEmail, setOwnerEmail] = useState<Map<string, string>>(new Map());
@@ -105,15 +109,19 @@ export default function Devices() {
   const ovpnEnabled = org?.ovpn_enabled === true;
 
   async function loadDevices(orgId: string) {
+    setDevicesLoading(true);
+    setDevicesLoadError(null);
     const { data, error } = await api.GET(
       "/api/v1/organizations/{orgId}/devices",
       { params: { path: { orgId } } },
     );
     if (error) {
-      setError(apiErrorMessage(error, "Could not load devices."));
+      setDevicesLoadError(apiErrorMessage(error, "Could not load devices."));
+      setDevicesLoading(false);
       return;
     }
     setDevices(data ?? []);
+    setDevicesLoading(false);
     // Fired after the devices land, awaited separately: a failed roster read degrades the OWNER sub-line and
     // nothing else. The device list is this screen's subject; the owner's email is a courtesy.
     const m = await api.GET("/api/v1/organizations/{orgId}/members", {
@@ -163,6 +171,8 @@ export default function Devices() {
           return;
         }
         setOrg(first);
+        setDevicesLoading(true);
+        setDevicesLoadError(null);
         const { data: ns, error: nodeErr } = await api.GET(
           "/api/v1/organizations/{orgId}/nodes",
           {
@@ -526,6 +536,19 @@ export default function Devices() {
         </OneTimeSecretModal>
       )}
 
+      {devicesLoading ? (
+        <div className="mt-6">
+          <Loading label="Loading devices…" />
+        </div>
+      ) : devicesLoadError ? (
+        <div className="mt-6">
+          <LoadRetry
+            error={devicesLoadError}
+            onRetry={() => org && void loadDevices(org.id)}
+          />
+        </div>
+      ) : (
+        <>
       {/* S14.3 slice A: a real <table>. Devices are the most tabular surface in the product — name, address,
           state, posture are the same four facts per row — and rendering them as <li> blocks meant the tier
           could only find a device by matching its name as free text. Now: getByRole("row") / ("cell").
@@ -727,6 +750,8 @@ export default function Devices() {
           ]}
         />
       </div>
+        </>
+      )}
     </div>
   );
 }

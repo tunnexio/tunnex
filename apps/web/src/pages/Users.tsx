@@ -24,9 +24,11 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   Modal,
   PageHeader,
 } from "../components/ui";
+import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import { toast } from "../components/Toasts";
 import {
@@ -73,6 +75,8 @@ export default function Users() {
   const emailVerified = state.status === "authed" && state.user.email_verified;
   const [org, setOrg] = useState<Org | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [membersState, setMembersState] = useState<"loading" | "ready" | "error">("loading");
+  const [membersLoadError, setMembersLoadError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<Member | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,13 +116,19 @@ export default function Users() {
   );
 
   async function loadMembers(orgId: string) {
+    setMembersState("loading");
+    setMembersLoadError(null);
     const { data, error } = await api.GET(
       "/api/v1/organizations/{orgId}/members",
       { params: { path: { orgId } } },
     );
-    if (error)
-      return setError(apiErrorMessage(error, "Could not load members."));
+    if (error) {
+      setMembersLoadError(apiErrorMessage(error, "Could not load members."));
+      setMembersState("error");
+      return;
+    }
     setMembers(data ?? []);
+    setMembersState("ready");
   }
 
   useEffect(() => {
@@ -150,12 +160,15 @@ export default function Users() {
         // accusation that the user does not belong here.
         if (orgLoading) return;
         const first = currentOrg;
-        if (!first)
-          return setError(
+        if (!first) {
+          setMembersLoadError(
             orgFailed
               ? "Could not load your organizations."
               : "You are not a member of any organization yet.",
           );
+          setMembersState("error");
+          return;
+        }
         setOrg(first);
         if (!cancelled) await loadMembers(first.id);
       } catch {
@@ -344,6 +357,33 @@ export default function Users() {
   });
   // The table filters now, so the page hands it the whole roster.
   const shown = members;
+
+  if (membersState === "loading") {
+    return (
+      <div>
+        <PageHeader title="Users" subtitle={org ? org.name : "Loading organization…"} />
+        <Card>
+          <Loading label="Loading members…" />
+        </Card>
+      </div>
+    );
+  }
+
+  if (membersState === "error") {
+    return (
+      <div>
+        <PageHeader title="Users" subtitle={org ? org.name : "Organization unavailable"} />
+        <Card>
+          <LoadRetry
+            error={membersLoadError ?? "Could not load members."}
+            onRetry={() =>
+              org ? void loadMembers(org.id) : window.location.reload()
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -6,6 +6,7 @@ import { api, apiErrorMessage, listItems, loadOne, type AgentGroup, type AgentGr
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { isDirectoryManaged } from "../lib/idpsyncview";
+import { LoadRetry } from "../components/LoadRetry";
 
 type Kind = "people" | "agents" | "directory";
 
@@ -30,13 +31,17 @@ function AccessGroupsLoader() {
   const [agentGroups, setAgentGroups] = useState<AgentGroup[] | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
   const [error, setError] = useState("");
+  const [permissionAttempt, setPermissionAttempt] = useState(0);
   const reload = useCallback(async () => {
     if (!org || authorized !== true) return;
+    setError("");
+    setPeople(null);
+    setAgentGroups(null);
     const [peopleResult, agentResult] = await Promise.all([
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/groups", { params: { path: { orgId: org.id } } })),
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId: org.id } } })),
     ]);
-    if (!peopleResult.ok || !agentResult.ok) { setError("Could not load the group inventory. Refresh to retry."); return; }
+    if (!peopleResult.ok || !agentResult.ok) { setError("Could not load the group inventory."); return; }
     setPeople(peopleResult.data);
     setAgentGroups(agentResult.data);
   }, [authorized, org?.id]);
@@ -44,20 +49,21 @@ function AccessGroupsLoader() {
     let cancelled = false;
     if (!org || state.status !== "authed") { setAuthorized(false); return; }
     setAuthorized(null);
+    setError("");
     void loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: org.id } } })).then((result) => {
       if (cancelled) return;
-      if (!result.ok) { setError(result.error); setAuthorized(false); return; }
+      if (!result.ok) { setError(result.error); return; }
       setMembers(result.data);
       const mine = result.data.find((member) => member.user_id === state.user.id);
       setAuthorized(mine?.role === "owner" || mine?.role === "admin");
     });
     return () => { cancelled = true; };
-  }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
+  }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", permissionAttempt]);
   useEffect(() => { void reload(); }, [reload]);
   const header = <><PageHeader title="Groups" subtitle="People, managed-agent, and directory-synced groups in one operational inventory." /><AccessTabRail /></>;
-  if (!org || authorized === null) return <div className="space-y-5">{header}<Card><Loading label="Checking group permissions…" /></Card></div>;
+  if (!org || authorized === null) return <div className="space-y-5">{header}<Card>{error ? <LoadRetry error={`Could not check group permissions: ${error}`} onRetry={() => setPermissionAttempt((attempt) => attempt + 1)} /> : <Loading label="Checking group permissions…" />}</Card></div>;
   if (!authorized) return <div className="space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage groups.</p><ErrorText>{error}</ErrorText></Card></div>;
-  if (!people || !agentGroups || !members) return <div className="space-y-5">{header}<Card><Loading label="Loading groups…" /><ErrorText>{error}</ErrorText></Card></div>;
+  if (!people || !agentGroups || !members) return <div className="space-y-5">{header}<Card>{error ? <LoadRetry error={error} onRetry={() => void reload()} /> : <Loading label="Loading groups…" />}</Card></div>;
   return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} peopleOptions={members} onReload={reload} />;
 }
 
