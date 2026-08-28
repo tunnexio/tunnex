@@ -973,7 +973,7 @@ export function DataTable<T>({
   empty,
   failed,
   filterable,
-  variant = "default",
+  variant = "flat",
   defaultSortKey,
   pageSize: initialPageSize = 25,
   selectable,
@@ -1018,7 +1018,11 @@ export function DataTable<T>({
    * silently misses everything the page has not rendered.
    */
   filterable?: boolean;
-  /** A flatter inventory treatment for tables already enclosed by a page-level surface. */
+  /**
+   * Shared inventory presentation. `flat` is the product default so every
+   * roster uses the same header, row and hover treatment; `default` remains
+   * available only for deliberately legacy/demo surfaces.
+   */
   variant?: "default" | "flat";
   /** Column key to sort by initially. Omit to keep the caller's order, which is often deliberate. */
   defaultSortKey?: string;
@@ -1187,7 +1191,7 @@ export function DataTable<T>({
   return (
     <div>
       {(showFilter || toolbar) && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-white/[.08] pb-3">
           {showFilter ? (
             <input
               type="search"
@@ -1200,7 +1204,7 @@ export function DataTable<T>({
               }}
               placeholder={`Search ${caption.toLowerCase()}…`}
               aria-label={`Filter ${caption}`}
-              className="w-64 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-white/20 focus:outline-none"
+              className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
             />
           ) : (
             <span />
@@ -1212,7 +1216,7 @@ export function DataTable<T>({
           "0 selected" teaches where the count will appear, and a bar that only materialises on the first
           click moves the layout under the operator's cursor. */}
       {showSelect && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs">
           <span className="text-ink-secondary">
             <span className="tabular-nums text-slate-300">{selected.size}</span>{" "}
             selected
