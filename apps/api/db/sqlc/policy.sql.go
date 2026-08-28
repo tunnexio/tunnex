@@ -36,6 +36,45 @@ func (q *Queries) AddGroupMember(ctx context.Context, arg AddGroupMemberParams) 
 	return result.RowsAffected(), nil
 }
 
+const createAgentJITPolicyRule = `-- name: CreateAgentJITPolicyRule :one
+INSERT INTO policy_rules (org_id, src_kind, src_device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, expires_at)
+VALUES ($1, 'agent', $2, $3, $4, $5, $6, $7, $8)
+RETURNING id
+`
+
+type CreateAgentJITPolicyRuleParams struct {
+	OrgID           uuid.UUID          `json:"org_id"`
+	SrcDeviceID     pgtype.UUID        `json:"src_device_id"`
+	DstKind         string             `json:"dst_kind"`
+	DstResourceID   pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID      pgtype.UUID        `json:"dst_group_id"`
+	DstSiteID       pgtype.UUID        `json:"dst_site_id"`
+	DstK8sServiceID pgtype.UUID        `json:"dst_k8s_service_id"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+}
+
+// F10's approval path must remain executable against the historical 0098
+// schema. It deliberately names only the agent-access identity and destination
+// columns that existed before 0113; JIT does not support FQDN destinations or
+// machine ownership. Returning only the immutable rule ID prevents a later
+// policy_rules projection from making an old-schema approval depend on new
+// columns.
+func (q *Queries) CreateAgentJITPolicyRule(ctx context.Context, arg CreateAgentJITPolicyRuleParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createAgentJITPolicyRule,
+		arg.OrgID,
+		arg.SrcDeviceID,
+		arg.DstKind,
+		arg.DstResourceID,
+		arg.DstGroupID,
+		arg.DstSiteID,
+		arg.DstK8sServiceID,
+		arg.ExpiresAt,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createPolicyRule = `-- name: CreatePolicyRule :one
 INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, src_site_id, src_cidr, src_device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_fqdn_resource_id, expires_at, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)

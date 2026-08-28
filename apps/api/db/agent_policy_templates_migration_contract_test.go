@@ -65,3 +65,28 @@ func TestAgentPolicyTemplatesMigrationContract(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentPolicyTemplateOptInQueriesStayFinite(t *testing.T) {
+	queryBytes, err := os.ReadFile("queries/organizations.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(queryBytes)
+	for _, name := range []string{"GetOrganizationAgentPolicyTemplatesEnabled", "SetOrganizationAgentPolicyTemplatesEnabled"} {
+		start := strings.Index(query, "-- name: "+name+" :one")
+		if start < 0 {
+			t.Fatalf("missing %s", name)
+		}
+		end := strings.Index(query[start:], ";\n")
+		if end < 0 {
+			t.Fatalf("unterminated %s", name)
+		}
+		statement := query[start : start+end]
+		if !strings.Contains(statement, "agent_policy_templates_enabled") {
+			t.Fatalf("%s must project the template opt-in", name)
+		}
+		if strings.Contains(statement, "RETURNING *") || strings.Contains(statement, "SELECT *") {
+			t.Fatalf("%s must not depend on the full evolving organization projection", name)
+		}
+	}
+}

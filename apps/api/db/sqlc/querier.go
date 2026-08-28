@@ -284,6 +284,13 @@ type Querier interface {
 	CreateAgentAccessRequest(ctx context.Context, arg CreateAgentAccessRequestParams) (AgentAccessRequest, error)
 	CreateAgentBootstrapToken(ctx context.Context, arg CreateAgentBootstrapTokenParams) (AgentBootstrapToken, error)
 	CreateAgentGroup(ctx context.Context, arg CreateAgentGroupParams) (AgentGroup, error)
+	// F10's approval path must remain executable against the historical 0098
+	// schema. It deliberately names only the agent-access identity and destination
+	// columns that existed before 0113; JIT does not support FQDN destinations or
+	// machine ownership. Returning only the immutable rule ID prevents a later
+	// policy_rules projection from making an old-schema approval depend on new
+	// columns.
+	CreateAgentJITPolicyRule(ctx context.Context, arg CreateAgentJITPolicyRuleParams) (uuid.UUID, error)
 	CreateAgentMCPProfile(ctx context.Context, arg CreateAgentMCPProfileParams) (AgentMcpProfile, error)
 	CreateAgentPolicyTemplate(ctx context.Context, arg CreateAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -668,6 +675,10 @@ type Querier interface {
 	// access to existing users; it does not JIT-provision — that's S2.5). Case-insensitive: the
 	// provider already lower-cases; users.email is stored lower-cased.
 	GetOrgUserByEmail(ctx context.Context, arg GetOrgUserByEmailParams) (GetOrgUserByEmailRow, error)
+	// This opt-in existed in 0097. Keep its read projection finite so historical
+	// migration checks do not accidentally depend on organization fields added by
+	// later stories.
+	GetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, id uuid.UUID) (bool, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
 	GetPlatformSecret(ctx context.Context, name string) (PlatformSecret, error)
@@ -1465,7 +1476,7 @@ type Querier interface {
 	SetOrganizationAgentJITAccessEnabled(ctx context.Context, arg SetOrganizationAgentJITAccessEnabledParams) (Organization, error)
 	// F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
 	// which refuses while a live assignment exists.
-	SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (Organization, error)
+	SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (bool, error)
 	// F04 unlock-then-opt-in: the paid licence only unlocks this setting. The
 	// organization must explicitly enable runtime synchronization, and disabling
 	// it immediately withdraws the poll/report/status surface.

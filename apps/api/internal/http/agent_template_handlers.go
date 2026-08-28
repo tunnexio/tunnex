@@ -40,7 +40,7 @@ type agentTemplatePort interface {
 	Apply(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (agenttemplates.ApplyResult, error)
 	ListAssignments(context.Context, uuid.UUID) ([]agenttemplates.Assignment, error)
 	RemoveAssignment(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (agenttemplates.RemovalImpact, error)
-	SetEnabled(context.Context, uuid.UUID, uuid.UUID, bool) (sqlc.Organization, error)
+	SetEnabled(context.Context, uuid.UUID, uuid.UUID, bool) (bool, error)
 	ListMCPAssignments(context.Context, uuid.UUID, *string) ([]agenttemplates.MCPAssignment, error)
 	PreviewMCPProfileImpact(context.Context, uuid.UUID, uuid.UUID, *uuid.UUID) (agenttemplates.MCPImpact, error)
 	SetGroupMCPProfile(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (agenttemplates.MCPMutation, error)
@@ -347,11 +347,11 @@ func (s apiServer) SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Contex
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
-	org, err := s.agentTemplates.SetEnabled(ctx, req.OrgId, actorID(ctx), req.Body.Enabled)
+	enabled, err := s.agentTemplates.SetEnabled(ctx, req.OrgId, actorID(ctx), req.Body.Enabled)
 	if err != nil {
 		return nil, mapAgentTemplateError(err)
 	}
-	return api.SetOrganizationAgentPolicyTemplatesEnabled200JSONResponse{Body: api.AgentPolicyTemplateSetting{Enabled: org.AgentPolicyTemplatesEnabled}, Headers: api.SetOrganizationAgentPolicyTemplatesEnabled200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	return api.SetOrganizationAgentPolicyTemplatesEnabled200JSONResponse{Body: api.AgentPolicyTemplateSetting{Enabled: enabled}, Headers: api.SetOrganizationAgentPolicyTemplatesEnabled200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) GetAgentPolicyTemplateDestinationImpact(ctx context.Context, req api.GetAgentPolicyTemplateDestinationImpactRequestObject) (api.GetAgentPolicyTemplateDestinationImpactResponseObject, error) {

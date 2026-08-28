@@ -186,6 +186,23 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 	return i, err
 }
 
+const getOrganizationAgentPolicyTemplatesEnabled = `-- name: GetOrganizationAgentPolicyTemplatesEnabled :one
+SELECT agent_policy_templates_enabled
+FROM organizations
+WHERE id = $1 AND deleted_at IS NULL
+FOR SHARE
+`
+
+// This opt-in existed in 0097. Keep its read projection finite so historical
+// migration checks do not accidentally depend on organization fields added by
+// later stories.
+func (q *Queries) GetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, getOrganizationAgentPolicyTemplatesEnabled, id)
+	var agent_policy_templates_enabled bool
+	err := row.Scan(&agent_policy_templates_enabled)
+	return agent_policy_templates_enabled, err
+}
+
 const getOrganizationByID = `-- name: GetOrganizationByID :one
 SELECT id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled FROM organizations
 WHERE id = $1 AND deleted_at IS NULL
@@ -476,7 +493,7 @@ const setOrganizationAgentPolicyTemplatesEnabled = `-- name: SetOrganizationAgen
 UPDATE organizations
 SET agent_policy_templates_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled
+RETURNING agent_policy_templates_enabled
 `
 
 type SetOrganizationAgentPolicyTemplatesEnabledParams struct {
@@ -486,30 +503,11 @@ type SetOrganizationAgentPolicyTemplatesEnabledParams struct {
 
 // F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
 // which refuses while a live assignment exists.
-func (q *Queries) SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (Organization, error) {
+func (q *Queries) SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (bool, error) {
 	row := q.db.QueryRow(ctx, setOrganizationAgentPolicyTemplatesEnabled, arg.ID, arg.AgentPolicyTemplatesEnabled)
-	var i Organization
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Slug,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-		&i.MaxDevicesPerUser,
-		&i.PoolCidr,
-		&i.ZeroTrustMode,
-		&i.DeviceApproval,
-		&i.FlowSeq,
-		&i.OvpnEnabled,
-		&i.MaxAgentIdentities,
-		&i.ManagedAgentRuntimeEnabled,
-		&i.AgentPolicyTemplatesEnabled,
-		&i.AgentJitAccessEnabled,
-		&i.AlertingEnabled,
-		&i.FqdnResourcesEnabled,
-	)
-	return i, err
+	var agent_policy_templates_enabled bool
+	err := row.Scan(&agent_policy_templates_enabled)
+	return agent_policy_templates_enabled, err
 }
 
 const setOrganizationAgentRuntimeEnabled = `-- name: SetOrganizationAgentRuntimeEnabled :one

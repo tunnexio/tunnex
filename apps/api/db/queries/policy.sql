@@ -103,6 +103,17 @@ INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, src_site_
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING *;
 
+-- name: CreateAgentJITPolicyRule :one
+-- F10's approval path must remain executable against the historical 0098
+-- schema. It deliberately names only the agent-access identity and destination
+-- columns that existed before 0113; JIT does not support FQDN destinations or
+-- machine ownership. Returning only the immutable rule ID prevents a later
+-- policy_rules projection from making an old-schema approval depend on new
+-- columns.
+INSERT INTO policy_rules (org_id, src_kind, src_device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, expires_at)
+VALUES ($1, 'agent', $2, $3, $4, $5, $6, $7, $8)
+RETURNING id;
+
 -- name: ListPolicyRulesByOrg :many
 -- Admin LIST — every rule incl. expired ones (the UI shows a lapsed grant distinctly).
 SELECT * FROM policy_rules

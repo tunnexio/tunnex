@@ -58,7 +58,16 @@ RETURNING *;
 UPDATE organizations
 SET agent_policy_templates_enabled = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING *;
+RETURNING agent_policy_templates_enabled;
+
+-- name: GetOrganizationAgentPolicyTemplatesEnabled :one
+-- This opt-in existed in 0097. Keep its read projection finite so historical
+-- migration checks do not accidentally depend on organization fields added by
+-- later stories.
+SELECT agent_policy_templates_enabled
+FROM organizations
+WHERE id = $1 AND deleted_at IS NULL
+FOR SHARE;
 
 -- name: SetOrganizationAgentJITAccessEnabled :one
 -- F10 unlock-then-opt-in. The JIT service refuses disable while pending or

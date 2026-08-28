@@ -224,8 +224,8 @@ func (s *Service) approve(ctx context.Context, orgID, requestID, actor uuid.UUID
 	now := s.now().UTC()
 	expires := now.Add(time.Duration(row.RequestedDurationSeconds) * time.Second)
 	dst := destinationParams(destination)
-	rule, err := q.CreatePolicyRule(ctx, sqlc.CreatePolicyRuleParams{
-		OrgID: orgID, SrcKind: "agent", SrcDeviceID: pgUUID(row.DeviceID),
+	ruleID, err := q.CreateAgentJITPolicyRule(ctx, sqlc.CreateAgentJITPolicyRuleParams{
+		OrgID: orgID, SrcDeviceID: pgUUID(row.DeviceID),
 		DstKind: destination.Kind, DstResourceID: dst.resource, DstGroupID: dst.group,
 		DstSiteID: dst.site, DstK8sServiceID: dst.k8s,
 		ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true},
@@ -238,7 +238,7 @@ func (s *Service) approve(ctx context.Context, orgID, requestID, actor uuid.UUID
 	}
 	row, err = q.ApproveAgentAccessRequest(ctx, sqlc.ApproveAgentAccessRequestParams{
 		ID: requestID, OrgID: orgID, ApprovedByUserID: pgUUID(actor),
-		ApprovedAt: pgTime(now), ApprovedExpiresAt: pgTime(expires), PolicyRuleID: pgUUID(rule.ID),
+		ApprovedAt: pgTime(now), ApprovedExpiresAt: pgTime(expires), PolicyRuleID: pgUUID(ruleID),
 	})
 	if err != nil {
 		return sqlc.AgentAccessRequest{}, false, classify(err)
@@ -246,11 +246,11 @@ func (s *Service) approve(ctx context.Context, orgID, requestID, actor uuid.UUID
 	if err := recordOperation(ctx, q, row, "approve", key, hash); err != nil {
 		return sqlc.AgentAccessRequest{}, false, err
 	}
-	meta := map[string]any{"policy_rule_id": rule.ID.String(), "expires_at": expires.Format(time.RFC3339)}
+	meta := map[string]any{"policy_rule_id": ruleID.String(), "expires_at": expires.Format(time.RFC3339)}
 	if err := recordHumanTransition(ctx, q, row, actor, "agent_access.approved", meta); err != nil {
 		return sqlc.AgentAccessRequest{}, false, err
 	}
-	if err := writeHumanAudit(ctx, q, orgID, actor, "policy.rule_created", "policy_rule", rule.ID, map[string]any{"managed_by": "agent_access_request", "request_id": row.ID.String(), "expires_at": expires.Format(time.RFC3339)}); err != nil {
+	if err := writeHumanAudit(ctx, q, orgID, actor, "policy.rule_created", "policy_rule", ruleID, map[string]any{"managed_by": "agent_access_request", "request_id": row.ID.String(), "expires_at": expires.Format(time.RFC3339)}); err != nil {
 		return sqlc.AgentAccessRequest{}, false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
