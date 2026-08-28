@@ -525,7 +525,7 @@ export function AppShell() {
                 className="hidden items-center gap-2 rounded-input border border-line bg-surface-inset px-3 py-[7px] text-cell text-ink-secondary hover:text-ink-body md:flex"
               >
                 <Icon name="search" size={13} />
-                <span>Search users, devices, gateways, sites…</span>
+                <span>Go to a page…</span>
                 <span className="ml-2 font-mono text-badge text-ink-secondary">
                   ⌘K
                 </span>
@@ -554,7 +554,7 @@ export function AppShell() {
 
       {navMode === "drawer" && <TriageBar />}
 
-      <footer className="flex shrink-0 items-center justify-between border-t border-white/5 px-6 py-3 text-xs text-slate-600">
+      <footer className="hidden shrink-0 items-center justify-between border-t border-white/5 px-6 py-3 text-xs text-slate-600 md:flex">
         <HealthStatus />
         <span>{PRODUCT_TAGLINE}</span>
       </footer>

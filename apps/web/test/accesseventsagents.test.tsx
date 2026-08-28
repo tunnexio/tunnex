@@ -45,7 +45,7 @@ describe("released access-event agent attribution", () => {
       const calls = vi.mocked(api.GET).mock.calls as unknown as Array<[string, { params?: { query?: { src_agent_id?: string } } }]>;
       expect(calls.some(([, req]) => req?.params?.query?.src_agent_id === "agent-a")).toBe(true);
     });
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    fireEvent.click(screen.getByRole("button", { name: "View DENY event details" }));
     expect(screen.getByText("Gateway not recorded · applied policy v7 · abcdef123456")).toBeTruthy();
     expect(screen.getByText("Source agent agent-a · configuration revision 4")).toBeTruthy();
 

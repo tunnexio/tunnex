@@ -15,7 +15,6 @@ import {
 } from "../components/ui";
 import {
   ATTRIBUTION_NOTE,
-  FLOW_LOG_CUTS,
   causeFor,
   decisionLabel,
   decisionTone,
@@ -216,10 +215,13 @@ export default function AccessEvents() {
               cell: (e) => {
                 const tone = decisionTone(e.decision);
                 return (
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => setSelected(e)}
+                    aria-label={`View ${decisionLabel(e.decision)} event details`}
                     data-decision={e.decision}
                     className={
-                      "rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold " +
+                      "rounded px-1.5 py-0.5 font-mono text-badge font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 " +
                       (tone === "ok"
                         ? "bg-accent-500/10 text-accent-400"
                         : tone === "bad"
@@ -230,7 +232,7 @@ export default function AccessEvents() {
                     }
                   >
                     {decisionLabel(e.decision)}
-                  </span>
+                  </button>
                 );
               },
             },
@@ -263,11 +265,6 @@ export default function AccessEvents() {
                 </span>
               ),
             },
-            {
-              key: "details",
-              header: "Details",
-              cell: (e) => <Button onClick={() => setSelected(e)}>View</Button>,
-            },
           ]}
         />
       </div>
@@ -299,18 +296,6 @@ export default function AccessEvents() {
         </span>
       </div>
 
-      {/* ⛔ WHAT THIS SCREEN DOES NOT SHOW, AND WHY. A screen that silently omits four of the
-          design's controls looks unfinished; one that names them looks decided. */}
-      <Card className="mt-4">
-        <h2 className="text-sm font-semibold text-slate-300">Not shown here</h2>
-        <ul className="mt-2 space-y-1.5">
-          {FLOW_LOG_CUTS.map((c) => (
-            <li key={c.what} className="text-xs text-slate-500">
-              <span className="text-slate-400">{c.what}</span> — {c.why}
-            </li>
-          ))}
-        </ul>
-      </Card>
     </div>
   );
 }

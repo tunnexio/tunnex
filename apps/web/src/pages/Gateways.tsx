@@ -155,19 +155,6 @@ export default function GatewaysPage() {
       header: "Egress",
       cell: (row: GatewayRow) => gatewayEgressLabel(row),
     },
-    {
-      key: "manage",
-      header: "",
-      cell: (row: GatewayRow) => (
-        <Link
-          aria-label={`Open details for ${row.name}`}
-          className="inline-flex min-h-8 items-center rounded-md border border-white/10 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-white/5"
-          to={`/gateways/${row.id}`}
-        >
-          Open details <span aria-hidden="true" className="ml-1">→</span>
-        </Link>
-      ),
-    },
   ];
 
   const openEnrollment = () => setParam("enroll", "1");

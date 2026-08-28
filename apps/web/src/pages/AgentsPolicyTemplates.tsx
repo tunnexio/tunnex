@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AgentsTabRail } from "../components/AgentsTabRail";
+import { LoadRetry } from "../components/LoadRetry";
 import { Button, Card, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
 import { api, apiErrorMessage, loadOne, type AgentGroup, type AgentPolicyTemplate, type AgentPolicyTemplateAssignment, type AgentPolicyTemplatePreview, type AgentPolicyTemplateVersion, type Resource } from "../lib/api";
 import { relativeAge } from "../lib/format";
@@ -120,7 +121,17 @@ function PolicyTemplatesWorkspace({ orgId }: { orgId: string }) {
     if (await action(() => api.DELETE("/api/v1/organizations/{orgId}/agent-policy-template-assignments/{assignmentId}", { params: { path: { orgId, assignmentId: assignment.id } } }), "Could not remove the assignment.", `Assignment removed. ${assignment.rule_count} assignment-owned rules may be withdrawn; shared rules remain.`)) await reload();
   }
 
-  if (!templates || !groups || !resources || !assignments) return <Card><Loading label="Loading policy templates…" /></Card>;
+  if (!templates || !groups || !resources || !assignments) {
+    return (
+      <Card>
+        {error ? (
+          <LoadRetry error={error} onRetry={() => void reload()} />
+        ) : (
+          <Loading label="Loading policy templates…" />
+        )}
+      </Card>
+    );
+  }
   const createButton = <Button onClick={() => { setName(""); setDialog("create"); }}>Create template</Button>;
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
