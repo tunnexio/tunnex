@@ -48,6 +48,24 @@ func TestFQDNResolverConfigProjectionPreservesDirectEndpoints(t *testing.T) {
 	}
 }
 
+func TestFQDNDetailProjectionUsesBoundedServerVocabulary(t *testing.T) {
+	now := time.Now().UTC()
+	resource := fqdnresources.Resource{ID: uuid.New(), OrgID: uuid.New(), Name: "orders", FQDN: "orders.internal.example", Protocol: "tcp", State: "healthy", CreatedAt: now, UpdatedAt: now}
+	got := api.GetFQDNResourceDetail200JSONResponse{
+		Resource:              toAPIFQDNResource(resource),
+		ActiveAnswerAddresses: []string{"10.0.0.10"},
+		StatusSource:          api.FQDNResourceDetailStatusSourceActiveGeneration,
+		ObservedAt:            &now,
+		NextAction:            api.FQDNResourceDetailNextActionNone,
+		ResolverReady:         true,
+		ReferencingRules:      []api.FQDNResourceRuleReference{},
+		Audit:                 api.FQDNResourceAuditProjection{TargetType: "fqdn_resource", TargetId: resource.ID},
+	}
+	if got.StatusSource != api.FQDNResourceDetailStatusSourceActiveGeneration || got.NextAction != api.FQDNResourceDetailNextActionNone || len(got.ActiveAnswerAddresses) != 1 {
+		t.Fatalf("detail projection lost authoritative state: %#v", got)
+	}
+}
+
 func TestFQDNSettingCommitWakeIsScopedToCommittedOrganization(t *testing.T) {
 	org := uuid.New()
 	notify := &fqdnSettingNotifyRecorder{}

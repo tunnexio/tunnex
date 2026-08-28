@@ -109,6 +109,24 @@ func (s apiServer) UpdateFQDNResource(ctx context.Context, req api.UpdateFQDNRes
 	}
 	return api.UpdateFQDNResource200JSONResponse(toAPIFQDNResource(r)), nil
 }
+func (s apiServer) GetFQDNResourceDetail(ctx context.Context, req api.GetFQDNResourceDetailRequestObject) (api.GetFQDNResourceDetailResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceView); err != nil {
+		return nil, err
+	}
+	svc, err := s.fqdnService()
+	if err != nil {
+		return nil, err
+	}
+	d, err := svc.Detail(ctx, req.OrgId, req.ResourceId)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]api.FQDNResourceRuleReference, len(d.ReferencingRules))
+	for i, ref := range d.ReferencingRules {
+		refs[i] = api.FQDNResourceRuleReference{Id: ref.ID, SourceKind: api.FQDNResourceRuleReferenceSourceKind(ref.SourceKind), Enabled: ref.Enabled}
+	}
+	return api.GetFQDNResourceDetail200JSONResponse{Resource: toAPIFQDNResource(d.Resource), ActiveAnswerAddresses: d.ActiveAnswers, StatusSource: api.FQDNResourceDetailStatusSource(d.StatusSource), ObservedAt: d.ObservedAt, FreshUntilAt: d.FreshUntilAt, ServerReason: d.ServerReason, NextAction: api.FQDNResourceDetailNextAction(d.NextAction), ResolverReady: d.ResolverReady, ReferencingRuleCount: d.ReferencingRuleCount, ReferencingRules: refs, ReferencesTruncated: d.ReferencesTruncated, Audit: api.FQDNResourceAuditProjection{TargetType: "fqdn_resource", TargetId: req.ResourceId, LatestEventAt: d.Audit.LatestEventAt}}, nil
+}
 func (s apiServer) GetFQDNResourceImpact(ctx context.Context, req api.GetFQDNResourceImpactRequestObject) (api.GetFQDNResourceImpactResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceView); err != nil {
 		return nil, err
@@ -122,6 +140,23 @@ func (s apiServer) GetFQDNResourceImpact(ctx context.Context, req api.GetFQDNRes
 		return nil, err
 	}
 	return api.GetFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, ReferencingRuleCount: i.ReferencingRuleCount, ReferencingRuleIds: i.ReferencingRuleIDs, GenerationWithdrawalRequired: i.GenerationWithdrawalRequired}, nil
+}
+func (s apiServer) PreviewFQDNResourceImpact(ctx context.Context, req api.PreviewFQDNResourceImpactRequestObject) (api.PreviewFQDNResourceImpactResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	svc, err := s.fqdnService()
+	if err != nil {
+		return nil, err
+	}
+	p, err := svc.Preview(ctx, req.OrgId, req.ResourceId, fqdnInput(*req.Body))
+	if err != nil {
+		return nil, err
+	}
+	return api.PreviewFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, EnforcementInputsChanged: p.EnforcementInputsChanged, ReferencingRuleCount: p.ReferencingRuleCount, ReferencingRuleIds: p.ReferencingRuleIDs, GenerationWithdrawalRequired: p.GenerationWithdrawalRequired, MutationAllowed: p.MutationAllowed, RefusalReason: p.RefusalReason}, nil
 }
 func (s apiServer) DeleteFQDNResource(ctx context.Context, req api.DeleteFQDNResourceRequestObject) (api.DeleteFQDNResourceResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
@@ -150,6 +185,21 @@ func (s apiServer) GetFQDNResourceSetting(ctx context.Context, req api.GetFQDNRe
 		return nil, err
 	}
 	return api.GetFQDNResourceSetting200JSONResponse{Enabled: enabled}, nil
+}
+func (s apiServer) GetFQDNResourceSettingImpact(ctx context.Context, req api.GetFQDNResourceSettingImpactRequestObject) (api.GetFQDNResourceSettingImpactResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
+		return nil, err
+	}
+	svc, err := s.fqdnService()
+	if err != nil {
+		return nil, err
+	}
+	impact, err := svc.SettingImpact(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	entitled := licence.Has(s.licence.Evaluate(time.Now()).Tier, licence.FeatFQDNResources)
+	return api.GetFQDNResourceSettingImpact200JSONResponse{Enabled: impact.Enabled, EnforcementReadyRuleCount: impact.EnforcementReadyRuleCount, EnforcementReadyRuleIds: impact.EnforcementReadyRuleIDs, RuleIdsTruncated: impact.RuleIDsTruncated, EntitlementAvailable: entitled}, nil
 }
 func (s apiServer) SetFQDNResourceEnabled(ctx context.Context, req api.SetFQDNResourceEnabledRequestObject) (api.SetFQDNResourceEnabledResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {

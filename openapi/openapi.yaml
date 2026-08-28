@@ -2490,6 +2490,14 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    get:
+      operationId: getFQDNResourceDetail
+      summary: Read the bounded authoritative FQDN resource workspace projection
+      description: Current answer addresses are returned only from the active immutable generation and are capped at 32. Unavailable facts are explicit and never inferred.
+      tags: [policy]
+      responses:
+        "200": { description: Detail, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceDetail" } } } }
+        default: { $ref: "#/components/responses/Error" }
     patch:
       operationId: updateFQDNResource
       summary: Update an FQDN resource and selected Site/Gateway pair
@@ -2526,6 +2534,17 @@ paths:
       responses:
         "200": { description: Impact, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceImpact" } } } }
         default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: previewFQDNResourceImpact
+      summary: Preview the server-known impact of an enforcement-changing FQDN resource edit
+      description: The preview is exact for current rule references and active generation state. It deliberately refuses to predict a future DNS answer set.
+      tags: [policy]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceRequest" } } }
+      responses:
+        "200": { description: Preview, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceMutationPreview" } } } }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/fqdn-resources/setting:
     parameters:
@@ -2539,6 +2558,20 @@ paths:
       tags: [policy]
       responses:
         "200": { description: Setting, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/fqdn-resources/setting/impact:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getFQDNResourceSettingImpact
+      summary: Preview the exact current rule impact of changing FQDN enforcement opt-in
+      tags: [policy]
+      responses:
+        "200": { description: Opt-in impact, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSettingImpact" } } } }
         default: { $ref: "#/components/responses/Error" }
     put:
       operationId: setFQDNResourceEnabled
@@ -5356,6 +5389,66 @@ components:
         referencing_rule_count: { type: integer, minimum: 0, description: "Server-computed active policy-rule impact; never browser-inferred." }
         referencing_rule_ids: { type: array, items: { type: string, format: uuid }, description: "Exact policy rule identities blocking deletion, projected by the server for truthful recovery UI." }
         generation_withdrawal_required: { type: boolean, description: "True only when a live FQDN generation exists and must be withdrawn before deletion." }
+
+    FQDNResourceRuleReference:
+      type: object
+      required: [id, source_kind, enabled]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        source_kind: { type: string, enum: [group, user, site, cidr, agent, agent_group] }
+        enabled: { type: boolean, description: "Current rule state, projected from the authoritative policy row." }
+
+    FQDNResourceAuditProjection:
+      type: object
+      required: [target_type, target_id]
+      additionalProperties: false
+      properties:
+        target_type: { type: string, enum: [fqdn_resource] }
+        target_id: { type: string, format: uuid }
+        latest_event_at: { type: string, format: date-time, nullable: true, description: "Null when no existing audit event targets this resource." }
+
+    FQDNResourceDetail:
+      type: object
+      required: [resource, active_answer_addresses, status_source, next_action, resolver_ready, referencing_rule_count, referencing_rules, references_truncated, audit]
+      additionalProperties: false
+      properties:
+        resource: { $ref: "#/components/schemas/FQDNResource" }
+        active_answer_addresses: { type: array, maxItems: 32, items: { type: string, format: ip }, description: "Addresses from the current active immutable generation only; empty is not a DNS lookup." }
+        status_source: { type: string, enum: [resource_configuration, resolver_configuration, latest_generation, active_generation] }
+        observed_at: { type: string, format: date-time, nullable: true }
+        fresh_until_at: { type: string, format: date-time, nullable: true, description: "Resolved-at plus the server-recorded effective TTL for an active generation only." }
+        server_reason: { type: string, nullable: true, description: "Stored server failure reason when available; never browser-derived." }
+        next_action: { type: string, enum: [none, configure_resolver, wait_for_resolution, review_resolver, refresh, edit_resource] }
+        resolver_ready: { type: boolean, description: "True only when the selected context has an active server-managed resolver configuration." }
+        referencing_rule_count: { type: integer, minimum: 0 }
+        referencing_rules: { type: array, maxItems: 32, items: { $ref: "#/components/schemas/FQDNResourceRuleReference" } }
+        references_truncated: { type: boolean }
+        audit: { $ref: "#/components/schemas/FQDNResourceAuditProjection" }
+
+    FQDNResourceMutationPreview:
+      type: object
+      required: [resource_id, enforcement_inputs_changed, referencing_rule_count, referencing_rule_ids, generation_withdrawal_required, mutation_allowed, refusal_reason]
+      additionalProperties: false
+      properties:
+        resource_id: { type: string, format: uuid }
+        enforcement_inputs_changed: { type: boolean, description: "True when FQDN, protocol/ports, or resolver binding differs from the stored resource." }
+        referencing_rule_count: { type: integer, minimum: 0 }
+        referencing_rule_ids: { type: array, items: { type: string, format: uuid } }
+        generation_withdrawal_required: { type: boolean }
+        mutation_allowed: { type: boolean }
+        refusal_reason: { type: string, nullable: true, description: "Explicit refusal rather than a guessed enforcement result." }
+
+    FQDNResourceSettingImpact:
+      type: object
+      required: [enabled, enforcement_ready_rule_count, enforcement_ready_rule_ids, rule_ids_truncated, entitlement_available]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        enforcement_ready_rule_count: { type: integer, minimum: 0, description: "Exact count of enabled FQDN policy rules backed by an active generation at read time." }
+        enforcement_ready_rule_ids: { type: array, maxItems: 32, items: { type: string, format: uuid } }
+        rule_ids_truncated: { type: boolean }
+        entitlement_available: { type: boolean, description: "False means enabling is refused regardless of this preview." }
 
     PolicyRule:
       type: object

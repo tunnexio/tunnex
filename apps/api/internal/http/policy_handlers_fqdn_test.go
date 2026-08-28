@@ -20,11 +20,11 @@ func TestPolicyRuleFQDNProjectionDefaultsToGenerationUnavailable(t *testing.T) {
 	if out.DstFqdnResourceId == nil || *out.DstFqdnResourceId != resourceID {
 		t.Fatal("FQDN rule identity was not projected")
 	}
-	if out.FqdnDestinationStatus != api.GenerationUnavailable {
-		t.Fatalf("FQDN rule status = %q, want %q; a bare mapping must not claim an active generation", out.FqdnDestinationStatus, api.GenerationUnavailable)
+	if out.FqdnDestinationStatus != api.PolicyRuleFqdnDestinationStatusGenerationUnavailable {
+		t.Fatalf("FQDN rule status = %q, want %q; a bare mapping must not claim an active generation", out.FqdnDestinationStatus, api.PolicyRuleFqdnDestinationStatusGenerationUnavailable)
 	}
-	if normal := toAPIRule(sqlc.PolicyRule{ID: uuid.New(), OrgID: orgID, SrcKind: "group", DstKind: "resource", CreatedAt: time.Now()}, false, false); normal.FqdnDestinationStatus != api.NotApplicable {
-		t.Fatalf("non-FQDN status = %q, want %q", normal.FqdnDestinationStatus, api.NotApplicable)
+	if normal := toAPIRule(sqlc.PolicyRule{ID: uuid.New(), OrgID: orgID, SrcKind: "group", DstKind: "resource", CreatedAt: time.Now()}, false, false); normal.FqdnDestinationStatus != api.PolicyRuleFqdnDestinationStatusNotApplicable {
+		t.Fatalf("non-FQDN status = %q, want %q", normal.FqdnDestinationStatus, api.PolicyRuleFqdnDestinationStatusNotApplicable)
 	}
 }
 
@@ -33,10 +33,10 @@ func TestFQDNRuleStatusProjectionUsesAuthoritativeResourceState(t *testing.T) {
 		entitled, optedIn, readable, exists bool
 		want                                api.PolicyRuleFqdnDestinationStatus
 	}{
-		"feature absent":       {false, false, true, true, api.FeatureUnavailable},
-		"read unavailable":     {true, false, false, true, api.ProjectionUnavailable},
-		"opt-in disabled":      {true, false, true, true, api.OptInDisabled},
-		"resource unavailable": {true, true, true, false, api.GenerationUnavailable},
+		"feature absent":       {false, false, true, true, api.PolicyRuleFqdnDestinationStatusFeatureUnavailable},
+		"read unavailable":     {true, false, false, true, api.PolicyRuleFqdnDestinationStatusProjectionUnavailable},
+		"opt-in disabled":      {true, false, true, true, api.PolicyRuleFqdnDestinationStatusOptInDisabled},
+		"resource unavailable": {true, true, true, false, api.PolicyRuleFqdnDestinationStatusGenerationUnavailable},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := fqdnDestinationStatusFor(tc.entitled, tc.optedIn, tc.readable, tc.exists, ""); got != tc.want {
@@ -45,13 +45,13 @@ func TestFQDNRuleStatusProjectionUsesAuthoritativeResourceState(t *testing.T) {
 		})
 	}
 	for state, want := range map[string]api.PolicyRuleFqdnDestinationStatus{
-		"healthy":   api.ActiveGeneration,
-		"draft":     api.GenerationPending,
-		"resolving": api.GenerationPending,
-		"stale":     api.GenerationWithdrawn,
-		"nxdomain":  api.GenerationWithdrawn,
-		"failed":    api.GenerationWithdrawn,
-		"":          api.GenerationUnavailable,
+		"healthy":   api.PolicyRuleFqdnDestinationStatusActiveGeneration,
+		"draft":     api.PolicyRuleFqdnDestinationStatusGenerationPending,
+		"resolving": api.PolicyRuleFqdnDestinationStatusGenerationPending,
+		"stale":     api.PolicyRuleFqdnDestinationStatusGenerationWithdrawn,
+		"nxdomain":  api.PolicyRuleFqdnDestinationStatusGenerationWithdrawn,
+		"failed":    api.PolicyRuleFqdnDestinationStatusGenerationWithdrawn,
+		"":          api.PolicyRuleFqdnDestinationStatusGenerationUnavailable,
 	} {
 		if got := fqdnDestinationStatus(state); got != want {
 			t.Fatalf("state %q = %q, want %q", state, got, want)

@@ -49,6 +49,40 @@ type Impact struct {
 	ReferencingRuleIDs           []uuid.UUID
 	GenerationWithdrawalRequired bool
 }
+type RuleReference struct {
+	ID         uuid.UUID
+	SourceKind string
+	Enabled    bool
+}
+type AuditProjection struct {
+	LatestEventAt *time.Time
+}
+type Detail struct {
+	Resource             Resource
+	ActiveAnswers        []string
+	StatusSource         string
+	ObservedAt           *time.Time
+	FreshUntilAt         *time.Time
+	ServerReason         *string
+	NextAction           string
+	ResolverReady        bool
+	ReferencingRuleCount int
+	ReferencingRules     []RuleReference
+	ReferencesTruncated  bool
+	Audit                AuditProjection
+}
+type MutationPreview struct {
+	Impact
+	EnforcementInputsChanged bool
+	MutationAllowed          bool
+	RefusalReason            *string
+}
+type SettingImpact struct {
+	Enabled                   bool
+	EnforcementReadyRuleCount int
+	EnforcementReadyRuleIDs   []uuid.UUID
+	RuleIDsTruncated          bool
+}
 
 type Service struct{ pool *pgxpool.Pool }
 
@@ -111,6 +145,16 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, in Input, actor uui
 func (s *Service) Update(ctx context.Context, org, id uuid.UUID, in Input, actor uuid.UUID, actorSystem, cause string) (Resource, error) {
 	if err := valid(&in); err != nil {
 		return Resource{}, err
+	}
+	// An update that changes enforcement inputs cannot leave a referenced or
+	// active generation describing the old identity. Refuse it until the exact
+	// server impact reported by Preview has been cleared.
+	preview, err := s.Preview(ctx, org, id, in)
+	if err != nil {
+		return Resource{}, err
+	}
+	if !preview.MutationAllowed {
+		return Resource{}, apierr.Conflict("fqdn_resource_mutation_refused", *preview.RefusalReason)
 	}
 	var site, gateway *uuid.UUID
 	if in.Context != nil {
@@ -208,6 +252,148 @@ func (s *Service) Impact(ctx context.Context, org, id uuid.UUID) (Impact, error)
 		return i, apierr.NotFound("fqdn_resource_not_found", "FQDN resource not found")
 	}
 	return i, err
+}
+
+// Detail projects only stored, bounded facts. It never resolves DNS or turns a
+// missing projection into an empty/healthy claim.
+func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error) {
+	r, err := s.Get(ctx, org, id)
+	if err != nil {
+		return Detail{}, err
+	}
+	d := Detail{Resource: r, StatusSource: "resource_configuration", NextAction: "edit_resource", ActiveAnswers: []string{}, ReferencingRules: []RuleReference{}}
+	if r.Context != nil {
+		d.StatusSource, d.NextAction = "resolver_configuration", "configure_resolver"
+		d.ResolverReady = r.Context.Config != nil
+		if d.ResolverReady {
+			d.NextAction = "wait_for_resolution"
+		}
+	}
+	var generationID *uuid.UUID
+	var state string
+	var resolved *time.Time
+	var ttl *time.Duration
+	var failure *string
+	err = s.pool.QueryRow(ctx, `SELECT id,state,resolved_at,effective_ttl,failure_code FROM fqdn_resource_answer_generations WHERE org_id=$1 AND resource_id=$2 ORDER BY generation DESC LIMIT 1`, org, id).Scan(&generationID, &state, &resolved, &ttl, &failure)
+	if err != nil && err != pgx.ErrNoRows {
+		return Detail{}, err
+	}
+	if err == nil {
+		d.StatusSource, d.ObservedAt, d.ServerReason = "latest_generation", resolved, failure
+		switch state {
+		case "active":
+			d.StatusSource, d.NextAction = "active_generation", "none"
+		case "pending":
+			d.NextAction = "wait_for_resolution"
+		case "withdrawn":
+			d.NextAction = "review_resolver"
+		default:
+			d.NextAction = "refresh"
+		}
+		if state == "active" && generationID != nil {
+			if ttl != nil && resolved != nil {
+				fresh := resolved.Add(*ttl)
+				d.FreshUntilAt = &fresh
+			}
+			rows, e := s.pool.Query(ctx, `SELECT host(address)::text FROM fqdn_resource_generation_answers WHERE org_id=$1 AND generation_id=$2 ORDER BY family(address), host(address) LIMIT 32`, org, *generationID)
+			if e != nil {
+				return Detail{}, e
+			}
+			for rows.Next() {
+				var address string
+				if e = rows.Scan(&address); e != nil {
+					rows.Close()
+					return Detail{}, e
+				}
+				d.ActiveAnswers = append(d.ActiveAnswers, address)
+			}
+			if e = rows.Err(); e != nil {
+				rows.Close()
+				return Detail{}, e
+			}
+			rows.Close()
+		}
+	}
+	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2`, org, id).Scan(&d.ReferencingRuleCount); err != nil {
+		return Detail{}, err
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id,src_kind,NOT disabled FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2 ORDER BY id LIMIT 32`, org, id)
+	if err != nil {
+		return Detail{}, err
+	}
+	for rows.Next() {
+		var ref RuleReference
+		if err = rows.Scan(&ref.ID, &ref.SourceKind, &ref.Enabled); err != nil {
+			rows.Close()
+			return Detail{}, err
+		}
+		d.ReferencingRules = append(d.ReferencingRules, ref)
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return Detail{}, err
+	}
+	rows.Close()
+	d.ReferencesTruncated = d.ReferencingRuleCount > len(d.ReferencingRules)
+	if err = s.pool.QueryRow(ctx, `SELECT max(created_at) FROM audit_logs WHERE org_id=$1 AND target_type='fqdn_resource' AND target_id=$2`, org, id.String()).Scan(&d.Audit.LatestEventAt); err != nil {
+		return Detail{}, err
+	}
+	return d, nil
+}
+
+func (s *Service) Preview(ctx context.Context, org, id uuid.UUID, in Input) (MutationPreview, error) {
+	if err := valid(&in); err != nil {
+		return MutationPreview{}, err
+	}
+	current, err := s.Get(ctx, org, id)
+	if err != nil {
+		return MutationPreview{}, err
+	}
+	impact, err := s.Impact(ctx, org, id)
+	if err != nil {
+		return MutationPreview{}, err
+	}
+	changed := current.FQDN != in.FQDN || current.Protocol != in.Protocol || !samePorts(current.PortLow, in.PortLow) || !samePorts(current.PortHigh, in.PortHigh) || !sameContext(current.Context, in.Context)
+	p := MutationPreview{Impact: impact, EnforcementInputsChanged: changed, MutationAllowed: true}
+	if changed && (impact.ReferencingRuleCount > 0 || impact.GenerationWithdrawalRequired) {
+		p.MutationAllowed = false
+		reason := "referenced resource enforcement inputs cannot be predicted safely; remove rule references and withdraw the active generation first"
+		p.RefusalReason = &reason
+	}
+	return p, nil
+}
+
+func samePorts(a, b *int) bool { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
+func sameContext(a, b *Context) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && a.SiteID == b.SiteID && a.GatewayID == b.GatewayID)
+}
+
+func (s *Service) SettingImpact(ctx context.Context, org uuid.UUID) (SettingImpact, error) {
+	enabled, err := s.Setting(ctx, org)
+	if err != nil {
+		return SettingImpact{}, err
+	}
+	out := SettingImpact{Enabled: enabled, EnforcementReadyRuleIDs: []uuid.UUID{}}
+	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND NOT p.disabled AND EXISTS (SELECT 1 FROM fqdn_resource_answer_generations g WHERE g.org_id=p.org_id AND g.resource_id=p.dst_fqdn_resource_id AND g.state='active')`, org).Scan(&out.EnforcementReadyRuleCount); err != nil {
+		return out, err
+	}
+	rows, err := s.pool.Query(ctx, `SELECT p.id FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND NOT p.disabled AND EXISTS (SELECT 1 FROM fqdn_resource_answer_generations g WHERE g.org_id=p.org_id AND g.resource_id=p.dst_fqdn_resource_id AND g.state='active') ORDER BY p.id LIMIT 32`, org)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		if err = rows.Scan(&id); err != nil {
+			return out, err
+		}
+		out.EnforcementReadyRuleIDs = append(out.EnforcementReadyRuleIDs, id)
+	}
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	out.RuleIDsTruncated = out.EnforcementReadyRuleCount > len(out.EnforcementReadyRuleIDs)
+	return out, nil
 }
 func (s *Service) Delete(ctx context.Context, org, id, actor uuid.UUID, actorSystem, cause string) error {
 	tx, err := s.pool.Begin(ctx)
