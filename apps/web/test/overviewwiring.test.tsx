@@ -165,15 +165,16 @@ describe("⛔ A FAILED COUNT NEVER RENDERS AS ZERO", () => {
   });
 });
 
-describe("the gateway health list uses the ONE health interpreter", () => {
-  it("renders the badge policyHealthBadge produces, not a second vocabulary", async () => {
+describe("the gateway health summary uses the ONE health interpreter", () => {
+  it("aggregates the verdict policyHealthBadge produces, not a second vocabulary", async () => {
     show();
-    const list = await waitFor(() =>
-      screen.getByRole("list", { name: "Gateway issues" }),
+    const conditions = await waitFor(() =>
+      screen.getByRole("group", { name: "Gateway health conditions" }),
     );
     // `silent_desync` -> "silent desync" comes from lib/healthview.ts. If this screen grew its own mapping,
     // the two would drift and BOTH would still render — which is why there is exactly one interpreter.
-    expect(within(list).getByText("silent desync")).toBeTruthy();
+    expect(within(conditions).getByText("1 gateway silent desync")).toBeTruthy();
+    expect(within(conditions).queryByText("gw-a")).toBeNull();
   });
 
   it("summarizes total, healthy, unhealthy, and revoked gateways in a named figure", async () => {
@@ -181,7 +182,7 @@ describe("the gateway health list uses the ONE health interpreter", () => {
     const summary = await waitFor(() =>
       screen.getByRole("figure", { name: "Gateway health summary" }),
     );
-    expect(within(summary).getByText("gateways")).toBeTruthy();
+    expect(within(summary).getByText("total")).toBeTruthy();
     expect(within(summary).getByText("Healthy")).toBeTruthy();
     expect(within(summary).getByText("Unhealthy")).toBeTruthy();
     expect(within(summary).getByText("Revoked")).toBeTruthy();

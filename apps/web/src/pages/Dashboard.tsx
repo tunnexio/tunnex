@@ -46,12 +46,10 @@ import {
 import { agentSummary, type AgentRow } from "../lib/agentview";
 import {
   isFreshOrg,
-  sortGateways,
   peerSlices,
   postureSplit,
   statFrom,
   statText,
-  type GatewayRow,
   type StatState,
 } from "../lib/overviewview";
 
@@ -477,26 +475,31 @@ export default function Dashboard() {
                       <EmptyState>No gateway enrolled yet.</EmptyState>
                     ) : (
                       (() => {
-                        const rows = sortGateways(
-                          nodesRes.data.map((node): GatewayRow => {
-                            const verdict = gatewayHealthRow(node);
-                            return {
-                              id: node.id,
-                              name: node.name,
-                              label: verdict.label,
-                              tone: verdict.tone,
-                            };
-                          }),
-                        );
-                        const issues = rows.filter((row) => row.tone !== "ok");
-                        const revoked = rows.filter(
-                          (row) => row.label === "revoked",
+                        const health = nodesRes.data.map(gatewayHealthRow);
+                        const issues = health.filter(
+                          (verdict) => verdict.tone !== "ok",
                         );
                         const unhealthy = issues.filter(
-                          (row) => row.label !== "revoked",
+                          (verdict) => verdict.label !== "revoked",
                         );
-                        const healthy = rows.filter((row) => row.tone === "ok");
-                        const visibleIssues = issues.slice(0, 3);
+                        const revoked = issues.filter(
+                          (verdict) => verdict.label === "revoked",
+                        );
+                        const healthy = health.filter(
+                          (verdict) => verdict.tone === "ok",
+                        );
+                        const issueGroups = Array.from(
+                          issues.reduce((groups, verdict) => {
+                            groups.set(
+                              verdict.label,
+                              (groups.get(verdict.label) ?? 0) + 1,
+                            );
+                            return groups;
+                          }, new Map<string, number>()),
+                        ).sort(
+                          ([labelA, countA], [labelB, countB]) =>
+                            countB - countA || labelA.localeCompare(labelB),
+                        );
                         const unattributed = nodesRes.data.filter(
                           (node) => attributionBadge(node) !== null,
                         ).length;
@@ -525,7 +528,7 @@ export default function Dashboard() {
                                   tone: "neutral",
                                 },
                               ]}
-                              centreLabel="gateways"
+                              centreLabel="total"
                             />
                             {unattributed > 0 && (
                               <p className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-cell text-warn">
@@ -538,30 +541,28 @@ export default function Dashboard() {
                                 <p className="text-badge font-semibold uppercase tracking-wide text-ink-tertiary">
                                   Needs attention
                                 </p>
-                                <List label="Gateway issues">
-                                  {visibleIssues.map((gateway) => (
-                                    <ListItem key={gateway.id}>
-                                      <span className="flex items-center justify-between gap-2">
-                                        <span className="truncate font-mono text-mono text-ink-primary">
-                                          {gateway.name}
-                                        </span>
-                                        <Badge tone={gateway.tone}>{gateway.label}</Badge>
-                                      </span>
-                                    </ListItem>
+                                <div
+                                  role="group"
+                                  aria-label="Gateway health conditions"
+                                  className="grid gap-2 sm:grid-cols-2"
+                                >
+                                  {issueGroups.map(([label, count]) => (
+                                    <div
+                                      key={label}
+                                      className={`rounded-md border px-3 py-2 text-cell font-medium ${label === "revoked" ? "border-white/10 bg-white/[.03] text-ink-secondary" : "border-danger/25 bg-danger/5 text-danger"}`}
+                                    >
+                                      {gatewayIssueCount(label, count)}
+                                    </div>
                                   ))}
-                                </List>
-                                {issues.length > visibleIssues.length && (
-                                  <p className="text-cell text-ink-tertiary">
-                                    +{issues.length - visibleIssues.length} more gateway
-                                    {issues.length - visibleIssues.length === 1 ? "" : "s"} need attention
-                                  </p>
-                                )}
+                                </div>
                               </div>
                             ) : (
                               <p className="text-cell text-ink-secondary">No gateway health issues reported.</p>
                             )}
                             <Link className="inline-flex text-cell font-medium text-accent-400 hover:underline" to="/gateways">
-                              Review gateways
+                              {issues.length > 0
+                                ? `Review ${issues.length} affected gateway${issues.length === 1 ? "" : "s"}`
+                                : "Review gateways"}
                             </Link>
                           </div>
                         );
@@ -816,6 +817,16 @@ export default function Dashboard() {
       )}
     </div>
   );
+}
+
+function gatewayIssueCount(label: string, count: number): string {
+  if (label === "revoked") {
+    return `${count} gateway${count === 1 ? "" : "s"} revoked`;
+  }
+  if (label === "site link down") {
+    return `${count} site link${count === 1 ? "" : "s"} down`;
+  }
+  return `${count} gateway${count === 1 ? "" : "s"} ${label}`;
 }
 
 /**
