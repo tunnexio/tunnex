@@ -653,16 +653,16 @@ func (s apiServer) fqdnDestinationStatusMap(ctx context.Context, orgID uuid.UUID
 
 func fqdnDestinationStatusFor(entitled, optedIn, projectionReadable, resourceExists bool, state string) api.PolicyRuleFqdnDestinationStatus {
 	if !entitled {
-		return api.PolicyRuleFqdnDestinationStatusFeatureUnavailable
+		return api.FeatureUnavailable
 	}
 	if !projectionReadable {
-		return api.PolicyRuleFqdnDestinationStatusProjectionUnavailable
+		return api.ProjectionUnavailable
 	}
 	if !optedIn {
-		return api.PolicyRuleFqdnDestinationStatusOptInDisabled
+		return api.OptInDisabled
 	}
 	if !resourceExists {
-		return api.PolicyRuleFqdnDestinationStatusGenerationUnavailable
+		return api.GenerationUnavailable
 	}
 	return fqdnDestinationStatus(state)
 }
@@ -670,13 +670,13 @@ func fqdnDestinationStatusFor(entitled, optedIn, projectionReadable, resourceExi
 func fqdnDestinationStatus(state string) api.PolicyRuleFqdnDestinationStatus {
 	switch state {
 	case "healthy":
-		return api.PolicyRuleFqdnDestinationStatusActiveGeneration
+		return api.ActiveGeneration
 	case "draft", "resolving":
-		return api.PolicyRuleFqdnDestinationStatusGenerationPending
+		return api.GenerationPending
 	case "stale", "nxdomain", "failed":
-		return api.PolicyRuleFqdnDestinationStatusGenerationWithdrawn
+		return api.GenerationWithdrawn
 	default:
-		return api.PolicyRuleFqdnDestinationStatusGenerationUnavailable
+		return api.GenerationUnavailable
 	}
 }
 
@@ -686,9 +686,9 @@ type policyRuleOwnership struct {
 }
 
 func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...policyRuleOwnership) api.PolicyRule {
-	status := api.PolicyRuleFqdnDestinationStatusNotApplicable
+	status := api.NotApplicable
 	if r.DstKind == "fqdn_resource" {
-		status = api.PolicyRuleFqdnDestinationStatusGenerationUnavailable
+		status = api.GenerationUnavailable
 	}
 	return toAPIRuleWithFQDNStatus(r, cidrOutside, k8sVanished, status, ownership...)
 }

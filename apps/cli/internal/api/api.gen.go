@@ -429,44 +429,11 @@ const (
 	FQDNResourceStateUnconfigured FQDNResourceState = "unconfigured"
 )
 
-// Defines values for FQDNResourceAuditProjectionTargetType.
-const (
-	FQDNResourceAuditProjectionTargetTypeFqdnResource FQDNResourceAuditProjectionTargetType = "fqdn_resource"
-)
-
-// Defines values for FQDNResourceDetailNextAction.
-const (
-	FQDNResourceDetailNextActionConfigureResolver FQDNResourceDetailNextAction = "configure_resolver"
-	FQDNResourceDetailNextActionEditResource      FQDNResourceDetailNextAction = "edit_resource"
-	FQDNResourceDetailNextActionNone              FQDNResourceDetailNextAction = "none"
-	FQDNResourceDetailNextActionRefresh           FQDNResourceDetailNextAction = "refresh"
-	FQDNResourceDetailNextActionReviewResolver    FQDNResourceDetailNextAction = "review_resolver"
-	FQDNResourceDetailNextActionWaitForResolution FQDNResourceDetailNextAction = "wait_for_resolution"
-)
-
-// Defines values for FQDNResourceDetailStatusSource.
-const (
-	FQDNResourceDetailStatusSourceActiveGeneration      FQDNResourceDetailStatusSource = "active_generation"
-	FQDNResourceDetailStatusSourceLatestGeneration      FQDNResourceDetailStatusSource = "latest_generation"
-	FQDNResourceDetailStatusSourceResolverConfiguration FQDNResourceDetailStatusSource = "resolver_configuration"
-	FQDNResourceDetailStatusSourceResourceConfiguration FQDNResourceDetailStatusSource = "resource_configuration"
-)
-
 // Defines values for FQDNResourceRequestProtocol.
 const (
 	FQDNResourceRequestProtocolAny FQDNResourceRequestProtocol = "any"
 	FQDNResourceRequestProtocolTcp FQDNResourceRequestProtocol = "tcp"
 	FQDNResourceRequestProtocolUdp FQDNResourceRequestProtocol = "udp"
-)
-
-// Defines values for FQDNResourceRuleReferenceSourceKind.
-const (
-	FQDNResourceRuleReferenceSourceKindAgent      FQDNResourceRuleReferenceSourceKind = "agent"
-	FQDNResourceRuleReferenceSourceKindAgentGroup FQDNResourceRuleReferenceSourceKind = "agent_group"
-	FQDNResourceRuleReferenceSourceKindCidr       FQDNResourceRuleReferenceSourceKind = "cidr"
-	FQDNResourceRuleReferenceSourceKindGroup      FQDNResourceRuleReferenceSourceKind = "group"
-	FQDNResourceRuleReferenceSourceKindSite       FQDNResourceRuleReferenceSourceKind = "site"
-	FQDNResourceRuleReferenceSourceKindUser       FQDNResourceRuleReferenceSourceKind = "user"
 )
 
 // Defines values for HealthCheckKind.
@@ -678,14 +645,14 @@ const (
 
 // Defines values for PolicyRuleFqdnDestinationStatus.
 const (
-	PolicyRuleFqdnDestinationStatusActiveGeneration      PolicyRuleFqdnDestinationStatus = "active_generation"
-	PolicyRuleFqdnDestinationStatusFeatureUnavailable    PolicyRuleFqdnDestinationStatus = "feature_unavailable"
-	PolicyRuleFqdnDestinationStatusGenerationPending     PolicyRuleFqdnDestinationStatus = "generation_pending"
-	PolicyRuleFqdnDestinationStatusGenerationUnavailable PolicyRuleFqdnDestinationStatus = "generation_unavailable"
-	PolicyRuleFqdnDestinationStatusGenerationWithdrawn   PolicyRuleFqdnDestinationStatus = "generation_withdrawn"
-	PolicyRuleFqdnDestinationStatusNotApplicable         PolicyRuleFqdnDestinationStatus = "not_applicable"
-	PolicyRuleFqdnDestinationStatusOptInDisabled         PolicyRuleFqdnDestinationStatus = "opt_in_disabled"
-	PolicyRuleFqdnDestinationStatusProjectionUnavailable PolicyRuleFqdnDestinationStatus = "projection_unavailable"
+	ActiveGeneration      PolicyRuleFqdnDestinationStatus = "active_generation"
+	FeatureUnavailable    PolicyRuleFqdnDestinationStatus = "feature_unavailable"
+	GenerationPending     PolicyRuleFqdnDestinationStatus = "generation_pending"
+	GenerationUnavailable PolicyRuleFqdnDestinationStatus = "generation_unavailable"
+	GenerationWithdrawn   PolicyRuleFqdnDestinationStatus = "generation_withdrawn"
+	NotApplicable         PolicyRuleFqdnDestinationStatus = "not_applicable"
+	OptInDisabled         PolicyRuleFqdnDestinationStatus = "opt_in_disabled"
+	ProjectionUnavailable PolicyRuleFqdnDestinationStatus = "projection_unavailable"
 )
 
 // Defines values for PolicyRuleSrcKind.
@@ -853,9 +820,9 @@ const (
 
 // Defines values for ListAgentsParamsAccess.
 const (
-	ListAgentsParamsAccessActive  ListAgentsParamsAccess = "active"
-	ListAgentsParamsAccessNone    ListAgentsParamsAccess = "none"
-	ListAgentsParamsAccessPending ListAgentsParamsAccess = "pending"
+	Active  ListAgentsParamsAccess = "active"
+	None    ListAgentsParamsAccess = "none"
+	Pending ListAgentsParamsAccess = "pending"
 )
 
 // Defines values for ListAgentsParamsSort.
@@ -2271,13 +2238,10 @@ type FQDNResourceState string
 // FQDNResourceAuditProjection defines model for FQDNResourceAuditProjection.
 type FQDNResourceAuditProjection struct {
 	// LatestEventAt Null when no existing audit event targets this resource.
-	LatestEventAt *time.Time                            `json:"latest_event_at"`
-	TargetId      openapi_types.UUID                    `json:"target_id"`
-	TargetType    FQDNResourceAuditProjectionTargetType `json:"target_type"`
+	LatestEventAt *time.Time         `json:"latest_event_at"`
+	TargetId      openapi_types.UUID `json:"target_id"`
+	TargetType    string             `json:"target_type"`
 }
-
-// FQDNResourceAuditProjectionTargetType defines model for FQDNResourceAuditProjection.TargetType.
-type FQDNResourceAuditProjectionTargetType string
 
 // FQDNResourceDetail defines model for FQDNResourceDetail.
 type FQDNResourceDetail struct {
@@ -2286,27 +2250,21 @@ type FQDNResourceDetail struct {
 	Audit                 FQDNResourceAuditProjection `json:"audit"`
 
 	// FreshUntilAt Resolved-at plus the server-recorded effective TTL for an active generation only.
-	FreshUntilAt         *time.Time                   `json:"fresh_until_at"`
-	NextAction           FQDNResourceDetailNextAction `json:"next_action"`
-	ObservedAt           *time.Time                   `json:"observed_at"`
-	ReferencesTruncated  bool                         `json:"references_truncated"`
-	ReferencingRuleCount int                          `json:"referencing_rule_count"`
-	ReferencingRules     []FQDNResourceRuleReference  `json:"referencing_rules"`
+	FreshUntilAt         *time.Time                  `json:"fresh_until_at"`
+	NextAction           string                      `json:"next_action"`
+	ObservedAt           *time.Time                  `json:"observed_at"`
+	ReferencesTruncated  bool                        `json:"references_truncated"`
+	ReferencingRuleCount int                         `json:"referencing_rule_count"`
+	ReferencingRules     []FQDNResourceRuleReference `json:"referencing_rules"`
 
 	// ResolverReady True only when the selected context has an active server-managed resolver configuration.
 	ResolverReady bool         `json:"resolver_ready"`
 	Resource      FQDNResource `json:"resource"`
 
 	// ServerReason Stored server failure reason when available; never browser-derived.
-	ServerReason *string                        `json:"server_reason"`
-	StatusSource FQDNResourceDetailStatusSource `json:"status_source"`
+	ServerReason *string `json:"server_reason"`
+	StatusSource string  `json:"status_source"`
 }
-
-// FQDNResourceDetailNextAction defines model for FQDNResourceDetail.NextAction.
-type FQDNResourceDetailNextAction string
-
-// FQDNResourceDetailStatusSource defines model for FQDNResourceDetail.StatusSource.
-type FQDNResourceDetailStatusSource string
 
 // FQDNResourceImpact defines model for FQDNResourceImpact.
 type FQDNResourceImpact struct {
@@ -2316,9 +2274,12 @@ type FQDNResourceImpact struct {
 	// ReferencingRuleCount Server-computed active policy-rule impact; never browser-inferred.
 	ReferencingRuleCount int `json:"referencing_rule_count"`
 
-	// ReferencingRuleIds Exact policy rule identities blocking deletion, projected by the server for truthful recovery UI.
+	// ReferencingRuleIds Bounded policy rule identities blocking deletion, projected by the server for truthful recovery UI.
 	ReferencingRuleIds []openapi_types.UUID `json:"referencing_rule_ids"`
 	ResourceId         openapi_types.UUID   `json:"resource_id"`
+
+	// RuleIdsTruncated True when more referenced rules exist than the bounded identity list returns.
+	RuleIdsTruncated bool `json:"rule_ids_truncated"`
 }
 
 // FQDNResourceMutationPreview defines model for FQDNResourceMutationPreview.
@@ -2334,8 +2295,9 @@ type FQDNResourceMutationPreview struct {
 	ReferencingRuleIds           []openapi_types.UUID `json:"referencing_rule_ids"`
 
 	// RefusalReason Explicit refusal rather than a guessed enforcement result.
-	RefusalReason *string            `json:"refusal_reason"`
-	ResourceId    openapi_types.UUID `json:"resource_id"`
+	RefusalReason    *string            `json:"refusal_reason"`
+	ResourceId       openapi_types.UUID `json:"resource_id"`
+	RuleIdsTruncated bool               `json:"rule_ids_truncated"`
 }
 
 // FQDNResourceRequest defines model for FQDNResourceRequest.
@@ -2361,13 +2323,10 @@ type FQDNResourceRequestProtocol string
 // FQDNResourceRuleReference defines model for FQDNResourceRuleReference.
 type FQDNResourceRuleReference struct {
 	// Enabled Current rule state, projected from the authoritative policy row.
-	Enabled    bool                                `json:"enabled"`
-	Id         openapi_types.UUID                  `json:"id"`
-	SourceKind FQDNResourceRuleReferenceSourceKind `json:"source_kind"`
+	Enabled    bool               `json:"enabled"`
+	Id         openapi_types.UUID `json:"id"`
+	SourceKind string             `json:"source_kind"`
 }
-
-// FQDNResourceRuleReferenceSourceKind defines model for FQDNResourceRuleReference.SourceKind.
-type FQDNResourceRuleReferenceSourceKind string
 
 // FQDNResourceSetting defines model for FQDNResourceSetting.
 type FQDNResourceSetting struct {

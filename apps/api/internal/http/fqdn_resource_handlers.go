@@ -123,9 +123,9 @@ func (s apiServer) GetFQDNResourceDetail(ctx context.Context, req api.GetFQDNRes
 	}
 	refs := make([]api.FQDNResourceRuleReference, len(d.ReferencingRules))
 	for i, ref := range d.ReferencingRules {
-		refs[i] = api.FQDNResourceRuleReference{Id: ref.ID, SourceKind: api.FQDNResourceRuleReferenceSourceKind(ref.SourceKind), Enabled: ref.Enabled}
+		refs[i] = api.FQDNResourceRuleReference{Id: ref.ID, SourceKind: ref.SourceKind, Enabled: ref.Enabled}
 	}
-	return api.GetFQDNResourceDetail200JSONResponse{Resource: toAPIFQDNResource(d.Resource), ActiveAnswerAddresses: d.ActiveAnswers, StatusSource: api.FQDNResourceDetailStatusSource(d.StatusSource), ObservedAt: d.ObservedAt, FreshUntilAt: d.FreshUntilAt, ServerReason: d.ServerReason, NextAction: api.FQDNResourceDetailNextAction(d.NextAction), ResolverReady: d.ResolverReady, ReferencingRuleCount: d.ReferencingRuleCount, ReferencingRules: refs, ReferencesTruncated: d.ReferencesTruncated, Audit: api.FQDNResourceAuditProjection{TargetType: "fqdn_resource", TargetId: req.ResourceId, LatestEventAt: d.Audit.LatestEventAt}}, nil
+	return api.GetFQDNResourceDetail200JSONResponse{Resource: toAPIFQDNResource(d.Resource), ActiveAnswerAddresses: d.ActiveAnswers, StatusSource: d.StatusSource, ObservedAt: d.ObservedAt, FreshUntilAt: d.FreshUntilAt, ServerReason: d.ServerReason, NextAction: d.NextAction, ResolverReady: d.ResolverReady, ReferencingRuleCount: d.ReferencingRuleCount, ReferencingRules: refs, ReferencesTruncated: d.ReferencesTruncated, Audit: api.FQDNResourceAuditProjection{TargetType: "fqdn_resource", TargetId: req.ResourceId, LatestEventAt: d.Audit.LatestEventAt}}, nil
 }
 func (s apiServer) GetFQDNResourceImpact(ctx context.Context, req api.GetFQDNResourceImpactRequestObject) (api.GetFQDNResourceImpactResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceView); err != nil {
@@ -139,7 +139,7 @@ func (s apiServer) GetFQDNResourceImpact(ctx context.Context, req api.GetFQDNRes
 	if err != nil {
 		return nil, err
 	}
-	return api.GetFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, ReferencingRuleCount: i.ReferencingRuleCount, ReferencingRuleIds: i.ReferencingRuleIDs, GenerationWithdrawalRequired: i.GenerationWithdrawalRequired}, nil
+	return api.GetFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, ReferencingRuleCount: i.ReferencingRuleCount, ReferencingRuleIds: i.ReferencingRuleIDs, RuleIdsTruncated: i.RuleIDsTruncated, GenerationWithdrawalRequired: i.GenerationWithdrawalRequired}, nil
 }
 func (s apiServer) PreviewFQDNResourceImpact(ctx context.Context, req api.PreviewFQDNResourceImpactRequestObject) (api.PreviewFQDNResourceImpactResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
@@ -156,7 +156,7 @@ func (s apiServer) PreviewFQDNResourceImpact(ctx context.Context, req api.Previe
 	if err != nil {
 		return nil, err
 	}
-	return api.PreviewFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, EnforcementInputsChanged: p.EnforcementInputsChanged, ReferencingRuleCount: p.ReferencingRuleCount, ReferencingRuleIds: p.ReferencingRuleIDs, GenerationWithdrawalRequired: p.GenerationWithdrawalRequired, MutationAllowed: p.MutationAllowed, RefusalReason: p.RefusalReason, ExpectedImpactToken: p.ExpectedImpactToken}, nil
+	return api.PreviewFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, EnforcementInputsChanged: p.EnforcementInputsChanged, ReferencingRuleCount: p.ReferencingRuleCount, ReferencingRuleIds: p.ReferencingRuleIDs, RuleIdsTruncated: p.RuleIDsTruncated, GenerationWithdrawalRequired: p.GenerationWithdrawalRequired, MutationAllowed: p.MutationAllowed, RefusalReason: p.RefusalReason, ExpectedImpactToken: p.ExpectedImpactToken}, nil
 }
 func (s apiServer) DeleteFQDNResource(ctx context.Context, req api.DeleteFQDNResourceRequestObject) (api.DeleteFQDNResourceResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {

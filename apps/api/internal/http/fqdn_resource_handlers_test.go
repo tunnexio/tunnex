@@ -54,14 +54,14 @@ func TestFQDNDetailProjectionUsesBoundedServerVocabulary(t *testing.T) {
 	got := api.GetFQDNResourceDetail200JSONResponse{
 		Resource:              toAPIFQDNResource(resource),
 		ActiveAnswerAddresses: []string{"10.0.0.10"},
-		StatusSource:          api.FQDNResourceDetailStatusSourceActiveGeneration,
+		StatusSource:          "active_generation",
 		ObservedAt:            &now,
-		NextAction:            api.FQDNResourceDetailNextActionNone,
+		NextAction:            "none",
 		ResolverReady:         true,
 		ReferencingRules:      []api.FQDNResourceRuleReference{},
 		Audit:                 api.FQDNResourceAuditProjection{TargetType: "fqdn_resource", TargetId: resource.ID},
 	}
-	if got.StatusSource != api.FQDNResourceDetailStatusSourceActiveGeneration || got.NextAction != api.FQDNResourceDetailNextActionNone || len(got.ActiveAnswerAddresses) != 1 {
+	if got.StatusSource != "active_generation" || got.NextAction != "none" || len(got.ActiveAnswerAddresses) != 1 {
 		t.Fatalf("detail projection lost authoritative state: %#v", got)
 	}
 }

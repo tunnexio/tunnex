@@ -4268,22 +4268,22 @@ export interface components {
             resource_id: string;
             /** @description Server-computed active policy-rule impact; never browser-inferred. */
             referencing_rule_count: number;
-            /** @description Exact policy rule identities blocking deletion, projected by the server for truthful recovery UI. */
+            /** @description Bounded policy rule identities blocking deletion, projected by the server for truthful recovery UI. */
             referencing_rule_ids: string[];
+            /** @description True when more referenced rules exist than the bounded identity list returns. */
+            rule_ids_truncated: boolean;
             /** @description True only when a live FQDN generation exists and must be withdrawn before deletion. */
             generation_withdrawal_required: boolean;
         };
         FQDNResourceRuleReference: {
             /** Format: uuid */
             id: string;
-            /** @enum {string} */
-            source_kind: "group" | "user" | "site" | "cidr" | "agent" | "agent_group";
+            source_kind: string;
             /** @description Current rule state, projected from the authoritative policy row. */
             enabled: boolean;
         };
         FQDNResourceAuditProjection: {
-            /** @enum {string} */
-            target_type: "fqdn_resource";
+            target_type: string;
             /** Format: uuid */
             target_id: string;
             /**
@@ -4296,8 +4296,7 @@ export interface components {
             resource: components["schemas"]["FQDNResource"];
             /** @description Addresses from the current active immutable generation only; empty is not a DNS lookup. */
             active_answer_addresses: string[];
-            /** @enum {string} */
-            status_source: "resource_configuration" | "resolver_configuration" | "latest_generation" | "active_generation";
+            status_source: string;
             /** Format: date-time */
             observed_at?: string | null;
             /**
@@ -4307,8 +4306,7 @@ export interface components {
             fresh_until_at?: string | null;
             /** @description Stored server failure reason when available; never browser-derived. */
             server_reason?: string | null;
-            /** @enum {string} */
-            next_action: "none" | "configure_resolver" | "wait_for_resolution" | "review_resolver" | "refresh" | "edit_resource";
+            next_action: string;
             /** @description True only when the selected context has an active server-managed resolver configuration. */
             resolver_ready: boolean;
             referencing_rule_count: number;
@@ -4325,6 +4323,7 @@ export interface components {
             expected_impact_token?: string | null;
             referencing_rule_count: number;
             referencing_rule_ids: string[];
+            rule_ids_truncated: boolean;
             generation_withdrawal_required: boolean;
             mutation_allowed: boolean;
             /** @description Explicit refusal rather than a guessed enforcement result. */
