@@ -132,8 +132,7 @@ describe("Access Resources port scope", () => {
     resources = [{ id: "r1", name: "Private", cidr: "10.0.0.0/24", protocol: "any", port_low: null, port_high: null }];
     renderPage();
     expect(await screen.findByText("You do not have permission to manage CIDR resources.")).toBeTruthy();
-    expect(screen.getByText(/FQDN resources are unavailable because your role lacks/)).toBeTruthy();
-    expect(screen.getByText("fqdn_resource:view")).toBeTruthy();
+    expect(screen.queryByText(/FQDN resources are unavailable because your role lacks/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Create resource" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
