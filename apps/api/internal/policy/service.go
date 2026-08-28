@@ -1049,8 +1049,8 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			Disabled:        r.Disabled,                    // F3: carried to the compiler, which OWNS the skip
 		}
 		snap.Rules = append(snap.Rules, rule)
-		if r.DstKind == "fqdn_resource" && r.DstFqdnResourceID.Valid {
-			snap.FQDNRuleReferences = append(snap.FQDNRuleReferences, FQDNRuleReference{PolicyRuleID: r.ID, FQDNResourceID: fromPgUUID(r.DstFqdnResourceID)})
+		if r.DstKind == "fqdn_resource" && r.DstFqdnResourceID != uuid.Nil {
+			snap.FQDNRuleReferences = append(snap.FQDNRuleReferences, FQDNRuleReference{PolicyRuleID: r.ID, FQDNResourceID: r.DstFqdnResourceID})
 		}
 	}
 	for _, ss := range siteSubnets {
