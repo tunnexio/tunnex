@@ -21,6 +21,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -32,6 +33,12 @@ type Service struct {
 	pool   *pgxpool.Pool
 	q      *sqlc.Queries
 	notify Notifier // nil => no push (provider-only service / tests)
+	// fqdnGenerations is deliberately a read-only Lane 2 seam. It returns
+	// immutable active snapshots from the server-selected resolver context; this
+	// service remains responsible for deciding whether the named entitlement and
+	// organization opt-in make those snapshots enforceable.
+	fqdnGenerations fqdnresolver.ActiveGenerationReader
+	fqdnEntitled    func() bool
 }
 
 // SetNotifier wires the push hub (S7.2). Call on the CRUD service; the desired-
@@ -40,6 +47,15 @@ func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool, q: sqlc.New(pool)}
+}
+
+// WithFQDNGenerations wires the persisted Lane 2 snapshot reader into this
+// policy provider. A nil reader or entitlement function is fail closed: FQDN
+// rules remain stored but compile to no authorization.
+func (s *Service) WithFQDNGenerations(reader fqdnresolver.ActiveGenerationReader, entitled func() bool) *Service {
+	s.fqdnGenerations = reader
+	s.fqdnEntitled = entitled
+	return s
 }
 
 // ── groups ──────────────────────────────────────────────────────────────────────
@@ -945,7 +961,40 @@ func (s *Service) SetMode(ctx context.Context, orgID uuid.UUID, mode string) (st
 // BuildSnapshot loads the org's full policy state into the pure-compiler input.
 // S7.2 calls Compile(BuildSnapshot(...)) when serving a node's desired state.
 func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot, error) {
-	return BuildSnapshotWithQueries(ctx, s.q, orgID)
+	snap, err := BuildSnapshotWithQueries(ctx, s.q, orgID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if s.fqdnEntitled != nil {
+		snap.FQDNResourcesLicensed = s.fqdnEntitled()
+	}
+	// A missing dependency, disabled opt-in, or absent entitlement is not an
+	// error and must not revive a stored FQDN rule. The compiler sees an empty
+	// FQDN input and default-denies that destination.
+	if err := appendActiveFQDNGenerations(ctx, &snap, s.fqdnGenerations, orgID); err != nil {
+		return Snapshot{}, err
+	}
+	return snap, nil
+}
+
+func appendActiveFQDNGenerations(ctx context.Context, snap *Snapshot, reader fqdnresolver.ActiveGenerationReader, orgID uuid.UUID) error {
+	if snap == nil || !snap.FQDNResourcesLicensed || !snap.FQDNResourcesEnabled || reader == nil {
+		return nil
+	}
+	generations, err := reader.ActiveGenerations(ctx, orgID)
+	if err != nil {
+		// Do not compile against stale in-memory DNS state if the authoritative
+		// persisted snapshot cannot be read.
+		return err
+	}
+	for _, generation := range generations {
+		resource, err := fqdnResourceFromActiveGeneration(generation)
+		if err != nil {
+			return err
+		}
+		snap.FQDNResources = append(snap.FQDNResources, resource)
+	}
+	return nil
 }
 
 // BuildSnapshotWithQueries exposes the canonical snapshot loader to an
@@ -1314,4 +1363,52 @@ func derefI32(p *int32) int {
 		return 0
 	}
 	return int(*p)
+}
+
+// fqdnResourceFromActiveGeneration is the only adapter from Lane 2's durable
+// resolver snapshot to compiler input. It rejects malformed context rather
+// than treating an answer set as portable across Sites or gateways.
+func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration) (FQDNResource, error) {
+	site, err := uuid.Parse(g.Context.ResolverID)
+	if err != nil || site == uuid.Nil {
+		return FQDNResource{}, fmt.Errorf("invalid selected Site in active FQDN generation %s", g.ResourceID)
+	}
+	gateway, err := uuid.Parse(g.Context.GatewayID)
+	if err != nil || gateway == uuid.Nil {
+		return FQDNResource{}, fmt.Errorf("invalid selected gateway in active FQDN generation %s", g.ResourceID)
+	}
+	if g.ResourceID == uuid.Nil || g.Hostname == "" || len(g.Addresses) == 0 || len(g.Addresses) > fqdnresolver.MaxAnswers {
+		return FQDNResource{}, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)
+	}
+	configID, err := uuid.Parse(g.ResolverConfig.ID)
+	if err != nil || configID == uuid.Nil || g.ResolverConfig.Version < 1 || len(g.ResolverConfig.Endpoints) == 0 || len(g.ResolverConfig.Endpoints) > 8 {
+		return FQDNResource{}, fmt.Errorf("invalid resolver configuration snapshot for active FQDN generation %s", g.ResourceID)
+	}
+	for _, endpoint := range g.ResolverConfig.Endpoints {
+		if !endpoint.Address.IsValid() || endpoint.Address.IsUnspecified() || endpoint.Address.IsLoopback() || endpoint.Address.IsMulticast() || endpoint.Address.IsLinkLocalUnicast() || endpoint.Port == 0 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+			return FQDNResource{}, fmt.Errorf("invalid resolver endpoint snapshot for active FQDN generation %s", g.ResourceID)
+		}
+	}
+	answers := make([]string, 0, len(g.Addresses))
+	for _, address := range g.Addresses {
+		if !address.IsValid() {
+			return FQDNResource{}, fmt.Errorf("invalid active FQDN answer for %s", g.ResourceID)
+		}
+		answers = append(answers, address.String())
+	}
+	return FQDNResource{
+		ID:       g.ResourceID,
+		FQDN:     g.Hostname,
+		Protocol: g.Protocol,
+		PortLow:  derefI32(g.PortLow),
+		PortHigh: derefI32(g.PortHigh),
+		Active: &FQDNGeneration{
+			ResourceID:            g.ResourceID,
+			SelectedSiteID:        site,
+			SelectedGatewayID:     gateway,
+			ResolverConfigID:      configID,
+			ResolverConfigVersion: g.ResolverConfig.Version,
+			Answers:               answers,
+		},
+	}, nil
 }
