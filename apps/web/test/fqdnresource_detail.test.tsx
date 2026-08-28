@@ -17,7 +17,8 @@ describe("FQDN resource detail route", () => {
     expect(await screen.findByRole("heading", { name: "Orders" })).toBeTruthy();
     expect(screen.getByLabelText("Stale — last result is not current")).toBeTruthy();
     expect(screen.getByText("Unavailable — no active generation")).toBeTruthy();
-    expect(screen.getByText(/Rule impact and audit evidence are unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/Current answer addresses and diagnostics are unavailable/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Audit this resource" }).getAttribute("href")).toBe("/audit?resource_id=fqdn-1");
     expect(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Resources" }).getAttribute("href")).toBe("/access/resources?q=orders&status=stale&sort=name&dir=asc");
   });
 });
