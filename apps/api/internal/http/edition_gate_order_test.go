@@ -49,10 +49,11 @@ var preSessionEditionGates = map[string]string{
 // emits one of the public entitlement errors must be deliberately classified;
 // it cannot silently fall outside the authorization-order scan.
 var expectedNamedErrorHelpers = map[string]string{
-	"editionRequired":            "named plan",
-	"mfaEnforceEditionRequired":  "named plan",
-	"agentAccessFeatureRequired": "named feature: agent_jit_access",
-	"requireSSOAdmin":            "named feature: sso",
+	"editionRequired":                 "named plan",
+	"mfaEnforceEditionRequired":       "named plan",
+	"agentAccessFeatureRequired":      "named feature: agent_jit_access",
+	"requireSSOAdmin":                 "named feature: sso",
+	"requireK8sClusterScopesEntitled": "named feature: k8s_cluster_scopes",
 }
 
 // expectedEntitlementHandlers is the current one-binary inventory. The first
@@ -67,6 +68,7 @@ var expectedEntitlementHandlers = map[string]string{
 	"ListAgentAccessDestinations": "named feature: agent_jit_access", "GetOrganizationAgentJITAccessSetting": "named feature: agent_jit_access", "SetOrganizationAgentJITAccessEnabled": "named feature: agent_jit_access",
 	"CreateAgentAccessRequest": "named feature: agent_jit_access", "ListAgentAccessRequests": "named feature: agent_jit_access", "GetAgentAccessRequest": "named feature: agent_jit_access",
 	"ApproveAgentAccessRequest": "named feature: agent_jit_access", "RejectAgentAccessRequest": "named feature: agent_jit_access", "CancelAgentAccessRequest": "named feature: agent_jit_access", "RevokeAgentAccessRequest": "named feature: agent_jit_access",
+	"CreateK8sClusterScope": "named feature: k8s_cluster_scopes", "DecideK8sClusterScopeMembership": "named feature: k8s_cluster_scopes",
 }
 
 type historicalEntitlementHandler struct {
@@ -86,6 +88,14 @@ var historicalEntitlementHandlers = []historicalEntitlementHandler{
 	{"ListPolicyRules", "Community-core"}, {"CreatePolicyRule", "Community-core"}, {"SetPolicyRuleEnabled", "Community-core"}, {"DeletePolicyRule", "Community-core"}, {"ExtendGrant", "Community-core"},
 	{"ListGroups", "Community-core"}, {"CreateGroup", "Community-core"}, {"UpdateGroup", "Community-core"}, {"DeleteGroup", "Community-core"}, {"ListGroupMembers", "Community-core"}, {"AddGroupMember", "Community-core"}, {"RemoveGroupMember", "Community-core"},
 	{"ListResources", "Community-core"}, {"CreateResource", "Community-core"}, {"UpdateResource", "Community-core"}, {"DeleteResource", "Community-core"}, {"GetZeroTrustMode", "Community-core"}, {"SetZeroTrustMode", "Community-core"},
+}
+
+// postHistoricalEntitlementHandlers records capabilities introduced after the
+// measured 43-handler migration ledger; they must not be rewritten into that
+// historical evidence merely to make a new feature pass the guard.
+var postHistoricalEntitlementHandlers = map[string]string{
+	"CreateK8sClusterScope":           "named feature: k8s_cluster_scopes",
+	"DecideK8sClusterScopeMembership": "named feature: k8s_cluster_scopes",
 }
 
 var (
@@ -189,7 +199,11 @@ func TestHistoricalEntitlementLedgerReconcilesToOneBinaryInventory(t *testing.T)
 	for name, classification := range expectedEntitlementHandlers {
 		historical, ok := seen[name]
 		if !ok {
-			t.Fatalf("current scanned handler %s is missing from the historical 43-handler ledger", name)
+			postHistorical, addedLater := postHistoricalEntitlementHandlers[name]
+			if !addedLater || postHistorical != classification {
+				t.Fatalf("current scanned handler %s is missing from both the historical 43-handler ledger and post-historical inventory", name)
+			}
+			historical = "post-historical named-feature"
 		}
 		switch {
 		case strings.HasPrefix(classification, "named plan"):
@@ -199,13 +213,13 @@ func TestHistoricalEntitlementLedgerReconcilesToOneBinaryInventory(t *testing.T)
 			}
 		case strings.HasPrefix(classification, "named feature"):
 			features++
-			if historical != "reclassified named-feature" {
+			if historical != "reclassified named-feature" && historical != "post-historical named-feature" {
 				t.Fatalf("current named-feature handler %s is classified %q", name, historical)
 			}
 		}
 	}
-	if legacy != 14 || features != 11 {
-		t.Fatalf("historical reconciliation is %d legacy + %d feature; expected 14 legacy + 11 feature", legacy, features)
+	if legacy != 14 || features != 13 {
+		t.Fatalf("entitlement reconciliation is %d legacy + %d feature; expected 14 legacy + 13 feature", legacy, features)
 	}
 	for name, classification := range seen {
 		if classification == "Community-core" {

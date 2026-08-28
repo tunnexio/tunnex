@@ -14,6 +14,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addK8sConnectorPoolMember = `-- name: AddK8sConnectorPoolMember :one
+INSERT INTO k8s_connector_pool_members (pool_id, org_id, site_id, node_id, admin_priority)
+SELECT p.id, p.org_id, p.site_id, n.id, $1
+FROM k8s_connector_pools p
+JOIN nodes n ON n.id = $2 AND n.org_id = p.org_id AND n.site_id = p.site_id
+WHERE p.id = $3 AND p.org_id = $4
+RETURNING pool_id, org_id, site_id, node_id, admin_priority, created_at, updated_at
+`
+
+type AddK8sConnectorPoolMemberParams struct {
+	AdminPriority int32     `json:"admin_priority"`
+	NodeID        uuid.UUID `json:"node_id"`
+	PoolID        uuid.UUID `json:"pool_id"`
+	OrgID         uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) AddK8sConnectorPoolMember(ctx context.Context, arg AddK8sConnectorPoolMemberParams) (K8sConnectorPoolMember, error) {
+	row := q.db.QueryRow(ctx, addK8sConnectorPoolMember,
+		arg.AdminPriority,
+		arg.NodeID,
+		arg.PoolID,
+		arg.OrgID,
+	)
+	var i K8sConnectorPoolMember
+	err := row.Scan(
+		&i.PoolID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.NodeID,
+		&i.AdminPriority,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const addK8sConnectorPoolMemberForConfig = `-- name: AddK8sConnectorPoolMemberForConfig :one
 INSERT INTO k8s_connector_pool_members (pool_id, org_id, site_id, node_id, admin_priority)
 SELECT p.id, p.org_id, p.site_id, n.id, $1
@@ -55,6 +91,140 @@ func (q *Queries) AddK8sConnectorPoolMemberForConfig(ctx context.Context, arg Ad
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const advanceK8sConnectorHandoffOperationPhase = `-- name: AdvanceK8sConnectorHandoffOperationPhase :one
+UPDATE k8s_connector_handoff_operations o
+SET phase = $1,
+    prepared_ack_received_at = COALESCE($2, o.prepared_ack_received_at),
+    withdrawal_ack_received_at = COALESCE($3, o.withdrawal_ack_received_at),
+    withdrawal_expiry_received_at = COALESCE($4, o.withdrawal_expiry_received_at),
+    serving_ack_received_at = COALESCE($5, o.serving_ack_received_at),
+    failure_reason = $6
+WHERE o.id = $7
+  AND o.org_id = $8
+  AND o.site_id = $9
+  AND o.pool_id = $10
+  AND o.phase = $11
+  AND (
+    $12::integer = 0
+    OR pg_backend_pid() = $12::integer
+  )
+RETURNING o.id, o.org_id, o.site_id, o.pool_id, o.cluster_id, o.old_node_id, o.new_node_id, o.expected_generation, o.target_generation, o.old_serving_manifest_identity, o.candidate_prepared_manifest_identity, o.old_withdrawal_manifest_identity, o.new_serving_manifest_identity, o.old_serving_manifest_revision, o.candidate_prepared_manifest_revision, o.old_withdrawal_manifest_revision, o.new_serving_manifest_revision, o.old_serving_expected_route_digest, o.old_serving_expected_vip_map_digest, o.candidate_prepared_expected_route_digest, o.candidate_prepared_expected_vip_map_digest, o.old_withdrawal_expected_route_digest, o.old_withdrawal_expected_vip_map_digest, o.new_serving_expected_route_digest, o.new_serving_expected_vip_map_digest, o.old_lease_identity, o.target_lease_identity, o.old_lease_epoch, o.target_lease_epoch, o.old_lease_expires_at, o.target_lease_expires_at, o.observed_membership_epoch, o.decision_transition, o.old_serving_role, o.candidate_prepared_role, o.old_withdrawal_role, o.new_serving_role, o.phase, o.prepared_ack_received_at, o.withdrawal_ack_received_at, o.withdrawal_expiry_received_at, o.serving_ack_received_at, o.cas_receipt_at, o.cas_audit_id, o.cas_audit_applied, o.failure_reason, o.created_at, o.updated_at
+`
+
+type AdvanceK8sConnectorHandoffOperationPhaseParams struct {
+	NextPhase                  string             `json:"next_phase"`
+	PreparedAckReceivedAt      pgtype.Timestamptz `json:"prepared_ack_received_at"`
+	WithdrawalAckReceivedAt    pgtype.Timestamptz `json:"withdrawal_ack_received_at"`
+	WithdrawalExpiryReceivedAt pgtype.Timestamptz `json:"withdrawal_expiry_received_at"`
+	ServingAckReceivedAt       pgtype.Timestamptz `json:"serving_ack_received_at"`
+	FailureReason              *string            `json:"failure_reason"`
+	OperationID                uuid.UUID          `json:"operation_id"`
+	OrgID                      uuid.UUID          `json:"org_id"`
+	SiteID                     uuid.UUID          `json:"site_id"`
+	PoolID                     uuid.UUID          `json:"pool_id"`
+	ExpectedPhase              string             `json:"expected_phase"`
+	LeaderBackendPid           int32              `json:"leader_backend_pid"`
+}
+
+// Every non-CAS phase advance has an operation-ID + exact-scope + expected
+// phase CAS. The table trigger admits only the next ordered phase (or failed),
+// while the receipt checks prevent a phase from claiming evidence it lacks.
+func (q *Queries) AdvanceK8sConnectorHandoffOperationPhase(ctx context.Context, arg AdvanceK8sConnectorHandoffOperationPhaseParams) (K8sConnectorHandoffOperation, error) {
+	row := q.db.QueryRow(ctx, advanceK8sConnectorHandoffOperationPhase,
+		arg.NextPhase,
+		arg.PreparedAckReceivedAt,
+		arg.WithdrawalAckReceivedAt,
+		arg.WithdrawalExpiryReceivedAt,
+		arg.ServingAckReceivedAt,
+		arg.FailureReason,
+		arg.OperationID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.PoolID,
+		arg.ExpectedPhase,
+		arg.LeaderBackendPid,
+	)
+	var i K8sConnectorHandoffOperation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.PoolID,
+		&i.ClusterID,
+		&i.OldNodeID,
+		&i.NewNodeID,
+		&i.ExpectedGeneration,
+		&i.TargetGeneration,
+		&i.OldServingManifestIdentity,
+		&i.CandidatePreparedManifestIdentity,
+		&i.OldWithdrawalManifestIdentity,
+		&i.NewServingManifestIdentity,
+		&i.OldServingManifestRevision,
+		&i.CandidatePreparedManifestRevision,
+		&i.OldWithdrawalManifestRevision,
+		&i.NewServingManifestRevision,
+		&i.OldServingExpectedRouteDigest,
+		&i.OldServingExpectedVipMapDigest,
+		&i.CandidatePreparedExpectedRouteDigest,
+		&i.CandidatePreparedExpectedVipMapDigest,
+		&i.OldWithdrawalExpectedRouteDigest,
+		&i.OldWithdrawalExpectedVipMapDigest,
+		&i.NewServingExpectedRouteDigest,
+		&i.NewServingExpectedVipMapDigest,
+		&i.OldLeaseIdentity,
+		&i.TargetLeaseIdentity,
+		&i.OldLeaseEpoch,
+		&i.TargetLeaseEpoch,
+		&i.OldLeaseExpiresAt,
+		&i.TargetLeaseExpiresAt,
+		&i.ObservedMembershipEpoch,
+		&i.DecisionTransition,
+		&i.OldServingRole,
+		&i.CandidatePreparedRole,
+		&i.OldWithdrawalRole,
+		&i.NewServingRole,
+		&i.Phase,
+		&i.PreparedAckReceivedAt,
+		&i.WithdrawalAckReceivedAt,
+		&i.WithdrawalExpiryReceivedAt,
+		&i.ServingAckReceivedAt,
+		&i.CasReceiptAt,
+		&i.CasAuditID,
+		&i.CasAuditApplied,
+		&i.FailureReason,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const bindK8sClusterConnectorPool = `-- name: BindK8sClusterConnectorPool :execrows
+UPDATE k8s_clusters c
+SET connector_pool_id = $1
+WHERE c.org_id = $2
+  AND c.id = $3
+  AND c.connector_node_id IS NULL
+  AND EXISTS (
+      SELECT 1 FROM k8s_connector_pools p
+      WHERE p.id = $1 AND p.org_id = c.org_id AND p.site_id = c.site_id AND p.cluster_id = c.id
+  )
+`
+
+type BindK8sClusterConnectorPoolParams struct {
+	ConnectorPoolID pgtype.UUID `json:"connector_pool_id"`
+	OrgID           uuid.UUID   `json:"org_id"`
+	ClusterID       uuid.UUID   `json:"cluster_id"`
+}
+
+// Do not let a pool bind silently replace the legacy selected connector.
+func (q *Queries) BindK8sClusterConnectorPool(ctx context.Context, arg BindK8sClusterConnectorPoolParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bindK8sClusterConnectorPool, arg.ConnectorPoolID, arg.OrgID, arg.ClusterID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const bindK8sClusterConnectorPoolFromLegacyForConfig = `-- name: BindK8sClusterConnectorPoolFromLegacyForConfig :execrows
@@ -101,6 +271,160 @@ func (q *Queries) BindK8sClusterConnectorPoolFromLegacyForConfig(ctx context.Con
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const commitK8sConnectorHandoffCAS = `-- name: CommitK8sConnectorHandoffCAS :one
+WITH validated_audit AS (
+    SELECT $1::text AS actor_system,
+           $2::text AS audit_reason
+    WHERE octet_length($1::text) BETWEEN 1 AND 128
+      AND $1::text ~ '[^[:space:]]'
+      AND octet_length($2::text) BETWEEN 1 AND 512
+      AND $2::text ~ '[^[:space:]]'
+), leadership AS (
+    SELECT $3::integer AS backend_pid
+), locked_operation AS (
+    SELECT o.id, o.org_id, o.site_id, o.pool_id, o.cluster_id, o.old_node_id, o.new_node_id, o.expected_generation, o.target_generation, o.old_serving_manifest_identity, o.candidate_prepared_manifest_identity, o.old_withdrawal_manifest_identity, o.new_serving_manifest_identity, o.old_serving_manifest_revision, o.candidate_prepared_manifest_revision, o.old_withdrawal_manifest_revision, o.new_serving_manifest_revision, o.old_serving_expected_route_digest, o.old_serving_expected_vip_map_digest, o.candidate_prepared_expected_route_digest, o.candidate_prepared_expected_vip_map_digest, o.old_withdrawal_expected_route_digest, o.old_withdrawal_expected_vip_map_digest, o.new_serving_expected_route_digest, o.new_serving_expected_vip_map_digest, o.old_lease_identity, o.target_lease_identity, o.old_lease_epoch, o.target_lease_epoch, o.old_lease_expires_at, o.target_lease_expires_at, o.observed_membership_epoch, o.decision_transition, o.old_serving_role, o.candidate_prepared_role, o.old_withdrawal_role, o.new_serving_role, o.phase, o.prepared_ack_received_at, o.withdrawal_ack_received_at, o.withdrawal_expiry_received_at, o.serving_ack_received_at, o.cas_receipt_at, o.cas_audit_id, o.cas_audit_applied, o.failure_reason, o.created_at, o.updated_at
+    FROM k8s_connector_handoff_operations o
+    JOIN k8s_connector_pools p
+      ON p.id = o.pool_id AND p.org_id = o.org_id AND p.site_id = o.site_id AND p.cluster_id = o.cluster_id
+    CROSS JOIN validated_audit validation
+    CROSS JOIN leadership
+    WHERE o.id = $4
+      AND o.org_id = $5
+      AND o.site_id = $6
+      AND o.pool_id = $7
+      AND o.phase = 'cas_active'
+      AND p.active_node_id = o.old_node_id
+      AND p.generation = o.expected_generation
+      AND (
+        leadership.backend_pid = 0
+        OR pg_backend_pid() = leadership.backend_pid
+      )
+    FOR UPDATE OF o, p
+), promoted AS (
+    UPDATE k8s_connector_pools p
+    SET active_node_id = o.new_node_id,
+        generation = o.target_generation,
+        updated_at = now()
+    FROM locked_operation o
+    WHERE p.id = o.pool_id
+      AND p.org_id = o.org_id
+      AND p.site_id = o.site_id
+      AND p.cluster_id = o.cluster_id
+      AND p.active_node_id = o.old_node_id
+      AND p.generation = o.expected_generation
+    RETURNING p.id
+), appended_audit AS (
+    INSERT INTO audit_logs (org_id, actor_system, action, target_type, target_id, metadata)
+    SELECT o.org_id,
+           validation.actor_system,
+           'k8s.connector_pool.handoff_applied',
+           'k8s_connector_pool',
+           o.pool_id::text,
+           jsonb_build_object(
+               'operation_id', o.id,
+               'old_node_id', o.old_node_id,
+               'new_node_id', o.new_node_id,
+               'expected_generation', o.expected_generation,
+               'target_generation', o.target_generation,
+               'reason', validation.audit_reason
+           )
+    FROM locked_operation o
+    JOIN promoted p ON p.id = o.pool_id
+    CROSS JOIN validated_audit validation
+    RETURNING id, org_id
+)
+UPDATE k8s_connector_handoff_operations o
+SET phase = 'enable_serving',
+    cas_receipt_at = now(),
+    cas_audit_id = a.id,
+    cas_audit_applied = true
+FROM locked_operation locked
+JOIN promoted p ON p.id = locked.pool_id
+JOIN appended_audit a ON a.org_id = locked.org_id
+WHERE o.id = locked.id
+  AND o.phase = 'cas_active'
+RETURNING o.id, o.org_id, o.site_id, o.pool_id, o.cluster_id, o.old_node_id, o.new_node_id, o.expected_generation, o.target_generation, o.old_serving_manifest_identity, o.candidate_prepared_manifest_identity, o.old_withdrawal_manifest_identity, o.new_serving_manifest_identity, o.old_serving_manifest_revision, o.candidate_prepared_manifest_revision, o.old_withdrawal_manifest_revision, o.new_serving_manifest_revision, o.old_serving_expected_route_digest, o.old_serving_expected_vip_map_digest, o.candidate_prepared_expected_route_digest, o.candidate_prepared_expected_vip_map_digest, o.old_withdrawal_expected_route_digest, o.old_withdrawal_expected_vip_map_digest, o.new_serving_expected_route_digest, o.new_serving_expected_vip_map_digest, o.old_lease_identity, o.target_lease_identity, o.old_lease_epoch, o.target_lease_epoch, o.old_lease_expires_at, o.target_lease_expires_at, o.observed_membership_epoch, o.decision_transition, o.old_serving_role, o.candidate_prepared_role, o.old_withdrawal_role, o.new_serving_role, o.phase, o.prepared_ack_received_at, o.withdrawal_ack_received_at, o.withdrawal_expiry_received_at, o.serving_ack_received_at, o.cas_receipt_at, o.cas_audit_id, o.cas_audit_applied, o.failure_reason, o.created_at, o.updated_at
+`
+
+type CommitK8sConnectorHandoffCASParams struct {
+	ActorSystem      string    `json:"actor_system"`
+	AuditReason      string    `json:"audit_reason"`
+	LeaderBackendPid int32     `json:"leader_backend_pid"`
+	OperationID      uuid.UUID `json:"operation_id"`
+	OrgID            uuid.UUID `json:"org_id"`
+	SiteID           uuid.UUID `json:"site_id"`
+	PoolID           uuid.UUID `json:"pool_id"`
+}
+
+// This is the future scheduler's crash-safe boundary. One transaction locks
+// and rechecks exact pool state, applies active+generation once, appends one
+// append-only system audit, records its provenance, and advances the durable
+// operation to enable_serving. If any predicate is stale, it returns no row;
+// it cannot leave a pool CAS without its receipt/audit/phase record.
+func (q *Queries) CommitK8sConnectorHandoffCAS(ctx context.Context, arg CommitK8sConnectorHandoffCASParams) (K8sConnectorHandoffOperation, error) {
+	row := q.db.QueryRow(ctx, commitK8sConnectorHandoffCAS,
+		arg.ActorSystem,
+		arg.AuditReason,
+		arg.LeaderBackendPid,
+		arg.OperationID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.PoolID,
+	)
+	var i K8sConnectorHandoffOperation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.PoolID,
+		&i.ClusterID,
+		&i.OldNodeID,
+		&i.NewNodeID,
+		&i.ExpectedGeneration,
+		&i.TargetGeneration,
+		&i.OldServingManifestIdentity,
+		&i.CandidatePreparedManifestIdentity,
+		&i.OldWithdrawalManifestIdentity,
+		&i.NewServingManifestIdentity,
+		&i.OldServingManifestRevision,
+		&i.CandidatePreparedManifestRevision,
+		&i.OldWithdrawalManifestRevision,
+		&i.NewServingManifestRevision,
+		&i.OldServingExpectedRouteDigest,
+		&i.OldServingExpectedVipMapDigest,
+		&i.CandidatePreparedExpectedRouteDigest,
+		&i.CandidatePreparedExpectedVipMapDigest,
+		&i.OldWithdrawalExpectedRouteDigest,
+		&i.OldWithdrawalExpectedVipMapDigest,
+		&i.NewServingExpectedRouteDigest,
+		&i.NewServingExpectedVipMapDigest,
+		&i.OldLeaseIdentity,
+		&i.TargetLeaseIdentity,
+		&i.OldLeaseEpoch,
+		&i.TargetLeaseEpoch,
+		&i.OldLeaseExpiresAt,
+		&i.TargetLeaseExpiresAt,
+		&i.ObservedMembershipEpoch,
+		&i.DecisionTransition,
+		&i.OldServingRole,
+		&i.CandidatePreparedRole,
+		&i.OldWithdrawalRole,
+		&i.NewServingRole,
+		&i.Phase,
+		&i.PreparedAckReceivedAt,
+		&i.WithdrawalAckReceivedAt,
+		&i.WithdrawalExpiryReceivedAt,
+		&i.ServingAckReceivedAt,
+		&i.CasReceiptAt,
+		&i.CasAuditID,
+		&i.CasAuditApplied,
+		&i.FailureReason,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const countAgentPolicyTemplateK8sServiceReferences = `-- name: CountAgentPolicyTemplateK8sServiceReferences :one
@@ -152,9 +476,9 @@ func (q *Queries) CountClusterCascade(ctx context.Context, arg CountClusterCasca
 }
 
 const createK8sCluster = `-- name: CreateK8sCluster :one
-INSERT INTO k8s_clusters (org_id, site_id, connector_node_id, name, vip_range, service_cidr, dns_zone, dns_vip, managed_by_machine)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
+INSERT INTO k8s_clusters (org_id, site_id, connector_node_id, name, vip_range, service_cidr, dns_zone, dns_vip, managed_by_machine, provider, platform)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id, provider, platform
 `
 
 type CreateK8sClusterParams struct {
@@ -167,6 +491,8 @@ type CreateK8sClusterParams struct {
 	DnsZone          string       `json:"dns_zone"`
 	DnsVip           *netip.Addr  `json:"dns_vip"`
 	ManagedByMachine pgtype.UUID  `json:"managed_by_machine"`
+	Provider         string       `json:"provider"`
+	Platform         string       `json:"platform"`
 }
 
 func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterParams) (K8sCluster, error) {
@@ -180,6 +506,8 @@ func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterPara
 		arg.DnsZone,
 		arg.DnsVip,
 		arg.ManagedByMachine,
+		arg.Provider,
+		arg.Platform,
 	)
 	var i K8sCluster
 	err := row.Scan(
@@ -196,6 +524,68 @@ func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterPara
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
 		&i.ConnectorPoolID,
+		&i.Provider,
+		&i.Platform,
+	)
+	return i, err
+}
+
+const createK8sConnectorPool = `-- name: CreateK8sConnectorPool :one
+WITH pool AS (
+    INSERT INTO k8s_connector_pools (org_id, site_id, cluster_id, preferred_node_id, active_node_id)
+    SELECT c.org_id, c.site_id, c.id, preferred.id, active.id
+    FROM k8s_clusters c
+    JOIN nodes preferred ON preferred.id = $1 AND preferred.org_id = c.org_id AND preferred.site_id = c.site_id
+    JOIN nodes active ON active.id = $2 AND active.org_id = c.org_id AND active.site_id = c.site_id
+    WHERE c.id = $3 AND c.org_id = $4
+    RETURNING id, org_id, site_id, cluster_id, preferred_node_id, active_node_id, generation, created_at, updated_at
+), members AS (
+    INSERT INTO k8s_connector_pool_members (pool_id, org_id, site_id, node_id)
+    SELECT p.id, p.org_id, p.site_id, n.id
+    FROM pool p
+    JOIN nodes n ON n.id IN (p.preferred_node_id, p.active_node_id)
+    RETURNING pool_id
+)
+SELECT p.id, p.org_id, p.site_id, p.cluster_id, p.preferred_node_id, p.active_node_id, p.generation, p.created_at, p.updated_at FROM pool p
+`
+
+type CreateK8sConnectorPoolParams struct {
+	PreferredNodeID uuid.UUID `json:"preferred_node_id"`
+	ActiveNodeID    uuid.UUID `json:"active_node_id"`
+	ClusterID       uuid.UUID `json:"cluster_id"`
+	OrgID           uuid.UUID `json:"org_id"`
+}
+
+type CreateK8sConnectorPoolRow struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	SiteID          uuid.UUID `json:"site_id"`
+	ClusterID       uuid.UUID `json:"cluster_id"`
+	PreferredNodeID uuid.UUID `json:"preferred_node_id"`
+	ActiveNodeID    uuid.UUID `json:"active_node_id"`
+	Generation      int64     `json:"generation"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+func (q *Queries) CreateK8sConnectorPool(ctx context.Context, arg CreateK8sConnectorPoolParams) (CreateK8sConnectorPoolRow, error) {
+	row := q.db.QueryRow(ctx, createK8sConnectorPool,
+		arg.PreferredNodeID,
+		arg.ActiveNodeID,
+		arg.ClusterID,
+		arg.OrgID,
+	)
+	var i CreateK8sConnectorPoolRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PreferredNodeID,
+		&i.ActiveNodeID,
+		&i.Generation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -369,6 +759,329 @@ func (q *Queries) CreateK8sService(ctx context.Context, arg CreateK8sServicePara
 	return i, err
 }
 
+const createOrResumeK8sConnectorHandoffOperation = `-- name: CreateOrResumeK8sConnectorHandoffOperation :one
+WITH leadership AS (
+    SELECT $1::integer AS backend_pid
+), observed_health_epoch AS (
+    -- Lock the durable incarnation while this statement checks it. A member
+    -- mutation's AFTER trigger updates this row FOR UPDATE, so it either
+    -- commits before this claim (epoch mismatch) or waits until the claim has
+    -- finished; it cannot slip between an unlocked epoch read and INSERT.
+    SELECT h.id
+    FROM k8s_connector_pool_health_states h
+    WHERE h.org_id = $2
+      AND h.site_id = $3
+      AND h.cluster_id = $4
+      AND h.pool_id = $5
+      AND h.membership_epoch = $6::bigint
+    FOR SHARE
+), existing AS (
+    SELECT o.id, o.org_id, o.site_id, o.pool_id, o.cluster_id, o.old_node_id, o.new_node_id, o.expected_generation, o.target_generation, o.old_serving_manifest_identity, o.candidate_prepared_manifest_identity, o.old_withdrawal_manifest_identity, o.new_serving_manifest_identity, o.old_serving_manifest_revision, o.candidate_prepared_manifest_revision, o.old_withdrawal_manifest_revision, o.new_serving_manifest_revision, o.old_serving_expected_route_digest, o.old_serving_expected_vip_map_digest, o.candidate_prepared_expected_route_digest, o.candidate_prepared_expected_vip_map_digest, o.old_withdrawal_expected_route_digest, o.old_withdrawal_expected_vip_map_digest, o.new_serving_expected_route_digest, o.new_serving_expected_vip_map_digest, o.old_lease_identity, o.target_lease_identity, o.old_lease_epoch, o.target_lease_epoch, o.old_lease_expires_at, o.target_lease_expires_at, o.observed_membership_epoch, o.decision_transition, o.old_serving_role, o.candidate_prepared_role, o.old_withdrawal_role, o.new_serving_role, o.phase, o.prepared_ack_received_at, o.withdrawal_ack_received_at, o.withdrawal_expiry_received_at, o.serving_ack_received_at, o.cas_receipt_at, o.cas_audit_id, o.cas_audit_applied, o.failure_reason, o.created_at, o.updated_at
+    FROM k8s_connector_handoff_operations o
+    WHERE o.id = $7
+       OR (o.org_id = $2
+           AND o.site_id = $3
+           AND o.pool_id = $5
+           AND o.phase NOT IN ('complete', 'failed'))
+), created AS (
+INSERT INTO k8s_connector_handoff_operations (
+    id, org_id, site_id, pool_id, cluster_id, old_node_id, new_node_id,
+    expected_generation, target_generation,
+    old_serving_manifest_identity, candidate_prepared_manifest_identity,
+    old_withdrawal_manifest_identity, new_serving_manifest_identity,
+    old_serving_manifest_revision, candidate_prepared_manifest_revision,
+    old_withdrawal_manifest_revision, new_serving_manifest_revision,
+    old_serving_expected_route_digest, old_serving_expected_vip_map_digest,
+    candidate_prepared_expected_route_digest, candidate_prepared_expected_vip_map_digest,
+    old_withdrawal_expected_route_digest, old_withdrawal_expected_vip_map_digest,
+    new_serving_expected_route_digest, new_serving_expected_vip_map_digest,
+    old_lease_identity, target_lease_identity, old_lease_epoch,
+    target_lease_epoch, old_lease_expires_at, target_lease_expires_at,
+    observed_membership_epoch, decision_transition
+)
+SELECT
+    $7, $2, $3,
+    $5, $4, $8,
+    $9, $10,
+    $11, $12,
+    $13,
+    $14,
+    $15,
+    $16,
+    $17,
+    $18,
+    $19,
+    $20,
+    $21,
+    $22,
+    $23,
+    $24,
+    $25,
+    $26,
+    $27,
+    $28,
+    $29, $30,
+    $31, $32,
+    $33, $6,
+    $34
+WHERE NOT EXISTS (SELECT 1 FROM existing)
+  AND (
+    (SELECT backend_pid FROM leadership) = 0
+    OR pg_backend_pid() = (SELECT backend_pid FROM leadership)
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM k8s_connector_pools p
+    JOIN k8s_connector_pool_members old_member
+      ON old_member.pool_id = p.id AND old_member.org_id = p.org_id
+     AND old_member.site_id = p.site_id AND old_member.node_id = $8
+    JOIN k8s_connector_pool_members new_member
+      ON new_member.pool_id = p.id AND new_member.org_id = p.org_id
+     AND new_member.site_id = p.site_id AND new_member.node_id = $9
+    WHERE p.id = $5
+      AND p.org_id = $2
+      AND p.site_id = $3
+      AND p.cluster_id = $4
+      AND p.active_node_id = $8
+      AND p.generation = $10
+      -- A health-observer origin carries its durable membership incarnation.
+      -- It is rechecked here, in the operation-claim statement, rather than
+      -- trusting the earlier observation snapshot after a member churn race.
+      AND (
+        $6::bigint IS NULL
+        OR EXISTS (SELECT 1 FROM observed_health_epoch)
+      )
+)
+ON CONFLICT DO NOTHING
+RETURNING id, org_id, site_id, pool_id, cluster_id, old_node_id, new_node_id, expected_generation, target_generation, old_serving_manifest_identity, candidate_prepared_manifest_identity, old_withdrawal_manifest_identity, new_serving_manifest_identity, old_serving_manifest_revision, candidate_prepared_manifest_revision, old_withdrawal_manifest_revision, new_serving_manifest_revision, old_serving_expected_route_digest, old_serving_expected_vip_map_digest, candidate_prepared_expected_route_digest, candidate_prepared_expected_vip_map_digest, old_withdrawal_expected_route_digest, old_withdrawal_expected_vip_map_digest, new_serving_expected_route_digest, new_serving_expected_vip_map_digest, old_lease_identity, target_lease_identity, old_lease_epoch, target_lease_epoch, old_lease_expires_at, target_lease_expires_at, observed_membership_epoch, decision_transition, old_serving_role, candidate_prepared_role, old_withdrawal_role, new_serving_role, phase, prepared_ack_received_at, withdrawal_ack_received_at, withdrawal_expiry_received_at, serving_ack_received_at, cas_receipt_at, cas_audit_id, cas_audit_applied, failure_reason, created_at, updated_at
+)
+SELECT id, org_id, site_id, pool_id, cluster_id, old_node_id, new_node_id, expected_generation, target_generation, old_serving_manifest_identity, candidate_prepared_manifest_identity, old_withdrawal_manifest_identity, new_serving_manifest_identity, old_serving_manifest_revision, candidate_prepared_manifest_revision, old_withdrawal_manifest_revision, new_serving_manifest_revision, old_serving_expected_route_digest, old_serving_expected_vip_map_digest, candidate_prepared_expected_route_digest, candidate_prepared_expected_vip_map_digest, old_withdrawal_expected_route_digest, old_withdrawal_expected_vip_map_digest, new_serving_expected_route_digest, new_serving_expected_vip_map_digest, old_lease_identity, target_lease_identity, old_lease_epoch, target_lease_epoch, old_lease_expires_at, target_lease_expires_at, observed_membership_epoch, decision_transition, old_serving_role, candidate_prepared_role, old_withdrawal_role, new_serving_role, phase, prepared_ack_received_at, withdrawal_ack_received_at, withdrawal_expiry_received_at, serving_ack_received_at, cas_receipt_at, cas_audit_id, cas_audit_applied, failure_reason, created_at, updated_at FROM created
+UNION ALL
+SELECT prior.id, prior.org_id, prior.site_id, prior.pool_id, prior.cluster_id, prior.old_node_id, prior.new_node_id, prior.expected_generation, prior.target_generation, prior.old_serving_manifest_identity, prior.candidate_prepared_manifest_identity, prior.old_withdrawal_manifest_identity, prior.new_serving_manifest_identity, prior.old_serving_manifest_revision, prior.candidate_prepared_manifest_revision, prior.old_withdrawal_manifest_revision, prior.new_serving_manifest_revision, prior.old_serving_expected_route_digest, prior.old_serving_expected_vip_map_digest, prior.candidate_prepared_expected_route_digest, prior.candidate_prepared_expected_vip_map_digest, prior.old_withdrawal_expected_route_digest, prior.old_withdrawal_expected_vip_map_digest, prior.new_serving_expected_route_digest, prior.new_serving_expected_vip_map_digest, prior.old_lease_identity, prior.target_lease_identity, prior.old_lease_epoch, prior.target_lease_epoch, prior.old_lease_expires_at, prior.target_lease_expires_at, prior.observed_membership_epoch, prior.decision_transition, prior.old_serving_role, prior.candidate_prepared_role, prior.old_withdrawal_role, prior.new_serving_role, prior.phase, prior.prepared_ack_received_at, prior.withdrawal_ack_received_at, prior.withdrawal_expiry_received_at, prior.serving_ack_received_at, prior.cas_receipt_at, prior.cas_audit_id, prior.cas_audit_applied, prior.failure_reason, prior.created_at, prior.updated_at
+FROM existing prior
+WHERE prior.id = $7
+  AND (
+    (SELECT backend_pid FROM leadership) = 0
+    OR pg_backend_pid() = (SELECT backend_pid FROM leadership)
+  )
+  AND prior.org_id = $2
+  AND prior.site_id = $3
+  AND prior.pool_id = $5
+  AND prior.cluster_id = $4
+  AND prior.old_node_id = $8
+  AND prior.new_node_id = $9
+  AND prior.expected_generation = $10
+  AND prior.target_generation = $11
+  AND prior.old_serving_manifest_identity = $12
+  AND prior.candidate_prepared_manifest_identity = $13
+  AND prior.old_withdrawal_manifest_identity = $14
+  AND prior.new_serving_manifest_identity = $15
+  AND prior.old_serving_manifest_revision = $16
+  AND prior.candidate_prepared_manifest_revision = $17
+  AND prior.old_withdrawal_manifest_revision = $18
+  AND prior.new_serving_manifest_revision = $19
+  AND prior.old_serving_expected_route_digest = $20
+  AND prior.old_serving_expected_vip_map_digest = $21
+  AND prior.candidate_prepared_expected_route_digest = $22
+  AND prior.candidate_prepared_expected_vip_map_digest = $23
+  AND prior.old_withdrawal_expected_route_digest = $24
+  AND prior.old_withdrawal_expected_vip_map_digest = $25
+  AND prior.new_serving_expected_route_digest = $26
+  AND prior.new_serving_expected_vip_map_digest = $27
+  AND prior.old_lease_identity = $28
+  AND prior.target_lease_identity = $29
+  AND prior.old_lease_epoch = $30
+  AND prior.target_lease_epoch = $31
+  AND prior.old_lease_expires_at = $32
+  AND prior.target_lease_expires_at = $33
+  AND prior.observed_membership_epoch IS NOT DISTINCT FROM $6
+  AND prior.decision_transition = $34
+`
+
+type CreateOrResumeK8sConnectorHandoffOperationParams struct {
+	LeaderBackendPid                      int32     `json:"leader_backend_pid"`
+	OrgID                                 uuid.UUID `json:"org_id"`
+	SiteID                                uuid.UUID `json:"site_id"`
+	ClusterID                             uuid.UUID `json:"cluster_id"`
+	PoolID                                uuid.UUID `json:"pool_id"`
+	ExpectedMembershipEpoch               *int64    `json:"expected_membership_epoch"`
+	OperationID                           uuid.UUID `json:"operation_id"`
+	OldNodeID                             uuid.UUID `json:"old_node_id"`
+	NewNodeID                             uuid.UUID `json:"new_node_id"`
+	ExpectedGeneration                    int64     `json:"expected_generation"`
+	TargetGeneration                      int64     `json:"target_generation"`
+	OldServingManifestIdentity            string    `json:"old_serving_manifest_identity"`
+	CandidatePreparedManifestIdentity     string    `json:"candidate_prepared_manifest_identity"`
+	OldWithdrawalManifestIdentity         string    `json:"old_withdrawal_manifest_identity"`
+	NewServingManifestIdentity            string    `json:"new_serving_manifest_identity"`
+	OldServingManifestRevision            int64     `json:"old_serving_manifest_revision"`
+	CandidatePreparedManifestRevision     int64     `json:"candidate_prepared_manifest_revision"`
+	OldWithdrawalManifestRevision         int64     `json:"old_withdrawal_manifest_revision"`
+	NewServingManifestRevision            int64     `json:"new_serving_manifest_revision"`
+	OldServingExpectedRouteDigest         string    `json:"old_serving_expected_route_digest"`
+	OldServingExpectedVipMapDigest        string    `json:"old_serving_expected_vip_map_digest"`
+	CandidatePreparedExpectedRouteDigest  string    `json:"candidate_prepared_expected_route_digest"`
+	CandidatePreparedExpectedVipMapDigest string    `json:"candidate_prepared_expected_vip_map_digest"`
+	OldWithdrawalExpectedRouteDigest      string    `json:"old_withdrawal_expected_route_digest"`
+	OldWithdrawalExpectedVipMapDigest     string    `json:"old_withdrawal_expected_vip_map_digest"`
+	NewServingExpectedRouteDigest         string    `json:"new_serving_expected_route_digest"`
+	NewServingExpectedVipMapDigest        string    `json:"new_serving_expected_vip_map_digest"`
+	OldLeaseIdentity                      string    `json:"old_lease_identity"`
+	TargetLeaseIdentity                   string    `json:"target_lease_identity"`
+	OldLeaseEpoch                         int64     `json:"old_lease_epoch"`
+	TargetLeaseEpoch                      int64     `json:"target_lease_epoch"`
+	OldLeaseExpiresAt                     time.Time `json:"old_lease_expires_at"`
+	TargetLeaseExpiresAt                  time.Time `json:"target_lease_expires_at"`
+	DecisionTransition                    string    `json:"decision_transition"`
+}
+
+type CreateOrResumeK8sConnectorHandoffOperationRow struct {
+	ID                                    uuid.UUID          `json:"id"`
+	OrgID                                 uuid.UUID          `json:"org_id"`
+	SiteID                                uuid.UUID          `json:"site_id"`
+	PoolID                                uuid.UUID          `json:"pool_id"`
+	ClusterID                             uuid.UUID          `json:"cluster_id"`
+	OldNodeID                             uuid.UUID          `json:"old_node_id"`
+	NewNodeID                             uuid.UUID          `json:"new_node_id"`
+	ExpectedGeneration                    int64              `json:"expected_generation"`
+	TargetGeneration                      int64              `json:"target_generation"`
+	OldServingManifestIdentity            string             `json:"old_serving_manifest_identity"`
+	CandidatePreparedManifestIdentity     string             `json:"candidate_prepared_manifest_identity"`
+	OldWithdrawalManifestIdentity         string             `json:"old_withdrawal_manifest_identity"`
+	NewServingManifestIdentity            string             `json:"new_serving_manifest_identity"`
+	OldServingManifestRevision            int64              `json:"old_serving_manifest_revision"`
+	CandidatePreparedManifestRevision     int64              `json:"candidate_prepared_manifest_revision"`
+	OldWithdrawalManifestRevision         int64              `json:"old_withdrawal_manifest_revision"`
+	NewServingManifestRevision            int64              `json:"new_serving_manifest_revision"`
+	OldServingExpectedRouteDigest         string             `json:"old_serving_expected_route_digest"`
+	OldServingExpectedVipMapDigest        string             `json:"old_serving_expected_vip_map_digest"`
+	CandidatePreparedExpectedRouteDigest  string             `json:"candidate_prepared_expected_route_digest"`
+	CandidatePreparedExpectedVipMapDigest string             `json:"candidate_prepared_expected_vip_map_digest"`
+	OldWithdrawalExpectedRouteDigest      string             `json:"old_withdrawal_expected_route_digest"`
+	OldWithdrawalExpectedVipMapDigest     string             `json:"old_withdrawal_expected_vip_map_digest"`
+	NewServingExpectedRouteDigest         string             `json:"new_serving_expected_route_digest"`
+	NewServingExpectedVipMapDigest        string             `json:"new_serving_expected_vip_map_digest"`
+	OldLeaseIdentity                      string             `json:"old_lease_identity"`
+	TargetLeaseIdentity                   string             `json:"target_lease_identity"`
+	OldLeaseEpoch                         int64              `json:"old_lease_epoch"`
+	TargetLeaseEpoch                      int64              `json:"target_lease_epoch"`
+	OldLeaseExpiresAt                     time.Time          `json:"old_lease_expires_at"`
+	TargetLeaseExpiresAt                  time.Time          `json:"target_lease_expires_at"`
+	ObservedMembershipEpoch               *int64             `json:"observed_membership_epoch"`
+	DecisionTransition                    string             `json:"decision_transition"`
+	OldServingRole                        string             `json:"old_serving_role"`
+	CandidatePreparedRole                 string             `json:"candidate_prepared_role"`
+	OldWithdrawalRole                     string             `json:"old_withdrawal_role"`
+	NewServingRole                        string             `json:"new_serving_role"`
+	Phase                                 string             `json:"phase"`
+	PreparedAckReceivedAt                 pgtype.Timestamptz `json:"prepared_ack_received_at"`
+	WithdrawalAckReceivedAt               pgtype.Timestamptz `json:"withdrawal_ack_received_at"`
+	WithdrawalExpiryReceivedAt            pgtype.Timestamptz `json:"withdrawal_expiry_received_at"`
+	ServingAckReceivedAt                  pgtype.Timestamptz `json:"serving_ack_received_at"`
+	CasReceiptAt                          pgtype.Timestamptz `json:"cas_receipt_at"`
+	CasAuditID                            pgtype.UUID        `json:"cas_audit_id"`
+	CasAuditApplied                       bool               `json:"cas_audit_applied"`
+	FailureReason                         *string            `json:"failure_reason"`
+	CreatedAt                             time.Time          `json:"created_at"`
+	UpdatedAt                             time.Time          `json:"updated_at"`
+}
+
+// Idempotent create/resume has one operation UUID and one immutable intent.
+// A new record requires the exact pool pre-CAS state and both members. A retry
+// may resume the same immutable record after CAS changed the pool state. A
+// competing operation ID returns zero rows rather than replacing it; a caller
+// that raced an initial insert retries its same operation ID normally.
+func (q *Queries) CreateOrResumeK8sConnectorHandoffOperation(ctx context.Context, arg CreateOrResumeK8sConnectorHandoffOperationParams) (CreateOrResumeK8sConnectorHandoffOperationRow, error) {
+	row := q.db.QueryRow(ctx, createOrResumeK8sConnectorHandoffOperation,
+		arg.LeaderBackendPid,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+		arg.ExpectedMembershipEpoch,
+		arg.OperationID,
+		arg.OldNodeID,
+		arg.NewNodeID,
+		arg.ExpectedGeneration,
+		arg.TargetGeneration,
+		arg.OldServingManifestIdentity,
+		arg.CandidatePreparedManifestIdentity,
+		arg.OldWithdrawalManifestIdentity,
+		arg.NewServingManifestIdentity,
+		arg.OldServingManifestRevision,
+		arg.CandidatePreparedManifestRevision,
+		arg.OldWithdrawalManifestRevision,
+		arg.NewServingManifestRevision,
+		arg.OldServingExpectedRouteDigest,
+		arg.OldServingExpectedVipMapDigest,
+		arg.CandidatePreparedExpectedRouteDigest,
+		arg.CandidatePreparedExpectedVipMapDigest,
+		arg.OldWithdrawalExpectedRouteDigest,
+		arg.OldWithdrawalExpectedVipMapDigest,
+		arg.NewServingExpectedRouteDigest,
+		arg.NewServingExpectedVipMapDigest,
+		arg.OldLeaseIdentity,
+		arg.TargetLeaseIdentity,
+		arg.OldLeaseEpoch,
+		arg.TargetLeaseEpoch,
+		arg.OldLeaseExpiresAt,
+		arg.TargetLeaseExpiresAt,
+		arg.DecisionTransition,
+	)
+	var i CreateOrResumeK8sConnectorHandoffOperationRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.PoolID,
+		&i.ClusterID,
+		&i.OldNodeID,
+		&i.NewNodeID,
+		&i.ExpectedGeneration,
+		&i.TargetGeneration,
+		&i.OldServingManifestIdentity,
+		&i.CandidatePreparedManifestIdentity,
+		&i.OldWithdrawalManifestIdentity,
+		&i.NewServingManifestIdentity,
+		&i.OldServingManifestRevision,
+		&i.CandidatePreparedManifestRevision,
+		&i.OldWithdrawalManifestRevision,
+		&i.NewServingManifestRevision,
+		&i.OldServingExpectedRouteDigest,
+		&i.OldServingExpectedVipMapDigest,
+		&i.CandidatePreparedExpectedRouteDigest,
+		&i.CandidatePreparedExpectedVipMapDigest,
+		&i.OldWithdrawalExpectedRouteDigest,
+		&i.OldWithdrawalExpectedVipMapDigest,
+		&i.NewServingExpectedRouteDigest,
+		&i.NewServingExpectedVipMapDigest,
+		&i.OldLeaseIdentity,
+		&i.TargetLeaseIdentity,
+		&i.OldLeaseEpoch,
+		&i.TargetLeaseEpoch,
+		&i.OldLeaseExpiresAt,
+		&i.TargetLeaseExpiresAt,
+		&i.ObservedMembershipEpoch,
+		&i.DecisionTransition,
+		&i.OldServingRole,
+		&i.CandidatePreparedRole,
+		&i.OldWithdrawalRole,
+		&i.NewServingRole,
+		&i.Phase,
+		&i.PreparedAckReceivedAt,
+		&i.WithdrawalAckReceivedAt,
+		&i.WithdrawalExpiryReceivedAt,
+		&i.ServingAckReceivedAt,
+		&i.CasReceiptAt,
+		&i.CasAuditID,
+		&i.CasAuditApplied,
+		&i.FailureReason,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const deleteK8sCluster = `-- name: DeleteK8sCluster :exec
 DELETE FROM k8s_clusters WHERE org_id = $1 AND id = $2
 `
@@ -416,7 +1129,7 @@ func (q *Queries) DeleteK8sConnectorPoolMemberForConfig(ctx context.Context, arg
 }
 
 const getK8sCluster = `-- name: GetK8sCluster :one
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id FROM k8s_clusters WHERE org_id = $1 AND id = $2
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id, provider, platform FROM k8s_clusters WHERE org_id = $1 AND id = $2
 `
 
 type GetK8sClusterParams struct {
@@ -441,13 +1154,84 @@ func (q *Queries) GetK8sCluster(ctx context.Context, arg GetK8sClusterParams) (K
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
 		&i.ConnectorPoolID,
+		&i.Provider,
+		&i.Platform,
+	)
+	return i, err
+}
+
+const getK8sClusterConnectorView = `-- name: GetK8sClusterConnectorView :one
+SELECT
+    c.id, c.org_id, c.site_id, c.name, c.vip_range, c.created_at, c.updated_at, c.service_cidr, c.dns_zone, c.dns_vip, c.managed_by_machine, c.connector_node_id, c.connector_pool_id, c.provider, c.platform,
+    p.id AS resolved_connector_pool_id,
+    p.active_node_id AS active_connector_node_id
+FROM k8s_clusters c
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+WHERE c.org_id = $1
+  AND c.id = $2
+`
+
+type GetK8sClusterConnectorViewParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+type GetK8sClusterConnectorViewRow struct {
+	ID                      uuid.UUID    `json:"id"`
+	OrgID                   uuid.UUID    `json:"org_id"`
+	SiteID                  uuid.UUID    `json:"site_id"`
+	Name                    string       `json:"name"`
+	VipRange                netip.Prefix `json:"vip_range"`
+	CreatedAt               time.Time    `json:"created_at"`
+	UpdatedAt               time.Time    `json:"updated_at"`
+	ServiceCidr             netip.Prefix `json:"service_cidr"`
+	DnsZone                 string       `json:"dns_zone"`
+	DnsVip                  *netip.Addr  `json:"dns_vip"`
+	ManagedByMachine        pgtype.UUID  `json:"managed_by_machine"`
+	ConnectorNodeID         pgtype.UUID  `json:"connector_node_id"`
+	ConnectorPoolID         pgtype.UUID  `json:"connector_pool_id"`
+	Provider                string       `json:"provider"`
+	Platform                string       `json:"platform"`
+	ResolvedConnectorPoolID pgtype.UUID  `json:"resolved_connector_pool_id"`
+	ActiveConnectorNodeID   pgtype.UUID  `json:"active_connector_node_id"`
+}
+
+// Basic cluster API projection. A pool-bound cluster resolves its active
+// connector only through the exact org/site/cluster-owned pool join. The
+// service rejects a non-null cluster pool ID lacking this exact row rather
+// than selecting another pool or treating the connector as unassigned.
+func (q *Queries) GetK8sClusterConnectorView(ctx context.Context, arg GetK8sClusterConnectorViewParams) (GetK8sClusterConnectorViewRow, error) {
+	row := q.db.QueryRow(ctx, getK8sClusterConnectorView, arg.OrgID, arg.ClusterID)
+	var i GetK8sClusterConnectorViewRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.Name,
+		&i.VipRange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ServiceCidr,
+		&i.DnsZone,
+		&i.DnsVip,
+		&i.ManagedByMachine,
+		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
+		&i.Provider,
+		&i.Platform,
+		&i.ResolvedConnectorPoolID,
+		&i.ActiveConnectorNodeID,
 	)
 	return i, err
 }
 
 const getK8sClusterForConnectorPoolConfigForUpdate = `-- name: GetK8sClusterForConnectorPoolConfigForUpdate :one
 
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id, provider, platform
 FROM k8s_clusters
 WHERE org_id = $1
   AND site_id = $2
@@ -483,12 +1267,14 @@ func (q *Queries) GetK8sClusterForConnectorPoolConfigForUpdate(ctx context.Conte
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
 		&i.ConnectorPoolID,
+		&i.Provider,
+		&i.Platform,
 	)
 	return i, err
 }
 
 const getK8sClusterForConnectorSetForUpdate = `-- name: GetK8sClusterForConnectorSetForUpdate :one
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id, provider, platform
 FROM k8s_clusters
 WHERE org_id = $1
   AND id = $2
@@ -520,6 +1306,168 @@ func (q *Queries) GetK8sClusterForConnectorSetForUpdate(ctx context.Context, arg
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
 		&i.ConnectorPoolID,
+		&i.Provider,
+		&i.Platform,
+	)
+	return i, err
+}
+
+const getK8sConnectorHandoffOperation = `-- name: GetK8sConnectorHandoffOperation :one
+SELECT id, org_id, site_id, pool_id, cluster_id, old_node_id, new_node_id, expected_generation, target_generation, old_serving_manifest_identity, candidate_prepared_manifest_identity, old_withdrawal_manifest_identity, new_serving_manifest_identity, old_serving_manifest_revision, candidate_prepared_manifest_revision, old_withdrawal_manifest_revision, new_serving_manifest_revision, old_serving_expected_route_digest, old_serving_expected_vip_map_digest, candidate_prepared_expected_route_digest, candidate_prepared_expected_vip_map_digest, old_withdrawal_expected_route_digest, old_withdrawal_expected_vip_map_digest, new_serving_expected_route_digest, new_serving_expected_vip_map_digest, old_lease_identity, target_lease_identity, old_lease_epoch, target_lease_epoch, old_lease_expires_at, target_lease_expires_at, observed_membership_epoch, decision_transition, old_serving_role, candidate_prepared_role, old_withdrawal_role, new_serving_role, phase, prepared_ack_received_at, withdrawal_ack_received_at, withdrawal_expiry_received_at, serving_ack_received_at, cas_receipt_at, cas_audit_id, cas_audit_applied, failure_reason, created_at, updated_at
+FROM k8s_connector_handoff_operations
+WHERE id = $1
+  AND org_id = $2
+  AND site_id = $3
+  AND pool_id = $4
+`
+
+type GetK8sConnectorHandoffOperationParams struct {
+	OperationID uuid.UUID `json:"operation_id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	SiteID      uuid.UUID `json:"site_id"`
+	PoolID      uuid.UUID `json:"pool_id"`
+}
+
+// Exact operation lookup precedes a new health decision. A terminal record is
+// deliberately still visible so a retry cannot reopen or replace it.
+func (q *Queries) GetK8sConnectorHandoffOperation(ctx context.Context, arg GetK8sConnectorHandoffOperationParams) (K8sConnectorHandoffOperation, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorHandoffOperation,
+		arg.OperationID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.PoolID,
+	)
+	var i K8sConnectorHandoffOperation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.PoolID,
+		&i.ClusterID,
+		&i.OldNodeID,
+		&i.NewNodeID,
+		&i.ExpectedGeneration,
+		&i.TargetGeneration,
+		&i.OldServingManifestIdentity,
+		&i.CandidatePreparedManifestIdentity,
+		&i.OldWithdrawalManifestIdentity,
+		&i.NewServingManifestIdentity,
+		&i.OldServingManifestRevision,
+		&i.CandidatePreparedManifestRevision,
+		&i.OldWithdrawalManifestRevision,
+		&i.NewServingManifestRevision,
+		&i.OldServingExpectedRouteDigest,
+		&i.OldServingExpectedVipMapDigest,
+		&i.CandidatePreparedExpectedRouteDigest,
+		&i.CandidatePreparedExpectedVipMapDigest,
+		&i.OldWithdrawalExpectedRouteDigest,
+		&i.OldWithdrawalExpectedVipMapDigest,
+		&i.NewServingExpectedRouteDigest,
+		&i.NewServingExpectedVipMapDigest,
+		&i.OldLeaseIdentity,
+		&i.TargetLeaseIdentity,
+		&i.OldLeaseEpoch,
+		&i.TargetLeaseEpoch,
+		&i.OldLeaseExpiresAt,
+		&i.TargetLeaseExpiresAt,
+		&i.ObservedMembershipEpoch,
+		&i.DecisionTransition,
+		&i.OldServingRole,
+		&i.CandidatePreparedRole,
+		&i.OldWithdrawalRole,
+		&i.NewServingRole,
+		&i.Phase,
+		&i.PreparedAckReceivedAt,
+		&i.WithdrawalAckReceivedAt,
+		&i.WithdrawalExpiryReceivedAt,
+		&i.ServingAckReceivedAt,
+		&i.CasReceiptAt,
+		&i.CasAuditID,
+		&i.CasAuditApplied,
+		&i.FailureReason,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getK8sConnectorHandoffOperationForUpdate = `-- name: GetK8sConnectorHandoffOperationForUpdate :one
+SELECT id, org_id, site_id, pool_id, cluster_id, old_node_id, new_node_id, expected_generation, target_generation, old_serving_manifest_identity, candidate_prepared_manifest_identity, old_withdrawal_manifest_identity, new_serving_manifest_identity, old_serving_manifest_revision, candidate_prepared_manifest_revision, old_withdrawal_manifest_revision, new_serving_manifest_revision, old_serving_expected_route_digest, old_serving_expected_vip_map_digest, candidate_prepared_expected_route_digest, candidate_prepared_expected_vip_map_digest, old_withdrawal_expected_route_digest, old_withdrawal_expected_vip_map_digest, new_serving_expected_route_digest, new_serving_expected_vip_map_digest, old_lease_identity, target_lease_identity, old_lease_epoch, target_lease_epoch, old_lease_expires_at, target_lease_expires_at, observed_membership_epoch, decision_transition, old_serving_role, candidate_prepared_role, old_withdrawal_role, new_serving_role, phase, prepared_ack_received_at, withdrawal_ack_received_at, withdrawal_expiry_received_at, serving_ack_received_at, cas_receipt_at, cas_audit_id, cas_audit_applied, failure_reason, created_at, updated_at
+FROM k8s_connector_handoff_operations
+WHERE id = $1
+  AND org_id = $2
+  AND site_id = $3
+  AND pool_id = $4
+FOR UPDATE
+`
+
+type GetK8sConnectorHandoffOperationForUpdateParams struct {
+	OperationID uuid.UUID `json:"operation_id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	SiteID      uuid.UUID `json:"site_id"`
+	PoolID      uuid.UUID `json:"pool_id"`
+}
+
+// Delivery is held behind this row lock until its expected-phase CAS commits.
+// A concurrent tick then rereads the advanced phase instead of sending a
+// second transport request for the same operation key.
+func (q *Queries) GetK8sConnectorHandoffOperationForUpdate(ctx context.Context, arg GetK8sConnectorHandoffOperationForUpdateParams) (K8sConnectorHandoffOperation, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorHandoffOperationForUpdate,
+		arg.OperationID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.PoolID,
+	)
+	var i K8sConnectorHandoffOperation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.PoolID,
+		&i.ClusterID,
+		&i.OldNodeID,
+		&i.NewNodeID,
+		&i.ExpectedGeneration,
+		&i.TargetGeneration,
+		&i.OldServingManifestIdentity,
+		&i.CandidatePreparedManifestIdentity,
+		&i.OldWithdrawalManifestIdentity,
+		&i.NewServingManifestIdentity,
+		&i.OldServingManifestRevision,
+		&i.CandidatePreparedManifestRevision,
+		&i.OldWithdrawalManifestRevision,
+		&i.NewServingManifestRevision,
+		&i.OldServingExpectedRouteDigest,
+		&i.OldServingExpectedVipMapDigest,
+		&i.CandidatePreparedExpectedRouteDigest,
+		&i.CandidatePreparedExpectedVipMapDigest,
+		&i.OldWithdrawalExpectedRouteDigest,
+		&i.OldWithdrawalExpectedVipMapDigest,
+		&i.NewServingExpectedRouteDigest,
+		&i.NewServingExpectedVipMapDigest,
+		&i.OldLeaseIdentity,
+		&i.TargetLeaseIdentity,
+		&i.OldLeaseEpoch,
+		&i.TargetLeaseEpoch,
+		&i.OldLeaseExpiresAt,
+		&i.TargetLeaseExpiresAt,
+		&i.ObservedMembershipEpoch,
+		&i.DecisionTransition,
+		&i.OldServingRole,
+		&i.CandidatePreparedRole,
+		&i.OldWithdrawalRole,
+		&i.NewServingRole,
+		&i.Phase,
+		&i.PreparedAckReceivedAt,
+		&i.WithdrawalAckReceivedAt,
+		&i.WithdrawalExpiryReceivedAt,
+		&i.ServingAckReceivedAt,
+		&i.CasReceiptAt,
+		&i.CasAuditID,
+		&i.CasAuditApplied,
+		&i.FailureReason,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -577,6 +1525,67 @@ type GetK8sConnectorPoolForClusterForConfigForUpdateParams struct {
 
 func (q *Queries) GetK8sConnectorPoolForClusterForConfigForUpdate(ctx context.Context, arg GetK8sConnectorPoolForClusterForConfigForUpdateParams) (K8sConnectorPool, error) {
 	row := q.db.QueryRow(ctx, getK8sConnectorPoolForClusterForConfigForUpdate, arg.OrgID, arg.SiteID, arg.ClusterID)
+	var i K8sConnectorPool
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PreferredNodeID,
+		&i.ActiveNodeID,
+		&i.Generation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getK8sConnectorPoolForOrg = `-- name: GetK8sConnectorPoolForOrg :one
+SELECT id, org_id, site_id, cluster_id, preferred_node_id, active_node_id, generation, created_at, updated_at FROM k8s_connector_pools WHERE org_id = $1 AND id = $2
+`
+
+type GetK8sConnectorPoolForOrgParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	ID    uuid.UUID `json:"id"`
+}
+
+func (q *Queries) GetK8sConnectorPoolForOrg(ctx context.Context, arg GetK8sConnectorPoolForOrgParams) (K8sConnectorPool, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorPoolForOrg, arg.OrgID, arg.ID)
+	var i K8sConnectorPool
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PreferredNodeID,
+		&i.ActiveNodeID,
+		&i.Generation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getK8sConnectorPoolForPromotion = `-- name: GetK8sConnectorPoolForPromotion :one
+SELECT id, org_id, site_id, cluster_id, preferred_node_id, active_node_id, generation, created_at, updated_at
+FROM k8s_connector_pools
+WHERE org_id = $1
+  AND site_id = $2
+  AND id = $3
+FOR UPDATE
+`
+
+type GetK8sConnectorPoolForPromotionParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	SiteID uuid.UUID `json:"site_id"`
+	PoolID uuid.UUID `json:"pool_id"`
+}
+
+// A promotion holds the exact pool row while it rechecks its observed active
+// member and generation. Site scope is explicit even though pool ID is unique:
+// a caller must never mutate an org peer's same-ID state by omission.
+func (q *Queries) GetK8sConnectorPoolForPromotion(ctx context.Context, arg GetK8sConnectorPoolForPromotionParams) (K8sConnectorPool, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorPoolForPromotion, arg.OrgID, arg.SiteID, arg.PoolID)
 	var i K8sConnectorPool
 	err := row.Scan(
 		&i.ID,
@@ -716,12 +1725,149 @@ func (q *Queries) GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K
 	return i, err
 }
 
+const getNonterminalK8sConnectorHandoffOperationForPool = `-- name: GetNonterminalK8sConnectorHandoffOperationForPool :one
+SELECT id, org_id, site_id, pool_id, cluster_id, old_node_id, new_node_id, expected_generation, target_generation, old_serving_manifest_identity, candidate_prepared_manifest_identity, old_withdrawal_manifest_identity, new_serving_manifest_identity, old_serving_manifest_revision, candidate_prepared_manifest_revision, old_withdrawal_manifest_revision, new_serving_manifest_revision, old_serving_expected_route_digest, old_serving_expected_vip_map_digest, candidate_prepared_expected_route_digest, candidate_prepared_expected_vip_map_digest, old_withdrawal_expected_route_digest, old_withdrawal_expected_vip_map_digest, new_serving_expected_route_digest, new_serving_expected_vip_map_digest, old_lease_identity, target_lease_identity, old_lease_epoch, target_lease_epoch, old_lease_expires_at, target_lease_expires_at, observed_membership_epoch, decision_transition, old_serving_role, candidate_prepared_role, old_withdrawal_role, new_serving_role, phase, prepared_ack_received_at, withdrawal_ack_received_at, withdrawal_expiry_received_at, serving_ack_received_at, cas_receipt_at, cas_audit_id, cas_audit_applied, failure_reason, created_at, updated_at
+FROM k8s_connector_handoff_operations
+WHERE org_id = $1
+  AND site_id = $2
+  AND pool_id = $3
+  AND phase NOT IN ('complete', 'failed')
+`
+
+type GetNonterminalK8sConnectorHandoffOperationForPoolParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	SiteID uuid.UUID `json:"site_id"`
+	PoolID uuid.UUID `json:"pool_id"`
+}
+
+// A fresh resolver must not mint a second intent while an operation for this
+// exact tenant/site/pool is already durable. The partial unique index makes
+// more than one row impossible; a missing row is the only fresh domain.
+func (q *Queries) GetNonterminalK8sConnectorHandoffOperationForPool(ctx context.Context, arg GetNonterminalK8sConnectorHandoffOperationForPoolParams) (K8sConnectorHandoffOperation, error) {
+	row := q.db.QueryRow(ctx, getNonterminalK8sConnectorHandoffOperationForPool, arg.OrgID, arg.SiteID, arg.PoolID)
+	var i K8sConnectorHandoffOperation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.PoolID,
+		&i.ClusterID,
+		&i.OldNodeID,
+		&i.NewNodeID,
+		&i.ExpectedGeneration,
+		&i.TargetGeneration,
+		&i.OldServingManifestIdentity,
+		&i.CandidatePreparedManifestIdentity,
+		&i.OldWithdrawalManifestIdentity,
+		&i.NewServingManifestIdentity,
+		&i.OldServingManifestRevision,
+		&i.CandidatePreparedManifestRevision,
+		&i.OldWithdrawalManifestRevision,
+		&i.NewServingManifestRevision,
+		&i.OldServingExpectedRouteDigest,
+		&i.OldServingExpectedVipMapDigest,
+		&i.CandidatePreparedExpectedRouteDigest,
+		&i.CandidatePreparedExpectedVipMapDigest,
+		&i.OldWithdrawalExpectedRouteDigest,
+		&i.OldWithdrawalExpectedVipMapDigest,
+		&i.NewServingExpectedRouteDigest,
+		&i.NewServingExpectedVipMapDigest,
+		&i.OldLeaseIdentity,
+		&i.TargetLeaseIdentity,
+		&i.OldLeaseEpoch,
+		&i.TargetLeaseEpoch,
+		&i.OldLeaseExpiresAt,
+		&i.TargetLeaseExpiresAt,
+		&i.ObservedMembershipEpoch,
+		&i.DecisionTransition,
+		&i.OldServingRole,
+		&i.CandidatePreparedRole,
+		&i.OldWithdrawalRole,
+		&i.NewServingRole,
+		&i.Phase,
+		&i.PreparedAckReceivedAt,
+		&i.WithdrawalAckReceivedAt,
+		&i.WithdrawalExpiryReceivedAt,
+		&i.ServingAckReceivedAt,
+		&i.CasReceiptAt,
+		&i.CasAuditID,
+		&i.CasAuditApplied,
+		&i.FailureReason,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPoolVIPOwnershipFreshHandoffEnvelopeBodies = `-- name: GetPoolVIPOwnershipFreshHandoffEnvelopeBodies :one
+SELECT old_serving_envelope, new_prepared_envelope, old_withdrawal_envelope, new_serving_envelope
+FROM pool_vip_ownership_handoff_provenance
+WHERE operation_id = $1
+  AND org_id = $2
+  AND site_id = $3
+  AND cluster_id = $4
+  AND pool_id = $5
+`
+
+type GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesParams struct {
+	OperationID uuid.UUID `json:"operation_id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	SiteID      uuid.UUID `json:"site_id"`
+	ClusterID   uuid.UUID `json:"cluster_id"`
+	PoolID      uuid.UUID `json:"pool_id"`
+}
+
+type GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesRow struct {
+	OldServingEnvelope    []byte `json:"old_serving_envelope"`
+	NewPreparedEnvelope   []byte `json:"new_prepared_envelope"`
+	OldWithdrawalEnvelope []byte `json:"old_withdrawal_envelope"`
+	NewServingEnvelope    []byte `json:"new_serving_envelope"`
+}
+
+// Private P2 composition read. The four raw envelope bodies do not cross this
+// query boundary into a public handler; the provenance facade selects one
+// only after exact non-secret artifact identity validation.
+func (q *Queries) GetPoolVIPOwnershipFreshHandoffEnvelopeBodies(ctx context.Context, arg GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesParams) (GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesRow, error) {
+	row := q.db.QueryRow(ctx, getPoolVIPOwnershipFreshHandoffEnvelopeBodies,
+		arg.OperationID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	var i GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesRow
+	err := row.Scan(
+		&i.OldServingEnvelope,
+		&i.NewPreparedEnvelope,
+		&i.OldWithdrawalEnvelope,
+		&i.NewServingEnvelope,
+	)
+	return i, err
+}
+
 const listActiveK8sServicesForOrg = `-- name: ListActiveK8sServicesForOrg :many
 SELECT s.id, s.cluster_id, s.name, s.namespace, s.protocol, s.port_low, s.port_high, s.managed_by_machine,
        host(s.vip) AS vip, c.site_id, c.connector_pool_id,
        c.connector_node_id AS legacy_connector_node_id,
        p.active_node_id AS pool_active_node_id,
-       COALESCE(p.generation > 0 AND connector.id IS NOT NULL, false)::boolean AS pool_connector_eligible,
+       COALESCE(
+         p.generation > 0
+         AND connector.id IS NOT NULL
+         AND (
+           p.generation = 1
+           OR EXISTS (
+             SELECT 1
+             FROM k8s_connector_handoff_operations hop
+             WHERE hop.org_id = p.org_id
+               AND hop.site_id = p.site_id
+               AND hop.cluster_id = p.cluster_id
+               AND hop.pool_id = p.id
+               AND hop.new_node_id = p.active_node_id
+               AND hop.target_generation = p.generation
+               AND hop.phase = 'complete'
+           )
+         ), false
+       )::boolean AS pool_connector_eligible,
        p.generation AS connector_generation,
        host(c.vip_range) AS vip_range, c.service_cidr::text AS service_cidr,
        c.name AS cluster_name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
@@ -812,6 +1958,83 @@ func (q *Queries) ListActiveK8sServicesForOrg(ctx context.Context, orgID uuid.UU
 	return items, nil
 }
 
+const listK8sClusterConnectorViewsForOrg = `-- name: ListK8sClusterConnectorViewsForOrg :many
+SELECT
+    c.id, c.org_id, c.site_id, c.name, c.vip_range, c.created_at, c.updated_at, c.service_cidr, c.dns_zone, c.dns_vip, c.managed_by_machine, c.connector_node_id, c.connector_pool_id, c.provider, c.platform,
+    p.id AS resolved_connector_pool_id,
+    p.active_node_id AS active_connector_node_id
+FROM k8s_clusters c
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+WHERE c.org_id = $1
+ORDER BY c.name
+`
+
+type ListK8sClusterConnectorViewsForOrgRow struct {
+	ID                      uuid.UUID    `json:"id"`
+	OrgID                   uuid.UUID    `json:"org_id"`
+	SiteID                  uuid.UUID    `json:"site_id"`
+	Name                    string       `json:"name"`
+	VipRange                netip.Prefix `json:"vip_range"`
+	CreatedAt               time.Time    `json:"created_at"`
+	UpdatedAt               time.Time    `json:"updated_at"`
+	ServiceCidr             netip.Prefix `json:"service_cidr"`
+	DnsZone                 string       `json:"dns_zone"`
+	DnsVip                  *netip.Addr  `json:"dns_vip"`
+	ManagedByMachine        pgtype.UUID  `json:"managed_by_machine"`
+	ConnectorNodeID         pgtype.UUID  `json:"connector_node_id"`
+	ConnectorPoolID         pgtype.UUID  `json:"connector_pool_id"`
+	Provider                string       `json:"provider"`
+	Platform                string       `json:"platform"`
+	ResolvedConnectorPoolID pgtype.UUID  `json:"resolved_connector_pool_id"`
+	ActiveConnectorNodeID   pgtype.UUID  `json:"active_connector_node_id"`
+}
+
+// One org-scoped query for the cluster list; handlers never do a per-cluster
+// pool lookup. Malformed pool-bound rows are returned only as an unresolved
+// join and are rejected fail-closed by the service before any partial list is
+// emitted.
+func (q *Queries) ListK8sClusterConnectorViewsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sClusterConnectorViewsForOrgRow, error) {
+	rows, err := q.db.Query(ctx, listK8sClusterConnectorViewsForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sClusterConnectorViewsForOrgRow{}
+	for rows.Next() {
+		var i ListK8sClusterConnectorViewsForOrgRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.Name,
+			&i.VipRange,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ServiceCidr,
+			&i.DnsZone,
+			&i.DnsVip,
+			&i.ManagedByMachine,
+			&i.ConnectorNodeID,
+			&i.ConnectorPoolID,
+			&i.Provider,
+			&i.Platform,
+			&i.ResolvedConnectorPoolID,
+			&i.ActiveConnectorNodeID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listK8sClusterZonesForOrg = `-- name: ListK8sClusterZonesForOrg :many
 SELECT name, dns_zone, COALESCE(host(dns_vip), '')::text AS dns_vip FROM k8s_clusters WHERE org_id = $1
 `
@@ -847,7 +2070,7 @@ func (q *Queries) ListK8sClusterZonesForOrg(ctx context.Context, orgID uuid.UUID
 }
 
 const listK8sClustersForOrg = `-- name: ListK8sClustersForOrg :many
-SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id FROM k8s_clusters WHERE org_id = $1 ORDER BY name
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id, provider, platform FROM k8s_clusters WHERE org_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([]K8sCluster, error) {
@@ -873,6 +2096,490 @@ func (q *Queries) ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([
 			&i.ManagedByMachine,
 			&i.ConnectorNodeID,
 			&i.ConnectorPoolID,
+			&i.Provider,
+			&i.Platform,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorHandoffResolutionMembers = `-- name: ListK8sConnectorHandoffResolutionMembers :many
+SELECT
+    p.id AS pool_id,
+    p.org_id,
+    p.site_id,
+    p.cluster_id,
+    p.preferred_node_id,
+    p.active_node_id,
+    p.generation,
+    h.membership_epoch,
+    m.node_id,
+    m.admin_priority
+FROM k8s_connector_pools p
+JOIN k8s_clusters c
+  ON c.id = p.cluster_id
+ AND c.org_id = p.org_id
+ AND c.site_id = p.site_id
+ AND c.connector_pool_id = p.id
+JOIN k8s_connector_pool_health_states h
+  ON h.pool_id = p.id
+ AND h.org_id = p.org_id
+ AND h.site_id = p.site_id
+ AND h.cluster_id = p.cluster_id
+JOIN k8s_connector_pool_members m
+  ON m.pool_id = p.id
+ AND m.org_id = p.org_id
+ AND m.site_id = p.site_id
+WHERE p.id = $1
+  AND p.org_id = $2
+  AND p.site_id = $3
+  AND p.cluster_id = $4
+ORDER BY m.admin_priority DESC, m.node_id ASC
+`
+
+type ListK8sConnectorHandoffResolutionMembersParams struct {
+	PoolID    uuid.UUID `json:"pool_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+type ListK8sConnectorHandoffResolutionMembersRow struct {
+	PoolID          uuid.UUID `json:"pool_id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	SiteID          uuid.UUID `json:"site_id"`
+	ClusterID       uuid.UUID `json:"cluster_id"`
+	PreferredNodeID uuid.UUID `json:"preferred_node_id"`
+	ActiveNodeID    uuid.UUID `json:"active_node_id"`
+	Generation      int64     `json:"generation"`
+	MembershipEpoch int64     `json:"membership_epoch"`
+	NodeID          uuid.UUID `json:"node_id"`
+	AdminPriority   int32     `json:"admin_priority"`
+}
+
+// One exact pool-bound cluster snapshot for the durable plan resolver.  The
+// cluster.connector_pool_id join deliberately forbids legacy fallback and a
+// matching health row supplies the authoritative 0083 membership incarnation.
+// Higher administrative priority wins; UUID breaks ties exactly as the pure
+// pool model does for a stable candidate order.
+func (q *Queries) ListK8sConnectorHandoffResolutionMembers(ctx context.Context, arg ListK8sConnectorHandoffResolutionMembersParams) ([]ListK8sConnectorHandoffResolutionMembersRow, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorHandoffResolutionMembers,
+		arg.PoolID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sConnectorHandoffResolutionMembersRow{}
+	for rows.Next() {
+		var i ListK8sConnectorHandoffResolutionMembersRow
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.ClusterID,
+			&i.PreferredNodeID,
+			&i.ActiveNodeID,
+			&i.Generation,
+			&i.MembershipEpoch,
+			&i.NodeID,
+			&i.AdminPriority,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorHandoffTickMembers = `-- name: ListK8sConnectorHandoffTickMembers :many
+SELECT
+    p.id AS pool_id,
+    p.org_id,
+    p.site_id,
+    p.cluster_id,
+    p.preferred_node_id,
+    p.active_node_id,
+    p.generation,
+    m.node_id,
+    m.admin_priority,
+    n.status AS node_status,
+    n.revoked_at AS node_revoked_at,
+    n.wg_public_key AS node_wg_public_key,
+    n.endpoint AS node_endpoint,
+    n.last_seen_at AS node_last_seen_at,
+    n.policy_reported_at AS node_policy_reported_at,
+    n.capabilities AS node_capabilities
+FROM k8s_clusters c
+JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+JOIN k8s_connector_pool_members m
+  ON m.pool_id = p.id
+ AND m.org_id = p.org_id
+ AND m.site_id = p.site_id
+JOIN nodes n
+  ON n.id = m.node_id
+ AND n.org_id = p.org_id
+ AND n.site_id = p.site_id
+LEFT JOIN k8s_ha_settings hs ON hs.org_id = p.org_id
+LEFT JOIN k8s_connector_pool_ha_transitions ht
+  ON ht.pool_id = p.id
+ AND ht.org_id = p.org_id
+ AND ht.site_id = p.site_id
+ AND ht.cluster_id = p.cluster_id
+LEFT JOIN k8s_connector_pool_health_states hh
+  ON hh.pool_id = p.id
+ AND hh.org_id = p.org_id
+WHERE (
+    hs.enabled = true
+    AND ht.requested_mode = 'fenced_ha'
+    AND ht.actual_mode = 'fenced_ha'
+    AND hh.id IS NOT NULL
+    AND ht.active_node_id = p.active_node_id
+    AND ht.promotion_generation = p.generation
+    AND ht.membership_epoch = hh.membership_epoch
+) OR EXISTS (
+    -- Organization opt-out/drain blocks new decisions immediately, but an
+    -- already committed handoff must remain visible until its safe terminal
+    -- phase. The source's operation branch cannot create fresh intent here.
+    SELECT 1 FROM k8s_connector_handoff_operations pending
+    WHERE pending.pool_id = p.id AND pending.org_id = p.org_id
+      AND pending.phase NOT IN ('complete','failed')
+)
+ORDER BY p.org_id, p.site_id, p.id, m.admin_priority DESC, m.node_id
+`
+
+type ListK8sConnectorHandoffTickMembersRow struct {
+	PoolID               uuid.UUID          `json:"pool_id"`
+	OrgID                uuid.UUID          `json:"org_id"`
+	SiteID               uuid.UUID          `json:"site_id"`
+	ClusterID            uuid.UUID          `json:"cluster_id"`
+	PreferredNodeID      uuid.UUID          `json:"preferred_node_id"`
+	ActiveNodeID         uuid.UUID          `json:"active_node_id"`
+	Generation           int64              `json:"generation"`
+	NodeID               uuid.UUID          `json:"node_id"`
+	AdminPriority        int32              `json:"admin_priority"`
+	NodeStatus           string             `json:"node_status"`
+	NodeRevokedAt        pgtype.Timestamptz `json:"node_revoked_at"`
+	NodeWgPublicKey      string             `json:"node_wg_public_key"`
+	NodeEndpoint         string             `json:"node_endpoint"`
+	NodeLastSeenAt       pgtype.Timestamptz `json:"node_last_seen_at"`
+	NodePolicyReportedAt pgtype.Timestamptz `json:"node_policy_reported_at"`
+	NodeCapabilities     []byte             `json:"node_capabilities"`
+}
+
+// The scheduler source sees only clusters explicitly bound to their exact
+// org/site/cluster-owned pool. Every member is joined to its current node row
+// in the same org/site; a partial or cross-scope relationship emits no row.
+func (q *Queries) ListK8sConnectorHandoffTickMembers(ctx context.Context) ([]ListK8sConnectorHandoffTickMembersRow, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorHandoffTickMembers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sConnectorHandoffTickMembersRow{}
+	for rows.Next() {
+		var i ListK8sConnectorHandoffTickMembersRow
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.ClusterID,
+			&i.PreferredNodeID,
+			&i.ActiveNodeID,
+			&i.Generation,
+			&i.NodeID,
+			&i.AdminPriority,
+			&i.NodeStatus,
+			&i.NodeRevokedAt,
+			&i.NodeWgPublicKey,
+			&i.NodeEndpoint,
+			&i.NodeLastSeenAt,
+			&i.NodePolicyReportedAt,
+			&i.NodeCapabilities,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorPoolHealthCandidateTicks = `-- name: ListK8sConnectorPoolHealthCandidateTicks :many
+SELECT state_id, org_id, site_id, cluster_id, pool_id, node_id, healthy_ticks, created_at, updated_at
+FROM k8s_connector_pool_health_candidate_ticks
+WHERE state_id = $1
+  AND org_id = $2
+  AND site_id = $3
+  AND cluster_id = $4
+  AND pool_id = $5
+ORDER BY node_id
+`
+
+type ListK8sConnectorPoolHealthCandidateTicksParams struct {
+	StateID   uuid.UUID `json:"state_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+	PoolID    uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) ListK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg ListK8sConnectorPoolHealthCandidateTicksParams) ([]K8sConnectorPoolHealthCandidateTick, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolHealthCandidateTicks,
+		arg.StateID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []K8sConnectorPoolHealthCandidateTick{}
+	for rows.Next() {
+		var i K8sConnectorPoolHealthCandidateTick
+		if err := rows.Scan(
+			&i.StateID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.ClusterID,
+			&i.PoolID,
+			&i.NodeID,
+			&i.HealthyTicks,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorPoolHealthCandidateTicksForUpdate = `-- name: ListK8sConnectorPoolHealthCandidateTicksForUpdate :many
+SELECT state_id, org_id, site_id, cluster_id, pool_id, node_id, healthy_ticks, created_at, updated_at
+FROM k8s_connector_pool_health_candidate_ticks
+WHERE state_id = $1
+  AND org_id = $2
+  AND site_id = $3
+  AND cluster_id = $4
+  AND pool_id = $5
+FOR UPDATE
+`
+
+type ListK8sConnectorPoolHealthCandidateTicksForUpdateParams struct {
+	StateID   uuid.UUID `json:"state_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+	PoolID    uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) ListK8sConnectorPoolHealthCandidateTicksForUpdate(ctx context.Context, arg ListK8sConnectorPoolHealthCandidateTicksForUpdateParams) ([]K8sConnectorPoolHealthCandidateTick, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolHealthCandidateTicksForUpdate,
+		arg.StateID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []K8sConnectorPoolHealthCandidateTick{}
+	for rows.Next() {
+		var i K8sConnectorPoolHealthCandidateTick
+		if err := rows.Scan(
+			&i.StateID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.ClusterID,
+			&i.PoolID,
+			&i.NodeID,
+			&i.HealthyTicks,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorPoolHealthObservationMembersForUpdate = `-- name: ListK8sConnectorPoolHealthObservationMembersForUpdate :many
+
+
+SELECT
+    m.pool_id,
+    m.org_id,
+    m.site_id,
+    m.node_id,
+    m.admin_priority,
+    n.status AS node_status,
+    n.revoked_at AS node_revoked_at,
+    n.wg_public_key AS node_wg_public_key,
+    n.endpoint AS node_endpoint,
+    n.last_seen_at AS node_last_seen_at,
+    n.policy_reported_at AS node_policy_reported_at,
+    n.capabilities AS node_capabilities
+FROM k8s_connector_pool_members m
+JOIN nodes n
+  ON n.id = m.node_id
+ AND n.org_id = m.org_id
+ AND n.site_id = m.site_id
+WHERE m.pool_id = $1
+  AND m.org_id = $2
+  AND m.site_id = $3
+FOR UPDATE OF m, n
+`
+
+type ListK8sConnectorPoolHealthObservationMembersForUpdateParams struct {
+	PoolID uuid.UUID `json:"pool_id"`
+	OrgID  uuid.UUID `json:"org_id"`
+	SiteID uuid.UUID `json:"site_id"`
+}
+
+type ListK8sConnectorPoolHealthObservationMembersForUpdateRow struct {
+	PoolID               uuid.UUID          `json:"pool_id"`
+	OrgID                uuid.UUID          `json:"org_id"`
+	SiteID               uuid.UUID          `json:"site_id"`
+	NodeID               uuid.UUID          `json:"node_id"`
+	AdminPriority        int32              `json:"admin_priority"`
+	NodeStatus           string             `json:"node_status"`
+	NodeRevokedAt        pgtype.Timestamptz `json:"node_revoked_at"`
+	NodeWgPublicKey      string             `json:"node_wg_public_key"`
+	NodeEndpoint         string             `json:"node_endpoint"`
+	NodeLastSeenAt       pgtype.Timestamptz `json:"node_last_seen_at"`
+	NodePolicyReportedAt pgtype.Timestamptz `json:"node_policy_reported_at"`
+	NodeCapabilities     []byte             `json:"node_capabilities"`
+}
+
+// S10.3c durable handoff-operation contract. The PostgreSQL tick source uses
+// these generated read bindings; it remains unregistered and read-only.
+// S10.3c durable health-history contract. A source may persist one CP-issued
+// observation after it locks and rechecks this exact pool/member snapshot.
+// These queries have no pool ownership mutation and no scheduler registration.
+// The observer locks the exact current members and their CP-recorded node
+// evidence with the pool row before it derives an idempotency fingerprint.
+func (q *Queries) ListK8sConnectorPoolHealthObservationMembersForUpdate(ctx context.Context, arg ListK8sConnectorPoolHealthObservationMembersForUpdateParams) ([]ListK8sConnectorPoolHealthObservationMembersForUpdateRow, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolHealthObservationMembersForUpdate, arg.PoolID, arg.OrgID, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sConnectorPoolHealthObservationMembersForUpdateRow{}
+	for rows.Next() {
+		var i ListK8sConnectorPoolHealthObservationMembersForUpdateRow
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.NodeID,
+			&i.AdminPriority,
+			&i.NodeStatus,
+			&i.NodeRevokedAt,
+			&i.NodeWgPublicKey,
+			&i.NodeEndpoint,
+			&i.NodeLastSeenAt,
+			&i.NodePolicyReportedAt,
+			&i.NodeCapabilities,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorPoolHealthStatesForOperatorStatus = `-- name: ListK8sConnectorPoolHealthStatesForOperatorStatus :many
+SELECT
+    h.org_id,
+    h.site_id,
+    h.cluster_id,
+    h.pool_id,
+    h.membership_epoch,
+    h.observed_active_node_id,
+    h.observed_generation,
+    h.last_observation_at
+FROM k8s_connector_pool_health_states h
+JOIN k8s_connector_pools p
+  ON p.id = h.pool_id
+ AND p.org_id = h.org_id
+ AND p.site_id = h.site_id
+ AND p.cluster_id = h.cluster_id
+JOIN k8s_clusters c
+  ON c.id = p.cluster_id
+ AND c.org_id = p.org_id
+ AND c.site_id = p.site_id
+ AND c.connector_pool_id = p.id
+WHERE h.org_id = $1
+ORDER BY h.site_id, h.pool_id
+`
+
+type ListK8sConnectorPoolHealthStatesForOperatorStatusRow struct {
+	OrgID                uuid.UUID          `json:"org_id"`
+	SiteID               uuid.UUID          `json:"site_id"`
+	ClusterID            uuid.UUID          `json:"cluster_id"`
+	PoolID               uuid.UUID          `json:"pool_id"`
+	MembershipEpoch      int64              `json:"membership_epoch"`
+	ObservedActiveNodeID uuid.UUID          `json:"observed_active_node_id"`
+	ObservedGeneration   int64              `json:"observed_generation"`
+	LastObservationAt    pgtype.Timestamptz `json:"last_observation_at"`
+}
+
+// Operator status may expose only the durable health-state incarnation and
+// CP receipt time for explicitly pool-bound clusters. observed_active_node_id
+// is read only to reject an ownership-drifted snapshot; the projection never
+// exposes it. The query omits member, artifact, lease, observation-key, and
+// P2 identity fields.
+func (q *Queries) ListK8sConnectorPoolHealthStatesForOperatorStatus(ctx context.Context, orgID uuid.UUID) ([]ListK8sConnectorPoolHealthStatesForOperatorStatusRow, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolHealthStatesForOperatorStatus, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sConnectorPoolHealthStatesForOperatorStatusRow{}
+	for rows.Next() {
+		var i ListK8sConnectorPoolHealthStatesForOperatorStatusRow
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.SiteID,
+			&i.ClusterID,
+			&i.PoolID,
+			&i.MembershipEpoch,
+			&i.ObservedActiveNodeID,
+			&i.ObservedGeneration,
+			&i.LastObservationAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1020,6 +2727,157 @@ func (q *Queries) ListK8sConnectorPoolMembersForOrg(ctx context.Context, arg Lis
 	return items, nil
 }
 
+const listK8sConnectorPoolMembersForPromotion = `-- name: ListK8sConnectorPoolMembersForPromotion :many
+SELECT m.pool_id, m.org_id, m.site_id, m.node_id, m.admin_priority, m.created_at, m.updated_at
+FROM k8s_connector_pool_members m
+JOIN k8s_connector_pools p
+  ON p.id = m.pool_id AND p.org_id = m.org_id AND p.site_id = m.site_id
+WHERE m.org_id = $1
+  AND m.site_id = $2
+  AND m.pool_id = $3
+FOR UPDATE OF m
+`
+
+type ListK8sConnectorPoolMembersForPromotionParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	SiteID uuid.UUID `json:"site_id"`
+	PoolID uuid.UUID `json:"pool_id"`
+}
+
+// Lock the current member set too. This makes the source and selected target
+// membership evidence stable through the active-state CAS and audit append.
+func (q *Queries) ListK8sConnectorPoolMembersForPromotion(ctx context.Context, arg ListK8sConnectorPoolMembersForPromotionParams) ([]K8sConnectorPoolMember, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolMembersForPromotion, arg.OrgID, arg.SiteID, arg.PoolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []K8sConnectorPoolMember{}
+	for rows.Next() {
+		var i K8sConnectorPoolMember
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.NodeID,
+			&i.AdminPriority,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorPoolStatusMembersForOrg = `-- name: ListK8sConnectorPoolStatusMembersForOrg :many
+SELECT
+    p.id AS pool_id,
+    p.org_id,
+    p.site_id,
+    p.cluster_id,
+    p.preferred_node_id,
+    p.active_node_id,
+    p.generation,
+    m.node_id,
+    m.admin_priority,
+    n.status AS node_status,
+    n.revoked_at AS node_revoked_at,
+    n.wg_public_key AS node_wg_public_key,
+    n.endpoint AS node_endpoint,
+    n.last_seen_at AS node_last_seen_at,
+    n.policy_reported_at AS node_policy_reported_at,
+    n.capabilities AS node_capabilities,
+    COALESCE(o.id, '00000000-0000-0000-0000-000000000000'::uuid) AS operation_id,
+    COALESCE(o.phase, '') AS operation_phase
+FROM k8s_connector_pools p
+JOIN k8s_clusters c
+  ON c.id = p.cluster_id
+ AND c.org_id = p.org_id
+ AND c.site_id = p.site_id
+ AND c.connector_pool_id = p.id
+JOIN k8s_connector_pool_members m
+  ON m.pool_id = p.id
+ AND m.org_id = p.org_id
+ AND m.site_id = p.site_id
+JOIN nodes n
+  ON n.id = m.node_id
+ AND n.org_id = m.org_id
+ AND n.site_id = m.site_id
+LEFT JOIN k8s_connector_handoff_operations o
+  ON o.pool_id = p.id
+ AND o.org_id = p.org_id
+ AND o.site_id = p.site_id
+ AND o.cluster_id = p.cluster_id
+ AND o.phase NOT IN ('complete', 'failed')
+WHERE p.org_id = $1
+ORDER BY p.site_id, p.id, m.admin_priority DESC, m.node_id
+`
+
+type ListK8sConnectorPoolStatusMembersForOrgRow struct {
+	PoolID               uuid.UUID          `json:"pool_id"`
+	OrgID                uuid.UUID          `json:"org_id"`
+	SiteID               uuid.UUID          `json:"site_id"`
+	ClusterID            uuid.UUID          `json:"cluster_id"`
+	PreferredNodeID      uuid.UUID          `json:"preferred_node_id"`
+	ActiveNodeID         uuid.UUID          `json:"active_node_id"`
+	Generation           int64              `json:"generation"`
+	NodeID               uuid.UUID          `json:"node_id"`
+	AdminPriority        int32              `json:"admin_priority"`
+	NodeStatus           string             `json:"node_status"`
+	NodeRevokedAt        pgtype.Timestamptz `json:"node_revoked_at"`
+	NodeWgPublicKey      string             `json:"node_wg_public_key"`
+	NodeEndpoint         string             `json:"node_endpoint"`
+	NodeLastSeenAt       pgtype.Timestamptz `json:"node_last_seen_at"`
+	NodePolicyReportedAt pgtype.Timestamptz `json:"node_policy_reported_at"`
+	NodeCapabilities     []byte             `json:"node_capabilities"`
+	OperationID          uuid.UUID          `json:"operation_id"`
+	OperationPhase       string             `json:"operation_phase"`
+}
+
+func (q *Queries) ListK8sConnectorPoolStatusMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sConnectorPoolStatusMembersForOrgRow, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolStatusMembersForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sConnectorPoolStatusMembersForOrgRow{}
+	for rows.Next() {
+		var i ListK8sConnectorPoolStatusMembersForOrgRow
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.ClusterID,
+			&i.PreferredNodeID,
+			&i.ActiveNodeID,
+			&i.Generation,
+			&i.NodeID,
+			&i.AdminPriority,
+			&i.NodeStatus,
+			&i.NodeRevokedAt,
+			&i.NodeWgPublicKey,
+			&i.NodeEndpoint,
+			&i.NodeLastSeenAt,
+			&i.NodePolicyReportedAt,
+			&i.NodeCapabilities,
+			&i.OperationID,
+			&i.OperationPhase,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listK8sServedZonesForOrg = `-- name: ListK8sServedZonesForOrg :many
 SELECT DISTINCT c.name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
 FROM k8s_clusters c
@@ -1040,7 +2898,23 @@ LEFT JOIN nodes connector
 WHERE c.org_id = $1
   AND (
     (c.connector_pool_id IS NULL AND c.connector_node_id IS NOT NULL)
-    OR (c.connector_pool_id IS NOT NULL AND connector.id IS NOT NULL AND p.generation > 0)
+    OR (
+      c.connector_pool_id IS NOT NULL AND connector.id IS NOT NULL AND p.generation > 0
+      AND (
+        p.generation = 1
+        OR EXISTS (
+          SELECT 1
+          FROM k8s_connector_handoff_operations hop
+          WHERE hop.org_id = p.org_id
+            AND hop.site_id = p.site_id
+            AND hop.cluster_id = p.cluster_id
+            AND hop.pool_id = p.id
+            AND hop.new_node_id = p.active_node_id
+            AND hop.target_generation = p.generation
+            AND hop.phase = 'complete'
+        )
+      )
+    )
   )
 `
 
@@ -1068,6 +2942,94 @@ func (q *Queries) ListK8sServedZonesForOrg(ctx context.Context, orgID uuid.UUID)
 	for rows.Next() {
 		var i ListK8sServedZonesForOrgRow
 		if err := rows.Scan(&i.Name, &i.DnsZone, &i.DnsVip); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNonterminalK8sConnectorHandoffOperationsForTick = `-- name: ListNonterminalK8sConnectorHandoffOperationsForTick :many
+SELECT o.id, o.org_id, o.site_id, o.pool_id, o.cluster_id, o.old_node_id, o.new_node_id, o.expected_generation, o.target_generation, o.old_serving_manifest_identity, o.candidate_prepared_manifest_identity, o.old_withdrawal_manifest_identity, o.new_serving_manifest_identity, o.old_serving_manifest_revision, o.candidate_prepared_manifest_revision, o.old_withdrawal_manifest_revision, o.new_serving_manifest_revision, o.old_serving_expected_route_digest, o.old_serving_expected_vip_map_digest, o.candidate_prepared_expected_route_digest, o.candidate_prepared_expected_vip_map_digest, o.old_withdrawal_expected_route_digest, o.old_withdrawal_expected_vip_map_digest, o.new_serving_expected_route_digest, o.new_serving_expected_vip_map_digest, o.old_lease_identity, o.target_lease_identity, o.old_lease_epoch, o.target_lease_epoch, o.old_lease_expires_at, o.target_lease_expires_at, o.observed_membership_epoch, o.decision_transition, o.old_serving_role, o.candidate_prepared_role, o.old_withdrawal_role, o.new_serving_role, o.phase, o.prepared_ack_received_at, o.withdrawal_ack_received_at, o.withdrawal_expiry_received_at, o.serving_ack_received_at, o.cas_receipt_at, o.cas_audit_id, o.cas_audit_applied, o.failure_reason, o.created_at, o.updated_at
+FROM k8s_connector_handoff_operations o
+JOIN k8s_connector_pools p
+  ON p.id = o.pool_id
+ AND p.org_id = o.org_id
+ AND p.site_id = o.site_id
+ AND p.cluster_id = o.cluster_id
+JOIN k8s_clusters c
+  ON c.id = p.cluster_id
+ AND c.org_id = p.org_id
+ AND c.site_id = p.site_id
+ AND c.connector_pool_id = p.id
+WHERE o.phase NOT IN ('complete', 'failed')
+ORDER BY o.org_id, o.site_id, o.pool_id, o.id
+`
+
+// A resume read is restricted to the same explicit cluster-pool binding as
+// discovery. Terminal records remain historical only and cannot be reopened.
+func (q *Queries) ListNonterminalK8sConnectorHandoffOperationsForTick(ctx context.Context) ([]K8sConnectorHandoffOperation, error) {
+	rows, err := q.db.Query(ctx, listNonterminalK8sConnectorHandoffOperationsForTick)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []K8sConnectorHandoffOperation{}
+	for rows.Next() {
+		var i K8sConnectorHandoffOperation
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.PoolID,
+			&i.ClusterID,
+			&i.OldNodeID,
+			&i.NewNodeID,
+			&i.ExpectedGeneration,
+			&i.TargetGeneration,
+			&i.OldServingManifestIdentity,
+			&i.CandidatePreparedManifestIdentity,
+			&i.OldWithdrawalManifestIdentity,
+			&i.NewServingManifestIdentity,
+			&i.OldServingManifestRevision,
+			&i.CandidatePreparedManifestRevision,
+			&i.OldWithdrawalManifestRevision,
+			&i.NewServingManifestRevision,
+			&i.OldServingExpectedRouteDigest,
+			&i.OldServingExpectedVipMapDigest,
+			&i.CandidatePreparedExpectedRouteDigest,
+			&i.CandidatePreparedExpectedVipMapDigest,
+			&i.OldWithdrawalExpectedRouteDigest,
+			&i.OldWithdrawalExpectedVipMapDigest,
+			&i.NewServingExpectedRouteDigest,
+			&i.NewServingExpectedVipMapDigest,
+			&i.OldLeaseIdentity,
+			&i.TargetLeaseIdentity,
+			&i.OldLeaseEpoch,
+			&i.TargetLeaseEpoch,
+			&i.OldLeaseExpiresAt,
+			&i.TargetLeaseExpiresAt,
+			&i.ObservedMembershipEpoch,
+			&i.DecisionTransition,
+			&i.OldServingRole,
+			&i.CandidatePreparedRole,
+			&i.OldWithdrawalRole,
+			&i.NewServingRole,
+			&i.Phase,
+			&i.PreparedAckReceivedAt,
+			&i.WithdrawalAckReceivedAt,
+			&i.WithdrawalExpiryReceivedAt,
+			&i.ServingAckReceivedAt,
+			&i.CasReceiptAt,
+			&i.CasAuditID,
+			&i.CasAuditApplied,
+			&i.FailureReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1136,6 +3098,37 @@ func (q *Queries) ListVIPRangesForOrg(ctx context.Context, orgID uuid.UUID) ([]s
 	return items, nil
 }
 
+const resetK8sConnectorPoolHealthCandidateTicks = `-- name: ResetK8sConnectorPoolHealthCandidateTicks :execrows
+DELETE FROM k8s_connector_pool_health_candidate_ticks
+WHERE state_id = $1
+  AND org_id = $2
+  AND site_id = $3
+  AND cluster_id = $4
+  AND pool_id = $5
+`
+
+type ResetK8sConnectorPoolHealthCandidateTicksParams struct {
+	StateID   uuid.UUID `json:"state_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+	PoolID    uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) ResetK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg ResetK8sConnectorPoolHealthCandidateTicksParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetK8sConnectorPoolHealthCandidateTicks,
+		arg.StateID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setK8sClusterConnector = `-- name: SetK8sClusterConnector :execrows
 UPDATE k8s_clusters
 SET connector_node_id = $3
@@ -1154,6 +3147,48 @@ func (q *Queries) SetK8sClusterConnector(ctx context.Context, arg SetK8sClusterC
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setK8sClusterProviderMetadata = `-- name: SetK8sClusterProviderMetadata :one
+UPDATE k8s_clusters
+SET provider = $1, platform = $2
+WHERE org_id = $3 AND id = $4
+RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id, provider, platform
+`
+
+type SetK8sClusterProviderMetadataParams struct {
+	Provider  string    `json:"provider"`
+	Platform  string    `json:"platform"`
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+func (q *Queries) SetK8sClusterProviderMetadata(ctx context.Context, arg SetK8sClusterProviderMetadataParams) (K8sCluster, error) {
+	row := q.db.QueryRow(ctx, setK8sClusterProviderMetadata,
+		arg.Provider,
+		arg.Platform,
+		arg.OrgID,
+		arg.ClusterID,
+	)
+	var i K8sCluster
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.Name,
+		&i.VipRange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ServiceCidr,
+		&i.DnsZone,
+		&i.DnsVip,
+		&i.ManagedByMachine,
+		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
+		&i.Provider,
+		&i.Platform,
+	)
+	return i, err
 }
 
 const setK8sConnectorPoolMemberPriorityForConfig = `-- name: SetK8sConnectorPoolMemberPriorityForConfig :one
@@ -1200,6 +3235,55 @@ func (q *Queries) SetK8sConnectorPoolMemberPriorityForConfig(ctx context.Context
 	return i, err
 }
 
+const setK8sConnectorPoolState = `-- name: SetK8sConnectorPoolState :one
+UPDATE k8s_connector_pools p
+SET active_node_id = $1,
+    generation = p.generation + 1,
+    updated_at = now()
+WHERE p.org_id = $2
+  AND p.site_id = $3
+  AND p.id = $4
+  AND p.generation = $5
+  AND p.active_node_id = $6
+  AND EXISTS (SELECT 1 FROM k8s_connector_pool_members m WHERE m.pool_id = p.id AND m.org_id = p.org_id AND m.site_id = p.site_id AND m.node_id = $1)
+RETURNING id, org_id, site_id, cluster_id, preferred_node_id, active_node_id, generation, created_at, updated_at
+`
+
+type SetK8sConnectorPoolStateParams struct {
+	ActiveNodeID         uuid.UUID `json:"active_node_id"`
+	OrgID                uuid.UUID `json:"org_id"`
+	SiteID               uuid.UUID `json:"site_id"`
+	PoolID               uuid.UUID `json:"pool_id"`
+	ExpectedGeneration   int64     `json:"expected_generation"`
+	ExpectedActiveNodeID uuid.UUID `json:"expected_active_node_id"`
+}
+
+// Expected-active-and-generation compare-and-swap is the persistence fence.
+// A stale reconciler affects zero rows; it must not overwrite a newer promotion.
+func (q *Queries) SetK8sConnectorPoolState(ctx context.Context, arg SetK8sConnectorPoolStateParams) (K8sConnectorPool, error) {
+	row := q.db.QueryRow(ctx, setK8sConnectorPoolState,
+		arg.ActiveNodeID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.PoolID,
+		arg.ExpectedGeneration,
+		arg.ExpectedActiveNodeID,
+	)
+	var i K8sConnectorPool
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PreferredNodeID,
+		&i.ActiveNodeID,
+		&i.Generation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const softDeleteK8sService = `-- name: SoftDeleteK8sService :exec
 UPDATE k8s_services SET deleted_at = now() WHERE org_id = $1 AND id = $2 AND deleted_at IS NULL
 `
@@ -1212,4 +3296,129 @@ type SoftDeleteK8sServiceParams struct {
 func (q *Queries) SoftDeleteK8sService(ctx context.Context, arg SoftDeleteK8sServiceParams) error {
 	_, err := q.db.Exec(ctx, softDeleteK8sService, arg.OrgID, arg.ID)
 	return err
+}
+
+const updateK8sConnectorPoolHealthState = `-- name: UpdateK8sConnectorPoolHealthState :one
+UPDATE k8s_connector_pool_health_states
+SET observed_active_node_id = $1,
+    observed_generation = $2,
+    stale_ticks = $3,
+    preferred_fresh_ticks = $4,
+    last_transition = $5,
+    last_transition_from_node_id = $6,
+    last_transition_to_node_id = $7,
+    last_observation_key = $8,
+    last_observation_at = $9,
+    updated_at = now()
+WHERE id = $10
+  AND org_id = $11
+  AND site_id = $12
+  AND cluster_id = $13
+  AND pool_id = $14
+RETURNING id, org_id, site_id, cluster_id, pool_id, membership_epoch, observed_active_node_id, observed_generation, stale_ticks, preferred_fresh_ticks, last_transition, last_transition_from_node_id, last_transition_to_node_id, last_observation_key, last_observation_at, created_at, updated_at
+`
+
+type UpdateK8sConnectorPoolHealthStateParams struct {
+	ObservedActiveNodeID     uuid.UUID          `json:"observed_active_node_id"`
+	ObservedGeneration       int64              `json:"observed_generation"`
+	StaleTicks               int32              `json:"stale_ticks"`
+	PreferredFreshTicks      int32              `json:"preferred_fresh_ticks"`
+	LastTransition           string             `json:"last_transition"`
+	LastTransitionFromNodeID pgtype.UUID        `json:"last_transition_from_node_id"`
+	LastTransitionToNodeID   pgtype.UUID        `json:"last_transition_to_node_id"`
+	LastObservationKey       *string            `json:"last_observation_key"`
+	LastObservationAt        pgtype.Timestamptz `json:"last_observation_at"`
+	ID                       uuid.UUID          `json:"id"`
+	OrgID                    uuid.UUID          `json:"org_id"`
+	SiteID                   uuid.UUID          `json:"site_id"`
+	ClusterID                uuid.UUID          `json:"cluster_id"`
+	PoolID                   uuid.UUID          `json:"pool_id"`
+}
+
+func (q *Queries) UpdateK8sConnectorPoolHealthState(ctx context.Context, arg UpdateK8sConnectorPoolHealthStateParams) (K8sConnectorPoolHealthState, error) {
+	row := q.db.QueryRow(ctx, updateK8sConnectorPoolHealthState,
+		arg.ObservedActiveNodeID,
+		arg.ObservedGeneration,
+		arg.StaleTicks,
+		arg.PreferredFreshTicks,
+		arg.LastTransition,
+		arg.LastTransitionFromNodeID,
+		arg.LastTransitionToNodeID,
+		arg.LastObservationKey,
+		arg.LastObservationAt,
+		arg.ID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	var i K8sConnectorPoolHealthState
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PoolID,
+		&i.MembershipEpoch,
+		&i.ObservedActiveNodeID,
+		&i.ObservedGeneration,
+		&i.StaleTicks,
+		&i.PreferredFreshTicks,
+		&i.LastTransition,
+		&i.LastTransitionFromNodeID,
+		&i.LastTransitionToNodeID,
+		&i.LastObservationKey,
+		&i.LastObservationAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertK8sConnectorPoolHealthCandidateTicks = `-- name: UpsertK8sConnectorPoolHealthCandidateTicks :one
+INSERT INTO k8s_connector_pool_health_candidate_ticks (
+    state_id, org_id, site_id, cluster_id, pool_id, node_id, healthy_ticks
+)
+VALUES (
+    $1, $2, $3, $4,
+    $5, $6, $7
+)
+ON CONFLICT (state_id, node_id)
+DO UPDATE SET healthy_ticks = EXCLUDED.healthy_ticks, updated_at = now()
+RETURNING state_id, org_id, site_id, cluster_id, pool_id, node_id, healthy_ticks, created_at, updated_at
+`
+
+type UpsertK8sConnectorPoolHealthCandidateTicksParams struct {
+	StateID      uuid.UUID `json:"state_id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	SiteID       uuid.UUID `json:"site_id"`
+	ClusterID    uuid.UUID `json:"cluster_id"`
+	PoolID       uuid.UUID `json:"pool_id"`
+	NodeID       uuid.UUID `json:"node_id"`
+	HealthyTicks int32     `json:"healthy_ticks"`
+}
+
+func (q *Queries) UpsertK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg UpsertK8sConnectorPoolHealthCandidateTicksParams) (K8sConnectorPoolHealthCandidateTick, error) {
+	row := q.db.QueryRow(ctx, upsertK8sConnectorPoolHealthCandidateTicks,
+		arg.StateID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+		arg.NodeID,
+		arg.HealthyTicks,
+	)
+	var i K8sConnectorPoolHealthCandidateTick
+	err := row.Scan(
+		&i.StateID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PoolID,
+		&i.NodeID,
+		&i.HealthyTicks,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

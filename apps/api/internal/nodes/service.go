@@ -580,6 +580,17 @@ func (s *Service) Renew(ctx context.Context, node sqlc.Node, csrPEM, agentVersio
 // MTU is explicit (WireGuard's default 1420).
 func (s *Service) DesiredState(ctx context.Context, node sqlc.Node) (DesiredState, error) {
 	_ = s.q.TouchNodeSeen(ctx, node.ID)
+	return s.desiredState(ctx, node)
+}
+
+// HandoffBaseState compiles the same exact ordinary base without falsely
+// stamping the node live. P3 may prepare authority for a disconnected standby;
+// a control-plane compile is not agent liveness evidence.
+func (s *Service) HandoffBaseState(ctx context.Context, node sqlc.Node) (DesiredState, error) {
+	return s.desiredState(ctx, node)
+}
+
+func (s *Service) desiredState(ctx context.Context, node sqlc.Node) (DesiredState, error) {
 	ipv6Pool, err := ipalloc.EnsureOrgIPv6Pool(ctx, s.pool, node.OrgID)
 	if err != nil {
 		return DesiredState{}, err
@@ -1124,7 +1135,7 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 		zone := e.ClusterName + "." + e.DnsZone
 		dnsName := k8s.FQDN(e.Name, e.Namespace, e.ClusterName, e.DnsZone) // L8: the ONE FQDN constructor, never a second copy
 		vipMappings[connectorID] = append(vipMappings[connectorID], policyspec.VIPMapping{
-			VIP: e.Vip, Namespace: e.Namespace, Service: e.Name, ServiceCIDR: e.ServiceCidr,
+			ServiceID: e.ID.String(), VIP: e.Vip, Namespace: e.Namespace, Service: e.Name, ServiceCIDR: e.ServiceCidr,
 			Protocol: e.Protocol, PortLow: pl, PortHigh: ph, DNSName: dnsName,
 		})
 		c := connectors[connectorID]
@@ -2614,6 +2625,68 @@ func (s *Service) PolicyHealthForNodes(ctx context.Context, orgID uuid.UUID, nod
 	return out
 }
 
+// HandoffPolicyAcknowledgements adapts the existing single-source pushed-vs-
+// applied policy health to the connector handoff scheduler. It deliberately
+// does not compile a second artifact or trust the agent-reported hash as the
+// expected value. A missing node, cross-site node, topology load failure, or
+// unavailable policy compile is omitted and therefore remains unknown to the
+// fail-closed health model.
+func (s *Service) HandoffPolicyAcknowledgements(ctx context.Context, orgID, siteID uuid.UUID, nodeIDs []uuid.UUID) (map[uuid.UUID]k8s.PolicyAcknowledgement, error) {
+	if s == nil || s.q == nil || orgID == uuid.Nil || siteID == uuid.Nil {
+		return nil, errors.New("handoff policy acknowledgement scope is invalid")
+	}
+	wanted := make(map[uuid.UUID]struct{}, len(nodeIDs))
+	for _, id := range nodeIDs {
+		if id == uuid.Nil {
+			return nil, errors.New("handoff policy acknowledgement node is invalid")
+		}
+		if _, duplicate := wanted[id]; duplicate {
+			return nil, errors.New("handoff policy acknowledgement node is duplicated")
+		}
+		wanted[id] = struct{}{}
+	}
+	if len(wanted) == 0 {
+		return map[uuid.UUID]k8s.PolicyAcknowledgement{}, nil
+	}
+	nodes, err := s.q.ListNodes(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	selected := make([]sqlc.Node, 0, len(wanted))
+	for _, node := range nodes {
+		if _, ok := wanted[node.ID]; !ok || node.OrgID != orgID || !node.SiteID.Valid || uuid.UUID(node.SiteID.Bytes) != siteID {
+			continue
+		}
+		selected = append(selected, node)
+	}
+	if len(selected) == 0 {
+		return map[uuid.UUID]k8s.PolicyAcknowledgement{}, nil
+	}
+	batch := s.LoadSiteTopoBatch(ctx, orgID, selected)
+	health := s.PolicyHealthForNodes(ctx, orgID, selected, batch)
+	return handoffPolicyAcknowledgementsFromHealth(siteID, wanted, selected, health), nil
+}
+
+func handoffPolicyAcknowledgementsFromHealth(siteID uuid.UUID, wanted map[uuid.UUID]struct{}, nodes []sqlc.Node, health map[uuid.UUID]PolicyHealth) map[uuid.UUID]k8s.PolicyAcknowledgement {
+	out := make(map[uuid.UUID]k8s.PolicyAcknowledgement, len(wanted))
+	for _, node := range nodes {
+		if _, ok := wanted[node.ID]; !ok || !node.SiteID.Valid || uuid.UUID(node.SiteID.Bytes) != siteID {
+			continue
+		}
+		value, ok := health[node.ID]
+		if !ok {
+			continue
+		}
+		out[node.ID] = k8s.PolicyAcknowledgement{
+			ExpectedKnown: value.PushKnown,
+			ExpectedHash:  value.PushedHash,
+			HealthKnown:   value.PushKnown,
+			Degraded:      value.Degraded,
+		}
+	}
+	return out
+}
+
 // tsTime unwraps a nullable timestamp to a zero-or-value time.
 func tsTime(ts pgtype.Timestamptz) time.Time {
 	if !ts.Valid {
@@ -2658,7 +2731,49 @@ func Capabilities(raw []byte) NodeCapabilities {
 	return c
 }
 
+// K8sEndpointViewEvidence distinguishes an explicit false report from absent,
+// null, wrongly typed, or malformed evidence. Unknown always fails closed for
+// connector HA.
+func K8sEndpointViewEvidence(raw []byte) (known, unavailable bool) {
+	var fields map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &fields) != nil {
+		return false, false
+	}
+	v, ok := fields["k8s_endpoints_unavailable"]
+	if !ok {
+		return false, false
+	}
+	var reported *bool
+	if json.Unmarshal(v, &reported) != nil || reported == nil {
+		return false, false
+	}
+	return true, *reported
+}
+
 // Revoke marks a node revoked (renewal will then be refused).
+// ConnectorEvidenceFromNode copies only persisted node/report evidence into
+// the pure HA adapter. A reported generation is provenance, never fencing.
+func ConnectorEvidenceFromNode(node sqlc.Node, policyAck k8s.PolicyAcknowledgement) k8s.ConnectorEvidence {
+	caps := Capabilities(node.Capabilities)
+	endpointViewKnown, endpointViewUnavailable := K8sEndpointViewEvidence(node.Capabilities)
+	siteID := ""
+	if node.SiteID.Valid {
+		siteID = uuid.UUID(node.SiteID.Bytes).String()
+	}
+	return k8s.ConnectorEvidence{
+		ID: node.ID.String(), OrgID: node.OrgID.String(), SiteID: siteID,
+		Status: node.Status, Revoked: node.RevokedAt.Valid,
+		WGPublicKeyReady: wgkey.Valid(node.WgPublicKey),
+		EndpointReady:    node.Endpoint != "" && validEndpoint(node.Endpoint),
+		LastSeenAt:       tsTime(node.LastSeenAt), PolicyReportedAt: tsTime(node.PolicyReportedAt),
+		AppliedPolicyHash: caps.PolicyHash, AppliedPolicyError: caps.PolicyError,
+		AppliedPolicyRefusal:    caps.PolicyRefusedVersion,
+		K8sEndpointViewKnown:    endpointViewKnown,
+		K8sEndpointsUnavailable: endpointViewUnavailable,
+		Policy:                  policyAck,
+	}
+}
+
 func (s *Service) Revoke(ctx context.Context, actor, orgID, nodeID uuid.UUID) error {
 	// Is this node a SITE GATEWAY? (Read before the revoke — RevokeNode leaves site_id set, so it reads the
 	// same either way, but this is the pre-revoke truth.) S8.6 #9: only a gateway revoke reconciles the hub

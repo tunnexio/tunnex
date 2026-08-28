@@ -32,13 +32,17 @@ import (
 // against. It authorizes every request by the client CERTIFICATE (serial ->
 // node), never by anything in the request body (the machine-edition IDOR rule).
 type AgentChannel struct {
-	svc        *nodes.Service
-	ca         *agentca.CA
-	hub        *nodepush.Hub
-	logger     *slog.Logger
-	watchHold  time.Duration
-	ingest     *accesslog.Ingester // nil until flow logging is configured (S7.5.1)
-	dnsMailbox gatewayDNSMailbox
+	svc                        *nodes.Service
+	ca                         *agentca.CA
+	hub                        *nodepush.Hub
+	logger                     *slog.Logger
+	watchHold                  time.Duration
+	ingest                     *accesslog.Ingester // nil until flow logging is configured (S7.5.1)
+	dnsMailbox                 gatewayDNSMailbox
+	ownershipDeliveryStore     nodes.PoolVIPOwnershipDeliveryStore
+	baseAuthorityStore         nodes.KubernetesOwnershipBaseAuthorityStore
+	serviceUIDObservationStore nodes.K8sServiceUIDObservationStore
+	serviceInventoryStore      nodes.K8sServiceInventoryStore
 }
 
 // gatewayDNSMailbox is the narrow control-channel seam. It intentionally
@@ -64,6 +68,30 @@ func (a *AgentChannel) SetFlowIngester(ing *accesslog.Ingester) { a.ingest = ing
 // nil preserves the pre-S21 desired-state contract without inventing a
 // fallback resolver.
 func (a *AgentChannel) SetGatewayDNSMailbox(mailbox gatewayDNSMailbox) { a.dnsMailbox = mailbox }
+
+// SetPoolVIPOwnershipDeliveryStore attaches the durable private ownership
+// protocol. nil keeps the endpoint inert; there is no in-memory fallback.
+func (a *AgentChannel) SetPoolVIPOwnershipDeliveryStore(store nodes.PoolVIPOwnershipDeliveryStore) {
+	a.ownershipDeliveryStore = store
+}
+
+// SetKubernetesOwnershipBaseAuthorityStore attaches the durable P3 ordinary-
+// base authority transport. nil preserves the legacy desired-state shape.
+func (a *AgentChannel) SetKubernetesOwnershipBaseAuthorityStore(store nodes.KubernetesOwnershipBaseAuthorityStore) {
+	a.baseAuthorityStore = store
+}
+
+// SetK8sServiceUIDObservationStore attaches the authenticated replay-safe UID
+// ledger. nil refuses reports rather than inventing identity provenance.
+func (a *AgentChannel) SetK8sServiceUIDObservationStore(store nodes.K8sServiceUIDObservationStore) {
+	a.serviceUIDObservationStore = store
+}
+
+// SetK8sServiceInventoryStore attaches the authenticated immutable inventory
+// writer. nil refuses reports; there is no in-memory authority fallback.
+func (a *AgentChannel) SetK8sServiceInventoryStore(store nodes.K8sServiceInventoryStore) {
+	a.serviceInventoryStore = store
+}
 
 // NotifyGatewayDNSRequest is the mailbox's post-commit convergence hint. The
 // durable row is the source of truth; this wakes only the selected gateway's
@@ -101,6 +129,11 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post("/agent/status", a.status)
 	r.Post("/agent/flow-events", a.flowEvents)
 	r.Post("/agent/dns-resolution", a.dnsResolution)
+	r.Post("/agent/k8s-service-uid-observations", a.k8sServiceUIDObservations)
+	r.Post("/agent/k8s-service-inventory", a.k8sServiceInventory)
+	r.Get("/agent/pool-vip-ownership-delivery", a.poolVIPOwnershipDelivery)
+	r.Post("/agent/pool-vip-ownership-delivery/ack", a.poolVIPOwnershipDeliveryAck)
+	r.Post("/agent/kubernetes-ownership-base-authority/ack", a.kubernetesOwnershipBaseAuthorityAck)
 	return r
 }
 
@@ -240,12 +273,18 @@ func (a *AgentChannel) desiredState(w http.ResponseWriter, r *http.Request) {
 		apierr.Write(w, r, err)
 		return
 	}
+	state, err = a.withKubernetesOwnershipBaseAuthority(r.Context(), node, state)
+	if err != nil {
+		apierr.Write(w, r, err)
+		return
+	}
 	writeJSON(w, state)
 }
 
 type desiredStateWithGatewayDNSRequest struct {
 	nodes.DesiredState
-	DNSResolveRequest *fqdnresolver.GatewayDNSRequest `json:"dns_resolve_request,omitempty"`
+	DNSResolveRequest                *fqdnresolver.GatewayDNSRequest         `json:"dns_resolve_request,omitempty"`
+	KubernetesOwnershipBaseAuthority *nodes.KubernetesOwnershipBaseAuthority `json:"kubernetes_ownership_base_authority,omitempty"`
 }
 
 func (a *AgentChannel) withGatewayDNSRequest(ctx context.Context, node sqlc.Node, state nodes.DesiredState) (desiredStateWithGatewayDNSRequest, error) {

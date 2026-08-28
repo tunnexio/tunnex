@@ -90,6 +90,15 @@ const (
 	// CORE (all editions, like site:manage) — GOVERNANCE of a grant reaching a Service is the separate
 	// enterprise gate. Owner/admin grain (VIP-range + exposure are network-shaping powers).
 	PermK8sManage Permission = "k8s:manage"
+	// Connector HA and cluster-scope governance are distinct capabilities. HA
+	// observation is safe for the fixed machine operator, but activation is a
+	// human owner/admin decision. Cluster-scope data is enterprise governance;
+	// machines receive none of its view, lifecycle, or approval authorities.
+	PermK8sHAView       Permission = "k8s_ha:view"
+	PermK8sHAManage     Permission = "k8s_ha:manage"
+	PermK8sScopeView    Permission = "k8s_scope:view"
+	PermK8sScopeManage  Permission = "k8s_scope:manage"
+	PermK8sScopeApprove Permission = "k8s_scope:approve"
 	// PermMachineManage governs MACHINE CREDENTIALS (S10.2, EPIC 10): minting/revoking a first-class
 	// NON-USER org principal (the GitOps operator's identity). OWNER-ONLY grain — a machine credential is
 	// a non-human caller that can register clusters, expose Services, and (enterprise) create grants, so
@@ -192,6 +201,11 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMfaManage:                   true,
 		PermSiteManage:                  true,
 		PermK8sManage:                   true,
+		PermK8sHAView:                   true,
+		PermK8sHAManage:                 true,
+		PermK8sScopeView:                true,
+		PermK8sScopeManage:              true,
+		PermK8sScopeApprove:             true,
 		PermAgentRuntimeManage:          true,
 		PermAgentCredentialRotate:       true,
 		PermAgentEnroll:                 true,
@@ -224,6 +238,11 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMfaManage:                   true,
 		PermSiteManage:                  true,
 		PermK8sManage:                   true,
+		PermK8sHAView:                   true,
+		PermK8sHAManage:                 true,
+		PermK8sScopeView:                true,
+		PermK8sScopeManage:              true,
+		PermK8sScopeApprove:             true,
 		PermLicenseManage:               true,
 		PermMachineManage:               true, // owner-only: minting a non-human org principal is org-delete-grade
 		PermAgentRuntimeManage:          true,
@@ -247,6 +266,7 @@ var rolePermissions = map[string]map[Permission]bool{
 	RoleOperator: {
 		PermOrgView:          true,
 		PermK8sManage:        true,
+		PermK8sHAView:        true,
 		PermPolicyView:       true,
 		PermPolicyManage:     true,
 		PermAgentGrantAccess: true,
@@ -304,7 +324,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermOrgView, PermMemberList, PermPolicyView, PermFQDNResourceView, PermAgentViewPrivileged:
+	case PermOrgView, PermMemberList, PermPolicyView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

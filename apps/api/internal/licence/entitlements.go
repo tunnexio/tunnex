@@ -28,6 +28,10 @@ const (
 	// FeatFQDNResources is the one-binary entitlement for resolver-backed FQDN
 	// enforcement. It unlocks capability only; organizations still opt in.
 	FeatFQDNResources Feature = "fqdn_resources"
+	// FeatK8sClusterScopes unlocks approval-gated exact-child Kubernetes
+	// governance. Organizations must still explicitly opt in; entitlement never
+	// enables a scope or approves a membership.
+	FeatK8sClusterScopes Feature = "k8s_cluster_scopes"
 )
 
 // Tier is what a licence grants. ⚠ Community is the no-key tier: holding no licence IS being Community.
@@ -93,10 +97,10 @@ var tierFeatures = map[Tier]map[Feature]bool{
 	// otherwise buy PERMANENT free SSO for anyone who takes one: the trial-band law, exactly. What stops
 	// at lapse is everything that ONBOARDS SOMEBODY NEW — JIT provisioning and domain-capture auto-join —
 	// so the free-forever surface is capped at the humans who already existed during the trial.
-	TierTrial:   {FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true},
-	TierStarter: {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true},
-	TierGrowth:  {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true},
-	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatAgentJITAccess: true},
+	TierTrial:   {FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
+	TierStarter: {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
+	TierGrowth:  {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true},
+	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatK8sClusterScopes: true, FeatAgentJITAccess: true},
 }
 
 // GatewayCeilingFor is the number of gateways a tier may ENROL. nil means unlimited.

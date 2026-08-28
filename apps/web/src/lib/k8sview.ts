@@ -40,6 +40,8 @@ export interface ClusterCard {
   id: string;
   siteId: string;
   connectorNodeId: string | null;
+  provider: K8sCluster["provider"];
+  platform: K8sCluster["platform"];
   name: string;
   vipRange: string;
   serviceCidr: string;
@@ -107,6 +109,8 @@ export function assembleClusters(
     id: c.id,
     siteId: c.site_id,
     connectorNodeId: c.connector_node_id ?? null,
+    provider: c.provider,
+    platform: c.platform,
     name: c.name,
     vipRange: c.vip_range,
     serviceCidr: c.service_cidr,

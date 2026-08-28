@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -39,6 +40,11 @@ import (
 // the root nft ruleset, so it MUST be validated or a crafted name could inject nft
 // statements (review #4).
 var ifaceRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,15}$`)
+
+var (
+	nativeForwardReadbackRE = regexp.MustCompile(`^\s*iifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+oifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+counter(?:\s+packets\s+\d+\s+bytes\s+\d+)?\s+accept\s+comment\s+"tunnex_native_forward_passthrough"\s*$`)
+	quotedIfaceRE           = regexp.MustCompile(`"([A-Za-z0-9._-]{1,15})"`)
+)
 
 // ruleIDRE bounds a rule_id (observability metadata) to the canonical UUID shape before it is
 // interpolated into the root nft ruleset — the A-1 discipline applied to the one renderer
@@ -78,6 +84,10 @@ type Manager struct {
 	// a departed VIP. runIP is the injectable `ip` runner (nil → the real exec) for the reconcile red.
 	dnsVIPs atomic.Pointer[[]string]
 	runIP   func(ctx context.Context, args ...string) error
+	// runIPOutput is the actual kernel readback path for candidate DNS VIPs.
+	// It is separate from the mutation runner so a successful write can never be
+	// mistaken for observation.
+	runIPOutput func(ctx context.Context, args ...string) (string, error)
 	// log surfaces K8s VIP resolution outcomes (WF-K-OBS-1). nil = silent (tests). Set via SetLogger.
 	log *slog.Logger
 	// policyReceived distinguishes "no policy fetched YET" (cold start, before the first
@@ -149,6 +159,9 @@ type Manager struct {
 	// It changes only after the atomic nft transaction succeeds, so a failed
 	// candidate can never stamp next-policy identity beside a last-good hash.
 	appliedSubjects map[string]nodepolicy.SubjectAttribution
+	// appliedVIPMappings belongs to the same last successful atomic nft apply.
+	// UID reporting must never let a failed desired policy choose identities.
+	appliedVIPMappings []nodepolicy.VIPMapping
 	// appliedEnforcing is whether the policy CURRENTLY IN FORCE (last successful apply) is
 	// an ENFORCING one. It distinguishes the two non-enforcing apply-failure cases
 	// (finding #B): a gateway that was enforcing and FAILS to apply the new mesh/off
@@ -199,6 +212,7 @@ func New(wgIface string) *Manager {
 	m.ctFlush = flushTuples
 	m.ctFlushRecovery = flushFQDNMarkedConntrack
 	m.runIP = runIP              // S10.3 A1: the real `ip addr` runner; injectable for the DNS-VIP reconcile red
+	m.runIPOutput = runIPOutput  // v3: actual post-apply address enumeration, never desired-state echo
 	m.localIPs = defaultLocalIPs // WF-K5 M6: the real gateway-local address set; injectable for the local-endpoint refusal red
 	m.log = slog.Default()
 	// source is left nil here (WF-K5): a non-cluster gateway has no K8s endpoint watch, and a K8s gateway
@@ -241,6 +255,80 @@ func (m *Manager) SetEndpointSource(s endpointSource) { m.source = s }
 // interface to the tunnel-ingress set so OVPN clients forward like WireGuard devices; leaving it
 // unset keeps the ruleset byte-identical to a WireGuard-only deployment.
 func (m *Manager) SetOVPNTun(name string) { m.ovpnTun.Store(&name) }
+
+func (m *Manager) AppliedOVPNTun() string {
+	if value := m.ovpnTun.Load(); value != nil {
+		return *value
+	}
+	return ""
+}
+
+// ReconcileOVPNTunnel atomically threads the desired OpenVPN interface through
+// the real nft owners. Publishing the marker alone is never applied state.
+func (m *Manager) ReconcileOVPNTunnel(ctx context.Context, name string) error {
+	if name != "" && !ifaceRE.MatchString(name) {
+		return fmt.Errorf("invalid OpenVPN interface name %q", name)
+	}
+	m.SetOVPNTun(name)
+	if _, _, err := m.Reconcile(ctx); err != nil {
+		return err
+	}
+	_, err := m.ReadAppliedOVPNTunnel(ctx)
+	return err
+}
+
+// ReadAppliedOVPNTunnel verifies the live IPv4 and IPv6 nft forward chains,
+// not the atomic desired marker. The native-forward rule is always rendered
+// from the complete authenticated tunnel set, so both tables must name the
+// exact expected interfaces before ownership readback can succeed.
+func (m *Manager) ReadAppliedOVPNTunnel(ctx context.Context) (string, error) {
+	if m.nftRun == nil {
+		return "", fmt.Errorf("OpenVPN tunnel-ingress kernel readback is unavailable")
+	}
+	want := m.tunnelIfaces()
+	sort.Strings(want)
+	for _, family := range []string{"ip", "ip6"} {
+		listing, err := m.nftRun(ctx, "list", "table", family, "tunnex")
+		if err != nil {
+			return "", fmt.Errorf("read %s OpenVPN tunnel-ingress rules: %w", family, err)
+		}
+		got, err := parseTunnelIngressInterfaces(listing)
+		if err != nil {
+			return "", fmt.Errorf("read %s OpenVPN tunnel-ingress rules: %w", family, err)
+		}
+		if !slices.Equal(got, want) {
+			return "", fmt.Errorf("%s OpenVPN tunnel-ingress interfaces=%v want=%v", family, got, want)
+		}
+	}
+	return m.AppliedOVPNTun(), nil
+}
+
+func parseTunnelIngressInterfaces(listing string) ([]string, error) {
+	for _, line := range strings.Split(listing, "\n") {
+		if !strings.Contains(line, `comment "tunnex_native_forward_passthrough"`) {
+			continue
+		}
+		match := nativeForwardReadbackRE.FindStringSubmatch(line)
+		if len(match) != 3 {
+			return nil, fmt.Errorf("native-forward tunnel-ingress rule semantics are invalid")
+		}
+		parseSet := func(raw string) []string {
+			matches := quotedIfaceRE.FindAllStringSubmatch(raw, -1)
+			values := make([]string, 0, len(matches))
+			for _, value := range matches {
+				values = append(values, value[1])
+			}
+			sort.Strings(values)
+			return values
+		}
+		iifaces, oifaces := parseSet(match[1]), parseSet(match[2])
+		if len(iifaces) == 0 || !slices.Equal(iifaces, oifaces) {
+			return nil, fmt.Errorf("native-forward ingress and egress tunnel sets differ")
+		}
+		return iifaces, nil
+	}
+	return nil, fmt.Errorf("native-forward tunnel-ingress rule is absent")
+}
 
 // tunnelIfaces returns the crypto-authenticated tunnel-ingress interfaces. MEMBERSHIP IN THIS SET
 // MEANS THE PACKET ARRIVED THROUGH AN AUTHENTICATED TUNNEL; adding a LAN-facing interface here
@@ -362,6 +450,14 @@ func (m *Manager) AppliedStatus() (version int, hash string, failingSince time.T
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.appliedVersion, m.appliedHash, m.failingSince, m.applyErr
+}
+
+// AppliedVIPMap returns a value copy from the last successful apply. It is a
+// scope bound for the UID producer, not Kubernetes identity authority.
+func (m *Manager) AppliedVIPMap() []nodepolicy.VIPMapping {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]nodepolicy.VIPMapping(nil), m.appliedVIPMappings...)
 }
 
 // RefusedVersion returns the compiled-artifact Version the agent last REFUSED as
@@ -936,6 +1032,7 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 			m.appliedVersion = 0
 			m.appliedHash = nodepolicy.CanonicalHash(pol) // "" for nil, mesh hash otherwise
 			m.installAppliedSubjects(pol)
+			m.setAppliedVIPMap(pol)
 			m.appliedEnforcing = false
 			m.applyErr = nil
 			m.failingSince = time.Time{}
@@ -975,6 +1072,7 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	m.appliedVersion = pol.Version
 	m.appliedHash = nodepolicy.CanonicalHash(pol)
 	m.installAppliedSubjects(pol)
+	m.setAppliedVIPMap(pol)
 	m.appliedEnforcing = true
 	m.applyErr = nil
 	m.failingSince = time.Time{} // apply succeeded -> no mismatch -> not stale
@@ -1000,6 +1098,17 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 		m.fqdnHistorySeen, m.fqdnHistoryKnown = true, true
 	}
 	return nil
+}
+
+// setAppliedVIPMap must run while m.mu is held, after the atomic apply has
+// succeeded. VIPMapping currently contains value fields, so the slice copy is
+// a complete ownership-safe snapshot.
+func (m *Manager) setAppliedVIPMap(pol *nodepolicy.Compiled) {
+	if pol == nil {
+		m.appliedVIPMappings = nil
+		return
+	}
+	m.appliedVIPMappings = append([]nodepolicy.VIPMapping(nil), pol.VIPMappings...)
 }
 
 // removedTuples returns the flush specs for grants present in the OLD applied allow set but ABSENT from the

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, cleanup, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 // SLICE 3 — Kubernetes. Ranked above Access by the stated criterion: both survive the redesign intact, but this
@@ -21,8 +21,10 @@ afterEach(cleanup); // docs/laws.md — no globals/setup file, so auto-cleanup n
 let clustersFail = false;
 let currentRole = "admin";
 let operatorManaged = true;
+let clusterProvider = "unknown";
+let clusterPlatform = "unknown";
 const CLUSTERS = [
-  { id: "c1", name: "prod-cluster", site_id: "s1", managed_by_operator: false },
+  { id: "c1", name: "prod-cluster", site_id: "s1", provider: "unknown", platform: "unknown", managed_by_operator: false },
 ];
 const SERVICES = [
   {
@@ -61,14 +63,32 @@ vi.mock("../src/lib/api", async () => {
               data: undefined,
               error: { error: { code: "boom", message: "nope" } },
             };
-          return { data: CLUSTERS.map((cluster) => ({ ...cluster, managed_by_operator: operatorManaged })) };
+          return {
+            data: CLUSTERS.map((cluster) => ({
+              ...cluster,
+              provider: clusterProvider,
+              platform: clusterPlatform,
+              managed_by_operator: operatorManaged,
+            })),
+          };
         }
         if (path.endsWith("/k8s/services")) return { data: SERVICES.map((service) => ({ ...service, managed_by_operator: operatorManaged })) };
         if (path.endsWith("/sites"))
           return { data: [{ id: "s1", name: "prod-site" }] };
+        if (path.endsWith("/nodes"))
+          return {
+            data: [{
+              id: "n1",
+              name: "prod-connector",
+              status: "active",
+              site_id: "s1",
+              endpoint: "connector.internal:51820",
+            }],
+          };
         return { data: [] };
       }),
       POST: vi.fn(async () => ({ data: {} })),
+      PUT: vi.fn(async () => ({ data: {} })),
       DELETE: vi.fn(async () => ({ data: {} })),
     },
   };
@@ -78,6 +98,7 @@ import { OrgProvider } from "../src/lib/useOrg";
 import { policyHealthBadge } from "../src/lib/healthview";
 import Kubernetes from "../src/pages/Kubernetes";
 import { AuthProvider } from "../src/lib/auth";
+import { api } from "../src/lib/api";
 
 // The REAL AuthProvider, not a stub. Kubernetes reads `useAuth()` for its role/verification gate, and stubbing
 // the context would put the test's copy of the gate under assertion instead of the product's — the
@@ -98,6 +119,9 @@ beforeEach(() => {
   clustersFail = false;
   currentRole = "admin";
   operatorManaged = true;
+  clusterProvider = "unknown";
+  clusterPlatform = "unknown";
+  vi.clearAllMocks();
 });
 
 // EVERY kind the OpenAPI contract allows. Kept as a literal on purpose: it is a MIRROR of the generated
@@ -192,13 +216,99 @@ describe("Kubernetes — failure path", () => {
 });
 
 describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
+  it("registers through provider-first UI with explicit presentation metadata and no extra draft fields", async () => {
+    operatorManaged = false;
+    withAuth(<Kubernetes />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Register cluster" }));
+    const dialog = await screen.findByRole("dialog", { name: "Enroll a Kubernetes cluster" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Amazon Web Services/i }));
+    fireEvent.change(within(dialog).getByLabelText("Kubernetes service"), { target: { value: "eks" } });
+    fireEvent.change(within(dialog).getByLabelText("Fronting Site"), { target: { value: "s1" } });
+    fireEvent.change(within(dialog).getByLabelText("In-cluster connector"), { target: { value: "n1" } });
+    fireEvent.change(within(dialog).getByLabelText("Cluster name"), { target: { value: "prod-eks" } });
+    fireEvent.click(within(dialog).getByText("Advanced network values"));
+    fireEvent.change(within(dialog).getByLabelText("Synthetic VIP range"), { target: { value: "100.64.32.0/20" } });
+    fireEvent.change(within(dialog).getByLabelText("Kubernetes Service CIDR"), { target: { value: "10.96.0.0/12" } });
+    fireEvent.change(within(dialog).getByLabelText("DNS zone"), { target: { value: "k8s.example.test" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Enroll cluster" }));
+
+    await waitFor(() => {
+      const calls = (api.POST as unknown as {
+        mock: { calls: Array<[string, unknown]> };
+      }).mock.calls;
+      const call = calls.find(([path]) => path.endsWith("/k8s/clusters"));
+      expect(call?.[1]).toEqual({
+        params: { path: { orgId: "org-1" } },
+        body: {
+          site_id: "s1",
+          connector_node_id: "n1",
+          provider: "aws",
+          platform: "eks",
+          name: "prod-eks",
+          vip_range: "100.64.32.0/20",
+          service_cidr: "10.96.0.0/12",
+          dns_zone: "k8s.example.test",
+        },
+      });
+    });
+  });
+
+  it("shows legacy metadata as unknown and corrects it through the dedicated k8s:manage call site", async () => {
+    operatorManaged = false;
+    withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
+
+    expect(await screen.findByText(/Unknown \(legacy registration; not inferred\)/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Correct provider metadata" }));
+    const dialog = await screen.findByRole("dialog", { name: /Correct provider metadata for prod-cluster/i });
+    expect(dialog.textContent).toMatch(/does not discover a cloud resource/i);
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Amazon Web Services/i }));
+    fireEvent.change(within(dialog).getByLabelText("Kubernetes service"), { target: { value: "eks" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save provider metadata" }));
+
+    await waitFor(() => {
+      const calls = (api.PUT as unknown as {
+        mock: { calls: Array<[string, unknown]> };
+      }).mock.calls;
+      const call = calls.find(([path]) => path.endsWith("/provider-metadata"));
+      expect(call?.[1]).toEqual({
+        params: { path: { orgId: "org-1", clusterId: "c1" } },
+        body: { provider: "aws", platform: "eks" },
+      });
+    });
+  });
+
+  it("renders an exact persisted provider/platform pair without inferring any cloud resource", async () => {
+    operatorManaged = false;
+    clusterProvider = "aws";
+    clusterPlatform = "eks";
+    withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
+
+    expect((await screen.findAllByText(/Amazon Web Services · Amazon Elastic Kubernetes Service \(EKS\)/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Unknown \(legacy registration; not inferred\)/i)).toBeNull();
+  });
+
+  it("does not fabricate inventory and keeps the old exposure request under Advanced manual entry", async () => {
+    operatorManaged = false;
+    withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Expose service" }));
+    const dialog = await screen.findByRole("dialog", { name: "Expose a Service" });
+    expect(dialog.textContent).toMatch(/dropdowns are unavailable/i);
+    expect(dialog.textContent).toMatch(/No cluster objects or zero counts are inferred/i);
+    expect(within(dialog).queryByRole("combobox", { name: /namespace|service/i })).toBeNull();
+    fireEvent.click(within(dialog).getByText("Advanced manual entry"));
+    expect(within(dialog).getByLabelText("Service name")).toBeTruthy();
+    expect(within(dialog).getByText(/not verified against connected-agent inventory/i)).toBeTruthy();
+  });
+
   it("keeps org:view inventory useful while a member sees no k8s:manage caller", async () => {
     currentRole = "member";
     operatorManaged = false;
     withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
 
     expect((await screen.findAllByText("prod-cluster")).length).toBeGreaterThan(0);
-    for (const name of ["Register cluster", "Manage", "Set connector", "Expose Service", "Unexpose", "Deregister"])
+    for (const name of ["Register cluster", "Manage", "Set connector", "Correct provider metadata", "Expose Service", "Unexpose", "Deregister"])
       expect(screen.queryByRole("button", { name })).toBeNull();
   });
 
@@ -211,7 +321,8 @@ describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
     expect(dialog.textContent).toMatch(/api\.default\.svc\.prod-cluster\.demo\.test/);
     expect(dialog.textContent).toMatch(/100\.64\.0\.5/);
     expect(dialog.textContent).toMatch(/next compile/i);
-    expect(dialog.textContent).toMatch(/live Agent Access requests may refuse/i);
+    expect(dialog.textContent).toContain("live Agent Access requests or immutable Agent Policy Template references may refuse the change.");
+    expect(dialog.textContent).toContain("Cluster-scope memberships do not refuse it: they are retained as vanished, ineffective evidence.");
     expect(dialog.textContent).toMatch(/new Service identity/i);
   });
 
@@ -223,7 +334,8 @@ describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
     const dialog = await screen.findByRole("dialog", { name: /deregister prod-cluster/i });
     expect(dialog.textContent).toMatch(/dependent policy rules/i);
     expect(dialog.textContent).toMatch(/reserved DNS VIP/i);
-    expect(dialog.textContent).toMatch(/Live Agent Access requests may refuse/i);
+    expect(dialog.textContent).toContain("Live Agent Access requests, immutable Agent Policy Template references, or any Kubernetes cluster scopes refuse deregistration until those references are cleared.");
+    expect(dialog.textContent).toContain("Connector-pool HA state and retained inventory are cascade-deleted with the cluster; they do not preserve evidence or block the delete.");
     expect(dialog.textContent).toMatch(/no rollback or restore/i);
     expect(dialog.textContent).toMatch(/recreating grants/i);
   });

@@ -338,6 +338,27 @@ describe("Access — FQDN destination status is the server projection", () => {
   });
 });
 
+describe("Access — dedicated Kubernetes scope mutation boundary", () => {
+  it("hard-disables generic edit for a leaked scope row and makes zero replacement creates", async () => {
+    rulesForTest = [{
+      id: "scope-rule",
+      enabled: true,
+      src_kind: "group",
+      src_group_id: "g1",
+      dst_kind: "k8s_cluster_scope",
+      dst_k8s_cluster_id: "cluster-1",
+    }];
+
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Engineering" }));
+    const edit = screen.getByRole("button", { name: "Edit" }) as HTMLButtonElement;
+    expect(edit.disabled).toBe(true);
+    fireEvent.click(edit);
+    expect(screen.queryByRole("dialog", { name: "Edit rule" })).toBeNull();
+    expect(postedBodies).toHaveLength(0);
+  });
+});
+
 describe("Access — wiring: the screen must not claim enforcement it does not have", () => {
   it("with mode OFF, the posture says NOT ENFORCED — rules present must not imply they are in force", async () => {
     mode = "off";

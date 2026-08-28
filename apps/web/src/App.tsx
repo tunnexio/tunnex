@@ -34,6 +34,7 @@ import AgentsMCP from "./pages/AgentsMCP";
 import AgentsPolicyTemplates from "./pages/AgentsPolicyTemplates";
 import AccessGroups from "./pages/AccessGroups";
 import AccessResources, { FQDNResourceDetail } from "./pages/AccessResources";
+import AccessKubernetesScopes from "./pages/AccessKubernetesScopes";
 import Access from "./pages/Access";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
@@ -42,6 +43,14 @@ import AuditLog from "./pages/AuditLog";
 
 const VisualGallery = import.meta.env.VITE_VISUAL_GALLERY === "1"
   ? lazy(() => import("./pages/VisualGallery"))
+  : null;
+const k8sEnrollmentLocalReviewEnabled =
+  import.meta.env.VITE_K8S_ENROLLMENT_LOCAL_REVIEW === "1";
+const K8sEnrollmentLocalReview = k8sEnrollmentLocalReviewEnabled
+  ? lazy(() => import("./pages/K8sEnrollmentLocalReview"))
+  : null;
+const K8sScopeLocalReview = k8sEnrollmentLocalReviewEnabled
+  ? lazy(() => import("./pages/K8sScopeLocalReview"))
   : null;
 
 /**
@@ -58,17 +67,34 @@ export default function App() {
     document.title = PRODUCT_NAME;
   }, []);
   return (
+    <Routes>
+      {/* Build-flagged fixture routes are selected before ProductApp mounts. They
+          cannot bootstrap /auth/me or any other product provider/API request,
+          and their lazy chunks are absent from normal production builds. */}
+      {VisualGallery && (
+        <Route path="/__visual" element={<Suspense fallback={null}><VisualGallery /></Suspense>} />
+      )}
+      {k8sEnrollmentLocalReviewEnabled && K8sEnrollmentLocalReview && (
+        <Route
+          path="/__local-review/kubernetes-enrollment"
+          element={<Suspense fallback={<FullScreenLoading />}><K8sEnrollmentLocalReview /></Suspense>}
+        />
+      )}
+      {k8sEnrollmentLocalReviewEnabled && K8sScopeLocalReview && (
+        <Route
+          path="/__local-review/kubernetes-scopes"
+          element={<Suspense fallback={<FullScreenLoading />}><K8sScopeLocalReview /></Suspense>}
+        />
+      )}
+      <Route path="*" element={<ProductApp />} />
+    </Routes>
+  );
+}
+
+function ProductApp() {
+  return (
     <AuthProvider>
       <Routes>
-        {/* The visual gallery is BUILD-FLAGGED OFF. `VITE_VISUAL_GALLERY` is unset in every production build,
-            so Vite's dead-code elimination drops the route and the import. Only the visual-regression job
-            builds with it on, and `test/visualgallery.test.ts` asserts the flag defaults off — an unshipped
-            surface must be PROVEN unshipped, not assumed.
-            Deliberately OUTSIDE RequireAuth: the gallery renders primitives with fixture data and touches no
-            API, so a login would add a dependency the snapshot does not need. */}
-        {VisualGallery && (
-          <Route path="/__visual" element={<Suspense fallback={null}><VisualGallery /></Suspense>} />
-        )}
         <Route
           path="/login"
           element={
@@ -152,6 +178,7 @@ export default function App() {
             <Route path="/access/groups" element={<AccessGroups />} />
             <Route path="/access/resources" element={<AccessResources />} />
             <Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} />
+            <Route path="/access/kubernetes-scopes" element={<AccessKubernetesScopes />} />
             <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/access-events" element={<AccessEvents />} />

@@ -420,6 +420,10 @@ type FQDNGeneration struct {
 // gateway DNATs it to the Service's real ClusterIP (resolved from <Service>.<Namespace> in-cluster) and
 // rewrites the Service's DNS A-answer to VIP. Protocol/ports scope the exposure (empty = any).
 type VIPMapping struct {
+	// ServiceID is the stable exact-port child exposure UUID. It is optional
+	// for rolling compatibility: legacy maps still render, but cannot produce
+	// a reportable ownership VIP-map digest.
+	ServiceID string `json:"service_id,omitempty"`
 	VIP       string `json:"vip"`
 	Namespace string `json:"namespace"`
 	Service   string `json:"service"`

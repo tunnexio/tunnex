@@ -50,8 +50,9 @@ var TIERS = map[string]disposition{
 	"sso":           {Enterprise, "SSO/OIDC — Google and Microsoft Entra"},
 	"idp_sync": {Enterprise, "IdP directory sync. ⚠ Its DEPROVISION half is NOT gated: a licence may stop " +
 		"granting access, it must never stop removing it"},
-	"agent_jit_access": {Enterprise, "expiring owner-approved access grants for managed AI agents"},
-	"fqdn_resources":   {Enterprise, "resolver-backed FQDN enforcement; drafts and reads remain available while explicit opt-in gates compilation"},
+	"agent_jit_access":   {Enterprise, "expiring owner-approved access grants for managed AI agents"},
+	"fqdn_resources":     {Enterprise, "resolver-backed FQDN enforcement; drafts and reads remain available while explicit opt-in gates compilation"},
+	"k8s_cluster_scopes": {Enterprise, "approval-gated dynamic Kubernetes Service scopes; licensed unlock plus explicit org opt-in"},
 }
 
 // capabilitySeams derives the census's input FROM THE TIER MAP AT RUNTIME, so a feature someone adds is in
@@ -113,7 +114,7 @@ func TestEnterpriseGatesMatchFounderDispositions(t *testing.T) {
 		}
 	}
 	sort.Strings(ent)
-	want := []string{"agent_jit_access", "fqdn_resources", "idp_sync", "multi_gateway", "multi_org", "sso"}
+	want := []string{"agent_jit_access", "fqdn_resources", "idp_sync", "k8s_cluster_scopes", "multi_gateway", "multi_org", "sso"}
 	if strings.Join(ent, ",") != strings.Join(want, ",") {
 		t.Errorf("the Enterprise tier is %v; expected %v.\n\nIf a capability MOVED tiers that is a product "+
 			"decision, and docs/S12.1-licensing-decisions.md must move with it.", ent, want)

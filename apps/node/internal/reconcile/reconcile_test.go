@@ -44,6 +44,15 @@ func (f *fakeBackend) ApplyRoutes(_ context.Context, cidrs []string, srcHint str
 	f.srcHint = srcHint
 	return nil
 }
+func (f *fakeBackend) Readback(ctx context.Context) (WGBackendReadback, error) {
+	peers, err := f.Peers(ctx)
+	if err != nil {
+		return WGBackendReadback{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return WGBackendReadback{Peers: peers, Routes: append([]string(nil), f.routes...)}, nil
+}
 func (f *fakeBackend) appliedSrcHint() string { f.mu.Lock(); defer f.mu.Unlock(); return f.srcHint }
 func (f *fakeBackend) setStat(s PeerStat) {
 	f.mu.Lock()

@@ -253,6 +253,17 @@ export default function Access() {
 
       {view === "admin_body" && org && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {can(myRole, "k8s_scope:view") && can(myRole, "policy:view") && (
+            <Card>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-ink-heading">Kubernetes access scopes</h2>
+                  <p className="mt-1 text-cell text-ink-tertiary">Create approval-gated exact Service access and review later exposures.</p>
+                </div>
+                <a className="inline-flex min-h-11 items-center rounded-md border border-white/10 px-4 py-2 text-sm font-medium text-ink-heading hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400" href="/access/kubernetes-scopes">Open scope governance</a>
+              </div>
+            </Card>
+          )}
           <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
           <RulesSection
             orgId={org.id}

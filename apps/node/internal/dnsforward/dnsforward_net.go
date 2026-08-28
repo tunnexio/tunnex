@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 )
 
@@ -201,17 +202,56 @@ type udpListener interface {
 	Close() error
 }
 
+type boundListener struct {
+	conn       udpListener
+	generation uint64
+}
+
+func (f *Forwarder) registerListener(addr netip.Addr, conn udpListener) uint64 {
+	f.listenerMu.Lock()
+	defer f.listenerMu.Unlock()
+	f.nextListener++
+	f.listeners[addr] = boundListener{conn: conn, generation: f.nextListener}
+	return f.nextListener
+}
+
+func (f *Forwarder) listenerRegistered(addr netip.Addr) bool {
+	f.listenerMu.Lock()
+	defer f.listenerMu.Unlock()
+	_, exists := f.listeners[addr]
+	return exists
+}
+
+func (f *Forwarder) forgetListener(addr netip.Addr, generation uint64) {
+	f.listenerMu.Lock()
+	defer f.listenerMu.Unlock()
+	if current, exists := f.listeners[addr]; exists && current.generation == generation {
+		delete(f.listeners, addr)
+	}
+}
+
+func (f *Forwarder) closeListener(addr netip.Addr) {
+	f.listenerMu.Lock()
+	current, exists := f.listeners[addr]
+	if exists {
+		delete(f.listeners, addr)
+	}
+	f.listenerMu.Unlock()
+	if exists {
+		_ = current.conn.Close()
+	}
+}
+
 func realListen(addr netip.Addr) (udpListener, error) {
 	return net.ListenUDP("udp", net.UDPAddrFromAddrPort(netip.AddrPortFrom(addr, dnsPort)))
 }
 
-// Serve runs the forwarder's BIND-RECONCILE loop until ctx is done (F1). wg0 does NOT exist at agent boot —
-// the reconcile loop creates it later — so a bind-once-at-boot is dead on every fresh gateway. Instead this
-// re-reads the wg interface's addresses every tick (one-truth applied to lifecycle) and reconciles its live
-// listeners to match: it binds :53 when wg0 appears, re-binds after an interface/address flap, and closes a
-// listener when its address goes. Best-effort per D5: a bind failure is logged and retried next tick, never
-// fatal — DNS-down is never tunnel-down.
-func (f *Forwarder) Serve(ctx context.Context, wgIface string) error {
+// ReconcileK8sBinds synchronously runs the same existing bind owner used by
+// Serve. It lets the ownership coordinator request an immediate bind attempt
+// and then read honest success state without creating another socket writer.
+func (f *Forwarder) ReconcileK8sBinds(ctx context.Context, wgIface string) {
+	f.bindMu.Lock()
+	defer f.bindMu.Unlock()
 	src := f.bindSource
 	if src == nil {
 		src = wgBindAddrs
@@ -220,25 +260,46 @@ func (f *Forwarder) Serve(ctx context.Context, wgIface string) error {
 	if lst == nil {
 		lst = realListen
 	}
+	f.reconcileBinds(ctx, src, lst, wgIface, f.ownedLive)
+}
+
+func (f *Forwarder) closeOwnedBinds() {
+	f.bindMu.Lock()
+	defer f.bindMu.Unlock()
+	for addr, stop := range f.ownedLive {
+		stop()
+		f.closeListener(addr)
+		delete(f.ownedLive, addr)
+	}
+	f.listenerWG.Wait()
+}
+
+// CloseK8sBinds joins the lane-owned listener lifecycle during shutdown. It
+// is called only after the command lane has stopped, so no bind mutation can
+// race teardown.
+func (f *Forwarder) CloseK8sBinds() { f.closeOwnedBinds() }
+
+// Serve runs the forwarder's BIND-RECONCILE loop until ctx is done (F1). wg0 does NOT exist at agent boot —
+// the reconcile loop creates it later — so a bind-once-at-boot is dead on every fresh gateway. Instead this
+// re-reads the wg interface's addresses every tick (one-truth applied to lifecycle) and reconciles its live
+// listeners to match: it binds :53 when wg0 appears, re-binds after an interface/address flap, and closes a
+// listener when its address goes. Best-effort per D5: a bind failure is logged and retried next tick, never
+// fatal — DNS-down is never tunnel-down.
+func (f *Forwarder) Serve(ctx context.Context, wgIface string) error {
 	interval := f.bindInterval
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
 	t := time.NewTicker(interval)
 	defer t.Stop()
-	live := map[netip.Addr]context.CancelFunc{} // addr → stop its serveConn
-	defer func() {
-		for _, stop := range live {
-			stop()
-		}
-	}()
-	f.reconcileBinds(ctx, src, lst, wgIface, live) // bind immediately if wg0 is already up
+	defer f.closeOwnedBinds()
+	f.ReconcileK8sBinds(ctx, wgIface) // bind immediately if wg0 is already up
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-t.C:
-			f.reconcileBinds(ctx, src, lst, wgIface, live)
+			f.ReconcileK8sBinds(ctx, wgIface)
 		}
 	}
 }
@@ -270,6 +331,14 @@ func (f *Forwarder) reconcileBinds(
 		return // (2) transient → keep
 	}
 	// (1) not-found → err set, binds nil → want empty → close-all below; (3) success → reconcile to binds.
+	// A socket may also fail independently while its address stays assigned. Drop
+	// that stale live marker so this same tick can re-bind it.
+	for addr, stop := range live {
+		if !f.listenerRegistered(addr) {
+			stop()
+			delete(live, addr)
+		}
+	}
 	want := map[netip.Addr]struct{}{}
 	for _, b := range binds {
 		want[b] = struct{}{}
@@ -278,6 +347,7 @@ func (f *Forwarder) reconcileBinds(
 	for addr, stop := range live {
 		if _, ok := want[addr]; !ok {
 			stop()
+			f.closeListener(addr)
 			delete(live, addr)
 		}
 	}
@@ -294,13 +364,35 @@ func (f *Forwarder) reconcileBinds(
 			continue // retry next tick
 		}
 		cctx, cancel := context.WithCancel(ctx)
+		generation := f.registerListener(addr, pc)
 		live[addr] = cancel
-		go f.serveConn(cctx, pc)
+		f.listenerWG.Add(1)
+		go func(addr netip.Addr, generation uint64, pc udpListener, cancel context.CancelFunc) {
+			defer f.listenerWG.Done()
+			defer cancel()
+			defer f.forgetListener(addr, generation)
+			f.serveConn(cctx, pc)
+		}(addr, generation, pc, cancel)
 	}
 }
 
 func (f *Forwarder) serveConn(ctx context.Context, pc udpListener) {
-	go func() { <-ctx.Done(); _ = pc.Close() }()
+	stopCloser := make(chan struct{})
+	closerDone := make(chan struct{})
+	go func() {
+		defer close(closerDone)
+		select {
+		case <-ctx.Done():
+			_ = pc.Close()
+		case <-stopCloser:
+		}
+	}()
+	var handlers sync.WaitGroup
+	defer func() {
+		close(stopCloser)
+		<-closerDone
+		handlers.Wait()
+	}()
 	buf := make([]byte, dnsUDPMax)
 	for {
 		n, src, err := pc.ReadFromUDPAddrPort(buf)
@@ -309,7 +401,9 @@ func (f *Forwarder) serveConn(ctx context.Context, pc udpListener) {
 		}
 		q := append([]byte(nil), buf[:n]...)
 		srcAddr := src.Addr().Unmap()
+		handlers.Add(1)
 		go func() {
+			defer handlers.Done()
 			if resp := f.handle(q, srcAddr); resp != nil {
 				_, _ = pc.WriteToUDPAddrPort(resp, src)
 			}

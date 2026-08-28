@@ -35,6 +35,7 @@ test("cspFor is strict and scopes connect-src to the configured server", () => {
   const csp = cspFor(origin);
   assert.match(csp, /default-src 'none'/);
   assert.match(csp, /script-src 'self'/);
+  assert.match(csp, /img-src 'self' data:/);
   assert.match(csp, new RegExp(`connect-src 'self' ${origin.replace(/\./g, "\\.")}`));
   assert.match(csp, /frame-ancestors 'none'/);
   // Unset server → only 'self' in connect-src.

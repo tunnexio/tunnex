@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"os"
 	"os/exec"
@@ -24,10 +25,102 @@ func newTestMgr(t *testing.T) (*Manager, *int) {
 	t.Helper()
 	m := New(t.TempDir())
 	starts := 0
-	m.ensureProc = func(context.Context, string) error { starts++; return nil }
+	m.process = &fakeProcessController{ensure: func(_ context.Context, _ string, digest string) (ProcessState, error) {
+		starts++
+		return ProcessState{Serving: true, AppliedDigest: digest}, nil
+	}}
 	m.binaryPresent = func() bool { return true }
 	m.certsPresent = func() bool { return true }
+	if err := m.WriteServerMaterial("test-ca", "test-cert", "test-key", "test-crl"); err != nil {
+		t.Fatalf("write test OpenVPN material: %v", err)
+	}
 	return m, &starts
+}
+
+type fakeProcessController struct {
+	ensure  func(context.Context, string, string) (ProcessState, error)
+	state   ProcessState
+	err     error
+	stops   int
+	stopErr error
+}
+
+func (f *fakeProcessController) Ensure(ctx context.Context, path, digest string) (ProcessState, error) {
+	if f.ensure != nil {
+		state, err := f.ensure(ctx, path, digest)
+		if err == nil {
+			f.state = state
+		}
+		return state, err
+	}
+	f.state = ProcessState{Serving: true, AppliedDigest: digest}
+	return f.state, nil
+}
+
+func (f *fakeProcessController) Readback() (ProcessState, error) { return f.state, f.err }
+func (f *fakeProcessController) Stop() error {
+	f.stops++
+	if f.stopErr == nil {
+		f.state = ProcessState{}
+	}
+	return f.stopErr
+}
+
+func TestReconcileDisableStopsPreviouslyServingProcess(t *testing.T) {
+	m, _ := newTestMgr(t)
+	process := m.process.(*fakeProcessController)
+	m.SetDesired(Desired{PoolCIDR: "10.99.0.0/24", Clients: []Client{{CommonName: "alice", IP: "10.99.0.7"}}})
+	if err := m.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	stopsBefore := process.stops
+	m.SetDesired(Desired{})
+	if err := m.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if process.stops != stopsBefore+1 || process.state.Serving || m.TunActive() {
+		t.Fatalf("disable did not withdraw running OpenVPN process: stops=%d state=%+v tun=%v", process.stops, process.state, m.TunActive())
+	}
+	if state, err := m.AppliedState(); err != nil || state.Serving {
+		t.Fatalf("disabled manager must never attest old process: state=%+v err=%v", state, err)
+	}
+}
+
+func TestReconcileDisableStopFailureCannotAttestAbsence(t *testing.T) {
+	m, _ := newTestMgr(t)
+	process := m.process.(*fakeProcessController)
+	m.SetDesired(Desired{PoolCIDR: "10.99.0.0/24", Clients: []Client{{CommonName: "alice", IP: "10.99.0.7"}}})
+	if err := m.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	process.stopErr = errors.New("process remains alive")
+	m.SetDesired(Desired{})
+	if err := m.Reconcile(context.Background()); err == nil {
+		t.Fatal("failed process withdrawal must fail reconcile")
+	}
+	if m.Health() != HealthApplyFailed || !m.TunActive() {
+		t.Fatalf("failed stop health=%q tunActive=%v", m.Health(), m.TunActive())
+	}
+	if state, err := m.AppliedState(); err == nil || !state.Serving {
+		t.Fatalf("disabled readback hid live process: state=%+v err=%v", state, err)
+	}
+}
+
+func TestReconcileRefusalStopsPreviouslyServingProcess(t *testing.T) {
+	m, _ := newTestMgr(t)
+	process := m.process.(*fakeProcessController)
+	m.SetDesired(Desired{PoolCIDR: "10.99.0.0/24", Clients: []Client{{CommonName: "alice", IP: "10.99.0.7"}}})
+	if err := m.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	stopsBefore := process.stops
+	m.certsPresent = func() bool { return false }
+	if err := m.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if process.stops != stopsBefore+1 || process.state.Serving || m.Health() != HealthCertsAbsent {
+		t.Fatalf("refusal did not stop stale OpenVPN: stops=%d state=%+v health=%q", process.stops, process.state, m.Health())
+	}
 }
 
 func readCCD(t *testing.T, m *Manager, cn string) (string, bool) {
@@ -160,7 +253,7 @@ func TestServerConfigAcceptedByOpenVPN(t *testing.T) {
 	}
 	m := New(t.TempDir())
 	writeThrowawayServerMaterial(t, m.cfgDir)
-	m.ensureProc = func(context.Context, string) error { return nil }
+	m.process = &fakeProcessController{}
 	m.SetDesired(Desired{PoolCIDR: "10.99.0.0/24", Clients: []Client{{CommonName: "d", IP: "10.99.0.7"}}})
 	if err := m.Reconcile(context.Background()); err != nil {
 		t.Fatalf("reconcile: %v", err)
@@ -490,6 +583,24 @@ func TestTunActiveGatesTunPublish(t *testing.T) {
 	}
 }
 
+func TestAppliedStateRejectsDiskDriftAfterProcessStart(t *testing.T) {
+	m, _ := newTestMgr(t)
+	m.SetDesired(Desired{PoolCIDR: "10.99.0.0/24", Clients: []Client{{CommonName: "device-a", IP: "10.99.0.7"}}})
+	if err := m.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	state, err := m.AppliedState()
+	if err != nil || !state.Serving || state.AppliedDigest == "" {
+		t.Fatalf("exact applied state unavailable: state=%+v err=%v", state, err)
+	}
+	if err := os.WriteFile(filepath.Join(m.ccdDir, "device-a"), []byte("tampered\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := m.AppliedState(); err == nil || state.Serving {
+		t.Fatalf("disk drift must invalidate process readback: state=%+v err=%v", state, err)
+	}
+}
+
 // TestServerMaterialWriteThenSweep (D-S9.6) locks cert delivery on the agent side: writing the
 // CP-delivered material makes certsPresent TRUE (the ovpn_certs_absent precondition clears itself,
 // live), the key is 0600, and sweeping (disable) removes the files → certsPresent FALSE.
@@ -521,7 +632,9 @@ func TestServerMaterialWriteThenSweep(t *testing.T) {
 		t.Fatal("re-assert must heal the hand-deleted file")
 	}
 	// disable → sweep → nothing on disk.
-	m.SweepServerMaterial()
+	if err := m.SweepServerMaterial(); err != nil {
+		t.Fatal(err)
+	}
 	if m.certsPresent() {
 		t.Fatal("after sweep (disable), certsPresent must be false — nothing exists on disk")
 	}
