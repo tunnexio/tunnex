@@ -106,7 +106,7 @@ func TestBuildSnapshotConsumesOnlyActiveSelectedFQDNGeneration(t *testing.T) {
 	site, resource, generation, rule, resolverConfig := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'selected')`, site, f.org)
 	exec(`UPDATE nodes SET site_id=$2 WHERE id=$1`, f.node, site)
-	exec(`UPDATE organizations SET fqdn_resources_enabled=true WHERE id=$1`, f.org)
+	exec(`UPDATE organizations SET fqdn_resources_enabled=true,zero_trust_mode='enforcing' WHERE id=$1`, f.org)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,protocol,port_low,port_high,resolver_site_id,resolver_node_id) VALUES($1,$2,'api','api.example.test','tcp',443,443,$3,$4)`, resource, f.org, site, f.node)
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, resolverConfig, f.org, site, f.node)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.20.0.53'::inet,53,'udp')`, resolverConfig, f.org)
