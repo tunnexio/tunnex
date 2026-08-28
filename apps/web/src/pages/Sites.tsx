@@ -323,7 +323,7 @@ export default function Sites() {
     <div className="flex flex-col gap-3.5">
       <PageHeader
         title="Sites"
-        subtitle={org ? org.name : "…"}
+        subtitle={org ? `${org.name}${raw ? ` · ${cards.length} sites` : ""}` : "…"}
         actions={
           view === "body" && gate.canManage ? (
           <div className="flex items-center gap-2.5">
@@ -342,12 +342,14 @@ export default function Sites() {
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />
       )}
       {view === "loading" && (
-        <Loading size="inline" label="Loading site DNS configuration…" />
+        <Card>
+          <Loading label="Loading Sites…" />
+        </Card>
       )}
 
       {view === "body" && raw != null && org != null && (
         <>
-          <nav aria-label="Sites workspace" className="flex flex-wrap gap-1 rounded-lg border border-line bg-ink-900 p-1">
+          <nav aria-label="Sites workspace" className="flex flex-wrap border-b border-white/10">
             {[
               ["overview", "Overview"],
               ["approvals", "Pending approvals"],
@@ -359,7 +361,7 @@ export default function Sites() {
                 type="button"
                 aria-current={section === id ? "page" : undefined}
                 onClick={() => updateQuery(id === "overview" ? { section: id } : { section: id, site: null, gateway: null, q: null, dns: null })}
-                className={`rounded-md px-3 py-1.5 text-cell ${section === id ? "bg-ink-700 text-ink-heading" : "text-ink-tertiary hover:text-ink-heading"}`}
+                className={`min-h-10 border-b-2 px-3 text-cell transition-colors ${section === id ? "border-ink-heading text-ink-heading" : "border-transparent text-ink-tertiary hover:border-white/20 hover:text-ink-heading"}`}
               >
                 {label}
               </button>
@@ -367,6 +369,7 @@ export default function Sites() {
           </nav>
           {section === "overview" && (
             <div className="flex min-w-0 flex-col gap-3">
+              <SiteOverviewSummary cards={cards} unboundCount={unboundGatewayNodes.length} />
               <Panel
                 title="Network map"
                 className="min-w-0"
@@ -382,9 +385,6 @@ export default function Sites() {
                 {/* The handoff puts the hint INLINE beside the title (dc.html L454). Ours drops "hover to
                     trace a link" because we do not implement hover tracing — describing an interaction the
                     component does not have is the same class of lie as a chart with no source. */}
-                <p className="-mt-1.5 text-micro text-ink-faint">
-                  Select a Site to focus it · Hub membership is derived by the backend
-                </p>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <Input
                     aria-label="Search Sites or Gateways"
@@ -415,7 +415,7 @@ export default function Sites() {
                   <Button variant="ghost" onClick={() => { updateQuery({ q: null, site: null, gateway: null }); setSearchOpen(false); }}>
                     Fit overview
                   </Button>
-                  <span className="text-micro text-ink-faint">{cards.length} Sites · overview only</span>
+                  <span className="text-micro text-ink-faint">Select a Site to inspect it</span>
                 </div>
                 {searchOpen && query.trim() && (
                   <div id="site-search-results" role="listbox" aria-label="Site and Gateway search results" className="mb-3 max-w-xl overflow-hidden rounded-lg border border-line bg-ink-800">
@@ -434,14 +434,10 @@ export default function Sites() {
                   links={mesh.links}
                   selectedId={selectedSiteId}
                   onSelect={selectSite}
-                  maxHeight={300}
+                  maxHeight={260}
                   empty="Route a LAN to draw your first site here."
                 />
-                <p className="text-micro text-ink-faint">
-                  Link state is derived from the WireGuard handshake. A down
-                  site bridge is never shown as healthy. The moving line means
-                  the handshake is current, not that traffic is flowing.
-                </p>
+                <p className="text-micro text-ink-faint">Live links reflect current WireGuard handshakes; animation does not imply traffic volume.</p>
               </Panel>
               <SelectedSiteStrip card={selectedCard} selectedGatewayId={selectedGatewayId} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />
 
@@ -513,7 +509,7 @@ export default function Sites() {
         </>
       )}
       {view === "body" && raw == null && (
-        <Loading size="inline" label="Loading site references…" />
+        <Card><Loading label="Loading Sites…" /></Card>
       )}
 
       {registering && org && (
@@ -664,7 +660,7 @@ function RouteLANModal({
   }
   return (
     <Modal
-      title="Route a LAN through this gateway"
+      title="Route a LAN"
       onDismiss={onClose}
       actions={
         <>
@@ -672,16 +668,12 @@ function RouteLANModal({
             Cancel
           </Button>
           <Button onClick={submit} disabled={busy || !nodeId || !cidr.trim()}>
-            Route it
+            Route LAN
           </Button>
         </>
       }
     >
-      <p className="text-sm text-slate-400">
-        Route a behind-gateway LAN to your devices. This registers a site on the
-        gateway, advertises the range, and approves it. The range then pushes to
-        split-tunnel devices.
-      </p>
+      <p className="text-cell text-ink-tertiary">Choose an available gateway and the private range behind it. Tunnex creates the Site and approves the route in one step.</p>
       <Field label="Gateway">
         <Select value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
           {nodes.map((n) => (
@@ -703,7 +695,7 @@ function RouteLANModal({
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="derived from the CIDR"
+          placeholder="e.g. Mumbai office"
         />
       </Field>
       <ErrorText>{err}</ErrorText>
@@ -914,6 +906,44 @@ function HubSetSection({
   );
 }
 
+function SiteOverviewSummary({
+  cards,
+  unboundCount,
+}: {
+  cards: SiteCard[];
+  unboundCount: number;
+}) {
+  const gateways = cards.flatMap((card) => card.gateways);
+  const approved = cards.reduce(
+    (total, card) => total + card.subnets.filter((subnet) => subnet.status === "approved").length,
+    0,
+  );
+  const pending = cards.reduce(
+    (total, card) => total + card.subnets.filter((subnet) => subnet.status === "pending").length,
+    0,
+  );
+  const stats = [
+    { label: "Sites", value: cards.length, detail: `${cards.filter((card) => card.gateways.length > 0).length} connected` },
+    { label: "Gateways", value: gateways.length + unboundCount, detail: unboundCount > 0 ? `${unboundCount} available to bind` : "all assigned" },
+    { label: "Routed ranges", value: approved, detail: "approved" },
+    { label: "Pending", value: pending, detail: pending > 0 ? "needs review" : "nothing waiting", attention: pending > 0 },
+  ];
+
+  return (
+    <section aria-label="Sites summary" className="grid overflow-hidden rounded-xl border border-line bg-ink-800 sm:grid-cols-2 xl:grid-cols-4">
+      {stats.map((stat) => (
+        <div key={stat.label} className="min-w-0 border-b border-line px-4 py-3 last:border-b-0 sm:border-r sm:[&:nth-child(2)]:border-r-0 sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:[&:nth-child(2)]:border-r xl:[&:nth-child(4)]:border-r-0">
+          <p className="text-micro font-medium uppercase tracking-wide text-ink-tertiary">{stat.label}</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-title font-semibold tabular-nums text-ink-heading">{stat.value}</span>
+            <span className={`truncate text-micro ${stat.attention ? "text-warn" : "text-ink-faint"}`}>{stat.detail}</span>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function SelectedSiteStrip({ card, selectedGatewayId, unboundGateway, onRouteLan }: { card: SiteCard | null; selectedGatewayId: string | null; unboundGateway: Node | null; onRouteLan: () => void }) {
   if (unboundGateway) {
     return <section aria-label="Selected Site" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell"><span className="font-semibold text-ink-heading">{unboundGateway.name}</span><Badge tone="neutral">Unbound Gateway</Badge><span className="text-ink-tertiary">No Site is bound. Its location is not shown on this topology.</span><Button className="ml-auto" variant="ghost" onClick={onRouteLan}>Route a LAN</Button></section>;
@@ -1064,7 +1094,10 @@ function SiteList({
   ];
 
   return (
-    <Panel title={`Sites · ${cards.length}`}>
+    <Panel
+      title="Site inventory"
+      actions={<span className="text-micro tabular-nums text-ink-tertiary">{cards.length} total</span>}
+    >
       <DataTable
         caption="Sites"
         columns={columns}
@@ -1113,139 +1146,62 @@ function SiteCardView({
   } | null>(null); // WF-5
   const hasGateway = card.gateways.length > 0;
   return (
-    <Card className="space-y-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line pb-3">
+    <Card className="space-y-0 overflow-hidden p-0">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div>
-          <p className="text-micro uppercase tracking-wide text-ink-faint">Selected Site</p>
+          <p className="text-micro uppercase tracking-wide text-ink-faint">Site workspace</p>
           <h2 className="text-title font-semibold text-ink-heading">{card.name}</h2>
         </div>
-        <span className="text-xs text-slate-500">
-          {card.gateways.length === 1
-            ? "1 gateway"
-            : `${card.gateways.length} gateways`}
-        </span>
+        <div className="flex items-center gap-2 text-micro text-ink-tertiary">
+          <span>{card.gateways.length} gateway{card.gateways.length === 1 ? "" : "s"}</span>
+          <span aria-hidden="true">·</span>
+          <span>{card.subnets.length} range{card.subnets.length === 1 ? "" : "s"}</span>
+        </div>
       </div>
 
-      <section>
-        <h3 className="text-cell font-semibold text-ink-heading">Gateways</h3>
-        {card.gateways.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">No gateway bound.</p>
-        ) : (
-          <ul className="mt-2 space-y-1">
-          {card.gateways.map((g) => (
-            <GatewayRow key={g.id} g={g} />
-          ))}
-          </ul>
-        )}
-      </section>
+      <div className="grid lg:grid-cols-2">
+        <section className="border-b border-line px-4 py-3 lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-cell font-semibold text-ink-heading">Gateways</h3>
+            {canManage && unboundNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
+          </div>
+          {card.gateways.length === 0 ? (
+            <p className="py-4 text-cell text-ink-tertiary">No gateway is bound to this Site.</p>
+          ) : (
+            <ul className="mt-1">
+              {card.gateways.map((g) => <GatewayRow key={g.id} g={g} />)}
+            </ul>
+          )}
+        </section>
 
-      <section>
-        <h3 className="text-cell font-semibold text-ink-heading">Routed ranges</h3>
-        {card.subnets.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">No ranges advertised.</p>
-        ) : (
-        <div role="list" className="mt-2 flex flex-wrap gap-2">
-          {card.subnets.map((s) => (
-            <span
-              key={s.id}
-              role="listitem"
-              aria-label={`${s.cidr}: ${
-                s.status === "approved"
-                  ? "Approved, routed"
-                  : "Pending approval, not yet routed"
-              }`}
-              className={`rounded px-2 py-0.5 text-xs ${
-                s.status === "approved"
-                  ? "bg-white/5 text-slate-300"
-                  : "border border-amber-500/30 text-amber-300"
-              }`}
-            >
-              {s.cidr}
-              {s.status === "pending" && " · pending"}
-              {canManage && (
-                <button
-                  type="button"
-                  className="ml-1.5 text-slate-500 hover:text-rose-400"
-                  aria-label={`Remove ${s.cidr}`}
-                  title="Remove this subnet (un-advertise)"
-                  onClick={() =>
-                    setRemoving({ id: s.id, cidr: s.cidr, status: s.status })
-                  }
-                >
-                  ✕
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-        )}
-      </section>
+        <section className="px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-cell font-semibold text-ink-heading">Routed ranges</h3>
+            {canManage && <Button variant="ghost" size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}
+          </div>
+          {card.subnets.length === 0 ? (
+            <p className="py-4 text-cell text-ink-tertiary">No ranges advertised.</p>
+          ) : (
+            <ul role="list" className="mt-1">
+              {card.subnets.map((s) => (
+                <li key={s.id} role="listitem" aria-label={`${s.cidr}: ${s.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="flex min-h-10 items-center gap-2 border-b border-line/70 text-cell last:border-0">
+                  <span className="font-mono text-ink-body">{s.cidr}</span>
+                  <Badge tone={s.status === "approved" ? "ok" : "warn"}>{s.status === "approved" ? "routed" : "pending"}</Badge>
+                  {canManage && <button type="button" className="ml-auto rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" aria-label={`Remove ${s.cidr}`} onClick={() => setRemoving({ id: s.id, cidr: s.cidr, status: s.status })}>Remove</button>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
 
-      {/* WF-3: guided cloud-fabric setup, SURFACED IN-UI (not docs-only). STATIC per cloud — the SDN
-          steps that get a behind-host's packet to this gateway are un-codeable, so we show the copy-paste
-          the operator applies in ONE cloud-console visit (the Zero-Touch Law boundary clause). No
-          cloud-detection this pass (that rides S8.5); doc link for the full reference. */}
       {hasGateway && card.subnets.some((s) => s.status === "approved") && (
-        <details className="mt-3 rounded-lg border border-white/5 bg-ink-900/60 px-3 py-2 text-xs text-slate-400">
-          <summary className="cursor-pointer text-slate-300">
-            Cloud fabric setup, one console visit per side (why a behind-host
-            may not reach yet)
-          </summary>
-          <div className="mt-2 space-y-2">
-            <p>
-              A gateway VM forwards for hosts on its LAN, but the cloud SDN must
-              (1) let the VM forward and (2) route the REMOTE site's CIDR to
-              this gateway. Apply once, in the cloud console, never on the
-              gateway.
-            </p>
-            <p>
-              <span className="font-semibold text-slate-300">Both clouds:</span>{" "}
-              enable <span className="font-mono">IP forwarding</span> on this
-              gateway VM's NIC.
-            </p>
-            <p>
-              <span className="font-semibold text-slate-300">Azure:</span> route
-              table on the behind-hosts' subnet → add
-              <span className="font-mono"> &lt;REMOTE_CIDR&gt;</span> → next hop{" "}
-              <span className="font-mono">Virtual appliance</span> → this
-              gateway's private IP.
-            </p>
-            <p>
-              <span className="font-semibold text-slate-300">AWS:</span> disable{" "}
-              <span className="font-mono">source/dest check</span> on the
-              gateway ENI; route table → add
-              <span className="font-mono"> &lt;REMOTE_CIDR&gt;</span> → target =
-              the gateway instance/ENI.
-            </p>
-            {/* A3b PD-4: the DEVICE POOL needs the same return route as the site ranges — behind-host
-                replies to a connected device (its 10.99.x pool address) die at the cloud router without
-                it. Wording sourced from the Deck-D Leg-10 console fixes (the walk that found the gap). */}
-            <p>
-              <span className="font-semibold text-slate-300">Devices too:</span>{" "}
-              add the SAME route for the org's
-              <span className="font-mono"> device pool CIDR</span> (Settings
-              shows it, e.g. <span className="font-mono">10.99.0.0/24</span>) →
-              this gateway. Behind-host replies to a connected device need a way
-              back, exactly like a remote site's CIDR.
-            </p>
-            {/* WF-B (EPIC-8 smooth walk): behind-host HA needs a CLOUD-side route failover. The overlay
-                fails over (a standby is promoted) but the VPC route to the gateway ENI is STATIC — the
-                zero-touch boundary Tunnex won't cross. By design; documented here so it's not a surprise. */}
-            <p>
-              <span className="font-semibold text-slate-300">
-                High availability:
-              </span>{" "}
-              a promoted standby carries overlay transit automatically, but a
-              behind-host's VPC route points at ONE gateway ENI, so on failover
-              repoint it to the new hub (AWS: route-table health check / a small
-              Lambda; or a Gateway Load Balancer. Azure: a UDR update). Overlay
-              HA is automatic; cloud-fabric HA is yours to wire (the zero-touch
-              boundary).
-            </p>
-            <p className="text-slate-500">
-              Full reference:{" "}
-              <span className="font-mono">docs/deploy-cloud-gateway.md</span>.
-            </p>
+        <details className="border-t border-line px-4 py-3 text-cell text-ink-tertiary">
+          <summary className="cursor-pointer font-medium text-ink-body">Advanced cloud routing</summary>
+          <div className="mt-2 grid gap-2 text-micro sm:grid-cols-2">
+            <p><span className="font-medium text-ink-body">Gateway VM:</span> enable IP forwarding. On AWS, disable source/destination checks.</p>
+            <p><span className="font-medium text-ink-body">Cloud routes:</span> send remote Site and device-pool CIDRs to this gateway. Update that target when cloud-side HA fails over.</p>
+            <p className="sm:col-span-2 text-ink-faint">Full operator reference: <span className="font-mono">docs/deploy-cloud-gateway.md</span></p>
           </div>
         </details>
       )}
@@ -1261,32 +1217,19 @@ function SiteCardView({
       )}
 
       {canManage && (
-        <>
-        <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-          <Button variant="ghost" onClick={() => setModal("subnet")}>
-            Advertise subnet
-          </Button>
-          {/* S8.6 D4: Bind and Unbind are NOT mutually exclusive — a site can carry MORE THAN ONE gateway (an
-              HA hub pair is exactly that). The old `hasGateway ? Unbind : Bind` was the list-of-one assumption
-              in the action path: once the first gateway bound, the second was unreachable through the product's
-              own UI (the box-walk had to POST /bind from the console). Unbind shows when a gateway is bound;
-              Bind shows whenever an unbound gateway exists — both can show together. */}
-          {hasGateway && (
-            <Button variant="ghost" onClick={() => setModal("unbind")}>
-              Unbind gateway
-            </Button>
-          )}
-          {unboundNodes.length > 0 && (
-            <Button variant="ghost" onClick={() => setModal("bind")}>
-              Bind gateway
-            </Button>
-          )}
+        <div className="border-t border-line px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-cell font-semibold text-ink-heading">Lifecycle</h3>
+              <p className="text-micro text-ink-tertiary">Move gateways before permanently deleting this Site.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {hasGateway && <Button variant="ghost" size="sm" onClick={() => setModal("unbind")}>Unbind gateway</Button>}
+              <Button variant="danger" size="sm" onClick={() => setModal("delete")}>Delete site</Button>
+            </div>
+          </div>
+          <span className="sr-only">Danger zone</span>
         </div>
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger/40 bg-danger/5 px-3 py-2.5">
-          <div><h3 className="text-cell font-semibold text-danger">Danger zone</h3><p className="mt-0.5 text-micro text-ink-tertiary">Deleting this Site removes its record and server-reported dependent ranges and rules. It cannot be undone; create, bind, and advertise again to recover.</p></div>
-          <Button variant="danger" onClick={() => setModal("delete")}>Delete site</Button>
-        </section>
-        </>
       )}
 
       {modal === "subnet" && (
@@ -1350,9 +1293,9 @@ export function GatewayRow({ g }: { g: GatewayView }) {
   // silent absence. Same clock + health bool as the offline/degraded badges (no third vocabulary).
   const online = gatewayOnline(g.status, live.offline, g.health);
   return (
-    <li className="flex items-center gap-2 text-sm">
+    <li className="flex min-h-10 items-center gap-2 border-b border-line/70 text-cell last:border-0">
       <a
-        className="text-slate-200 hover:text-accent-400 hover:underline"
+        className="font-medium text-ink-body hover:text-ink-heading hover:underline"
         href={`/gateways/${g.id}`}
       >
         {g.name}
@@ -1433,7 +1376,7 @@ function RegisterSiteModal({
   }
   return (
     <Modal
-      title="Register a site"
+      title="Add Site"
       onDismiss={onClose}
       actions={
         <>
@@ -1441,11 +1384,12 @@ function RegisterSiteModal({
             Cancel
           </Button>
           <Button onClick={submit} disabled={busy || name.trim() === ""}>
-            Register
+            Add Site
           </Button>
         </>
       }
     >
+      <p className="text-cell text-ink-tertiary">Create the location first, then bind gateways and advertise its private ranges.</p>
       <Field label="Site name">
         <Input
           value={name}
@@ -1509,11 +1453,8 @@ function AddSubnetModal({
         </>
       }
     >
-      <p className="text-xs text-slate-500">
-        The subnet is advertised as PENDING. An owner or admin must approve it
-        before it routes.
-      </p>
-      <div className="mt-2">
+      <p className="text-cell text-ink-tertiary">The range stays inactive until an owner or admin approves it.</p>
+      <div>
         <Field label="LAN CIDR">
           <Input
             value={cidr}
@@ -1580,7 +1521,8 @@ function BindGatewayModal({
         </>
       }
     >
-      <Field label="Gateway node">
+      <p className="text-cell text-ink-tertiary">Assign an enrolled, unbound gateway to this Site.</p>
+      <Field label="Gateway">
         <Select value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
           {nodes.map((n) => (
             <option key={n.id} value={n.id}>
@@ -1648,10 +1590,7 @@ function UnbindConfirm({
         </>
       }
     >
-      <p className="text-sm text-slate-400">
-        The gateway's site-link peers and routes are swept. The site and its
-        subnets are kept. Bind a replacement to restore routing.
-      </p>
+      <p className="text-cell text-ink-tertiary">This withdraws the gateway’s Site links and routes. The Site and its ranges remain available for a replacement gateway.</p>
       {gateways.length > 1 && (
         <Field label="Gateway to unbind">
           <Select value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
@@ -1846,27 +1785,24 @@ function DNSForwardSection({
     load().catch(() => {});
   }
   return (
-    <details open={open} className="mt-3 rounded-lg border border-white/5 bg-ink-900/60 px-3 py-2 text-xs text-slate-400">
-      <summary className="cursor-pointer text-slate-300">
-        Cross-site DNS forwarding: resolve this site's names from other sites
+    <details open={open} className="border-t border-line px-4 py-3 text-cell text-ink-tertiary">
+      <summary className="cursor-pointer font-medium text-ink-body">
+        Advanced Site DNS forwarding
       </summary>
       <div className="mt-2 space-y-2">
-        <p>
-          Forward a domain to this site's internal resolver (an IP inside an
-          approved subnet). Other sites resolve those names over the tunnel.
-        </p>
+        <p className="text-micro">Optional networking rule for forwarding a Site-local zone through an approved range. FQDN Access Resources use Private DNS Resolvers instead.</p>
         <ul className="space-y-1">
           {forwards.map((f) => (
-            <li key={f.domain} className="flex items-center gap-2">
+            <li key={f.domain} className="flex min-h-9 items-center gap-2 border-b border-line/70 last:border-0">
               <span className="font-mono text-slate-300">{f.domain}</span>
               <span className="text-slate-500">→ {f.resolver_ip}</span>
               <button
                 type="button"
-                className="ml-auto text-slate-500 hover:text-rose-400"
+                className="ml-auto rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
                 aria-label={`Remove ${f.domain} resolver`}
                 onClick={() => remove(f.domain)}
               >
-                ✕
+                Remove
               </button>
             </li>
           ))}
@@ -1874,13 +1810,12 @@ function DNSForwardSection({
             <li className="text-slate-500">No forwarded zones.</li>
           )}
         </ul>
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="grid items-end gap-2 sm:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_auto]">
           <Field label="DNS zone">
           <Input
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
             placeholder="corp.local"
-            className="w-40"
             maxLength={253}
           />
           </Field>
@@ -1889,7 +1824,6 @@ function DNSForwardSection({
             value={resolverIp}
             onChange={(e) => setResolverIp(e.target.value)}
             placeholder={resolverHint}
-            className="w-36"
             maxLength={45}
           />
           </Field>
