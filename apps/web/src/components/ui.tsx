@@ -208,12 +208,14 @@ export function Modal({
   children,
   actions,
   size = "default",
+  showClose = false,
 }: {
   title: string;
   danger?: boolean;
   onDismiss: () => void;
   children: ReactNode;
   actions?: ReactNode;
+  showClose?: boolean;
   /**
    * `wide` for a dialog whose content is a pair of searchable pickers rather than a sentence and a button.
    *
@@ -222,7 +224,7 @@ export function Modal({
    * happens to order last — which is not attribute order, so the "fix" works or does not depending on the
    * build.
    */
-  size?: "default" | "wide" | "enrollment";
+  size?: "default" | "wide" | "workspace" | "enrollment";
 }) {
   const headingId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -309,16 +311,16 @@ export function Modal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
+        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "workspace" ? "max-w-4xl" : size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
-        <h2
-          id={headingId}
-          className={`shrink-0 text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}
-        >
-          {title}
-        </h2>
+        <div className="flex shrink-0 items-center justify-between gap-3">
+          <h2 id={headingId} className={`text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}>{title}</h2>
+          {showClose && (
+            <button type="button" aria-label={`Close ${title}`} onClick={onDismiss} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-lg leading-none text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35">×</button>
+          )}
+        </div>
         <div className="mt-3 min-h-0 overflow-y-auto text-cell text-ink-body">{children}</div>
         {actions && <div className="mt-5 shrink-0 flex justify-end gap-2">{actions}</div>}
       </div>

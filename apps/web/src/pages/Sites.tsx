@@ -469,7 +469,7 @@ export default function Sites() {
               />
 
               {selectedCard && (
-                <Modal title={selectedCard.name} size="wide" onDismiss={() => selectSite(null)}>
+                <Modal title={selectedCard.name} size="workspace" showClose onDismiss={() => selectSite(null)}>
                   <div id="site-details">
                   <SiteCardView
                     card={selectedCard}
@@ -1103,7 +1103,7 @@ function SiteCardView({
           {card.gateways.length === 0 ? (
             <p className="py-4 text-cell text-ink-tertiary">No gateway is bound to this Site.</p>
           ) : (
-            <ul className="mt-1">
+            <ul className="mt-1 max-h-[8.25rem] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
               {card.gateways.map((g) => <GatewayRow key={g.id} g={g} />)}
             </ul>
           )}
@@ -1117,7 +1117,7 @@ function SiteCardView({
           {card.subnets.length === 0 ? (
             <p className="py-4 text-cell text-ink-tertiary">No ranges advertised.</p>
           ) : (
-            <ul role="list" className="mt-1">
+            <ul role="list" className="mt-1 max-h-[8.25rem] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
               {card.subnets.map((s) => (
                 <li key={s.id} role="listitem" aria-label={`${s.cidr}: ${s.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="flex min-h-10 items-center gap-2 border-b border-line/70 text-cell last:border-0">
                   <span className="font-mono text-ink-body">{s.cidr}</span>
@@ -1228,15 +1228,16 @@ export function GatewayRow({ g }: { g: GatewayView }) {
   // silent absence. Same clock + health bool as the offline/degraded badges (no third vocabulary).
   const online = gatewayOnline(g.status, live.offline, g.health);
   return (
-    <li className="flex min-h-10 items-center gap-2 border-b border-line/70 text-cell last:border-0">
+    <li className="flex min-h-10 min-w-0 items-center gap-2 border-b border-line/70 text-cell last:border-0">
       <a
-        className="font-medium text-ink-body hover:text-ink-heading hover:underline"
+        className="min-w-0 flex-1 truncate font-medium text-ink-body hover:text-ink-heading hover:underline"
+        title={g.name}
         href={`/gateways/${g.id}`}
       >
         {g.name}
       </a>
       {g.isHub && (
-        <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
+        <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
           hub
         </span>
       )}
@@ -1244,7 +1245,7 @@ export function GatewayRow({ g }: { g: GatewayView }) {
         <span className="text-xs text-rose-400">revoked</span>
       )}
       {live.offline && (
-        <span className={`text-xs ${badgeClass("danger")}`}>offline</span>
+        <span className={`shrink-0 whitespace-nowrap text-xs ${badgeClass("danger")}`}>offline</span>
       )}
       {/* WF-S11-10, THIRD SURFACE. The fix landed on Gateways.tsx and Devices.tsx already suppressed health on
           revoked rows — this list rendered the same concept with the same defect, so a revoked gateway could
@@ -1254,7 +1255,7 @@ export function GatewayRow({ g }: { g: GatewayView }) {
           offline. It is the health/instruction vocabulary that must not describe a gateway no longer meant to
           work. Found by asking who ELSE renders this concept, not by walking the UI. */}
       {g.status !== "revoked" && g.health && (
-        <span className={`text-xs ${badgeClass(g.health.tone)}`}>
+        <span className={`shrink-0 whitespace-nowrap text-xs ${badgeClass(g.health.tone)}`}>
           {g.health.label}
         </span>
       )}
@@ -1268,7 +1269,7 @@ export function GatewayRow({ g }: { g: GatewayView }) {
           {g.siteLinkNote.demoted && " (demoted)"}
         </span>
       )}
-      <span className="ml-auto text-[11px] text-slate-500">
+      <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] text-slate-500">
         {live.lastSeen}
         {" · "}
         {g.agentVersion}
@@ -1726,7 +1727,7 @@ function DNSForwardSection({
       </summary>
       <div className="mt-2 space-y-2">
         <p className="text-micro">Optional networking rule for forwarding a Site-local zone through an approved range. FQDN Access Resources use Private DNS Resolvers instead.</p>
-        <ul className="space-y-1">
+        <ul className="max-h-[7.25rem] space-y-1 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
           {forwards.map((f) => (
             <li key={f.domain} className="flex min-h-9 items-center gap-2 border-b border-line/70 last:border-0">
               <span className="font-mono text-slate-300">{f.domain}</span>
