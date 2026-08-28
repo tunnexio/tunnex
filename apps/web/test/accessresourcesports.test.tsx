@@ -38,6 +38,7 @@ function renderPage() {
 async function openCreate() {
   await screen.findByRole("button", { name: "Create resource" });
   fireEvent.click(screen.getAllByRole("button", { name: "Create resource" })[0]);
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create CIDR resource" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Jira" } });
   fireEvent.change(screen.getByLabelText("CIDR"), { target: { value: "10.0.0.4/32" } });
 }
