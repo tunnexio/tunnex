@@ -347,6 +347,20 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 			rows.Close()
 		}
 	}
+	// A stored active row is not readiness when its selected context/config is
+	// no longer compiler-eligible (for example immediately after config
+	// replacement). Do not advertise a usable resolver until a generation from
+	// the current authority exists.
+	if err == pgx.ErrNoRows && r.Context != nil {
+		var staleActive bool
+		if e := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fqdn_resource_answer_generations WHERE org_id=$1 AND resource_id=$2 AND state='active')`, org, id).Scan(&staleActive); e != nil {
+			return Detail{}, e
+		}
+		if staleActive {
+			d.ResolverReady = false
+			d.StatusSource, d.NextAction = "latest_generation", "configure_resolver"
+		}
+	}
 	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2`, org, id).Scan(&d.ReferencingRuleCount); err != nil {
 		return Detail{}, err
 	}
