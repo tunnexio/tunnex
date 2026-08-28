@@ -87,7 +87,7 @@ describe("Gateway enrollment ceremony", () => {
     ).toBeTruthy();
     expect(screen.getByText(/raw mTLS endpoint/i)).toBeTruthy();
     expect(screen.getByText(/port 8443/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep current" })).toBeTruthy();
   });
 
   it("first-time setup saves through the existing PUT and later commands use the saved authoritative URL", async () => {
@@ -96,6 +96,9 @@ describe("Gateway enrollment ceremony", () => {
     mocks.meta.gatewayControlURL = "";
     render(<Gateways org={org} initiallyOpen hideHeader />);
 
+    expect(await screen.findByText("Automatic from control-plane URL")).toBeTruthy();
+    expect(screen.queryByLabelText("Gateway control URL (DNS hostname)")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
     const controlURL = await screen.findByLabelText(
       "Gateway control URL (DNS hostname)",
     );
@@ -188,7 +191,7 @@ describe("Gateway enrollment ceremony", () => {
           .disabled,
       ).toBe(false),
     );
-    expect(screen.getByText(/No explicit Gateway control URL is saved/)).toBeTruthy();
+    expect(screen.getByText("Automatic from control-plane URL")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Generate join token" }));
     expect(await screen.findByText(/TUNNEX_JOIN_TOKEN=one-time-token/)).toBeTruthy();
     expect(screen.getByText(/TUNNEX_AGENT_URL="https:\/\/cp.example.com:8443"/)).toBeTruthy();

@@ -228,7 +228,7 @@ export default function GatewaysPage() {
                   placeholder="Search gateway, site, version, or state"
                   value={q}
                   onChange={(event) => setParam("q", event.target.value)}
-                  className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+                  className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400"
                 />
                 <span className="ml-auto whitespace-nowrap px-1 text-micro font-medium tabular-nums text-ink-tertiary">
                   {rows.length === counts.all
@@ -241,7 +241,7 @@ export default function GatewaysPage() {
                   aria-label="Sort gateways"
                   value={sort}
                   onChange={(event) => setParam("sort", event.target.value, "name")}
-                  className="h-9 rounded-md border border-white/10 bg-black/25 px-2.5 text-cell text-ink-body focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+                  className="h-9 rounded-md border border-white/10 bg-black/25 px-2.5 text-cell text-ink-body focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400"
                 >
                   <option value="name">Name</option>
                   <option value="health">State</option>
@@ -319,8 +319,7 @@ export default function GatewaysPage() {
         <Modal
           title="Enroll gateway"
           onDismiss={closeEnrollment}
-          size="wide"
-          actions={<Button variant="ghost" onClick={closeEnrollment}>Close</Button>}
+          size="enrollment"
         >
           <p className="mb-3 text-cell text-ink-tertiary">
             Create a one-time command, then run it on the Linux host that will carry private traffic.
@@ -329,6 +328,7 @@ export default function GatewaysPage() {
             org={org}
             initiallyOpen
             hideHeader
+            onCancel={closeEnrollment}
             onEnrollmentAcknowledged={closeEnrollment}
           />
         </Modal>

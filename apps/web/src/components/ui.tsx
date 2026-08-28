@@ -143,7 +143,7 @@ export function Input({
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
+      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400 ${className}`}
       {...props}
     />
   );
@@ -188,7 +188,7 @@ export function Select({
 }) {
   return (
     <select
-      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
+      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400 ${className}`}
       {...props}
     >
       {children}
@@ -213,7 +213,7 @@ export function Modal({
   danger?: boolean;
   onDismiss: () => void;
   children: ReactNode;
-  actions: ReactNode;
+  actions?: ReactNode;
   /**
    * `wide` for a dialog whose content is a pair of searchable pickers rather than a sentence and a button.
    *
@@ -222,7 +222,7 @@ export function Modal({
    * happens to order last — which is not attribute order, so the "fix" works or does not depending on the
    * build.
    */
-  size?: "default" | "wide";
+  size?: "default" | "wide" | "enrollment";
 }) {
   const headingId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -309,7 +309,7 @@ export function Modal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "wide" ? "max-w-2xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
+        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
@@ -320,7 +320,7 @@ export function Modal({
           {title}
         </h2>
         <div className="mt-3 min-h-0 overflow-y-auto text-cell text-ink-body">{children}</div>
-        <div className="mt-5 shrink-0 flex justify-end gap-2">{actions}</div>
+        {actions && <div className="mt-5 shrink-0 flex justify-end gap-2">{actions}</div>}
       </div>
     </div>,
     document.body,
