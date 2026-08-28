@@ -1033,9 +1033,9 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snap := Snapshot{Mode: settings.ZeroTrustMode}
+	snap := Snapshot{Mode: settings.ZeroTrustMode, FQDNResourcesEnabled: settings.FqdnResourcesEnabled}
 	for _, r := range rules {
-		snap.Rules = append(snap.Rules, Rule{
+		rule := Rule{
 			ID:      r.ID,
 			SrcKind: r.SrcKind, SrcGroupID: fromPgUUID(r.SrcGroupID), SrcUserID: fromPgUUID(r.SrcUserID),
 			SrcSiteID:       fromPgUUID(r.SrcSiteID),       // S8.2: src_kind='site' resolution
@@ -1047,7 +1047,11 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			DstSiteID:       fromPgUUID(r.DstSiteID),
 			DstK8sServiceID: fromPgUUID(r.DstK8sServiceID), // S10.3: dst_kind='k8s_service' resolution
 			Disabled:        r.Disabled,                    // F3: carried to the compiler, which OWNS the skip
-		})
+		}
+		snap.Rules = append(snap.Rules, rule)
+		if r.DstKind == "fqdn_resource" && r.DstFqdnResourceID.Valid {
+			snap.FQDNRuleReferences = append(snap.FQDNRuleReferences, FQDNRuleReference{PolicyRuleID: r.ID, FQDNResourceID: fromPgUUID(r.DstFqdnResourceID)})
+		}
 	}
 	for _, ss := range siteSubnets {
 		snap.SiteSubnets = append(snap.SiteSubnets, SiteSubnet{SiteID: ss.SiteID, CIDR: ss.Cidr.String()})
