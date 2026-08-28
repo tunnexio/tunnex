@@ -277,7 +277,10 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 		replacementDone <- replacementResult{config: configured, err: e}
 	}()
 	var replacement ResolverConfig
-	for replacementDone == nil {
+	replacementTimeout := time.NewTimer(2 * time.Second)
+	defer replacementTimeout.Stop()
+replacementReadLoop:
+	for {
 		detail, detailErr := svc.Detail(ctx, org, resource)
 		get, getErr := svc.Get(ctx, org, resource)
 		list, listErr := svc.List(ctx, org)
@@ -301,15 +304,18 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 		}
 		select {
 		case result := <-replacementDone:
-			replacement = result.config
 			if result.err != nil {
 				t.Fatal(result.err)
 			}
-			replacementDone = nil
+			replacement = result.config
+			break replacementReadLoop
+		case <-replacementTimeout.C:
+			t.Fatal("resolver replacement deadlocked")
 		default:
+			time.Sleep(time.Millisecond)
 		}
 	}
-	if replacement.ID == config {
+	if replacement.ID == uuid.Nil || replacement.ID == config {
 		t.Fatal("resolver replacement did not create a new immutable revision")
 	}
 	assertUnavailable := func(stage string) {
