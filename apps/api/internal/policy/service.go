@@ -1187,11 +1187,26 @@ type Notifier interface{ NotifyMany(nodeIDs []uuid.UUID) }
 // recompile+push triggers. The push is best-effort (a missed signal is caught by the
 // agent's reconcile-interval safety net); it never fails the mutation.
 func (s *Service) mutate(ctx context.Context, orgID uuid.UUID, fn func(*sqlc.Queries) error) error {
-	if err := s.withTx(ctx, fn); err != nil {
+	if err := s.withOrgTx(ctx, orgID, fn); err != nil {
 		return err
 	}
 	s.pushOrg(ctx, orgID)
 	return nil
+}
+
+func (s *Service) withOrgTx(ctx context.Context, orgID uuid.UUID, fn func(*sqlc.Queries) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, orgID); err != nil {
+		return err
+	}
+	if err := fn(sqlc.New(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // pushOrg notifies every gateway that currently hosts an active device in the org
