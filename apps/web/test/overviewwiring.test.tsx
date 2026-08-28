@@ -245,7 +245,8 @@ describe("the gateway health summary uses the ONE health interpreter", () => {
     );
     // `silent_desync` -> "silent desync" comes from lib/healthview.ts. If this screen grew its own mapping,
     // the two would drift and BOTH would still render — which is why there is exactly one interpreter.
-    expect(within(conditions).getByText("1 gateway silent desync")).toBeTruthy();
+    const silentDesync = within(conditions).getByText("silent desync").closest("div");
+    expect(silentDesync && within(silentDesync).getByText("1")).toBeTruthy();
     expect(within(conditions).queryByText("gw-a")).toBeNull();
   });
 

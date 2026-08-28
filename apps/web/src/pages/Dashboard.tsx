@@ -317,11 +317,12 @@ export default function Dashboard() {
                 <Panel title="Fleet summary">
                   <section
                     aria-label="Fleet summary metrics"
-                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 xl:divide-x xl:divide-white/10"
+                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-7 lg:divide-x lg:divide-white/10"
                   >
                   <Stat
                     label="Members"
                     icon="users"
+                    to="/users"
                     value={members}
                     sub={
                       pendingInvites === null
@@ -332,51 +333,66 @@ export default function Dashboard() {
                   <Stat
                     label="Devices"
                     icon="laptop"
+                    to="/devices"
                     value={devices}
                     sub={
-                      pending.state === "ok"
+                      pending.state === "ok" && pending.value > 0
                         ? `${pending.value} awaiting approval`
                         : null
                     }
+                    subTone="warn"
                   />
                   <Stat
                     label="Gateways"
                     icon="server"
+                    to="/gateways"
                     value={gateways}
                     sub={
-                      degraded === null
+                      degraded === null || degraded === 0
                         ? null
                         : `${degraded} degraded`
                     }
+                    subTone="danger"
                   />
                   {/* Render only after the Agent inventory answers successfully. */}
                   {agentsRes?.ok && (
                     <Stat
                       label="AI Agents"
                       icon="bot"
+                      to="/agents"
                       value={statFrom(agentsRes, (r: AgentRow[]) => r.length)}
                       sub={agentSub}
+                      subTone="warn"
                     />
                   )}
                   <Stat
                     label="Sites"
                     icon="network"
+                    to="/sites"
                     value={sites}
                   />
                   {rulesRes?.ok && (
                     <Stat
                       label="Access Rules"
                       icon="shield"
+                      to="/access"
                       value={rules}
                       sub={zeroTrust === null ? null : zeroTrust}
+                      subTone={zeroTrust === "not enforced" ? "warn" : "ok"}
                     />
                   )}
                   {pendingRes?.ok && (
                     <Stat
                       label="Approvals"
                       icon="user-plus"
+                      to="/devices/approvals"
                       value={pending}
-                      sub="needs review"
+                      sub={
+                        pending.state === "ok" && pending.value > 0
+                          ? "needs review"
+                          : null
+                      }
+                      subTone="warn"
                     />
                   )}
                   </section>
@@ -472,7 +488,7 @@ export default function Dashboard() {
                         ).length;
 
                         return (
-                          <div className="space-y-3">
+                          <div className="grid gap-4 lg:grid-cols-[minmax(13rem,.8fr)_minmax(0,1.2fr)] lg:items-start">
                             <Donut
                               label="Gateway health summary"
                               source={{
@@ -499,34 +515,58 @@ export default function Dashboard() {
                               ]}
                               centreLabel="total"
                             />
-                            {unattributed > 0 && (
-                              <p className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-cell text-warn">
-                                {unattributed} gateway
-                                {unattributed === 1 ? " has" : "s have"} no
-                                recorded owner.
-                              </p>
-                            )}
-                            {issues.length > 0 ? (
-                              <div className="space-y-2">
+                            <div className="min-w-0">
+                            {issues.length > 0 || unattributed > 0 ? (
+                              <div>
                                 <p className="text-badge font-semibold uppercase tracking-wide text-ink-tertiary">
                                   Needs attention
                                 </p>
                                 <div
                                   role="group"
                                   aria-label="Gateway health conditions"
-                                  className="grid gap-2 sm:grid-cols-2"
+                                  className="mt-2 divide-y divide-white/10 border-y border-white/10"
                                 >
+                                  {unattributed > 0 && (
+                                    <div className="flex min-h-10 items-center gap-2 py-2 text-cell">
+                                      <span
+                                        aria-hidden="true"
+                                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+                                      />
+                                      <span className="min-w-0 flex-1 text-ink-secondary">
+                                        no recorded owner
+                                      </span>
+                                      <span className="shrink-0 tabular-nums text-warn">
+                                        {unattributed}
+                                      </span>
+                                    </div>
+                                  )}
                                   {issueGroups.map(([label, count]) => (
                                     <div
                                       key={label}
-                                      className={
-                                        "rounded-md border px-3 py-2 text-cell font-medium " +
-                                        (label === "revoked"
-                                          ? "border-white/10 bg-white/[.03] text-ink-secondary"
-                                          : "border-danger/25 bg-danger/5 text-danger")
-                                      }
+                                      className="flex min-h-10 items-center gap-2 py-2 text-cell"
                                     >
-                                      {gatewayIssueCount(label, count)}
+                                      <span
+                                        aria-hidden="true"
+                                        className={
+                                          "h-1.5 w-1.5 shrink-0 rounded-full " +
+                                          (label === "revoked"
+                                            ? "bg-ink-tertiary"
+                                            : "bg-danger")
+                                        }
+                                      />
+                                      <span className="min-w-0 flex-1 text-ink-secondary">
+                                        {label}
+                                      </span>
+                                      <span
+                                        className={
+                                          "shrink-0 tabular-nums " +
+                                          (label === "revoked"
+                                            ? "text-ink-secondary"
+                                            : "text-danger")
+                                        }
+                                      >
+                                        {count}
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
@@ -537,11 +577,13 @@ export default function Dashboard() {
                               </p>
                             )}
                             <Link
-                              className="inline-flex text-cell font-medium text-accent-400 hover:underline"
+                              className="mt-3 inline-flex items-center gap-1 text-cell font-medium text-accent-400 hover:text-accent-300"
                               to="/gateways"
                             >
                               {gatewayReviewLabel(issues.length)}
+                              <Icon name="chevron-right" size={14} />
                             </Link>
+                            </div>
                           </div>
                         );
                       })()
@@ -559,7 +601,7 @@ export default function Dashboard() {
                       (() => {
                         const ps = postureSplit(devicesRes.data);
                         return (
-                          <div className="grid gap-4 2xl:grid-cols-2">
+                          <div className="grid gap-4 sm:grid-cols-2">
                             <div>
                               <h3 className="mb-2 text-cell font-medium text-ink-secondary">
                                 Connection
@@ -576,7 +618,7 @@ export default function Dashboard() {
                                 empty="No devices enrolled yet."
                               />
                             </div>
-                            <div className="border-t border-white/10 pt-4 2xl:border-l 2xl:border-t-0 2xl:pl-4 2xl:pt-0">
+                            <div className="border-t border-white/10 pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
                               <h3 className="mb-2 text-cell font-medium text-ink-secondary">
                                 Posture
                               </h3>
@@ -609,7 +651,7 @@ export default function Dashboard() {
                               />
                             </div>
                             {pending.state === "ok" && pending.value > 0 && (
-                              <p className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-center text-cell text-warn 2xl:col-span-2">
+                              <p className="border-t border-white/10 pt-3 text-center text-cell text-warn sm:col-span-2">
                                 {pending.value} device
                                 {pending.value === 1 ? "" : "s"} awaiting
                                 approval
@@ -929,16 +971,6 @@ function InfrastructureLink({
   );
 }
 
-function gatewayIssueCount(label: string, count: number): string {
-  if (label === "revoked") {
-    return `${count} gateway${count === 1 ? "" : "s"} revoked`;
-  }
-  if (label === "site link down") {
-    return `${count} site link${count === 1 ? "" : "s"} down`;
-  }
-  return `${count} gateway${count === 1 ? "" : "s"} ${label}`;
-}
-
 /**
  * One metric inside the Fleet Summary surface. The metric keeps its independent
  * loading/failed/known state while sharing one card with the rest of the fleet.
@@ -946,59 +978,78 @@ function gatewayIssueCount(label: string, count: number): string {
 function Stat({
   label,
   icon,
+  to,
   value,
   sub,
   tone,
+  subTone = "neutral",
 }: {
   label: string;
   icon: IconName;
+  to: string;
   value: StatState;
   sub?: ReactNode;
   tone?: "ok";
+  subTone?: "neutral" | "ok" | "warn" | "danger";
 }) {
   const text = statText(value);
+  const subColor =
+    subTone === "danger"
+      ? "text-danger"
+      : subTone === "warn"
+        ? "text-warn"
+        : subTone === "ok"
+          ? "text-ok"
+          : "text-ink-tertiary";
   return (
     <div
       role="group"
       aria-label={label}
-      className="flex min-w-0 items-start gap-2.5 px-2 sm:px-3"
+      className="min-w-0 px-2 sm:px-3"
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-inset border border-white/[.14] bg-white/[.06] text-ink-emphasis">
-        <Icon name={icon} size={15} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-cell font-medium text-ink-secondary">
-          {label}
+      <Link
+        to={to}
+        className="grid min-w-0 grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2 rounded-sm outline-none transition-colors hover:text-ink-heading focus-visible:ring-2 focus-visible:ring-accent-400"
+      >
+        <span className="row-span-3 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-ink-emphasis">
+          <Icon name={icon} size={16} />
         </span>
-        {text === null ? (
-          <span
-            className="mt-1 block text-xl font-bold leading-none text-ink-secondary"
-            title={
-              value.state === "failed"
-                ? "Could not load this count."
-                : "Loading…"
-            }
-          >
-            {value.state === "failed" ? "n/a" : "…"}
+        <span className="min-w-0">
+          <span className="block truncate text-cell font-medium text-ink-primary">
+            {label}
           </span>
-        ) : (
+          {text === null ? (
+            <span
+              className="mt-1 block h-8 text-xl font-bold leading-8 text-ink-secondary"
+              title={
+                value.state === "failed"
+                  ? "Could not load this count."
+                  : "Loading…"
+              }
+            >
+              {value.state === "failed" ? "n/a" : "…"}
+            </span>
+          ) : (
+            <span
+              className={
+                "mt-1 block h-8 text-2xl font-bold leading-8 tabular-nums " +
+                (tone === "ok" ? "text-ok" : "text-ink-heading")
+              }
+            >
+              {text}
+            </span>
+          )}
           <span
             className={
-              "mt-1 block text-2xl font-bold leading-none " +
-              (tone === "ok" ? "text-ok" : "text-ink-heading")
+              "block h-[1.125rem] truncate text-micro font-medium leading-[1.125rem] " +
+              (value.state === "failed" ? "text-danger" : subColor)
             }
+            title={typeof sub === "string" ? sub : undefined}
           >
-            {text}
+            {value.state === "failed" ? "could not load" : sub}
           </span>
-        )}
-        <span className="mt-1 block text-[9px] font-normal leading-tight text-ink-tertiary">
-          {value.state === "failed" ? (
-            <span className="text-danger">could not load</span>
-          ) : (
-            sub
-          )}
         </span>
-      </span>
+      </Link>
     </div>
   );
 }
