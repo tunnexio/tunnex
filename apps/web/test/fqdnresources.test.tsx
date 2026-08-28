@@ -28,12 +28,12 @@ describe("FQDN resource operator index", () => {
     cidrRows = [{ id: "cidr-1", name: "Private", cidr: "10.0.0.0/24", protocol: "any", port_low: null, port_high: null }];
     rows = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.internal.example.com", protocol: "tcp", port_low: 443, port_high: 443, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 }];
     page("/access/resources?type=cidr");
-    expect(await screen.findByText("Private")).toBeTruthy();
+    expect((await screen.findAllByText("Private")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("table", { name: "FQDN resources inventory" })).toBeNull();
     expect(screen.getAllByRole("button", { name: "Create resource" })).toHaveLength(1);
 
     cleanup(); page("/access/resources?type=fqdn");
-    expect(await screen.findByText("Orders")).toBeTruthy();
+    expect((await screen.findAllByText("Orders")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("table", { name: "Resources inventory" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit Orders" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Bind now|Enable/ })).toBeNull();
@@ -54,7 +54,7 @@ describe("FQDN resource operator index", () => {
   });
   it("names row actions and leaves member capability unavailable", async () => {
     rows = [{ id: "fqdn-1", name: "Orders", fqdn: "orders.internal.example.com", protocol: "tcp", port_low: 443, port_high: null, state: "healthy", answer_count: 1, resolver_context: null, generation: 1 }];
-    page("/access/resources?type=fqdn"); expect(await screen.findByRole("button", { name: "Delete Orders" })).toBeTruthy();
+    page("/access/resources?type=fqdn"); expect((await screen.findAllByRole("button", { name: "Delete Orders" })).length).toBeGreaterThan(0);
     expect(screen.getByLabelText("FQDN status")).toBeTruthy();
     cleanup(); role = "member"; page("/access/resources?type=fqdn");
     expect(await screen.findByText(/fqdn_resource:view/)).toBeTruthy();
