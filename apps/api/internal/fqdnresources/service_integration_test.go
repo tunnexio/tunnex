@@ -248,7 +248,14 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 		detail, err := svc.Detail(ctx, org, resource)
 		get, getErr := svc.Get(ctx, org, resource)
 		list, listErr := svc.List(ctx, org)
-		if err != nil || getErr != nil || listErr != nil || detail.Resource.State == "healthy" || get.State == "healthy" || len(list) != 2 || list[0].State == "healthy" || detail.Resource.Generation != nil || get.Generation != nil || detail.Resource.AnswerCount != 0 || get.AnswerCount != 0 || detail.Resource.EffectiveTTLSeconds != nil || get.EffectiveTTLSeconds != nil || detail.Resource.RefreshedAt != nil || get.RefreshedAt != nil || detail.FreshUntilAt != nil || len(detail.ActiveAnswers) != 0 {
+		var listed *Resource
+		for i := range list {
+			if list[i].ID == resource {
+				listed = &list[i]
+				break
+			}
+		}
+		if err != nil || getErr != nil || listErr != nil || detail.Resource.State == "healthy" || get.State == "healthy" || listed == nil || listed.State == "healthy" || detail.Resource.Generation != nil || get.Generation != nil || listed.Generation != nil || detail.Resource.AnswerCount != 0 || get.AnswerCount != 0 || listed.AnswerCount != 0 || detail.Resource.EffectiveTTLSeconds != nil || get.EffectiveTTLSeconds != nil || listed.EffectiveTTLSeconds != nil || detail.Resource.RefreshedAt != nil || get.RefreshedAt != nil || listed.RefreshedAt != nil || detail.FreshUntilAt != nil || len(detail.ActiveAnswers) != 0 {
 			t.Fatalf("%s projections retained eligible health: detail=%+v get=%+v list=%+v errs=%v/%v/%v", stage, detail, get, list, err, getErr, listErr)
 		}
 	}
