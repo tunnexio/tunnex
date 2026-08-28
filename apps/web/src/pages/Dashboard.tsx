@@ -278,11 +278,6 @@ export default function Dashboard() {
                   .length
               : null;
             const pendingInvites = null; // no endpoint for pending invites — the slot stays empty, not invented
-            const siteSub = sitesRes?.ok
-              ? sitesRes.data.length === 0
-                ? "none configured"
-                : `${sitesRes.data.length} in the mesh`
-              : null;
             const zeroTrust = ztRes?.ok
               ? ztRes.data.mode === "enforcing"
                 ? "enforcing"
@@ -297,9 +292,7 @@ export default function Dashboard() {
             const agentSum = agentsRes?.ok
               ? agentSummary(agentsRes.data)
               : null;
-            const agentSub = agentSum
-              ? (agentSum.note ?? "enrolled in this organization")
-              : null;
+            const agentSub = agentSum?.note ?? null;
             const fresh = isFreshOrg(gateways, devices, members);
 
             return (
@@ -335,7 +328,7 @@ export default function Dashboard() {
                 <Panel title="Fleet summary">
                   <section
                     aria-label="Fleet summary metrics"
-                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 xl:grid-cols-7 xl:divide-x xl:divide-white/10"
+                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 2xl:divide-x 2xl:divide-white/10"
                   >
                   <Stat
                     label="Members"
@@ -364,7 +357,7 @@ export default function Dashboard() {
                     sub={
                       degraded === null
                         ? null
-                        : `${degraded} reporting degraded kinds`
+                        : `${degraded} degraded`
                     }
                   />
                   {/* Render only after the Agent inventory answers successfully. */}
@@ -380,7 +373,6 @@ export default function Dashboard() {
                     label="Sites"
                     icon="network"
                     value={sites}
-                    sub={siteSub}
                   />
                   {rulesRes?.ok && (
                     <Stat
@@ -392,10 +384,10 @@ export default function Dashboard() {
                   )}
                   {pendingRes?.ok && (
                     <Stat
-                      label="Pending approvals"
+                      label="Approvals"
                       icon="user-plus"
                       value={pending}
-                      sub="awaiting an admin"
+                      sub="needs review"
                     />
                   )}
                   </section>
@@ -451,7 +443,7 @@ export default function Dashboard() {
                     Set and others gate too), so hand-ordering rows by height could not have worked: which
                     panels are present varies per org, and a row tuned for one tenant is ragged for the next.
                     Packing has to be automatic for that reason alone. */}
-                <div className="grid gap-3 xl:grid-cols-2">
+                <div className="grid gap-3 2xl:grid-cols-2">
                   <Panel title="Gateway Health">
                     {nodesRes === null ? (
                       <Loading />
@@ -640,7 +632,7 @@ export default function Dashboard() {
                     )}
                   </Panel>
 
-                  <Panel title="Infrastructure" className="xl:col-span-2">
+                  <Panel title="Infrastructure" className="2xl:col-span-2">
                     <div
                       role="tablist"
                       aria-label="Infrastructure views"
@@ -930,7 +922,7 @@ function Stat({
             {text}
           </span>
         )}
-        <span className="mt-1 block truncate text-badge font-medium text-ink-tertiary">
+        <span className="mt-1 block text-[9px] font-normal leading-tight text-ink-tertiary">
           {value.state === "failed" ? (
             <span className="text-danger">could not load</span>
           ) : (

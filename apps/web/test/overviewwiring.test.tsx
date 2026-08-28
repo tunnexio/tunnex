@@ -307,7 +307,7 @@ describe("licence capability state does not suppress base operational cards", ()
     edition = "open";
     show();
     await waitFor(() => expect(screen.getByText("Members")).toBeTruthy());
-    expect(screen.getByText("Pending approvals")).toBeTruthy();
+    expect(screen.getByText("Approvals")).toBeTruthy();
     expect(screen.queryByText("could not load")).toBeNull();
   });
 
@@ -315,7 +315,7 @@ describe("licence capability state does not suppress base operational cards", ()
     edition = "enterprise";
     show();
     await waitFor(() =>
-      expect(screen.getByText("Pending approvals")).toBeTruthy(),
+      expect(screen.getByText("Approvals")).toBeTruthy(),
     );
   });
 
@@ -323,7 +323,7 @@ describe("licence capability state does not suppress base operational cards", ()
     edition = null;
     show();
     await waitFor(() => expect(screen.getByText("Members")).toBeTruthy());
-    expect(screen.getByText("Pending approvals")).toBeTruthy();
+    expect(screen.getByText("Approvals")).toBeTruthy();
   });
 });
 
