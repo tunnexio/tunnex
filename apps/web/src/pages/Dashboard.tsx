@@ -489,30 +489,74 @@ export default function Dashboard() {
                           }),
                         );
                         const issues = rows.filter((row) => row.tone !== "ok");
+                        const revoked = rows.filter(
+                          (row) => row.label === "revoked",
+                        );
+                        const unhealthy = issues.filter(
+                          (row) => row.label !== "revoked",
+                        );
+                        const healthy = rows.filter((row) => row.tone === "ok");
+                        const visibleIssues = issues.slice(0, 3);
                         const unattributed = nodesRes.data.filter(
                           (node) => attributionBadge(node) !== null,
                         ).length;
                         return (
                           <div className="space-y-3">
+                            <Donut
+                              label="Gateway health summary"
+                              source={{
+                                endpoint: "/api/v1/organizations/{orgId}/nodes",
+                              }}
+                              failed={false}
+                              slices={[
+                                {
+                                  label: "Healthy",
+                                  value: healthy.length,
+                                  tone: "ok",
+                                },
+                                {
+                                  label: "Unhealthy",
+                                  value: unhealthy.length,
+                                  tone: "danger",
+                                },
+                                {
+                                  label: "Revoked",
+                                  value: revoked.length,
+                                  tone: "neutral",
+                                },
+                              ]}
+                              centreLabel="gateways"
+                            />
                             {unattributed > 0 && (
                               <p className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-cell text-warn">
                                 {unattributed} gateway
-                                {unattributed === 1 ? " has" : "s have"} no recorded owner. Activity remains enforceable but cannot be attributed to a person.
+                                {unattributed === 1 ? " has" : "s have"} no recorded owner.
                               </p>
                             )}
                             {issues.length > 0 ? (
-                              <List label="Gateway health">
-                                {issues.map((gateway) => (
-                                  <ListItem key={gateway.id}>
-                                    <span className="flex items-center justify-between gap-2">
-                                      <span className="truncate font-mono text-mono text-ink-primary">
-                                        {gateway.name}
+                              <div className="space-y-2">
+                                <p className="text-badge font-semibold uppercase tracking-wide text-ink-tertiary">
+                                  Needs attention
+                                </p>
+                                <List label="Gateway issues">
+                                  {visibleIssues.map((gateway) => (
+                                    <ListItem key={gateway.id}>
+                                      <span className="flex items-center justify-between gap-2">
+                                        <span className="truncate font-mono text-mono text-ink-primary">
+                                          {gateway.name}
+                                        </span>
+                                        <Badge tone={gateway.tone}>{gateway.label}</Badge>
                                       </span>
-                                      <Badge tone={gateway.tone}>{gateway.label}</Badge>
-                                    </span>
-                                  </ListItem>
-                                ))}
-                              </List>
+                                    </ListItem>
+                                  ))}
+                                </List>
+                                {issues.length > visibleIssues.length && (
+                                  <p className="text-cell text-ink-tertiary">
+                                    +{issues.length - visibleIssues.length} more gateway
+                                    {issues.length - visibleIssues.length === 1 ? "" : "s"} need attention
+                                  </p>
+                                )}
+                              </div>
                             ) : (
                               <p className="text-cell text-ink-secondary">No gateway health issues reported.</p>
                             )}

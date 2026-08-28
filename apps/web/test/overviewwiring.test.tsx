@@ -169,11 +169,29 @@ describe("the gateway health list uses the ONE health interpreter", () => {
   it("renders the badge policyHealthBadge produces, not a second vocabulary", async () => {
     show();
     const list = await waitFor(() =>
-      screen.getByRole("list", { name: "Gateway health" }),
+      screen.getByRole("list", { name: "Gateway issues" }),
     );
     // `silent_desync` -> "silent desync" comes from lib/healthview.ts. If this screen grew its own mapping,
     // the two would drift and BOTH would still render — which is why there is exactly one interpreter.
     expect(within(list).getByText("silent desync")).toBeTruthy();
+  });
+
+  it("summarizes total, healthy, unhealthy, and revoked gateways in a named figure", async () => {
+    show();
+    const summary = await waitFor(() =>
+      screen.getByRole("figure", { name: "Gateway health summary" }),
+    );
+    expect(within(summary).getByText("gateways")).toBeTruthy();
+    expect(within(summary).getByText("Healthy")).toBeTruthy();
+    expect(within(summary).getByText("Unhealthy")).toBeTruthy();
+    expect(within(summary).getByText("Revoked")).toBeTruthy();
+    const healthy = within(summary).getByText("Healthy").closest("li");
+    const unhealthy = within(summary).getByText("Unhealthy").closest("li");
+    const revoked = within(summary).getByText("Revoked").closest("li");
+    expect(healthy && within(healthy).getByText("0")).toBeTruthy();
+    expect(unhealthy && within(unhealthy).getByText("1")).toBeTruthy();
+    expect(revoked && within(revoked).getByText("0")).toBeTruthy();
+    expect(within(summary).getAllByText("1")).toHaveLength(2);
   });
 
   it("a failed /nodes says unavailable — never an empty 'all healthy' list", async () => {
@@ -183,7 +201,7 @@ describe("the gateway health list uses the ONE health interpreter", () => {
     await waitFor(() =>
       expect(screen.getByText("Gateway health is unavailable.")).toBeTruthy(),
     );
-    expect(screen.queryByRole("list", { name: "Gateway health" })).toBeNull();
+    expect(screen.queryByRole("figure", { name: "Gateway health summary" })).toBeNull();
   });
 });
 
