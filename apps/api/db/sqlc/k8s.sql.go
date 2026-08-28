@@ -8,10 +8,100 @@ package sqlc
 import (
 	"context"
 	"net/netip"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const addK8sConnectorPoolMemberForConfig = `-- name: AddK8sConnectorPoolMemberForConfig :one
+INSERT INTO k8s_connector_pool_members (pool_id, org_id, site_id, node_id, admin_priority)
+SELECT p.id, p.org_id, p.site_id, n.id, $1
+FROM k8s_connector_pools p
+JOIN nodes n
+  ON n.id = $2
+ AND n.org_id = p.org_id
+ AND n.site_id = p.site_id
+WHERE p.id = $3
+  AND p.org_id = $4
+  AND p.site_id = $5
+RETURNING pool_id, org_id, site_id, node_id, admin_priority, created_at, updated_at
+`
+
+type AddK8sConnectorPoolMemberForConfigParams struct {
+	AdminPriority int32     `json:"admin_priority"`
+	NodeID        uuid.UUID `json:"node_id"`
+	PoolID        uuid.UUID `json:"pool_id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	SiteID        uuid.UUID `json:"site_id"`
+}
+
+func (q *Queries) AddK8sConnectorPoolMemberForConfig(ctx context.Context, arg AddK8sConnectorPoolMemberForConfigParams) (K8sConnectorPoolMember, error) {
+	row := q.db.QueryRow(ctx, addK8sConnectorPoolMemberForConfig,
+		arg.AdminPriority,
+		arg.NodeID,
+		arg.PoolID,
+		arg.OrgID,
+		arg.SiteID,
+	)
+	var i K8sConnectorPoolMember
+	err := row.Scan(
+		&i.PoolID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.NodeID,
+		&i.AdminPriority,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const bindK8sClusterConnectorPoolFromLegacyForConfig = `-- name: BindK8sClusterConnectorPoolFromLegacyForConfig :execrows
+UPDATE k8s_clusters c
+SET connector_node_id = NULL,
+    connector_pool_id = $1
+WHERE c.org_id = $2
+  AND c.site_id = $3
+  AND c.id = $4
+  AND c.connector_pool_id IS NULL
+  AND c.connector_node_id = $5
+  AND EXISTS (
+      SELECT 1
+      FROM k8s_connector_pools p
+      WHERE p.id = $1
+        AND p.org_id = c.org_id
+        AND p.site_id = c.site_id
+        AND p.cluster_id = c.id
+        AND p.preferred_node_id = c.connector_node_id
+        AND p.active_node_id = c.connector_node_id
+  )
+`
+
+type BindK8sClusterConnectorPoolFromLegacyForConfigParams struct {
+	ConnectorPoolID         pgtype.UUID `json:"connector_pool_id"`
+	OrgID                   uuid.UUID   `json:"org_id"`
+	SiteID                  uuid.UUID   `json:"site_id"`
+	ClusterID               uuid.UUID   `json:"cluster_id"`
+	ExpectedConnectorNodeID pgtype.UUID `json:"expected_connector_node_id"`
+}
+
+// The bind is the one-way compatibility handoff inside the same transaction:
+// legacy connector_node_id becomes NULL only after a matching exact pool was
+// created with that connector as its unchanged active and preferred member.
+func (q *Queries) BindK8sClusterConnectorPoolFromLegacyForConfig(ctx context.Context, arg BindK8sClusterConnectorPoolFromLegacyForConfigParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bindK8sClusterConnectorPoolFromLegacyForConfig,
+		arg.ConnectorPoolID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.ExpectedConnectorNodeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
 
 const countAgentPolicyTemplateK8sServiceReferences = `-- name: CountAgentPolicyTemplateK8sServiceReferences :one
 SELECT count(DISTINCT template_version_id)
@@ -62,7 +152,6 @@ func (q *Queries) CountClusterCascade(ctx context.Context, arg CountClusterCasca
 }
 
 const createK8sCluster = `-- name: CreateK8sCluster :one
-
 INSERT INTO k8s_clusters (org_id, site_id, connector_node_id, name, vip_range, service_cidr, dns_zone, dns_vip, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
@@ -80,7 +169,6 @@ type CreateK8sClusterParams struct {
 	ManagedByMachine pgtype.UUID  `json:"managed_by_machine"`
 }
 
-// S10.3: Kubernetes cluster + exposed-Service queries. Org-scoped (tenant isolation).
 func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterParams) (K8sCluster, error) {
 	row := q.db.QueryRow(ctx, createK8sCluster,
 		arg.OrgID,
@@ -108,6 +196,125 @@ func (q *Queries) CreateK8sCluster(ctx context.Context, arg CreateK8sClusterPara
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
 		&i.ConnectorPoolID,
+	)
+	return i, err
+}
+
+const createK8sConnectorPoolForConfig = `-- name: CreateK8sConnectorPoolForConfig :one
+WITH pool AS (
+    INSERT INTO k8s_connector_pools (org_id, site_id, cluster_id, preferred_node_id, active_node_id)
+    SELECT c.org_id, c.site_id, c.id, n.id, n.id
+    FROM k8s_clusters c
+    JOIN nodes n
+      ON n.id = $1
+     AND n.org_id = c.org_id
+     AND n.site_id = c.site_id
+    WHERE c.org_id = $2
+      AND c.site_id = $3
+      AND c.id = $4
+      AND c.connector_pool_id IS NULL
+      AND c.connector_node_id = n.id
+    RETURNING id, org_id, site_id, cluster_id, preferred_node_id, active_node_id, generation, created_at, updated_at
+), members AS (
+    INSERT INTO k8s_connector_pool_members (pool_id, org_id, site_id, node_id)
+    SELECT p.id, p.org_id, p.site_id, p.active_node_id
+    FROM pool p
+    RETURNING pool_id
+)
+SELECT p.id, p.org_id, p.site_id, p.cluster_id, p.preferred_node_id, p.active_node_id, p.generation, p.created_at, p.updated_at FROM pool p
+`
+
+type CreateK8sConnectorPoolForConfigParams struct {
+	InitialConnectorNodeID uuid.UUID `json:"initial_connector_node_id"`
+	OrgID                  uuid.UUID `json:"org_id"`
+	SiteID                 uuid.UUID `json:"site_id"`
+	ClusterID              uuid.UUID `json:"cluster_id"`
+}
+
+type CreateK8sConnectorPoolForConfigRow struct {
+	ID              uuid.UUID `json:"id"`
+	OrgID           uuid.UUID `json:"org_id"`
+	SiteID          uuid.UUID `json:"site_id"`
+	ClusterID       uuid.UUID `json:"cluster_id"`
+	PreferredNodeID uuid.UUID `json:"preferred_node_id"`
+	ActiveNodeID    uuid.UUID `json:"active_node_id"`
+	Generation      int64     `json:"generation"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// A configuration may create only from the legacy single-selected-connector
+// mode. The initial pool keeps that exact connector as both preferred and
+// active; it neither performs a promotion nor changes generation.
+func (q *Queries) CreateK8sConnectorPoolForConfig(ctx context.Context, arg CreateK8sConnectorPoolForConfigParams) (CreateK8sConnectorPoolForConfigRow, error) {
+	row := q.db.QueryRow(ctx, createK8sConnectorPoolForConfig,
+		arg.InitialConnectorNodeID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+	)
+	var i CreateK8sConnectorPoolForConfigRow
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PreferredNodeID,
+		&i.ActiveNodeID,
+		&i.Generation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createK8sConnectorPoolHealthState = `-- name: CreateK8sConnectorPoolHealthState :one
+INSERT INTO k8s_connector_pool_health_states (
+    org_id, site_id, cluster_id, pool_id, observed_active_node_id, observed_generation
+)
+SELECT p.org_id, p.site_id, p.cluster_id, p.id, p.active_node_id, p.generation
+FROM k8s_connector_pools p
+WHERE p.org_id = $1
+  AND p.site_id = $2
+  AND p.cluster_id = $3
+  AND p.id = $4
+ON CONFLICT (pool_id) DO NOTHING
+RETURNING id, org_id, site_id, cluster_id, pool_id, membership_epoch, observed_active_node_id, observed_generation, stale_ticks, preferred_fresh_ticks, last_transition, last_transition_from_node_id, last_transition_to_node_id, last_observation_key, last_observation_at, created_at, updated_at
+`
+
+type CreateK8sConnectorPoolHealthStateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+	PoolID    uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) CreateK8sConnectorPoolHealthState(ctx context.Context, arg CreateK8sConnectorPoolHealthStateParams) (K8sConnectorPoolHealthState, error) {
+	row := q.db.QueryRow(ctx, createK8sConnectorPoolHealthState,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	var i K8sConnectorPoolHealthState
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PoolID,
+		&i.MembershipEpoch,
+		&i.ObservedActiveNodeID,
+		&i.ObservedGeneration,
+		&i.StaleTicks,
+		&i.PreferredFreshTicks,
+		&i.LastTransition,
+		&i.LastTransitionFromNodeID,
+		&i.LastTransitionToNodeID,
+		&i.LastObservationKey,
+		&i.LastObservationAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -176,6 +383,38 @@ func (q *Queries) DeleteK8sCluster(ctx context.Context, arg DeleteK8sClusterPara
 	return err
 }
 
+const deleteK8sConnectorPoolMemberForConfig = `-- name: DeleteK8sConnectorPoolMemberForConfig :execrows
+DELETE FROM k8s_connector_pool_members m
+USING k8s_connector_pools p
+WHERE m.pool_id = p.id
+  AND m.org_id = p.org_id
+  AND m.site_id = p.site_id
+  AND m.pool_id = $1
+  AND m.org_id = $2
+  AND m.site_id = $3
+  AND m.node_id = $4
+`
+
+type DeleteK8sConnectorPoolMemberForConfigParams struct {
+	PoolID uuid.UUID `json:"pool_id"`
+	OrgID  uuid.UUID `json:"org_id"`
+	SiteID uuid.UUID `json:"site_id"`
+	NodeID uuid.UUID `json:"node_id"`
+}
+
+func (q *Queries) DeleteK8sConnectorPoolMemberForConfig(ctx context.Context, arg DeleteK8sConnectorPoolMemberForConfigParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteK8sConnectorPoolMemberForConfig,
+		arg.PoolID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.NodeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getK8sCluster = `-- name: GetK8sCluster :one
 SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id FROM k8s_clusters WHERE org_id = $1 AND id = $2
 `
@@ -202,6 +441,246 @@ func (q *Queries) GetK8sCluster(ctx context.Context, arg GetK8sClusterParams) (K
 		&i.ManagedByMachine,
 		&i.ConnectorNodeID,
 		&i.ConnectorPoolID,
+	)
+	return i, err
+}
+
+const getK8sClusterForConnectorPoolConfigForUpdate = `-- name: GetK8sClusterForConnectorPoolConfigForUpdate :one
+
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
+FROM k8s_clusters
+WHERE org_id = $1
+  AND site_id = $2
+  AND id = $3
+FOR UPDATE
+`
+
+type GetK8sClusterForConnectorPoolConfigForUpdateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+// S10.3: Kubernetes cluster + exposed-Service queries. Org-scoped (tenant isolation).
+// Configuration serializes on the exact cluster before it looks up or creates
+// its one cluster-owned pool. Site scope is intentional: a configuration
+// caller must prove the full org/site/cluster relationship at the mutation
+// boundary, rather than treating a globally unique cluster ID as authority.
+func (q *Queries) GetK8sClusterForConnectorPoolConfigForUpdate(ctx context.Context, arg GetK8sClusterForConnectorPoolConfigForUpdateParams) (K8sCluster, error) {
+	row := q.db.QueryRow(ctx, getK8sClusterForConnectorPoolConfigForUpdate, arg.OrgID, arg.SiteID, arg.ClusterID)
+	var i K8sCluster
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.Name,
+		&i.VipRange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ServiceCidr,
+		&i.DnsZone,
+		&i.DnsVip,
+		&i.ManagedByMachine,
+		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
+	)
+	return i, err
+}
+
+const getK8sClusterForConnectorSetForUpdate = `-- name: GetK8sClusterForConnectorSetForUpdate :one
+SELECT id, org_id, site_id, name, vip_range, created_at, updated_at, service_cidr, dns_zone, dns_vip, managed_by_machine, connector_node_id, connector_pool_id
+FROM k8s_clusters
+WHERE org_id = $1
+  AND id = $2
+FOR UPDATE
+`
+
+type GetK8sClusterForConnectorSetForUpdateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+// The legacy setter and pool configuration take the same cluster lock. Once a
+// cluster enters pool mode, the direct connector setter must return a typed
+// conflict rather than falling through to the database mode constraint.
+func (q *Queries) GetK8sClusterForConnectorSetForUpdate(ctx context.Context, arg GetK8sClusterForConnectorSetForUpdateParams) (K8sCluster, error) {
+	row := q.db.QueryRow(ctx, getK8sClusterForConnectorSetForUpdate, arg.OrgID, arg.ClusterID)
+	var i K8sCluster
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.Name,
+		&i.VipRange,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ServiceCidr,
+		&i.DnsZone,
+		&i.DnsVip,
+		&i.ManagedByMachine,
+		&i.ConnectorNodeID,
+		&i.ConnectorPoolID,
+	)
+	return i, err
+}
+
+const getK8sConnectorPoolForClusterForConfig = `-- name: GetK8sConnectorPoolForClusterForConfig :one
+SELECT p.id, p.org_id, p.site_id, p.cluster_id, p.preferred_node_id, p.active_node_id, p.generation, p.created_at, p.updated_at
+FROM k8s_connector_pools p
+JOIN k8s_clusters c
+  ON c.id = p.cluster_id
+ AND c.org_id = p.org_id
+ AND c.site_id = p.site_id
+ AND c.connector_pool_id = p.id
+WHERE p.org_id = $1
+  AND p.site_id = $2
+  AND p.cluster_id = $3
+`
+
+type GetK8sConnectorPoolForClusterForConfigParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+func (q *Queries) GetK8sConnectorPoolForClusterForConfig(ctx context.Context, arg GetK8sConnectorPoolForClusterForConfigParams) (K8sConnectorPool, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorPoolForClusterForConfig, arg.OrgID, arg.SiteID, arg.ClusterID)
+	var i K8sConnectorPool
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PreferredNodeID,
+		&i.ActiveNodeID,
+		&i.Generation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getK8sConnectorPoolForClusterForConfigForUpdate = `-- name: GetK8sConnectorPoolForClusterForConfigForUpdate :one
+SELECT id, org_id, site_id, cluster_id, preferred_node_id, active_node_id, generation, created_at, updated_at
+FROM k8s_connector_pools
+WHERE org_id = $1
+  AND site_id = $2
+  AND cluster_id = $3
+FOR UPDATE
+`
+
+type GetK8sConnectorPoolForClusterForConfigForUpdateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+func (q *Queries) GetK8sConnectorPoolForClusterForConfigForUpdate(ctx context.Context, arg GetK8sConnectorPoolForClusterForConfigForUpdateParams) (K8sConnectorPool, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorPoolForClusterForConfigForUpdate, arg.OrgID, arg.SiteID, arg.ClusterID)
+	var i K8sConnectorPool
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PreferredNodeID,
+		&i.ActiveNodeID,
+		&i.Generation,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getK8sConnectorPoolHealthState = `-- name: GetK8sConnectorPoolHealthState :one
+SELECT id, org_id, site_id, cluster_id, pool_id, membership_epoch, observed_active_node_id, observed_generation, stale_ticks, preferred_fresh_ticks, last_transition, last_transition_from_node_id, last_transition_to_node_id, last_observation_key, last_observation_at, created_at, updated_at
+FROM k8s_connector_pool_health_states
+WHERE org_id = $1
+  AND site_id = $2
+  AND cluster_id = $3
+  AND pool_id = $4
+`
+
+type GetK8sConnectorPoolHealthStateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+	PoolID    uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) GetK8sConnectorPoolHealthState(ctx context.Context, arg GetK8sConnectorPoolHealthStateParams) (K8sConnectorPoolHealthState, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorPoolHealthState,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	var i K8sConnectorPoolHealthState
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PoolID,
+		&i.MembershipEpoch,
+		&i.ObservedActiveNodeID,
+		&i.ObservedGeneration,
+		&i.StaleTicks,
+		&i.PreferredFreshTicks,
+		&i.LastTransition,
+		&i.LastTransitionFromNodeID,
+		&i.LastTransitionToNodeID,
+		&i.LastObservationKey,
+		&i.LastObservationAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getK8sConnectorPoolHealthStateForUpdate = `-- name: GetK8sConnectorPoolHealthStateForUpdate :one
+SELECT id, org_id, site_id, cluster_id, pool_id, membership_epoch, observed_active_node_id, observed_generation, stale_ticks, preferred_fresh_ticks, last_transition, last_transition_from_node_id, last_transition_to_node_id, last_observation_key, last_observation_at, created_at, updated_at
+FROM k8s_connector_pool_health_states
+WHERE org_id = $1
+  AND site_id = $2
+  AND cluster_id = $3
+  AND pool_id = $4
+FOR UPDATE
+`
+
+type GetK8sConnectorPoolHealthStateForUpdateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	SiteID    uuid.UUID `json:"site_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+	PoolID    uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) GetK8sConnectorPoolHealthStateForUpdate(ctx context.Context, arg GetK8sConnectorPoolHealthStateForUpdateParams) (K8sConnectorPoolHealthState, error) {
+	row := q.db.QueryRow(ctx, getK8sConnectorPoolHealthStateForUpdate,
+		arg.OrgID,
+		arg.SiteID,
+		arg.ClusterID,
+		arg.PoolID,
+	)
+	var i K8sConnectorPoolHealthState
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.ClusterID,
+		&i.PoolID,
+		&i.MembershipEpoch,
+		&i.ObservedActiveNodeID,
+		&i.ObservedGeneration,
+		&i.StaleTicks,
+		&i.PreferredFreshTicks,
+		&i.LastTransition,
+		&i.LastTransitionFromNodeID,
+		&i.LastTransitionToNodeID,
+		&i.LastObservationKey,
+		&i.LastObservationAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -239,35 +718,59 @@ func (q *Queries) GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K
 
 const listActiveK8sServicesForOrg = `-- name: ListActiveK8sServicesForOrg :many
 SELECT s.id, s.cluster_id, s.name, s.namespace, s.protocol, s.port_low, s.port_high, s.managed_by_machine,
-       host(s.vip) AS vip, c.site_id, c.connector_node_id, host(c.vip_range) AS vip_range, c.service_cidr::text AS service_cidr,
+       host(s.vip) AS vip, c.site_id, c.connector_pool_id,
+       c.connector_node_id AS legacy_connector_node_id,
+       p.active_node_id AS pool_active_node_id,
+       COALESCE(p.generation > 0 AND connector.id IS NOT NULL, false)::boolean AS pool_connector_eligible,
+       p.generation AS connector_generation,
+       host(c.vip_range) AS vip_range, c.service_cidr::text AS service_cidr,
        c.name AS cluster_name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
 FROM k8s_services s
 JOIN k8s_clusters c ON c.id = s.cluster_id
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+LEFT JOIN nodes connector
+  ON connector.id = p.active_node_id
+ AND connector.org_id = p.org_id
+ AND connector.site_id = p.site_id
+ AND connector.status = 'active'
+ AND connector.revoked_at IS NULL
+ AND connector.wg_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+ AND btrim(connector.endpoint) <> ''
 WHERE s.org_id = $1 AND s.deleted_at IS NULL
 ORDER BY s.id
 `
 
 type ListActiveK8sServicesForOrgRow struct {
-	ID               uuid.UUID   `json:"id"`
-	ClusterID        uuid.UUID   `json:"cluster_id"`
-	Name             string      `json:"name"`
-	Namespace        string      `json:"namespace"`
-	Protocol         string      `json:"protocol"`
-	PortLow          *int32      `json:"port_low"`
-	PortHigh         *int32      `json:"port_high"`
-	ManagedByMachine pgtype.UUID `json:"managed_by_machine"`
-	Vip              string      `json:"vip"`
-	SiteID           uuid.UUID   `json:"site_id"`
-	ConnectorNodeID  pgtype.UUID `json:"connector_node_id"`
-	VipRange         string      `json:"vip_range"`
-	ServiceCidr      string      `json:"service_cidr"`
-	ClusterName      string      `json:"cluster_name"`
-	DnsZone          string      `json:"dns_zone"`
-	DnsVip           string      `json:"dns_vip"`
+	ID                    uuid.UUID   `json:"id"`
+	ClusterID             uuid.UUID   `json:"cluster_id"`
+	Name                  string      `json:"name"`
+	Namespace             string      `json:"namespace"`
+	Protocol              string      `json:"protocol"`
+	PortLow               *int32      `json:"port_low"`
+	PortHigh              *int32      `json:"port_high"`
+	ManagedByMachine      pgtype.UUID `json:"managed_by_machine"`
+	Vip                   string      `json:"vip"`
+	SiteID                uuid.UUID   `json:"site_id"`
+	ConnectorPoolID       pgtype.UUID `json:"connector_pool_id"`
+	LegacyConnectorNodeID pgtype.UUID `json:"legacy_connector_node_id"`
+	PoolActiveNodeID      pgtype.UUID `json:"pool_active_node_id"`
+	PoolConnectorEligible bool        `json:"pool_connector_eligible"`
+	ConnectorGeneration   *int64      `json:"connector_generation"`
+	VipRange              string      `json:"vip_range"`
+	ServiceCidr           string      `json:"service_cidr"`
+	ClusterName           string      `json:"cluster_name"`
+	DnsZone               string      `json:"dns_zone"`
+	DnsVip                string      `json:"dns_vip"`
 }
 
 // ListActiveK8sServicesForOrg is the compiler's resolution source: id -> current VIP (+ proto/ports), LIVE
 // only. A soft-deleted Service is absent, so a grant referencing it compiles to nothing (honest, not silent).
+// Pool mode keeps legacy and active-pool columns separate. Callers must reject
+// a pool-bound row without its exact active member and positive generation.
 func (q *Queries) ListActiveK8sServicesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActiveK8sServicesForOrgRow, error) {
 	rows, err := q.db.Query(ctx, listActiveK8sServicesForOrg, orgID)
 	if err != nil {
@@ -288,7 +791,11 @@ func (q *Queries) ListActiveK8sServicesForOrg(ctx context.Context, orgID uuid.UU
 			&i.ManagedByMachine,
 			&i.Vip,
 			&i.SiteID,
-			&i.ConnectorNodeID,
+			&i.ConnectorPoolID,
+			&i.LegacyConnectorNodeID,
+			&i.PoolActiveNodeID,
+			&i.PoolConnectorEligible,
+			&i.ConnectorGeneration,
 			&i.VipRange,
 			&i.ServiceCidr,
 			&i.ClusterName,
@@ -377,11 +884,164 @@ func (q *Queries) ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([
 	return items, nil
 }
 
+const listK8sConnectorPoolMembersForConfig = `-- name: ListK8sConnectorPoolMembersForConfig :many
+SELECT m.pool_id, m.org_id, m.site_id, m.node_id, m.admin_priority, m.created_at, m.updated_at
+FROM k8s_connector_pool_members m
+JOIN k8s_connector_pools p
+  ON p.id = m.pool_id
+ AND p.org_id = m.org_id
+ AND p.site_id = m.site_id
+WHERE m.org_id = $1
+  AND m.site_id = $2
+  AND m.pool_id = $3
+ORDER BY m.admin_priority DESC, m.node_id
+`
+
+type ListK8sConnectorPoolMembersForConfigParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	SiteID uuid.UUID `json:"site_id"`
+	PoolID uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) ListK8sConnectorPoolMembersForConfig(ctx context.Context, arg ListK8sConnectorPoolMembersForConfigParams) ([]K8sConnectorPoolMember, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolMembersForConfig, arg.OrgID, arg.SiteID, arg.PoolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []K8sConnectorPoolMember{}
+	for rows.Next() {
+		var i K8sConnectorPoolMember
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.NodeID,
+			&i.AdminPriority,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorPoolMembersForConfigForUpdate = `-- name: ListK8sConnectorPoolMembersForConfigForUpdate :many
+SELECT m.pool_id, m.org_id, m.site_id, m.node_id, m.admin_priority, m.created_at, m.updated_at
+FROM k8s_connector_pool_members m
+JOIN k8s_connector_pools p
+  ON p.id = m.pool_id
+ AND p.org_id = m.org_id
+ AND p.site_id = m.site_id
+WHERE m.org_id = $1
+  AND m.site_id = $2
+  AND m.pool_id = $3
+ORDER BY m.node_id
+FOR UPDATE OF m
+`
+
+type ListK8sConnectorPoolMembersForConfigForUpdateParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	SiteID uuid.UUID `json:"site_id"`
+	PoolID uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) ListK8sConnectorPoolMembersForConfigForUpdate(ctx context.Context, arg ListK8sConnectorPoolMembersForConfigForUpdateParams) ([]K8sConnectorPoolMember, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolMembersForConfigForUpdate, arg.OrgID, arg.SiteID, arg.PoolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []K8sConnectorPoolMember{}
+	for rows.Next() {
+		var i K8sConnectorPoolMember
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.NodeID,
+			&i.AdminPriority,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sConnectorPoolMembersForOrg = `-- name: ListK8sConnectorPoolMembersForOrg :many
+SELECT m.pool_id, m.org_id, m.site_id, m.node_id, m.admin_priority, m.created_at, m.updated_at
+FROM k8s_connector_pool_members m
+JOIN k8s_connector_pools p ON p.id = m.pool_id AND p.org_id = m.org_id
+WHERE m.org_id = $1 AND m.pool_id = $2
+ORDER BY m.admin_priority DESC, m.node_id
+`
+
+type ListK8sConnectorPoolMembersForOrgParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	PoolID uuid.UUID `json:"pool_id"`
+}
+
+func (q *Queries) ListK8sConnectorPoolMembersForOrg(ctx context.Context, arg ListK8sConnectorPoolMembersForOrgParams) ([]K8sConnectorPoolMember, error) {
+	rows, err := q.db.Query(ctx, listK8sConnectorPoolMembersForOrg, arg.OrgID, arg.PoolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []K8sConnectorPoolMember{}
+	for rows.Next() {
+		var i K8sConnectorPoolMember
+		if err := rows.Scan(
+			&i.PoolID,
+			&i.OrgID,
+			&i.SiteID,
+			&i.NodeID,
+			&i.AdminPriority,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listK8sServedZonesForOrg = `-- name: ListK8sServedZonesForOrg :many
 SELECT DISTINCT c.name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
 FROM k8s_clusters c
 JOIN k8s_services s ON s.cluster_id = c.id AND s.deleted_at IS NULL
-WHERE c.org_id = $1 AND c.connector_node_id IS NOT NULL
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+LEFT JOIN nodes connector
+  ON connector.id = p.active_node_id
+ AND connector.org_id = p.org_id
+ AND connector.site_id = p.site_id
+ AND connector.status = 'active'
+ AND connector.revoked_at IS NULL
+ AND connector.wg_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+ AND btrim(connector.endpoint) <> ''
+WHERE c.org_id = $1
+  AND (
+    (c.connector_pool_id IS NULL AND c.connector_node_id IS NOT NULL)
+    OR (c.connector_pool_id IS NOT NULL AND connector.id IS NOT NULL AND p.generation > 0)
+  )
 `
 
 type ListK8sServedZonesForOrgRow struct {
@@ -391,8 +1051,9 @@ type ListK8sServedZonesForOrgRow struct {
 }
 
 // ListK8sServedZonesForOrg is the zones a connector ACTUALLY answers: a cluster with >=1 LIVE exposed Service
-// AND an explicit connector. An unassigned cluster must not hand clients a resolver address that intentionally
-// has no answering node.
+// AND a resolved connector. A pool-bound cluster resolves only through its
+// exact org/site/cluster-owned pool and a positive generation; it never falls
+// back to the legacy connector column.
 // This is the SAME live-service set the agent's K8sDNSZones is built from (loadSiteTopology →
 // ListActiveK8sServicesForOrg), so the client resolver push (routedranges) and the gateway's own answer set
 // agree BY CONSTRUCTION (L2): a zone the gateway would REFUSE for (no Service yet) is never handed to a client
@@ -478,7 +1139,7 @@ func (q *Queries) ListVIPRangesForOrg(ctx context.Context, orgID uuid.UUID) ([]s
 const setK8sClusterConnector = `-- name: SetK8sClusterConnector :execrows
 UPDATE k8s_clusters
 SET connector_node_id = $3
-WHERE org_id = $1 AND id = $2
+WHERE org_id = $1 AND id = $2 AND connector_pool_id IS NULL
 `
 
 type SetK8sClusterConnectorParams struct {
@@ -493,6 +1154,50 @@ func (q *Queries) SetK8sClusterConnector(ctx context.Context, arg SetK8sClusterC
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setK8sConnectorPoolMemberPriorityForConfig = `-- name: SetK8sConnectorPoolMemberPriorityForConfig :one
+UPDATE k8s_connector_pool_members m
+SET admin_priority = $1
+FROM k8s_connector_pools p
+WHERE m.pool_id = p.id
+  AND m.org_id = p.org_id
+  AND m.site_id = p.site_id
+  AND m.pool_id = $2
+  AND m.org_id = $3
+  AND m.site_id = $4
+  AND m.node_id = $5
+  AND m.admin_priority IS DISTINCT FROM $1
+RETURNING m.pool_id, m.org_id, m.site_id, m.node_id, m.admin_priority, m.created_at, m.updated_at
+`
+
+type SetK8sConnectorPoolMemberPriorityForConfigParams struct {
+	AdminPriority int32     `json:"admin_priority"`
+	PoolID        uuid.UUID `json:"pool_id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	SiteID        uuid.UUID `json:"site_id"`
+	NodeID        uuid.UUID `json:"node_id"`
+}
+
+func (q *Queries) SetK8sConnectorPoolMemberPriorityForConfig(ctx context.Context, arg SetK8sConnectorPoolMemberPriorityForConfigParams) (K8sConnectorPoolMember, error) {
+	row := q.db.QueryRow(ctx, setK8sConnectorPoolMemberPriorityForConfig,
+		arg.AdminPriority,
+		arg.PoolID,
+		arg.OrgID,
+		arg.SiteID,
+		arg.NodeID,
+	)
+	var i K8sConnectorPoolMember
+	err := row.Scan(
+		&i.PoolID,
+		&i.OrgID,
+		&i.SiteID,
+		&i.NodeID,
+		&i.AdminPriority,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const softDeleteK8sService = `-- name: SoftDeleteK8sService :exec

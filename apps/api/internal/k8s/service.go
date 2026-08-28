@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -34,8 +35,9 @@ import (
 // Both feed the exposed-Service hostname <service>.<namespace>.svc.<cluster>.<zone>, so they are validated
 // at RegisterCluster with typed teaching errors — a bad name never reaches the wire (S10.3 (B2)).
 var (
-	dnsLabelRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
-	dnsNameRE  = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+	dnsLabelRE    = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	dnsNameRE     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+	wgPublicKeyRE = regexp.MustCompile(`^[A-Za-z0-9+/]{43}=$`)
 )
 
 func validDNSLabel(s string) bool { return len(s) >= 1 && len(s) <= 63 && dnsLabelRE.MatchString(s) }
@@ -45,6 +47,9 @@ type Service struct {
 	pool   *pgxpool.Pool
 	q      *sqlc.Queries
 	notify Notifier // nil => no push (tests / provider-only); wired in main.go to the nodepush hub
+	// connectorPoolConfigurationAfterMutationHook is an unexported test-only
+	// rollback seam for the transactional pool configuration service.
+	connectorPoolConfigurationAfterMutationHook func() error
 }
 
 // Notifier signals gateways to re-fetch desired state (the <5s push path, S7.2). The nodepush hub satisfies
@@ -94,10 +99,13 @@ func (s *Service) withTx(ctx context.Context, fn func(*sqlc.Queries) error) erro
 // authctx.Principal.AuditActor().
 func (s *Service) audit(ctx context.Context, q *sqlc.Queries, orgID, actorUserID uuid.UUID, actorSystem, cause string, targetType, targetID, action string, meta map[string]any) error {
 	tt, ti := targetType, targetID
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	if cause != "" {
+		meta["cause"] = cause
+	}
 	if actorSystem != "" {
-		if cause != "" {
-			meta["cause"] = cause
-		}
 		b, _ := json.Marshal(meta)
 		as := actorSystem
 		_, err := q.InsertSystemAuditLog(ctx, sqlc.InsertSystemAuditLogParams{
@@ -243,18 +251,25 @@ func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorN
 // synthetic service route dead-while-green.
 func (s *Service) SetClusterConnector(ctx context.Context, orgID, clusterID, connectorNodeID, actorUserID uuid.UUID, actorSystem, cause string) error {
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
-		cluster, err := q.GetK8sCluster(ctx, sqlc.GetK8sClusterParams{OrgID: orgID, ID: clusterID})
+		cluster, err := q.GetK8sClusterForConnectorSetForUpdate(ctx, sqlc.GetK8sClusterForConnectorSetForUpdateParams{OrgID: orgID, ClusterID: clusterID})
 		if err != nil {
 			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
+		}
+		if cluster.ConnectorPoolID.Valid {
+			return apierr.Conflict("connector_pool_configured", "this cluster uses a connector pool; update its pool membership instead of selecting one direct connector")
 		}
 		if err := validateConnector(ctx, q, orgID, cluster.SiteID, connectorNodeID); err != nil {
 			return err
 		}
-		if _, err := q.SetK8sClusterConnector(ctx, sqlc.SetK8sClusterConnectorParams{OrgID: orgID, ID: clusterID, ConnectorNodeID: pgtype.UUID{Bytes: connectorNodeID, Valid: true}}); err != nil {
+		changed, err := q.SetK8sClusterConnector(ctx, sqlc.SetK8sClusterConnectorParams{OrgID: orgID, ID: clusterID, ConnectorNodeID: pgtype.UUID{Bytes: connectorNodeID, Valid: true}})
+		if err != nil {
 			if pgerr.IsUnique(err) {
 				return apierr.Conflict("connector_already_assigned", "that gateway already fronts another Kubernetes cluster")
 			}
 			return err
+		}
+		if changed != 1 {
+			return apierr.Conflict("connector_mode_changed", "the cluster connector mode changed; reload and retry")
 		}
 		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_cluster", clusterID.String(), "k8s.cluster_connector_set", map[string]any{"connector_node_id": connectorNodeID.String()})
 	})
@@ -272,11 +287,31 @@ func validateConnector(ctx context.Context, q *sqlc.Queries, orgID, siteID, conn
 	if err != nil {
 		return apierr.NotFound("connector_not_found", "no such gateway in this organization")
 	}
+	return validateConnectorNode(node, siteID)
+}
+
+// validateConnectorNode preserves the released legacy single-connector
+// contract: the key and endpoint must be present, but historical non-empty
+// values are not retroactively rejected by the P1 pool hardening.
+func validateConnectorNode(node sqlc.Node, siteID uuid.UUID) error {
 	if node.RevokedAt.Valid || node.Status != "active" || !node.SiteID.Valid || uuid.UUID(node.SiteID.Bytes) != siteID {
 		return apierr.Conflict("connector_not_in_cluster_site", "the connector must be an active gateway already bound to this cluster's site")
 	}
 	if node.WgPublicKey == "" || node.Endpoint == "" {
 		return apierr.Conflict("connector_not_ready", "the connector has not reported a WireGuard public key and endpoint yet")
+	}
+	return nil
+}
+
+// validateConnectorPoolMemberNode is the stricter P1 pool contract. Pool
+// membership is new and can fail closed on the exact peer material consumed by
+// topology without changing the released legacy setter.
+func validateConnectorPoolMemberNode(node sqlc.Node, siteID uuid.UUID) error {
+	if err := validateConnectorNode(node, siteID); err != nil {
+		return err
+	}
+	if !wgPublicKeyRE.MatchString(node.WgPublicKey) || strings.TrimSpace(node.Endpoint) == "" {
+		return apierr.Conflict("connector_not_ready", "a connector pool member needs a valid WireGuard public key and non-empty endpoint")
 	}
 	return nil
 }

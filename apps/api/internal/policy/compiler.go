@@ -162,7 +162,15 @@ type ExposedService struct {
 	PortLow         int
 	PortHigh        int
 	SiteID          uuid.UUID // logical site, retained for site-source compatibility
-	ConnectorNodeID uuid.UUID // zero means deliberately unassigned; no connector handoff is inferred
+	ConnectorNodeID uuid.UUID // zero means deliberately unassigned or an unresolved pool
+	// PoolBound distinguishes an explicit pool from a legacy unassigned row.
+	// Generation is CP read provenance only, never distributed fencing.
+	PoolBound           bool
+	ConnectorGeneration int64
+}
+
+func (s ExposedService) handoffReady() bool {
+	return !s.PoolBound || (s.ConnectorNodeID != uuid.Nil && s.ConnectorGeneration > 0)
 }
 
 // Membership is one (group, user) pair.
@@ -275,7 +283,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		nodeSet[sn.NodeID] = true
 	}
 	for _, svc := range s.ExposedServices {
-		if svc.ConnectorNodeID != uuid.Nil {
+		if svc.handoffReady() && svc.ConnectorNodeID != uuid.Nil {
 			nodeSet[svc.ConnectorNodeID] = true
 		}
 	}
@@ -360,6 +368,9 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	// snapshotted address, so a re-allocated VIP follows the identity and a vanished Service resolves to nothing.
 	serviceByID := make(map[uuid.UUID]ExposedService, len(s.ExposedServices))
 	for _, es := range s.ExposedServices {
+		if !es.handoffReady() {
+			continue // unresolved pool: no client, connector, VIP, or DNS policy widening
+		}
 		serviceByID[es.ID] = es
 	}
 

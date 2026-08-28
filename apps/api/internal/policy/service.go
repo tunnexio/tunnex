@@ -1076,10 +1076,18 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 		return Snapshot{}, err
 	}
 	for _, e := range exposed {
+		connector := e.LegacyConnectorNodeID
+		if e.ConnectorPoolID.Valid {
+			connector = pgtype.UUID{}
+			if e.PoolConnectorEligible {
+				connector = e.PoolActiveNodeID // pool mode never falls back to legacy ownership
+			}
+		}
 		snap.ExposedServices = append(snap.ExposedServices, ExposedService{
 			ID: e.ID, VIP: e.Vip, DNSVIP: e.DnsVip, Protocol: e.Protocol,
 			PortLow: derefI32(e.PortLow), PortHigh: derefI32(e.PortHigh), SiteID: e.SiteID,
-			ConnectorNodeID: fromPgUUID(e.ConnectorNodeID),
+			ConnectorNodeID: fromPgUUID(connector),
+			PoolBound:       e.ConnectorPoolID.Valid, ConnectorGeneration: derefI64(e.ConnectorGeneration),
 		})
 	}
 	for _, m := range members {
@@ -1382,6 +1390,13 @@ func derefI32(p *int32) int {
 		return 0
 	}
 	return int(*p)
+}
+
+func derefI64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 // fqdnResourceFromActiveGeneration is the only adapter from Lane 2's durable

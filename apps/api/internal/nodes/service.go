@@ -1001,6 +1001,23 @@ type k8sConnector struct {
 	vips      []string
 }
 
+// resolveK8sConnectorRead is the single compatibility boundary for service
+// ownership. Pool mode needs the exact joined active member and a positive
+// generation; it never falls back to the legacy column. Generation validates
+// this CP read only and is not distributed fencing.
+func resolveK8sConnectorRead(poolBound bool, legacy, poolActive pgtype.UUID, generation *int64) (uuid.UUID, bool) {
+	if !poolBound {
+		if !legacy.Valid {
+			return uuid.Nil, false
+		}
+		return uuid.UUID(legacy.Bytes), true
+	}
+	if !poolActive.Valid || generation == nil || *generation <= 0 {
+		return uuid.Nil, false
+	}
+	return uuid.UUID(poolActive.Bytes), true
+}
+
 // loadSiteTopology runs the two org-wide site queries once. Full-sweep by construction: an unbound/
 // deleted site drops out of ListSiteGatewaysForOrg / ListSiteSubnetsForOrg, so its peers + routes vanish.
 func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTopology, error) {
@@ -1084,10 +1101,13 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 		return siteTopology{}, kerr
 	}
 	for _, e := range exposed {
-		if !e.ConnectorNodeID.Valid {
-			continue // explicit unassigned state: no connector means no VIP/DNS programming
+		if e.ConnectorPoolID.Valid && !e.PoolConnectorEligible {
+			continue // exact pool owner is ineligible: withdraw topology and DNS together
 		}
-		connectorID := uuid.UUID(e.ConnectorNodeID.Bytes)
+		connectorID, resolved := resolveK8sConnectorRead(e.ConnectorPoolID.Valid, e.LegacyConnectorNodeID, e.PoolActiveNodeID, e.ConnectorGeneration)
+		if !resolved {
+			continue // legacy unassigned or unresolved pool: no VIP/DNS programming
+		}
 		connector, ok := gatewayByID[connectorID]
 		if !ok || !connector.SiteID.Valid || uuid.UUID(connector.SiteID.Bytes) != e.SiteID || connector.WgPublicKey == "" || connector.Endpoint == "" {
 			continue // connector left its site/revoked/unreachable: fail closed, never infer a replacement
