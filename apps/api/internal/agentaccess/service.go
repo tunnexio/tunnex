@@ -98,12 +98,12 @@ func (s *Service) SetEnabled(ctx context.Context, orgID, actor uuid.UUID, enable
 		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	q := sqlc.New(tx)
 	var lockedOrg uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT id FROM organizations WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, orgID).Scan(&lockedOrg); err != nil {
 		return false, classify(err)
 	}
 	if !enabled {
+		q := sqlc.New(tx)
 		n, err := q.CountLiveAgentAccessRequests(ctx, orgID)
 		if err != nil {
 			return false, err
@@ -112,17 +112,21 @@ func (s *Service) SetEnabled(ctx context.Context, orgID, actor uuid.UUID, enable
 			return false, ErrConflict
 		}
 	}
-	org, err := q.SetOrganizationAgentJITAccessEnabled(ctx, sqlc.SetOrganizationAgentJITAccessEnabledParams{ID: orgID, AgentJitAccessEnabled: enabled})
-	if err != nil {
+	var updated bool
+	if err := tx.QueryRow(ctx, `UPDATE organizations
+		SET agent_jit_access_enabled=$2, updated_at=now()
+		WHERE id=$1 AND deleted_at IS NULL
+		RETURNING agent_jit_access_enabled`, orgID, enabled).Scan(&updated); err != nil {
 		return false, classify(err)
 	}
+	q := sqlc.New(tx)
 	if err := writeHumanAudit(ctx, q, orgID, actor, "org.agent_jit_access_enabled", "organization", orgID, map[string]any{"enabled": enabled}); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
 	}
-	return org.AgentJitAccessEnabled, nil
+	return updated, nil
 }
 
 func (s *Service) Create(ctx context.Context, orgID, actor uuid.UUID, in CreateInput) (sqlc.AgentAccessRequest, bool, error) {

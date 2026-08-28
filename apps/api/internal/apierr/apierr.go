@@ -8,6 +8,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
+	"unicode"
 
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -65,8 +67,11 @@ func Write(w http.ResponseWriter, r *http.Request, err error) {
 		// destroyed at this line and the only record is `status:500`. That is exactly how the audit-nil
 		// defect (a NOT NULL violation 500ing every audited DELETE) stayed invisible until it was
 		// reproduced against the DB directly. The request_id ties the log line to the client's response.
+		// All request-derived fields and the wrapped cause are normalized to a bounded,
+		// single-line value before reaching the structured log sink.
+		// codeql[go/log-injection]
 		slog.ErrorContext(r.Context(), "internal_error",
-			"request_id", reqID, "method", r.Method, "path", r.URL.Path, "cause", err)
+			"request_id", safeLogText(reqID), "method", safeLogText(r.Method), "path", safeLogText(r.URL.Path), "cause", safeLogText(err.Error()))
 		apiErr = Internal()
 	}
 
@@ -82,4 +87,19 @@ func Write(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	w.WriteHeader(apiErr.Status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+func safeLogText(value string) string {
+	var out strings.Builder
+	for _, r := range value {
+		if out.Len() >= 2048 {
+			break
+		}
+		if unicode.IsControl(r) {
+			out.WriteByte(' ')
+			continue
+		}
+		out.WriteRune(r)
+	}
+	return out.String()
 }
