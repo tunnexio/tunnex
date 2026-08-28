@@ -96,7 +96,7 @@ describe("S20 Gateway inventory", () => {
     expect(screen.getByDisplayValue("london")).toBeTruthy();
     expect(screen.getByRole("link", { name: "edge-london" }).getAttribute("href")).toBe("/gateways/gw-1");
     expect(screen.queryByText("edge-paris")).toBeNull();
-    fireEvent.change(screen.getByRole("combobox", { name: "Filter gateway health" }), { target: { value: "all" } });
+    fireEvent.click(screen.getByRole("button", { name: /^All / }));
     expect(screen.getByLabelText("location").textContent).toContain("q=london");
     expect(screen.getByLabelText("location").textContent).not.toContain("health=");
   });
@@ -110,7 +110,7 @@ describe("S20 Gateway inventory", () => {
       },
     };
     render(<MemoryRouter><Gateways /></MemoryRouter>);
-    expect(screen.getByText(/Deployment usage: 5 \/ 5 gateways/)).toBeTruthy();
+    expect(screen.getByText(/5 enrolled · 5 allowed/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Enroll gateway" })).toHaveProperty("disabled", true);
   });
 
@@ -171,8 +171,10 @@ describe("S20 Gateway inventory", () => {
     render(<MemoryRouter><Gateways /></MemoryRouter>);
     expect(screen.getByText("awaiting first connection")).toBeTruthy();
     expect(screen.getByText("Never connected")).toBeTruthy();
-    fireEvent.change(screen.getByRole("combobox", { name: "Filter gateway health" }), { target: { value: "healthy" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Healthy / }));
     expect(screen.queryByText("never-connected")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Needs attention / }));
+    expect(screen.getByText("never-connected")).toBeTruthy();
   });
 
   it("renders revoked egress as historical or terminally unreported", () => {

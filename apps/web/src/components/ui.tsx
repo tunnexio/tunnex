@@ -973,6 +973,7 @@ export function DataTable<T>({
   empty,
   failed,
   filterable,
+  variant = "default",
   defaultSortKey,
   pageSize: initialPageSize = 25,
   selectable,
@@ -1017,6 +1018,8 @@ export function DataTable<T>({
    * silently misses everything the page has not rendered.
    */
   filterable?: boolean;
+  /** A flatter inventory treatment for tables already enclosed by a page-level surface. */
+  variant?: "default" | "flat";
   /** Column key to sort by initially. Omit to keep the caller's order, which is often deliberate. */
   defaultSortKey?: string;
   /**
@@ -1307,7 +1310,12 @@ export function DataTable<T>({
           <thead>
             {/* Sticky: on a long roster the header is the only thing telling you what a column means, and
                 scrolling past it turns every cell into an unlabelled string. */}
-            <tr className="sticky top-0 z-10 bg-ink-900 text-[11px] uppercase tracking-wide text-slate-500">
+            <tr
+              className={
+                "sticky top-0 z-10 text-[11px] uppercase tracking-wide text-slate-500 " +
+                (variant === "flat" ? "bg-white/[.025]" : "bg-ink-900")
+              }
+            >
               {showSelect && (
                 <th
                   scope="col"
@@ -1416,7 +1424,11 @@ export function DataTable<T>({
                     {...(rowAttrs?.(r) ?? {})}
                     // Zebra + hover: scanning across a wide row is where the eye loses its line, and this is
                     // presentation only — never the carrier of a state the row needs to announce in words.
-                    className={`border-b border-white/5 hover:bg-white/[0.06] ${i % 2 ? "bg-white/[0.02]" : ""}`}
+                    className={
+                      variant === "flat"
+                        ? "border-b border-white/[.06] hover:bg-white/[.035]"
+                        : `border-b border-white/5 hover:bg-white/[0.06] ${i % 2 ? "bg-white/[0.02]" : ""}`
+                    }
                   >
                     {showSelect && (
                       <td className="w-8 py-1.5 pl-3 pr-2 align-middle">
