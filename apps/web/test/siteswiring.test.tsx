@@ -325,9 +325,12 @@ describe("Sites — URL-backed workspace state", () => {
     expect(screen.getByRole("button", { name: "Unbind gateway" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete site" })).toBeTruthy();
     expect(screen.getByText("Danger zone")).toBeTruthy();
+    expect(screen.getByText("Advanced cloud routing").closest("details")?.hasAttribute("open")).toBe(false);
+    expect(screen.getByText("Advanced Site DNS forwarding").closest("details")?.hasAttribute("open")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Close us-east-dc" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "us-east-dc" })).toBeNull());
     expect(screen.getByTestId("location").textContent).not.toContain("site=");
+    expect(screen.queryByText("Select a Site")).toBeNull();
   });
 });
 

@@ -313,7 +313,10 @@ export default function Sites() {
     }
   }, [cards, selectedSiteId, updateQuery]);
 
-  const selectSite = useCallback((siteId: string | null) => updateQuery({ site: siteId, gateway: null }), [updateQuery]);
+  const selectSite = useCallback(
+    (siteId: string | null) => updateQuery({ site: siteId, gateway: null, dns: null }),
+    [updateQuery],
+  );
 
   const mesh = useMemo(
     () => meshFrom(cards, raw?.nodes ?? [], raw?.hubSet),
@@ -426,7 +429,6 @@ export default function Sites() {
                   <Button variant="ghost" onClick={() => { updateQuery({ q: null, site: null, gateway: null }); setSearchOpen(false); }}>
                     Fit overview
                   </Button>
-                  <span className="text-micro text-ink-faint">Select a Site to inspect it</span>
                 </div>
                 {searchOpen && query.trim() && (
                   <div id="site-search-results" role="listbox" aria-label="Site and Gateway search results" className="mb-3 max-w-xl overflow-hidden rounded-lg border border-line bg-ink-800">
@@ -886,17 +888,7 @@ function SelectedSiteStrip({ card, selectedGatewayId, unboundGateway, onRouteLan
   if (unboundGateway) {
     return <section aria-label="Selected Site" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell"><span className="font-semibold text-ink-heading">{unboundGateway.name}</span><Badge tone="neutral">Unbound Gateway</Badge><span className="text-ink-tertiary">No Site is bound. Its location is not shown on this topology.</span><Button className="ml-auto" variant="ghost" onClick={onRouteLan}>Route a LAN</Button></section>;
   }
-  if (!card) {
-    return (
-      <section
-        aria-label="Selected Site"
-        className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-line bg-ink-800 px-3 py-2 text-cell text-ink-tertiary"
-      >
-        <span className="font-medium text-ink-heading">Select a Site</span>
-        <span>Choose one from the map or inventory to inspect its configuration and actions.</span>
-      </section>
-    );
-  }
+  if (!card) return null;
   const activeGateway = card.gateways.find((gateway) => gateway.id === selectedGatewayId) ?? card.gateways.find((gateway) => gateway.status === "active");
   const state = activeGateway?.health?.label ?? (activeGateway ? "Gateway active" : "No active Gateway");
   const tone = activeGateway?.health?.tone as "ok" | "warn" | "danger" | "neutral" | undefined;
@@ -1721,7 +1713,7 @@ function DNSForwardSection({
     load().catch(() => {});
   }
   return (
-    <details open={open} className="border-t border-line px-4 py-3 text-cell text-ink-tertiary">
+    <details open={open} className="border-t border-line py-3 text-cell text-ink-tertiary">
       <summary className="cursor-pointer font-medium text-ink-body">
         Advanced Site DNS forwarding
       </summary>
