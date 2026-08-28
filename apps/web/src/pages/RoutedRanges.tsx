@@ -23,7 +23,6 @@ import {
   attributeRanges,
   attributionClass,
   attributionLabel,
-  fanOutExceedsTripwire,
   forwardsEmptyCopy,
   mapAddressSpace,
   nextFreeRange,
@@ -466,25 +465,6 @@ export default function RoutedRangesPage() {
               </p>
             )}
 
-            {fanOutExceedsTripwire(sites.length) && (
-              // The tripwire from the commit-one, surfaced where it can actually be observed. A bound that
-              // only exists in a document is discovered at a customer.
-              <p className="text-micro text-ink-faint">
-                This organization has {sites.length} sites, so attribution costs{" "}
-                {sites.length + 1} requests per visit and will feel slow. The
-                fix is serving the site on the range itself.
-              </p>
-            )}
-
-            <p className="text-micro text-ink-faint">
-              Not shown, and why: the <strong>device count</strong> per range is
-              not a field we serve, and counting devices locally would count
-              ones that never fetched this list. <strong>Status</strong> is
-              omitted because this endpoint is approved-only, so the column
-              would carry one value forever; pending subnets are approved on{" "}
-              <strong>Sites</strong>, which is where the approve permission
-              lives.
-            </p>
           </div>
 
           <div className="flex min-w-0 flex-col gap-3">

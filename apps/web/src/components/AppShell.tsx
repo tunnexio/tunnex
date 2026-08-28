@@ -9,11 +9,10 @@ import {
   type NavCollapse,
 } from "../lib/navcollapse";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Logo, PRODUCT_TAGLINE, Tagline } from "../brand";
+import { Logo, Tagline } from "../brand";
 import { useAuth } from "../lib/auth";
 import { useResendVerification } from "../lib/useResendVerification";
 import { Button } from "./ui";
-import { HealthStatus } from "./HealthStatus";
 import { IdentityBadges } from "./IdentityBadges";
 import { useLayoutCapability } from "./ComposeGate";
 import { CommandPalette } from "./CommandPalette";
@@ -88,7 +87,6 @@ export const NAV_GROUPS: Array<{
 export const NAV_DESTINATIONS = NAV_GROUPS.flatMap((g) => g.items);
 
 /** The triage set — the surfaces mobile exists FOR (read health, work the approval queue, act on devices). */
-const TRIAGE_SET = ["/dashboard", "/devices", "/access"];
 
 /**
  * The badge for a destination, or `null`.
@@ -445,37 +443,11 @@ function SidebarNav({
   );
 }
 
-/**
- * The triage bottom bar: the on-call subset, one tap away, at `triage` only.
- *
- * It is a SECOND surface carrying destinations that already exist in the drawer, so it is derived from
- * NAV_DESTINATIONS rather than re-listed — a hand-written copy is how the two drift apart.
- */
-function TriageBar() {
-  const items = NAV_DESTINATIONS.filter((i) => TRIAGE_SET.includes(i.to));
-  return (
-    <nav
-      aria-label="Triage"
-      className="sticky bottom-0 flex justify-around border-t border-white/5 bg-ink-950 px-2 py-2"
-    >
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          className="px-3 py-1 text-xs text-slate-400"
-        >
-          {item.label}
-        </NavLink>
-      ))}
-    </nav>
-  );
-}
-
 /** AppShell is the authenticated layout: header (brand + user + logout), sidebar
  * nav, and the routed page in the main area. */
 export function AppShell() {
   const { state, logout } = useAuth();
-  const { navMode, columns } = useLayoutCapability();
+  const { columns } = useLayoutCapability();
   const navigate = useNavigate();
   const location = useLocation();
   const pageRef = useRef<HTMLElement>(null);
@@ -552,12 +524,6 @@ export function AppShell() {
         </div>
       </div>
 
-      {navMode === "drawer" && <TriageBar />}
-
-      <footer className="hidden shrink-0 items-center justify-between border-t border-white/5 px-6 py-3 text-xs text-slate-600 md:flex">
-        <HealthStatus />
-        <span>{PRODUCT_TAGLINE}</span>
-      </footer>
     </div>
   );
 }

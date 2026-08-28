@@ -373,8 +373,8 @@ export default function Sites() {
                   /* D2 (ruled): scoped to the MAP, not the page. The mesh's edges are handshake-derived, so
                      the claim is true here. Over the subnet queue it would not be — those are control-plane
                      rows. */
-                  <span className="rounded-full border border-line bg-ink-800 px-2 py-0.5 font-mono text-micro text-ink-tertiary">
-                    ● WIRE-TRUTH
+                  <span className="rounded-full border border-line bg-ink-800 px-2 py-0.5 text-micro text-ink-tertiary">
+                    Live topology
                   </span>
                 }
               >

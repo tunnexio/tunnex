@@ -850,21 +850,11 @@ export default function Users() {
               thing on this screen that renders the edition/permission seam — the four-gate shape the section
               exists to demonstrate. So it keeps its own line, named as standing in for teamMap.
               Registered: docs/DEFERRAL-REGISTER.md. */}
-              <p className="mt-3 border-t border-white/5 pt-3 text-xs text-slate-400">
-                <span className="text-slate-500">Group membership</span>{" "}
+              <p className="mt-3 border-t border-white/5 pt-3 text-cell text-ink-secondary">
+                <span className="font-medium text-ink-heading">Groups</span>{" "}
                 {groupAccess.kind === "edges"
                   ? `— ${groupAccessLabel(groupAccess)} in this organization.`
-                  : `— ${groupAccessLabel(groupAccess)}.`}{" "}
-                <span className="text-slate-500">
-                  The role-and-group map is not built yet; this stands in for
-                  it.
-                </span>
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                MFA coverage and authentication sources are not shown per member
-                yet: both are enforced by the server but not carried on the
-                roster response. Two-factor can still be reset per member from
-                the row actions.
+                  : `— ${groupAccessLabel(groupAccess)}.`}
               </p>
               {shape.gateNote && (
                 <p className="mt-2 text-xs text-slate-400">{shape.gateNote}</p>

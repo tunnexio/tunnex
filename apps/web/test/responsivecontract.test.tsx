@@ -142,15 +142,10 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     ).toBeTruthy();
   });
 
-  it("[triage] the triage bar carries a SUBSET of the real destinations, never a destination of its own", async () => {
+  it("[triage] uses the drawer as its single navigation model", async () => {
     renderShell("triage");
-    const bar = await screen.findByRole("navigation", { name: "Triage" });
-    const hrefs = within(bar)
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href")!);
-    expect(hrefs.length).toBeGreaterThan(0);
-    for (const h of hrefs)
-      expect(expected, `${h} is not a real destination`).toContain(h);
+    expect(screen.queryByRole("navigation", { name: "Triage" })).toBeNull();
+    expect(screen.getByRole("button", { name: /menu/i })).toBeTruthy();
   });
 
   it("the triage bar exists ONLY at triage — a second nav surface on a laptop is duplication, not redundancy", async () => {
