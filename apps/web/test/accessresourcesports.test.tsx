@@ -37,6 +37,11 @@ function renderPage() {
 }
 async function openCreate() {
   await screen.findByRole("button", { name: "Create resource" });
+  // The action is available as soon as permission resolves, but the CIDR form
+  // deliberately stays behind the inventory's loading state.  Wait for that
+  // state to settle before opening the chooser so this test exercises the
+  // port contract rather than racing the independent list request.
+  await screen.findByLabelText("Search resources");
   fireEvent.click(screen.getAllByRole("button", { name: "Create resource" })[0]);
   fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create CIDR resource" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Jira" } });
