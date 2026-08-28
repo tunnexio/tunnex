@@ -69,6 +69,21 @@ FROM organizations
 WHERE id = $1 AND deleted_at IS NULL
 FOR SHARE;
 
+-- name: GetOrganizationPolicySnapshotSettings :one
+-- Policy snapshot construction is used by F09 membership removal. Keep its
+-- organization read compatible with schema 0109 while still exposing the
+-- current FQDN opt-in when the additive column exists. JSONB extraction is
+-- deliberately fail-closed: an absent or null later column means disabled.
+SELECT o.zero_trust_mode,
+       CASE
+           WHEN to_jsonb(o) ? 'fqdn_resources_enabled'
+           THEN COALESCE((to_jsonb(o) ->> 'fqdn_resources_enabled')::boolean, false)
+           ELSE false
+       END AS fqdn_resources_enabled
+FROM organizations o
+WHERE o.id = $1 AND o.deleted_at IS NULL
+FOR SHARE;
+
 -- name: SetOrganizationAgentJITAccessEnabled :one
 -- F10 unlock-then-opt-in. The JIT service refuses disable while pending or
 -- approved requests exist.

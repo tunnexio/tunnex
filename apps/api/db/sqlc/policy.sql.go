@@ -584,23 +584,56 @@ func (q *Queries) ListActiveDevicesForOrg(ctx context.Context, orgID uuid.UUID) 
 }
 
 const listActivePolicyRulesForOrg = `-- name: ListActivePolicyRulesForOrg :many
-SELECT id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id FROM policy_rules
-WHERE org_id = $1 AND (expires_at IS NULL OR expires_at > now())
-ORDER BY created_at, id
+SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
+       p.dst_group_id, p.created_at, p.src_kind, p.src_user_id, p.expires_at,
+       p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
+       p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
+       p.dst_k8s_cluster_id, p.src_agent_group_id,
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+FROM policy_rules p
+WHERE p.org_id = $1 AND (p.expires_at IS NULL OR p.expires_at > now())
+ORDER BY p.created_at, p.id
 `
+
+type ListActivePolicyRulesForOrgRow struct {
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	SrcGroupID        pgtype.UUID        `json:"src_group_id"`
+	DstKind           string             `json:"dst_kind"`
+	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
+	CreatedAt         time.Time          `json:"created_at"`
+	SrcKind           string             `json:"src_kind"`
+	SrcUserID         pgtype.UUID        `json:"src_user_id"`
+	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
+	DstSiteID         pgtype.UUID        `json:"dst_site_id"`
+	SrcSiteID         pgtype.UUID        `json:"src_site_id"`
+	SrcCidr           *string            `json:"src_cidr"`
+	Disabled          bool               `json:"disabled"`
+	DstK8sServiceID   pgtype.UUID        `json:"dst_k8s_service_id"`
+	ManagedByMachine  pgtype.UUID        `json:"managed_by_machine"`
+	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
+	DstK8sClusterID   pgtype.UUID        `json:"dst_k8s_cluster_id"`
+	SrcAgentGroupID   pgtype.UUID        `json:"src_agent_group_id"`
+	DstFqdnResourceID uuid.UUID          `json:"dst_fqdn_resource_id"`
+}
 
 // COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:
 // an expired rule stops compiling on the next recompile REGARDLESS of the sweeper). The
 // pure compiler stays clockless; this query applies now() at snapshot-build time.
-func (q *Queries) ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UUID) ([]PolicyRule, error) {
+// Keep the compiler's ordinary policy projection readable on schema 0109 as
+// well. The additive FQDN destination is extracted only when present; the
+// FQDN-aware compiler later fail-closes unless its full current contract is
+// available and enabled.
+func (q *Queries) ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActivePolicyRulesForOrgRow, error) {
 	rows, err := q.db.Query(ctx, listActivePolicyRulesForOrg, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PolicyRule{}
+	items := []ListActivePolicyRulesForOrgRow{}
 	for rows.Next() {
-		var i PolicyRule
+		var i ListActivePolicyRulesForOrgRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,

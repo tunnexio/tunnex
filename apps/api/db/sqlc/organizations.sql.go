@@ -265,6 +265,34 @@ func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organ
 	return i, err
 }
 
+const getOrganizationPolicySnapshotSettings = `-- name: GetOrganizationPolicySnapshotSettings :one
+SELECT o.zero_trust_mode,
+       CASE
+           WHEN to_jsonb(o) ? 'fqdn_resources_enabled'
+           THEN COALESCE((to_jsonb(o) ->> 'fqdn_resources_enabled')::boolean, false)
+           ELSE false
+       END AS fqdn_resources_enabled
+FROM organizations o
+WHERE o.id = $1 AND o.deleted_at IS NULL
+FOR SHARE
+`
+
+type GetOrganizationPolicySnapshotSettingsRow struct {
+	ZeroTrustMode        string `json:"zero_trust_mode"`
+	FqdnResourcesEnabled bool   `json:"fqdn_resources_enabled"`
+}
+
+// Policy snapshot construction is used by F09 membership removal. Keep its
+// organization read compatible with schema 0109 while still exposing the
+// current FQDN opt-in when the additive column exists. JSONB extraction is
+// deliberately fail-closed: an absent or null later column means disabled.
+func (q *Queries) GetOrganizationPolicySnapshotSettings(ctx context.Context, id uuid.UUID) (GetOrganizationPolicySnapshotSettingsRow, error) {
+	row := q.db.QueryRow(ctx, getOrganizationPolicySnapshotSettings, id)
+	var i GetOrganizationPolicySnapshotSettingsRow
+	err := row.Scan(&i.ZeroTrustMode, &i.FqdnResourcesEnabled)
+	return i, err
+}
+
 const listAlertingEnabledOrganizations = `-- name: ListAlertingEnabledOrganizations :many
 SELECT id FROM organizations
 WHERE alerting_enabled = true AND deleted_at IS NULL

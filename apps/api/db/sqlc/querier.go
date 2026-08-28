@@ -681,6 +681,11 @@ type Querier interface {
 	GetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, id uuid.UUID) (bool, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
+	// Policy snapshot construction is used by F09 membership removal. Keep its
+	// organization read compatible with schema 0109 while still exposing the
+	// current FQDN opt-in when the additive column exists. JSONB extraction is
+	// deliberately fail-closed: an absent or null later column means disabled.
+	GetOrganizationPolicySnapshotSettings(ctx context.Context, id uuid.UUID) (GetOrganizationPolicySnapshotSettingsRow, error)
 	GetPlatformSecret(ctx context.Context, name string) (PlatformSecret, error)
 	// Resolve one rule (org-scoped) — S7.5.1 ingest enriches an allow event's kernel-stamped
 	// rule_id into the grant's destination (resource/group) it named, captured AT EVENT TIME so
@@ -815,7 +820,11 @@ type Querier interface {
 	// COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:
 	// an expired rule stops compiling on the next recompile REGARDLESS of the sweeper). The
 	// pure compiler stays clockless; this query applies now() at snapshot-build time.
-	ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UUID) ([]PolicyRule, error)
+	// Keep the compiler's ordinary policy projection readable on schema 0109 as
+	// well. The additive FQDN destination is extracted only when present; the
+	// FQDN-aware compiler later fail-closes unless its full current contract is
+	// available and enabled.
+	ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActivePolicyRulesForOrgRow, error)
 	// fetches the peers for its own node). TWO invariants own this query (both load-bearing):
 	//   IDENTITY-BINDING (main hotfix): a peer is present only while its owning user has an
 	//   ACTIVE, CURRENT-MEMBER identity — the users + memberships joins + NOT health_blocked

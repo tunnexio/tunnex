@@ -97,19 +97,46 @@ func TestPolicyRuleListRemainsReadableBeforeFQDNDestinationColumn(t *testing.T) 
 		t.Fatal(err)
 	}
 	query := string(queryBytes)
-	start := strings.Index(query, "-- name: ListPolicyRulesByOrg :many")
+	for _, name := range []string{"ListPolicyRulesByOrg", "ListActivePolicyRulesForOrg"} {
+		start := strings.Index(query, "-- name: "+name+" :many")
+		if start < 0 {
+			t.Fatalf("missing %s", name)
+		}
+		end := strings.Index(query[start:], ";\n")
+		if end < 0 {
+			t.Fatalf("unterminated %s", name)
+		}
+		statement := query[start : start+end]
+		if strings.Contains(statement, "SELECT *") || strings.Contains(statement, "p.dst_fqdn_resource_id") {
+			t.Fatalf("%s must not require the 0113 physical FQDN destination column", name)
+		}
+		if !strings.Contains(statement, "to_jsonb(p) ->> 'dst_fqdn_resource_id'") {
+			t.Fatalf("%s must retain current FQDN destinations through the additive-safe projection", name)
+		}
+	}
+}
+
+func TestPolicySnapshotSettingsRemainHistoricalAndRetainFQDNOptIn(t *testing.T) {
+	queryBytes, err := os.ReadFile("queries/organizations.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(queryBytes)
+	start := strings.Index(query, "-- name: GetOrganizationPolicySnapshotSettings :one")
 	if start < 0 {
-		t.Fatal("missing ListPolicyRulesByOrg")
+		t.Fatal("missing GetOrganizationPolicySnapshotSettings")
 	}
 	end := strings.Index(query[start:], ";\n")
 	if end < 0 {
-		t.Fatal("unterminated ListPolicyRulesByOrg")
+		t.Fatal("unterminated GetOrganizationPolicySnapshotSettings")
 	}
 	statement := query[start : start+end]
-	if strings.Contains(statement, "SELECT *") || strings.Contains(statement, "p.dst_fqdn_resource_id") {
-		t.Fatal("ListPolicyRulesByOrg must not require the 0113 physical FQDN destination column")
+	if strings.Contains(statement, "SELECT *") || strings.Contains(statement, "o.fqdn_resources_enabled") {
+		t.Fatal("policy snapshot settings must not require post-0109 organization columns")
 	}
-	if !strings.Contains(statement, "to_jsonb(p) ->> 'dst_fqdn_resource_id'") {
-		t.Fatal("ListPolicyRulesByOrg must retain current FQDN destinations through the additive-safe projection")
+	for _, want := range []string{"o.zero_trust_mode", "to_jsonb(o) ? 'fqdn_resources_enabled'", "ELSE false"} {
+		if !strings.Contains(statement, want) {
+			t.Fatalf("policy snapshot settings missing %q", want)
+		}
 	}
 }

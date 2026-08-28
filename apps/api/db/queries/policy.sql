@@ -135,9 +135,19 @@ ORDER BY p.created_at;
 -- COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:
 -- an expired rule stops compiling on the next recompile REGARDLESS of the sweeper). The
 -- pure compiler stays clockless; this query applies now() at snapshot-build time.
-SELECT * FROM policy_rules
-WHERE org_id = $1 AND (expires_at IS NULL OR expires_at > now())
-ORDER BY created_at, id;
+-- Keep the compiler's ordinary policy projection readable on schema 0109 as
+-- well. The additive FQDN destination is extracted only when present; the
+-- FQDN-aware compiler later fail-closes unless its full current contract is
+-- available and enabled.
+SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
+       p.dst_group_id, p.created_at, p.src_kind, p.src_user_id, p.expires_at,
+       p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
+       p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
+       p.dst_k8s_cluster_id, p.src_agent_group_id,
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+FROM policy_rules p
+WHERE p.org_id = $1 AND (p.expires_at IS NULL OR p.expires_at > now())
+ORDER BY p.created_at, p.id;
 
 -- name: DeletePolicyRule :execrows
 DELETE FROM policy_rules
