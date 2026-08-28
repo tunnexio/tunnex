@@ -801,12 +801,41 @@ export function EmptyState({
   );
 }
 
-/** In-flight state. Announced, not merely drawn: a spinner nothing announces is invisible to a screen reader. */
-export function Loading({ label = "Loading…" }: { label?: string }) {
+/**
+ * The product-wide in-flight state. The moving pulse follows a short network
+ * path instead of using an unrelated spinner, while reduced-motion users get
+ * the same readable static mark. The label is always announced.
+ */
+export function Loading({
+  label = "Loading…",
+  size = "section",
+}: {
+  label?: string;
+  size?: "inline" | "section" | "page";
+}) {
+  const layout =
+    size === "inline"
+      ? "inline-flex min-h-8 items-center gap-2 py-1"
+      : size === "page"
+        ? "flex min-h-[45vh] flex-col items-center justify-center gap-3 py-12"
+        : "flex min-h-28 flex-col items-center justify-center gap-3 py-8";
   return (
-    <p role="status" className="py-10 text-cell text-ink-tertiary">
-      {label}
-    </p>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className={layout}
+    >
+      <span
+        aria-hidden="true"
+        className={`tnx-loader-mark ${size === "inline" ? "tnx-loader-mark--inline" : ""}`}
+      >
+        <span className="tnx-loader-node tnx-loader-node--start" />
+        <span className="tnx-loader-node tnx-loader-node--middle" />
+        <span className="tnx-loader-node tnx-loader-node--end" />
+      </span>
+      <span className="text-cell font-medium text-ink-tertiary">{label}</span>
+    </div>
   );
 }
 

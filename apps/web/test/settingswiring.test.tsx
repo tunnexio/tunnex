@@ -331,7 +331,9 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
       expect(resolveDeferredApproval).not.toBeNull();
       expect(resolveDeferredLicence).not.toBeNull();
     });
-    expect(screen.getAllByText("Loading…").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("status").some((status) => status.textContent?.startsWith("Loading ")),
+    ).toBe(true);
     resolveDeferredApproval?.();
     resolveDeferredLicence?.();
     deferNewOrgSecurityLoad = false;
@@ -415,7 +417,7 @@ describe("Settings — F11 alert delivery", () => {
     expect(screen.getByText("Generic webhook · alerts.example.test · warning · fingerprint a1b2c3d4e5f6")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Select Operations"));
     fireEvent.click(screen.getByRole("button", { name: "Test selected (1)" }));
-    expect((await screen.findByRole("status")).textContent).toContain("1 destination: test delivered");
+    expect(await screen.findByText("1 destination: test delivered")).toBeTruthy();
     expect(api.POST).toHaveBeenCalledWith(
       "/api/v1/organizations/{orgId}/alert-destinations",
       expect.objectContaining({

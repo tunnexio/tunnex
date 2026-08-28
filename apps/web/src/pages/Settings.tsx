@@ -56,6 +56,7 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   PageHeader,
   SettingDialogRow,
   SettingGroup,
@@ -183,7 +184,7 @@ export default function Settings() {
   const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
 
   if (currentOrg && org?.id !== currentOrg.id) {
-    return <p className="text-sm text-slate-400">Loading settings…</p>;
+    return <Loading size="page" label="Loading settings…" />;
   }
 
   return (
@@ -523,13 +524,13 @@ function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: bo
 
   return <>
     <SettingRow label="Require device approval" description="When on, future device enrolments wait for an administrator. Existing active devices are grandfathered.">
-      {approval ? <Switch label="Require device approval" checked={approval.mode === "on"} disabled={!canEdit || busy} onChange={() => void toggleApproval()} /> : <span className="text-xs text-slate-500">Loading…</span>}
+      {approval ? <Switch label="Require device approval" checked={approval.mode === "on"} disabled={!canEdit || busy} onChange={() => void toggleApproval()} /> : <Loading size="inline" label="Loading approval policy…" />}
     </SettingRow>
     <SettingRow label="Just-in-time agent access" description="A licensed capability that remains off until this organization explicitly enables it.">
-      {licenceFeatures === null ? <span className="text-xs text-slate-500">Loading…</span> : licenceFeatures.includes("agent_jit_access") ? <AgentJITAccessToggle key={orgId} orgId={orgId} canEdit={canEdit} compact /> : <a className="text-sm font-medium text-accent-400 hover:underline" href="/settings?section=licence">Manage licence &amp; plan</a>}
+      {licenceFeatures === null ? <Loading size="inline" label="Loading licence capabilities…" /> : licenceFeatures.includes("agent_jit_access") ? <AgentJITAccessToggle key={orgId} orgId={orgId} canEdit={canEdit} compact /> : <a className="text-sm font-medium text-accent-400 hover:underline" href="/settings?section=licence">Manage licence &amp; plan</a>}
     </SettingRow>
     <SettingRow label="Zero Trust enforcement" description="Current enforcement is read-only here because changes require rule and affected-device impact confirmation.">
-      {zeroTrust.kind === "loading" ? <span className="text-xs text-slate-500">Loading current mode…</span> : zeroTrust.kind === "error" ? <span role="alert" className="text-xs text-danger">Could not load current Zero Trust mode. <a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span> : <span className="inline-flex items-center gap-3 text-sm"><strong className="text-ink-heading">{zeroTrust.mode === "enforcing" ? "Enforcing" : "Off"}</strong><a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span>}
+      {zeroTrust.kind === "loading" ? <Loading size="inline" label="Loading current mode…" /> : zeroTrust.kind === "error" ? <span role="alert" className="text-xs text-danger">Could not load current Zero Trust mode. <a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span> : <span className="inline-flex items-center gap-3 text-sm"><strong className="text-ink-heading">{zeroTrust.mode === "enforcing" ? "Enforcing" : "Off"}</strong><a className="font-medium text-accent-400 hover:underline" href="/access">Manage in Access Policies</a></span>}
     </SettingRow>
     <SettingRow label="Device posture" description="Posture is client-reported, not hardware-attested.">
       <a className="text-sm font-medium text-accent-400 hover:underline" href="/devices/posture">Manage device posture</a>
@@ -612,7 +613,7 @@ function AgentJITAccessToggle({
           <ErrorText>{err}</ErrorText>
         </div>
       ) : (
-        <p className="text-xs text-slate-500">Loading…</p>
+        <Loading size="inline" label="Loading identity provider settings…" />
       )}
   </>;
   if (compact) return control;
@@ -687,7 +688,7 @@ function AlertingToggle({
           <ErrorText>{err}</ErrorText>
         </div>
       ) : (
-        <p className="text-xs text-slate-500">Loading…</p>
+        <Loading size="inline" label="Loading SSO configuration…" />
       )}
     </SettingRow>
   );
@@ -986,7 +987,7 @@ function AlertDestinationSubscriptions({ orgId, destinationId, canEdit }: { orgI
 
   return <fieldset className="space-y-1" data-testid={`alert-subscriptions-${destinationId}`}>
     <legend className="text-xs text-slate-500">Subscribed events</legend>
-    {subscriptions === null ? <p className="text-xs text-slate-500">Loading subscriptions…</p> : (Object.keys(ALERT_EVENT_LABELS) as AlertEventKey[]).map((eventKey) => (
+    {subscriptions === null ? <Loading size="inline" label="Loading subscriptions…" /> : (Object.keys(ALERT_EVENT_LABELS) as AlertEventKey[]).map((eventKey) => (
       <label key={eventKey} className="flex items-center gap-2 text-xs text-slate-300">
         <input type="checkbox" checked={subscriptions.includes(eventKey)} disabled={!canEdit || busy} onChange={() => void toggle(eventKey)} />
         {ALERT_EVENT_LABELS[eventKey]}
@@ -1027,7 +1028,7 @@ function AlertDeliveryHistory({ orgId }: { orgId: string }) {
           <Button onClick={() => void load()}>Retry</Button>
         </div>
       ) : deliveries === null ? (
-        <p className="text-xs text-slate-500">Loading…</p>
+        <Loading size="inline" label="Loading alert deliveries…" />
       ) : deliveries.length === 0 ? (
         <p className="text-xs text-slate-500">No delivery attempts yet.</p>
       ) : (
@@ -1261,7 +1262,7 @@ function OrgMfaEnforce({
       {/* ⚠ `null` is NOT "off" — it is "not read yet". Rendering an off switch for an unknown value would
           state, in the one place an admin checks, that enforcement is disabled when it may well be on. */}
       {enforce === null ? (
-        <p className="text-xs text-slate-500">Loading…</p>
+        <Loading size="inline" label="Loading enforcement state…" />
       ) : (
         <Switch
           label="Require two-factor authentication"

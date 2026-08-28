@@ -13,6 +13,7 @@ import { LoadRetry } from "../components/LoadRetry";
 import {
   DataTable,
   EmptyState,
+  Loading,
   PageHeader,
   Panel,
 } from "../components/ui";
@@ -317,7 +318,7 @@ export default function RoutedRangesPage() {
       <PageHeader title="Routed ranges" subtitle={org ? org.name : "…"} />
 
       {loadError && <LoadRetry error={loadError} onRetry={reload} />}
-      {loading && <p className="text-cell text-ink-faint">Loading…</p>}
+      {loading && <Loading size="inline" label="Loading routed ranges…" />}
 
       {!loadError && org && ranges && forwards && (
         <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[8fr_4fr]">

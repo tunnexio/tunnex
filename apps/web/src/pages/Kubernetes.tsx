@@ -21,6 +21,7 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   Modal,
   PageHeader,
   Panel,
@@ -446,7 +447,7 @@ export default function Kubernetes() {
 
       {loadError && <LoadRetry error={loadError} onRetry={reload} />}
       {!loadError && raw === null && (
-        <p className="text-cell text-ink-faint">Loading…</p>
+        <Loading size="inline" label="Loading Kubernetes services…" />
       )}
 
       {raw && !loadError && cards.length === 0 && (

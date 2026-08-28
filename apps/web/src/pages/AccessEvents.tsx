@@ -11,6 +11,7 @@ import {
   Card,
   DataTable,
   ErrorText,
+  Loading,
   PageHeader,
 } from "../components/ui";
 import {
@@ -130,7 +131,7 @@ export default function AccessEvents() {
   }, [org, deniesOnly, agentId]);
 
   if (currentOrg && (!org || currentOrg.id !== org.id)) {
-    return <p className="text-sm text-slate-500">Loading access events…</p>;
+    return <Loading label="Loading access events…" />;
   }
 
   const events = rows ?? [];

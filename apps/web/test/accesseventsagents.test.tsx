@@ -25,6 +25,7 @@ vi.mock("../src/components/ui", () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => createElement("button", props, children),
   Card: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => createElement("section", props, children),
   ErrorText: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
+  Loading: ({ label }: { label?: string }) => createElement("div", { role: "status" }, label ?? "Loading…"),
   DataTable: ({ rows, columns }: { rows: Array<Record<string, unknown>>; columns: Array<{ key: string; header: string; cell?: (row: Record<string, unknown>) => ReactNode }> }) => createElement("div", null,
     ...columns.map((c) => createElement("span", { key: c.key }, c.header)),
     ...rows.flatMap((row) => columns.map((c) => createElement("div", { key: String(row.id) + c.key }, c.cell?.(row)))),

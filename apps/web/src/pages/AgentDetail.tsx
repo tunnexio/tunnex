@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
-import { Badge, Button, Card, EmptyState, ErrorText, Field, Modal, PageHeader, Select } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorText, Field, Loading, Modal, PageHeader, Select } from "../components/ui";
 import { AgentProfileEditor, type AgentProfileEditorValue, type AgentProfileStatus } from "../components/AgentProfileEditor";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { api, loadOne, type Member, type UserGroup } from "../lib/api";
@@ -56,7 +56,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 }
 
 function ReadState<T>({ state, children }: { state: State<T>; children: (data: T) => React.ReactNode }) {
-  if (state.kind === "loading") return <Card><p className="text-cell text-ink-tertiary">Loading…</p></Card>;
+  if (state.kind === "loading") return <Card><Loading label="Loading agent workspace…" /></Card>;
   if (state.kind === "error") return <Card><h2 className="text-sm font-semibold text-ink-heading">This information is unavailable</h2><p role="alert" className="mt-2 text-cell text-danger">{state.message}</p><p className="mt-2 text-xs text-ink-tertiary">No stale or empty result is shown in place of a failed read.</p><Button className="mt-3" size="sm" variant="ghost" onClick={() => window.location.reload()}>Retry</Button></Card>;
   return <>{children(state.data)}</>;
 }
@@ -64,7 +64,7 @@ function ReadState<T>({ state, children }: { state: State<T>; children: (data: T
 function AgentAssignment({ profile, members, groups, busy, onSave }: { profile: AgentProfile; members: State<Member[]>; groups: State<UserGroup[]>; busy: boolean; onSave: (body: Record<string, unknown>) => void }) {
   const [ownerID, setOwnerID] = useState(profile.owner_id);
   const [groupID, setGroupID] = useState(profile.managing_group_id ?? "");
-  if (members.kind === "loading" || groups.kind === "loading") return <p className="text-cell text-ink-tertiary">Loading owners and groups…</p>;
+  if (members.kind === "loading" || groups.kind === "loading") return <Loading size="inline" label="Loading owners and groups…" />;
   if (members.kind === "error" || groups.kind === "error") return <p role="alert" className="text-cell text-danger">Ownership choices could not be loaded. No change can be submitted.</p>;
   const changed = ownerID !== profile.owner_id || (groupID || null) !== profile.managing_group_id;
   return <div className="space-y-3"><Field label="Accountable owner"><Select value={ownerID} disabled={busy} onChange={(event) => setOwnerID(event.target.value)}>{members.data.filter((member) => member.status === "active").map((member) => <option key={member.user_id} value={member.user_id}>{member.email}</option>)}</Select></Field><Field label="Managing group"><Select value={groupID} disabled={busy} onChange={(event) => setGroupID(event.target.value)}><option value="">No managing group</option>{groups.data.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</Select></Field><p className="text-xs text-ink-tertiary">Changing owner changes accountability only. A managing group may view and manage this agent, but does not gain access-grant or credential-rotation authority.</p><Button size="sm" disabled={busy || !ownerID || !changed} onClick={() => onSave({ ...(ownerID !== profile.owner_id ? { owner_id: ownerID } : {}), ...((groupID || null) !== profile.managing_group_id ? { managing_group_update: { group_id: groupID || null } } : {}) })}>Save ownership</Button></div>;
@@ -171,7 +171,7 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
     navigate("/agents");
   }
 
-  if (!org) return <p className="text-cell text-ink-tertiary">Loading organization…</p>;
+  if (!org) return <Loading label="Loading organization…" />;
   return <div className="space-y-5">
     <div className="text-xs text-ink-tertiary"><Link to="/agents" className="hover:text-ink-heading">AI Agents</Link> <span aria-hidden="true">/</span> {profile.kind === "ready" ? profile.data.name : "Agent"}</div>
     <PageHeader title={profile.kind === "ready" ? profile.data.name : "Agent workspace"} subtitle={profile.kind === "ready" ? `${profile.data.environment} / ${profile.data.runtime}` : "Loading agent detail"} actions={profile.kind === "ready" ? <Badge tone="neutral">{profile.data.status}</Badge> : undefined} />

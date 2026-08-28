@@ -21,6 +21,69 @@ body {
   background-attachment: fixed;
 }
 
+/* Product-wide loading mark: one pulse traverses a small three-node path.
+ * It reads as network work in progress without competing with the page, and
+ * becomes a stable centered pulse when reduced motion is requested. */
+@keyframes tnxLoaderTravel {
+  0% { transform: translateX(0) scale(.8); opacity: .35; }
+  20% { opacity: 1; }
+  50% { transform: translateX(18px) scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateX(36px) scale(.8); opacity: .35; }
+}
+.tnx-loader-mark {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+.tnx-loader-mark::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 5px;
+  height: 1px;
+  background: rgba(255, 255, 255, .16);
+}
+.tnx-loader-mark::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgb(226 232 240);
+  box-shadow: 0 0 12px rgba(226, 232, 240, .35);
+  animation: tnxLoaderTravel 1.35s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+.tnx-loader-node {
+  position: absolute;
+  top: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: rgb(17 17 19);
+}
+.tnx-loader-node--start { left: 3px; }
+.tnx-loader-node--middle { left: 21px; }
+.tnx-loader-node--end { right: 3px; }
+.tnx-loader-mark--inline {
+  transform: scale(.82);
+  transform-origin: left center;
+  margin-right: -6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tnx-loader-mark::after {
+    animation: none;
+    transform: translateX(18px);
+    opacity: .8;
+  }
+}
+
 /* The content area's radial field. This is what the cards sit on and blur through. */
 .tnx-page {
   background: var(--tnx-bg-page);

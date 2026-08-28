@@ -14,6 +14,7 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   SettingDialogRow,
   SettingValue,
 } from "./ui";
@@ -186,7 +187,7 @@ export function MachineCredentials({
           "migration complete" written by an error path — and on a migration screen that is exactly the
           reassurance that must be earned rather than defaulted to. */}
       {creds === null ? (
-        <p className="mt-3 text-xs text-ink-secondary">Loading…</p>
+        <Loading size="inline" label="Loading machine credentials…" />
       ) : !creds.ok ? (
         <p
           data-state="load-failed"

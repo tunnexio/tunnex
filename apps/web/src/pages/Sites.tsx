@@ -31,6 +31,7 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   Modal,
   PageHeader,
   Panel,
@@ -341,7 +342,7 @@ export default function Sites() {
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />
       )}
       {view === "loading" && (
-        <p className="text-cell text-ink-faint">Loading…</p>
+        <Loading size="inline" label="Loading site DNS configuration…" />
       )}
 
       {view === "body" && raw != null && org != null && (
@@ -512,7 +513,7 @@ export default function Sites() {
         </>
       )}
       {view === "body" && raw == null && (
-        <p className="text-cell text-ink-faint">Loading…</p>
+        <Loading size="inline" label="Loading site references…" />
       )}
 
       {registering && org && (
@@ -2133,7 +2134,7 @@ function PendingQueue({
   if (pending == null)
     return (
       <Panel title="Pending subnet approvals">
-        <p role="status" className="text-cell text-ink-faint">Loading pending subnet approvals…</p>
+        <Loading size="inline" label="Loading pending subnet approvals…" />
       </Panel>
     );
   if (pending.length === 0)

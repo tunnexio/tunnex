@@ -36,6 +36,7 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   Modal,
   PageHeader,
   Select,
@@ -194,7 +195,7 @@ export default function Access() {
   if (currentOrg && org?.id !== currentOrg.id) {
     return (
       <Card className="mt-6">
-        <p className="text-sm text-slate-500">Loading access policies…</p>
+        <Loading size="inline" label="Loading rules…" />
       </Card>
     );
   }
@@ -226,7 +227,7 @@ export default function Access() {
         />
       )}
       {(view === "loading" || view === "role_loading") && (
-        <p className="mt-6 text-sm text-slate-500">Loading access policies…</p>
+        <Loading label="Loading rules…" />
       )}
 
       {view === "member_gate" && (
@@ -276,7 +277,7 @@ function AgentJITCapabilitySection({ orgId, enabled, canApprove, currentUserId }
 }) {
   const [licence, setLicence] = useState<Loaded<LicenceStatus> | null>(null);
   useEffect(() => { void loadOne(() => api.GET("/api/v1/license")).then((result) => setLicence(result as Loaded<LicenceStatus>)); }, []);
-  if (licence === null) return <Card><p className="text-cell text-ink-tertiary">Loading just-in-time access capability…</p></Card>;
+  if (licence === null) return <Card><Loading label="Loading just-in-time access capability…" /></Card>;
   if (!licence.ok) return <Card><p className="text-cell text-ink-tertiary">Could not load just-in-time access capability.</p><ErrorText>{licence.error}</ErrorText></Card>;
   if (!Array.isArray(licence.data.features)) return <Card><h2 className="text-sm font-semibold text-ink-heading">Just-in-time access</h2><p className="mt-1 text-cell text-ink-tertiary">The control plane returned an invalid licence capability response.</p><ErrorText>Refresh the page or contact an administrator if the problem continues.</ErrorText></Card>;
   if (!licence.data.features.includes("agent_jit_access")) return null;
@@ -1245,7 +1246,7 @@ function RulesSection({
       )}
 
       {view.showContent && ruleEmptyState.kind === "loading" && (
-        <p role="status" className="mt-3 text-xs text-slate-500">Loading rules…</p>
+        <Loading size="inline" label="Loading access rules…" />
       )}
 
       {view.showContent && ruleEmptyState.kind !== "loading" && (

@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import { AuthLayout } from "./components/AuthLayout";
 import { MfaSettings } from "./components/MfaSettings";
 import { AppShell } from "./components/AppShell";
+import { Loading } from "./components/ui";
 import { OrgProvider } from "./lib/useOrg";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -345,9 +346,5 @@ function AnonOnly({ children }: { children: React.ReactNode }) {
 }
 
 function FullScreenLoading() {
-  return (
-    <div className="grid min-h-full place-items-center text-sm text-slate-500">
-      Loading…
-    </div>
-  );
+  return <Loading size="page" label="Preparing your workspace…" />;
 }
