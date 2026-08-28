@@ -8,11 +8,11 @@ import (
 )
 
 func TestK8sClusterScopeActivationMigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0121_k8s_cluster_scope_activation.up.sql")
+	up, err := os.ReadFile("migrations/0123_k8s_cluster_scope_activation.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0121_k8s_cluster_scope_activation.down.sql")
+	down, err := os.ReadFile("migrations/0123_k8s_cluster_scope_activation.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,36 +37,36 @@ func TestK8sClusterScopeActivationMigrationContract(t *testing.T) {
 		"k8s_service_inventory_require_current_uid",
 	} {
 		if !strings.Contains(upSQL, want) {
-			t.Fatalf("0121 up missing %q", want)
+			t.Fatalf("0123 up missing %q", want)
 		}
 	}
 	if strings.Contains(upSQL, "INSERT INTO k8s_cluster_scope_settings") || strings.Contains(upSQL, "UPDATE organizations") {
-		t.Fatal("0121 must not opt in existing organizations")
+		t.Fatal("0123 must not opt in existing organizations")
 	}
 	for _, want := range []string{
 		"IF EXISTS (SELECT 1 FROM k8s_cluster_scope_settings)",
 		"OR EXISTS (SELECT 1 FROM k8s_cluster_scope_grants)",
-		"0121 rollback refused",
+		"0123 rollback refused",
 		"CHECK (initial_candidate_count BETWEEN 0 AND 100)",
 		"REFERENCES k8s_clusters (id) ON DELETE CASCADE",
 	} {
 		if !strings.Contains(downSQL, want) {
-			t.Fatalf("0121 down missing %q", want)
+			t.Fatalf("0123 down missing %q", want)
 		}
 	}
 }
 
 func TestK8sClusterScopeActivationMigrationOrder(t *testing.T) {
 	for _, direction := range []string{"up", "down"} {
-		matches, err := filepath.Glob(filepath.Join("migrations", "0121_*."+direction+".sql"))
+		matches, err := filepath.Glob(filepath.Join("migrations", "0123_*."+direction+".sql"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) != 1 || filepath.Base(matches[0]) != "0121_k8s_cluster_scope_activation."+direction+".sql" {
-			t.Fatalf("0121 %s migration must be unique and ordered after 0120, found %v", direction, matches)
+		if len(matches) != 1 || filepath.Base(matches[0]) != "0123_k8s_cluster_scope_activation."+direction+".sql" {
+			t.Fatalf("0123 %s migration must be unique and ordered after 0122, found %v", direction, matches)
 		}
-		if _, err := os.Stat(filepath.Join("migrations", "0120_k8s_connector_ha_activation."+direction+".sql")); err != nil {
-			t.Fatalf("0121 predecessor 0120 %s missing: %v", direction, err)
+		if _, err := os.Stat(filepath.Join("migrations", "0122_k8s_connector_ha_activation."+direction+".sql")); err != nil {
+			t.Fatalf("0123 predecessor 0122 %s missing: %v", direction, err)
 		}
 	}
 }

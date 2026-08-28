@@ -8,11 +8,11 @@ import (
 )
 
 func TestK8sServiceInventoryRetentionMigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0123_k8s_service_inventory_retention.up.sql")
+	up, err := os.ReadFile("migrations/0125_k8s_service_inventory_retention.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0123_k8s_service_inventory_retention.down.sql")
+	down, err := os.ReadFile("migrations/0125_k8s_service_inventory_retention.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,24 +28,24 @@ func TestK8sServiceInventoryRetentionMigrationContract(t *testing.T) {
 		"k8s_service_inventory_snapshot_is_immutable",
 	} {
 		if !strings.Contains(upSQL, want) {
-			t.Fatalf("0123 up missing %q", want)
+			t.Fatalf("0125 up missing %q", want)
 		}
 	}
 	for _, forbidden := range []string{"ADD COLUMN", "SET NOT NULL", "DROP COLUMN", "k8s_cluster_scope_initial_candidate_require_inventory_report"} {
 		if strings.Contains(upSQL, forbidden) || strings.Contains(downSQL, forbidden) {
-			t.Fatalf("0123 must remain retention-only; found %q", forbidden)
+			t.Fatalf("0125 must remain retention-only; found %q", forbidden)
 		}
 	}
 }
 
 func TestK8sServiceInventoryRetentionMigrationOrder(t *testing.T) {
 	for _, direction := range []string{"up", "down"} {
-		matches, err := filepath.Glob(filepath.Join("migrations", "0123_*."+direction+".sql"))
+		matches, err := filepath.Glob(filepath.Join("migrations", "0125_*."+direction+".sql"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) != 1 || filepath.Base(matches[0]) != "0123_k8s_service_inventory_retention."+direction+".sql" {
-			t.Fatalf("0123 %s migration must be unique and ordered after 0122, found %v", direction, matches)
+		if len(matches) != 1 || filepath.Base(matches[0]) != "0125_k8s_service_inventory_retention."+direction+".sql" {
+			t.Fatalf("0125 %s migration must be unique and ordered after 0124, found %v", direction, matches)
 		}
 	}
 }

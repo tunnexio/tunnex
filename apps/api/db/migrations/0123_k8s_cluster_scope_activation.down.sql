@@ -17,7 +17,7 @@ BEGIN
        OR EXISTS (SELECT 1 FROM k8s_cluster_scope_initial_candidates)
        OR EXISTS (SELECT 1 FROM k8s_cluster_scope_grants)
        OR EXISTS (SELECT 1 FROM policy_rules WHERE dst_kind='k8s_cluster_scope') THEN
-        RAISE EXCEPTION '0121 rollback refused: Kubernetes cluster-scope activation data exists';
+        RAISE EXCEPTION '0123 rollback refused: Kubernetes cluster-scope activation data exists';
     END IF;
 END;
 $$;

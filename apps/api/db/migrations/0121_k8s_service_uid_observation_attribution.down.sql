@@ -7,7 +7,7 @@ BEGIN
     END IF;
 END $$;
 
--- Restore the exact 0118 child predicate before removing the attribution
+-- Restore the exact 0120 child predicate before removing the attribution
 -- schema. Existing v2/v3 capability rows and current UID rows are preserved.
 CREATE OR REPLACE FUNCTION pool_vip_ownership_handoff_provenance_require_child_scope() RETURNS trigger AS $$
 BEGIN

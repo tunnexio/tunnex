@@ -18,7 +18,7 @@ import (
 func TestPoolVIPOwnershipDeliveryV3MigrationPostgres(t *testing.T) {
 	adminURL := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if adminURL == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0118 PostgreSQL proof")
+		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0120 PostgreSQL proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -43,8 +43,8 @@ func TestPoolVIPOwnershipDeliveryV3MigrationPostgres(t *testing.T) {
 	testURL.Path = "/" + databaseName
 	dsn := testURL.String()
 
-	if err := db.MigrateTo(dsn, 117); err != nil {
-		t.Fatalf("migrate prerequisite chain through 0117: %v", err)
+	if err := db.MigrateTo(dsn, 119); err != nil {
+		t.Fatalf("migrate prerequisite chain through 0119: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -57,13 +57,13 @@ func TestPoolVIPOwnershipDeliveryV3MigrationPostgres(t *testing.T) {
 	v1DeliveryID := insertPoolVIPOwnershipMigrationDelivery(t, ctx, pool, orgID, siteID, clusterID, poolID, nodeID, 1, nil)
 	v2DeliveryID := insertPoolVIPOwnershipMigrationDelivery(t, ctx, pool, orgID, siteID, clusterID, poolID, nodeID, 2, nil)
 
-	if err := db.MigrateTo(dsn, 118); err != nil {
-		t.Fatalf("0118 up: %v", err)
+	if err := db.MigrateTo(dsn, 120); err != nil {
+		t.Fatalf("0120 up: %v", err)
 	}
 	assertPoolVIPOwnershipV3MigrationObjects(t, ctx, pool, true)
 	var preserved int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pool_vip_ownership_deliveries WHERE id=ANY($1) AND ownership_manifest='{}'::jsonb`, []uuid.UUID{v1DeliveryID, v2DeliveryID}).Scan(&preserved); err != nil || preserved != 2 {
-		t.Fatalf("0118 must preserve v1/v2 rows with an empty manifest: count=%d err=%v", preserved, err)
+		t.Fatalf("0120 must preserve v1/v2 rows with an empty manifest: count=%d err=%v", preserved, err)
 	}
 
 	manifest := `{"manifest":"v3"}`
@@ -77,7 +77,7 @@ func TestPoolVIPOwnershipDeliveryV3MigrationPostgres(t *testing.T) {
 	// The documented operator precondition is to remove v3 provenance before
 	// contraction. Exercise the reversible path after that cleanup; deliberately
 	// attempting a refused golang-migrate down would mark the version dirty before
-	// PostgreSQL executes the guard and would test repair tooling, not 0118.
+	// PostgreSQL executes the guard and would test repair tooling, not 0120.
 	if _, err := pool.Exec(ctx, `DELETE FROM pool_vip_ownership_delivery_ack_receipts WHERE delivery_row_id=$1`, v3DeliveryID); err != nil {
 		t.Fatal(err)
 	}
@@ -85,17 +85,17 @@ func TestPoolVIPOwnershipDeliveryV3MigrationPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := db.MigrateTo(dsn, 117); err != nil {
-		t.Fatalf("0118 down after v3 cleanup: %v", err)
+	if err := db.MigrateTo(dsn, 119); err != nil {
+		t.Fatalf("0120 down after v3 cleanup: %v", err)
 	}
 	assertPoolVIPOwnershipV3MigrationObjects(t, ctx, pool, false)
 	assertPoolVIPOwnershipProvenanceCapabilityConstraintName(t, ctx, pool, "pool_vip_ownership_handoff_provenance_capabi_wire_version_check")
-	if err := db.MigrateTo(dsn, 118); err != nil {
-		t.Fatalf("0118 re-up: %v", err)
+	if err := db.MigrateTo(dsn, 120); err != nil {
+		t.Fatalf("0120 re-up: %v", err)
 	}
 	assertPoolVIPOwnershipV3MigrationObjects(t, ctx, pool, true)
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pool_vip_ownership_deliveries WHERE id=ANY($1) AND ownership_manifest='{}'::jsonb`, []uuid.UUID{v1DeliveryID, v2DeliveryID}).Scan(&preserved); err != nil || preserved != 2 {
-		t.Fatalf("0118 re-up must preserve v1/v2 rows: count=%d err=%v", preserved, err)
+		t.Fatalf("0120 re-up must preserve v1/v2 rows: count=%d err=%v", preserved, err)
 	}
 }
 
@@ -105,7 +105,7 @@ func seedPoolVIPOwnershipDeliveryV3Migration(t *testing.T, ctx context.Context, 
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, query, args...); err != nil {
-			t.Fatalf("seed 0118 fixture: %v", err)
+			t.Fatalf("seed 0120 fixture: %v", err)
 		}
 	}
 	exec(`INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'S20.3a v3',$2,'10.246.0.0/24')`, orgID, "s203a-v3-"+orgID.String()[:8])
@@ -161,7 +161,7 @@ func insertPoolVIPOwnershipMigrationDelivery(t *testing.T, ctx context.Context, 
 func expectPoolVIPOwnershipAckRejected(t *testing.T, ctx context.Context, pool *pgxpool.Pool, orgID, stateID, deliveryID uuid.UUID, version int, manifest *string) {
 	t.Helper()
 	if err := insertPoolVIPOwnershipMigrationAckRaw(ctx, pool, orgID, stateID, deliveryID, version, manifest); err == nil || !strings.Contains(err.Error(), "ownership acknowledgement manifest does not match delivery wire version") {
-		t.Fatalf("wire v%d manifest mismatch must be rejected by the 0118 trigger: %v", version, err)
+		t.Fatalf("wire v%d manifest mismatch must be rejected by the 0120 trigger: %v", version, err)
 	}
 }
 
@@ -219,12 +219,12 @@ func assertPoolVIPOwnershipV3MigrationObjects(t *testing.T, ctx context.Context,
 	}
 	if wantV3 {
 		if !strings.Contains(deliveryConstraint, "ANY (ARRAY[1, 2, 3])") || !strings.Contains(capabilityConstraint, "ANY (ARRAY[2, 3])") || !strings.Contains(provenanceCapabilityConstraint, "ANY (ARRAY[2, 3])") || !strings.Contains(provenanceScopeCompact, "d.wire_version=new.wire_version") || !strings.Contains(provenanceScopeCompact, "a.applied_manifest=d.ownership_manifest") || !manifestColumn || !manifestTrigger {
-			t.Fatalf("0118 objects missing: delivery=%q capability=%q provenance_capability=%q provenance_scope=%q column=%v trigger=%v", deliveryConstraint, capabilityConstraint, provenanceCapabilityConstraint, provenanceScopeFunction, manifestColumn, manifestTrigger)
+			t.Fatalf("0120 objects missing: delivery=%q capability=%q provenance_capability=%q provenance_scope=%q column=%v trigger=%v", deliveryConstraint, capabilityConstraint, provenanceCapabilityConstraint, provenanceScopeFunction, manifestColumn, manifestTrigger)
 		}
 		return
 	}
 	if !strings.Contains(deliveryConstraint, "ANY (ARRAY[1, 2])") || !strings.Contains(capabilityConstraint, "wire_version = 2") || !strings.Contains(provenanceCapabilityConstraint, "wire_version = 2") || !strings.Contains(provenanceScopeCompact, "d.wire_version=2") || strings.Contains(provenanceScopeCompact, "a.applied_manifest=d.ownership_manifest") || manifestColumn || manifestTrigger {
-		t.Fatalf("0118 down did not restore v1/v2 objects: delivery=%q capability=%q provenance_capability=%q provenance_scope=%q column=%v trigger=%v", deliveryConstraint, capabilityConstraint, provenanceCapabilityConstraint, provenanceScopeFunction, manifestColumn, manifestTrigger)
+		t.Fatalf("0120 down did not restore v1/v2 objects: delivery=%q capability=%q provenance_capability=%q provenance_scope=%q column=%v trigger=%v", deliveryConstraint, capabilityConstraint, provenanceCapabilityConstraint, provenanceScopeFunction, manifestColumn, manifestTrigger)
 	}
 }
 

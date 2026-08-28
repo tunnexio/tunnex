@@ -140,7 +140,7 @@ type handoffBootstrapIntegrationFixture struct {
 
 func seedHandoffBootstrapIntegration(t *testing.T, ctx context.Context, pool *pgxpool.Pool) handoffBootstrapIntegrationFixture {
 	t.Helper()
-	if err := db.MigrateTo(pool.Config().ConnString(), 119); err != nil {
+	if err := db.MigrateTo(pool.Config().ConnString(), 121); err != nil {
 		t.Fatalf("migrate bootstrap fixture through 0119: %v", err)
 	}
 	fixture := handoffBootstrapIntegrationFixture{scope: k8s.HandoffPoolScope{OrgID: uuid.New(), SiteID: uuid.New(), ClusterID: uuid.New(), PoolID: uuid.New()},

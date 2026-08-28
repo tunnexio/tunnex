@@ -16,7 +16,7 @@ import (
 func TestK8sClusterScopeActivationMigrationPostgres(t *testing.T) {
 	adminURL := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if adminURL == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0121 PostgreSQL proof")
+		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0123 PostgreSQL proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -37,8 +37,8 @@ func TestK8sClusterScopeActivationMigrationPostgres(t *testing.T) {
 	testURL := *base
 	testURL.Path = "/" + name
 	dsn := testURL.String()
-	if err := db.MigrateTo(dsn, 120); err != nil {
-		t.Fatalf("migrate prerequisite chain through 0120: %v", err)
+	if err := db.MigrateTo(dsn, 122); err != nil {
+		t.Fatalf("migrate prerequisite chain through 0122: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -46,37 +46,37 @@ func TestK8sClusterScopeActivationMigrationPostgres(t *testing.T) {
 	}
 	defer pool.Close()
 	orgID, userID := uuid.New(), uuid.New()
-	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0121',$2,'10.248.0.0/24')`, orgID, "s204-scope-"+orgID.String()[:8]); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0123',$2,'10.248.0.0/24')`, orgID, "s204-scope-"+orgID.String()[:8]); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email) VALUES($1,$2)`, userID, "s204-"+userID.String()[:8]+"@example.test"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.MigrateTo(dsn, 121); err != nil {
-		t.Fatalf("apply 0121: %v", err)
+	if err := db.MigrateTo(dsn, 123); err != nil {
+		t.Fatalf("apply 0123: %v", err)
 	}
 	var count int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_cluster_scope_settings WHERE org_id=$1`, orgID).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("legacy organization must remain missing/OFF: count=%d err=%v", count, err)
 	}
-	if err := db.MigrateTo(dsn, 120); err != nil {
-		t.Fatalf("empty 0121 down: %v", err)
+	if err := db.MigrateTo(dsn, 122); err != nil {
+		t.Fatalf("empty 0123 down: %v", err)
 	}
-	if err := db.MigrateTo(dsn, 121); err != nil {
-		t.Fatalf("0121 re-up: %v", err)
+	if err := db.MigrateTo(dsn, 123); err != nil {
+		t.Fatalf("0123 re-up: %v", err)
 	}
 	var nullable, evidenceFK string
 	if err := pool.QueryRow(ctx, `SELECT is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='k8s_cluster_scope_initial_candidates' AND column_name='inventory_report_id'`).Scan(&nullable); err != nil || nullable != "NO" {
-		t.Fatalf("0121 exact inventory evidence nullable=%q err=%v", nullable, err)
+		t.Fatalf("0123 exact inventory evidence nullable=%q err=%v", nullable, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='k8s_cluster_scope_initial_candidates_inventory_report_fkey' AND conrelid='k8s_cluster_scope_initial_candidates'::regclass`).Scan(&evidenceFK); err != nil {
 		t.Fatal(err)
 	}
 	if evidenceFK != "FOREIGN KEY (inventory_report_id, org_id, cluster_id) REFERENCES k8s_service_inventory_reports(id, org_id, cluster_id) ON DELETE RESTRICT" {
-		t.Fatalf("0121 exact inventory evidence FK=%q", evidenceFK)
+		t.Fatalf("0123 exact inventory evidence FK=%q", evidenceFK)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_cluster_scope_settings(org_id,enabled,revision,actor_user_id,cause) VALUES($1,false,1,$2,'cross-tenant')`, orgID, userID); err == nil {
-		t.Fatal("0121 must reject a globally valid user who is not a member of the organization")
+		t.Fatal("0123 must reject a globally valid user who is not a member of the organization")
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'admin')`, orgID, userID); err != nil {
 		t.Fatal(err)
@@ -84,11 +84,11 @@ func TestK8sClusterScopeActivationMigrationPostgres(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_cluster_scope_settings(org_id,enabled,revision,actor_user_id,cause) VALUES($1,false,1,$2,'explicit off')`, orgID, userID); err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0121_k8s_cluster_scope_activation.down.sql")
+	down, err := os.ReadFile("migrations/0123_k8s_cluster_scope_activation.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, string(down)); err == nil {
-		t.Fatal("0121 down must refuse explicit OFF state because actor provenance would be lost")
+		t.Fatal("0123 down must refuse explicit OFF state because actor provenance would be lost")
 	}
 }

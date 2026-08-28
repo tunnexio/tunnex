@@ -1,6 +1,6 @@
 -- S20.4 inventory retention: keep a bounded hot history without deleting the
 -- exact immutable report used as durable initial-candidate evidence. The exact
--- report FK is created with the initial-candidate table in 0121, so this
+-- report FK is created with the initial-candidate table in 0123, so this
 -- migration remains a rolling-compatible retention-only expansion.
 
 -- Only the security-definer retention function can mint a transaction-local

@@ -1,7 +1,7 @@
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM k8s_clusters WHERE provider <> 'unknown' OR platform <> 'unknown') THEN
-        RAISE EXCEPTION '0122 rollback refused: Kubernetes provider metadata exists';
+        RAISE EXCEPTION '0124 rollback refused: Kubernetes provider metadata exists';
     END IF;
 END;
 $$;

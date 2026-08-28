@@ -8,11 +8,11 @@ import (
 )
 
 func TestK8sServiceUIDPoolConnectorSelectionMigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0117_k8s_service_uid_pool_connector_selection.up.sql")
+	up, err := os.ReadFile("migrations/0119_k8s_service_uid_pool_connector_selection.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0117_k8s_service_uid_pool_connector_selection.down.sql")
+	down, err := os.ReadFile("migrations/0119_k8s_service_uid_pool_connector_selection.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,12 +36,12 @@ func TestK8sServiceUIDPoolConnectorSelectionMigrationContract(t *testing.T) {
 		"BEFORE UPDATE OF sequence, digest",
 	} {
 		if !strings.Contains(upSQL, want) {
-			t.Fatalf("0117 up missing %q", want)
+			t.Fatalf("0119 up missing %q", want)
 		}
 	}
 	for _, forbidden := range []string{"ALTER TABLE", "DROP TABLE", "DROP COLUMN"} {
 		if strings.Contains(upSQL, forbidden) {
-			t.Fatalf("0117 up must remain an expand-only predicate change; found %q", forbidden)
+			t.Fatalf("0119 up must remain an expand-only predicate change; found %q", forbidden)
 		}
 	}
 	for _, want := range []string{
@@ -50,14 +50,14 @@ func TestK8sServiceUIDPoolConnectorSelectionMigrationContract(t *testing.T) {
 		"c.connector_node_id = NEW.connector_node_id",
 	} {
 		if !strings.Contains(downSQL, want) {
-			t.Fatalf("0117 down missing legacy restoration %q", want)
+			t.Fatalf("0119 down missing legacy restoration %q", want)
 		}
 	}
 	if strings.Contains(downSQL, "k8s_connector_pools") || strings.Contains(downSQL, "DELETE FROM") {
-		t.Fatal("0117 down must restore 0084 semantics without deleting observation data")
+		t.Fatal("0119 down must restore 0084 semantics without deleting observation data")
 	}
 
-	// 0084 is released history. The fix belongs only to 0117.
+	// 0084 is released history. The fix belongs only to 0119.
 	legacy, err := os.ReadFile("migrations/0084_k8s_service_uid_observations.up.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -70,15 +70,15 @@ func TestK8sServiceUIDPoolConnectorSelectionMigrationContract(t *testing.T) {
 
 func TestK8sServiceUIDPoolConnectorSelectionMigrationOrder(t *testing.T) {
 	for _, direction := range []string{"up", "down"} {
-		matches, err := filepath.Glob(filepath.Join("migrations", "0117_*."+direction+".sql"))
+		matches, err := filepath.Glob(filepath.Join("migrations", "0119_*."+direction+".sql"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) != 1 || filepath.Base(matches[0]) != "0117_k8s_service_uid_pool_connector_selection."+direction+".sql" {
-			t.Fatalf("0117 %s migration must be unique and ordered after 0116, found %v", direction, matches)
+		if len(matches) != 1 || filepath.Base(matches[0]) != "0119_k8s_service_uid_pool_connector_selection."+direction+".sql" {
+			t.Fatalf("0119 %s migration must be unique and ordered after 0118, found %v", direction, matches)
 		}
-		if _, err := os.Stat(filepath.Join("migrations", "0116_fqdn_gateway_dns_resolver_config."+direction+".sql")); err != nil {
-			t.Fatalf("0117 predecessor 0116 %s missing: %v", direction, err)
+		if _, err := os.Stat(filepath.Join("migrations", "0118_fqdn_resolver_profiles."+direction+".sql")); err != nil {
+			t.Fatalf("0119 predecessor 0118 %s missing: %v", direction, err)
 		}
 	}
 }

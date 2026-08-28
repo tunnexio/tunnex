@@ -21,8 +21,8 @@ func TestPostgresK8sServiceInventoryStorePersistsAttributedSnapshotAndDuplicate(
 	defer cancel()
 	pool := newHandoffEndToEndTestDB(t, ctx, admin)
 	fixture := seedHandoffBootstrapIntegration(t, ctx, pool)
-	if err := db.MigrateTo(pool.Config().ConnString(), 123); err != nil {
-		t.Fatalf("migrate through 0123: %v", err)
+	if err := db.MigrateTo(pool.Config().ConnString(), 125); err != nil {
+		t.Fatalf("migrate through 0125: %v", err)
 	}
 	scope := K8sServiceUIDObservationScope{OrgID: fixture.scope.OrgID, SiteID: fixture.scope.SiteID, ClusterID: fixture.scope.ClusterID, ConnectorNodeID: fixture.active}
 	if _, err := pool.Exec(ctx, `UPDATE k8s_service_uid_observation_replay_states SET scope_identity=$1 WHERE org_id=$2 AND cluster_id=$3 AND connector_node_id=$4`, k8sServiceUIDObservationScopeIdentity(scope), scope.OrgID, scope.ClusterID, scope.ConnectorNodeID); err != nil {
@@ -70,8 +70,8 @@ func TestPostgresK8sServiceInventoryStoreRetainsTwentyUnreferencedAndDurableEvid
 	defer cancel()
 	pool := newHandoffEndToEndTestDB(t, ctx, admin)
 	fixture := seedHandoffBootstrapIntegration(t, ctx, pool)
-	if err := db.MigrateTo(pool.Config().ConnString(), 123); err != nil {
-		t.Fatalf("migrate through 0123: %v", err)
+	if err := db.MigrateTo(pool.Config().ConnString(), 125); err != nil {
+		t.Fatalf("migrate through 0125: %v", err)
 	}
 	scope := K8sServiceUIDObservationScope{OrgID: fixture.scope.OrgID, SiteID: fixture.scope.SiteID, ClusterID: fixture.scope.ClusterID, ConnectorNodeID: fixture.active}
 	if _, err := pool.Exec(ctx, `UPDATE k8s_service_uid_observation_replay_states SET scope_identity=$1 WHERE org_id=$2 AND cluster_id=$3 AND connector_node_id=$4`, k8sServiceUIDObservationScopeIdentity(scope), scope.OrgID, scope.ClusterID, scope.ConnectorNodeID); err != nil {
@@ -230,16 +230,16 @@ func TestPostgresK8sServiceInventoryStoreRetainsTwentyUnreferencedAndDurableEvid
 		t.Fatalf("handoff retention new_count=%d generation=%d sequence=%d oldest_count=%d unreferenced=%d", newReportCount, newGeneration, newSequence, oldReportCount, unreferencedAfterHandoff)
 	}
 
-	if err := db.MigrateTo(pool.Config().ConnString(), 122); err != nil {
-		t.Fatalf("retention-only 0123 down with evidence: %v", err)
+	if err := db.MigrateTo(pool.Config().ConnString(), 124); err != nil {
+		t.Fatalf("retention-only 0125 down with evidence: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_cluster_scope_initial_candidates WHERE rule_id=$1 AND inventory_report_id=$2`, ruleID, first.ReportID).Scan(&evidence); err != nil || evidence != 1 {
-		t.Fatalf("0123 down lost exact evidence count=%d err=%v", evidence, err)
+		t.Fatalf("0125 down lost exact evidence count=%d err=%v", evidence, err)
 	}
-	if err := db.MigrateTo(pool.Config().ConnString(), 123); err != nil {
-		t.Fatalf("retention-only 0123 re-up with evidence: %v", err)
+	if err := db.MigrateTo(pool.Config().ConnString(), 125); err != nil {
+		t.Fatalf("retention-only 0125 re-up with evidence: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_service_inventory_reports WHERE id=$1`, first.ReportID).Scan(&evidence); err != nil || evidence != 1 {
-		t.Fatalf("0123 up/down/up lost referenced report count=%d err=%v", evidence, err)
+		t.Fatalf("0125 up/down/up lost referenced report count=%d err=%v", evidence, err)
 	}
 }

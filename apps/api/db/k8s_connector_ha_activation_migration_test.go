@@ -8,11 +8,11 @@ import (
 )
 
 func TestK8sConnectorHAActivationMigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0120_k8s_connector_ha_activation.up.sql")
+	up, err := os.ReadFile("migrations/0122_k8s_connector_ha_activation.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0120_k8s_connector_ha_activation.down.sql")
+	down, err := os.ReadFile("migrations/0122_k8s_connector_ha_activation.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,37 +36,37 @@ func TestK8sConnectorHAActivationMigrationContract(t *testing.T) {
 		"ON DELETE RESTRICT",
 	} {
 		if !strings.Contains(upSQL, want) {
-			t.Fatalf("0120 up missing %q", want)
+			t.Fatalf("0122 up missing %q", want)
 		}
 	}
 	if strings.Contains(upSQL, "INSERT INTO k8s_ha_settings") || strings.Contains(upSQL, "UPDATE organizations") {
-		t.Fatal("0120 must not opt in or infer HA state for legacy organizations")
+		t.Fatal("0122 must not opt in or infer HA state for legacy organizations")
 	}
 	for _, want := range []string{
 		"LOCK TABLE k8s_base_authority_ack_receipts",
 		"IN ACCESS EXCLUSIVE MODE",
 		"IF EXISTS (SELECT 1 FROM k8s_ha_settings)",
-		"cannot roll back 0120: Kubernetes connector HA state exists",
+		"cannot roll back 0122: Kubernetes connector HA state exists",
 		"DROP TABLE k8s_base_authority_ack_receipts",
 		"DROP FUNCTION k8s_ha_actor_require_org_membership()",
 	} {
 		if !strings.Contains(downSQL, want) {
-			t.Fatalf("0120 down missing %q", want)
+			t.Fatalf("0122 down missing %q", want)
 		}
 	}
 }
 
 func TestK8sConnectorHAActivationMigrationOrder(t *testing.T) {
 	for _, direction := range []string{"up", "down"} {
-		matches, err := filepath.Glob(filepath.Join("migrations", "0120_*."+direction+".sql"))
+		matches, err := filepath.Glob(filepath.Join("migrations", "0122_*."+direction+".sql"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) != 1 || filepath.Base(matches[0]) != "0120_k8s_connector_ha_activation."+direction+".sql" {
-			t.Fatalf("0120 %s migration must be unique and ordered after 0119, found %v", direction, matches)
+		if len(matches) != 1 || filepath.Base(matches[0]) != "0122_k8s_connector_ha_activation."+direction+".sql" {
+			t.Fatalf("0122 %s migration must be unique and ordered after 0121, found %v", direction, matches)
 		}
-		if _, err := os.Stat(filepath.Join("migrations", "0119_k8s_service_uid_observation_attribution."+direction+".sql")); err != nil {
-			t.Fatalf("0120 predecessor 0119 %s missing: %v", direction, err)
+		if _, err := os.Stat(filepath.Join("migrations", "0121_k8s_service_uid_observation_attribution."+direction+".sql")); err != nil {
+			t.Fatalf("0122 predecessor 0121 %s missing: %v", direction, err)
 		}
 	}
 }

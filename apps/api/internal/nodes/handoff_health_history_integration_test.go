@@ -614,7 +614,7 @@ func newHandoffHealthTestDB(t *testing.T, ctx context.Context, admin string) *pg
 }
 
 func newHandoffHealthRuntimeTestDB(t *testing.T, ctx context.Context, admin string) *pgxpool.Pool {
-	return newHandoffHealthTestDBAt(t, ctx, admin, 120, "runtime")
+	return newHandoffHealthTestDBAt(t, ctx, admin, 122, "runtime")
 }
 
 func newHandoffHealthTestDBAt(t *testing.T, ctx context.Context, admin string, version uint, suffix string) *pgxpool.Pool {

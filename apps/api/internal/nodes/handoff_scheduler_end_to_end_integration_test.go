@@ -934,11 +934,11 @@ func (f *endToEndFence) close(ctx context.Context) {
 }
 
 func newHandoffEndToEndTestDB(t *testing.T, ctx context.Context, admin string) *pgxpool.Pool {
-	return newHandoffEndToEndTestDBAt(t, ctx, admin, 118, "e2e")
+	return newHandoffEndToEndTestDBAt(t, ctx, admin, 120, "e2e")
 }
 
 func newHandoffProductionSchedulerTestDB(t *testing.T, ctx context.Context, admin string) *pgxpool.Pool {
-	return newHandoffEndToEndTestDBAt(t, ctx, admin, 120, "production")
+	return newHandoffEndToEndTestDBAt(t, ctx, admin, 122, "production")
 }
 
 func newHandoffEndToEndTestDBAt(t *testing.T, ctx context.Context, admin string, version uint, suffix string) *pgxpool.Pool {

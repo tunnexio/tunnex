@@ -17,7 +17,7 @@ import (
 func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 	adminURL := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if adminURL == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0120 PostgreSQL proof")
+		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0122 PostgreSQL proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -38,8 +38,8 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 	testURL := *base
 	testURL.Path = "/" + name
 	dsn := testURL.String()
-	if err := db.MigrateTo(dsn, 119); err != nil {
-		t.Fatalf("migrate prerequisite chain through 0119: %v", err)
+	if err := db.MigrateTo(dsn, 121); err != nil {
+		t.Fatalf("migrate prerequisite chain through 0121: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -48,10 +48,10 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 	defer pool.Close()
 	orgID, otherOrgID, userID := uuid.New(), uuid.New(), uuid.New()
 	siteID, nodeID, clusterID, connectorPoolID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0120',$2,'10.249.0.0/24')`, orgID, "s203b-ha-"+orgID.String()[:8]); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0122',$2,'10.249.0.0/24')`, orgID, "s203b-ha-"+orgID.String()[:8]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0120-other',$2,'10.247.0.0/24')`, otherOrgID, "s203b-ha-other-"+otherOrgID.String()[:8]); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0122-other',$2,'10.247.0.0/24')`, otherOrgID, "s203b-ha-other-"+otherOrgID.String()[:8]); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email) VALUES($1,$2)`, userID, "s203b-ha-"+userID.String()[:8]+"@example.test"); err != nil {
@@ -60,13 +60,13 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'owner')`, otherOrgID, userID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO sites(id,org_id,name) VALUES($1,$2,'0120-site')`, siteID, orgID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO sites(id,org_id,name) VALUES($1,$2,'0122-site')`, siteID, orgID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO nodes(id,org_id,site_id,name,cert_serial,status,wg_public_key,endpoint) VALUES($1,$2,$3,'0120-node',$4,'active','AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=','198.51.100.30:51820')`, nodeID, orgID, siteID, "s203b-ha-"+nodeID.String()); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO nodes(id,org_id,site_id,name,cert_serial,status,wg_public_key,endpoint) VALUES($1,$2,$3,'0122-node',$4,'active','AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=','198.51.100.30:51820')`, nodeID, orgID, siteID, "s203b-ha-"+nodeID.String()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO k8s_clusters(id,org_id,site_id,name,vip_range) VALUES($1,$2,$3,'0120-cluster','100.126.0.0/24')`, clusterID, orgID, siteID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO k8s_clusters(id,org_id,site_id,name,vip_range) VALUES($1,$2,$3,'0122-cluster','100.126.0.0/24')`, clusterID, orgID, siteID); err != nil {
 		t.Fatal(err)
 	}
 	seedTx, err := pool.Begin(ctx)
@@ -88,18 +88,18 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 	if err = seedTx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.MigrateTo(dsn, 120); err != nil {
-		t.Fatalf("apply 0120: %v", err)
+	if err := db.MigrateTo(dsn, 122); err != nil {
+		t.Fatalf("apply 0122: %v", err)
 	}
 	var count int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_ha_settings WHERE org_id=$1`, orgID).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("legacy organization must remain missing/OFF: count=%d err=%v", count, err)
 	}
-	if err := db.MigrateTo(dsn, 119); err != nil {
-		t.Fatalf("empty 0120 down: %v", err)
+	if err := db.MigrateTo(dsn, 121); err != nil {
+		t.Fatalf("empty 0122 down: %v", err)
 	}
-	if err := db.MigrateTo(dsn, 120); err != nil {
-		t.Fatalf("0120 re-up: %v", err)
+	if err := db.MigrateTo(dsn, 122); err != nil {
+		t.Fatalf("0122 re-up: %v", err)
 	}
 
 	// The down preflight must wait for an in-flight writer, then observe its
@@ -112,7 +112,7 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 		_ = writer.Rollback(ctx)
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0120_k8s_connector_ha_activation.down.sql")
+	down, err := os.ReadFile("migrations/0122_k8s_connector_ha_activation.down.sql")
 	if err != nil {
 		_ = writer.Rollback(ctx)
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 	select {
 	case downErr := <-downResult:
 		_ = writer.Rollback(ctx)
-		t.Fatalf("0120 down bypassed an in-flight writer before commit: %v", downErr)
+		t.Fatalf("0122 down bypassed an in-flight writer before commit: %v", downErr)
 	case <-time.After(150 * time.Millisecond):
 	}
 	if err = writer.Commit(ctx); err != nil {
@@ -134,20 +134,20 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 	select {
 	case downErr := <-downResult:
 		if downErr == nil {
-			t.Fatal("0120 down must observe and refuse the row committed by the in-flight writer")
+			t.Fatal("0122 down must observe and refuse the row committed by the in-flight writer")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("0120 down did not finish after the in-flight writer committed")
+		t.Fatal("0122 down did not finish after the in-flight writer committed")
 	}
 	if _, err := pool.Exec(ctx, `DELETE FROM k8s_ha_settings WHERE org_id=$1`, orgID); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_ha_settings(org_id,enabled,revision,actor_user_id,cause) VALUES($1,false,1,$2,'cross-org actor')`, orgID, userID); err == nil {
-		t.Fatal("0120 settings must refuse an actor who belongs only to another organization")
+		t.Fatal("0122 settings must refuse an actor who belongs only to another organization")
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_connector_pool_ha_transitions(pool_id,org_id,site_id,cluster_id,requested_mode,actual_mode,active_node_id,promotion_generation,reason_code,actor_user_id,cause) VALUES($1,$2,$3,$4,'fenced_ha','bootstrap_pending',$5,1,'bootstrap_pending',$6,'cross-org actor')`, connectorPoolID, orgID, siteID, clusterID, nodeID, userID); err == nil {
-		t.Fatal("0120 transition must refuse an actor who belongs only to another organization")
+		t.Fatal("0122 transition must refuse an actor who belongs only to another organization")
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'owner')`, orgID, userID); err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_connector_pool_ha_transitions(pool_id,org_id,site_id,cluster_id,requested_mode,actual_mode,active_node_id,promotion_generation,membership_epoch,achieved_authority_revision,reason_code,actor_user_id,cause,achieved_at) VALUES($1,$2,$3,$4,'fenced_ha','fenced_ha',$5,1,NULL,1,'fenced_ha_active',$6,'malformed fenced epoch',now())`, connectorPoolID, orgID, siteID, clusterID, nodeID, userID); err == nil {
-		t.Fatal("0120 fenced HA transition must refuse a missing durable membership epoch")
+		t.Fatal("0122 fenced HA transition must refuse a missing durable membership epoch")
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_connector_pool_ha_transitions(pool_id,org_id,site_id,cluster_id,requested_mode,actual_mode,active_node_id,promotion_generation,reason_code,actor_user_id,cause) VALUES($1,$2,$3,$4,'fenced_ha','bootstrap_pending',$5,1,'bootstrap_pending',$6,'bootstrap request')`, connectorPoolID, orgID, siteID, clusterID, nodeID, userID); err != nil {
 		t.Fatal(err)
@@ -181,13 +181,13 @@ func TestK8sConnectorHAActivationMigrationPostgres(t *testing.T) {
 		{"base hash", 1, payloadDigest, 7, strings.Repeat("e", 64)},
 	} {
 		if _, err := pool.Exec(ctx, insertACK, deliveryID, orgID, siteID, nodeID, mismatch.authorityRevision, mismatch.digest, mismatch.baseVersion, mismatch.baseHash); err == nil {
-			t.Fatalf("0120 ACK must refuse a mismatched %s", mismatch.name)
+			t.Fatalf("0122 ACK must refuse a mismatched %s", mismatch.name)
 		}
 	}
 	if _, err := pool.Exec(ctx, insertACK, deliveryID, orgID, siteID, nodeID, 1, payloadDigest, 7, baseHash); err != nil {
-		t.Fatalf("0120 exact ACK: %v", err)
+		t.Fatalf("0122 exact ACK: %v", err)
 	}
 	if _, err := pool.Exec(ctx, string(down)); err == nil {
-		t.Fatal("0120 down must refuse exact HA state because provenance would be lost")
+		t.Fatal("0122 down must refuse exact HA state because provenance would be lost")
 	}
 }

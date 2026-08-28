@@ -17,7 +17,7 @@ import (
 func TestK8sServiceUIDPoolConnectorSelectionMigrationPostgres(t *testing.T) {
 	adminURL := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if adminURL == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0117 PostgreSQL proof")
+		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0119 PostgreSQL proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -38,8 +38,8 @@ func TestK8sServiceUIDPoolConnectorSelectionMigrationPostgres(t *testing.T) {
 	testURL := *base
 	testURL.Path = "/" + name
 	dsn := testURL.String()
-	if err := db.MigrateTo(dsn, 116); err != nil {
-		t.Fatalf("migrate prerequisite chain through 0116: %v", err)
+	if err := db.MigrateTo(dsn, 118); err != nil {
+		t.Fatalf("migrate prerequisite chain through 0118: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -113,8 +113,8 @@ func TestK8sServiceUIDPoolConnectorSelectionMigrationPostgres(t *testing.T) {
 		exec(`UPDATE nodes SET status='active',revoked_at=NULL,wg_public_key='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',endpoint='198.51.100.10:51820' WHERE id=$1`, activeID)
 	}
 
-	if err := db.MigrateTo(dsn, 117); err != nil {
-		t.Fatalf("apply 0117: %v", err)
+	if err := db.MigrateTo(dsn, 119); err != nil {
+		t.Fatalf("apply 0119: %v", err)
 	}
 	if err := insertReplay(poolClusterID, activeID, "pool-active"); err != nil {
 		t.Fatalf("eligible pool active connector: %v", err)
@@ -163,18 +163,18 @@ func TestK8sServiceUIDPoolConnectorSelectionMigrationPostgres(t *testing.T) {
 	}
 	deleteReplay(poolClusterID)
 	deleteReplay(legacyClusterID)
-	if err := db.MigrateTo(dsn, 116); err != nil {
-		t.Fatalf("0117 down: %v", err)
+	if err := db.MigrateTo(dsn, 118); err != nil {
+		t.Fatalf("0119 down: %v", err)
 	}
-	expectRejected("pool connector after 0117 down", func() error { return insertReplay(poolClusterID, activeID, "pool-down") })
+	expectRejected("pool connector after 0119 down", func() error { return insertReplay(poolClusterID, activeID, "pool-down") })
 	if err := insertReplay(legacyClusterID, legacyID, "legacy-down"); err != nil {
-		t.Fatalf("0117 down must restore 0084 legacy behavior: %v", err)
+		t.Fatalf("0119 down must restore 0084 legacy behavior: %v", err)
 	}
 	deleteReplay(legacyClusterID)
-	if err := db.MigrateTo(dsn, 117); err != nil {
-		t.Fatalf("0117 re-up: %v", err)
+	if err := db.MigrateTo(dsn, 119); err != nil {
+		t.Fatalf("0119 re-up: %v", err)
 	}
 	if err := insertReplay(poolClusterID, activeID, "pool-re-up"); err != nil {
-		t.Fatalf("0117 re-up must restore pool active behavior: %v", err)
+		t.Fatalf("0119 re-up must restore pool active behavior: %v", err)
 	}
 }

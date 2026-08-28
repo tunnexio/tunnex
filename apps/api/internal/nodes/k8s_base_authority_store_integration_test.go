@@ -20,8 +20,8 @@ func TestPostgresKubernetesOwnershipBaseAuthorityStore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dsn := newOwnershipDeliveryIntegrationDatabase(t, ctx, admin)
-	if err := db.MigrateTo(dsn, 120); err != nil {
-		t.Fatalf("migrate through 0120: %v", err)
+	if err := db.MigrateTo(dsn, 122); err != nil {
+		t.Fatalf("migrate through 0122: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {

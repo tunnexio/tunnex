@@ -17,7 +17,7 @@ import (
 func TestK8sServiceUIDObservationAttributionMigrationPostgres(t *testing.T) {
 	adminURL := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if adminURL == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0119 PostgreSQL proof")
+		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0121 PostgreSQL proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -38,8 +38,8 @@ func TestK8sServiceUIDObservationAttributionMigrationPostgres(t *testing.T) {
 	testURL := *base
 	testURL.Path = "/" + name
 	dsn := testURL.String()
-	if err := db.MigrateTo(dsn, 118); err != nil {
-		t.Fatalf("migrate prerequisite chain through 0118: %v", err)
+	if err := db.MigrateTo(dsn, 120); err != nil {
+		t.Fatalf("migrate prerequisite chain through 0120: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -55,8 +55,8 @@ func TestK8sServiceUIDObservationAttributionMigrationPostgres(t *testing.T) {
 			t.Fatalf("seed %q: %v", query, err)
 		}
 	}
-	exec(`INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0119',$2,'10.248.0.0/24')`, orgID, "s203a-attr-"+orgID.String()[:8])
-	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'0119-site')`, siteID, orgID)
+	exec(`INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0121',$2,'10.248.0.0/24')`, orgID, "s203a-attr-"+orgID.String()[:8])
+	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'0121-site')`, siteID, orgID)
 	for _, node := range []struct {
 		id                  uuid.UUID
 		name, key, endpoint string
@@ -66,7 +66,7 @@ func TestK8sServiceUIDObservationAttributionMigrationPostgres(t *testing.T) {
 	} {
 		exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,status,wg_public_key,endpoint) VALUES($1,$2,$3,$4,$5,'active',$6,$7)`, node.id, orgID, node.name, "serial-"+node.id.String(), siteID, node.key, node.endpoint)
 	}
-	exec(`INSERT INTO k8s_clusters(id,org_id,site_id,name,vip_range) VALUES($1,$2,$3,'0119-cluster','100.125.0.0/24')`, clusterID, orgID, siteID)
+	exec(`INSERT INTO k8s_clusters(id,org_id,site_id,name,vip_range) VALUES($1,$2,$3,'0121-cluster','100.125.0.0/24')`, clusterID, orgID, siteID)
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -86,8 +86,8 @@ func TestK8sServiceUIDObservationAttributionMigrationPostgres(t *testing.T) {
 	exec(`INSERT INTO k8s_service_uid_observation_replay_states(id,org_id,site_id,cluster_id,connector_node_id,scope_identity,sequence,digest) VALUES($1,$2,$3,$4,$5,'active-scope',1,$6)`, replayID, orgID, siteID, clusterID, activeID, strings.Repeat("a", 64))
 	exec(`INSERT INTO k8s_service_uid_observation_ledgers(id,org_id,site_id,cluster_id,scope_identity) VALUES($1,$2,$3,$4,'cluster-ledger')`, ledgerID, orgID, siteID, clusterID)
 	exec(`INSERT INTO k8s_service_uid_observation_current(ledger_id,org_id,namespace,service,uid,state,replay_sequence) VALUES($1,$2,'default','api','uid-v1','live',1)`, ledgerID, orgID)
-	if err := db.MigrateTo(dsn, 119); err != nil {
-		t.Fatalf("apply 0119: %v", err)
+	if err := db.MigrateTo(dsn, 121); err != nil {
+		t.Fatalf("apply 0121: %v", err)
 	}
 	var count int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_service_uid_observation_current_attributions`).Scan(&count); err != nil || count != 0 {
@@ -95,29 +95,29 @@ func TestK8sServiceUIDObservationAttributionMigrationPostgres(t *testing.T) {
 	}
 	exec(`INSERT INTO k8s_service_uid_observation_current_attributions(ledger_id,org_id,namespace,service,replay_state_id,replay_sequence) VALUES($1,$2,'default','api',$3,1)`, ledgerID, orgID, replayID)
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_service_uid_observation_replay_states(id,org_id,site_id,cluster_id,connector_node_id,scope_identity,sequence,digest) VALUES($1,$2,$3,$4,$5,'standby-scope',1,$6)`, standbyReplayID, orgID, siteID, clusterID, standbyID, strings.Repeat("b", 64)); err == nil {
-		t.Fatal("0117 must refuse a standby replay state")
+		t.Fatal("0119 must refuse a standby replay state")
 	}
-	down, err := os.ReadFile("migrations/0119_k8s_service_uid_observation_attribution.down.sql")
+	down, err := os.ReadFile("migrations/0121_k8s_service_uid_observation_attribution.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, string(down)); err == nil {
-		t.Fatal("0119 down must refuse destructive loss while attribution exists")
+		t.Fatal("0121 down must refuse destructive loss while attribution exists")
 	}
 	exec(`UPDATE k8s_service_uid_observation_current SET uid='uid-v2' WHERE ledger_id=$1 AND namespace='default' AND service='api'`, ledgerID)
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_service_uid_observation_current_attributions`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("mixed-version current write must invalidate attribution: count=%d err=%v", count, err)
 	}
-	if err := db.MigrateTo(dsn, 118); err != nil {
-		t.Fatalf("0119 down after explicit de-attribution: %v", err)
+	if err := db.MigrateTo(dsn, 120); err != nil {
+		t.Fatalf("0121 down after explicit de-attribution: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_service_uid_observation_current WHERE ledger_id=$1 AND uid='uid-v2'`, ledgerID).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("0119 down must preserve current rows: count=%d err=%v", count, err)
+		t.Fatalf("0121 down must preserve current rows: count=%d err=%v", count, err)
 	}
-	if err := db.MigrateTo(dsn, 119); err != nil {
-		t.Fatalf("0119 re-up: %v", err)
+	if err := db.MigrateTo(dsn, 121); err != nil {
+		t.Fatalf("0121 re-up: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_service_uid_observation_current_attributions`).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("0119 re-up must not invent attribution: count=%d err=%v", count, err)
+		t.Fatalf("0121 re-up must not invent attribution: count=%d err=%v", count, err)
 	}
 }

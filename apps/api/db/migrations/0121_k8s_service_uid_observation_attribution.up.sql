@@ -111,7 +111,7 @@ CREATE TRIGGER k8s_service_uid_observation_require_current_attribution_before_wr
     BEFORE INSERT OR UPDATE ON k8s_service_uid_observation_current_attributions
     FOR EACH ROW EXECUTE FUNCTION k8s_service_uid_observation_require_current_attribution();
 
--- 0118 allowed a Service UID child to cite any matching cluster-wide current
+-- 0120 allowed a Service UID child to cite any matching cluster-wide current
 -- row. Preserve its v2/v3 capability behavior, but require new UID children to
 -- cite the exact selected active reporter attribution introduced above.
 CREATE OR REPLACE FUNCTION pool_vip_ownership_handoff_provenance_require_child_scope() RETURNS trigger AS $$

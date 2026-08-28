@@ -8,11 +8,11 @@ import (
 )
 
 func TestK8sClusterProviderMetadataMigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0122_k8s_cluster_provider_metadata.up.sql")
+	up, err := os.ReadFile("migrations/0124_k8s_cluster_provider_metadata.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0122_k8s_cluster_provider_metadata.down.sql")
+	down, err := os.ReadFile("migrations/0124_k8s_cluster_provider_metadata.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,25 +26,25 @@ func TestK8sClusterProviderMetadataMigrationContract(t *testing.T) {
 		"provider='self_managed' AND platform='kubernetes'",
 	} {
 		if !strings.Contains(upSQL, want) {
-			t.Fatalf("0122 up missing %q", want)
+			t.Fatalf("0124 up missing %q", want)
 		}
 	}
 	if strings.Contains(upSQL, "UPDATE k8s_clusters") {
-		t.Fatal("0122 must not infer metadata for existing clusters")
+		t.Fatal("0124 must not infer metadata for existing clusters")
 	}
-	if !strings.Contains(downSQL, "0122 rollback refused") {
-		t.Fatal("0122 down must refuse lossy metadata contraction")
+	if !strings.Contains(downSQL, "0124 rollback refused") {
+		t.Fatal("0124 down must refuse lossy metadata contraction")
 	}
 }
 
 func TestK8sClusterProviderMetadataMigrationOrder(t *testing.T) {
 	for _, direction := range []string{"up", "down"} {
-		matches, err := filepath.Glob(filepath.Join("migrations", "0122_*."+direction+".sql"))
+		matches, err := filepath.Glob(filepath.Join("migrations", "0124_*."+direction+".sql"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(matches) != 1 || filepath.Base(matches[0]) != "0122_k8s_cluster_provider_metadata."+direction+".sql" {
-			t.Fatalf("0122 %s migration must be unique and ordered after 0121, found %v", direction, matches)
+		if len(matches) != 1 || filepath.Base(matches[0]) != "0124_k8s_cluster_provider_metadata."+direction+".sql" {
+			t.Fatalf("0124 %s migration must be unique and ordered after 0123, found %v", direction, matches)
 		}
 	}
 }

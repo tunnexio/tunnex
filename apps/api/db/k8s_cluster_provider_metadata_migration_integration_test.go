@@ -16,7 +16,7 @@ import (
 func TestK8sClusterProviderMetadataMigrationPostgres(t *testing.T) {
 	adminURL := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if adminURL == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0122 PostgreSQL proof")
+		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0124 PostgreSQL proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -37,8 +37,8 @@ func TestK8sClusterProviderMetadataMigrationPostgres(t *testing.T) {
 	testURL := *base
 	testURL.Path = "/" + name
 	dsn := testURL.String()
-	if err := db.MigrateTo(dsn, 121); err != nil {
-		t.Fatalf("migrate prerequisite chain through 0121: %v", err)
+	if err := db.MigrateTo(dsn, 123); err != nil {
+		t.Fatalf("migrate prerequisite chain through 0123: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -46,39 +46,39 @@ func TestK8sClusterProviderMetadataMigrationPostgres(t *testing.T) {
 	}
 	defer pool.Close()
 	orgID, siteID, clusterID := uuid.New(), uuid.New(), uuid.New()
-	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0122',$2,'10.247.0.0/24')`, orgID, "s204-provider-"+orgID.String()[:8]); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'0124',$2,'10.247.0.0/24')`, orgID, "s204-provider-"+orgID.String()[:8]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO sites(id,org_id,name) VALUES($1,$2,'0122-site')`, siteID, orgID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO sites(id,org_id,name) VALUES($1,$2,'0124-site')`, siteID, orgID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO k8s_clusters(id,org_id,site_id,name,vip_range) VALUES($1,$2,$3,'legacy','100.125.0.0/24')`, clusterID, orgID, siteID); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.MigrateTo(dsn, 122); err != nil {
-		t.Fatalf("apply 0122: %v", err)
+	if err := db.MigrateTo(dsn, 124); err != nil {
+		t.Fatalf("apply 0124: %v", err)
 	}
 	var provider, platform string
 	if err := pool.QueryRow(ctx, `SELECT provider,platform FROM k8s_clusters WHERE id=$1`, clusterID).Scan(&provider, &platform); err != nil || provider != "unknown" || platform != "unknown" {
 		t.Fatalf("legacy metadata inferred: provider=%q platform=%q err=%v", provider, platform, err)
 	}
-	if err := db.MigrateTo(dsn, 121); err != nil {
-		t.Fatalf("empty/unknown 0122 down: %v", err)
+	if err := db.MigrateTo(dsn, 123); err != nil {
+		t.Fatalf("empty/unknown 0124 down: %v", err)
 	}
-	if err := db.MigrateTo(dsn, 122); err != nil {
-		t.Fatalf("0122 re-up: %v", err)
+	if err := db.MigrateTo(dsn, 124); err != nil {
+		t.Fatalf("0124 re-up: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE k8s_clusters SET provider='aws',platform='eks' WHERE id=$1`, clusterID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE k8s_clusters SET provider='aws',platform='aks' WHERE id=$1`, clusterID); err == nil {
-		t.Fatal("0122 must reject invalid provider/platform pairs")
+		t.Fatal("0124 must reject invalid provider/platform pairs")
 	}
-	down, err := os.ReadFile("migrations/0122_k8s_cluster_provider_metadata.down.sql")
+	down, err := os.ReadFile("migrations/0124_k8s_cluster_provider_metadata.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, string(down)); err == nil {
-		t.Fatal("0122 down must refuse non-unknown metadata")
+		t.Fatal("0124 down must refuse non-unknown metadata")
 	}
 }

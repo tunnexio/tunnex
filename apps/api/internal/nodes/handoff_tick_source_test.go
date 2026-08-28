@@ -537,7 +537,7 @@ func newHandoffTickTestDB(t *testing.T, ctx context.Context, admin string) *pgxp
 		t.Fatal(err)
 	}
 	u.Path = "/" + dbName
-	if err := db.MigrateTo(u.String(), 120); err != nil {
+	if err := db.MigrateTo(u.String(), 122); err != nil {
 		t.Fatal(err)
 	}
 	p, err := pgxpool.New(ctx, u.String())

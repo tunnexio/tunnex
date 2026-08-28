@@ -7,11 +7,11 @@ import (
 )
 
 func TestPoolVIPOwnershipDeliveryV3MigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0118_pool_vip_ownership_delivery_v3.up.sql")
+	up, err := os.ReadFile("migrations/0120_pool_vip_ownership_delivery_v3.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0118_pool_vip_ownership_delivery_v3.down.sql")
+	down, err := os.ReadFile("migrations/0120_pool_vip_ownership_delivery_v3.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestPoolVIPOwnershipDeliveryV3MigrationContract(t *testing.T) {
 		"delivery_wire_version = 3 AND NEW.applied_manifest IS NULL",
 	} {
 		if !strings.Contains(string(up), want) {
-			t.Fatalf("0118 up missing %q", want)
+			t.Fatalf("0120 up missing %q", want)
 		}
 	}
 	if !strings.Contains(string(down), "cannot remove ownership delivery v3 while v3 provenance exists") ||
@@ -43,6 +43,6 @@ func TestPoolVIPOwnershipDeliveryV3MigrationContract(t *testing.T) {
 		!strings.Contains(string(down), "pool_vip_ownership_handoff_provenance_capabilities WHERE wire_version = 3") ||
 		!strings.Contains(string(down), "d.wire_version=2") ||
 		!strings.Contains(string(down), "DROP FUNCTION pool_vip_ownership_ack_manifest_matches_wire_version()") {
-		t.Fatal("0118 down must refuse data loss and restore the v1/v2 contract")
+		t.Fatal("0120 down must refuse data loss and restore the v1/v2 contract")
 	}
 }
