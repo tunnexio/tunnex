@@ -317,7 +317,7 @@ export default function Dashboard() {
                 <Panel title="Fleet summary">
                   <section
                     aria-label="Fleet summary metrics"
-                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 2xl:divide-x 2xl:divide-white/10"
+                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 xl:divide-x xl:divide-white/10"
                   >
                   <Stat
                     label="Members"
@@ -432,7 +432,7 @@ export default function Dashboard() {
                     Set and others gate too), so hand-ordering rows by height could not have worked: which
                     panels are present varies per org, and a row tuned for one tenant is ragged for the next.
                     Packing has to be automatic for that reason alone. */}
-                <div className="grid gap-3 2xl:grid-cols-2">
+                <div className="grid gap-3 xl:grid-cols-2">
                   <Panel title="Gateway Health">
                     {nodesRes === null ? (
                       <Loading />
@@ -559,7 +559,7 @@ export default function Dashboard() {
                       (() => {
                         const ps = postureSplit(devicesRes.data);
                         return (
-                          <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="grid gap-4 2xl:grid-cols-2">
                             <div>
                               <h3 className="mb-2 text-cell font-medium text-ink-secondary">
                                 Connection
@@ -576,7 +576,7 @@ export default function Dashboard() {
                                 empty="No devices enrolled yet."
                               />
                             </div>
-                            <div className="sm:border-l sm:border-white/10 sm:pl-4">
+                            <div className="border-t border-white/10 pt-4 2xl:border-l 2xl:border-t-0 2xl:pl-4 2xl:pt-0">
                               <h3 className="mb-2 text-cell font-medium text-ink-secondary">
                                 Posture
                               </h3>
@@ -609,7 +609,7 @@ export default function Dashboard() {
                               />
                             </div>
                             {pending.state === "ok" && pending.value > 0 && (
-                              <p className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-center text-cell text-warn sm:col-span-2">
+                              <p className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-center text-cell text-warn 2xl:col-span-2">
                                 {pending.value} device
                                 {pending.value === 1 ? "" : "s"} awaiting
                                 approval
@@ -621,7 +621,7 @@ export default function Dashboard() {
                     )}
                   </Panel>
 
-                  <Panel title="Infrastructure" className="2xl:col-span-2">
+                  <Panel title="Infrastructure" className="xl:col-span-2">
                     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
                       <div className="min-w-0 lg:pr-1">
                         {sitesRes === null || nodesRes === null ? (
