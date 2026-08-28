@@ -336,7 +336,7 @@ export default function Dashboard() {
                     held to the generated set. */}
                 <section
                   aria-label="Fleet summary"
-                  className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-2"
+                  className="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-2"
                 >
                   <Stat
                     label="Members"
