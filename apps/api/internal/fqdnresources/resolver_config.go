@@ -86,15 +86,26 @@ func lockResolverOrg(ctx context.Context, tx pgx.Tx, org uuid.UUID) error {
 }
 
 func (s *Service) ResolverConfig(ctx context.Context, org, site, gateway uuid.UUID) (ResolverConfig, error) {
+	return resolverConfig(ctx, s.pool, org, site, gateway)
+}
+
+// resolverConfigQuerier keeps resolver configuration and endpoint reads on a
+// caller-owned database snapshot when required by a higher-level read.
+type resolverConfigQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func resolverConfig(ctx context.Context, q resolverConfigQuerier, org, site, gateway uuid.UUID) (ResolverConfig, error) {
 	var out ResolverConfig
-	err := s.pool.QueryRow(ctx, `SELECT id,org_id,site_id,gateway_id,version,state,created_at FROM fqdn_resolver_context_configs WHERE org_id=$1 AND site_id=$2 AND gateway_id=$3 AND state='active'`, org, site, gateway).Scan(&out.ID, &out.OrgID, &out.SiteID, &out.GatewayID, &out.Version, &out.State, &out.CreatedAt)
+	err := q.QueryRow(ctx, `SELECT id,org_id,site_id,gateway_id,version,state,created_at FROM fqdn_resolver_context_configs WHERE org_id=$1 AND site_id=$2 AND gateway_id=$3 AND state='active'`, org, site, gateway).Scan(&out.ID, &out.OrgID, &out.SiteID, &out.GatewayID, &out.Version, &out.State, &out.CreatedAt)
 	if err == pgx.ErrNoRows {
 		return out, apierr.NotFound("fqdn_resolver_config_not_found", "no server-managed resolver endpoint configuration exists for this Site/Gateway context")
 	}
 	if err != nil {
 		return out, err
 	}
-	out.Endpoints, err = configEndpoints(ctx, s.pool, out.ID, org)
+	out.Endpoints, err = configEndpoints(ctx, q, out.ID, org)
 	return out, err
 }
 
@@ -133,7 +144,7 @@ func (s *Service) SetResolverConfig(ctx context.Context, org, site, gateway, act
 		return ResolverConfig{}, err
 	}
 	var out ResolverConfig
-	if err := tx.QueryRow(ctx, `INSERT INTO fqdn_resolver_context_configs (org_id,site_id,gateway_id,version,state,created_by) VALUES ($1,$2,$3,$4,'retired',$5) RETURNING id,created_at`, org, site, gateway, next, nullableActor(actor)).Scan(&out.ID, &out.CreatedAt); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO fqdn_resolver_context_configs (org_id,site_id,gateway_id,version,state,retired_at,created_by) VALUES ($1,$2,$3,$4,'retired',now(),$5) RETURNING id,created_at`, org, site, gateway, next, nullableActor(actor)).Scan(&out.ID, &out.CreatedAt); err != nil {
 		return ResolverConfig{}, writeErr(err)
 	}
 	for ordinal, endpoint := range endpoints {
