@@ -394,16 +394,56 @@ const (
 	ExposeK8sServiceRequestProtocolUdp ExposeK8sServiceRequestProtocol = "udp"
 )
 
+// Defines values for FQDNResolverContextConfigProviderHint.
+const (
+	FQDNResolverContextConfigProviderHintAws         FQDNResolverContextConfigProviderHint = "aws"
+	FQDNResolverContextConfigProviderHintAzure       FQDNResolverContextConfigProviderHint = "azure"
+	FQDNResolverContextConfigProviderHintGoogleCloud FQDNResolverContextConfigProviderHint = "google_cloud"
+	FQDNResolverContextConfigProviderHintOnPremises  FQDNResolverContextConfigProviderHint = "on_premises"
+)
+
 // Defines values for FQDNResolverContextConfigState.
 const (
 	FQDNResolverContextConfigStateActive  FQDNResolverContextConfigState = "active"
 	FQDNResolverContextConfigStateRetired FQDNResolverContextConfigState = "retired"
 )
 
+// Defines values for FQDNResolverContextConfigRequestProviderHint.
+const (
+	FQDNResolverContextConfigRequestProviderHintAws         FQDNResolverContextConfigRequestProviderHint = "aws"
+	FQDNResolverContextConfigRequestProviderHintAzure       FQDNResolverContextConfigRequestProviderHint = "azure"
+	FQDNResolverContextConfigRequestProviderHintGoogleCloud FQDNResolverContextConfigRequestProviderHint = "google_cloud"
+	FQDNResolverContextConfigRequestProviderHintOnPremises  FQDNResolverContextConfigRequestProviderHint = "on_premises"
+)
+
 // Defines values for FQDNResolverEndpointTransport.
 const (
 	FQDNResolverEndpointTransportTcp FQDNResolverEndpointTransport = "tcp"
 	FQDNResolverEndpointTransportUdp FQDNResolverEndpointTransport = "udp"
+)
+
+// Defines values for FQDNResolverProfileProviderHint.
+const (
+	FQDNResolverProfileProviderHintAws         FQDNResolverProfileProviderHint = "aws"
+	FQDNResolverProfileProviderHintAzure       FQDNResolverProfileProviderHint = "azure"
+	FQDNResolverProfileProviderHintGoogleCloud FQDNResolverProfileProviderHint = "google_cloud"
+	FQDNResolverProfileProviderHintOnPremises  FQDNResolverProfileProviderHint = "on_premises"
+)
+
+// Defines values for FQDNResolverProfileRequestProviderHint.
+const (
+	FQDNResolverProfileRequestProviderHintAws         FQDNResolverProfileRequestProviderHint = "aws"
+	FQDNResolverProfileRequestProviderHintAzure       FQDNResolverProfileRequestProviderHint = "azure"
+	FQDNResolverProfileRequestProviderHintGoogleCloud FQDNResolverProfileRequestProviderHint = "google_cloud"
+	FQDNResolverProfileRequestProviderHintOnPremises  FQDNResolverProfileRequestProviderHint = "on_premises"
+)
+
+// Defines values for FQDNResolverProfileSelectionProviderHint.
+const (
+	Aws         FQDNResolverProfileSelectionProviderHint = "aws"
+	Azure       FQDNResolverProfileSelectionProviderHint = "azure"
+	GoogleCloud FQDNResolverProfileSelectionProviderHint = "google_cloud"
+	OnPremises  FQDNResolverProfileSelectionProviderHint = "on_premises"
 )
 
 // Defines values for FQDNResourceDestinationKind.
@@ -2191,23 +2231,40 @@ type FQDNResolverContext struct {
 
 // FQDNResolverContextConfig defines model for FQDNResolverContextConfig.
 type FQDNResolverContextConfig struct {
-	CreatedAt time.Time                      `json:"created_at"`
-	Endpoints []FQDNResolverEndpoint         `json:"endpoints"`
-	GatewayId openapi_types.UUID             `json:"gateway_id"`
-	Id        openapi_types.UUID             `json:"id"`
-	OrgId     openapi_types.UUID             `json:"org_id"`
-	SiteId    openapi_types.UUID             `json:"site_id"`
-	State     FQDNResolverContextConfigState `json:"state"`
-	Version   int64                          `json:"version"`
+	CreatedAt time.Time              `json:"created_at"`
+	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
+	GatewayId openapi_types.UUID     `json:"gateway_id"`
+	Id        openapi_types.UUID     `json:"id"`
+	OrgId     openapi_types.UUID     `json:"org_id"`
+
+	// Profiles Immutable named DNS authorities in this revision. Runtime chooses one profile by longest label-boundary suffix; endpoints from other profiles are never fallback targets.
+	Profiles []FQDNResolverProfile `json:"profiles"`
+
+	// ProviderHint Operator-supplied display metadata only. It does not enable cloud discovery, credentials, hosted-zone import, or endpoint provisioning.
+	ProviderHint *FQDNResolverContextConfigProviderHint `json:"provider_hint"`
+	SiteId       openapi_types.UUID                     `json:"site_id"`
+	State        FQDNResolverContextConfigState         `json:"state"`
+	Version      int64                                  `json:"version"`
 }
+
+// FQDNResolverContextConfigProviderHint Operator-supplied display metadata only. It does not enable cloud discovery, credentials, hosted-zone import, or endpoint provisioning.
+type FQDNResolverContextConfigProviderHint string
 
 // FQDNResolverContextConfigState defines model for FQDNResolverContextConfig.State.
 type FQDNResolverContextConfigState string
 
-// FQDNResolverContextConfigRequest defines model for FQDNResolverContextConfigRequest.
+// FQDNResolverContextConfigRequest Send exactly one of profiles (current contract) or endpoints (legacy single-profile compatibility). The server rejects missing or ambiguous input.
 type FQDNResolverContextConfigRequest struct {
-	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
+	// Endpoints Legacy single-profile compatibility input. New clients should send profiles.
+	Endpoints *[]FQDNResolverEndpoint       `json:"endpoints,omitempty"`
+	Profiles  *[]FQDNResolverProfileRequest `json:"profiles,omitempty"`
+
+	// ProviderHint Operator-supplied display metadata for this resolver boundary; never an instruction to discover or provision cloud resources.
+	ProviderHint *FQDNResolverContextConfigRequestProviderHint `json:"provider_hint"`
 }
+
+// FQDNResolverContextConfigRequestProviderHint Operator-supplied display metadata for this resolver boundary; never an instruction to discover or provision cloud resources.
+type FQDNResolverContextConfigRequestProviderHint string
 
 // FQDNResolverContextRequest defines model for FQDNResolverContextRequest.
 type FQDNResolverContextRequest struct {
@@ -2225,6 +2282,52 @@ type FQDNResolverEndpoint struct {
 
 // FQDNResolverEndpointTransport defines model for FQDNResolverEndpoint.Transport.
 type FQDNResolverEndpointTransport string
+
+// FQDNResolverProfile defines model for FQDNResolverProfile.
+type FQDNResolverProfile struct {
+	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
+
+	// Id Immutable profile provenance bound to gateway DNS requests and answer generations.
+	Id openapi_types.UUID `json:"id"`
+
+	// LegacyDefault True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes.
+	LegacyDefault bool   `json:"legacy_default"`
+	Name          string `json:"name"`
+
+	// ProviderHint Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning.
+	ProviderHint FQDNResolverProfileProviderHint `json:"provider_hint"`
+
+	// ZoneSuffixes Normalized DNS suffixes. The most-specific matching suffix selects this profile.
+	ZoneSuffixes []string `json:"zone_suffixes"`
+}
+
+// FQDNResolverProfileProviderHint Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning.
+type FQDNResolverProfileProviderHint string
+
+// FQDNResolverProfileRequest defines model for FQDNResolverProfileRequest.
+type FQDNResolverProfileRequest struct {
+	Endpoints    []FQDNResolverEndpoint                 `json:"endpoints"`
+	Name         string                                 `json:"name"`
+	ProviderHint FQDNResolverProfileRequestProviderHint `json:"provider_hint"`
+	ZoneSuffixes []string                               `json:"zone_suffixes"`
+}
+
+// FQDNResolverProfileRequestProviderHint defines model for FQDNResolverProfileRequest.ProviderHint.
+type FQDNResolverProfileRequestProviderHint string
+
+// FQDNResolverProfileSelection defines model for FQDNResolverProfileSelection.
+type FQDNResolverProfileSelection struct {
+	ConfigVersion int64              `json:"config_version"`
+	Id            openapi_types.UUID `json:"id"`
+
+	// MatchedSuffix Normalized most-specific suffix selected for this hostname; empty only for a migrated legacy catch-all profile.
+	MatchedSuffix string                                   `json:"matched_suffix"`
+	Name          string                                   `json:"name"`
+	ProviderHint  FQDNResolverProfileSelectionProviderHint `json:"provider_hint"`
+}
+
+// FQDNResolverProfileSelectionProviderHint defines model for FQDNResolverProfileSelection.ProviderHint.
+type FQDNResolverProfileSelectionProviderHint string
 
 // FQDNResource defines model for FQDNResource.
 type FQDNResource struct {
@@ -2253,6 +2356,9 @@ type FQDNResource struct {
 
 	// ResolverContext Null means saved draft: it must not compile or authorize traffic.
 	ResolverContext *FQDNResolverContext `json:"resolver_context"`
+
+	// ResolverProfileSelection Server-recorded profile provenance for the latest answer lifecycle generation. Null means no profile has been selected or queried.
+	ResolverProfileSelection *FQDNResolverProfileSelection `json:"resolver_profile_selection"`
 
 	// State unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic.
 	State     FQDNResourceState `json:"state"`

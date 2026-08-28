@@ -65,7 +65,7 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 116); err != nil {
+	if err := db.MigrateTo(testURL.String(), 118); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -86,12 +86,16 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id) VALUES($1,$2,'gateway',$3,$4)`, gateway, org, "scheduler-"+gateway.String(), site)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal',$3,$4)`, resource, org, site, gateway)
 	config := uuid.New()
+	profile := uuid.New()
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, config, org, site, gateway)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,0,'Private internal','aws')`, profile, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, profile, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, profile, org)
 
 	hook := &committedHook{t: t, pool: pool, resource: resource}
 	store := NewPostgresStore(pool).WithAfterCommit(hook)
-	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}, ResolverConfig: ResolverConfig{ID: config.String(), Version: 1, Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.53"), Port: 53, Transport: "udp"}}}}
+	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}, ResolverConfig: ResolverConfig{ID: config.String(), Version: 1, ProfileID: profile.String(), ProfileName: "Private internal", ProfileProvider: "aws", MatchedSuffix: "internal", Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.53"), Port: 53, Transport: "udp"}}}}
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.4"), addr("fd00::4")}}); err != nil {
 		t.Fatal(err)
@@ -106,9 +110,10 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if active != 1 || answers != 2 {
 		t.Fatalf("active=%d answers=%d", active, answers)
 	}
-	var persistedConfig uuid.UUID
-	if err := pool.QueryRow(ctx, `SELECT resolver_config_id FROM fqdn_resource_answer_generations WHERE resource_id=$1 AND state='active'`, resource).Scan(&persistedConfig); err != nil || persistedConfig != config {
-		t.Fatalf("active generation config=%s err=%v want=%s", persistedConfig, err, config)
+	var persistedConfig, persistedProfile uuid.UUID
+	var persistedSuffix string
+	if err := pool.QueryRow(ctx, `SELECT resolver_config_id,resolver_profile_id,resolver_match_suffix FROM fqdn_resource_answer_generations WHERE resource_id=$1 AND state='active'`, resource).Scan(&persistedConfig, &persistedProfile, &persistedSuffix); err != nil || persistedConfig != config || persistedProfile != profile || persistedSuffix != "internal" {
+		t.Fatalf("active generation provenance config=%s profile=%s suffix=%q err=%v", persistedConfig, persistedProfile, persistedSuffix, err)
 	}
 	// Lane 3 receives only this durable active snapshot: it is scoped to the
 	// owning organization, carries the selected Site/Gateway authority, and
@@ -131,15 +136,19 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	// edit. Its predecessor is excluded from compiler input immediately, before
 	// a later refresh can publish answers observed by the new endpoint set.
 	replacementConfig := uuid.New()
+	replacementProfile := uuid.New()
 	exec(`UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config)
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,2,'active')`, replacementConfig, org, site, gateway)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.54'::inet,53,'tcp')`, replacementConfig, org)
+	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,0,'Private internal v2','azure')`, replacementProfile, replacementConfig, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, replacementProfile, replacementConfig, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.54'::inet,53,'tcp')`, replacementProfile, org)
 	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
 		t.Fatalf("replaced resolver config must withdraw compiler projection: rows=%#v err=%v", projection, err)
 	}
 
 	w.ExpectedGeneration = 1
-	w.ResolverConfig = ResolverConfig{ID: replacementConfig.String(), Version: 2, Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.54"), Port: 53, Transport: "tcp"}}}
+	w.ResolverConfig = ResolverConfig{ID: replacementConfig.String(), Version: 2, ProfileID: replacementProfile.String(), ProfileName: "Private internal v2", ProfileProvider: "azure", MatchedSuffix: "internal", Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.54"), Port: 53, Transport: "tcp"}}}
 	if err := store.Withdraw(ctx, w, WithdrawalTimeout, now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}

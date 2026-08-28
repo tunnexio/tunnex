@@ -34,6 +34,27 @@ func TestValidateResolverEndpointsRequiresDirectBoundedTransport(t *testing.T) {
 	}
 }
 
+func TestValidateResolverProfilesNormalizesAndRejectsAmbiguousAuthority(t *testing.T) {
+	endpoint := []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}}
+	profiles := []ResolverProfile{
+		{Name: "AWS parent", ProviderHint: "aws", ZoneSuffixes: []string{"Internal.Example.COM."}, Endpoints: append([]ResolverEndpoint(nil), endpoint...)},
+		{Name: "Azure child", ProviderHint: "azure", ZoneSuffixes: []string{"azure.internal.example.com"}, Endpoints: append([]ResolverEndpoint(nil), endpoint...)},
+	}
+	if err := validateProfiles(profiles); err != nil {
+		t.Fatalf("valid profile set rejected: %v", err)
+	}
+	if profiles[0].ZoneSuffixes[0] != "internal.example.com" {
+		t.Fatalf("suffix was not normalized: %q", profiles[0].ZoneSuffixes[0])
+	}
+	duplicate := []ResolverProfile{
+		{Name: "AWS", ProviderHint: "aws", ZoneSuffixes: []string{"internal.example.com"}, Endpoints: append([]ResolverEndpoint(nil), endpoint...)},
+		{Name: "Azure", ProviderHint: "azure", ZoneSuffixes: []string{"INTERNAL.EXAMPLE.COM"}, Endpoints: append([]ResolverEndpoint(nil), endpoint...)},
+	}
+	if err := validateProfiles(duplicate); err == nil {
+		t.Fatal("equal-precedence duplicate suffix was accepted")
+	}
+}
+
 // TestPostgresSetResolverConfigReplacement is a fresh-schema proof for the
 // two-phase immutable revision write. The initially retired replacement row
 // must satisfy the migration constraint before its endpoints are bound and it
@@ -61,7 +82,7 @@ func TestPostgresSetResolverConfigReplacement(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 116); err != nil {
+	if err := db.MigrateTo(testURL.String(), 118); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -84,7 +105,8 @@ func TestPostgresSetResolverConfigReplacement(t *testing.T) {
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, oldID, org)
 
 	endpoints := []ResolverEndpoint{{Address: "10.53.0.54", Port: 53, Transport: "tcp"}, {Address: "10.53.0.55", Port: 5353, Transport: "udp"}}
-	got, err := New(pool).SetResolverConfig(ctx, org, site, gateway, uuid.Nil, "test", "replacement proof", endpoints)
+	provider := "aws"
+	got, err := New(pool).SetResolverConfig(ctx, org, site, gateway, uuid.Nil, "test", "replacement proof", &provider, endpoints)
 	if err != nil {
 		t.Fatalf("replace resolver config: %v", err)
 	}
@@ -116,6 +138,9 @@ func TestPostgresSetResolverConfigReplacement(t *testing.T) {
 	}
 	if boundConfig.ID != got.ID || !slices.Equal(boundConfig.Endpoints, endpoints) {
 		t.Fatalf("bound replacement=%+v want id=%s endpoints=%+v", boundConfig, got.ID, endpoints)
+	}
+	if boundConfig.ProviderHint == nil || *boundConfig.ProviderHint != provider {
+		t.Fatalf("bound replacement provider=%v want %q", boundConfig.ProviderHint, provider)
 	}
 	var invalidCommitted int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM fqdn_resolver_context_configs WHERE (state='active' AND retired_at IS NOT NULL) OR (state='retired' AND retired_at IS NULL)`).Scan(&invalidCommitted); err != nil {

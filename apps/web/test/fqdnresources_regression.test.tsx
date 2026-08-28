@@ -18,6 +18,9 @@ vi.mock("../src/lib/api", async () => {
       if (path.endsWith("/members")) return membershipError ? { error: { error: { message: membershipError } } } : { data: [{ user_id: "user-a", role }] };
       if (path.endsWith("/impact")) return await impacts[options?.params?.path?.resourceId ?? ""];
       if (path.endsWith("/fqdn-resources")) return inventoryError ? { error: { error: { message: inventoryError } } } : { data: rows.filter((row) => row.org_id === undefined || row.org_id === options?.params?.path?.orgId) };
+      if (path.endsWith("/sites")) return { data: [{ id: "site-a", name: "Site A" }] };
+      if (path.endsWith("/nodes")) return { data: [{ id: "gw-a", name: "Gateway A", site_id: "site-a", status: "active" }] };
+      if (path.includes("/fqdn-resolver-contexts/")) return { data: { id: "resolver-a", org_id: "org-a", site_id: "site-a", gateway_id: "gw-a", version: 1, provider_hint: "aws", endpoints: [{ address: "10.0.0.53", port: 53, transport: "udp" }] } };
       if (path.endsWith("/resources")) return { data: [] };
       return { data: [] };
     }),
@@ -91,10 +94,11 @@ describe("FQDN resource regressions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create resource" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New" } }); fireEvent.change(screen.getByLabelText("Exact hostname"), { target: { value: "new.example.com" } });
+    await screen.findByText(/AWS resolver selected automatically/);
     vi.mocked(api.POST).mockResolvedValueOnce({ error: { error: { message: "post down" } } } as never);
-    fireEvent.click(screen.getByRole("button", { name: "Save as draft" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create resource" }));
     expect((await screen.findAllByText("post down")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Save as draft" })).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Create resource" })).toBeTruthy();
   });
 
   it("isolates organization rows and preserves stale/no-zero and all/single/range truth", async () => {
@@ -111,11 +115,12 @@ describe("FQDN resource regressions", () => {
     expect((await screen.findAllByText("Other")).length).toBeGreaterThan(0); expect(screen.queryByText("Stale")).toBeNull();
   });
 
-  it("uses bounded draft POSTs and never calls FQDN PATCH, PUT, or setting endpoints", async () => {
+  it("uses bounded resolver-bound POSTs and never calls setting endpoints", async () => {
     page(); fireEvent.click(await screen.findByRole("button", { name: "Create resource" })); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Range" } }); fireEvent.change(screen.getByLabelText("Exact hostname"), { target: { value: "range.example.com" } }); fireEvent.change(screen.getByLabelText("Protocol"), { target: { value: "udp" } }); fireEvent.change(screen.getByLabelText("Port scope"), { target: { value: "range" } }); fireEvent.change(screen.getByLabelText("Port"), { target: { value: "1" } }); fireEvent.change(screen.getByLabelText("Through"), { target: { value: "65535" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save as draft" })); await waitFor(() => expect(vi.mocked(api.POST)).toHaveBeenCalled());
-    expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { port_low: 1, port_high: 65535, resolver_context: null } });
+    await screen.findByText(/AWS resolver selected automatically/);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create resource" })); await waitFor(() => expect(vi.mocked(api.POST)).toHaveBeenCalled());
+    expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { port_low: 1, port_high: 65535, resolver_context: { site_id: "site-a", gateway_id: "gw-a" } } });
     expect(vi.mocked(api.PATCH)).not.toHaveBeenCalled(); expect(vi.mocked(api.PUT)).not.toHaveBeenCalled();
     expect((vi.mocked(api.GET).mock.calls as unknown[][]).some((call) => String(call[0]).includes("/setting"))).toBe(false);
   });

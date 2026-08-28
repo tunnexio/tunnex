@@ -38,8 +38,10 @@ func rpcWork() Work {
 			GatewayID:  "44444444-4444-4444-4444-444444444444",
 		},
 		ResolverConfig: ResolverConfig{
-			ID:      "55555555-5555-5555-5555-555555555554",
-			Version: 1,
+			ID:            "55555555-5555-5555-5555-555555555554",
+			Version:       1,
+			ProfileID:     "77777777-7777-7777-7777-777777777777",
+			MatchedSuffix: "internal.example",
 			Endpoints: []ResolverEndpoint{
 				{Address: netip.MustParseAddr("10.53.0.53"), Port: 53, Transport: "udp"},
 				{Address: netip.MustParseAddr("fd00::53"), Port: 53, Transport: "tcp"},
@@ -65,6 +67,7 @@ func responseFor(request GatewayDNSRequest, now time.Time, records ...Record) Ga
 		Version: request.Version, RequestID: request.RequestID,
 		OrgID: request.OrgID, ResourceID: request.ResourceID, SiteID: request.SiteID, GatewayID: request.GatewayID,
 		ResolverConfigID: request.ResolverConfigID, ResolverConfigVersion: request.ResolverConfigVersion,
+		ResolverProfileID: request.ResolverProfileID, ResolverMatchSuffix: request.ResolverMatchSuffix,
 		Hostname: request.Hostname, RecordTypes: append([]RecordType(nil), request.RecordTypes...),
 		ObservedAt: now, Status: StatusNoError, Records: wired,
 	}

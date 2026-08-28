@@ -351,7 +351,6 @@ export default function Sites() {
               ["overview", "Overview"],
               ["approvals", "Pending approvals"],
               ["ha", "Hub availability"],
-              ["dns", "DNS overview"],
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -459,6 +458,11 @@ export default function Sites() {
                 onSelect={selectSite}
               />
 
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-3">
+                <p className="text-cell text-ink-tertiary"><strong className="font-medium text-ink-heading">Advanced Site Networking:</strong> cross-site zone forwarding is optional and is not required for FQDN access.</p>
+                <Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button>
+              </div>
+
               {selectedCard && (
                 <div id="site-details">
                   <SiteCardView
@@ -502,12 +506,15 @@ export default function Sites() {
           )}
 
           {section === "dns" && (
-            <DNSForwardsPanel
-              view={raw.forwards}
-              siteCount={raw.sites.length}
-              canManage={gate.canManage}
-              onManageSite={(siteId) => updateQuery({ section: "overview", site: siteId, gateway: null, q: null, dns: "1" })}
-            />
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Advanced Site Networking</p><p className="mt-1 text-cell text-ink-tertiary">Optional site-to-site zone forwarding. Private DNS Resolver remains the only primary configuration for FQDN access.</p></div><Button variant="ghost" onClick={() => updateQuery({ section: "overview", site: null, gateway: null, q: null, dns: null })}>Back to Sites overview</Button></div>
+              <DNSForwardsPanel
+                view={raw.forwards}
+                siteCount={raw.sites.length}
+                canManage={gate.canManage}
+                onManageSite={(siteId) => updateQuery({ section: "overview", site: siteId, gateway: null, q: null, dns: "1" })}
+              />
+            </div>
           )}
         </>
       )}
@@ -551,8 +558,8 @@ function DNSForwardsPanel({
   onManageSite: (siteId: string) => void;
 }) {
   return (
-    <Panel title="DNS overview" className="min-w-0">
-      <p className="-mt-1 text-cell text-ink-tertiary">Organization-wide forwarding inventory and conflicts. Manage each resolver from its Site.</p>
+    <Panel title="Cross-site DNS forwarding" className="min-w-0">
+      <p className="-mt-1 text-cell text-ink-tertiary">Operational inventory of zones forwarded between Sites and forwarding conflicts. This advanced feature is separate from FQDN access; configure gateway-bound FQDN resolution under <Link className="text-accent-400 hover:underline" to="/access/resources?type=fqdn#private-dns-heading">Access Policies → Resources → Private DNS resolvers</Link>.</p>
       {/* ⛔ THE PARTIAL-LOAD BANNER COMES FIRST, above the rows it qualifies. Below them it would be read
           after the list had already been believed. */}
       {view.failedSites.length > 0 && (
@@ -592,7 +599,7 @@ function DNSForwardsPanel({
                 <span className="font-mono text-cell text-ink-tertiary"><span className="mr-2 text-micro text-ink-faint sm:hidden">Resolver</span>{r.resolverIp}</span>
                 <span className="text-cell text-ink-tertiary"><span className="mr-2 text-micro text-ink-faint sm:hidden">Site</span>{r.siteName}</span>
                 <span className="sm:justify-self-end">{clashes ? <Badge tone="danger">conflict</Badge> : <Badge tone="neutral">configured</Badge>}</span>
-                {canManage ? <Button className="w-[8.5rem] sm:justify-self-end" variant="ghost" size="sm" onClick={() => onManageSite(r.siteId)}>Manage in Site</Button> : <span className="text-right text-micro text-ink-faint">Read-only</span>}
+                {canManage ? <Button className="w-[8.5rem] sm:justify-self-end" variant="ghost" size="sm" onClick={() => onManageSite(r.siteId)}>Manage forwarding</Button> : <span className="text-right text-micro text-ink-faint">Read-only</span>}
               </li>
             );
           })}
@@ -612,7 +619,7 @@ function DNSForwardsPanel({
       )}
 
       <p className="text-micro text-ink-faint">
-        A resolver must sit inside one of the site&rsquo;s approved subnets (409
+        Site forwarding maps a zone to an internal DNS target for other Sites; it does not configure FQDN access. A forwarding target must sit inside one of the site&rsquo;s approved subnets (409
         dns_resolver_not_in_site_subnet). One zone maps to one resolver org-wide
         (409 dns_domain_conflict). Removing a zone withdraws it from every
         gateway on the next reconcile.
@@ -1847,12 +1854,11 @@ function DNSForwardSection({
   return (
     <details open={open} className="mt-3 rounded-lg border border-white/5 bg-ink-900/60 px-3 py-2 text-xs text-slate-400">
       <summary className="cursor-pointer text-slate-300">
-        Cross-site DNS forwarding: resolve this site's names from other sites
+        Advanced: cross-site DNS forwarding
       </summary>
       <div className="mt-2 space-y-2">
         <p>
-          Forward a domain to this site's internal resolver (an IP inside an
-          approved subnet). Other sites resolve those names over the tunnel.
+          Map a zone to an internal DNS target inside an approved subnet so other Sites can resolve it over the tunnel. This optional operation is separate from Private DNS Resolver configuration for FQDN access.
         </p>
         <ul className="space-y-1">
           {forwards.map((f) => (
@@ -1883,7 +1889,7 @@ function DNSForwardSection({
             maxLength={253}
           />
           </Field>
-          <Field label="Resolver IP">
+          <Field label="Forwarding target IP">
           <Input
             value={resolverIp}
             onChange={(e) => setResolverIp(e.target.value)}

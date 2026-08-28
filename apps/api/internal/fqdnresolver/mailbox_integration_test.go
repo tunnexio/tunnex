@@ -44,7 +44,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 116); err != nil {
+	if err := db.MigrateTo(testURL.String(), 118); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -62,17 +62,21 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	org, site, gateway, resource := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	exec(`INSERT INTO organizations(id,name,slug,pool_cidr,fqdn_resources_enabled) VALUES($1,'mailbox',$2,'10.252.0.0/24',true)`, org, "mailbox-"+org.String()[:8])
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'selected')`, site, org)
-	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,capabilities) VALUES($1,$2,'gateway',$3,$4,'{"dns_resolve_rpc_version":1}')`, gateway, org, "mailbox-"+gateway.String(), site)
+	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,capabilities) VALUES($1,$2,'gateway',$3,$4,'{"dns_resolve_rpc_version":2}')`, gateway, org, "mailbox-"+gateway.String(), site)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'orders','orders.internal',$3,$4)`, resource, org, site, gateway)
 	config := uuid.New()
+	profile := uuid.New()
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, config, org, site, gateway)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,0,'Private internal','aws')`, profile, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, profile, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, profile, org)
 
 	now := time.Now().UTC().Truncate(time.Second)
 	currentNow := now
 	mailbox := NewPostgresGatewayDNSMailbox(pool)
 	mailbox.now = func() time.Time { return currentNow }
-	request := GatewayDNSRequest{Version: GatewayDNSRPCVersion, RequestID: uuid.New(), OrgID: org, ResourceID: resource, SiteID: site, GatewayID: gateway, ResolverConfigID: config, ResolverConfigVersion: 1, ResolverEndpoints: []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.0.53"), Port: 53, Transport: "udp"}}, Hostname: "orders.internal", RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: now.Add(time.Minute)}
+	request := GatewayDNSRequest{Version: GatewayDNSRPCVersion, RequestID: uuid.New(), OrgID: org, ResourceID: resource, SiteID: site, GatewayID: gateway, ResolverConfigID: config, ResolverConfigVersion: 1, ResolverProfileID: profile, ResolverMatchSuffix: "internal", ResolverEndpoints: []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.0.53"), Port: 53, Transport: "udp"}}, Hostname: "orders.internal", RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: now.Add(time.Minute)}
 	if err := mailbox.Enqueue(ctx, request); err != nil {
 		t.Fatal(err)
 	}
@@ -117,9 +121,13 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	config2 := uuid.New()
+	profile2 := uuid.New()
 	exec(`UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config)
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,2,'active')`, config2, org, site, gateway)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.54'::inet,53,'tcp')`, config2, org)
+	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,0,'Private internal v2','azure')`, profile2, config2, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, profile2, config2, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.54'::inet,53,'tcp')`, profile2, org)
 	if pending, err := mailbox.PendingForGateway(ctx, org, gateway, 10); err != nil || len(pending) != 0 {
 		t.Fatalf("retired config request remained deliverable: pending=%#v err=%v", pending, err)
 	}
@@ -128,6 +136,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 		t.Fatalf("retired config request state=%q err=%v want expired", oldState, err)
 	}
 	request.ResolverConfigID, request.ResolverConfigVersion = config2, 2
+	request.ResolverProfileID = profile2
 	request.ResolverEndpoints = []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.0.54"), Port: 53, Transport: "tcp"}}
 
 	// A response for a context that was reselected between request and
@@ -139,10 +148,14 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	}
 	reselectedSite, reselectedGateway := uuid.New(), uuid.New()
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'reselected')`, reselectedSite, org)
-	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,capabilities) VALUES($1,$2,'reselected-gateway',$3,$4,'{"dns_resolve_rpc_version":1}')`, reselectedGateway, org, "mailbox-"+reselectedGateway.String(), reselectedSite)
+	exec(`INSERT INTO nodes(id,org_id,name,cert_serial,site_id,capabilities) VALUES($1,$2,'reselected-gateway',$3,$4,'{"dns_resolve_rpc_version":2}')`, reselectedGateway, org, "mailbox-"+reselectedGateway.String(), reselectedSite)
 	reselectedConfig := uuid.New()
+	reselectedProfile := uuid.New()
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, reselectedConfig, org, reselectedSite, reselectedGateway)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.1.53'::inet,53,'tcp')`, reselectedConfig, org)
+	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,0,'Reselected internal','on_premises')`, reselectedProfile, reselectedConfig, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, reselectedProfile, reselectedConfig, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.1.53'::inet,53,'tcp')`, reselectedProfile, org)
 	exec(`UPDATE fqdn_resources SET resolver_site_id=$3,resolver_node_id=$4 WHERE id=$1 AND org_id=$2`, resource, org, reselectedSite, reselectedGateway)
 	late := responseFor(second, now, Record{Name: second.Hostname, Type: TypeA, Address: netip.MustParseAddr("10.2.3.5"), TTL: time.Minute})
 	if err := mailbox.Complete(ctx, org, gateway, late); !errors.Is(err, ErrSuperseded) {
@@ -163,11 +176,12 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	unsupported.RequestID = uuid.New()
 	unsupported.SiteID, unsupported.GatewayID = reselectedSite, reselectedGateway
 	unsupported.ResolverConfigID, unsupported.ResolverConfigVersion = reselectedConfig, 1
+	unsupported.ResolverProfileID = reselectedProfile
 	unsupported.ResolverEndpoints = []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.1.53"), Port: 53, Transport: "tcp"}}
 	if err := mailbox.Enqueue(ctx, unsupported); !errors.Is(err, ErrGatewayDNSRPCVersion) {
 		t.Fatalf("pre-RPC gateway enqueue=%v want compatibility refusal", err)
 	}
-	exec(`UPDATE nodes SET capabilities='{"dns_resolve_rpc_version":1}'::jsonb WHERE id=$1`, reselectedGateway)
+	exec(`UPDATE nodes SET capabilities='{"dns_resolve_rpc_version":2}'::jsonb WHERE id=$1`, reselectedGateway)
 
 	// A late response under an otherwise-current context must also commit terminal
 	// expiry. Without this, a retry could keep a stale request pending forever.
@@ -175,6 +189,7 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 	stale.RequestID = uuid.New()
 	stale.SiteID, stale.GatewayID = reselectedSite, reselectedGateway
 	stale.ResolverConfigID, stale.ResolverConfigVersion = reselectedConfig, 1
+	stale.ResolverProfileID = reselectedProfile
 	stale.ResolverEndpoints = []ResolverEndpoint{{Address: netip.MustParseAddr("10.53.1.53"), Port: 53, Transport: "tcp"}}
 	stale.Deadline = now.Add(time.Second)
 	if err := mailbox.Enqueue(ctx, stale); err != nil {
@@ -199,6 +214,6 @@ func TestPostgresGatewayDNSMailbox(t *testing.T) {
 func sameMailboxRequest(got, want GatewayDNSRequest) bool {
 	return got.Version == want.Version && got.RequestID == want.RequestID && got.OrgID == want.OrgID &&
 		got.ResourceID == want.ResourceID && got.SiteID == want.SiteID && got.GatewayID == want.GatewayID &&
-		got.ResolverConfigID == want.ResolverConfigID && got.ResolverConfigVersion == want.ResolverConfigVersion && slices.Equal(got.ResolverEndpoints, want.ResolverEndpoints) &&
+		got.ResolverConfigID == want.ResolverConfigID && got.ResolverConfigVersion == want.ResolverConfigVersion && got.ResolverProfileID == want.ResolverProfileID && got.ResolverMatchSuffix == want.ResolverMatchSuffix && slices.Equal(got.ResolverEndpoints, want.ResolverEndpoints) &&
 		got.Hostname == want.Hostname && slices.Equal(got.RecordTypes, want.RecordTypes) && got.Deadline.Equal(want.Deadline)
 }

@@ -26,7 +26,7 @@ import (
 // Version is the first brokered FQDN-resolution wire version. A zero/missing
 // version is an older agent/control plane and must be refused loudly, rather
 // than silently falling back to a public resolver.
-const Version = 1
+const Version = 2
 
 const (
 	maxRecords       = 32
@@ -64,13 +64,17 @@ type Request struct {
 	// or the control plane.
 	ResolverConfigID      string             `json:"resolver_config_id"`
 	ResolverConfigVersion int64              `json:"resolver_config_version"`
+	ResolverProfileID     string             `json:"resolver_profile_id"`
+	ResolverMatchSuffix   string             `json:"resolver_match_suffix,omitempty"`
 	ResolverEndpoints     []ResolverEndpoint `json:"resolver_endpoints"`
 }
 
 type ResolverConfig struct {
-	ID        string             `json:"id"`
-	Version   int64              `json:"version"`
-	Endpoints []ResolverEndpoint `json:"endpoints"`
+	ID            string             `json:"id"`
+	Version       int64              `json:"version"`
+	ProfileID     string             `json:"profile_id"`
+	MatchedSuffix string             `json:"matched_suffix"`
+	Endpoints     []ResolverEndpoint `json:"endpoints"`
 }
 
 type ResolverEndpoint struct {
@@ -110,6 +114,8 @@ type Response struct {
 	GatewayID             string       `json:"gateway_id"`
 	ResolverConfigID      string       `json:"resolver_config_id,omitempty"`
 	ResolverConfigVersion int64        `json:"resolver_config_version,omitempty"`
+	ResolverProfileID     string       `json:"resolver_profile_id,omitempty"`
+	ResolverMatchSuffix   string       `json:"resolver_match_suffix,omitempty"`
 	Hostname              string       `json:"hostname"`
 	RecordTypes           []RecordType `json:"record_types"`
 	Status                Status       `json:"status"`
@@ -232,7 +238,7 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, endpoint ResolverEn
 }
 
 func validResolverConfig(config ResolverConfig) bool {
-	if !isUUID(config.ID) || config.Version < 1 || len(config.Endpoints) == 0 || len(config.Endpoints) > 8 {
+	if !isUUID(config.ID) || !isUUID(config.ProfileID) || config.Version < 1 || len(config.Endpoints) == 0 || len(config.Endpoints) > 8 {
 		return false
 	}
 	seen := map[string]bool{}
@@ -510,7 +516,7 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 	var records []Record
 	var err error
 	if bound, ok := r.resolver.(BoundResolver); ok {
-		records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, Endpoints: req.ResolverEndpoints})
+		records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints})
 	} else if plain, ok := r.resolver.(Resolver); ok {
 		records, err = plain.Resolve(lookupCtx, req.Hostname, req.RecordTypes)
 	} else {
@@ -549,6 +555,7 @@ func responseFor(req Request, status Status, code string, observed time.Time) Re
 	return Response{Version: Version, RequestID: req.RequestID, OrgID: req.OrgID,
 		ResourceID: req.ResourceID, SiteID: req.SiteID, GatewayID: req.GatewayID,
 		ResolverConfigID: req.ResolverConfigID, ResolverConfigVersion: req.ResolverConfigVersion,
+		ResolverProfileID: req.ResolverProfileID, ResolverMatchSuffix: req.ResolverMatchSuffix,
 		Hostname: req.Hostname, RecordTypes: append([]RecordType(nil), req.RecordTypes...),
 		Status: status, ErrorCode: code, ObservedAt: observed}
 }
@@ -567,6 +574,12 @@ func validateRequest(req Request, gatewayID string, now time.Time) string {
 		return "resolver_unavailable"
 	}
 	if !validHostname(req.Hostname) {
+		return "resolver_unavailable"
+	}
+	if !isUUID(req.ResolverConfigID) || !isUUID(req.ResolverProfileID) || req.ResolverConfigVersion < 1 {
+		return "resolver_unavailable"
+	}
+	if req.ResolverMatchSuffix != "" && req.Hostname != req.ResolverMatchSuffix && !strings.HasSuffix(req.Hostname, "."+req.ResolverMatchSuffix) {
 		return "resolver_unavailable"
 	}
 	if req.Deadline.IsZero() || !req.Deadline.After(now) {
@@ -609,6 +622,7 @@ func requestFingerprint(req Request) string {
 	config := ""
 	if req.ResolverConfigID != "" {
 		config = req.ResolverConfigID + "|" + strconv.FormatInt(req.ResolverConfigVersion, 10)
+		config += "|" + req.ResolverProfileID + "|" + req.ResolverMatchSuffix
 		for _, endpoint := range req.ResolverEndpoints {
 			config += "|" + endpoint.Address + ":" + strconv.Itoa(endpoint.Port) + "/" + endpoint.Transport
 		}
