@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AccessTabRail } from "../components/AccessTabRail";
 import { LoadRetry } from "../components/LoadRetry";
@@ -14,6 +14,8 @@ export default function AccessResources() {
   const { state } = useAuth();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [role, setRole] = useState<Member["role"] | undefined>(undefined);
+  const [membershipError, setMembershipError] = useState("");
+  const [membershipAttempt, setMembershipAttempt] = useState(0);
   const [resources, setResources] = useState<Resource[] | null>(null);
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState<"choose" | "create" | "edit" | "delete" | null>(null);
@@ -47,18 +49,18 @@ export default function AccessResources() {
   }, [authorized, org?.id]);
   useEffect(() => {
     let cancelled = false;
-    if (!org || state.status !== "authed") { setRole(undefined); setAuthorized(false); return; }
+    if (!org || state.status !== "authed") { setRole(undefined); setAuthorized(false); setMembershipError(""); return; }
     setAuthorized(null);
-    setRole(undefined);
+    setRole(undefined); setResources(null); setError(""); setMembershipError("");
     void loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: org.id } } })).then((result) => {
       if (cancelled) return;
-      if (!result.ok) { setError(result.error); setAuthorized(false); return; }
+      if (!result.ok) { setMembershipError(result.error); return; }
       const mine = (result.data as Member[]).find((member) => member.user_id === state.user.id);
       setRole(mine?.role);
       setAuthorized(mine?.role === "owner" || mine?.role === "admin");
     });
     return () => { cancelled = true; };
-  }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
+  }, [membershipAttempt, org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
   useEffect(() => { void reload(); }, [reload]);
   async function mutate(call: () => Promise<{ error?: unknown }>, fallback: string) {
     setBusy(true); setError("");
@@ -89,8 +91,9 @@ export default function AccessResources() {
     if (ok) { setDialog(null); setSelected(null); await reload(); }
   }
   const header = <><PageHeader title="Resources" subtitle="Named CIDR ranges and resolver-backed exact hostnames used by access policy rules." actions={authorized === true ? <Button onClick={() => setDialog("choose")}>Create resource</Button> : undefined} /><AccessTabRail /></>;
+  if (membershipError) return <div className="space-y-5">{header}<Card><LoadRetry error={`Could not check resource permissions: ${membershipError}`} onRetry={() => setMembershipAttempt((attempt) => attempt + 1)} /></Card></div>;
   if (!org || authorized === null) return <div className="space-y-5">{header}<Card><Loading label="Checking resource permissions…" /></Card></div>;
-  const indexControls = <div className="grid max-w-2xl gap-2 sm:grid-cols-2"><Input aria-label="Search resources" value={query} placeholder="Search resources" onChange={(event) => updateIndex({ q: event.target.value })} /><Select aria-label="Resource type" value={type} onChange={(event) => updateIndex({ type: event.target.value })}><option value="cidr">CIDR</option><option value="fqdn">FQDN</option></Select></div>;
+  const indexControls = <div className="grid max-w-2xl gap-2 sm:grid-cols-2">{type === "cidr" && <Input aria-label="Search resources" value={query} placeholder="Search resources" onChange={(event) => updateIndex({ q: event.target.value })} />}<Select aria-label="Resource type" value={type} onChange={(event) => updateIndex({ type: event.target.value })}><option value="cidr">CIDR</option><option value="fqdn">FQDN</option></Select></div>;
   const createChooser = dialog === "choose" && <Modal title="Create resource" onDismiss={() => setDialog(null)} actions={<Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button>}><p className="mb-4 text-cell text-ink-tertiary">Choose the destination shape. CIDR is a static network range; FQDN is one exact hostname saved as an unbound draft.</p><div className="grid gap-3 sm:grid-cols-2"><Button onClick={() => { setDialog(null); updateIndex({ type: "cidr" }); openCreate(); }}>Create CIDR resource</Button><Button onClick={() => { setDialog(null); updateIndex({ type: "fqdn" }); setFqdnCreateToken((token) => token + 1); }}>Create FQDN resource</Button></div></Modal>;
   if (type === "fqdn") return <div className="space-y-5">{header}{indexControls}<FQDNResources key={org.id} orgId={org.id} role={role} createToken={fqdnCreateToken} />{createChooser}</div>;
   if (!authorized) return <div className="space-y-5">{header}{indexControls}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage CIDR resources.</p><ErrorText>{error}</ErrorText></Card></div>;
@@ -121,7 +124,9 @@ function FQDNResources({ orgId, role, createToken }: { orgId: string; role: Memb
   const [selected, setSelected] = useState<FQDNResource | null>(null);
   const [dialog, setDialog] = useState<"create" | "delete" | null>(null);
   const [impact, setImpact] = useState<FQDNResourceImpact | null>(null);
+  const [impactResourceId, setImpactResourceId] = useState<string | null>(null);
   const [impactError, setImpactError] = useState("");
+  const selectedIdRef = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
   const [fqdn, setFqdn] = useState("");
@@ -169,17 +174,21 @@ function FQDNResources({ orgId, role, createToken }: { orgId: string; role: Memb
     if (ok) { setDialog(null); await reload(); }
   }
   async function openDelete(resource: FQDNResource) {
-    setSelected(resource); setImpact(null); setImpactError(""); setDialog("delete");
+    // The impact endpoint is asynchronous. Keep its result bound to the row
+    // that requested it so a late A response can never authorize deleting B.
+    selectedIdRef.current = resource.id;
+    setSelected(resource); setImpact(null); setImpactResourceId(null); setImpactError(""); setDialog("delete");
     const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/fqdn-resources/{resourceId}/impact", { params: { path: { orgId, resourceId: resource.id } } }));
-    if (result.ok) setImpact(result.data as FQDNResourceImpact); else setImpactError(result.error);
+    if (selectedIdRef.current !== resource.id) return;
+    if (result.ok) { setImpact(result.data as FQDNResourceImpact); setImpactResourceId(resource.id); } else setImpactError(result.error);
   }
   function openDetail(resource: FQDNResource) {
     navigate(`/access/resources/fqdn/${resource.id}${location.search}`, { state: { from: `${location.pathname}${location.search}` } });
   }
   async function remove() {
-    if (!selected || !impact || impact.referencing_rule_count > 0 || impact.generation_withdrawal_required) return;
+    if (!selected || !impact || impactResourceId !== selected.id || impact.referencing_rule_count > 0 || impact.generation_withdrawal_required) return;
     const ok = await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/fqdn-resources/{resourceId}", { params: { path: { orgId, resourceId: selected.id } } }), "Could not delete the FQDN resource.");
-    if (ok) { setDialog(null); setSelected(null); await reload(); }
+    if (ok) { selectedIdRef.current = null; setDialog(null); setSelected(null); setImpactResourceId(null); await reload(); }
   }
   if (!canView) return <Card><div className="space-y-2" aria-labelledby="fqdn-resources-heading"><h2 id="fqdn-resources-heading" className="text-lg font-semibold text-ink-heading">FQDN resources</h2><p role="alert" className="text-cell text-ink-tertiary">FQDN resources are unavailable because your role lacks <code>fqdn_resource:view</code>. Owners and admins currently receive this permission.</p></div></Card>;
   const q = (searchParams.get("q") ?? "").trim();
@@ -204,7 +213,7 @@ function FQDNResources({ orgId, role, createToken }: { orgId: string; role: Memb
     <ErrorText>{error}</ErrorText>
     {resources === null ? error ? <LoadRetry error={`Could not load FQDN resources: ${error}`} onRetry={() => void reload()} /> : <Loading label="Loading FQDN resources…" /> : <><div className="grid gap-2 sm:grid-cols-4"><Input aria-label="Search FQDN resources" value={q} placeholder="Search name or hostname" onChange={(event) => updateQuery({ q: event.target.value })} /><Select aria-label="FQDN status" value={status} onChange={(event) => updateQuery({ status: event.target.value })}><option value="all">All states</option>{["draft", "unconfigured", "resolving", "healthy", "stale", "failed", "nxdomain"].map((value) => <option key={value} value={value}>{value}</option>)}</Select><Select aria-label="Sort FQDN resources" value={sort} onChange={(event) => updateQuery({ sort: event.target.value })}><option value="name">Name</option><option value="fqdn">Hostname</option><option value="state">State</option></Select><Select aria-label="Sort direction" value={dir} onChange={(event) => updateQuery({ dir: event.target.value })}><option value="asc">Ascending</option><option value="desc">Descending</option></Select></div><div className="hidden sm:block"><DataTable caption="FQDN resources inventory" rows={filtered} rowKey={(resource) => resource.id} failed={false} filterable={false} pageSize={25} empty={<EmptyState>{resources.length === 0 ? "No FQDN resources yet. Create an exact hostname or save an unbound draft." : "No FQDN resources match this search."}</EmptyState>} columns={[{ key: "name", header: "Resource", cell: (resource) => <button className="font-medium text-ink-heading hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400" onClick={() => openDetail(resource)}>{resource.name}</button> }, { key: "fqdn", header: "Hostname", cell: (resource) => resource.fqdn }, { key: "ports", header: "Port scope", cell: (resource) => fqdnPortScope(resource) }, { key: "state", header: "State", cell: (resource) => <StateBadge state={resource.state} /> }, { key: "context", header: "Resolver context", cell: (resource) => resource.resolver_context ? `${resource.resolver_context.site_name} / ${resource.resolver_context.gateway_name}` : "Unbound draft" }, { key: "answers", header: "Answers", cell: (resource) => resource.state === "healthy" ? String(resource.answer_count) : "Not available" }, { key: "actions", header: "Actions", cell: (resource) => canManage ? <Button size="sm" variant="danger" aria-label={`Delete ${resource.name}`} onClick={() => void openDelete(resource)}>Delete</Button> : "Read-only — manage permission required" }]} /></div><div className="space-y-3 sm:hidden" aria-label="FQDN resource summaries">{filtered.map((resource) => <section key={resource.id} className="rounded-md border border-line p-3"><h3 className="font-medium text-ink-heading">{resource.name}</h3><dl className="mt-2 grid grid-cols-2 gap-2 text-sm"><div><dt className="text-ink-tertiary">Hostname</dt><dd>{resource.fqdn}</dd></div><div><dt className="text-ink-tertiary">Scope</dt><dd>{fqdnPortScope(resource)}</dd></div><div><dt className="text-ink-tertiary">State</dt><dd><StateBadge state={resource.state} /></dd></div></dl><div className="mt-3">{canManage ? <Button size="sm" variant="danger" aria-label={`Delete ${resource.name}`} onClick={() => void openDelete(resource)}>Delete {resource.name}</Button> : <span className="text-sm text-ink-tertiary">Read-only — manage permission required</span>}</div></section>)}{filtered.length === 0 && <EmptyState>{resources.length === 0 ? "No FQDN resources yet. Create an exact hostname or save an unbound draft." : "No FQDN resources match this search."}</EmptyState>}</div><p className="text-xs text-ink-tertiary">Select this destination from <Link className="text-accent-400 hover:underline" to="/access">Access Rules</Link>. DNS addresses, audit entries, and diagnostics are unavailable until the server projects them.</p></>}
     {dialog === "create" && <Modal title="Create FQDN resource" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !name.trim() || !fqdn.trim() || !portsValid} onClick={() => void save()}>Save as draft</Button></>}><div className="space-y-4"><p className="text-cell text-ink-tertiary">Use one exact hostname, not a wildcard, URL, or IP. The server normalizes and validates it.</p><ErrorText>{error}</ErrorText><fieldset className="space-y-3"><legend className="text-sm font-semibold text-ink-heading">Identity</legend><Field label="Name"><Input value={name} autoFocus onChange={(event) => setName(event.target.value)} /></Field><Field label="Exact hostname"><Input value={fqdn} placeholder="orders.internal.example.com" onChange={(event) => setFqdn(event.target.value)} /></Field><Field label="Description (optional)"><Input value={label} onChange={(event) => setLabel(event.target.value)} /></Field></fieldset><fieldset className="space-y-3"><legend className="text-sm font-semibold text-ink-heading">Access scope</legend><Field label="Protocol"><Select value={protocol} onChange={(event) => { const next = event.target.value as "any" | "tcp" | "udp"; setProtocol(next); if (next === "any") { setPortScope("all"); setPortLow(""); setPortHigh(""); } }}><option value="any">Any protocol</option><option value="tcp">TCP</option><option value="udp">UDP</option></Select></Field>{protocol !== "any" && <><Field label="Port scope"><Select value={portScope} onChange={(event) => setPortScope(event.target.value as "all" | "single" | "range")}><option value="all">All ports</option><option value="single">Single port</option><option value="range">Port range</option></Select></Field>{portScope !== "all" && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><Field label="Port"><Input inputMode="numeric" value={portLow} onChange={(event) => setPortLow(event.target.value)} /></Field>{portScope === "range" && <Field label="Through"><Input inputMode="numeric" value={portHigh} onChange={(event) => setPortHigh(event.target.value)} /></Field>}</div>}</>}<p className="text-xs text-ink-tertiary">Scope: {scope}</p>{!portsValid && <ErrorText>Use whole ports from 1 to 65535; a range must end at or above its starting port.</ErrorText>}</fieldset></div></Modal>}
-    {dialog === "delete" && selected && <Modal title="Delete FQDN resource?" danger onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy || !impact || impact.referencing_rule_count > 0 || impact.generation_withdrawal_required} onClick={() => void remove()}>Delete FQDN resource</Button></>}><div className="space-y-3 text-cell text-ink-tertiary"><ErrorText>{error}</ErrorText>{impactError ? <LoadRetry error={`Server deletion impact could not be loaded: ${impactError}`} onRetry={() => void openDelete(selected)} /> : !impact ? <p role="status">Loading server-computed deletion impact…</p> : <><p>Server impact: {impact.referencing_rule_count} referencing {impact.referencing_rule_count === 1 ? "rule" : "rules"}; {impact.generation_withdrawal_required ? "a live generation must be withdrawn." : "no live generation needs withdrawal."} {impact.referencing_rule_count > 0 || impact.generation_withdrawal_required ? "Deletion is unavailable until the server-reported impact is cleared." : "If deletion succeeds, recovery requires recreating this resource; immutable generation history may still prevent deletion."}</p><p>Referencing rule identities: {impact.referencing_rule_ids.length ? impact.referencing_rule_ids.join(", ") : "none"}. <Link className="text-accent-400 hover:underline" to="/access">Review referenced rules in Access Rules</Link>.</p></>}</div></Modal>}
+    {dialog === "delete" && selected && <Modal title="Delete FQDN resource?" danger onDismiss={() => { selectedIdRef.current = null; setDialog(null); }} actions={<><Button variant="ghost" onClick={() => { selectedIdRef.current = null; setDialog(null); }}>Cancel</Button><Button variant="danger" disabled={busy || !impact || impactResourceId !== selected.id || impact.referencing_rule_count > 0 || impact.generation_withdrawal_required} onClick={() => void remove()}>Delete FQDN resource</Button></>}><div className="space-y-3 text-cell text-ink-tertiary"><ErrorText>{error}</ErrorText>{impactError ? <LoadRetry error={`Server deletion impact could not be loaded: ${impactError}`} onRetry={() => void openDelete(selected)} /> : !impact || impactResourceId !== selected.id ? <p role="status">Loading server-computed deletion impact…</p> : <><p>Server impact: {impact.referencing_rule_count} referencing {impact.referencing_rule_count === 1 ? "rule" : "rules"}; {impact.generation_withdrawal_required ? "a live generation must be withdrawn." : "no live generation needs withdrawal."} {impact.referencing_rule_count > 0 || impact.generation_withdrawal_required ? "Deletion is unavailable until the server-reported impact is cleared." : "If deletion succeeds, recovery requires recreating this resource; immutable generation history may still prevent deletion."}</p><p>Referencing rule identities: {impact.referencing_rule_ids.length ? impact.referencing_rule_ids.join(", ") : "none"}. <Link className="text-accent-400 hover:underline" to="/access">Review referenced rules in Access Rules</Link>.</p></>}</div></Modal>}
   </section></Card>;
 }
 
@@ -230,6 +239,8 @@ export function FQDNResourceDetail() {
   const navigate = useNavigate();
   const [role, setRole] = useState<Member["role"] | undefined>();
   const [membershipOrgId, setMembershipOrgId] = useState<string | null>(null);
+  const [membershipError, setMembershipError] = useState("");
+  const [membershipAttempt, setMembershipAttempt] = useState(0);
   const [resources, setResources] = useState<FQDNResource[] | null>(null);
   const [impact, setImpact] = useState<FQDNResourceImpact | null>(null);
   const [error, setError] = useState("");
@@ -249,19 +260,20 @@ export function FQDNResourceDetail() {
   }, [membershipOrgId, org?.id, resourceId, role]);
   useEffect(() => {
     let cancelled = false;
-    setMembershipOrgId(null); setRole(undefined); setResources(null); setImpact(null); setError("");
+    setMembershipOrgId(null); setRole(undefined); setResources(null); setImpact(null); setError(""); setMembershipError("");
     if (!org || state.status !== "authed") { setMembershipOrgId(org?.id ?? null); return; }
     void loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: org.id } } })).then((result) => {
       if (cancelled) return;
-      if (!result.ok) { setError(result.error); setMembershipOrgId(org.id); return; }
+      if (!result.ok) { setMembershipError(result.error); setMembershipOrgId(org.id); return; }
       setRole((result.data as Member[]).find((member) => member.user_id === state.user.id)?.role);
       setMembershipOrgId(org.id);
     });
     return () => { cancelled = true; };
-  }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
+  }, [membershipAttempt, org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
   useEffect(() => { void reload(); }, [reload]);
   const resource = resources?.find((candidate) => candidate.id === resourceId);
   if (!org || membershipOrgId !== org.id) return <div className="space-y-5"><PageHeader title="FQDN resource" subtitle="Authoritative resolver-backed destination." /><AccessTabRail /><Card><Loading label="Checking FQDN resource permissions…" /></Card></div>;
+  if (membershipError) return <div className="space-y-5"><PageHeader title="FQDN resource" subtitle="Authoritative resolver-backed destination." /><AccessTabRail /><Card><LoadRetry error={`Could not check FQDN resource permissions: ${membershipError}`} onRetry={() => setMembershipAttempt((attempt) => attempt + 1)} /></Card></div>;
   if (error) return <div className="space-y-5"><PageHeader title="FQDN resource" subtitle="Authoritative resolver-backed destination." /><AccessTabRail /><Card><LoadRetry error={`Could not load this FQDN resource: ${error}`} onRetry={() => void reload()} /></Card></div>;
   if (!can(role, "fqdn_resource:view")) return <div className="space-y-5"><PageHeader title="FQDN resource" subtitle="Authoritative resolver-backed destination." /><AccessTabRail /><Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to view FQDN resources.</p><Link className="text-accent-400 hover:underline" to={back}>Back to Resources</Link></Card></div>;
   if (resources === null) return <div className="space-y-5"><PageHeader title="FQDN resource" subtitle="Authoritative resolver-backed destination." /><AccessTabRail /><Card><Loading label="Loading FQDN resource…" /></Card></div>;
