@@ -544,6 +544,7 @@ func main() {
 	// bounded DNS attempt.
 	fqdnCtx, stopFQDNScheduler := context.WithCancel(electorCtx)
 	fqdnStore := fqdnresolver.NewPostgresStore(pool).WithAfterCommit(fqdnresolver.Hooks{
+		Audit:  fqdnresolver.NewPostgresAudit(pool),
 		Policy: fqdnInvalidator,
 	})
 	fqdnMailbox := fqdnresolver.NewPostgresGatewayDNSMailbox(pool).WithNotifier(agentCh)

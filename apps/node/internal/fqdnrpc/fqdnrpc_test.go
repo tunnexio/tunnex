@@ -22,7 +22,10 @@ func testRequest(now time.Time) Request {
 	return Request{Version: Version, RequestID: "55555555-5555-5555-5555-555555555555",
 		OrgID: testOrg, ResourceID: testResource, SiteID: testSite,
 		GatewayID: testGateway, Hostname: "api.example.test", RecordTypes: []RecordType{RecordA, RecordAAAA, RecordCNAME},
-		Deadline: now.Add(10 * time.Second)}
+		ResolverConfigID: "66666666-6666-6666-6666-666666666666", ResolverConfigVersion: 1,
+		ResolverProfileID: "77777777-7777-7777-7777-777777777777", ResolverMatchSuffix: "example.test",
+		ResolverEndpoints: []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}},
+		Deadline:          now.Add(10 * time.Second)}
 }
 
 func TestLocalResolverKeepsUsableAddressFamilyWhenOtherLookupsFail(t *testing.T) {
@@ -91,7 +94,7 @@ func TestLocalResolverKeepsUsableAddressFamilyWhenOtherLookupsFail(t *testing.T)
 }
 
 func TestDirectResolverUsesOnlyBoundEndpointsAndFailsClosed(t *testing.T) {
-	config := ResolverConfig{ID: "66666666-6666-6666-6666-666666666666", Version: 4, Endpoints: []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}, {Address: "10.20.0.54", Port: 53, Transport: "tcp"}}}
+	config := ResolverConfig{ID: "66666666-6666-6666-6666-666666666666", Version: 4, ProfileID: "77777777-7777-7777-7777-777777777777", MatchedSuffix: "example.test", Endpoints: []ResolverEndpoint{{Address: "10.20.0.53", Port: 53, Transport: "udp"}, {Address: "10.20.0.54", Port: 53, Transport: "tcp"}}}
 	calls := 0
 	direct := DirectResolver{exchange: func(_ context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
 		calls++
@@ -230,10 +233,10 @@ func TestResponderBindsIdentityAndPreservesDualStackRecords(t *testing.T) {
 	}
 }
 
-// TestGatewayDNSRPCV1WireShape mirrors Lane2's serialized v1 contract. Keep
+// TestGatewayDNSRPCV2WireShape mirrors the serialized v2 profile-bound contract. Keep
 // this as a byte-level tripwire: API and node are different Go modules, so JSON
 // field drift cannot be caught by a shared internal type.
-func TestGatewayDNSRPCV1WireShape(t *testing.T) {
+func TestGatewayDNSRPCV2WireShape(t *testing.T) {
 	deadline := time.Date(2026, 8, 27, 12, 0, 30, 0, time.UTC)
 	observed := time.Date(2026, 8, 27, 12, 0, 1, 0, time.UTC)
 	req := testRequest(deadline.Add(-10 * time.Second))
@@ -244,7 +247,7 @@ func TestGatewayDNSRPCV1WireShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	want := `{"version":1,"request_id":"55555555-5555-5555-5555-555555555555","org_id":"11111111-1111-1111-1111-111111111111","resource_id":"22222222-2222-2222-2222-222222222222","site_id":"33333333-3333-3333-3333-333333333333","gateway_id":"44444444-4444-4444-4444-444444444444","hostname":"api.example.test","record_types":["A","AAAA","CNAME"],"status":"noerror","observed_at":"2026-08-27T12:00:01Z","records":[{"name":"api.example.test","type":"A","address":"10.10.0.8","ttl_seconds":30},{"name":"api.example.test","type":"AAAA","address":"fd00::8","ttl_seconds":30},{"name":"api.example.test","type":"CNAME","target":"edge.example.test","ttl_seconds":30}]}`
+	want := `{"version":2,"request_id":"55555555-5555-5555-5555-555555555555","org_id":"11111111-1111-1111-1111-111111111111","resource_id":"22222222-2222-2222-2222-222222222222","site_id":"33333333-3333-3333-3333-333333333333","gateway_id":"44444444-4444-4444-4444-444444444444","resolver_config_id":"66666666-6666-6666-6666-666666666666","resolver_config_version":1,"resolver_profile_id":"77777777-7777-7777-7777-777777777777","resolver_match_suffix":"example.test","hostname":"api.example.test","record_types":["A","AAAA","CNAME"],"status":"noerror","observed_at":"2026-08-27T12:00:01Z","records":[{"name":"api.example.test","type":"A","address":"10.10.0.8","ttl_seconds":30},{"name":"api.example.test","type":"AAAA","address":"fd00::8","ttl_seconds":30},{"name":"api.example.test","type":"CNAME","target":"edge.example.test","ttl_seconds":30}]}`
 	if string(got) != want {
 		t.Fatalf("Gateway DNS RPC v1 JSON mismatch\nwant %s\n got %s", want, got)
 	}

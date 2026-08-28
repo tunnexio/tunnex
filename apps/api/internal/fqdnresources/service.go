@@ -47,6 +47,7 @@ type Resource struct {
 	EffectiveTTLSeconds     *int
 	RefreshedAt, LastGoodAt *time.Time
 	CreatedAt, UpdatedAt    time.Time
+	ResolverProfile         *ResolverProfileSelection
 	// Projection inputs are deliberately private: List/Get/Detail share these
 	// facts so their public health claim cannot drift from compiler eligibility.
 	latestGenerationID *uuid.UUID
@@ -56,6 +57,11 @@ type Resource struct {
 	latestTTL          *time.Duration
 	generationEligible bool
 	resolverConfigured bool
+}
+type ResolverProfileSelection struct {
+	ID                                uuid.UUID
+	Name, ProviderHint, MatchedSuffix string
+	ConfigVersion                     int64
 }
 type Impact struct {
 	ReferencingRuleCount         int
@@ -643,7 +649,7 @@ func writeAudit(ctx context.Context, tx pgx.Tx, org, actor uuid.UUID, actorSyste
 // eligibility predicate for that exact row.  The latter intentionally matches
 // fqdnresolver.ActiveGenerations: current binding, active current config,
 // endpoint(s), active generation, and answer(s) are all required.
-const resourceQuery = `SELECT r.id,r.org_id,r.name,r.fqdn,r.protocol,r.port_low,r.port_high,r.label,r.created_at,r.updated_at,s.id,s.name,n.id,n.name,g.id,g.generation,g.state,g.failure_code,g.effective_ttl,g.resolved_at,g.last_good_at,COALESCE((SELECT count(*) FROM fqdn_resource_generation_answers a WHERE a.generation_id=g.id),0), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id WHERE c.org_id=r.org_id AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id AND c.state='active'), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE g.id IS NOT NULL AND g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active' AND g.resolver_site_id=r.resolver_site_id AND g.resolver_node_id=r.resolver_node_id AND c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active') FROM fqdn_resources r LEFT JOIN sites s ON s.id=r.resolver_site_id LEFT JOIN nodes n ON n.id=r.resolver_node_id LEFT JOIN LATERAL (SELECT * FROM fqdn_resource_answer_generations x WHERE x.org_id=r.org_id AND x.resource_id=r.id ORDER BY x.generation DESC LIMIT 1) g ON true`
+const resourceQuery = `SELECT r.id,r.org_id,r.name,r.fqdn,r.protocol,r.port_low,r.port_high,r.label,r.created_at,r.updated_at,s.id,s.name,n.id,n.name,g.id,g.generation,g.state,g.failure_code,g.effective_ttl,g.resolved_at,g.last_good_at,COALESCE((SELECT count(*) FROM fqdn_resource_generation_answers a WHERE a.generation_id=g.id),0), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id WHERE c.org_id=r.org_id AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id AND c.state='active'), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE g.id IS NOT NULL AND g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active' AND g.resolver_site_id=r.resolver_site_id AND g.resolver_node_id=r.resolver_node_id AND c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active'),g.resolver_profile_id,p.name,p.provider_hint,COALESCE(g.resolver_match_suffix,''),gc.version FROM fqdn_resources r LEFT JOIN sites s ON s.id=r.resolver_site_id LEFT JOIN nodes n ON n.id=r.resolver_node_id LEFT JOIN LATERAL (SELECT * FROM fqdn_resource_answer_generations x WHERE x.org_id=r.org_id AND x.resource_id=r.id ORDER BY x.generation DESC LIMIT 1) g ON true LEFT JOIN fqdn_resolver_context_profiles p ON p.id=g.resolver_profile_id AND p.org_id=g.org_id LEFT JOIN fqdn_resolver_context_configs gc ON gc.id=g.resolver_config_id AND gc.org_id=g.org_id`
 
 type scanner interface{ Scan(...any) error }
 
@@ -654,12 +660,21 @@ func scan(row scanner) (Resource, error) {
 	var state, failure *string
 	var ttl *time.Duration
 	var refreshed *time.Time
-	err := row.Scan(&r.ID, &r.OrgID, &r.Name, &r.FQDN, &r.Protocol, &r.PortLow, &r.PortHigh, &r.Label, &r.CreatedAt, &r.UpdatedAt, &siteID, &siteName, &gatewayID, &gatewayName, &r.latestGenerationID, &r.Generation, &state, &failure, &ttl, &refreshed, &r.LastGoodAt, &r.AnswerCount, &r.resolverConfigured, &r.generationEligible)
+	var profileID *uuid.UUID
+	var profileName, profileProvider, matchedSuffix *string
+	var profileConfigVersion *int64
+	err := row.Scan(&r.ID, &r.OrgID, &r.Name, &r.FQDN, &r.Protocol, &r.PortLow, &r.PortHigh, &r.Label, &r.CreatedAt, &r.UpdatedAt, &siteID, &siteName, &gatewayID, &gatewayName, &r.latestGenerationID, &r.Generation, &state, &failure, &ttl, &refreshed, &r.LastGoodAt, &r.AnswerCount, &r.resolverConfigured, &r.generationEligible, &profileID, &profileName, &profileProvider, &matchedSuffix, &profileConfigVersion)
 	if err != nil {
 		return r, err
 	}
 	if siteID != nil && gatewayID != nil {
 		r.Context = &Context{SiteID: *siteID, GatewayID: *gatewayID, SiteName: *siteName, GatewayName: *gatewayName}
+	}
+	if profileID != nil && profileName != nil && profileProvider != nil && profileConfigVersion != nil {
+		r.ResolverProfile = &ResolverProfileSelection{ID: *profileID, Name: *profileName, ProviderHint: *profileProvider, ConfigVersion: *profileConfigVersion}
+		if matchedSuffix != nil {
+			r.ResolverProfile.MatchedSuffix = *matchedSuffix
+		}
 	}
 	r.latestState, r.latestFailure, r.latestResolvedAt, r.latestTTL = state, failure, refreshed, ttl
 	r.State = "draft"

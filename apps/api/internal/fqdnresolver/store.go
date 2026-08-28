@@ -110,16 +110,22 @@ func (s *PostgresStore) Due(ctx context.Context, now time.Time, limit int) ([]Wo
 	rows, err := s.pool.Query(ctx, `
 SELECT r.org_id,r.id,r.fqdn,r.resolver_site_id,r.resolver_node_id,
        COALESCE((SELECT max(g.generation) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id),0),
-       cfg.id,cfg.version,cfg.endpoints
+       cfg.id,cfg.version,cfg.profiles,cfg.legacy_endpoints
 FROM fqdn_resources r
 JOIN organizations o ON o.id=r.org_id AND o.deleted_at IS NULL AND o.fqdn_resources_enabled
 LEFT JOIN LATERAL (
   SELECT c.id,c.version,
-         jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.ordinal) AS endpoints
+         COALESCE((
+           SELECT jsonb_agg(jsonb_build_object(
+             'id',p.id,'name',p.name,'provider',p.provider_hint,'legacy_default',p.legacy_default,
+             'zone_suffixes',COALESCE((SELECT jsonb_agg(s.suffix ORDER BY length(s.suffix) DESC,s.suffix) FROM fqdn_resolver_context_profile_suffixes s WHERE s.profile_id=p.id AND s.org_id=p.org_id),'[]'::jsonb),
+             'endpoints',COALESCE((SELECT jsonb_agg(jsonb_build_object('address',host(pe.address),'port',pe.port,'transport',pe.transport) ORDER BY pe.ordinal) FROM fqdn_resolver_context_profile_endpoints pe WHERE pe.profile_id=p.id AND pe.org_id=p.org_id),'[]'::jsonb)
+           ) ORDER BY p.ordinal)
+           FROM fqdn_resolver_context_profiles p WHERE p.config_id=c.id AND p.org_id=c.org_id
+         ),'[]'::jsonb) AS profiles,
+         COALESCE((SELECT jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.ordinal) FROM fqdn_resolver_context_endpoints e WHERE e.config_id=c.id AND e.org_id=c.org_id),'[]'::jsonb) AS legacy_endpoints
   FROM fqdn_resolver_context_configs c
-  JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id
   WHERE c.org_id=r.org_id AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id AND c.state='active'
-  GROUP BY c.id,c.version
 ) cfg ON true
 WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
   AND (
@@ -165,15 +171,35 @@ LIMIT $3`, now, s.retryAfter.String(), limit)
 		var site, gateway uuid.UUID
 		var configID *uuid.UUID
 		var configVersion *int64
-		var endpoints []byte
-		if err := rows.Scan(&w.OrgID, &w.ResourceID, &w.Hostname, &site, &gateway, &w.ExpectedGeneration, &configID, &configVersion, &endpoints); err != nil {
+		var profilesJSON, legacyEndpointsJSON []byte
+		if err := rows.Scan(&w.OrgID, &w.ResourceID, &w.Hostname, &site, &gateway, &w.ExpectedGeneration, &configID, &configVersion, &profilesJSON, &legacyEndpointsJSON); err != nil {
 			return nil, err
 		}
 		w.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
 		if configID != nil && configVersion != nil {
 			w.ResolverConfig.ID = configID.String()
 			w.ResolverConfig.Version = *configVersion
-			if err := json.Unmarshal(endpoints, &w.ResolverConfig.Endpoints); err != nil || !w.ResolverConfig.valid() {
+			var profiles []ResolverProfile
+			if err := json.Unmarshal(profilesJSON, &profiles); err != nil {
+				w.ResolverConfig = ResolverConfig{}
+				out = append(out, w)
+				continue
+			}
+			if len(profiles) == 0 {
+				var legacy []ResolverEndpoint
+				if err := json.Unmarshal(legacyEndpointsJSON, &legacy); err == nil && len(legacy) > 0 {
+					profiles = []ResolverProfile{{ID: configID.String(), Name: "Legacy resolver", Provider: "on_premises", Endpoints: legacy, LegacyDefault: true}}
+				}
+			}
+			profile, suffix, selectErr := selectResolverProfile(w.Hostname, profiles)
+			if selectErr == nil {
+				w.ResolverConfig.ProfileID = profile.ID
+				w.ResolverConfig.ProfileName = profile.Name
+				w.ResolverConfig.ProfileProvider = profile.Provider
+				w.ResolverConfig.MatchedSuffix = suffix
+				w.ResolverConfig.Endpoints = append([]ResolverEndpoint(nil), profile.Endpoints...)
+			}
+			if selectErr != nil || !w.ResolverConfig.valid() {
 				// A malformed persisted config is not a reason to consult another
 				// resolver. Leave the snapshot unusable so the scheduler withdraws.
 				w.ResolverConfig = ResolverConfig{}
@@ -190,7 +216,11 @@ func (s *PostgresStore) Publish(ctx context.Context, w Work, g Generation) error
 	}
 	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway, config uuid.UUID) error {
 		var id uuid.UUID
-		err := tx.QueryRow(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,state,effective_ttl,resolved_at) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8) RETURNING id`, w.OrgID, w.ResourceID, next, gateway, site, config, g.TTL, g.ResolvedAt).Scan(&id)
+		profile, parseErr := uuid.Parse(w.ResolverConfig.ProfileID)
+		if parseErr != nil {
+			return ErrUnboundContext
+		}
+		err := tx.QueryRow(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,resolver_profile_id,resolver_match_suffix,state,effective_ttl,resolved_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),'pending',$9,$10) RETURNING id`, w.OrgID, w.ResourceID, next, gateway, site, config, profile, w.ResolverConfig.MatchedSuffix, g.TTL, g.ResolvedAt).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -235,7 +265,11 @@ func (s *PostgresStore) Withdraw(ctx context.Context, w Work, cause WithdrawalCa
 		if config != uuid.Nil {
 			resolverConfig = config
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,state,effective_ttl,resolved_at,last_good_at,ended_at,failure_code) VALUES ($1,$2,$3,$4,$5,$6,'withdrawn',$7,$8,$9,$8,$10)`, w.OrgID, w.ResourceID, next, gateway, site, resolverConfig, MinTTL, at, lastGood, string(cause))
+		var resolverProfile any
+		if profile, parseErr := uuid.Parse(w.ResolverConfig.ProfileID); parseErr == nil {
+			resolverProfile = profile
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,resolver_profile_id,resolver_match_suffix,state,effective_ttl,resolved_at,last_good_at,ended_at,failure_code) VALUES ($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),'withdrawn',$9,$10,$11,$10,$12)`, w.OrgID, w.ResourceID, next, gateway, site, resolverConfig, resolverProfile, w.ResolverConfig.MatchedSuffix, MinTTL, at, lastGood, string(cause))
 		return err
 	})
 	if err == nil && s.after != nil {

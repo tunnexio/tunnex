@@ -4174,6 +4174,8 @@ export interface components {
             label?: string | null;
             /** @description Null means saved draft: it must not compile or authorize traffic. */
             resolver_context?: components["schemas"]["FQDNResolverContext"] | null;
+            /** @description Server-recorded profile provenance for the latest answer lifecycle generation. Null means no profile has been selected or queried. */
+            resolver_profile_selection?: components["schemas"]["FQDNResolverProfileSelection"] | null;
             /**
              * Format: int64
              * @description Active resolver generation only.
@@ -4250,12 +4252,63 @@ export interface components {
             version: number;
             /** @enum {string} */
             state: "active" | "retired";
+            /**
+             * @description Operator-supplied display metadata only. It does not enable cloud discovery, credentials, hosted-zone import, or endpoint provisioning.
+             * @enum {string|null}
+             */
+            provider_hint?: "aws" | "azure" | "google_cloud" | "on_premises" | null;
             endpoints: components["schemas"]["FQDNResolverEndpoint"][];
+            /** @description Immutable named DNS authorities in this revision. Runtime chooses one profile by longest label-boundary suffix; endpoints from other profiles are never fallback targets. */
+            profiles: components["schemas"]["FQDNResolverProfile"][];
             /** Format: date-time */
             created_at: string;
         };
-        FQDNResolverContextConfigRequest: {
+        FQDNResolverProfile: {
+            /**
+             * Format: uuid
+             * @description Immutable profile provenance bound to gateway DNS requests and answer generations.
+             */
+            id: string;
+            name: string;
+            /**
+             * @description Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning.
+             * @enum {string}
+             */
+            provider_hint: "aws" | "azure" | "google_cloud" | "on_premises";
+            /** @description Normalized DNS suffixes. The most-specific matching suffix selects this profile. */
+            zone_suffixes: string[];
             endpoints: components["schemas"]["FQDNResolverEndpoint"][];
+            /** @description True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes. */
+            legacy_default: boolean;
+        };
+        FQDNResolverProfileRequest: {
+            name: string;
+            /** @enum {string} */
+            provider_hint: "aws" | "azure" | "google_cloud" | "on_premises";
+            zone_suffixes: string[];
+            endpoints: components["schemas"]["FQDNResolverEndpoint"][];
+        };
+        FQDNResolverProfileSelection: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            provider_hint: "aws" | "azure" | "google_cloud" | "on_premises";
+            /** @description Normalized most-specific suffix selected for this hostname; empty only for a migrated legacy catch-all profile. */
+            matched_suffix: string;
+            /** Format: int64 */
+            config_version: number;
+        };
+        /** @description Send exactly one of profiles (current contract) or endpoints (legacy single-profile compatibility). The server rejects missing or ambiguous input. */
+        FQDNResolverContextConfigRequest: {
+            /**
+             * @description Operator-supplied display metadata for this resolver boundary; never an instruction to discover or provision cloud resources.
+             * @enum {string|null}
+             */
+            provider_hint?: "aws" | "azure" | "google_cloud" | "on_premises" | null;
+            /** @description Legacy single-profile compatibility input. New clients should send profiles. */
+            endpoints?: components["schemas"]["FQDNResolverEndpoint"][];
+            profiles?: components["schemas"]["FQDNResolverProfileRequest"][];
         };
         FQDNResourceSetting: {
             /** @description Persisted false-default opt-in. It gates compilation only. */

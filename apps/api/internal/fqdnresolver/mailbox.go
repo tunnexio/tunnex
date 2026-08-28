@@ -61,9 +61,9 @@ func (m *PostgresGatewayDNSMailbox) Enqueue(ctx context.Context, request Gateway
 	}
 	command, err := tx.Exec(ctx, `
 INSERT INTO fqdn_gateway_dns_requests
-  (request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_endpoints,hostname,record_types,deadline,state)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending')
-ON CONFLICT (request_id) DO NOTHING`, request.RequestID, request.Version, request.OrgID, request.ResourceID, request.SiteID, request.GatewayID, request.ResolverConfigID, request.ResolverConfigVersion, endpoints, request.Hostname, types, request.Deadline)
+  (request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,resolver_match_suffix,resolver_endpoints,hostname,record_types,deadline,state)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13,$14,'pending')
+ON CONFLICT (request_id) DO NOTHING`, request.RequestID, request.Version, request.OrgID, request.ResourceID, request.SiteID, request.GatewayID, request.ResolverConfigID, request.ResolverConfigVersion, request.ResolverProfileID, request.ResolverMatchSuffix, endpoints, request.Hostname, types, request.Deadline)
 	if err != nil {
 		return err
 	}
@@ -104,12 +104,16 @@ WHERE q.org_id=$1 AND q.gateway_id=$2 AND q.state='pending'
        AND c.site_id=q.site_id AND c.gateway_id=q.gateway_id
       WHERE r.id=q.resource_id AND r.org_id=q.org_id
         AND r.resolver_site_id=q.site_id AND r.resolver_node_id=q.gateway_id
+        AND EXISTS (
+          SELECT 1 FROM fqdn_resolver_context_profiles p
+          WHERE p.id=q.resolver_profile_id AND p.config_id=c.id AND p.org_id=q.org_id
+        )
     )
   )`, orgID, gatewayID); err != nil {
 		return nil, err
 	}
 	rows, err := m.pool.Query(ctx, `
-SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_endpoints,hostname,record_types,deadline
+SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,COALESCE(resolver_match_suffix,''),resolver_endpoints,hostname,record_types,deadline
 FROM fqdn_gateway_dns_requests
 WHERE org_id=$1 AND gateway_id=$2 AND state='pending' AND deadline>=now()
 ORDER BY created_at,request_id LIMIT $3`, orgID, gatewayID, limit)
@@ -121,7 +125,7 @@ ORDER BY created_at,request_id LIMIT $3`, orgID, gatewayID, limit)
 	for rows.Next() {
 		var request GatewayDNSRequest
 		var types, endpoints []byte
-		if err := rows.Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &endpoints, &request.Hostname, &types, &request.Deadline); err != nil {
+		if err := rows.Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &request.ResolverProfileID, &request.ResolverMatchSuffix, &endpoints, &request.Hostname, &types, &request.Deadline); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(types, &request.RecordTypes); err != nil {
@@ -154,9 +158,9 @@ func (m *PostgresGatewayDNSMailbox) Complete(ctx context.Context, authenticatedO
 	var request GatewayDNSRequest
 	var types, endpoints []byte
 	err = tx.QueryRow(ctx, `
-SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_endpoints,hostname,record_types,deadline
+SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,COALESCE(resolver_match_suffix,''),resolver_endpoints,hostname,record_types,deadline
 FROM fqdn_gateway_dns_requests WHERE request_id=$1 FOR UPDATE`, response.RequestID).
-		Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &endpoints, &request.Hostname, &types, &request.Deadline)
+		Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &request.ResolverProfileID, &request.ResolverMatchSuffix, &endpoints, &request.Hostname, &types, &request.Deadline)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrGatewayDNSRPCReplay
 	}
@@ -258,11 +262,35 @@ FOR UPDATE`, request.OrgID, request.SiteID, request.GatewayID).Scan(&configID, &
 	if err != nil {
 		return err
 	}
+	var legacyDefault bool
+	err = tx.QueryRow(ctx, `SELECT legacy_default FROM fqdn_resolver_context_profiles WHERE id=$1 AND config_id=$2 AND org_id=$3`, request.ResolverProfileID, configID, request.OrgID).Scan(&legacyDefault)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrSuperseded
+	}
+	if err != nil {
+		return err
+	}
+	if legacyDefault {
+		if request.ResolverMatchSuffix != "" {
+			return ErrSuperseded
+		}
+	} else {
+		var suffixExists bool
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fqdn_resolver_context_profile_suffixes WHERE profile_id=$1 AND org_id=$2 AND suffix=$3 AND (lower($4)=suffix OR lower($4) LIKE '%.'||suffix))`, request.ResolverProfileID, request.OrgID, request.ResolverMatchSuffix, request.Hostname).Scan(&suffixExists)
+		if err != nil || !suffixExists {
+			return ErrSuperseded
+		}
+		var moreSpecific bool
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM fqdn_resolver_context_profiles p JOIN fqdn_resolver_context_profile_suffixes s ON s.profile_id=p.id AND s.org_id=p.org_id WHERE p.config_id=$1 AND p.org_id=$2 AND length(s.suffix)>length($3) AND (lower($4)=s.suffix OR lower($4) LIKE '%.'||s.suffix))`, configID, request.OrgID, request.ResolverMatchSuffix, request.Hostname).Scan(&moreSpecific)
+		if err != nil || moreSpecific {
+			return ErrSuperseded
+		}
+	}
 	rows, err := tx.Query(ctx, `
 SELECT host(address),port,transport
-FROM fqdn_resolver_context_endpoints
-WHERE config_id=$1 AND org_id=$2
-ORDER BY ordinal`, configID, request.OrgID)
+FROM fqdn_resolver_context_profile_endpoints
+WHERE profile_id=$1 AND org_id=$2
+ORDER BY ordinal`, request.ResolverProfileID, request.OrgID)
 	if err != nil {
 		return err
 	}
