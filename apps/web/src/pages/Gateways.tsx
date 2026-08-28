@@ -323,7 +323,7 @@ export default function GatewaysPage() {
           actions={<Button variant="ghost" onClick={closeEnrollment}>Close</Button>}
         >
           <p className="mb-3 text-cell text-ink-tertiary">
-            Issue a one-time command for a Linux gateway. Token issuance means only that the command is ready; enrollment and connectivity are not yet server-correlated.
+            Create a one-time command, then run it on the Linux host that will carry private traffic.
           </p>
           <EnrolCeremony
             org={org}

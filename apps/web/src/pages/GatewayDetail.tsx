@@ -168,8 +168,15 @@ export default function GatewayDetail() {
       <Link className="inline-flex text-cell text-ink-tertiary hover:text-ink-heading" to="/gateways">← Gateway inventory</Link>
       <PageHeader
         title={node.name}
-        subtitle="Gateway detail workspace"
-        actions={<Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>{statusLabel}</Badge>}
+        subtitle={`${row.siteName ?? "No site assigned"} · ${node.last_seen_at ? `seen ${relativeAge(node.last_seen_at)}` : "never connected"}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>{statusLabel}</Badge>
+            {canManage && node.status !== "revoked" && (
+              <Button size="sm" variant="ghost" onClick={() => { setDraft(node.name); openDialog("rename"); }}>Rename</Button>
+            )}
+          </div>
+        }
       />
       <nav aria-label="Gateway detail sections" className="border-b border-white/10">
         <div className="flex min-w-max gap-1 overflow-x-auto">
@@ -190,18 +197,12 @@ export default function GatewayDetail() {
       {notice && <div role="status" className="rounded-card border border-ok/30 bg-ok/5 p-3 text-cell text-ink-body">{notice}</div>}
 
       {tab === "overview" && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
-          <Card>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-heading font-semibold text-ink-heading">Identity</h2>
-                <p className="mt-1 text-cell text-ink-tertiary">Server-owned enrollment identity and topology context.</p>
-              </div>
-              {canManage && node.status !== "revoked" && (
-                <Button variant="ghost" onClick={() => { setDraft(node.name); openDialog("rename"); }}>Rename</Button>
-              )}
+        <Card>
+            <div>
+              <h2 className="text-heading font-semibold text-ink-heading">Gateway overview</h2>
+              <p className="mt-1 text-cell text-ink-tertiary">Identity, placement, and the latest reported runtime.</p>
             </div>
-            <dl className="mt-5 grid gap-5 sm:grid-cols-2">
+            <dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
               <Fact label="Lifecycle"><Badge tone={node.status === "revoked" ? "neutral" : "ok"}>{node.status}</Badge></Fact>
               <Fact label="Site">{row.siteName ?? "No site assigned"}</Fact>
               <Fact label="Endpoint">{node.endpoint ?? "Not reported"}</Fact>
@@ -209,40 +210,41 @@ export default function GatewayDetail() {
               <Fact label="Enrolled">{node.enrolled_at ? new Date(node.enrolled_at).toLocaleString() : "Not reported"}</Fact>
               <Fact label="Last seen">{node.last_seen_at ? `${relativeAge(node.last_seen_at)} (${new Date(node.last_seen_at).toLocaleString()})` : "Never connected"}</Fact>
             </dl>
-          </Card>
-          <Card>
-            <h2 className="text-heading font-semibold text-ink-heading">Related workspaces</h2>
-            <div className="mt-3 flex flex-col items-start gap-2 text-cell">
-              <Link className="text-accent-400 hover:underline" to="/sites">Manage site topology</Link>
-              <Link className="text-accent-400 hover:underline" to={`/devices?gateway=${gatewayId}`}>View homed devices{homed === null ? "" : ` (${homed})`}</Link>
-              <Link className="text-accent-400 hover:underline" to={`/audit?q=${encodeURIComponent(node.name)}`}>Find Gateway audit evidence</Link>
+            <div className="mt-5 border-t border-white/[.08] pt-3">
+              <h3 className="text-micro font-medium uppercase tracking-wide text-ink-faint">Related</h3>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <Link className="flex min-h-10 items-center justify-between rounded-md border border-white/[.08] px-3 text-cell text-ink-body hover:bg-white/[.04] hover:text-ink-heading" to="/sites"><span>Site topology</span><span aria-hidden="true">›</span></Link>
+                <Link className="flex min-h-10 items-center justify-between rounded-md border border-white/[.08] px-3 text-cell text-ink-body hover:bg-white/[.04] hover:text-ink-heading" to={`/devices?gateway=${gatewayId}`}><span>Homed devices{homed === null ? "" : ` (${homed})`}</span><span aria-hidden="true">›</span></Link>
+                <Link className="flex min-h-10 items-center justify-between rounded-md border border-white/[.08] px-3 text-cell text-ink-body hover:bg-white/[.04] hover:text-ink-heading" to={`/audit?q=${encodeURIComponent(node.name)}`}><span>Audit evidence</span><span aria-hidden="true">›</span></Link>
+              </div>
             </div>
           </Card>
-        </div>
       )}
 
       {tab === "health" && (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
+        <Card className="overflow-hidden !p-0">
+          <div className="grid gap-0 md:grid-cols-2">
+          <section className="border-b border-white/[.08] p-4 md:border-r">
             <h2 className="text-heading font-semibold text-ink-heading">Connectivity</h2>
             <p className="mt-3 text-cell text-ink-body">{node.last_seen_at ? `Last control-plane observation ${relativeAge(node.last_seen_at)}.` : "This gateway has never reported a successful connection."}</p>
             <p className="mt-2 text-micro text-ink-tertiary">Lifecycle and connectivity are separate: an active credential does not prove a fresh handshake.</p>
-          </Card>
-          <Card>
+          </section>
+          <section className="border-b border-white/[.08] p-4">
             <h2 className="text-heading font-semibold text-ink-heading">Policy and transit</h2>
             <div className="mt-3"><Badge tone={row.health ? "warn" : node.status === "revoked" ? "neutral" : "ok"}>{row.health?.label ?? (node.status === "revoked" ? "not evaluated" : "healthy")}</Badge></div>
             {groupNotes([row]).map((note) => <p key={note} className="mt-2 text-cell text-ink-tertiary">{note}</p>)}
-          </Card>
-          <Card>
+          </section>
+          <section className="p-4 md:border-r md:border-white/[.08]">
             <h2 className="text-heading font-semibold text-ink-heading">OpenVPN</h2>
             <p className="mt-3 text-cell text-ink-body">{row.ovpnHealth ? row.ovpnHealth.replace(/^ovpn_/, "").replace(/_/g, " ") : "No OpenVPN failure reported."}</p>
             <p className="mt-2 text-micro text-ink-tertiary">A separate service axis from WireGuard policy health.</p>
-          </Card>
-          <Card>
+          </section>
+          <section className="border-t border-white/[.08] p-4 md:border-t-0">
             <h2 className="text-heading font-semibold text-ink-heading">Egress</h2>
             <p className="mt-3 text-cell text-ink-body">{gatewayEgressDetail(row)}</p>
-          </Card>
-        </div>
+          </section>
+          </div>
+        </Card>
       )}
 
       {tab === "lifecycle" && (

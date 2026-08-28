@@ -61,7 +61,7 @@ export function Button({
   const pad =
     size === "sm"
       ? "min-h-8 px-2.5 py-1 text-xs"
-      : "min-h-11 px-4 py-2 text-sm";
+      : "min-h-9 px-3.5 py-1.5 text-sm";
   const base = `inline-flex items-center justify-center rounded-md ${pad} font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400`;
   // ⛔ THE PRIMARY BUTTON WAS UNREADABLE, PRODUCT-WIDE, AND THE PALETTE SWAP IS WHY.
   //
@@ -99,12 +99,18 @@ export function Button({
 
 export function Card({
   className = "",
+  variant = "glass",
   children,
 }: {
   className?: string;
+  variant?: "glass" | "plain";
   children: ReactNode;
 }) {
-  return <div className={`${GLASS} p-4 ${className}`}>{children}</div>;
+  return (
+    <div className={`${variant === "glass" ? `${GLASS} p-4` : ""} ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 export function Field({
