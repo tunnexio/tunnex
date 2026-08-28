@@ -264,12 +264,6 @@ export default function Dashboard() {
             // A summary card is visible only after its own source succeeds. This
             // preserves permission-before-entitlement behavior without using
             // legacy `/meta` edition metadata as a UI gate.
-            const STAT_CARDS =
-              4 +
-              (agentsRes?.ok ? 1 : 0) +
-              (rulesRes?.ok ? 1 : 0) +
-              (pendingRes?.ok ? 1 : 0);
-
             // NEEDS ATTENTION is COMPOSED, not fetched — every item names the source that produced it, and an
             // item appears only when its source has been READ. A source still loading contributes nothing;
             // a source that FAILED contributes nothing either, because "nothing needs attention" and "we could
@@ -340,9 +334,9 @@ export default function Dashboard() {
                     tokenrefs census failed on it within seconds of being written, on its own author. A local
                     layout variable is not a design token and must not wear the namespace that promises it is
                     held to the generated set. */}
-                <div
-                  className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:[grid-template-columns:repeat(var(--stat-cols),minmax(0,1fr))]"
-                  style={{ "--stat-cols": STAT_CARDS } as React.CSSProperties}
+                <section
+                  aria-label="Fleet summary"
+                  className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-2"
                 >
                   <Stat
                     label="Members"
@@ -405,7 +399,7 @@ export default function Dashboard() {
                       sub="awaiting an admin"
                     />
                   )}
-                </div>
+                </section>
 
                 {/* Not in a grid — a sibling in the page column, so a `col-span-*` here would be a dead class. */}
                 {fresh && (
@@ -472,11 +466,6 @@ export default function Dashboard() {
                       centreLabel="devices"
                       empty="No devices enrolled yet."
                     />
-                    {/* The design's caption, verbatim — it states the product's rule, not a decoration. */}
-                    <p className="mt-2 text-explainer leading-[1.55] text-ink-tertiary">
-                      Status derived from WireGuard handshake liveness. Never
-                      green while dead.
-                    </p>
                   </Panel>
 
                   <Panel title="Gateway Health">
@@ -487,51 +476,52 @@ export default function Dashboard() {
                     ) : nodesRes.data.length === 0 ? (
                       <EmptyState>No gateway enrolled yet.</EmptyState>
                     ) : (
-                      <List label="Gateway health">
-                        {sortGateways(
-                          nodesRes.data.map((n): GatewayRow => {
-                            // ⛔ THE ROW VERDICT IS NOT FORMED HERE (S14.21). This panel used to read
-                            // `b ? b.label : "healthy"` — turning "no badge" into the CLAIM "healthy",
-                            // which is what put a green verdict on a revoked gateway. Deciding it here at
-                            // all was the defect; gatewayHealthRow owns it now.
-                            const v = gatewayHealthRow(n);
-                            // ⛔ A SECOND, INDEPENDENT BADGE — NOT A REPLACEMENT (S15.2, D25(C)). A gateway
-                            // can be perfectly healthy AND unattributable, so folding attribution into the
-                            // health verdict would force a choice between reporting an enforcement problem
-                            // and reporting an accountability one. Both, or neither.
-                            const a = attributionBadge(n);
+                      (() => {
+                        const rows = sortGateways(
+                          nodesRes.data.map((node): GatewayRow => {
+                            const verdict = gatewayHealthRow(node);
                             return {
-                              id: n.id,
-                              name: n.name,
-                              label: v.label,
-                              tone: v.tone,
-                              attribution: a ? a.label : null,
-                              attributionDetail: a ? a.detail : null,
+                              id: node.id,
+                              name: node.name,
+                              label: verdict.label,
+                              tone: verdict.tone,
                             };
                           }),
-                        ).map((g) => (
-                          <ListItem key={g.id}>
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="truncate font-mono text-mono text-ink-primary">
-                                {g.name}
-                              </span>
-                              <span className="flex shrink-0 items-center gap-1.5">
-                                {/* ⚠ The detail rides a wrapping <span title>, not the Badge — Badge takes
-                                    only tone+children, and widening a shared primitive to carry one
-                                    caller's tooltip is how a design system stops being one. */}
-                                {g.attribution && (
-                                  <span
-                                    title={g.attributionDetail ?? undefined}
-                                  >
-                                    <Badge tone="warn">{g.attribution}</Badge>
-                                  </span>
-                                )}
-                                <Badge tone={g.tone}>{g.label}</Badge>
-                              </span>
-                            </span>
-                          </ListItem>
-                        ))}
-                      </List>
+                        );
+                        const issues = rows.filter((row) => row.tone !== "ok");
+                        const unattributed = nodesRes.data.filter(
+                          (node) => attributionBadge(node) !== null,
+                        ).length;
+                        return (
+                          <div className="space-y-3">
+                            {unattributed > 0 && (
+                              <p className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-cell text-warn">
+                                {unattributed} gateway
+                                {unattributed === 1 ? " has" : "s have"} no recorded owner. Activity remains enforceable but cannot be attributed to a person.
+                              </p>
+                            )}
+                            {issues.length > 0 ? (
+                              <List label="Gateway health">
+                                {issues.map((gateway) => (
+                                  <ListItem key={gateway.id}>
+                                    <span className="flex items-center justify-between gap-2">
+                                      <span className="truncate font-mono text-mono text-ink-primary">
+                                        {gateway.name}
+                                      </span>
+                                      <Badge tone={gateway.tone}>{gateway.label}</Badge>
+                                    </span>
+                                  </ListItem>
+                                ))}
+                              </List>
+                            ) : (
+                              <p className="text-cell text-ink-secondary">No gateway health issues reported.</p>
+                            )}
+                            <Link className="inline-flex text-cell font-medium text-accent-400 hover:underline" to="/gateways">
+                              Review gateways
+                            </Link>
+                          </div>
+                        );
+                      })()
                     )}
                   </Panel>
 
@@ -547,10 +537,7 @@ export default function Dashboard() {
                     {k8sClustersRes === null || k8sServicesRes === null ? (
                       <Loading />
                     ) : !k8sClustersRes.ok ? (
-                      <p className="text-cell text-warn">
-                        Could not read clusters. This card only; the rest of the
-                        page is unaffected.
-                      </p>
+                      <p className="text-cell text-warn">Could not read clusters.</p>
                     ) : k8sClustersRes.data.length === 0 ? (
                       <EmptyState>
                         No clusters registered. Registering one reserves a VIP
@@ -653,8 +640,8 @@ export default function Dashboard() {
                                 opposite, and neither was measured) — so the SENTENCE says what is true. */}
                             <p className="mt-2 text-explainer leading-[1.55] text-ink-tertiary">
                               {ps.percent === null
-                                ? `No device has reported posture yet, so there is no compliance rate to show. Unknown is its own state: absence is not compliance.`
-                                : `${ps.percent}% of the ${ps.compliant + ps.blocked} devices that have reported are compliant. The ${ps.unknown} that have not reported are excluded — absence is not compliance.`}
+                                ? "No device has reported posture yet."
+                                : `${ps.percent}% compliant among reporting devices${ps.unknown > 0 ? ` · ${ps.unknown} awaiting posture` : ""}.`}
                             </p>
                           </>
                         );
@@ -727,10 +714,7 @@ export default function Dashboard() {
                               })}
                             </List>
                             <p className="mt-2 text-explainer leading-[1.55] text-ink-tertiary">
-                              Pinned gateways form the hub set. members[0] is
-                              the acting primary, and the generation bumps on
-                              every promotion. Absent metrics are not an idle
-                              link.
+                              The acting primary and standby health are shown above. Generation changes after a promotion.
                             </p>
                           </>
                         );
@@ -836,38 +820,36 @@ function Stat({
     <div
       role="group"
       aria-label={label}
-      className={`${GLASS} flex flex-col gap-2 p-3.5`}
+      className={`${GLASS} flex min-h-[5.5rem] items-start gap-3 p-3`}
     >
-      <div className="flex items-center gap-[9px]">
-        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-inset border border-white/[.2] bg-white/[.09] text-ink-emphasis">
-          <Icon name={icon} size={15} />
-        </span>
-        <span className="text-cell font-medium text-ink-secondary">
-          {label}
-        </span>
-      </div>
-      {text === null ? (
-        <span
-          className="text-stat font-bold leading-none text-ink-secondary"
-          title={
-            value.state === "failed" ? "Could not load this count." : "Loading…"
-          }
-        >
-          {value.state === "failed" ? "n/a" : "…"}
-        </span>
-      ) : (
-        <span
-          className={`text-stat font-bold leading-none ${tone === "ok" ? "text-ok" : "text-ink-heading"}`}
-        >
-          {text}
-        </span>
-      )}
-      <span className="text-mono font-medium text-ink-tertiary">
-        {value.state === "failed" ? (
-          <span className="text-danger">could not load</span>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-inset border border-white/[.14] bg-white/[.06] text-ink-emphasis">
+        <Icon name={icon} size={15} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-cell font-medium text-ink-secondary">{label}</span>
+        {text === null ? (
+          <span
+            className="mt-1 block text-xl font-bold leading-none text-ink-secondary"
+            title={
+              value.state === "failed" ? "Could not load this count." : "Loading…"
+            }
+          >
+            {value.state === "failed" ? "n/a" : "…"}
+          </span>
         ) : (
-          sub
+          <span
+            className={`mt-1 block text-2xl font-bold leading-none ${tone === "ok" ? "text-ok" : "text-ink-heading"}`}
+          >
+            {text}
+          </span>
         )}
+        <span className="mt-1 block truncate text-badge font-medium text-ink-tertiary">
+          {value.state === "failed" ? (
+            <span className="text-danger">could not load</span>
+          ) : (
+            sub
+          )}
+        </span>
       </span>
     </div>
   );

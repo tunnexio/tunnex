@@ -150,7 +150,7 @@ describe("⛔ A FAILED COUNT NEVER RENDERS AS ZERO", () => {
     // The rule is not "never show 0". It is "NEVER SHOW 0 FOR SOMETHING WE DID NOT LEARN" — and a page-wide
     // text query cannot tell those apart, because on screen they are the same character. So the assertion is
     // scoped to the FAILED card, which is the only place the distinction lives.
-    const sitesCard = screen.getByText("Sites").closest("div")!.parentElement!;
+    const sitesCard = screen.getByRole("group", { name: "Sites" });
     // (copy changed with the design pass; the ASSERTION is unchanged — a failed card must not show a number)
     expect(within(sitesCard).queryByText("0")).toBeNull();
   });
