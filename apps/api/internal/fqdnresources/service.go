@@ -215,7 +215,17 @@ func (s *Service) Update(ctx context.Context, org, id uuid.UUID, in Input, actor
 	return s.Get(ctx, org, id)
 }
 func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Resource, error) {
-	rows, err := s.pool.Query(ctx, resourceQuery+` WHERE r.org_id=$1 ORDER BY r.created_at`, org)
+	var out []Resource
+	err := s.readSnapshot(ctx, func(tx pgx.Tx) error {
+		var err error
+		out, err = list(ctx, tx, org)
+		return err
+	})
+	return out, err
+}
+
+func list(ctx context.Context, q resolverConfigQuerier, org uuid.UUID) ([]Resource, error) {
+	rows, err := q.Query(ctx, resourceQuery+` WHERE r.org_id=$1 ORDER BY r.created_at`, org)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +245,7 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Resource, error) {
 		if out[i].Context == nil {
 			continue
 		}
-		config, err := s.ResolverConfig(ctx, org, out[i].Context.SiteID, out[i].Context.GatewayID)
+		config, err := resolverConfig(ctx, q, org, out[i].Context.SiteID, out[i].Context.GatewayID)
 		if err != nil {
 			if isResolverConfigNotFound(err) {
 				markUnconfigured(&out[i])
@@ -250,14 +260,24 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Resource, error) {
 	return out, nil
 }
 func (s *Service) Get(ctx context.Context, org, id uuid.UUID) (Resource, error) {
-	r, err := scan(s.pool.QueryRow(ctx, resourceQuery+` WHERE r.org_id=$1 AND r.id=$2`, org, id))
+	var r Resource
+	err := s.readSnapshot(ctx, func(tx pgx.Tx) error {
+		var err error
+		r, err = get(ctx, tx, org, id)
+		return err
+	})
+	return r, err
+}
+
+func get(ctx context.Context, q resolverConfigQuerier, org, id uuid.UUID) (Resource, error) {
+	r, err := scan(q.QueryRow(ctx, resourceQuery+` WHERE r.org_id=$1 AND r.id=$2`, org, id))
 	if err == pgx.ErrNoRows {
 		return Resource{}, apierr.NotFound("fqdn_resource_not_found", "FQDN resource not found")
 	}
 	if err != nil || r.Context == nil {
 		return r, err
 	}
-	config, configErr := s.ResolverConfig(ctx, org, r.Context.SiteID, r.Context.GatewayID)
+	config, configErr := resolverConfig(ctx, q, org, r.Context.SiteID, r.Context.GatewayID)
 	if configErr != nil && !isResolverConfigNotFound(configErr) {
 		return r, configErr
 	}
@@ -265,6 +285,21 @@ func (s *Service) Get(ctx context.Context, org, id uuid.UUID) (Resource, error) 
 		r.Context.Config = &config
 	}
 	return r, nil
+}
+
+// readSnapshot keeps a public projection internally coherent without taking
+// the organization writer lock. PostgreSQL establishes the repeatable-read
+// snapshot at its first statement and all later component reads share it.
+func (s *Service) readSnapshot(ctx context.Context, read func(pgx.Tx) error) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := read(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func markUnconfigured(r *Resource) {
@@ -299,7 +334,17 @@ func impactFor(ctx context.Context, q queryRower, org, id uuid.UUID) (i Impact, 
 // Detail projects only stored, bounded facts. It never resolves DNS or turns a
 // missing projection into an empty/healthy claim.
 func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error) {
-	r, err := s.Get(ctx, org, id)
+	var d Detail
+	err := s.readSnapshot(ctx, func(tx pgx.Tx) error {
+		var err error
+		d, err = detail(ctx, tx, org, id)
+		return err
+	})
+	return d, err
+}
+
+func detail(ctx context.Context, q resolverConfigQuerier, org, id uuid.UUID) (Detail, error) {
+	r, err := get(ctx, q, org, id)
 	if err != nil {
 		return Detail{}, err
 	}
@@ -322,7 +367,7 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 					d.NextAction = "none"
 				}
 			}
-			rows, e := s.pool.Query(ctx, `SELECT host(address)::text FROM fqdn_resource_generation_answers WHERE org_id=$1 AND generation_id=$2 ORDER BY family(address), host(address) LIMIT 32`, org, *r.latestGenerationID)
+			rows, e := q.Query(ctx, `SELECT host(address)::text FROM fqdn_resource_generation_answers WHERE org_id=$1 AND generation_id=$2 ORDER BY family(address), host(address) LIMIT 32`, org, *r.latestGenerationID)
 			if e != nil {
 				return Detail{}, e
 			}
@@ -355,10 +400,10 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 	if r.State == "failed" || r.State == "nxdomain" {
 		d.NextAction = "refresh"
 	}
-	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2`, org, id).Scan(&d.ReferencingRuleCount); err != nil {
+	if err = q.QueryRow(ctx, `SELECT count(*) FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2`, org, id).Scan(&d.ReferencingRuleCount); err != nil {
 		return Detail{}, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id,src_kind,NOT disabled FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2 ORDER BY id LIMIT 32`, org, id)
+	rows, err := q.Query(ctx, `SELECT id,src_kind,NOT disabled FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2 ORDER BY id LIMIT 32`, org, id)
 	if err != nil {
 		return Detail{}, err
 	}
@@ -376,7 +421,7 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 	}
 	rows.Close()
 	d.ReferencesTruncated = d.ReferencingRuleCount > len(d.ReferencingRules)
-	if err = s.pool.QueryRow(ctx, `SELECT max(created_at) FROM audit_logs WHERE org_id=$1 AND target_type='fqdn_resource' AND target_id=$2`, org, id.String()).Scan(&d.Audit.LatestEventAt); err != nil {
+	if err = q.QueryRow(ctx, `SELECT max(created_at) FROM audit_logs WHERE org_id=$1 AND target_type='fqdn_resource' AND target_id=$2`, org, id.String()).Scan(&d.Audit.LatestEventAt); err != nil {
 		return Detail{}, err
 	}
 	return d, nil

@@ -24,12 +24,11 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	admin, err := pgxpool.New(ctx, adminURL)
+	base, err := url.Parse(adminURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
-	base, err := url.Parse(adminURL)
+	admin, err := pgxpool.New(ctx, adminURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +36,14 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatal(err)
 	}
+	// Register cleanup before migration or pool setup: either can fail after the
+	// database exists. The admin pool stays open until DROP has completed.
+	defer func() {
+		if _, err := admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+			t.Errorf("cleanup disposable proof database %s: %v", name, err)
+		}
+		admin.Close()
+	}()
 	testURL := *base
 	testURL.Path = "/" + name
 	if err := db.MigrateTo(testURL.String(), 116); err != nil {
@@ -44,21 +51,11 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
 	if err != nil {
-		if _, dropErr := admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); dropErr != nil {
-			t.Errorf("cleanup disposable database after pool setup failure: %v", dropErr)
-		}
-		admin.Close()
 		t.Fatal(err)
 	}
-	defer func() {
-		// DROP needs the admin pool alive, and FORCE guarantees an interrupted
-		// proof cannot strand a disposable database behind a test connection.
-		pool.Close()
-		if _, err := admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
-			t.Errorf("cleanup disposable proof database %s: %v", name, err)
-		}
-		admin.Close()
-	}()
+	// This defer runs first, so the registered database cleanup can DROP using
+	// the still-open admin pool.
+	defer pool.Close()
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, query, args...); err != nil {
@@ -134,6 +131,12 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	setting, err := svc.SettingImpact(ctx, org)
 	if err != nil || setting.EnforcementReadyRuleCount != 32 || len(setting.EnforcementReadyRuleIDs) != 32 || setting.RuleIDsTruncated {
 		t.Fatalf("expired rule leaked into opt-in impact=%+v err=%v", setting, err)
+	}
+	if setting.ExpectedImpactToken == nil {
+		t.Fatalf("setting impact omitted confirmation token: %+v", setting)
+	}
+	if err := svc.SetSetting(ctx, org, true, setting.ExpectedImpactToken, uuid.Nil, "resource-contract-test", ""); err != nil {
+		t.Fatalf("valid unchanged setting confirmation token must commit: %v", err)
 	}
 
 	// These barriers prove the org advisory lock makes a preview confirmation
@@ -239,10 +242,76 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 		t.Fatal("setting deadlocked behind generation writer")
 	}
 
-	replacement := uuid.New()
-	exec(`UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config)
-	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,2,'active')`, replacement, org, site, gateway)
-	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.54'::inet,53,'tcp')`, replacement, org)
+	// The stale-token race withdrew generation 3. Publish a *new* active
+	// generation under the old active config, so replacement proves config
+	// identity (rather than merely a previously withdrawn generation) withdraws
+	// compiler eligibility immediately.
+	publish(config, 4, "10.2.3.5")
+	assertHealthy := func(stage string) {
+		t.Helper()
+		detail, err := svc.Detail(ctx, org, resource)
+		get, getErr := svc.Get(ctx, org, resource)
+		list, listErr := svc.List(ctx, org)
+		var listed *Resource
+		for i := range list {
+			if list[i].ID == resource {
+				listed = &list[i]
+				break
+			}
+		}
+		if err != nil || getErr != nil || listErr != nil || listed == nil || detail.Resource.State != "healthy" || get.State != "healthy" || listed.State != "healthy" || detail.Resource.Generation == nil || get.Generation == nil || listed.Generation == nil || len(detail.ActiveAnswers) != 1 {
+			t.Fatalf("%s projections did not expose current active generation: detail=%+v get=%+v list=%+v errs=%v/%v/%v", stage, detail, get, list, err, getErr, listErr)
+		}
+	}
+	assertHealthy("old active config")
+	// Readers do not take the writer lock. While the replacement commits, each
+	// one must nevertheless return one coherent snapshot: healthy can only be
+	// paired with the old configuration, never the replacement configuration.
+	type replacementResult struct {
+		config ResolverConfig
+		err    error
+	}
+	replacementDone := make(chan replacementResult, 1)
+	go func() {
+		configured, e := svc.SetResolverConfig(ctx, org, site, gateway, uuid.Nil, "resource-contract-test", "", []ResolverEndpoint{{Address: "10.53.0.54", Port: 53, Transport: "tcp"}})
+		replacementDone <- replacementResult{config: configured, err: e}
+	}()
+	var replacement ResolverConfig
+	for replacementDone == nil {
+		detail, detailErr := svc.Detail(ctx, org, resource)
+		get, getErr := svc.Get(ctx, org, resource)
+		list, listErr := svc.List(ctx, org)
+		var listed *Resource
+		for i := range list {
+			if list[i].ID == resource {
+				listed = &list[i]
+				break
+			}
+		}
+		for _, projection := range []Resource{detail.Resource, get} {
+			if projection.State == "healthy" && (projection.Context == nil || projection.Context.Config == nil || projection.Context.Config.ID != config) {
+				t.Fatalf("replacement read mixed active generation with replacement context: %+v", projection)
+			}
+		}
+		if listed == nil || detailErr != nil || getErr != nil || listErr != nil {
+			t.Fatalf("concurrent replacement projection failed: detail=%v get=%v list=%v listed=%+v", detailErr, getErr, listErr, listed)
+		}
+		if listed.State == "healthy" && (listed.Context == nil || listed.Context.Config == nil || listed.Context.Config.ID != config) {
+			t.Fatalf("replacement list mixed active generation with replacement context: %+v", listed)
+		}
+		select {
+		case result := <-replacementDone:
+			replacement = result.config
+			if result.err != nil {
+				t.Fatal(result.err)
+			}
+			replacementDone = nil
+		default:
+		}
+	}
+	if replacement.ID == config {
+		t.Fatal("resolver replacement did not create a new immutable revision")
+	}
 	assertUnavailable := func(stage string) {
 		t.Helper()
 		detail, err := svc.Detail(ctx, org, resource)
