@@ -105,11 +105,12 @@ func TestAgentAccessDiagnosticPostgresContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	allowed := diagnose("10.99.0.8")
-	if allowed.Overall != api.AgentAccessDiagnosticOverallAllowed || len(allowed.Checks) != 7 || allowed.Checks[5].Code != "route_configured" || allowed.Checks[6].Code != "matching_grant" {
+	if allowed.Overall != api.AgentAccessDiagnosticOverallAllowed || len(allowed.Checks) != 7 || allowed.Checks[5].Code != "matching_grant" {
 		t.Fatalf("allowed diagnostic: %#v", allowed)
 	}
-	if allowed.Checks[6].Facts == nil || (*allowed.Checks[6].Facts)["rule_id"] != rule.String() || (*allowed.Checks[6].Facts)["policy_hash"] != evaluation.PolicyHash {
-		t.Fatalf("allowed diagnostic omitted exact compiled facts: %#v", allowed.Checks[6])
+	assertDiagnosticOrder(t, allowed, "route_configured", "matching_grant")
+	if allowed.Checks[5].Facts == nil || (*allowed.Checks[5].Facts)["rule_id"] != rule.String() || (*allowed.Checks[5].Facts)["policy_hash"] != evaluation.PolicyHash {
+		t.Fatalf("allowed diagnostic omitted exact compiled facts: %#v", allowed.Checks[5])
 	}
 
 	hostname := diagnose("db.internal.example")
