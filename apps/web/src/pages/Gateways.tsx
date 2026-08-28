@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { Gateways as EnrolCeremony } from "../components/Gateways";
 import {
-  Badge,
   Button,
   Card,
   DataTable,
@@ -13,6 +12,7 @@ import {
   Modal,
   PageHeader,
   Select,
+  StatusDot,
 } from "../components/ui";
 import { CeilingUpgrade, ceilingSentence } from "../components/CeilingUpgrade";
 import { LoadRetry } from "../components/LoadRetry";
@@ -128,9 +128,18 @@ export default function GatewaysPage() {
       cell: (row: GatewayRow) => {
         const status = lifecycle(row);
         return (
-          <Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>
-            {gatewayOperationalLabel(row)}
-          </Badge>
+          <span className="inline-flex items-center gap-2 text-cell text-ink-body">
+            <StatusDot
+              tone={
+                status === "healthy"
+                  ? "on"
+                  : status === "degraded"
+                    ? "warn"
+                    : "off"
+              }
+            />
+            <span>{gatewayOperationalLabel(row)}</span>
+          </span>
         );
       },
     },
@@ -155,6 +164,19 @@ export default function GatewaysPage() {
       header: "Egress",
       cell: (row: GatewayRow) => gatewayEgressLabel(row),
     },
+    {
+      key: "details",
+      header: "",
+      cell: (row: GatewayRow) => (
+        <Link
+          to={`/gateways/${row.id}`}
+          aria-label={`Open details for ${row.name}`}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-lg text-ink-tertiary hover:bg-white/[.06] hover:text-ink-heading focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+        >
+          <span aria-hidden="true">›</span>
+        </Link>
+      ),
+    },
   ];
 
   const openEnrollment = () => setParam("enroll", "1");
@@ -177,6 +199,7 @@ export default function GatewaysPage() {
       {state.kind === "ready" && state.licence?.gateway_ceiling != null && ceilingReached && (
         <CeilingUpgrade
           kind="gateway"
+          compact
           message={ceilingSentence(
             state.licence.gateways_in_use ?? state.nodes.length,
             state.licence.gateway_ceiling,
@@ -190,38 +213,48 @@ export default function GatewaysPage() {
 
       {state.kind === "ready" && (
         <>
-          <div className="flex min-w-0 flex-wrap items-end gap-3 rounded-card border border-hairline bg-surface-inset p-3">
-            <div className="min-w-[14rem] flex-1">
-              <Input
-                aria-label="Search gateways"
-                placeholder="Search gateway, site, version, or state"
-                value={q}
-                onChange={(event) => setParam("q", event.target.value)}
-              />
-            </div>
-            <Select
-              aria-label="Filter gateway health"
-              width="auto"
-              value={filter}
-              onChange={(event) => setParam("health", event.target.value, "all")}
-            >
-              <option value="all">All ({counts.all})</option>
-              <option value="healthy">Healthy ({counts.healthy})</option>
-              <option value="degraded">Needs attention ({counts.degraded})</option>
-              <option value="revoked">Revoked ({counts.revoked})</option>
-            </Select>
-            <Select aria-label="Sort gateways" width="auto" value={sort} onChange={(event) => setParam("sort", event.target.value, "name")}>
-              <option value="name">Name</option>
-              <option value="health">State</option>
-              <option value="seen">Freshness</option>
-              <option value="version">Agent version</option>
-            </Select>
-            <Button variant="ghost" onClick={() => setParam("dir", dir === "asc" ? "desc" : "asc", "asc")}>
-              {dir === "asc" ? "Ascending" : "Descending"}
-            </Button>
-          </div>
-
           <Card>
+            <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2 border-b border-white/10 pb-3">
+              <div className="min-w-[15rem] flex-1">
+                <Input
+                  aria-label="Search gateways"
+                  placeholder="Search gateway, site, version, or state"
+                  value={q}
+                  onChange={(event) => setParam("q", event.target.value)}
+                />
+              </div>
+              <span className="order-first mr-1 whitespace-nowrap text-micro font-medium tabular-nums text-ink-tertiary sm:order-none">
+                {rows.length === counts.all
+                  ? `${counts.all} gateways`
+                  : `${rows.length} of ${counts.all}`}
+              </span>
+              <Select
+                aria-label="Filter gateway health"
+                width="auto"
+                value={filter}
+                onChange={(event) => setParam("health", event.target.value, "all")}
+              >
+                <option value="all">All ({counts.all})</option>
+                <option value="healthy">Healthy ({counts.healthy})</option>
+                <option value="degraded">Needs attention ({counts.degraded})</option>
+                <option value="revoked">Revoked ({counts.revoked})</option>
+              </Select>
+              <Select aria-label="Sort gateways" width="auto" value={sort} onChange={(event) => setParam("sort", event.target.value, "name")}>
+                <option value="name">Name</option>
+                <option value="health">State</option>
+                <option value="seen">Freshness</option>
+                <option value="version">Agent version</option>
+              </Select>
+              <Button
+                variant="ghost"
+                className="w-11 px-0 text-lg"
+                aria-label={dir === "asc" ? "Ascending" : "Descending"}
+                title={dir === "asc" ? "Sort ascending" : "Sort descending"}
+                onClick={() => setParam("dir", dir === "asc" ? "desc" : "asc", "asc")}
+              >
+                <span aria-hidden="true">{dir === "asc" ? "↑" : "↓"}</span>
+              </Button>
+            </div>
             <DataTable
               caption="Gateway inventory"
               rows={rows}

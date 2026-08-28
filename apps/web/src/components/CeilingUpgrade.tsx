@@ -20,17 +20,32 @@ import { Link } from "react-router-dom";
 export function CeilingUpgrade({
   /** The server's own refusal text — already names band, ceiling, and what is unaffected. */
   message,
+  compact = false,
   /** Which limit was hit. Only changes the wording of the route, never whether one is offered. */
   kind,
 }: {
   message: string;
+  /** Keep standing inventory notices compact without hiding their safety copy. */
+  compact?: boolean;
   kind: "gateway" | "organization";
 }) {
   const what = kind === "gateway" ? "more gateways" : "more organizations";
   return (
-    <div className="mt-3 rounded-card border border-warn/30 bg-warn/5 p-3">
-      <p className="text-cell text-ink-body">{message}</p>
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+    <div
+      className={
+        compact
+          ? "rounded-md border border-warn/25 bg-warn/[.04] px-3 py-2.5 sm:flex sm:items-center sm:justify-between sm:gap-5"
+          : "mt-3 rounded-card border border-warn/30 bg-warn/5 p-3"
+      }
+    >
+      <p className="min-w-0 text-cell text-ink-body">{message}</p>
+      <div
+        className={
+          compact
+            ? "mt-2 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 sm:mt-0 sm:justify-end"
+            : "mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5"
+        }
+      >
         {/* ⭐ INSTALL COMES FIRST, DELIBERATELY. A customer who already HOLDS a key — bought minutes ago,
             or sitting in an inbox from a trial request — is one paste away from being unblocked, and
             sending them to a request form they do not need is the more annoying of the two wrong orders. */}
