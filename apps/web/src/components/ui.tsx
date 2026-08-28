@@ -143,7 +143,7 @@ export function Input({
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400 ${className}`}
+      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 ${className}`}
       {...props}
     />
   );
@@ -188,7 +188,7 @@ export function Select({
 }) {
   return (
     <select
-      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400 ${className}`}
+      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 ${className}`}
       {...props}
     >
       {children}

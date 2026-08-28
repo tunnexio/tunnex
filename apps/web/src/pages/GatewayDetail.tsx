@@ -248,25 +248,77 @@ export default function GatewayDetail() {
       )}
 
       {tab === "lifecycle" && (
-        <div className="space-y-4">
-          <Card>
-            <h2 className="text-heading font-semibold text-ink-heading">Homed devices</h2>
-            <p className="mt-2 text-cell text-ink-body">{homed === null ? "Impact count unavailable. Lifecycle actions that depend on it are withheld until the device inventory can be read." : `${homed} active or pending device${homed === 1 ? " is" : "s are"} homed to this gateway.`}</p>
-            {node.status === "active" && homed !== null && homed > 0 && canTransfer && (
-              <Button className="mt-3" onClick={() => openDialog("transfer")}>Move devices</Button>
-            )}
-          </Card>
-          <Card>
-            <h2 className="text-heading font-semibold text-danger">Danger zone</h2>
-            <p className="mt-2 text-cell text-ink-tertiary">Retirement is transfer first, then permanent revocation. A revoked gateway can never be reactivated.</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {node.status === "active" && canManage && homed === 0 && <Button variant="danger" onClick={() => openDialog("revoke")}>Revoke gateway</Button>}
-              {node.status === "active" && canManage && homed !== 0 && <p className="text-cell text-ink-tertiary">Revoke becomes available only after the authoritative homed-device count reaches zero.</p>}
-              {node.status === "revoked" && canRestore && destinations.length > 0 && <Button onClick={() => openDialog("restore")}>Restore cascaded devices</Button>}
-              {node.status === "revoked" && canManage && <Button variant="danger" onClick={() => openDialog("delete")}>Delete gateway record</Button>}
+        <Card className="overflow-hidden !p-0">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/[.08] px-4 py-3">
+            <div>
+              <h2 className="text-heading font-semibold text-ink-heading">Gateway lifecycle</h2>
+              <p className="mt-1 text-cell text-ink-tertiary">Move dependent devices before permanently retiring this gateway.</p>
             </div>
-          </Card>
-        </div>
+            <Badge tone={node.status === "revoked" ? "neutral" : "ok"}>{node.status}</Badge>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-white/[.08] px-4 py-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 text-micro font-semibold text-ink-tertiary">1</span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-cell font-semibold text-ink-heading">Homed devices</h3>
+                  {homed === 0 && <Badge tone="ok">Complete</Badge>}
+                  {homed === null && <Badge tone="neutral">Unavailable</Badge>}
+                </div>
+                <p className="mt-1 text-cell text-ink-tertiary">
+                  {homed === null
+                    ? "Impact count unavailable. Dependent actions are withheld."
+                    : homed === 0
+                      ? "No active or pending devices depend on this gateway."
+                      : `${homed} active or pending device${homed === 1 ? " depends" : "s depend"} on this gateway.`}
+                </p>
+              </div>
+            </div>
+            {node.status === "active" && homed !== null && homed > 0 && canTransfer && (
+              <Button size="sm" onClick={() => openDialog("transfer")}>Move devices</Button>
+            )}
+          </div>
+
+          {node.status === "active" && (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 text-micro font-semibold text-ink-tertiary">2</span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-cell font-semibold text-ink-heading">Revoke credential</h3>
+                    {homed !== 0 && <Badge tone="neutral">Blocked</Badge>}
+                  </div>
+                  <p className="mt-1 text-cell text-ink-tertiary">
+                    {homed === 0
+                      ? "Permanently stop this gateway from authenticating again."
+                      : "Available after the authoritative homed-device count reaches zero."}
+                  </p>
+                </div>
+              </div>
+              {canManage && homed === 0 && <Button size="sm" variant="danger" onClick={() => openDialog("revoke")}>Revoke gateway</Button>}
+            </div>
+          )}
+
+          {node.status === "revoked" && (
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-white/[.08] px-4 py-3">
+                <div>
+                  <h3 className="text-cell font-semibold text-ink-heading">Restore cascaded devices</h3>
+                  <p className="mt-1 text-cell text-ink-tertiary">Move eligible cascade-revoked devices to a live replacement gateway.</p>
+                </div>
+                {canRestore && destinations.length > 0 && <Button size="sm" onClick={() => openDialog("restore")}>Restore cascaded devices</Button>}
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3">
+                <div>
+                  <h3 className="text-cell font-semibold text-danger">Delete gateway record</h3>
+                  <p className="mt-1 text-cell text-ink-tertiary">Permanently remove the revoked record. Audit evidence remains.</p>
+                </div>
+                {canManage && <Button size="sm" variant="danger" onClick={() => openDialog("delete")}>Delete gateway record</Button>}
+              </div>
+            </>
+          )}
+        </Card>
       )}
 
       {dialog === "rename" && (

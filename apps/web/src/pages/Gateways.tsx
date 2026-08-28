@@ -228,7 +228,7 @@ export default function GatewaysPage() {
                   placeholder="Search gateway, site, version, or state"
                   value={q}
                   onChange={(event) => setParam("q", event.target.value)}
-                  className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400"
+                  className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
                 />
                 <span className="ml-auto whitespace-nowrap px-1 text-micro font-medium tabular-nums text-ink-tertiary">
                   {rows.length === counts.all
@@ -241,7 +241,7 @@ export default function GatewaysPage() {
                   aria-label="Sort gateways"
                   value={sort}
                   onChange={(event) => setParam("sort", event.target.value, "name")}
-                  className="h-9 rounded-md border border-white/10 bg-black/25 px-2.5 text-cell text-ink-body focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent-400"
+                  className="h-9 rounded-md border border-white/10 bg-black/25 px-2.5 text-cell text-ink-body focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
                 >
                   <option value="name">Name</option>
                   <option value="health">State</option>
