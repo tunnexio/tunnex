@@ -335,7 +335,38 @@ func (s *Service) DeleteResource(ctx context.Context, orgID, resourceID uuid.UUI
 // ── rules ───────────────────────────────────────────────────────────────────────
 
 func (s *Service) ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.PolicyRule, error) {
-	return s.q.ListPolicyRulesByOrg(ctx, orgID)
+	rows, err := s.q.ListPolicyRulesByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]sqlc.PolicyRule, 0, len(rows))
+	for _, row := range rows {
+		// ListPolicyRulesByOrg deliberately projects the post-0109 FQDN
+		// destination through JSONB so it can read an old policy_rules table
+		// where the additive column does not exist. sqlc represents that
+		// nullable derived UUID as uuid.UUID; uuid.Nil is therefore the
+		// historical no-FQDN value rather than a valid destination.
+		fqdn := pgtype.UUID{}
+		if row.DstFqdnResourceID != uuid.Nil {
+			fqdn = pgtype.UUID{Bytes: row.DstFqdnResourceID, Valid: true}
+		}
+		out = append(out, sqlc.PolicyRule{
+			ID: row.ID, OrgID: row.OrgID,
+			SrcGroupID: row.SrcGroupID, DstKind: row.DstKind,
+			DstResourceID: row.DstResourceID, DstGroupID: row.DstGroupID,
+			CreatedAt: row.CreatedAt, SrcKind: row.SrcKind,
+			SrcUserID: row.SrcUserID, ExpiresAt: row.ExpiresAt,
+			DstSiteID: row.DstSiteID, SrcSiteID: row.SrcSiteID,
+			SrcCidr: row.SrcCidr, Disabled: row.Disabled,
+			DstK8sServiceID:   row.DstK8sServiceID,
+			ManagedByMachine:  row.ManagedByMachine,
+			SrcDeviceID:       row.SrcDeviceID,
+			DstK8sClusterID:   row.DstK8sClusterID,
+			SrcAgentGroupID:   row.SrcAgentGroupID,
+			DstFqdnResourceID: fqdn,
+		})
+	}
+	return out, nil
 }
 
 func (s *Service) AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]bool, error) {

@@ -1108,7 +1108,12 @@ type Querier interface {
 	// lint:cross-org — org-scoped via the join. The admin review queue (advertised, awaiting approval).
 	ListPendingSiteSubnetsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListPendingSiteSubnetsForOrgRow, error)
 	// Admin LIST — every rule incl. expired ones (the UI shows a lapsed grant distinctly).
-	ListPolicyRulesByOrg(ctx context.Context, orgID uuid.UUID) ([]PolicyRule, error)
+	// 0113 added dst_fqdn_resource_id.  This LIST is also used by the historical
+	// 0109 agent-template route contract, so referencing the physical column
+	// directly would make an otherwise valid legacy policy inventory fail.  JSONB
+	// row extraction returns NULL when the additive key is absent, while retaining
+	// the current FQDN destination when it exists.
+	ListPolicyRulesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListPolicyRulesByOrgRow, error)
 	// F05.2 warm stage: the candidate has deliberately empty AllowedIPs. The
 	// canonical devices.public_key peer above remains the sole owner of the
 	// agent's /32 until a real nonzero candidate handshake commits the cutover.

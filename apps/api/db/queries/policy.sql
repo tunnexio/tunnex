@@ -116,9 +116,20 @@ RETURNING id;
 
 -- name: ListPolicyRulesByOrg :many
 -- Admin LIST — every rule incl. expired ones (the UI shows a lapsed grant distinctly).
-SELECT * FROM policy_rules
-WHERE org_id = $1
-ORDER BY created_at;
+-- 0113 added dst_fqdn_resource_id.  This LIST is also used by the historical
+-- 0109 agent-template route contract, so referencing the physical column
+-- directly would make an otherwise valid legacy policy inventory fail.  JSONB
+-- row extraction returns NULL when the additive key is absent, while retaining
+-- the current FQDN destination when it exists.
+SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
+       p.dst_group_id, p.created_at, p.src_kind, p.src_user_id, p.expires_at,
+       p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
+       p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
+       p.dst_k8s_cluster_id, p.src_agent_group_id,
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+FROM policy_rules p
+WHERE p.org_id = $1
+ORDER BY p.created_at;
 
 -- name: ListActivePolicyRulesForOrg :many
 -- COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:

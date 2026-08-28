@@ -90,3 +90,26 @@ func TestAgentPolicyTemplateOptInQueriesStayFinite(t *testing.T) {
 		}
 	}
 }
+
+func TestPolicyRuleListRemainsReadableBeforeFQDNDestinationColumn(t *testing.T) {
+	queryBytes, err := os.ReadFile("queries/policy.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(queryBytes)
+	start := strings.Index(query, "-- name: ListPolicyRulesByOrg :many")
+	if start < 0 {
+		t.Fatal("missing ListPolicyRulesByOrg")
+	}
+	end := strings.Index(query[start:], ";\n")
+	if end < 0 {
+		t.Fatal("unterminated ListPolicyRulesByOrg")
+	}
+	statement := query[start : start+end]
+	if strings.Contains(statement, "SELECT *") || strings.Contains(statement, "p.dst_fqdn_resource_id") {
+		t.Fatal("ListPolicyRulesByOrg must not require the 0113 physical FQDN destination column")
+	}
+	if !strings.Contains(statement, "to_jsonb(p) ->> 'dst_fqdn_resource_id'") {
+		t.Fatal("ListPolicyRulesByOrg must retain current FQDN destinations through the additive-safe projection")
+	}
+}
