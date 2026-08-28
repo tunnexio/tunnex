@@ -60,14 +60,14 @@ func requireAgentTemplates(s apiServer, ctx context.Context, orgID uuid.UUID) er
 	if s.system == nil {
 		return apierr.Internal()
 	}
-	org, err := s.system.GetOrganizationByID(ctx, orgID)
+	enabled, err := s.system.GetOrganizationAgentPolicyTemplatesEnabled(ctx, orgID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apierr.NotFound("org_not_found", "organization not found")
 	}
 	if err != nil {
 		return err
 	}
-	if !org.AgentPolicyTemplatesEnabled {
+	if !enabled {
 		return apierr.Forbidden("opt_in_required", "enable agent groups and policy templates in organization settings first")
 	}
 	return nil
