@@ -114,7 +114,17 @@ server-computed impact, confirms, audits intent/outcome, and has recovery. No br
 organization-wide sweep. Use the existing two-cloud live box walk plus
 provider-neutral fixture proof.
 
+### D10 — authenticated Gateway DNS RPC
+
+**Decision:** Resolution uses a versioned authenticated agent-pull RPC scoped to
+tenant, resource, selected Site and Gateway. Requests bind hostname, A/AAAA/CNAME,
+deadline and immutable resolver configuration snapshot. Gateways query only the
+server-managed literal UDP/TCP resolver endpoints; there is no host, public or
+control-plane DNS fallback. Missing, stale, unreachable or disagreeing context
+withdraws authorization. Durable mailbox state validates replay, identity and
+compatibility, and fails closed.
+
 ## Approval gate
 
-D0–D9 are founder-approved. Implementation must remain within these values; any
+D0–D10 are founder-approved. Implementation must remain within these values; any
 new product decision requires a separate founder disposition.
