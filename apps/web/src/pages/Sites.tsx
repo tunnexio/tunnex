@@ -85,6 +85,7 @@ export default function Sites() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
   const [routingLan, setRoutingLan] = useState(false); // S8.5 D1 one-screen "route a LAN" affordance
+  const [mapCollapsed, setMapCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchIndex, setSearchIndex] = useState(0);
   const priorOrgId = useRef<string | null>(null);
@@ -377,15 +378,25 @@ export default function Sites() {
                   /* D2 (ruled): scoped to the MAP, not the page. The mesh's edges are handshake-derived, so
                      the claim is true here. Over the subnet queue it would not be — those are control-plane
                      rows. */
-                  <span className="rounded-full border border-line bg-ink-800 px-2 py-0.5 text-micro text-ink-tertiary">
-                    Live topology
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-line bg-ink-800 px-2 py-0.5 text-micro text-ink-tertiary">Live topology</span>
+                    <button type="button" className="rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" aria-expanded={!mapCollapsed} onClick={() => setMapCollapsed((collapsed) => !collapsed)}>
+                      {mapCollapsed ? "Expand" : "Collapse"}
+                    </button>
+                  </div>
                 }
               >
                 {/* The handoff puts the hint INLINE beside the title (dc.html L454). Ours drops "hover to
                     trace a link" because we do not implement hover tracing — describing an interaction the
                     component does not have is the same class of lie as a chart with no source. */}
-                <div className="mb-2 flex flex-wrap items-center gap-2">
+                {mapCollapsed ? (
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1 py-1 text-cell text-ink-tertiary">
+                    <span><strong className="font-semibold text-ink-heading">{cards.length}</strong> Sites</span>
+                    <span><strong className="font-semibold text-ink-heading">{allGateways.length}</strong> bound gateways</span>
+                    <span><strong className="font-semibold text-ink-heading">{mesh.links.length}</strong> topology links</span>
+                  </div>
+                ) : <>
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
                   <Input
                     aria-label="Search Sites or Gateways"
                     role="combobox"
@@ -434,10 +445,11 @@ export default function Sites() {
                   links={mesh.links}
                   selectedId={selectedSiteId}
                   onSelect={selectSite}
-                  maxHeight={260}
+                  maxHeight={225}
                   empty="Route a LAN to draw your first site here."
                 />
                 <p className="text-micro text-ink-faint">Live links reflect current WireGuard handshakes; animation does not imply traffic volume.</p>
+                </>}
               </Panel>
               <SelectedSiteStrip card={selectedCard} selectedGatewayId={selectedGatewayId} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />
 
@@ -457,7 +469,8 @@ export default function Sites() {
               />
 
               {selectedCard && (
-                <div id="site-details">
+                <Modal title={selectedCard.name} size="wide" onDismiss={() => selectSite(null)}>
+                  <div id="site-details">
                   <SiteCardView
                     card={selectedCard}
                     canManage={gate.canManage}
@@ -466,7 +479,8 @@ export default function Sites() {
                     dnsFocus={dnsFocus}
                     onDone={reload}
                   />
-                </div>
+                  </div>
+                </Modal>
               )}
             </div>
           )}
@@ -547,9 +561,16 @@ function DNSForwardsPanel({
   canManage: boolean;
   onManageSite: (siteId: string) => void;
 }) {
+  const columns = [
+    { key: "zone", header: "Zone", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-mono text-ink-body">{row.domain}</span> },
+    { key: "resolver", header: "Resolver", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-mono text-ink-tertiary">{row.resolverIp}</span> },
+    { key: "site", header: "Site", cell: (row: OrgForwardsView["rows"][number]) => <span className="text-ink-tertiary">{row.siteName}</span> },
+    { key: "status", header: "Status", cell: (row: OrgForwardsView["rows"][number]) => view.conflicts.includes(row.domain) ? <Badge tone="danger">conflict</Badge> : <Badge tone="neutral">configured</Badge> },
+    { key: "action", header: "", cell: (row: OrgForwardsView["rows"][number]) => canManage ? <Button variant="ghost" size="sm" onClick={() => onManageSite(row.siteId)}>Manage</Button> : <span className="text-micro text-ink-faint">Read-only</span> },
+  ];
   return (
-    <Panel title="DNS overview" className="min-w-0">
-      <p className="-mt-1 text-cell text-ink-tertiary">Organization-wide forwarding inventory and conflicts. Manage each resolver from its Site.</p>
+    <Panel title="DNS forwarding" className="min-w-0" actions={<span className="text-micro text-ink-tertiary">{view.rows.length} configured</span>}>
+      <p className="-mt-1 text-cell text-ink-tertiary">Optional Site-to-Site DNS routes. FQDN Access Resources use Private DNS Resolvers.</p>
       {/* ⛔ THE PARTIAL-LOAD BANNER COMES FIRST, above the rows it qualifies. Below them it would be read
           after the list had already been believed. */}
       {view.failedSites.length > 0 && (
@@ -567,53 +588,13 @@ function DNSForwardsPanel({
             ? "No forwarded zones. Add one on a site below."
             : "No zones read from the sites that answered."}
         </EmptyState>
-      ) : (
-        <div className="overflow-x-auto">
-          <div className="min-w-[680px]">
-            <div className="grid grid-cols-[minmax(12rem,1.3fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)_7rem_8.5rem] gap-3 border-b border-line px-2.5 py-1.5 text-micro uppercase tracking-wide text-ink-faint">
-              <span>Zone</span>
-              <span>Resolver</span>
-              <span>Site</span>
-              <span className="text-right">Status</span>
-              <span className="text-right">Action</span>
-            </div>
-            <ul className="flex flex-col gap-1.5 pt-1.5">
-          {view.rows.map((r) => {
-            const clashes = view.conflicts.includes(r.domain);
-            return (
-              <li
-                key={`${r.siteId}-${r.domain}`}
-                className={`grid grid-cols-1 gap-2 rounded-md border px-2.5 py-2 sm:grid-cols-[minmax(12rem,1.3fr)_minmax(10rem,1fr)_minmax(8rem,.8fr)_7rem_8.5rem] sm:items-center sm:gap-3 ${clashes ? "border-danger/40 bg-danger/5" : "border-line bg-ink-800"}`}
-              >
-                <span className="font-mono text-cell text-ink-body"><span className="mr-2 text-micro text-ink-faint sm:hidden">Zone</span>{r.domain}</span>
-                <span className="font-mono text-cell text-ink-tertiary"><span className="mr-2 text-micro text-ink-faint sm:hidden">Resolver</span>{r.resolverIp}</span>
-                <span className="text-cell text-ink-tertiary"><span className="mr-2 text-micro text-ink-faint sm:hidden">Site</span>{r.siteName}</span>
-                <span className="sm:justify-self-end">{clashes ? <Badge tone="danger">conflict</Badge> : <Badge tone="neutral">configured</Badge>}</span>
-                {canManage ? <Button className="w-[8.5rem] sm:justify-self-end" variant="ghost" size="sm" onClick={() => onManageSite(r.siteId)}>Manage in Site</Button> : <span className="text-right text-micro text-ink-faint">Read-only</span>}
-              </li>
-            );
-          })}
-            </ul>
-          </div>
-        </div>
-      )}
+      ) : <DataTable caption="DNS forwarding" columns={columns} rows={view.rows} rowKey={(row: OrgForwardsView["rows"][number]) => `${row.siteId}-${row.domain}`} empty="No forwarded zones." failed={false} />}
 
       {/* ⛔ ONLY CLAIM A CLEAN BILL OF HEALTH WHEN THE READ WAS COMPLETE. "No conflicts found" and "no
           conflicts exist" are different claims and only the second is reassuring. */}
       {view.conflicts.length > 0 && (
-        <p className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-cell text-danger">
-          {view.conflicts.join(", ")} has conflicting resolvers across Sites.
-          Resolution order is not deterministic; correct the conflicting zone
-          before relying on it.
-        </p>
+        <p className="rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-cell text-danger"><strong>{view.conflicts.length} conflict{view.conflicts.length === 1 ? "" : "s"}:</strong> {view.conflicts.join(", ")}. Keep one resolver per zone.</p>
       )}
-
-      <p className="text-micro text-ink-faint">
-        A resolver must sit inside one of the site&rsquo;s approved subnets (409
-        dns_resolver_not_in_site_subnet). One zone maps to one resolver org-wide
-        (409 dns_domain_conflict). Removing a zone withdraws it from every
-        gateway on the next reconcile.
-      </p>
     </Panel>
   );
 }
@@ -783,81 +764,41 @@ function HubSetSection({
 
   return (
     <Panel
-      title="Hub high-availability"
+      title="Hub availability"
       className="min-w-0"
-      actions={view ? <span className="text-micro text-ink-tertiary">hub set v{view.generation}</span> : undefined}
+      actions={view ? <Badge tone={view.promotionInEffect ? "warn" : "neutral"}>generation {view.generation}</Badge> : undefined}
     >
-      <div className="space-y-4">
-        <div className="rounded-lg border border-line bg-ink-800 p-3">
-          {view ? (
+      {view ? (
         <>
-          {view.promotionInEffect && (
-            <p className="mt-2 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1 text-xs text-amber-300">
-              Failover in effect: the configured primary is unreachable, and a
-              standby is carrying transit. The hub restores when it recovers.
-              See the{" "}
-              <Link className="text-accent-400 underline underline-offset-2 hover:text-ink-primary" to="/audit">
-                audit log
-              </Link>{" "}
-              (<span className="font-mono">hub_set.promotion</span>) for the timeline.
-            </p>
-          )}
-          <ul className="mt-2 space-y-1">
-            {view.members.map((m) => (
-              <li key={m.nodeId} className="flex items-center gap-2 text-sm">
-                <span className="text-slate-200">{nameOf(m.nodeId)}</span>
-                {m.role === "primary" ? (
-                  <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
-                    primary
-                  </span>
-                ) : (
-                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">
-                    standby
-                  </span>
-                )}
-                {m.demoted && (
-                  <span className="text-[11px] text-amber-400">
-                    demoted (stale)
-                  </span>
-                )}
-                {m.warm === true && (
-                  <span className="text-[11px] text-emerald-400">warm</span>
-                )}
-                {m.warm === false && (
-                  <span className="text-[11px] text-rose-400">stale</span>
-                )}
-                <span className="ml-auto text-[11px] text-slate-500">
-                  ↓{m.rx} ↑{m.tx} ·{" "}
-                  {m.handshakeAge === "n/a"
-                    ? "no data"
-                    : `handshake ${m.handshakeAge}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-[11px] text-slate-600">
-            Byte counters are cumulative since the last handshake (raw gauges).
-            Refreshed on load.
-          </p>
+          <div className="grid overflow-hidden rounded-lg border border-line sm:grid-cols-3">
+            <div className="border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r"><p className="text-micro uppercase tracking-wide text-ink-faint">Primary</p><p className="mt-1 font-medium text-ink-heading">{nameOf(view.members.find((member) => member.role === "primary")?.nodeId ?? "")}</p></div>
+            <div className="border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r"><p className="text-micro uppercase tracking-wide text-ink-faint">Standbys</p><p className="mt-1 font-medium tabular-nums text-ink-heading">{view.members.filter((member) => member.role !== "primary").length}</p></div>
+            <div className="px-3 py-2.5"><p className="text-micro uppercase tracking-wide text-ink-faint">State</p><p className={`mt-1 font-medium ${view.promotionInEffect ? "text-warn" : "text-ink-heading"}`}>{view.promotionInEffect ? "Failover active" : "Configured"}</p></div>
+          </div>
+          {view.promotionInEffect && <p className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-cell text-warn"><span>Standby is carrying transit while the primary is unavailable.</span><Link className="text-ink-heading underline underline-offset-2" to="/audit">View timeline</Link></p>}
+          <div className="mt-3 overflow-x-auto">
+            <div className="min-w-[560px]">
+              <div className="grid grid-cols-[minmax(12rem,1fr)_7rem_7rem_minmax(14rem,1fr)] gap-3 border-b border-line px-2 py-1.5 text-micro uppercase tracking-wide text-ink-faint"><span>Gateway</span><span>Role</span><span>Health</span><span className="text-right">Traffic · handshake</span></div>
+              <ul>
+                {view.members.map((member) => (
+                  <li key={member.nodeId} className="grid min-h-11 grid-cols-[minmax(12rem,1fr)_7rem_7rem_minmax(14rem,1fr)] items-center gap-3 border-b border-line/70 px-2 text-cell last:border-0">
+                    <span className="font-medium text-ink-body">{nameOf(member.nodeId)}</span>
+                    <span><Badge tone="neutral">{member.role}</Badge></span>
+                    <span className={member.warm === false ? "text-danger" : member.warm === true ? "text-ok" : "text-ink-tertiary"}>{member.demoted ? "demoted" : member.warm === false ? "stale" : member.warm === true ? "warm" : "unknown"}</span>
+                    <span className="text-right font-mono text-micro text-ink-tertiary">↓{member.rx} ↑{member.tx} · {member.handshakeAge === "n/a" ? "no handshake" : member.handshakeAge}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </>
-          ) : (
-            canManage && (
-          <p className="mt-2 text-xs text-slate-500">
-            No HA hub set. Pin two or more gateways below to create one. The
-            pinned gateways become the ordered hub candidates (primary +
-            standbys) and the CP fails transit over if the primary goes stale.
-          </p>
-            )
-          )}
-        </div>
+      ) : <EmptyState>No hub set is configured. Choose at least two candidates to enable gateway failover.</EmptyState>}
 
-        {canManage && (
-        <div className="border-t border-line pt-4">
-          <p className="text-[11px] text-slate-500">
-            Pin a gateway as a hub candidate (lower number = more preferred).
-            Pinning creates/edits the HA hub set.
-          </p>
-          <ul className="mt-2 space-y-1">
+      {canManage && (
+        <details className="mt-3 border-t border-line pt-3">
+          <summary className="cursor-pointer text-cell font-medium text-ink-body">Manage hub candidates · {gateways.length} gateways</summary>
+          <p className="mt-1 text-micro text-ink-tertiary">Lower pin numbers are preferred during failover.</p>
+          <ul className="mt-2">
             {gateways.map((g) => {
               const pri = priorityByNode.get(g.id);
               const pinned = pri != null;
@@ -866,12 +807,10 @@ function HubSetSection({
               );
               const nextPin = pins.length ? Math.max(...pins) + 1 : 1; // append after the current candidates
               return (
-                <li key={g.id} className="flex flex-wrap items-center gap-2 border-b border-line/70 py-2 text-sm last:border-0">
-                  <span className="text-slate-300">{g.name}</span>
+                <li key={g.id} className="flex min-h-10 flex-wrap items-center gap-2 border-b border-line/70 text-cell last:border-0">
+                  <span className="font-medium text-ink-body">{g.name}</span>
                   {pinned && (
-                    <span className="text-[11px] text-slate-500">
-                      pin #{pri}
-                    </span>
+                    <Badge tone="neutral">priority {pri}</Badge>
                   )}
                   <span className="ml-auto flex gap-1">
                     {pinned ? (
@@ -881,7 +820,7 @@ function HubSetSection({
                         disabled={busy}
                         onClick={() => setPin(g.id, null)}
                       >
-                        unpin
+                        Unpin
                       </Button>
                     ) : (
                       <Button
@@ -890,7 +829,7 @@ function HubSetSection({
                         disabled={busy}
                         onClick={() => setPin(g.id, nextPin)}
                       >
-                        {nextPin === 1 ? "pin as primary" : `pin #${nextPin}`}
+                        {nextPin === 1 ? "Set primary" : `Pin #${nextPin}`}
                       </Button>
                     )}
                   </span>
@@ -898,9 +837,8 @@ function HubSetSection({
               );
             })}
           </ul>
-        </div>
-        )}
-      </div>
+        </details>
+      )}
       <ErrorText>{err}</ErrorText>
     </Panel>
   );
@@ -1146,12 +1084,9 @@ function SiteCardView({
   } | null>(null); // WF-5
   const hasGateway = card.gateways.length > 0;
   return (
-    <Card className="space-y-0 overflow-hidden p-0">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <div>
-          <p className="text-micro uppercase tracking-wide text-ink-faint">Site workspace</p>
-          <h2 className="text-title font-semibold text-ink-heading">{card.name}</h2>
-        </div>
+    <Card variant="plain" className="space-y-0 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+        <p className="text-cell text-ink-tertiary">Gateways carry this Site&rsquo;s routed ranges.</p>
         <div className="flex items-center gap-2 text-micro text-ink-tertiary">
           <span>{card.gateways.length} gateway{card.gateways.length === 1 ? "" : "s"}</span>
           <span aria-hidden="true">·</span>
@@ -1159,8 +1094,8 @@ function SiteCardView({
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-2">
-        <section className="border-b border-line px-4 py-3 lg:border-b-0 lg:border-r">
+      <div className="mt-3 grid overflow-hidden rounded-lg border border-line lg:grid-cols-2">
+        <section className="border-b border-line px-3 py-3 lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-cell font-semibold text-ink-heading">Gateways</h3>
             {canManage && unboundNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
@@ -1174,7 +1109,7 @@ function SiteCardView({
           )}
         </section>
 
-        <section className="px-4 py-3">
+        <section className="px-3 py-3">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-cell font-semibold text-ink-heading">Routed ranges</h3>
             {canManage && <Button variant="ghost" size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}
@@ -1196,7 +1131,7 @@ function SiteCardView({
       </div>
 
       {hasGateway && card.subnets.some((s) => s.status === "approved") && (
-        <details className="border-t border-line px-4 py-3 text-cell text-ink-tertiary">
+        <details className="border-t border-line py-3 text-cell text-ink-tertiary">
           <summary className="cursor-pointer font-medium text-ink-body">Advanced cloud routing</summary>
           <div className="mt-2 grid gap-2 text-micro sm:grid-cols-2">
             <p><span className="font-medium text-ink-body">Gateway VM:</span> enable IP forwarding. On AWS, disable source/destination checks.</p>
@@ -1217,7 +1152,7 @@ function SiteCardView({
       )}
 
       {canManage && (
-        <div className="border-t border-line px-4 py-3">
+        <div className="border-t border-line py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-cell font-semibold text-ink-heading">Lifecycle</h3>

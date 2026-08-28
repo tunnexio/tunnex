@@ -239,6 +239,10 @@ describe("Sites — served HA topology", () => {
     expect(document.querySelectorAll('[data-node-kind="hub"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-node-kind="hub-standby"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-node-kind="spoke"]')).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    expect(screen.queryByRole("figure", { name: "Site topology" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Expand" })).toBeTruthy();
+    expect(screen.getByText(/topology links/)).toBeTruthy();
   });
 });
 
@@ -315,6 +319,7 @@ describe("Sites — URL-backed workspace state", () => {
     await waitFor(() =>
       expect(screen.getByRole("region", { name: "Selected Site: us-east-dc" })).toBeTruthy(),
     );
+    expect(screen.getByRole("dialog", { name: "us-east-dc" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View details" }).getAttribute("href")).toBe("#site-details");
     expect(screen.getByRole("button", { name: "Advertise subnet" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Unbind gateway" })).toBeTruthy();
