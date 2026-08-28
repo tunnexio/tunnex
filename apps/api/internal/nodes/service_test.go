@@ -205,8 +205,8 @@ func TestNodeEnrollmentLifecycle(t *testing.T) {
 	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); !Capabilities(stored.Capabilities).EgressNAT {
 		t.Fatalf("egress_nat capability not stored: %s", stored.Capabilities)
 	}
-	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); !strings.Contains(string(stored.Capabilities), `"dns_resolve_rpc_version":1`) {
-		t.Fatalf("dns RPC compatibility capability not stored: %s", stored.Capabilities)
+	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); !Capabilities(stored.Capabilities).SupportsDNSResolveRPC(1) || Capabilities(stored.Capabilities).SupportsDNSResolveRPC(2) {
+		t.Fatalf("dns RPC compatibility capability must retain its reported version: %s", stored.Capabilities)
 	}
 	// A malformed endpoint (newline injection) is rejected.
 	if err := svc.ReportWGInfo(ctx, node, wgKey, "1.2.3.4:51820\nInject = x", false, false, AppliedPolicy{}); code(err) != "invalid_endpoint" {

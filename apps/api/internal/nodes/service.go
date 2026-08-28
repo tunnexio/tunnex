@@ -2132,6 +2132,19 @@ type NodeCapabilities struct {
 	// ovpn_binary_absent). Surfaced on the gateway so an operator sees WHY an OVPN-enabled gateway is
 	// not serving.
 	OVPNHealth string `json:"ovpn_health"`
+	// DNSResolveRPCVersion is the highest authenticated selected-gateway DNS
+	// RPC version the node reports. Zero is semantically an unsupported legacy
+	// node, not an unknown/optimistic capability: FQDN enforcement must refuse
+	// before queueing a resolver request when this is below the required wire
+	// version.
+	DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
+}
+
+// SupportsDNSResolveRPC is deliberately a capability comparison rather than a
+// truthiness check. Future protocol versions must not be accepted by a node
+// that merely reports some older DNS RPC implementation.
+func (c NodeCapabilities) SupportsDNSResolveRPC(required int) bool {
+	return required > 0 && c.DNSResolveRPCVersion >= required
 }
 
 // zeroTrustOff mirrors organizations.zero_trust_mode = 'off' (the compiler's ModeOff).

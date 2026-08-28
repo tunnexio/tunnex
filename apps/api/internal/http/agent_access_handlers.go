@@ -160,24 +160,15 @@ func (s apiServer) TestAgentAccess(ctx context.Context, req api.TestAgentAccessR
 		}
 	}
 
-	if policyErr != nil {
+	destinations := []netip.Addr{}
+	if dstErr == nil {
+		destinations = append(destinations, dstIP)
+	} else if policyErr != nil {
 		b.add(api.AgentAccessCheckStatusInconclusive, "compiled_policy_unavailable", "The exact compiled policy could not be evaluated.", nil)
-	} else if dstErr != nil && len(policyResult.DestinationAnswers) == 0 {
+	} else if len(policyResult.DestinationAnswers) == 0 {
 		b.add(api.AgentAccessCheckStatusInconclusive, "agent_dns_not_observed", "No active FQDN generation authorizes this hostname; enter its resolved IP to continue.", nil)
 		b.add(api.AgentAccessCheckStatusInconclusive, "policy_destination_unresolved", "Compiled policy requires the agent-resolved destination IP.", policyFacts(policyResult))
-	} else if policyResult.Allowed {
-		code := "matching_grant"
-		message := "The exact compiled policy permits this tuple."
-		if policyResult.Mode == "off" {
-			code, message = "policy_not_enforcing", "Zero Trust enforcement is off; the compiled mesh permits this tuple."
-		}
-		b.add(api.AgentAccessCheckStatusPass, code, message, policyFacts(policyResult))
 	} else {
-		b.add(api.AgentAccessCheckStatusFail, "no_matching_grant", "No active compiled grant permits this tuple.", policyFacts(policyResult))
-	}
-
-	destinations := []netip.Addr{dstIP}
-	if dstErr != nil && len(policyResult.DestinationAnswers) > 0 {
 		destinations = make([]netip.Addr, 0, len(policyResult.DestinationAnswers))
 		for _, raw := range policyResult.DestinationAnswers {
 			if answer, err := netip.ParseAddr(raw); err == nil {
@@ -185,6 +176,9 @@ func (s apiServer) TestAgentAccess(ctx context.Context, req api.TestAgentAccessR
 			}
 		}
 		b.add(api.AgentAccessCheckStatusPass, "fqdn_generation_active", "The exact active FQDN generation supplies the destination answers.", map[string]string{"answers": strconv.Itoa(len(destinations))})
+	}
+	if policyErr != nil && dstErr == nil {
+		b.add(api.AgentAccessCheckStatusInconclusive, "compiled_policy_unavailable", "The exact compiled policy could not be evaluated.", nil)
 	}
 	if len(destinations) == 0 || !destinations[0].IsValid() {
 		b.add(api.AgentAccessCheckStatusInconclusive, "route_destination_unresolved", "Route intent cannot be evaluated without an active destination address.", nil)
@@ -208,6 +202,23 @@ func (s apiServer) TestAgentAccess(ctx context.Context, req api.TestAgentAccessR
 			b.add(api.AgentAccessCheckStatusPass, "route_configured", "Current managed agent configuration routes every active destination through its gateway.", facts)
 		} else {
 			b.add(api.AgentAccessCheckStatusFail, "route_not_configured", "Current managed agent configuration has no route for an active destination.", nil)
+		}
+	}
+
+	// A literal address has no DNS-generation prerequisite, so route intent is
+	// reported before the matching grant. For a hostname the active generation
+	// must be reported first: a route without a server-owned answer is not an
+	// actionable FQDN access path.
+	if policyErr == nil && !(dstErr != nil && len(policyResult.DestinationAnswers) == 0) {
+		if policyResult.Allowed {
+			code := "matching_grant"
+			message := "The exact compiled policy permits this tuple."
+			if policyResult.Mode == "off" {
+				code, message = "policy_not_enforcing", "Zero Trust enforcement is off; the compiled mesh permits this tuple."
+			}
+			b.add(api.AgentAccessCheckStatusPass, code, message, policyFacts(policyResult))
+		} else {
+			b.add(api.AgentAccessCheckStatusFail, "no_matching_grant", "No active compiled grant permits this tuple.", policyFacts(policyResult))
 		}
 	}
 

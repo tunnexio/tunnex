@@ -51,7 +51,7 @@ func TestAppendActiveFQDNGenerationsFailsClosed(t *testing.T) {
 	if err := appendActiveFQDNGenerations(context.Background(), &snap, reader, org); err != nil {
 		t.Fatal(err)
 	}
-	if reader.org != org || len(snap.FQDNResources) != 1 || snap.FQDNResources[0].ID != resource || snap.FQDNResources[0].Active == nil || snap.FQDNResources[0].Active.SelectedSiteID != site || len(snap.FQDNResources[0].Active.Answers) != 2 {
+	if reader.org != org || len(snap.FQDNResources) != 1 || snap.FQDNResources[0].ID != resource || snap.FQDNResources[0].Active == nil || snap.FQDNResources[0].Active.SelectedSiteID != site || snap.FQDNResources[0].Active.ResolverConfigID != config || snap.FQDNResources[0].Active.ResolverConfigVersion != 1 || len(snap.FQDNResources[0].Active.Answers) != 2 {
 		t.Fatalf("active resolver generation was not projected exactly: %#v", snap)
 	}
 
