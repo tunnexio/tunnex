@@ -62,7 +62,7 @@ func validateEndpoints(in []ResolverEndpoint) error {
 func configEndpoints(ctx context.Context, q interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 }, configID, org uuid.UUID) ([]ResolverEndpoint, error) {
-	rows, err := q.Query(ctx, `SELECT address::text, port, transport FROM fqdn_resolver_context_endpoints WHERE config_id=$1 AND org_id=$2 ORDER BY ordinal`, configID, org)
+	rows, err := q.Query(ctx, `SELECT host(address)::text, port, transport FROM fqdn_resolver_context_endpoints WHERE config_id=$1 AND org_id=$2 ORDER BY ordinal`, configID, org)
 	if err != nil {
 		return nil, err
 	}
