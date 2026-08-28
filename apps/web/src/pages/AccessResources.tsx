@@ -165,7 +165,7 @@ function FQDNResources({ orgId, role }: { orgId: string; role: Member["role"] | 
   }
   async function save() {
     if (!name.trim() || !fqdn.trim() || !portsValid || (siteId && (!gatewayId || !selectedGatewayValid))) return;
-    const body = { name: name.trim(), fqdn: fqdn.trim(), label: label.trim() || null, protocol, ...(protocol === "any" || portScope === "all" ? { port_low: null, port_high: null } : portScope === "single" ? { port_low: parsedLow!, port_high: null } : { port_low: parsedLow!, port_high: parsedHigh! }), resolver_context: siteId ? { site_id: siteId, gateway_id: gatewayId } : null };
+    const body = { name: name.trim(), fqdn: fqdn.trim(), label: label.trim() || null, protocol, ...(protocol === "any" || portScope === "all" ? { port_low: null, port_high: null } : portScope === "single" ? { port_low: parsedLow!, port_high: parsedLow! } : { port_low: parsedLow!, port_high: parsedHigh! }), resolver_context: siteId ? { site_id: siteId, gateway_id: gatewayId } : null };
     const ok = selected
       ? await mutate(() => api.PATCH("/api/v1/organizations/{orgId}/fqdn-resources/{resourceId}", { params: { path: { orgId, resourceId: selected.id } }, body }), "Could not save the FQDN resource.")
       : await mutate(() => api.POST("/api/v1/organizations/{orgId}/fqdn-resources", { params: { path: { orgId } }, body }), "Could not save the FQDN resource.");
@@ -203,7 +203,7 @@ function FQDNResources({ orgId, role }: { orgId: string; role: Member["role"] | 
 }
 
 function StateBadge({ state }: { state: FQDNResource["state"] }) {
-  const copy: Record<FQDNResource["state"], string> = { draft: "Draft — unbound, no authorization", unconfigured: "Unconfigured — resolver context needs configuration", resolving: "Resolving — awaiting server result", healthy: "Healthy — active generation", stale: "Stale — last result is not current", failed: "Failed — no usable result", nxdomain: "NXDOMAIN — hostname absent" };
+  const copy: Record<FQDNResource["state"], string> = { draft: "Draft — unbound, no authorization", resolving: "Resolving — awaiting server result", healthy: "Healthy — active generation", stale: "Stale — last result is not current", failed: "Failed — no usable result", nxdomain: "NXDOMAIN — hostname absent" };
   return <span aria-label={copy[state]} className="text-xs text-ink-tertiary">{state === "nxdomain" ? "NXDOMAIN" : state}</span>;
 }
 

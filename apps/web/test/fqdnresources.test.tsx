@@ -59,7 +59,7 @@ describe("FQDN access resources", () => {
     fireEvent.change(screen.getByLabelText("Gateway"), { target: { value: "gateway-a" } });
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
     await waitFor(() => expect(vi.mocked(api.POST)).toHaveBeenCalled());
-    expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { fqdn: "orders.internal.example.com", protocol: "tcp", port_low: 443, port_high: null, resolver_context: { site_id: "site-a", gateway_id: "gateway-a" } } });
+    expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { fqdn: "orders.internal.example.com", protocol: "tcp", port_low: 443, port_high: 443, resolver_context: { site_id: "site-a", gateway_id: "gateway-a" } } });
   });
 
   it("withdraws prior-org resolver selection and dialog state before loading the new organization", async () => {
