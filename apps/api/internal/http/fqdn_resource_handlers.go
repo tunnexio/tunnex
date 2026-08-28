@@ -123,9 +123,9 @@ func (s apiServer) GetFQDNResourceDetail(ctx context.Context, req api.GetFQDNRes
 	}
 	refs := make([]api.FQDNResourceRuleReference, len(d.ReferencingRules))
 	for i, ref := range d.ReferencingRules {
-		refs[i] = api.FQDNResourceRuleReference{Id: ref.ID, SourceKind: ref.SourceKind, Enabled: ref.Enabled}
+		refs[i] = api.FQDNResourceRuleReference{Id: ref.ID, SourceKind: api.FQDNResourceRuleReferenceSourceKind(ref.SourceKind), Enabled: ref.Enabled}
 	}
-	return api.GetFQDNResourceDetail200JSONResponse{Resource: toAPIFQDNResource(d.Resource), ActiveAnswerAddresses: d.ActiveAnswers, StatusSource: d.StatusSource, ObservedAt: d.ObservedAt, FreshUntilAt: d.FreshUntilAt, ServerReason: d.ServerReason, NextAction: d.NextAction, ResolverReady: d.ResolverReady, ReferencingRuleCount: d.ReferencingRuleCount, ReferencingRules: refs, ReferencesTruncated: d.ReferencesTruncated, Audit: api.FQDNResourceAuditProjection{TargetType: "fqdn_resource", TargetId: req.ResourceId, LatestEventAt: d.Audit.LatestEventAt}}, nil
+	return api.GetFQDNResourceDetail200JSONResponse{Resource: toAPIFQDNResource(d.Resource), ActiveAnswerAddresses: d.ActiveAnswers, StatusSource: api.FQDNResourceDetailStatusSource(d.StatusSource), ObservedAt: d.ObservedAt, FreshUntilAt: d.FreshUntilAt, ServerReason: d.ServerReason, NextAction: api.FQDNResourceDetailNextAction(d.NextAction), ResolverReady: d.ResolverReady, ReferencingRuleCount: d.ReferencingRuleCount, ReferencingRules: refs, ReferencesTruncated: d.ReferencesTruncated, Audit: api.FQDNResourceAuditProjection{TargetType: api.FQDNResourceAuditProjectionTargetTypeFQDNResource, TargetId: req.ResourceId, LatestEventAt: d.Audit.LatestEventAt}}, nil
 }
 func (s apiServer) GetFQDNResourceImpact(ctx context.Context, req api.GetFQDNResourceImpactRequestObject) (api.GetFQDNResourceImpactResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceView); err != nil {

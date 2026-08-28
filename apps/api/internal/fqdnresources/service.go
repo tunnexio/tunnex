@@ -47,6 +47,15 @@ type Resource struct {
 	EffectiveTTLSeconds     *int
 	RefreshedAt, LastGoodAt *time.Time
 	CreatedAt, UpdatedAt    time.Time
+	// Projection inputs are deliberately private: List/Get/Detail share these
+	// facts so their public health claim cannot drift from compiler eligibility.
+	latestGenerationID *uuid.UUID
+	latestState        *string
+	latestFailure      *string
+	latestResolvedAt   *time.Time
+	latestTTL          *time.Duration
+	generationEligible bool
+	resolverConfigured bool
 }
 type Impact struct {
 	ReferencingRuleCount         int
@@ -234,7 +243,9 @@ func (s *Service) List(ctx context.Context, org uuid.UUID) ([]Resource, error) {
 			}
 			return nil, err
 		}
-		out[i].Context.Config = &config
+		if out[i].resolverConfigured {
+			out[i].Context.Config = &config
+		}
 	}
 	return out, nil
 }
@@ -250,10 +261,8 @@ func (s *Service) Get(ctx context.Context, org, id uuid.UUID) (Resource, error) 
 	if configErr != nil && !isResolverConfigNotFound(configErr) {
 		return r, configErr
 	}
-	if configErr == nil {
+	if configErr == nil && r.resolverConfigured {
 		r.Context.Config = &config
-	} else {
-		markUnconfigured(&r)
 	}
 	return r, nil
 }
@@ -302,36 +311,18 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 			d.NextAction = "wait_for_resolution"
 		}
 	}
-	var generationID *uuid.UUID
-	var state string
-	var resolved *time.Time
-	var ttl *time.Duration
-	var failure *string
-	err = s.pool.QueryRow(ctx, `SELECT g.id,g.state,g.resolved_at,g.effective_ttl,g.failure_code FROM fqdn_resource_answer_generations g JOIN fqdn_resources r ON r.id=g.resource_id AND r.org_id=g.org_id AND r.resolver_site_id=g.resolver_site_id AND r.resolver_node_id=g.resolver_node_id JOIN fqdn_resolver_context_configs c ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active' JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE g.org_id=$1 AND g.resource_id=$2 AND g.state='active' GROUP BY g.id,g.state,g.resolved_at,g.effective_ttl,g.failure_code,g.generation ORDER BY g.generation DESC LIMIT 1`, org, id).Scan(&generationID, &state, &resolved, &ttl, &failure)
-	if err != nil && err != pgx.ErrNoRows {
-		return Detail{}, err
-	}
-	if err == nil {
-		d.StatusSource, d.ObservedAt, d.ServerReason = "latest_generation", resolved, failure
-		switch state {
-		case "active":
+	if r.latestState != nil {
+		d.StatusSource, d.ObservedAt, d.ServerReason = "latest_generation", r.latestResolvedAt, r.latestFailure
+		if r.State == "healthy" {
 			d.StatusSource, d.NextAction = "active_generation", "refresh"
-		case "pending":
-			d.NextAction = "wait_for_resolution"
-		case "withdrawn":
-			d.NextAction = "review_resolver"
-		default:
-			d.NextAction = "refresh"
-		}
-		if state == "active" && generationID != nil {
-			if ttl != nil && resolved != nil {
-				fresh := resolved.Add(*ttl)
+			if r.latestTTL != nil && r.latestResolvedAt != nil {
+				fresh := r.latestResolvedAt.Add(*r.latestTTL)
 				d.FreshUntilAt = &fresh
 				if time.Now().Before(fresh) {
 					d.NextAction = "none"
 				}
 			}
-			rows, e := s.pool.Query(ctx, `SELECT host(address)::text FROM fqdn_resource_generation_answers WHERE org_id=$1 AND generation_id=$2 ORDER BY family(address), host(address) LIMIT 32`, org, *generationID)
+			rows, e := s.pool.Query(ctx, `SELECT host(address)::text FROM fqdn_resource_generation_answers WHERE org_id=$1 AND generation_id=$2 ORDER BY family(address), host(address) LIMIT 32`, org, *r.latestGenerationID)
 			if e != nil {
 				return Detail{}, e
 			}
@@ -350,17 +341,19 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 			rows.Close()
 		}
 	}
-	// The nested resource must use exactly the compiler's active-generation
-	// eligibility rules. A stale row from a retired config, an endpoint-less
-	// config, or an answer-less generation is unavailable immediately, before
-	// the scheduler records its withdrawal.
-	if err == pgx.ErrNoRows {
-		markUnconfigured(&d.Resource)
-		d.ActiveAnswers = []string{}
-		d.ObservedAt, d.FreshUntilAt, d.ServerReason = nil, nil, nil
-		if d.Resource.Context != nil {
-			d.StatusSource, d.NextAction = "resolver_configuration", "wait_for_resolution"
-		}
+	// A raw generation remains diagnostic truth even when it is not eligible to
+	// compile. Only healthy gets addresses/freshness; all other states fail closed.
+	if r.State == "resolving" {
+		d.NextAction = "wait_for_resolution"
+	}
+	if r.State == "unconfigured" {
+		d.StatusSource, d.NextAction = "resolver_configuration", "configure_resolver"
+	}
+	if r.State == "stale" {
+		d.NextAction = "review_resolver"
+	}
+	if r.State == "failed" || r.State == "nxdomain" {
+		d.NextAction = "refresh"
 	}
 	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules WHERE org_id=$1 AND dst_kind='fqdn_resource' AND dst_fqdn_resource_id=$2`, org, id).Scan(&d.ReferencingRuleCount); err != nil {
 		return Detail{}, err
@@ -601,7 +594,11 @@ func writeAudit(ctx context.Context, tx pgx.Tx, org, actor uuid.UUID, actorSyste
 	return err
 }
 
-const resourceQuery = `SELECT r.id,r.org_id,r.name,r.fqdn,r.protocol,r.port_low,r.port_high,r.label,r.created_at,r.updated_at,s.id,s.name,n.id,n.name,g.generation,g.state,g.failure_code,g.effective_ttl,g.resolved_at,g.last_good_at,COALESCE((SELECT count(*) FROM fqdn_resource_generation_answers a WHERE a.generation_id=g.id),0) FROM fqdn_resources r LEFT JOIN sites s ON s.id=r.resolver_site_id LEFT JOIN nodes n ON n.id=r.resolver_node_id LEFT JOIN LATERAL (SELECT * FROM fqdn_resource_answer_generations x WHERE x.resource_id=r.id ORDER BY x.generation DESC LIMIT 1) g ON true`
+// resourceQuery carries both the latest stored lifecycle row and the compiler
+// eligibility predicate for that exact row.  The latter intentionally matches
+// fqdnresolver.ActiveGenerations: current binding, active current config,
+// endpoint(s), active generation, and answer(s) are all required.
+const resourceQuery = `SELECT r.id,r.org_id,r.name,r.fqdn,r.protocol,r.port_low,r.port_high,r.label,r.created_at,r.updated_at,s.id,s.name,n.id,n.name,g.id,g.generation,g.state,g.failure_code,g.effective_ttl,g.resolved_at,g.last_good_at,COALESCE((SELECT count(*) FROM fqdn_resource_generation_answers a WHERE a.generation_id=g.id),0), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id WHERE c.org_id=r.org_id AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id AND c.state='active'), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE g.id IS NOT NULL AND g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active' AND g.resolver_site_id=r.resolver_site_id AND g.resolver_node_id=r.resolver_node_id AND c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active') FROM fqdn_resources r LEFT JOIN sites s ON s.id=r.resolver_site_id LEFT JOIN nodes n ON n.id=r.resolver_node_id LEFT JOIN LATERAL (SELECT * FROM fqdn_resource_answer_generations x WHERE x.org_id=r.org_id AND x.resource_id=r.id ORDER BY x.generation DESC LIMIT 1) g ON true`
 
 type scanner interface{ Scan(...any) error }
 
@@ -612,21 +609,28 @@ func scan(row scanner) (Resource, error) {
 	var state, failure *string
 	var ttl *time.Duration
 	var refreshed *time.Time
-	err := row.Scan(&r.ID, &r.OrgID, &r.Name, &r.FQDN, &r.Protocol, &r.PortLow, &r.PortHigh, &r.Label, &r.CreatedAt, &r.UpdatedAt, &siteID, &siteName, &gatewayID, &gatewayName, &r.Generation, &state, &failure, &ttl, &refreshed, &r.LastGoodAt, &r.AnswerCount)
+	err := row.Scan(&r.ID, &r.OrgID, &r.Name, &r.FQDN, &r.Protocol, &r.PortLow, &r.PortHigh, &r.Label, &r.CreatedAt, &r.UpdatedAt, &siteID, &siteName, &gatewayID, &gatewayName, &r.latestGenerationID, &r.Generation, &state, &failure, &ttl, &refreshed, &r.LastGoodAt, &r.AnswerCount, &r.resolverConfigured, &r.generationEligible)
 	if err != nil {
 		return r, err
 	}
 	if siteID != nil && gatewayID != nil {
 		r.Context = &Context{SiteID: *siteID, GatewayID: *gatewayID, SiteName: *siteName, GatewayName: *gatewayName}
 	}
+	r.latestState, r.latestFailure, r.latestResolvedAt, r.latestTTL = state, failure, refreshed, ttl
 	r.State = "draft"
-	if r.Context != nil {
+	if r.Context != nil && !r.resolverConfigured {
+		r.State = "unconfigured"
+	} else if r.Context != nil {
 		r.State = "resolving"
 	}
-	if state != nil {
+	if state != nil && r.Context != nil && r.resolverConfigured {
 		switch *state {
 		case "active":
-			r.State = "healthy"
+			if r.generationEligible {
+				r.State = "healthy"
+			} else {
+				r.State = "stale"
+			}
 		case "pending":
 			r.State = "resolving"
 		case "retired":
@@ -642,6 +646,7 @@ func scan(row scanner) (Resource, error) {
 	if r.State != "healthy" {
 		r.Generation = nil
 		r.AnswerCount = 0
+		r.EffectiveTTLSeconds, r.RefreshedAt = nil, nil
 	} else if ttl != nil {
 		seconds := int(ttl.Seconds())
 		r.EffectiveTTLSeconds = &seconds

@@ -4278,12 +4278,14 @@ export interface components {
         FQDNResourceRuleReference: {
             /** Format: uuid */
             id: string;
-            source_kind: string;
+            /** @enum {string} */
+            source_kind: "group" | "user" | "site" | "cidr" | "agent" | "agent_group";
             /** @description Current rule state, projected from the authoritative policy row. */
             enabled: boolean;
         };
         FQDNResourceAuditProjection: {
-            target_type: string;
+            /** @enum {string} */
+            target_type: "fqdn_resource";
             /** Format: uuid */
             target_id: string;
             /**
@@ -4296,7 +4298,8 @@ export interface components {
             resource: components["schemas"]["FQDNResource"];
             /** @description Addresses from the current active immutable generation only; empty is not a DNS lookup. */
             active_answer_addresses: string[];
-            status_source: string;
+            /** @enum {string} */
+            status_source: "resource_configuration" | "resolver_configuration" | "latest_generation" | "active_generation";
             /** Format: date-time */
             observed_at?: string | null;
             /**
@@ -4306,7 +4309,8 @@ export interface components {
             fresh_until_at?: string | null;
             /** @description Stored server failure reason when available; never browser-derived. */
             server_reason?: string | null;
-            next_action: string;
+            /** @enum {string} */
+            next_action: "edit_resource" | "configure_resolver" | "wait_for_resolution" | "refresh" | "review_resolver" | "none";
             /** @description True only when the selected context has an active server-managed resolver configuration. */
             resolver_ready: boolean;
             referencing_rule_count: number;

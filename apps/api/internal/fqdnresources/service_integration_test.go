@@ -2,6 +2,7 @@ package fqdnresources
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
 // This proof owns a fresh database through migration 0116. It deliberately
@@ -35,7 +37,6 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
 	if err := db.MigrateTo(testURL.String(), 116); err != nil {
@@ -43,9 +44,21 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
 	if err != nil {
+		if _, dropErr := admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); dropErr != nil {
+			t.Errorf("cleanup disposable database after pool setup failure: %v", dropErr)
+		}
+		admin.Close()
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	defer func() {
+		// DROP needs the admin pool alive, and FORCE guarantees an interrupted
+		// proof cannot strand a disposable database behind a test connection.
+		pool.Close()
+		if _, err := admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+			t.Errorf("cleanup disposable proof database %s: %v", name, err)
+		}
+		admin.Close()
+	}()
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, query, args...); err != nil {
@@ -61,6 +74,15 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	config := uuid.New()
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, config, org, site, gateway)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, config, org)
+	svc := New(pool)
+	draft := uuid.New()
+	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn) VALUES($1,$2,'draft','draft.internal')`, draft, org)
+	if got, err := svc.Detail(ctx, org, draft); err != nil || got.Resource.State != "draft" || got.NextAction != "edit_resource" {
+		t.Fatalf("unbound draft projection=%+v err=%v", got, err)
+	}
+	if got, err := svc.Detail(ctx, org, resource); err != nil || got.Resource.State != "resolving" || got.NextAction != "wait_for_resolution" {
+		t.Fatalf("bound resource with no generation projection=%+v err=%v", got, err)
+	}
 	publish := func(configID uuid.UUID, generation int64, address string) {
 		t.Helper()
 		id := uuid.New()
@@ -69,11 +91,28 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 		exec(`INSERT INTO fqdn_resource_generation_answers(generation_id,org_id,address) VALUES($1,$2,$3::inet)`, id, org, address)
 		exec(`UPDATE fqdn_resource_answer_generations SET state='active',activated_at=resolved_at,last_good_at=resolved_at WHERE id=$1`, id)
 	}
-	publish(config, 1, "10.2.3.4")
+	pending := uuid.New()
+	now := time.Now().UTC().Truncate(time.Second)
+	exec(`INSERT INTO fqdn_resource_answer_generations(id,org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,state,effective_ttl,resolved_at) VALUES($1,$2,$3,1,$4,$5,$6,'pending','5 minutes',$7)`, pending, org, resource, gateway, site, config, now)
+	if got, err := svc.Detail(ctx, org, resource); err != nil || got.Resource.State != "resolving" || got.ServerReason != nil || len(got.ActiveAnswers) != 0 {
+		t.Fatalf("pending generation projection=%+v err=%v", got, err)
+	}
+	exec(`UPDATE fqdn_resource_answer_generations SET state='withdrawn',ended_at=now(),failure_code='timeout' WHERE id=$1`, pending)
+	if got, err := svc.Detail(ctx, org, resource); err != nil || got.Resource.State != "failed" || got.ServerReason == nil || *got.ServerReason != "timeout" || len(got.ActiveAnswers) != 0 {
+		t.Fatalf("failed generation projection=%+v err=%v", got, err)
+	}
+	nxdomain := uuid.New()
+	exec(`INSERT INTO fqdn_resource_answer_generations(id,org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,state,effective_ttl,resolved_at,ended_at,failure_code) VALUES($1,$2,$3,2,$4,$5,$6,'withdrawn','5 minutes',$7,$7,'NXDOMAIN')`, nxdomain, org, resource, gateway, site, config, now)
+	if got, err := svc.Detail(ctx, org, resource); err != nil || got.Resource.State != "nxdomain" || got.ServerReason == nil || *got.ServerReason != "NXDOMAIN" || len(got.ActiveAnswers) != 0 {
+		t.Fatalf("NXDOMAIN generation projection=%+v err=%v", got, err)
+	}
+	publish(config, 3, "10.2.3.4")
+	if got, err := svc.Detail(ctx, org, resource); err != nil || got.Resource.State != "healthy" || len(got.ActiveAnswers) != 1 {
+		t.Fatalf("eligible active generation projection=%+v err=%v", got, err)
+	}
 
 	// The outer joins in resourceQuery must not lock their nullable sides. A
 	// successful ordinary update proves PostgreSQL reached the mutation logic.
-	svc := New(pool)
 	updated, err := svc.Update(ctx, org, resource, Input{Name: "orders renamed", FQDN: "orders.internal", Protocol: "any", Context: &Context{SiteID: site, GatewayID: gateway}}, uuid.Nil, "resource-contract-test", "")
 	if err != nil || updated.Name != "orders renamed" {
 		t.Fatalf("ordinary update did not reach mutation logic: resource=%+v err=%v", updated, err)
@@ -97,6 +136,109 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 		t.Fatalf("expired rule leaked into opt-in impact=%+v err=%v", setting, err)
 	}
 
+	// These barriers prove the org advisory lock makes a preview confirmation
+	// atomic with writers that otherwise touch neither the resource nor setting
+	// row. A successful early UPDATE would be an unconfirmed-impact commit.
+	second := uuid.New()
+	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'second','second.internal',$3,$4)`, second, org, site, gateway)
+	previewInput := Input{Name: "second", FQDN: "changed.internal", Protocol: "any", Context: &Context{SiteID: site, GatewayID: gateway}}
+	preview, err := svc.Preview(ctx, org, second, previewInput)
+	if err != nil || preview.ExpectedImpactToken == nil || !preview.MutationAllowed {
+		t.Fatalf("mutation preview=%+v err=%v", preview, err)
+	}
+	group, rule := uuid.New(), uuid.New()
+	policyHeld, releasePolicy, policyDone := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		tx, e := pool.Begin(ctx)
+		if e == nil {
+			_, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, org)
+		}
+		if e == nil {
+			_, e = tx.Exec(ctx, `INSERT INTO user_groups(id,org_id,name) VALUES($1,$2,'barrier-group')`, group, org)
+		}
+		if e == nil {
+			_, e = tx.Exec(ctx, `INSERT INTO policy_rules(id,org_id,src_kind,src_group_id,dst_kind,dst_fqdn_resource_id) VALUES($1,$2,'group',$3,'fqdn_resource',$4)`, rule, org, group, second)
+		}
+		close(policyHeld)
+		if e == nil {
+			<-releasePolicy
+			e = tx.Commit(ctx)
+		} else {
+			_ = tx.Rollback(ctx)
+		}
+		policyDone <- e
+	}()
+	<-policyHeld
+	updateDone := make(chan error, 1)
+	go func() {
+		_, e := svc.Update(ctx, org, second, Input{Name: "second", FQDN: "changed.internal", Protocol: "any", Context: &Context{SiteID: site, GatewayID: gateway}, ExpectedImpactToken: preview.ExpectedImpactToken}, uuid.Nil, "resource-contract-test", "")
+		updateDone <- e
+	}()
+	select {
+	case e := <-updateDone:
+		t.Fatalf("update escaped org lock before policy writer commit: %v", e)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releasePolicy)
+	if e := <-policyDone; e != nil {
+		t.Fatal(e)
+	}
+	select {
+	case e := <-updateDone:
+		var ae *apierr.Error
+		if !errors.As(e, &ae) || ae.Code != "fqdn_resource_stale_preview" {
+			t.Fatalf("update did not reject concurrent policy impact: %v", e)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("update deadlocked behind policy writer")
+	}
+
+	settingBefore, err := svc.SettingImpact(ctx, org)
+	if err != nil || settingBefore.ExpectedImpactToken == nil {
+		t.Fatalf("setting impact before writer=%+v err=%v", settingBefore, err)
+	}
+	generationHeld, releaseGeneration, generationDone := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		tx, e := pool.Begin(ctx)
+		if e == nil {
+			_, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, org)
+		}
+		if e == nil {
+			_, e = tx.Exec(ctx, `UPDATE fqdn_resource_answer_generations SET state='withdrawn',ended_at=now(),failure_code='barrier' WHERE org_id=$1 AND resource_id=$2 AND state='active'`, org, resource)
+		}
+		close(generationHeld)
+		if e == nil {
+			<-releaseGeneration
+			e = tx.Commit(ctx)
+		} else {
+			_ = tx.Rollback(ctx)
+		}
+		generationDone <- e
+	}()
+	<-generationHeld
+	settingDone := make(chan error, 1)
+	go func() {
+		settingDone <- svc.SetSetting(ctx, org, true, settingBefore.ExpectedImpactToken, uuid.Nil, "resource-contract-test", "")
+	}()
+	select {
+	case e := <-settingDone:
+		t.Fatalf("setting escaped org lock before generation writer commit: %v", e)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseGeneration)
+	if e := <-generationDone; e != nil {
+		t.Fatal(e)
+	}
+	select {
+	case e := <-settingDone:
+		var ae *apierr.Error
+		if !errors.As(e, &ae) || ae.Code != "fqdn_resource_stale_preview" {
+			t.Fatalf("setting did not reject concurrent generation impact: %v", e)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("setting deadlocked behind generation writer")
+	}
+
 	replacement := uuid.New()
 	exec(`UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config)
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,2,'active')`, replacement, org, site, gateway)
@@ -104,8 +246,10 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	assertUnavailable := func(stage string) {
 		t.Helper()
 		detail, err := svc.Detail(ctx, org, resource)
-		if err != nil || detail.Resource.State == "healthy" || detail.Resource.Generation != nil || detail.Resource.AnswerCount != 0 || detail.Resource.EffectiveTTLSeconds != nil || detail.Resource.RefreshedAt != nil || detail.FreshUntilAt != nil || len(detail.ActiveAnswers) != 0 {
-			t.Fatalf("%s detail retained eligible health: detail=%+v err=%v", stage, detail, err)
+		get, getErr := svc.Get(ctx, org, resource)
+		list, listErr := svc.List(ctx, org)
+		if err != nil || getErr != nil || listErr != nil || detail.Resource.State == "healthy" || get.State == "healthy" || len(list) != 2 || list[0].State == "healthy" || detail.Resource.Generation != nil || get.Generation != nil || detail.Resource.AnswerCount != 0 || get.AnswerCount != 0 || detail.Resource.EffectiveTTLSeconds != nil || get.EffectiveTTLSeconds != nil || detail.Resource.RefreshedAt != nil || get.RefreshedAt != nil || detail.FreshUntilAt != nil || len(detail.ActiveAnswers) != 0 {
+			t.Fatalf("%s projections retained eligible health: detail=%+v get=%+v list=%+v errs=%v/%v/%v", stage, detail, get, list, err, getErr, listErr)
 		}
 	}
 	assertUnavailable("replacement")

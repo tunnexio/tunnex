@@ -5403,7 +5403,10 @@ components:
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
-        source_kind: { type: string }
+        source_kind:
+          type: string
+          enum: [group, user, site, cidr, agent, agent_group]
+          x-enum-varnames: [FQDNResourceRuleReferenceSourceKindGroup, FQDNResourceRuleReferenceSourceKindUser, FQDNResourceRuleReferenceSourceKindSite, FQDNResourceRuleReferenceSourceKindCIDR, FQDNResourceRuleReferenceSourceKindAgent, FQDNResourceRuleReferenceSourceKindAgentGroup]
         enabled: { type: boolean, description: "Current rule state, projected from the authoritative policy row." }
 
     FQDNResourceAuditProjection:
@@ -5411,7 +5414,10 @@ components:
       required: [target_type, target_id]
       additionalProperties: false
       properties:
-        target_type: { type: string }
+        target_type:
+          type: string
+          enum: [fqdn_resource]
+          x-enum-varnames: [FQDNResourceAuditProjectionTargetTypeFQDNResource]
         target_id: { type: string, format: uuid }
         latest_event_at: { type: string, format: date-time, nullable: true, description: "Null when no existing audit event targets this resource." }
 
@@ -5422,11 +5428,17 @@ components:
       properties:
         resource: { $ref: "#/components/schemas/FQDNResource" }
         active_answer_addresses: { type: array, maxItems: 32, items: { type: string, format: ip }, description: "Addresses from the current active immutable generation only; empty is not a DNS lookup." }
-        status_source: { type: string }
+        status_source:
+          type: string
+          enum: [resource_configuration, resolver_configuration, latest_generation, active_generation]
+          x-enum-varnames: [FQDNResourceDetailStatusSourceResourceConfiguration, FQDNResourceDetailStatusSourceResolverConfiguration, FQDNResourceDetailStatusSourceLatestGeneration, FQDNResourceDetailStatusSourceActiveGeneration]
         observed_at: { type: string, format: date-time, nullable: true }
         fresh_until_at: { type: string, format: date-time, nullable: true, description: "Resolved-at plus the server-recorded effective TTL for an active generation only." }
         server_reason: { type: string, nullable: true, description: "Stored server failure reason when available; never browser-derived." }
-        next_action: { type: string }
+        next_action:
+          type: string
+          enum: [edit_resource, configure_resolver, wait_for_resolution, refresh, review_resolver, none]
+          x-enum-varnames: [FQDNResourceDetailNextActionEditResource, FQDNResourceDetailNextActionConfigureResolver, FQDNResourceDetailNextActionWaitForResolution, FQDNResourceDetailNextActionRefresh, FQDNResourceDetailNextActionReviewResolver, FQDNResourceDetailNextActionNone]
         resolver_ready: { type: boolean, description: "True only when the selected context has an active server-managed resolver configuration." }
         referencing_rule_count: { type: integer, minimum: 0 }
         referencing_rules: { type: array, maxItems: 32, items: { $ref: "#/components/schemas/FQDNResourceRuleReference" } }
