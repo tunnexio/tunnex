@@ -5,9 +5,7 @@ import { PageHeader } from "../components/ui";
 import { hubSetView } from "../lib/hubsetview";
 import { assembleTopology, meshFrom } from "../lib/sitesview";
 import { Donut, NodeLink } from "../components/viz";
-import { assembleClusters, serviceSlices } from "../lib/k8sview";
-import { motionAllowed } from "../lib/motion";
-import { useMotionPreference } from "../components/MotionProvider";
+import { assembleClusters } from "../lib/k8sview";
 import { Link } from "react-router-dom";
 import { UpgradeCenter } from "../components/UpgradeCenter";
 import {
@@ -27,11 +25,8 @@ import {
   type K8sService,
 } from "../lib/api";
 import {
-  Badge,
   EmptyState,
   ErrorText,
-  List,
-  ListItem,
   Loading,
   Panel,
 } from "../components/ui";
@@ -74,8 +69,6 @@ export default function Dashboard() {
   const [rulesRes, setRulesRes] = useState<Loaded<PolicyRule[]> | null>(null);
   const [devicesRes, setDevicesRes] = useState<Loaded<Device[]> | null>(null);
   const [hubSetRes, setHubSetRes] = useState<Loaded<HubSet> | null>(null);
-  // The motion preference is read ONCE at the app edge and passed down; no component asks matchMedia itself.
-  const reducedMotion = useMotionPreference();
   // `null` = not resolved yet; `{ok:false}` = the read FAILED. Neither is "there are none" — the card says which.
   const [k8sClustersRes, setK8sClustersRes] = useState<Loaded<
     K8sCluster[]
@@ -84,10 +77,6 @@ export default function Dashboard() {
     K8sService[]
   > | null>(null);
   const [ztRes, setZtRes] = useState<Loaded<ZeroTrustMode> | null>(null);
-  const [infrastructureTab, setInfrastructureTab] = useState<
-    "network" | "kubernetes"
-  >("network");
-
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -633,98 +622,65 @@ export default function Dashboard() {
                   </Panel>
 
                   <Panel title="Infrastructure" className="2xl:col-span-2">
-                    <div
-                      role="tablist"
-                      aria-label="Infrastructure views"
-                      className="mb-3 inline-flex rounded-md border border-white/10 bg-white/[.02] p-1"
-                    >
-                      <button
-                        id="infrastructure-network-tab"
-                        type="button"
-                        role="tab"
-                        aria-selected={infrastructureTab === "network"}
-                        onClick={() => setInfrastructureTab("network")}
-                        className={
-                          "rounded px-3 py-1.5 text-cell font-medium transition-colors " +
-                          (infrastructureTab === "network"
-                            ? "bg-white/[.12] text-ink-heading"
-                            : "text-ink-tertiary hover:text-ink-body")
-                        }
-                      >
-                        Network
-                      </button>
-                      <button
-                        id="infrastructure-kubernetes-tab"
-                        type="button"
-                        role="tab"
-                        aria-selected={infrastructureTab === "kubernetes"}
-                        onClick={() => setInfrastructureTab("kubernetes")}
-                        className={
-                          "rounded px-3 py-1.5 text-cell font-medium transition-colors " +
-                          (infrastructureTab === "kubernetes"
-                            ? "bg-white/[.12] text-ink-heading"
-                            : "text-ink-tertiary hover:text-ink-body")
-                        }
-                      >
-                        Kubernetes
-                        {k8sServicesRes?.ok && (
-                          <span className="ml-1.5 text-ink-tertiary">
-                            {k8sServicesRes.data.length}
-                          </span>
-                        )}
-                      </button>
-                    </div>
-
-                    {infrastructureTab === "network" ? (
-                      <div
-                        role="tabpanel"
-                        aria-labelledby="infrastructure-network-tab"
-                        className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(15rem,1fr)]"
-                      >
-                        <div>
-                          {sitesRes === null || nodesRes === null ? (
-                            <Loading />
-                          ) : !sitesRes.ok || !nodesRes.ok ? (
-                            <ErrorText>The topology is unavailable.</ErrorText>
-                          ) : (
-                            <NodeLink
-                              label="Site topology"
-                              source={{
-                                endpoint:
-                                  "/api/v1/organizations/{orgId}/sites",
-                              }}
-                              failed={false}
-                              {...(() => {
-                                const mesh = meshFrom(
-                                  assembleTopology(
-                                    sitesRes.data,
-                                    {},
-                                    nodesRes.data,
-                                  ),
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
+                      <div className="min-w-0 lg:pr-1">
+                        {sitesRes === null || nodesRes === null ? (
+                          <Loading />
+                        ) : !sitesRes.ok || !nodesRes.ok ? (
+                          <ErrorText>The topology is unavailable.</ErrorText>
+                        ) : (
+                          <NodeLink
+                            label="Site topology"
+                            source={{
+                              endpoint:
+                                "/api/v1/organizations/{orgId}/sites",
+                            }}
+                            failed={false}
+                            {...(() => {
+                              const mesh = meshFrom(
+                                assembleTopology(
+                                  sitesRes.data,
+                                  {},
                                   nodesRes.data,
-                                  hubSetRes?.ok
-                                    ? hubSetRes.data
-                                    : undefined,
-                                  false,
-                                );
-                                return {
-                                  nodes: mesh.nodes,
-                                  links: mesh.links,
-                                };
-                              })()}
-                              empty="No sites configured yet. Bind a gateway to a site to build the mesh."
-                            />
-                          )}
-                        </div>
+                                ),
+                                nodesRes.data,
+                                hubSetRes?.ok ? hubSetRes.data : undefined,
+                                false,
+                              );
+                              return {
+                                nodes: mesh.nodes,
+                                links: mesh.links,
+                              };
+                            })()}
+                            empty="No sites configured yet. Bind a gateway to a site to build the mesh."
+                          />
+                        )}
+                      </div>
 
-                        <div className="lg:border-l lg:border-white/10 lg:pl-4">
-                          <h3 className="mb-2 text-cell font-medium text-ink-secondary">
-                            HA Hub Set
-                          </h3>
+                      <div className="divide-y divide-white/10 border-t border-white/10 pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+                        <div className="pb-4">
                           {hubSetRes === null ? (
-                            <Loading />
+                            <>
+                              <InfrastructureHeading
+                                icon="server"
+                                title="HA Hub Set"
+                              />
+                              <div className="mt-3">
+                                <Loading />
+                              </div>
+                            </>
                           ) : !hubSetRes.ok ? (
-                            <ErrorText>The hub set is unavailable.</ErrorText>
+                            <>
+                              <InfrastructureHeading
+                                icon="server"
+                                title="HA Hub Set"
+                              />
+                              <div className="mt-3">
+                                <ErrorText>
+                                  The hub set is unavailable.
+                                </ErrorText>
+                              </div>
+                            </>
                           ) : (
                             (() => {
                               const hv = hubSetRes.data?.members
@@ -732,18 +688,31 @@ export default function Dashboard() {
                                 : null;
                               if (!hv) {
                                 return (
-                                  <EmptyState>
-                                    No HA hub set. Pin two or more gateways to
-                                    create one.
-                                  </EmptyState>
+                                  <>
+                                    <InfrastructureHeading
+                                      icon="server"
+                                      title="HA Hub Set"
+                                    />
+                                    <div className="mt-3">
+                                      <EmptyState>
+                                        No HA hub set. Pin two or more gateways
+                                        to create one.
+                                      </EmptyState>
+                                    </div>
+                                  </>
                                 );
                               }
                               return (
-                                <div className="space-y-2">
-                                  <Badge tone="neutral">
-                                    GEN {hv.generation}
-                                  </Badge>
-                                  <List label="Hub set">
+                                <>
+                                  <InfrastructureHeading
+                                    icon="server"
+                                    title="HA Hub Set"
+                                    meta={`GEN ${hv.generation}`}
+                                  />
+                                  <ul
+                                    aria-label="Hub set"
+                                    className="mt-3 divide-y divide-white/10"
+                                  >
                                     {hv.members.map((member) => {
                                       const node = nodesRes?.ok
                                         ? nodesRes.data.find(
@@ -768,87 +737,136 @@ export default function Dashboard() {
                                         memberStatus;
 
                                       return (
-                                        <ListItem
+                                        <li
                                           key={member.nodeId}
                                           aria-label={memberLabel}
+                                          className="flex min-h-10 items-center gap-2 py-2"
                                         >
-                                          <span className="flex items-center justify-between gap-2">
-                                            <span className="truncate font-mono text-mono text-ink-primary">
+                                          <InfrastructureIcon name="server" />
+                                          <span className="min-w-0 flex-1">
+                                            <span className="block truncate text-cell font-medium text-ink-primary">
                                               {memberName}
                                             </span>
-                                            <span
-                                              className="shrink-0 text-micro text-ink-tertiary"
-                                              role="status"
-                                            >
-                                              {memberRole} · {memberStatus}
+                                            <span className="block text-micro text-ink-tertiary">
+                                              {memberRole}
                                             </span>
                                           </span>
-                                        </ListItem>
+                                          <span
+                                            className="flex shrink-0 items-center gap-1.5 text-micro text-ink-tertiary"
+                                            role="status"
+                                          >
+                                            {memberStatus}
+                                            <span
+                                              aria-hidden="true"
+                                              className={
+                                                "h-1.5 w-1.5 rounded-full " +
+                                                (member.reporting
+                                                  ? "bg-ok"
+                                                  : "bg-danger")
+                                              }
+                                            />
+                                          </span>
+                                        </li>
                                       );
                                     })}
-                                  </List>
-                                  <Link
+                                  </ul>
+                                  <InfrastructureLink
                                     to="/sites"
-                                    className="inline-flex text-cell font-medium text-accent-400 hover:underline"
+                                    icon="network"
                                   >
                                     Open infrastructure
-                                  </Link>
-                                </div>
+                                  </InfrastructureLink>
+                                </>
                               );
                             })()
                           )}
                         </div>
-                      </div>
-                    ) : (
-                      <div
-                        role="tabpanel"
-                        aria-labelledby="infrastructure-kubernetes-tab"
-                      >
-                        {k8sClustersRes === null ||
-                        k8sServicesRes === null ? (
-                          <Loading />
-                        ) : !k8sClustersRes.ok ? (
-                          <ErrorText>
-                            Kubernetes infrastructure is unavailable.
-                          </ErrorText>
-                        ) : k8sClustersRes.data.length === 0 ? (
-                          <EmptyState>
-                            No clusters registered. Registering one reserves a
-                            VIP range and a DNS zone.
-                          </EmptyState>
-                        ) : k8sServicesRes.ok ? (
-                          <div className="space-y-2">
-                            <Donut
-                              label="Exposed Services by cluster"
-                              source={{
-                                endpoint:
-                                  "GET /organizations/{orgId}/k8s/clusters + /k8s/services",
-                              }}
-                              failed={false}
-                              slices={serviceSlices(
-                                assembleClusters(
+
+                        <div className="pt-4">
+                          <InfrastructureHeading
+                            icon="boxes"
+                            title="Kubernetes"
+                          />
+                          <div className="mt-3">
+                            {k8sClustersRes === null ||
+                            k8sServicesRes === null ? (
+                              <Loading />
+                            ) : !k8sClustersRes.ok ? (
+                              <ErrorText>
+                                Kubernetes infrastructure is unavailable.
+                              </ErrorText>
+                            ) : k8sClustersRes.data.length === 0 ? (
+                              <EmptyState>
+                                No clusters registered. Register one to expose
+                                Services privately.
+                              </EmptyState>
+                            ) : !k8sServicesRes.ok ? (
+                              <ErrorText>
+                                Service inventory is unavailable.
+                              </ErrorText>
+                            ) : (
+                              (() => {
+                                const clusters = assembleClusters(
                                   k8sClustersRes.data,
                                   k8sServicesRes.data,
-                                ),
-                              )}
-                              centreLabel="services"
-                              empty="No Services exposed yet."
-                              animate={motionAllowed(reducedMotion)}
-                            />
-                            <Link
-                              to="/kubernetes"
-                              className="inline-flex text-cell font-medium text-accent-400 hover:underline"
-                            >
-                              Open Kubernetes
-                            </Link>
+                                );
+                                const serviceTotal = clusters.reduce(
+                                  (total, cluster) =>
+                                    total + cluster.services.length,
+                                  0,
+                                );
+                                const visibleClusters = clusters.slice(0, 3);
+                                const remainingClusters =
+                                  clusters.length - visibleClusters.length;
+
+                                return (
+                                  <div
+                                    role="group"
+                                    aria-label="Kubernetes summary"
+                                  >
+                                    <div className="flex min-h-10 items-center gap-2 border-b border-white/10 py-2">
+                                      <InfrastructureIcon name="boxes" />
+                                      <span className="text-cell text-ink-secondary">
+                                        {serviceTotal} exposed Service
+                                        {serviceTotal === 1 ? "" : "s"}
+                                      </span>
+                                    </div>
+                                    <ul className="divide-y divide-white/10">
+                                      {visibleClusters.map((cluster) => (
+                                        <li
+                                          key={cluster.id}
+                                          className="flex min-h-10 items-center gap-2 py-2"
+                                        >
+                                          <InfrastructureIcon name="boxes" />
+                                          <span className="min-w-0 flex-1 truncate text-cell font-medium text-ink-primary">
+                                            {cluster.name}
+                                          </span>
+                                          <span className="shrink-0 text-cell tabular-nums text-ink-secondary">
+                                            {cluster.services.length}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {remainingClusters > 0 && (
+                                      <p className="pt-2 text-micro text-ink-tertiary">
+                                        {remainingClusters} more cluster
+                                        {remainingClusters === 1 ? "" : "s"}
+                                      </p>
+                                    )}
+                                    <InfrastructureLink
+                                      to="/kubernetes"
+                                      icon="boxes"
+                                    >
+                                      Open Kubernetes
+                                    </InfrastructureLink>
+                                  </div>
+                                );
+                              })()
+                            )}
                           </div>
-                        ) : (
-                          <ErrorText>
-                            Service inventory is unavailable.
-                          </ErrorText>
-                        )}
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </Panel>
                 </div>
               </div>
@@ -857,6 +875,57 @@ export default function Dashboard() {
         </>
       )}
     </div>
+  );
+}
+
+function InfrastructureIcon({ name }: { name: IconName }) {
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 text-ink-secondary">
+      <Icon name={name} size={16} />
+    </span>
+  );
+}
+
+function InfrastructureHeading({
+  icon,
+  title,
+  meta,
+}: {
+  icon: IconName;
+  title: string;
+  meta?: string;
+}) {
+  return (
+    <div className="flex min-h-8 items-center gap-2">
+      <InfrastructureIcon name={icon} />
+      <h3 className="text-cell font-semibold text-ink-primary">{title}</h3>
+      {meta && (
+        <span className="rounded border border-white/10 px-1.5 py-0.5 text-micro font-medium text-ink-tertiary">
+          {meta}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function InfrastructureLink({
+  to,
+  icon,
+  children,
+}: {
+  to: string;
+  icon: IconName;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      className="mt-1 flex min-h-10 items-center gap-2 border-t border-white/10 pt-2 text-cell font-medium text-accent-400 hover:text-accent-300"
+    >
+      <InfrastructureIcon name={icon} />
+      <span>{children}</span>
+      <Icon name="chevron-right" size={14} className="ml-auto" />
+    </Link>
   );
 }
 

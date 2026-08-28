@@ -58,6 +58,78 @@ vi.mock("../src/lib/api", async () => {
             : { data: empty ? [] : [{ id: "s1" }] };
         if (path.endsWith("/devices/pending")) return { data: [] };
         if (path.endsWith("/devices")) return { data: [] };
+        if (path.endsWith("/k8s/clusters"))
+          return {
+            data: empty
+              ? []
+              : [
+                  {
+                    id: "k1",
+                    site_id: "s1",
+                    connector_node_id: null,
+                    name: "gitops-platform",
+                    vip_range: "100.96.0.0/24",
+                    service_cidr: "10.96.0.0/12",
+                    dns_zone: "gitops.internal",
+                    dns_vip: null,
+                    managed_by_operator: true,
+                  },
+                  {
+                    id: "k2",
+                    site_id: "s1",
+                    connector_node_id: null,
+                    name: "payments",
+                    vip_range: "100.97.0.0/24",
+                    service_cidr: "10.97.0.0/16",
+                    dns_zone: "payments.internal",
+                    dns_vip: null,
+                    managed_by_operator: false,
+                  },
+                ],
+          };
+        if (path.endsWith("/k8s/services"))
+          return {
+            data: empty
+              ? []
+              : [
+                  {
+                    id: "svc-1",
+                    cluster_id: "k1",
+                    name: "gitops",
+                    namespace: "platform",
+                    protocol: "tcp",
+                    port_low: 443,
+                    port_high: 443,
+                    vip: "100.96.0.10",
+                    fqdn: "gitops.gitops.internal",
+                    managed_by_operator: true,
+                  },
+                  {
+                    id: "svc-2",
+                    cluster_id: "k2",
+                    name: "api",
+                    namespace: "payments",
+                    protocol: "tcp",
+                    port_low: 443,
+                    port_high: 443,
+                    vip: "100.97.0.10",
+                    fqdn: "api.payments.internal",
+                    managed_by_operator: false,
+                  },
+                  {
+                    id: "svc-3",
+                    cluster_id: "k2",
+                    name: "worker",
+                    namespace: "payments",
+                    protocol: "tcp",
+                    port_low: null,
+                    port_high: null,
+                    vip: "100.97.0.11",
+                    fqdn: "worker.payments.internal",
+                    managed_by_operator: false,
+                  },
+                ],
+          };
         // The hub-set endpoint returns an OBJECT, not a list. The catch-all `{ data: [] }` below fed an array
         // into hubSetView and threw — which surfaced as "cannot find Members", i.e. the whole page failing to
         // render. A catch-all mock is a fixture that answers questions it was never asked.
@@ -220,6 +292,29 @@ describe("the populated Overview consolidates operational state into four cards"
     expect(screen.queryByRole("region", { name: "HA Hub Set" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Network map" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Kubernetes" })).toBeNull();
+  });
+
+  it("keeps topology, HA, and compact Kubernetes state visible without a view toggle", async () => {
+    show();
+    const infrastructure = await waitFor(() =>
+      screen.getByRole("region", { name: "Infrastructure" }),
+    );
+    expect(
+      within(infrastructure).queryByRole("tablist", {
+        name: "Infrastructure views",
+      }),
+    ).toBeNull();
+    expect(within(infrastructure).getByText("HA Hub Set")).toBeTruthy();
+    expect(within(infrastructure).getByText("Kubernetes")).toBeTruthy();
+    const kubernetes = within(infrastructure).getByRole("group", {
+      name: "Kubernetes summary",
+    });
+    expect(within(kubernetes).getByText("3 exposed Services")).toBeTruthy();
+    expect(within(kubernetes).getByText("gitops-platform")).toBeTruthy();
+    expect(within(kubernetes).getByText("payments")).toBeTruthy();
+    expect(
+      within(kubernetes).getByRole("link", { name: /Open Kubernetes/ }),
+    ).toBeTruthy();
   });
 });
 
