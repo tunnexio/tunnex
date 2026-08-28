@@ -81,8 +81,7 @@ SELECT o.zero_trust_mode,
            ELSE false
        END AS fqdn_resources_enabled
 FROM organizations o
-WHERE o.id = $1 AND o.deleted_at IS NULL
-FOR SHARE;
+WHERE o.id = $1 AND o.deleted_at IS NULL;
 
 -- name: SetOrganizationAgentJITAccessEnabled :one
 -- F10 unlock-then-opt-in. The JIT service refuses disable while pending or

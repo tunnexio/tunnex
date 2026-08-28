@@ -274,7 +274,6 @@ SELECT o.zero_trust_mode,
        END AS fqdn_resources_enabled
 FROM organizations o
 WHERE o.id = $1 AND o.deleted_at IS NULL
-FOR SHARE
 `
 
 type GetOrganizationPolicySnapshotSettingsRow struct {
