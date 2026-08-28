@@ -21,7 +21,7 @@ func (s apiServer) fqdnService() (*fqdnresources.Service, error) {
 	return s.fqdnResources, nil
 }
 func fqdnInput(in api.FQDNResourceRequest) fqdnresources.Input {
-	out := fqdnresources.Input{Name: in.Name, FQDN: in.Fqdn, Protocol: string(in.Protocol), PortLow: in.PortLow, PortHigh: in.PortHigh, Label: in.Label}
+	out := fqdnresources.Input{Name: in.Name, FQDN: in.Fqdn, Protocol: string(in.Protocol), PortLow: in.PortLow, PortHigh: in.PortHigh, Label: in.Label, ExpectedImpactToken: in.ExpectedImpactToken}
 	if in.ResolverContext != nil {
 		out.Context = &fqdnresources.Context{SiteID: in.ResolverContext.SiteId, GatewayID: in.ResolverContext.GatewayId}
 	}
@@ -156,7 +156,7 @@ func (s apiServer) PreviewFQDNResourceImpact(ctx context.Context, req api.Previe
 	if err != nil {
 		return nil, err
 	}
-	return api.PreviewFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, EnforcementInputsChanged: p.EnforcementInputsChanged, ReferencingRuleCount: p.ReferencingRuleCount, ReferencingRuleIds: p.ReferencingRuleIDs, GenerationWithdrawalRequired: p.GenerationWithdrawalRequired, MutationAllowed: p.MutationAllowed, RefusalReason: p.RefusalReason}, nil
+	return api.PreviewFQDNResourceImpact200JSONResponse{ResourceId: req.ResourceId, EnforcementInputsChanged: p.EnforcementInputsChanged, ReferencingRuleCount: p.ReferencingRuleCount, ReferencingRuleIds: p.ReferencingRuleIDs, GenerationWithdrawalRequired: p.GenerationWithdrawalRequired, MutationAllowed: p.MutationAllowed, RefusalReason: p.RefusalReason, ExpectedImpactToken: p.ExpectedImpactToken}, nil
 }
 func (s apiServer) DeleteFQDNResource(ctx context.Context, req api.DeleteFQDNResourceRequestObject) (api.DeleteFQDNResourceResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
@@ -199,7 +199,7 @@ func (s apiServer) GetFQDNResourceSettingImpact(ctx context.Context, req api.Get
 		return nil, err
 	}
 	entitled := licence.Has(s.licence.Evaluate(time.Now()).Tier, licence.FeatFQDNResources)
-	return api.GetFQDNResourceSettingImpact200JSONResponse{Enabled: impact.Enabled, EnforcementReadyRuleCount: impact.EnforcementReadyRuleCount, EnforcementReadyRuleIds: impact.EnforcementReadyRuleIDs, RuleIdsTruncated: impact.RuleIDsTruncated, EntitlementAvailable: entitled}, nil
+	return api.GetFQDNResourceSettingImpact200JSONResponse{Enabled: impact.Enabled, EnforcementReadyRuleCount: impact.EnforcementReadyRuleCount, EnforcementReadyRuleIds: impact.EnforcementReadyRuleIDs, RuleIdsTruncated: impact.RuleIDsTruncated, EntitlementAvailable: entitled, ExpectedImpactToken: impact.ExpectedImpactToken}, nil
 }
 func (s apiServer) SetFQDNResourceEnabled(ctx context.Context, req api.SetFQDNResourceEnabledRequestObject) (api.SetFQDNResourceEnabledResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermFQDNResourceManage); err != nil {
@@ -218,7 +218,7 @@ func (s apiServer) SetFQDNResourceEnabled(ctx context.Context, req api.SetFQDNRe
 		return nil, err
 	}
 	uid, sys, cause := auditActor(ctx)
-	if err := svc.SetSetting(ctx, req.OrgId, req.Body.Enabled, uid, sys, cause); err != nil {
+	if err := svc.SetSetting(ctx, req.OrgId, req.Body.Enabled, req.Body.ExpectedImpactToken, uid, sys, cause); err != nil {
 		return nil, err
 	}
 	// The setting transaction is durable before this wake. An opt-out therefore

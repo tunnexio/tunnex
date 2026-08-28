@@ -5,8 +5,10 @@ package fqdnresources
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -30,6 +32,7 @@ type Input struct {
 	PortLow, PortHigh    *int
 	Label                *string
 	Context              *Context
+	ExpectedImpactToken  *string
 }
 type Resource struct {
 	ID, OrgID               uuid.UUID
@@ -76,12 +79,15 @@ type MutationPreview struct {
 	EnforcementInputsChanged bool
 	MutationAllowed          bool
 	RefusalReason            *string
+	ExpectedImpactToken      *string
 }
 type SettingImpact struct {
 	Enabled                   bool
 	EnforcementReadyRuleCount int
 	EnforcementReadyRuleIDs   []uuid.UUID
 	RuleIDsTruncated          bool
+	ExpectedImpactToken       *string
+	fingerprint               string
 }
 
 type Service struct{ pool *pgxpool.Pool }
@@ -130,6 +136,9 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, in Input, actor uui
 		return Resource{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockOrg(ctx, tx, org); err != nil {
+		return Resource{}, err
+	}
 	err = tx.QueryRow(ctx, `INSERT INTO fqdn_resources (org_id,name,fqdn,protocol,port_low,port_high,label,resolver_site_id,resolver_node_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, org, in.Name, in.FQDN, in.Protocol, in.PortLow, in.PortHigh, in.Label, site, gateway).Scan(&id)
 	if err != nil {
 		return Resource{}, writeErr(err)
@@ -146,16 +155,6 @@ func (s *Service) Update(ctx context.Context, org, id uuid.UUID, in Input, actor
 	if err := valid(&in); err != nil {
 		return Resource{}, err
 	}
-	// An update that changes enforcement inputs cannot leave a referenced or
-	// active generation describing the old identity. Refuse it until the exact
-	// server impact reported by Preview has been cleared.
-	preview, err := s.Preview(ctx, org, id, in)
-	if err != nil {
-		return Resource{}, err
-	}
-	if !preview.MutationAllowed {
-		return Resource{}, apierr.Conflict("fqdn_resource_mutation_refused", *preview.RefusalReason)
-	}
 	var site, gateway *uuid.UUID
 	if in.Context != nil {
 		site, gateway = &in.Context.SiteID, &in.Context.GatewayID
@@ -165,6 +164,30 @@ func (s *Service) Update(ctx context.Context, org, id uuid.UUID, in Input, actor
 		return Resource{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockOrg(ctx, tx, org); err != nil {
+		return Resource{}, err
+	}
+	var current Resource
+	if current, err = scan(tx.QueryRow(ctx, resourceQuery+` WHERE r.org_id=$1 AND r.id=$2 FOR UPDATE`, org, id)); err != nil {
+		if err == pgx.ErrNoRows {
+			return Resource{}, apierr.NotFound("fqdn_resource_not_found", "FQDN resource not found")
+		}
+		return Resource{}, err
+	}
+	changed := current.FQDN != in.FQDN || current.Protocol != in.Protocol || !samePorts(current.PortLow, in.PortLow) || !samePorts(current.PortHigh, in.PortHigh) || !sameContext(current.Context, in.Context)
+	if changed {
+		impact, e := impactFor(ctx, tx, org, id)
+		if e != nil {
+			return Resource{}, e
+		}
+		token := mutationToken(current, in, impact)
+		if in.ExpectedImpactToken == nil || *in.ExpectedImpactToken != token {
+			return Resource{}, apierr.Conflict("fqdn_resource_stale_preview", "the impact preview is missing or stale; read a new preview and confirm it")
+		}
+		if impact.ReferencingRuleCount > 0 || impact.GenerationWithdrawalRequired {
+			return Resource{}, apierr.Conflict("fqdn_resource_mutation_refused", "referenced resource enforcement inputs cannot be changed while rules or an eligible active generation exist")
+		}
+	}
 	ct, err := tx.Exec(ctx, `UPDATE fqdn_resources SET name=$3,fqdn=$4,protocol=$5,port_low=$6,port_high=$7,label=$8,resolver_site_id=$9,resolver_node_id=$10 WHERE id=$1 AND org_id=$2`, id, org, in.Name, in.FQDN, in.Protocol, in.PortLow, in.PortHigh, in.Label, site, gateway)
 	if err != nil {
 		return Resource{}, writeErr(err)
@@ -246,8 +269,15 @@ func isResolverConfigNotFound(err error) bool {
 	return errors.As(err, &e) && e.Code == "fqdn_resolver_config_not_found"
 }
 func (s *Service) Impact(ctx context.Context, org, id uuid.UUID) (Impact, error) {
-	var i Impact
-	err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND p.dst_fqdn_resource_id=$2), COALESCE((SELECT array_agg(p.id ORDER BY p.id) FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND p.dst_fqdn_resource_id=$2), ARRAY[]::uuid[]), EXISTS(SELECT 1 FROM fqdn_resource_answer_generations WHERE org_id=$1 AND resource_id=$2 AND state='active') FROM fqdn_resources r WHERE r.org_id=$1 AND r.id=$2`, org, id).Scan(&i.ReferencingRuleCount, &i.ReferencingRuleIDs, &i.GenerationWithdrawalRequired)
+	return impactFor(ctx, s.pool, org, id)
+}
+
+type queryRower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func impactFor(ctx context.Context, q queryRower, org, id uuid.UUID) (i Impact, err error) {
+	err = q.QueryRow(ctx, `SELECT (SELECT count(*) FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND p.dst_fqdn_resource_id=$2), COALESCE((SELECT array_agg(p.id ORDER BY p.id) FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND p.dst_fqdn_resource_id=$2), ARRAY[]::uuid[]), EXISTS(SELECT 1 FROM fqdn_resource_answer_generations g JOIN fqdn_resources r ON r.id=g.resource_id AND r.org_id=g.org_id AND r.resolver_site_id=g.resolver_site_id AND r.resolver_node_id=g.resolver_node_id JOIN fqdn_resolver_context_configs c ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active' WHERE g.org_id=$1 AND g.resource_id=$2 AND g.state='active') FROM fqdn_resources r WHERE r.org_id=$1 AND r.id=$2`, org, id).Scan(&i.ReferencingRuleCount, &i.ReferencingRuleIDs, &i.GenerationWithdrawalRequired)
 	if err == pgx.ErrNoRows {
 		return i, apierr.NotFound("fqdn_resource_not_found", "FQDN resource not found")
 	}
@@ -274,7 +304,7 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 	var resolved *time.Time
 	var ttl *time.Duration
 	var failure *string
-	err = s.pool.QueryRow(ctx, `SELECT id,state,resolved_at,effective_ttl,failure_code FROM fqdn_resource_answer_generations WHERE org_id=$1 AND resource_id=$2 ORDER BY generation DESC LIMIT 1`, org, id).Scan(&generationID, &state, &resolved, &ttl, &failure)
+	err = s.pool.QueryRow(ctx, `SELECT g.id,g.state,g.resolved_at,g.effective_ttl,g.failure_code FROM fqdn_resource_answer_generations g JOIN fqdn_resources r ON r.id=g.resource_id AND r.org_id=g.org_id AND r.resolver_site_id=g.resolver_site_id AND r.resolver_node_id=g.resolver_node_id JOIN fqdn_resolver_context_configs c ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active' WHERE g.org_id=$1 AND g.resource_id=$2 ORDER BY g.generation DESC LIMIT 1`, org, id).Scan(&generationID, &state, &resolved, &ttl, &failure)
 	if err != nil && err != pgx.ErrNoRows {
 		return Detail{}, err
 	}
@@ -282,7 +312,7 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 		d.StatusSource, d.ObservedAt, d.ServerReason = "latest_generation", resolved, failure
 		switch state {
 		case "active":
-			d.StatusSource, d.NextAction = "active_generation", "none"
+			d.StatusSource, d.NextAction = "active_generation", "refresh"
 		case "pending":
 			d.NextAction = "wait_for_resolution"
 		case "withdrawn":
@@ -294,6 +324,9 @@ func (s *Service) Detail(ctx context.Context, org, id uuid.UUID) (Detail, error)
 			if ttl != nil && resolved != nil {
 				fresh := resolved.Add(*ttl)
 				d.FreshUntilAt = &fresh
+				if time.Now().Before(fresh) {
+					d.NextAction = "none"
+				}
 			}
 			rows, e := s.pool.Query(ctx, `SELECT host(address)::text FROM fqdn_resource_generation_answers WHERE org_id=$1 AND generation_id=$2 ORDER BY family(address), host(address) LIMIT 32`, org, *generationID)
 			if e != nil {
@@ -355,6 +388,10 @@ func (s *Service) Preview(ctx context.Context, org, id uuid.UUID, in Input) (Mut
 	}
 	changed := current.FQDN != in.FQDN || current.Protocol != in.Protocol || !samePorts(current.PortLow, in.PortLow) || !samePorts(current.PortHigh, in.PortHigh) || !sameContext(current.Context, in.Context)
 	p := MutationPreview{Impact: impact, EnforcementInputsChanged: changed, MutationAllowed: true}
+	if changed {
+		token := mutationToken(current, in, impact)
+		p.ExpectedImpactToken = &token
+	}
 	if changed && (impact.ReferencingRuleCount > 0 || impact.GenerationWithdrawalRequired) {
 		p.MutationAllowed = false
 		reason := "referenced resource enforcement inputs cannot be predicted safely; remove rule references and withdraw the active generation first"
@@ -373,11 +410,17 @@ func (s *Service) SettingImpact(ctx context.Context, org uuid.UUID) (SettingImpa
 	if err != nil {
 		return SettingImpact{}, err
 	}
+	return settingImpactFor(ctx, s.pool, org, enabled)
+}
+func settingImpactFor(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, org uuid.UUID, enabled bool) (SettingImpact, error) {
 	out := SettingImpact{Enabled: enabled, EnforcementReadyRuleIDs: []uuid.UUID{}}
-	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND NOT p.disabled AND EXISTS (SELECT 1 FROM fqdn_resource_answer_generations g WHERE g.org_id=p.org_id AND g.resource_id=p.dst_fqdn_resource_id AND g.state='active')`, org).Scan(&out.EnforcementReadyRuleCount); err != nil {
+	if err := q.QueryRow(ctx, `SELECT count(*) FROM (`+eligibleRuleIDsSQL()+`) eligible`, org).Scan(&out.EnforcementReadyRuleCount); err != nil {
 		return out, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT p.id FROM policy_rules p WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND NOT p.disabled AND EXISTS (SELECT 1 FROM fqdn_resource_answer_generations g WHERE g.org_id=p.org_id AND g.resource_id=p.dst_fqdn_resource_id AND g.state='active') ORDER BY p.id LIMIT 32`, org)
+	rows, err := q.Query(ctx, eligibleRuleIDsSQL()+` ORDER BY id LIMIT 32`, org)
 	if err != nil {
 		return out, err
 	}
@@ -393,7 +436,36 @@ func (s *Service) SettingImpact(ctx context.Context, org uuid.UUID) (SettingImpa
 		return out, err
 	}
 	out.RuleIDsTruncated = out.EnforcementReadyRuleCount > len(out.EnforcementReadyRuleIDs)
+	if err = q.QueryRow(ctx, `SELECT COALESCE(array_agg(DISTINCT p.id::text || ':' || g.id::text || ':' || g.resolver_config_id::text ORDER BY p.id::text || ':' || g.id::text || ':' || g.resolver_config_id::text)::text, '') FROM policy_rules p JOIN fqdn_resources r ON r.id=p.dst_fqdn_resource_id AND r.org_id=p.org_id JOIN fqdn_resource_answer_generations g ON g.org_id=p.org_id AND g.resource_id=p.dst_fqdn_resource_id AND g.state='active' AND g.resolver_site_id=r.resolver_site_id AND g.resolver_node_id=r.resolver_node_id JOIN fqdn_resolver_context_configs c ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active' JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND NOT p.disabled`, org).Scan(&out.fingerprint); err != nil {
+		return out, err
+	}
+	token := settingToken(out)
+	out.ExpectedImpactToken = &token
 	return out, nil
+}
+func eligibleRuleIDsSQL() string {
+	return `SELECT DISTINCT p.id FROM policy_rules p JOIN fqdn_resources r ON r.id=p.dst_fqdn_resource_id AND r.org_id=p.org_id JOIN fqdn_resource_answer_generations g ON g.org_id=p.org_id AND g.resource_id=p.dst_fqdn_resource_id AND g.state='active' AND g.resolver_site_id=r.resolver_site_id AND g.resolver_node_id=r.resolver_node_id JOIN fqdn_resolver_context_configs c ON c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active' JOIN fqdn_resolver_context_endpoints e ON e.config_id=c.id AND e.org_id=c.org_id JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE p.org_id=$1 AND p.dst_kind='fqdn_resource' AND NOT p.disabled`
+}
+
+func mutationToken(current Resource, in Input, impact Impact) string {
+	return token("resource", current.ID, current.UpdatedAt.UTC().Format(time.RFC3339Nano), in.FQDN, in.Protocol, in.PortLow, in.PortHigh, contextToken(in.Context), impact.ReferencingRuleCount, impact.ReferencingRuleIDs, impact.GenerationWithdrawalRequired)
+}
+func settingToken(i SettingImpact) string {
+	return token("setting", i.Enabled, i.EnforcementReadyRuleCount, i.EnforcementReadyRuleIDs, i.fingerprint)
+}
+func contextToken(c *Context) string {
+	if c == nil {
+		return ""
+	}
+	return c.SiteID.String() + ":" + c.GatewayID.String()
+}
+func token(parts ...any) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%#v", parts)))
+	return fmt.Sprintf("%x", sum[:])
+}
+func lockOrg(ctx context.Context, tx pgx.Tx, org uuid.UUID) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, org)
+	return err
 }
 func (s *Service) Delete(ctx context.Context, org, id, actor uuid.UUID, actorSystem, cause string) error {
 	tx, err := s.pool.Begin(ctx)
@@ -439,12 +511,30 @@ func (s *Service) Setting(ctx context.Context, org uuid.UUID) (bool, error) {
 	}
 	return enabled, err
 }
-func (s *Service) SetSetting(ctx context.Context, org uuid.UUID, enabled bool, actor uuid.UUID, actorSystem, cause string) error {
+func (s *Service) SetSetting(ctx context.Context, org uuid.UUID, enabled bool, expectedImpactToken *string, actor uuid.UUID, actorSystem, cause string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockOrg(ctx, tx, org); err != nil {
+		return err
+	}
+	if enabled {
+		var current bool
+		if err := tx.QueryRow(ctx, `SELECT fqdn_resources_enabled FROM organizations WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, org).Scan(&current); err == pgx.ErrNoRows {
+			return apierr.NotFound("organization_not_found", "organization not found")
+		} else if err != nil {
+			return err
+		}
+		impact, err := settingImpactFor(ctx, tx, org, current)
+		if err != nil {
+			return err
+		}
+		if expectedImpactToken == nil || *expectedImpactToken != settingToken(impact) {
+			return apierr.Conflict("fqdn_resource_stale_preview", "the setting impact preview is missing or stale; read a new preview and confirm it")
+		}
+	}
 	ct, err := tx.Exec(ctx, `UPDATE organizations SET fqdn_resources_enabled=$2,updated_at=now() WHERE id=$1 AND deleted_at IS NULL`, org, enabled)
 	if err != nil {
 		return err

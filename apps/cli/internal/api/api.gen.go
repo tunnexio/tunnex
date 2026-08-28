@@ -2324,7 +2324,10 @@ type FQDNResourceImpact struct {
 // FQDNResourceMutationPreview defines model for FQDNResourceMutationPreview.
 type FQDNResourceMutationPreview struct {
 	// EnforcementInputsChanged True when FQDN, protocol/ports, or resolver binding differs from the stored resource.
-	EnforcementInputsChanged     bool                 `json:"enforcement_inputs_changed"`
+	EnforcementInputsChanged bool `json:"enforcement_inputs_changed"`
+
+	// ExpectedImpactToken Present for an enforcement-changing preview and required by its corresponding PATCH.
+	ExpectedImpactToken          *string              `json:"expected_impact_token"`
 	GenerationWithdrawalRequired bool                 `json:"generation_withdrawal_required"`
 	MutationAllowed              bool                 `json:"mutation_allowed"`
 	ReferencingRuleCount         int                  `json:"referencing_rule_count"`
@@ -2337,6 +2340,9 @@ type FQDNResourceMutationPreview struct {
 
 // FQDNResourceRequest defines model for FQDNResourceRequest.
 type FQDNResourceRequest struct {
+	// ExpectedImpactToken Server-issued token from the immediately relevant impact preview. Required only for enforcement-changing PATCH operations.
+	ExpectedImpactToken *string `json:"expected_impact_token"`
+
 	// Fqdn Input normalized and validated by the server against the FQDN-only contract.
 	Fqdn     string                      `json:"fqdn"`
 	Label    *string                     `json:"label"`
@@ -2367,19 +2373,25 @@ type FQDNResourceRuleReferenceSourceKind string
 type FQDNResourceSetting struct {
 	// Enabled Persisted false-default opt-in. It gates compilation only.
 	Enabled bool `json:"enabled"`
+
+	// ExpectedImpactToken Required when enabling; copied from the current setting impact preview.
+	ExpectedImpactToken *string `json:"expected_impact_token"`
 }
 
 // FQDNResourceSettingImpact defines model for FQDNResourceSettingImpact.
 type FQDNResourceSettingImpact struct {
 	Enabled bool `json:"enabled"`
 
-	// EnforcementReadyRuleCount Exact count of enabled FQDN policy rules backed by an active generation at read time.
+	// EnforcementReadyRuleCount Count of enabled compiler-eligible FQDN rules at read time; it is recomputed before enable.
 	EnforcementReadyRuleCount int                  `json:"enforcement_ready_rule_count"`
 	EnforcementReadyRuleIds   []openapi_types.UUID `json:"enforcement_ready_rule_ids"`
 
 	// EntitlementAvailable False means enabling is refused regardless of this preview.
 	EntitlementAvailable bool `json:"entitlement_available"`
-	RuleIdsTruncated     bool `json:"rule_ids_truncated"`
+
+	// ExpectedImpactToken Required by an enable request; it is invalid after a relevant rule, generation, config, or setting change.
+	ExpectedImpactToken *string `json:"expected_impact_token"`
+	RuleIdsTruncated    bool    `json:"rule_ids_truncated"`
 }
 
 // GatewayEndpoint defines model for GatewayEndpoint.
@@ -4700,13 +4712,13 @@ type ClientInterface interface {
 	// GetFQDNResourceSetting request
 	GetFQDNResourceSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetFQDNResourceSettingImpact request
-	GetFQDNResourceSettingImpact(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// SetFQDNResourceEnabledWithBody request with any body
 	SetFQDNResourceEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetFQDNResourceEnabled(ctx context.Context, orgId openapi_types.UUID, body SetFQDNResourceEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetFQDNResourceSettingImpact request
+	GetFQDNResourceSettingImpact(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteFQDNResource request
 	DeleteFQDNResource(ctx context.Context, orgId openapi_types.UUID, resourceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7451,18 +7463,6 @@ func (c *Client) GetFQDNResourceSetting(ctx context.Context, orgId openapi_types
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetFQDNResourceSettingImpact(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetFQDNResourceSettingImpactRequest(c.Server, orgId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 func (c *Client) SetFQDNResourceEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetFQDNResourceEnabledRequestWithBody(c.Server, orgId, contentType, body)
 	if err != nil {
@@ -7477,6 +7477,18 @@ func (c *Client) SetFQDNResourceEnabledWithBody(ctx context.Context, orgId opena
 
 func (c *Client) SetFQDNResourceEnabled(ctx context.Context, orgId openapi_types.UUID, body SetFQDNResourceEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetFQDNResourceEnabledRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetFQDNResourceSettingImpact(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFQDNResourceSettingImpactRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -15334,6 +15346,53 @@ func NewGetFQDNResourceSettingRequest(server string, orgId openapi_types.UUID) (
 	return req, nil
 }
 
+// NewSetFQDNResourceEnabledRequest calls the generic SetFQDNResourceEnabled builder with application/json body
+func NewSetFQDNResourceEnabledRequest(server string, orgId openapi_types.UUID, body SetFQDNResourceEnabledJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetFQDNResourceEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetFQDNResourceEnabledRequestWithBody generates requests for SetFQDNResourceEnabled with any type of body
+func NewSetFQDNResourceEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/fqdn-resources/setting", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetFQDNResourceSettingImpactRequest generates requests for GetFQDNResourceSettingImpact
 func NewGetFQDNResourceSettingImpactRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -15364,53 +15423,6 @@ func NewGetFQDNResourceSettingImpactRequest(server string, orgId openapi_types.U
 	if err != nil {
 		return nil, err
 	}
-
-	return req, nil
-}
-
-// NewSetFQDNResourceEnabledRequest calls the generic SetFQDNResourceEnabled builder with application/json body
-func NewSetFQDNResourceEnabledRequest(server string, orgId openapi_types.UUID, body SetFQDNResourceEnabledJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewSetFQDNResourceEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
-}
-
-// NewSetFQDNResourceEnabledRequestWithBody generates requests for SetFQDNResourceEnabled with any type of body
-func NewSetFQDNResourceEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/organizations/%s/fqdn-resources/setting/impact", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("PUT", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -19909,13 +19921,13 @@ type ClientWithResponsesInterface interface {
 	// GetFQDNResourceSettingWithResponse request
 	GetFQDNResourceSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFQDNResourceSettingResponse, error)
 
-	// GetFQDNResourceSettingImpactWithResponse request
-	GetFQDNResourceSettingImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFQDNResourceSettingImpactResponse, error)
-
 	// SetFQDNResourceEnabledWithBodyWithResponse request with any body
 	SetFQDNResourceEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetFQDNResourceEnabledResponse, error)
 
 	SetFQDNResourceEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetFQDNResourceEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetFQDNResourceEnabledResponse, error)
+
+	// GetFQDNResourceSettingImpactWithResponse request
+	GetFQDNResourceSettingImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFQDNResourceSettingImpactResponse, error)
 
 	// DeleteFQDNResourceWithResponse request
 	DeleteFQDNResourceWithResponse(ctx context.Context, orgId openapi_types.UUID, resourceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteFQDNResourceResponse, error)
@@ -23424,29 +23436,6 @@ func (r GetFQDNResourceSettingResponse) StatusCode() int {
 	return 0
 }
 
-type GetFQDNResourceSettingImpactResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *FQDNResourceSettingImpact
-	JSONDefault  *Error
-}
-
-// Status returns HTTPResponse.Status
-func (r GetFQDNResourceSettingImpactResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetFQDNResourceSettingImpactResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 type SetFQDNResourceEnabledResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -23464,6 +23453,29 @@ func (r SetFQDNResourceEnabledResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetFQDNResourceEnabledResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetFQDNResourceSettingImpactResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *FQDNResourceSettingImpact
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFQDNResourceSettingImpactResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFQDNResourceSettingImpactResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -27204,15 +27216,6 @@ func (c *ClientWithResponses) GetFQDNResourceSettingWithResponse(ctx context.Con
 	return ParseGetFQDNResourceSettingResponse(rsp)
 }
 
-// GetFQDNResourceSettingImpactWithResponse request returning *GetFQDNResourceSettingImpactResponse
-func (c *ClientWithResponses) GetFQDNResourceSettingImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFQDNResourceSettingImpactResponse, error) {
-	rsp, err := c.GetFQDNResourceSettingImpact(ctx, orgId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetFQDNResourceSettingImpactResponse(rsp)
-}
-
 // SetFQDNResourceEnabledWithBodyWithResponse request with arbitrary body returning *SetFQDNResourceEnabledResponse
 func (c *ClientWithResponses) SetFQDNResourceEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetFQDNResourceEnabledResponse, error) {
 	rsp, err := c.SetFQDNResourceEnabledWithBody(ctx, orgId, contentType, body, reqEditors...)
@@ -27228,6 +27231,15 @@ func (c *ClientWithResponses) SetFQDNResourceEnabledWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseSetFQDNResourceEnabledResponse(rsp)
+}
+
+// GetFQDNResourceSettingImpactWithResponse request returning *GetFQDNResourceSettingImpactResponse
+func (c *ClientWithResponses) GetFQDNResourceSettingImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFQDNResourceSettingImpactResponse, error) {
+	rsp, err := c.GetFQDNResourceSettingImpact(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFQDNResourceSettingImpactResponse(rsp)
 }
 
 // DeleteFQDNResourceWithResponse request returning *DeleteFQDNResourceResponse
@@ -32818,22 +32830,22 @@ func ParseGetFQDNResourceSettingResponse(rsp *http.Response) (*GetFQDNResourceSe
 	return response, nil
 }
 
-// ParseGetFQDNResourceSettingImpactResponse parses an HTTP response from a GetFQDNResourceSettingImpactWithResponse call
-func ParseGetFQDNResourceSettingImpactResponse(rsp *http.Response) (*GetFQDNResourceSettingImpactResponse, error) {
+// ParseSetFQDNResourceEnabledResponse parses an HTTP response from a SetFQDNResourceEnabledWithResponse call
+func ParseSetFQDNResourceEnabledResponse(rsp *http.Response) (*SetFQDNResourceEnabledResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetFQDNResourceSettingImpactResponse{
+	response := &SetFQDNResourceEnabledResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest FQDNResourceSettingImpact
+		var dest FQDNResourceSetting
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -32851,22 +32863,22 @@ func ParseGetFQDNResourceSettingImpactResponse(rsp *http.Response) (*GetFQDNReso
 	return response, nil
 }
 
-// ParseSetFQDNResourceEnabledResponse parses an HTTP response from a SetFQDNResourceEnabledWithResponse call
-func ParseSetFQDNResourceEnabledResponse(rsp *http.Response) (*SetFQDNResourceEnabledResponse, error) {
+// ParseGetFQDNResourceSettingImpactResponse parses an HTTP response from a GetFQDNResourceSettingImpactWithResponse call
+func ParseGetFQDNResourceSettingImpactResponse(rsp *http.Response) (*GetFQDNResourceSettingImpactResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &SetFQDNResourceEnabledResponse{
+	response := &GetFQDNResourceSettingImpactResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest FQDNResourceSetting
+		var dest FQDNResourceSettingImpact
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

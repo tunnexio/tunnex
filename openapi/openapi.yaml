@@ -2559,6 +2559,17 @@ paths:
       responses:
         "200": { description: Setting, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } } }
         default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setFQDNResourceEnabled
+      summary: Set explicit FQDN enforcement opt-in
+      description: Enabling requires the current server-issued impact token. Entitlement unlocks enforcement capability; this setting alone gates compilation, never drafts or reads.
+      tags: [policy]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } } }
+        default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/fqdn-resources/setting/impact:
     parameters:
@@ -2568,21 +2579,11 @@ paths:
         schema: { type: string, format: uuid }
     get:
       operationId: getFQDNResourceSettingImpact
-      summary: Preview the exact current rule impact of changing FQDN enforcement opt-in
+      summary: Read the current bounded rule impact before changing FQDN enforcement opt-in
+      description: This is an at-read-time preview, not a confirmed enforcement set. Enabling requires its current server-issued impact token and is recomputed under write locks.
       tags: [policy]
       responses:
         "200": { description: Opt-in impact, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSettingImpact" } } } }
-        default: { $ref: "#/components/responses/Error" }
-    put:
-      operationId: setFQDNResourceEnabled
-      summary: Set explicit FQDN enforcement opt-in
-      description: Entitlement unlocks enforcement capability; this setting alone gates compilation, never drafts or reads.
-      tags: [policy]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } }
-      responses:
-        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/FQDNResourceSetting" } } } }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/fqdn-resolver-contexts/{siteId}/{gatewayId}:
@@ -5320,6 +5321,10 @@ components:
           allOf: [{ $ref: "#/components/schemas/FQDNResolverContextRequest" }]
           nullable: true
           description: "An explicit selected Site/Gateway resolver context. Null saves an unbound draft only."
+        expected_impact_token:
+          type: string
+          nullable: true
+          description: "Server-issued token from the immediately relevant impact preview. Required only for enforcement-changing PATCH operations."
 
     FQDNResolverContext:
       type: object
@@ -5379,6 +5384,7 @@ components:
       additionalProperties: false
       properties:
         enabled: { type: boolean, description: "Persisted false-default opt-in. It gates compilation only." }
+        expected_impact_token: { type: string, nullable: true, description: "Required when enabling; copied from the current setting impact preview." }
 
     FQDNResourceImpact:
       type: object
@@ -5433,6 +5439,7 @@ components:
       properties:
         resource_id: { type: string, format: uuid }
         enforcement_inputs_changed: { type: boolean, description: "True when FQDN, protocol/ports, or resolver binding differs from the stored resource." }
+        expected_impact_token: { type: string, nullable: true, description: "Present for an enforcement-changing preview and required by its corresponding PATCH." }
         referencing_rule_count: { type: integer, minimum: 0 }
         referencing_rule_ids: { type: array, items: { type: string, format: uuid } }
         generation_withdrawal_required: { type: boolean }
@@ -5445,10 +5452,11 @@ components:
       additionalProperties: false
       properties:
         enabled: { type: boolean }
-        enforcement_ready_rule_count: { type: integer, minimum: 0, description: "Exact count of enabled FQDN policy rules backed by an active generation at read time." }
+        enforcement_ready_rule_count: { type: integer, minimum: 0, description: "Count of enabled compiler-eligible FQDN rules at read time; it is recomputed before enable." }
         enforcement_ready_rule_ids: { type: array, maxItems: 32, items: { type: string, format: uuid } }
         rule_ids_truncated: { type: boolean }
         entitlement_available: { type: boolean, description: "False means enabling is refused regardless of this preview." }
+        expected_impact_token: { type: string, nullable: true, description: "Required by an enable request; it is invalid after a relevant rule, generation, config, or setting change." }
 
     PolicyRule:
       type: object
@@ -5496,6 +5504,7 @@ components:
         fqdn_destination_status:
           type: string
           enum: [not_applicable, feature_unavailable, opt_in_disabled, generation_pending, active_generation, generation_withdrawn, generation_unavailable, projection_unavailable]
+          x-enum-varnames: [NotApplicable, FeatureUnavailable, OptInDisabled, GenerationPending, ActiveGeneration, GenerationWithdrawn, GenerationUnavailable, ProjectionUnavailable]
           description: "Truthful server projection for an FQDN destination. active_generation means the entitled, opted-in organization has a current active selected-resolver generation. generation_withdrawn and generation_unavailable grant no traffic. projection_unavailable means the server could not read the authoritative FQDN projection and never implies traffic is granted."
         # S10.3 warn-not-refuse: true when dst_kind=k8s_service but the Service is gone (unexposed/cluster deregistered) — the grant compiles to nothing (a silent no-op wearing a rule's face). DERIVED at read time from the LIVE Services, so it sheds if the Service returns. false otherwise.
         dst_k8s_service_vanished: { type: boolean }

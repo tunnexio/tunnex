@@ -1901,7 +1901,11 @@ export interface paths {
         };
         /** Read explicit FQDN enforcement opt-in */
         get: operations["getFQDNResourceSetting"];
-        put?: never;
+        /**
+         * Set explicit FQDN enforcement opt-in
+         * @description Enabling requires the current server-issued impact token. Entitlement unlocks enforcement capability; this setting alone gates compilation, never drafts or reads.
+         */
+        put: operations["setFQDNResourceEnabled"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1918,13 +1922,12 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Preview the exact current rule impact of changing FQDN enforcement opt-in */
-        get: operations["getFQDNResourceSettingImpact"];
         /**
-         * Set explicit FQDN enforcement opt-in
-         * @description Entitlement unlocks enforcement capability; this setting alone gates compilation, never drafts or reads.
+         * Read the current bounded rule impact before changing FQDN enforcement opt-in
+         * @description This is an at-read-time preview, not a confirmed enforcement set. Enabling requires its current server-issued impact token and is recomputed under write locks.
          */
-        put: operations["setFQDNResourceEnabled"];
+        get: operations["getFQDNResourceSettingImpact"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4204,6 +4207,8 @@ export interface components {
             label?: string | null;
             /** @description An explicit selected Site/Gateway resolver context. Null saves an unbound draft only. */
             resolver_context?: components["schemas"]["FQDNResolverContextRequest"] | null;
+            /** @description Server-issued token from the immediately relevant impact preview. Required only for enforcement-changing PATCH operations. */
+            expected_impact_token?: string | null;
         };
         FQDNResolverContext: {
             /** Format: uuid */
@@ -4255,6 +4260,8 @@ export interface components {
         FQDNResourceSetting: {
             /** @description Persisted false-default opt-in. It gates compilation only. */
             enabled: boolean;
+            /** @description Required when enabling; copied from the current setting impact preview. */
+            expected_impact_token?: string | null;
         };
         FQDNResourceImpact: {
             /** Format: uuid */
@@ -4314,6 +4321,8 @@ export interface components {
             resource_id: string;
             /** @description True when FQDN, protocol/ports, or resolver binding differs from the stored resource. */
             enforcement_inputs_changed: boolean;
+            /** @description Present for an enforcement-changing preview and required by its corresponding PATCH. */
+            expected_impact_token?: string | null;
             referencing_rule_count: number;
             referencing_rule_ids: string[];
             generation_withdrawal_required: boolean;
@@ -4323,12 +4332,14 @@ export interface components {
         };
         FQDNResourceSettingImpact: {
             enabled: boolean;
-            /** @description Exact count of enabled FQDN policy rules backed by an active generation at read time. */
+            /** @description Count of enabled compiler-eligible FQDN rules at read time; it is recomputed before enable. */
             enforcement_ready_rule_count: number;
             enforcement_ready_rule_ids: string[];
             rule_ids_truncated: boolean;
             /** @description False means enabling is refused regardless of this preview. */
             entitlement_available: boolean;
+            /** @description Required by an enable request; it is invalid after a relevant rule, generation, config, or setting change. */
+            expected_impact_token?: string | null;
         };
         PolicyRule: {
             managed_by_operator: boolean;
@@ -8974,29 +8985,6 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
-    getFQDNResourceSettingImpact: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                orgId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Opt-in impact */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FQDNResourceSettingImpact"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
     setFQDNResourceEnabled: {
         parameters: {
             query?: never;
@@ -9019,6 +9007,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FQDNResourceSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResourceSettingImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Opt-in impact */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceSettingImpact"];
                 };
             };
             default: components["responses"]["Error"];
