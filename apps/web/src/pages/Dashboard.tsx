@@ -27,6 +27,7 @@ import {
 import {
   EmptyState,
   ErrorText,
+  GLASS,
   Loading,
   Panel,
 } from "../components/ui";
@@ -314,7 +315,10 @@ export default function Dashboard() {
                     tokenrefs census failed on it within seconds of being written, on its own author. A local
                     layout variable is not a design token and must not wear the namespace that promises it is
                     held to the generated set. */}
-                <Panel title="Fleet summary">
+                <section
+                  aria-label="Fleet summary"
+                  className={`${GLASS} p-4`}
+                >
                   <section
                     aria-label="Fleet summary metrics"
                     className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-7 lg:divide-x lg:divide-white/10"
@@ -396,7 +400,7 @@ export default function Dashboard() {
                     />
                   )}
                   </section>
-                </Panel>
+                </section>
 
                 {/* Not in a grid — a sibling in the page column, so a `col-span-*` here would be a dead class. */}
                 {fresh && (
@@ -699,7 +703,7 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="divide-y divide-white/10 border-t border-white/10 pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+                      <div className="border-t border-white/10 pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
                         <div className="pb-4">
                           {hubSetRes === null ? (
                             <>
@@ -782,15 +786,17 @@ export default function Dashboard() {
                                         <li
                                           key={member.nodeId}
                                           aria-label={memberLabel}
-                                          className="flex min-h-10 items-center gap-2 py-2"
+                                          className="flex min-h-11 items-center gap-2.5 py-2"
                                         >
-                                          <InfrastructureIcon name="server" />
+                                          <span
+                                            aria-hidden="true"
+                                            className="inline-flex min-w-[4.5rem] shrink-0 justify-center rounded-full border border-white/10 px-2 py-1 text-micro font-semibold uppercase tracking-wide text-ink-secondary"
+                                          >
+                                            {memberRole}
+                                          </span>
                                           <span className="min-w-0 flex-1">
                                             <span className="block truncate text-cell font-medium text-ink-primary">
                                               {memberName}
-                                            </span>
-                                            <span className="block text-micro text-ink-tertiary">
-                                              {memberRole}
                                             </span>
                                           </span>
                                           <span
@@ -824,7 +830,7 @@ export default function Dashboard() {
                           )}
                         </div>
 
-                        <div className="pt-4">
+                        <div className="mt-1 border-t border-white/[.16] pt-5">
                           <InfrastructureHeading
                             icon="boxes"
                             title="Kubernetes"
@@ -866,24 +872,31 @@ export default function Dashboard() {
                                     role="group"
                                     aria-label="Kubernetes summary"
                                   >
-                                    <div className="flex min-h-10 items-center gap-2 border-b border-white/10 py-2">
-                                      <InfrastructureIcon name="boxes" />
-                                      <span className="text-cell text-ink-secondary">
-                                        {serviceTotal} exposed Service
-                                        {serviceTotal === 1 ? "" : "s"}
+                                    <div className="flex min-h-10 items-center justify-between gap-3 border-b border-white/10 py-2">
+                                      <span className="text-micro font-semibold uppercase tracking-wide text-ink-tertiary">
+                                        Exposed services
+                                      </span>
+                                      <span className="text-xl font-semibold tabular-nums text-ink-heading">
+                                        {serviceTotal}
                                       </span>
                                     </div>
                                     <ul className="divide-y divide-white/10">
                                       {visibleClusters.map((cluster) => (
                                         <li
                                           key={cluster.id}
-                                          className="flex min-h-10 items-center gap-2 py-2"
+                                          className="flex min-h-10 items-center gap-2.5 py-2"
                                         >
-                                          <InfrastructureIcon name="boxes" />
+                                          <span
+                                            aria-hidden="true"
+                                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-tertiary"
+                                          />
                                           <span className="min-w-0 flex-1 truncate text-cell font-medium text-ink-primary">
                                             {cluster.name}
                                           </span>
-                                          <span className="shrink-0 text-cell tabular-nums text-ink-secondary">
+                                          <span
+                                            className="inline-flex min-w-7 shrink-0 justify-center rounded-full bg-white/[.06] px-2 py-0.5 text-micro font-semibold tabular-nums text-ink-secondary"
+                                            aria-label={`${cluster.services.length} exposed services`}
+                                          >
                                             {cluster.services.length}
                                           </span>
                                         </li>

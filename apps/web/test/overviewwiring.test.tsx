@@ -310,7 +310,8 @@ describe("the populated Overview consolidates operational state into four cards"
     const kubernetes = within(infrastructure).getByRole("group", {
       name: "Kubernetes summary",
     });
-    expect(within(kubernetes).getByText("3 exposed Services")).toBeTruthy();
+    expect(within(kubernetes).getByText("Exposed services")).toBeTruthy();
+    expect(within(kubernetes).getByText("3")).toBeTruthy();
     expect(within(kubernetes).getByText("gitops-platform")).toBeTruthy();
     expect(within(kubernetes).getByText("payments")).toBeTruthy();
     expect(
