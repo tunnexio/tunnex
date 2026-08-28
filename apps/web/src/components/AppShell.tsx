@@ -352,7 +352,7 @@ function SidebarNav({
           id="main-nav"
           aria-label="Main"
           hidden={!drawerOpen}
-          className="absolute inset-y-0 left-0 z-20 flex w-[228px] flex-col justify-between border-r border-line bg-bg p-2.5"
+          className={`${drawerOpen ? "flex" : "hidden"} absolute inset-y-0 left-0 z-20 w-[228px] flex-col justify-between border-r border-line bg-bg p-2.5`}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
