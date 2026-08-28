@@ -78,6 +78,13 @@ func configEndpoints(ctx context.Context, q interface {
 	return out, rows.Err()
 }
 
+// lockResolverOrg serializes configuration changes with resolver answer
+// generation changes and resource confirmation in the owning organization.
+func lockResolverOrg(ctx context.Context, tx pgx.Tx, org uuid.UUID) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, org)
+	return err
+}
+
 func (s *Service) ResolverConfig(ctx context.Context, org, site, gateway uuid.UUID) (ResolverConfig, error) {
 	var out ResolverConfig
 	err := s.pool.QueryRow(ctx, `SELECT id,org_id,site_id,gateway_id,version,state,created_at FROM fqdn_resolver_context_configs WHERE org_id=$1 AND site_id=$2 AND gateway_id=$3 AND state='active'`, org, site, gateway).Scan(&out.ID, &out.OrgID, &out.SiteID, &out.GatewayID, &out.Version, &out.State, &out.CreatedAt)
@@ -111,6 +118,9 @@ func (s *Service) SetResolverConfig(ctx context.Context, org, site, gateway, act
 		return ResolverConfig{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockResolverOrg(ctx, tx, org); err != nil {
+		return ResolverConfig{}, err
+	}
 	// Serialize a previously empty context as well as revision replacement.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))`, org, site, gateway); err != nil {
 		return ResolverConfig{}, err
@@ -160,6 +170,9 @@ func (s *Service) DeleteResolverConfig(ctx context.Context, org, site, gateway, 
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := lockResolverOrg(ctx, tx, org); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))`, org, site, gateway); err != nil {
 		return err
 	}

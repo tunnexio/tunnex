@@ -263,6 +263,9 @@ func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64,
 			_ = tx.Rollback(ctx)
 		}
 	}()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, w.OrgID); err != nil {
+		return err
+	}
 	var site, gateway uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT resolver_site_id,resolver_node_id FROM fqdn_resources WHERE id=$1 AND org_id=$2 FOR UPDATE`, w.ResourceID, w.OrgID).Scan(&site, &gateway)
 	if err != nil {
