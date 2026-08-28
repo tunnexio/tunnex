@@ -1009,45 +1009,48 @@ function Stat({
     >
       <Link
         to={to}
-        className="grid min-w-0 grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2 rounded-sm outline-none transition-colors hover:text-ink-heading focus-visible:ring-2 focus-visible:ring-accent-400"
+        className="flex min-h-[5.75rem] min-w-0 flex-col rounded-sm px-1 outline-none transition-colors hover:text-ink-heading focus-visible:ring-2 focus-visible:ring-accent-400"
       >
-        <span className="row-span-3 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-ink-emphasis">
-          <Icon name={icon} size={16} />
-        </span>
-        <span className="min-w-0">
+        <span className="flex min-w-0 items-center justify-between gap-3">
           <span className="block truncate text-cell font-medium text-ink-primary">
             {label}
           </span>
-          {text === null ? (
-            <span
-              className="mt-1 block h-8 text-xl font-bold leading-8 text-ink-secondary"
-              title={
-                value.state === "failed"
-                  ? "Could not load this count."
-                  : "Loading…"
-              }
-            >
-              {value.state === "failed" ? "n/a" : "…"}
-            </span>
-          ) : (
-            <span
-              className={
-                "mt-1 block h-8 text-2xl font-bold leading-8 tabular-nums " +
-                (tone === "ok" ? "text-ok" : "text-ink-heading")
-              }
-            >
-              {text}
-            </span>
-          )}
+          <span
+            aria-hidden="true"
+            className="flex h-6 w-6 shrink-0 items-center justify-center text-ink-tertiary"
+          >
+            <Icon name={icon} size={15} />
+          </span>
+        </span>
+        {text === null ? (
+          <span
+            className="mt-2 block h-8 text-xl font-bold leading-8 text-ink-secondary"
+            title={
+              value.state === "failed"
+                ? "Could not load this count."
+                : "Loading…"
+            }
+          >
+            {value.state === "failed" ? "n/a" : "…"}
+          </span>
+        ) : (
           <span
             className={
-              "block h-[1.125rem] truncate text-micro font-medium leading-[1.125rem] " +
-              (value.state === "failed" ? "text-danger" : subColor)
+              "mt-2 block h-8 text-[1.75rem] font-bold leading-8 tabular-nums tracking-tight " +
+              (tone === "ok" ? "text-ok" : "text-ink-heading")
             }
-            title={typeof sub === "string" ? sub : undefined}
           >
-            {value.state === "failed" ? "could not load" : sub}
+            {text}
           </span>
+        )}
+        <span
+          className={
+            "mt-auto block h-[1.125rem] truncate text-micro font-medium leading-[1.125rem] " +
+            (value.state === "failed" ? "text-danger" : subColor)
+          }
+          title={typeof sub === "string" ? sub : undefined}
+        >
+          {value.state === "failed" ? "could not load" : sub}
         </span>
       </Link>
     </div>
