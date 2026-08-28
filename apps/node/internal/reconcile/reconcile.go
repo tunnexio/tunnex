@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
@@ -56,6 +57,10 @@ type DesiredState struct {
 	// OVPNServer (D-S9.6): the gateway's server material to write at cfgDir (ca/cert/key). nil → sweep
 	// the files. The key crosses the mTLS control channel (no new trust); the agent writes it 0600.
 	OVPNServer *OVPNServerMaterial `json:"ovpn_server,omitempty"`
+	// DNSResolveRequest is a versioned, brokered request addressed to this selected
+	// gateway. Older control planes omit it; older agents omit its response and are
+	// compatibility-refused by the control plane rather than silently falling back.
+	DNSResolveRequest *fqdnrpc.Request `json:"dns_resolve_request,omitempty"`
 }
 
 // OVPNPushRoutes is the range set an OpenVPN server PUSHES to its clients: the UNION of the org's remote
@@ -189,6 +194,10 @@ type Reconciler struct {
 	// onOVPN (optional, S9.1 4d) receives the FULL desired state each fetch so the agent can build the
 	// OpenVPN server desired (enabled + roster + pool + policy Routes/DNS). nil in a WG-only agent.
 	onOVPN func(DesiredState)
+	// onDNSResolve receives only a request explicitly addressed to this gateway.
+	// It has no return path into reconcile: a resolver timeout/disconnect must not
+	// tear down WireGuard or alter the last applied policy.
+	onDNSResolve func(DesiredState)
 	// siteLinkStale (S8.2 H5) is an optional sink: each reconcile, the agent checks its SITE-LINK peers'
 	// WG handshakes and stores whether any is stale/absent, so the report loop can surface site_link_down.
 	// nil when not wired (e.g. tests) → the check is skipped.
@@ -281,6 +290,10 @@ func (r *Reconciler) OnPolicy(fn func(*nodepolicy.Compiled)) { r.onPolicy = fn }
 // OnOVPN registers the OpenVPN desired-state sink (S9.1 4d). Call before Run.
 func (r *Reconciler) OnOVPN(fn func(DesiredState)) { r.onOVPN = fn }
 
+// OnDNSResolve registers the brokered selected-gateway DNS responder. Call
+// before Run. The callback posts its bound response through the mTLS client.
+func (r *Reconciler) OnDNSResolve(fn func(DesiredState)) { r.onDNSResolve = fn }
+
 // New builds a Reconciler with the node's WireGuard key pair (public key is used
 // only for the clamp-safe "is the interface key already set" check).
 func New(backend WGBackend, privateKey, publicKey string, logger *slog.Logger) *Reconciler {
@@ -330,6 +343,9 @@ func (r *Reconciler) runOnce(ctx context.Context, client ControlClient) (bool, e
 	}
 	if r.onOVPN != nil {
 		r.onOVPN(ds)
+	}
+	if r.onDNSResolve != nil && ds.DNSResolveRequest != nil {
+		r.onDNSResolve(ds)
 	}
 	// Idempotently ensure the interface config, then converge peers.
 	if err := r.backend.Configure(ctx, InterfaceConfig{

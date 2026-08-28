@@ -75,40 +75,40 @@ func (s *Service) ListVersions(ctx context.Context, orgID, templateID uuid.UUID)
 	return q.ListAgentPolicyTemplateVersions(ctx, sqlc.ListAgentPolicyTemplateVersionsParams{OrgID: orgID, TemplateID: templateID})
 }
 
-func (s *Service) SetEnabled(ctx context.Context, orgID, actor uuid.UUID, enabled bool) (sqlc.Organization, error) {
+func (s *Service) SetEnabled(ctx context.Context, orgID, actor uuid.UUID, enabled bool) (bool, error) {
 	if s == nil || s.pool == nil || actor == uuid.Nil {
-		return sqlc.Organization{}, ErrInvalid
+		return false, ErrInvalid
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return sqlc.Organization{}, err
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var lockedOrg uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT id FROM organizations WHERE id=$1 FOR UPDATE`, orgID).Scan(&lockedOrg); err != nil {
-		return sqlc.Organization{}, classifyNotFound(err)
+		return false, classifyNotFound(err)
 	}
 	if !enabled {
 		var live int
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM agent_policy_template_assignments WHERE org_id=$1 AND state='active'`, orgID).Scan(&live); err != nil {
-			return sqlc.Organization{}, err
+			return false, err
 		}
 		if live != 0 {
-			return sqlc.Organization{}, ErrConflict
+			return false, ErrConflict
 		}
 	}
 	q := sqlc.New(tx)
-	org, err := q.SetOrganizationAgentPolicyTemplatesEnabled(ctx, sqlc.SetOrganizationAgentPolicyTemplatesEnabledParams{ID: orgID, AgentPolicyTemplatesEnabled: enabled})
+	updated, err := q.SetOrganizationAgentPolicyTemplatesEnabled(ctx, sqlc.SetOrganizationAgentPolicyTemplatesEnabledParams{ID: orgID, AgentPolicyTemplatesEnabled: enabled})
 	if err != nil {
-		return sqlc.Organization{}, classifyNotFound(err)
+		return false, classifyNotFound(err)
 	}
 	if err := audit(ctx, tx, orgID, actor, "org.agent_policy_templates_enabled", "organization", orgID, map[string]any{"enabled": enabled}); err != nil {
-		return sqlc.Organization{}, err
+		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return sqlc.Organization{}, err
+		return false, err
 	}
-	return org, nil
+	return updated, nil
 }
 
 type ItemInput struct {
@@ -904,8 +904,8 @@ func classifyNotFound(err error) error {
 }
 
 func requireEnabledTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID) error {
-	var enabled bool
-	if err := tx.QueryRow(ctx, `SELECT agent_policy_templates_enabled FROM organizations WHERE id=$1 FOR SHARE`, orgID).Scan(&enabled); err != nil {
+	enabled, err := sqlc.New(tx).GetOrganizationAgentPolicyTemplatesEnabled(ctx, orgID)
+	if err != nil {
 		return classifyNotFound(err)
 	}
 	if !enabled {

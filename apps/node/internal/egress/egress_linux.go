@@ -45,6 +45,14 @@ var ifaceRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,15}$`)
 // field that isn't numeric (review #7). A non-match drops the id rather than widening trust.
 var ruleIDRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
+// FQDNConntrackMarkMask reserves bits 24..27 of ct mark for S21 FQDN
+// ownership. FQDNConntrackMark uses value 1 in that field. The nft expression
+// clears and sets only this mask, preserving every unrelated mark bit.
+const (
+	FQDNConntrackMarkMask uint32 = 0x0f000000
+	FQDNConntrackMark     uint32 = 0x01000000
+)
+
 // Manager reconciles the tunnex nft tables for one WG interface. It also holds the
 // latest compiled Zero Trust policy (S7.2): the reconcile loop feeds it via SetPolicy
 // on every desired-state fetch, and the forward chain is rendered from it — nil or
@@ -114,6 +122,10 @@ type Manager struct {
 	// ctFlush deletes the conntrack entries matching a removed-grant tuple set (S8.7 Slice 2), scoped exactly
 	// to those tuples; injectable so the innocent-neighbor red asserts the scope without a live conntrack.
 	ctFlush func(context.Context, []flowTuple) (int, error)
+	// ctFlushRecovery deletes only S21-owned FQDN conntrack entries. It is used
+	// after deny-all when a proven prior FQDN baseline is absent/corrupt; unrelated
+	// host/CNI/CIDR flows retain their existing conntrack marks and survive.
+	ctFlushRecovery func(context.Context) (int, error)
 	// nftRun runs an arbitrary `nft <args...>` (list/insert/delete) and returns stdout;
 	// injectable for the DOCKER-USER foreign-chain reconcile tests (WF-4). Distinct from
 	// `apply` (the atomic `-f -` full-table replace) — the Docker-owned chain can't be
@@ -170,6 +182,13 @@ type Manager struct {
 	// flushErr is the last conntrack-flush error (CAP_NET_ADMIN absent / netlink fault), surfaced never
 	// silent — the rule removal already succeeded, the lingering flows are degraded-not-broken.
 	flushErr error
+	// fqdnBaselinePath stores a committed active FQDN generation and its exact
+	// enforcement tuples. A pending/missing/corrupt file is never trusted.
+	fqdnBaselinePath       string
+	fqdnRecoveryRequired   bool
+	fqdnHistoryKnown       bool
+	fqdnHistorySeen        bool
+	fqdnRecoveryImpossible bool
 }
 
 // New builds a Manager for the given WireGuard interface (e.g. wg0).
@@ -178,6 +197,7 @@ func New(wgIface string) *Manager {
 	// The real conntrack flusher (S8.7 Slice 2); injectable so the scoped-flush wiring is unit-testable
 	// without a live conntrack table (the innocent-neighbor red).
 	m.ctFlush = flushTuples
+	m.ctFlushRecovery = flushFQDNMarkedConntrack
 	m.runIP = runIP              // S10.3 A1: the real `ip addr` runner; injectable for the DNS-VIP reconcile red
 	m.localIPs = defaultLocalIPs // WF-K5 M6: the real gateway-local address set; injectable for the local-endpoint refusal red
 	m.log = slog.Default()
@@ -186,6 +206,29 @@ func New(wgIface string) *Manager {
 	// classify sees sourceOK=false → no DNAT (fail-closed), which is exactly right for a gateway that can't
 	// read endpoints.
 	return m
+}
+
+// SetFQDNBaselinePath restores the last committed FQDN tuple baseline. This
+// must be called before the first policy reconcile. The sibling history marker
+// distinguishes a new/CIDR-only gateway from a gateway that has proven prior
+// FQDN enforcement. Only the latter needs selective marked-flow recovery.
+func (m *Manager) SetFQDNBaselinePath(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fqdnBaselinePath = path
+	if path == "" {
+		return
+	}
+	m.fqdnHistorySeen, m.fqdnHistoryKnown = readFQDNHistory(path + ".history")
+	state, err := readFQDNBaseline(path)
+	if err != nil {
+		m.fqdnRecoveryRequired = m.fqdnHistoryKnown && m.fqdnHistorySeen
+		m.fqdnRecoveryImpossible = !m.fqdnHistoryKnown || hasUnversionedFQDNBaseline(path)
+		return
+	}
+	m.appliedAllow = append([]nodepolicy.AllowEntry(nil), state.Allow...)
+	m.fqdnRecoveryRequired = false
+	m.fqdnRecoveryImpossible = false
 }
 
 // SetEndpointSource injects the K8s ready-endpoint view (WF-K5). Called once at wiring time by a K8s gateway
@@ -364,6 +407,9 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 	// kernel → the PREVIOUS ruleset stays in force (decision 4a/4b). On failure we DO NOT
 	// update applied* (staleness stays visible); on success we record what is in force.
 	pol := m.policy.Load() // load ONCE: the ruleset rendered and the status recorded are the same policy
+	if err := m.recoverFQDNBaseline(ctx, subnet, pol); err != nil {
+		return false, false, err
+	}
 	if err := m.applyAndTrack(ctx, m.rulesetWith(subnet, pol), pol); err != nil {
 		return false, false, err // no nftables / IPv4 NAT support, or a bad ruleset → not egress-capable
 	}
@@ -404,6 +450,41 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 	subnet6 := wgSubnet6(ctx, m.wgIface)
 	v6Ready := subnet6 != "" && hasDefaultRoute6(ctx) && ensureIPForward6() == nil
 	return true, v6Ready, nil
+}
+
+func (m *Manager) recoverFQDNBaseline(ctx context.Context, subnet string, pol *nodepolicy.Compiled) error {
+	if m.fqdnRecoveryImpossible && policyHasFQDN(pol) {
+		return fmt.Errorf("fqdn baseline history is unversioned or corrupt: controlled operator recovery required")
+	}
+	if !m.requiresFQDNRecovery(pol) {
+		return nil
+	}
+	// Do not let ct established,related keep unknown retired answers alive.
+	// The denial is atomic and precedes the selective S21-marked recovery sweep.
+	deny := &nodepolicy.Compiled{Version: pol.Version, Mode: nodepolicy.ModeEnforcing}
+	if err := m.apply(ctx, m.rulesetWith(subnet, deny)); err != nil {
+		return fmt.Errorf("fqdn restart deny-all apply: %w", err)
+	}
+	if _, err := m.ctFlushRecovery(ctx); err != nil {
+		return fmt.Errorf("fqdn restart conntrack recovery: %w", err)
+	}
+	m.mu.Lock()
+	m.fqdnRecoveryRequired = false
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) requiresFQDNRecovery(pol *nodepolicy.Compiled) bool {
+	if pol == nil || pol.Mode != nodepolicy.ModeEnforcing {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.fqdnBaselinePath != "" && m.fqdnRecoveryRequired
+}
+
+func policyHasFQDN(pol *nodepolicy.Compiled) bool {
+	return pol != nil && len(pol.FQDNGenerations) > 0
 }
 
 func poolCIDRForForward(policyPool, wgPool string) string {
@@ -559,9 +640,9 @@ func (m *Manager) resolvedVIPOriginalDstExclusion() string {
 //     NO wg0<->wg0 blanket — device↔device is permitted only by an explicit rule (the
 //     S7.1 structural guard, now on the wire). Egress is likewise gated: a device reaches
 //     off-pool/internet only via an allow whose dst covers it (e.g. a 0.0.0.0/0 resource),
-//     which the masquerade then NATs. v6 is left as pure default-deny (drop + ct only):
-//     spokes are v4 (the pool is v4), so there is no v6 device traffic to permit, and
-//     dropping it is strictly safer than the blanket mesh.
+//     which the masquerade then NATs. Native IPv6 source/destination tuples render in
+//     the ip6 table; this is required for an FQDN generation that resolves to a /128.
+//     Mixed-family tuples are not meaningful packets and stay default-denied.
 //
 // Every forward rule carries a `counter` (S7.2): per-rule packet/byte counts, near-free
 // (a native nft primitive). REPORTING is deferred (the flow-log candidate); emitting now
@@ -614,25 +695,56 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 			ifClause("iifname", tun, false), ifClause("oifname", tun, true))
 		return v4, v6
 	}
-	var b strings.Builder
+	var v4Rules, v6Rules strings.Builder
 	g := m.flowLogGroup
 	for _, e := range pol.Allow {
-		// Compute ONE form (review #9): the logged variant when logging is on, else the plain
-		// one — never both (allowMatch re-parses src/dst via netip, so the throwaway call
-		// doubled the per-rule work every reconcile).
-		var line string
+		// Render each tuple in its one applicable family. The other family rejects it
+		// before emitting text, so an address can never be accepted by both tables.
+		var v4Line, v6Line string
 		var ok bool
-		if g > 0 {
-			line, ok = renderAllowLogged(e, g)
+		if e.FQDNManaged {
+			v4Line, ok = renderFQDNManagedAllow(e, g, false)
+		} else if g > 0 {
+			v4Line, ok = renderAllowLogged(e, g)
 		} else {
-			line, ok = renderAllow(e)
+			v4Line, ok = renderAllow(e)
 		}
 		if ok {
-			b.WriteString(line)
+			v4Rules.WriteString(v4Line)
+		}
+		if e.FQDNManaged {
+			v6Line, ok = renderFQDNManagedAllow(e, g, true)
+		} else if g > 0 {
+			v6Line, ok = renderAllowLoggedFamily(e, g, true)
+		} else {
+			v6Line, ok = renderAllowFamily(e, true)
+		}
+		if ok {
+			v6Rules.WriteString(v6Line)
 		}
 	}
-	b.WriteString(denyDrop(g))     // count (+ log when on) the default-deny drops
-	return b.String(), denyDrop(g) // enforcing v6 = default-deny: no allows, just the deny tail
+	v4Rules.WriteString(denyDrop(g))
+	v6Rules.WriteString(denyDrop(g))
+	return v4Rules.String(), v6Rules.String()
+}
+
+func fqdnMarkClause() string {
+	return fmt.Sprintf(" ct mark set ((ct mark & 0x%08x) | 0x%08x)", ^FQDNConntrackMarkMask, FQDNConntrackMark)
+}
+
+// renderFQDNManagedAllow marks only a new flow accepted by an FQDN-expanded
+// tuple. The mark is connection state, so later established packets retain it
+// and selective restart recovery can identify only S21-owned flows.
+func renderFQDNManagedAllow(e nodepolicy.AllowEntry, group int, v6 bool) (string, bool) {
+	m, ok := allowMatchFamily(e, v6)
+	if !ok {
+		return "", false
+	}
+	line := m + fqdnMarkClause()
+	if group > 0 && ruleIDRE.MatchString(e.RuleID) {
+		line += logClause(flowlog.EncodePrefix(e.RuleID), group)
+	}
+	return line + " accept\n", true
 }
 
 // denyDrop is the default-deny tail. g==0: the original counter (relies on the chain's
@@ -653,9 +765,12 @@ func denyDrop(group int) string {
 // append the verdict (and, for the logged form, an observation clause) to it. Every field
 // is re-emitted through netip as a canonical NUMERIC string (never the raw control-plane
 // string) so nothing can inject nft statements into this root ruleset — the same hardening
-// as ifaceRE. Ports are integers. A v6 destination is skipped (v4 spokes have no route to
-// it; v6 stays default-deny).
-func allowMatch(e nodepolicy.AllowEntry) (string, bool) {
+// as ifaceRE. Ports are integers. Each invocation targets exactly one nft address family.
+func allowMatch(e nodepolicy.AllowEntry) (string, bool) { return allowMatchFamily(e, false) }
+
+// allowMatchFamily renders one address family. v6 selects native IPv6; IPv4-mapped
+// IPv6 is rejected rather than being rendered in the wrong nft family.
+func allowMatchFamily(e nodepolicy.AllowEntry, v6 bool) (string, bool) {
 	// SOURCE match: a DEVICE source is a bare host ("10.99.0.7"); a SITE source (v5, S8.2) is a LAN CIDR
 	// ("10.1.0.0/24"). Accept BOTH, fail closed on anything else. Re-emit canonically (never the raw CP
 	// string) so nothing can inject nft statements. The v4 renderer used ParseAddr only — a CIDR source
@@ -663,19 +778,19 @@ func allowMatch(e nodepolicy.AllowEntry) (string, bool) {
 	var srcMatch string
 	if strings.Contains(e.SrcIP, "/") {
 		p, err := netip.ParsePrefix(e.SrcIP)
-		if err != nil || !p.Addr().Is4() {
+		if err != nil || p.Addr().Is6() != v6 || (!v6 && !p.Addr().Is4()) {
 			return "", false
 		}
 		srcMatch = p.Masked().String()
 	} else {
 		a, err := netip.ParseAddr(e.SrcIP)
-		if err != nil || !a.Is4() {
+		if err != nil || a.Is6() != v6 || (!v6 && !a.Is4()) {
 			return "", false
 		}
 		srcMatch = a.String()
 	}
 	dst, err := netip.ParsePrefix(e.DstCIDR)
-	if err != nil || !dst.Addr().Is4() {
+	if err != nil || dst.Addr().Is6() != v6 || (!v6 && !dst.Addr().Is4()) {
 		return "", false
 	}
 	// CONVENTION (fail-closed rendering): this renderer REFUSES any unknown or half-
@@ -726,12 +841,20 @@ func allowMatch(e nodepolicy.AllowEntry) (string, bool) {
 	// An UNTRACKED packet has no ct entry so `ct original` cannot match → it falls to policy-drop (fail-closed);
 	// `ct state invalid` is dropped explicitly ahead of the grants (rulesetWith) so an invalid packet carrying
 	// a stale ct entry can never be adjudicated by this match.
-	return fmt.Sprintf("    ip saddr %s ct original ip daddr %s%s counter", srcMatch, dst.Masked().String(), clause), true
+	family := "ip"
+	if v6 {
+		family = "ip6"
+	}
+	return fmt.Sprintf("    %s saddr %s ct original %s daddr %s%s counter", family, srcMatch, family, dst.Masked().String(), clause), true
 }
 
 // renderAllow is the ENFORCEMENT-ONLY accept line (no observation). rule_id-INDEPENDENT.
 func renderAllow(e nodepolicy.AllowEntry) (string, bool) {
-	m, ok := allowMatch(e)
+	return renderAllowFamily(e, false)
+}
+
+func renderAllowFamily(e nodepolicy.AllowEntry, v6 bool) (string, bool) {
+	m, ok := allowMatchFamily(e, v6)
 	if !ok {
 		return "", false
 	}
@@ -745,6 +868,10 @@ func renderAllow(e nodepolicy.AllowEntry) (string, bool) {
 // only sees a flow's FIRST packet → one log per flow-start (D1). group is the nflog group
 // the flowlog reader listens on.
 func renderAllowLogged(e nodepolicy.AllowEntry, group int) (string, bool) {
+	return renderAllowLoggedFamily(e, group, false)
+}
+
+func renderAllowLoggedFamily(e nodepolicy.AllowEntry, group int, v6 bool) (string, bool) {
 	// rule_id is the ONE renderer field that isn't a number — validate it to the canonical UUID
 	// shape before it enters the root nft ruleset (the A-1 fail-closed discipline, review #7).
 	// A non-conforming rule_id renders the accept WITHOUT a log clause: NOT an empty prefix
@@ -753,9 +880,9 @@ func renderAllowLogged(e nodepolicy.AllowEntry, group int) (string, bool) {
 	// correctly accepted. In practice the compiler always stamps a DB uuid; this defends a
 	// future/compromised artifact, matching allowMatch's netip re-emission of src/dst/port.
 	if !ruleIDRE.MatchString(e.RuleID) {
-		return renderAllow(e)
+		return renderAllowFamily(e, v6)
 	}
-	m, ok := allowMatch(e)
+	m, ok := allowMatchFamily(e, v6)
 	if !ok {
 		return "", false
 	}
@@ -788,6 +915,17 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	// + logs), NOT Zero Trust policy staleness — so it must NOT set policy_error/failingSince
 	// (finding #6: a nftless open-build gateway must not report itself policy-stale).
 	isPolicy := pol != nil && pol.Mode == nodepolicy.ModeEnforcing
+	// Write a pending marker before nft. If this process dies before the
+	// matching committed marker, the next process performs restart recovery
+	// instead of trusting an ambiguous tuple baseline.
+	if isPolicy {
+		m.mu.Lock()
+		baselinePath := m.fqdnBaselinePath
+		m.mu.Unlock()
+		if err := writeFQDNBaseline(baselinePath, "pending", pol); err != nil {
+			return err
+		}
+	}
 	err := m.apply(ctx, ruleset)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -847,6 +985,20 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	// while-DOWN gap (a grant revoked before this baseline existed) is the S8.7b boot-reconcile deferral.
 	m.pendingFlush = removedTuples(m.appliedAllow, pol.Allow)
 	m.appliedAllow = pol.Allow
+	if err := writeFQDNBaseline(m.fqdnBaselinePath, "committed", pol); err != nil {
+		// nft has already atomically installed the policy. Leaving the pending
+		// marker forces the next boot through deny-all + recovery rather than
+		// treating a possibly stale tuple file as current.
+		m.applyErr = err
+		return err
+	}
+	if policyHasFQDN(pol) && m.fqdnBaselinePath != "" {
+		if err := writeFQDNHistory(m.fqdnBaselinePath + ".history"); err != nil {
+			m.applyErr = err
+			return err
+		}
+		m.fqdnHistorySeen, m.fqdnHistoryKnown = true, true
+	}
 	return nil
 }
 

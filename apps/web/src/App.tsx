@@ -33,7 +33,7 @@ import AgentDetail from "./pages/AgentDetail";
 import AgentsMCP from "./pages/AgentsMCP";
 import AgentsPolicyTemplates from "./pages/AgentsPolicyTemplates";
 import AccessGroups from "./pages/AccessGroups";
-import AccessResources from "./pages/AccessResources";
+import AccessResources, { FQDNResourceDetail } from "./pages/AccessResources";
 import Access from "./pages/Access";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
@@ -151,6 +151,7 @@ export default function App() {
             <Route path="/access" element={<Access />} />
             <Route path="/access/groups" element={<AccessGroups />} />
             <Route path="/access/resources" element={<AccessResources />} />
+            <Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} />
             <Route path="/users" element={<Users />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/access-events" element={<AccessEvents />} />

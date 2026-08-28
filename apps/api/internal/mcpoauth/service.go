@@ -65,7 +65,7 @@ type Service struct {
 }
 
 func New(queries *sqlc.Queries, sealer *crypto.Sealer, rdb *redis.Client, callbackURL string) *Service {
-	return &Service{queries: queries, sealer: sealer, rdb: rdb, callbackURL: strings.TrimSuffix(callbackURL, "/") + "/api/v1/mcp/oauth/callback", http: &http.Client{Timeout: 10 * time.Second}}
+	return &Service{queries: queries, sealer: sealer, rdb: rdb, callbackURL: strings.TrimSuffix(callbackURL, "/") + "/api/v1/mcp/oauth/callback", http: newOAuthHTTPClient()}
 }
 
 func (s *Service) Start(ctx context.Context, in StartInput) (StartResult, error) {
@@ -154,7 +154,7 @@ func (s *Service) Complete(ctx context.Context, state, code string) error {
 		return ErrFlowNotFound
 	}
 	row, err := s.queries.GetAgentMCPOAuthConnectionForCallback(ctx, sqlc.GetAgentMCPOAuthConnectionForCallbackParams{ID: flow.ConnectionID, OrgID: flow.OrgID})
-	if err != nil || row.ProtectedResource != canonicalURL(flow.Resource) || row.State != "pending_consent" {
+	if err != nil || row.ProtectedResource != canonicalURL(flow.Resource) || row.State != "pending_consent" || !sameOrigin(row.Issuer, flow.TokenEndpoint) {
 		return ErrFlowNotFound
 	}
 	secret := ""
@@ -174,7 +174,7 @@ func (s *Service) Complete(ctx context.Context, state, code string) error {
 		return ErrExchange
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := s.http.Do(req)
+	resp, err := s.doOAuthRequest(req)
 	if err != nil {
 		s.fail(ctx, flow)
 		return ErrExchange
@@ -288,7 +288,7 @@ func (s *Service) Lease(ctx context.Context, orgID, deviceID uuid.UUID, endpoint
 		return "", time.Time{}, ErrLease
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	response, requestErr := s.http.Do(req)
+	response, requestErr := s.doOAuthRequest(req)
 	if requestErr != nil {
 		return "", time.Time{}, ErrLease
 	}
@@ -354,6 +354,9 @@ func (m authorizationMetadata) allowsResource(resource string) bool {
 	return false
 }
 func (s *Service) authorizationMetadata(ctx context.Context, issuer string) (authorizationMetadata, error) {
+	if !validURL(issuer) {
+		return authorizationMetadata{}, ErrMetadata
+	}
 	u, _ := url.Parse(issuer)
 	u.Path = strings.TrimSuffix(u.Path, "/") + "/.well-known/oauth-authorization-server"
 	u.RawQuery = ""
@@ -361,7 +364,7 @@ func (s *Service) authorizationMetadata(ctx context.Context, issuer string) (aut
 	if err != nil {
 		return authorizationMetadata{}, err
 	}
-	resp, err := s.http.Do(req)
+	resp, err := s.doOAuthRequest(req)
 	if err != nil {
 		return authorizationMetadata{}, err
 	}
@@ -373,7 +376,8 @@ func (s *Service) authorizationMetadata(ctx context.Context, issuer string) (aut
 	if err := json.NewDecoder(resp.Body).Decode(&metadata); err != nil {
 		return authorizationMetadata{}, err
 	}
-	if !validURL(metadata.AuthorizationEndpoint) || !validURL(metadata.TokenEndpoint) {
+	if !validURL(metadata.AuthorizationEndpoint) || !validURL(metadata.TokenEndpoint) ||
+		!sameOrigin(issuer, metadata.AuthorizationEndpoint) || !sameOrigin(issuer, metadata.TokenEndpoint) {
 		return authorizationMetadata{}, ErrMetadata
 	}
 	return metadata, nil

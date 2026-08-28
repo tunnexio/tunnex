@@ -18,6 +18,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
@@ -206,12 +207,18 @@ type apiServer struct {
 	mcpToolPolicy      *mcptoolpolicy.Service
 	mcpToolApproval    *mcptoolapproval.Service
 	workflowProvenance *workflowprovenance.Service
-	sso                ssoPort           // nil in the open build
-	policy             policyPort        // nil in the open build (Zero Trust, S7.1)
-	agentTemplates     agentTemplatePort // nil in the open build (F09)
-	agentAccess        agentAccessPort   // licence-gated (F10)
-	accessLog          accessLogPort     // nil in the open build (Zero Trust visibility, S7.5.1)
-	idpSync            idpSyncPort       // nil in the open build (IdP-group sync, S7.5.2)
+	sso                ssoPort    // nil in the open build
+	policy             policyPort // nil in the open build (Zero Trust, S7.1)
+	fqdnResources      *fqdnresources.Service
+	// fqdnSettingNotify wakes active nodes only after an FQDN enforcement
+	// opt-in transaction commits. It is deliberately separate from the resource
+	// service: HTTP owns the post-commit side effect while storage owns the
+	// audited organization setting mutation.
+	fqdnSettingNotify fqdnSettingNotifier
+	agentTemplates    agentTemplatePort // nil in the open build (F09)
+	agentAccess       agentAccessPort   // licence-gated (F10)
+	accessLog         accessLogPort     // nil in the open build (Zero Trust visibility, S7.5.1)
+	idpSync           idpSyncPort       // nil in the open build (IdP-group sync, S7.5.2)
 	// ⛔ smtpConfigured — whether this deployment can send mail AT ALL. Served by /meta so the screens that
 	// send mail can say so BEFORE the operator acts. Invitations are the only way anyone joins, so a
 	// deployment without it is unusable while every screen reports success.
@@ -235,6 +242,10 @@ type apiServer struct {
 	releaseBootstrap      *release.BootstrapRelease
 	hostUpgrade           *hostupgrade.Service
 	gatewayControlURL     string
+}
+
+type fqdnSettingNotifier interface {
+	InvalidateOrg(context.Context, uuid.UUID)
 }
 
 const gatewayControlSettingKey = "gateway_control_url"

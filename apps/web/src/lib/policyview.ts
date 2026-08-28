@@ -7,6 +7,7 @@ import type {
   Role,
   UserGroup,
   Resource,
+  FQDNResource,
   PolicyRule,
   Member,
   Loaded,
@@ -207,6 +208,17 @@ export interface RuleRow {
    */
   k8sServiceVanished: boolean;
   /**
+   * Server-owned FQDN destination projection. `active_generation` means that the
+   * selected resolver has a current generation; it does not by itself claim a
+   * connection is permitted. Every other FQDN state is rendered explicitly so
+   * an unavailable projection is never mistaken for healthy enforcement.
+   *
+   * `pending_compiler` is retained only to read an older generated client during
+   * a rolling upgrade. Lane 3's generated contract replaces it with
+   * `generation_pending`.
+   */
+  fqdnDestinationStatus: FQDNDestinationStatus;
+  /**
    * S10.2 D2 cond 1: this grant is managed by the GitOps operator (created via a TunnexGrant CR, a machine
    * credential). Rendered VERBATIM from the served `managed_by_operator`. The row badges it and the edit/
    * delete affordance WARNS ("managed by GitOps — edit the CR, not here") rather than letting a dashboard edit
@@ -218,11 +230,95 @@ export interface RuleRow {
   agentAccessRequestId?: string | null;
 }
 
+/** Matches Lane 3's generated PolicyRule FQDN projection vocabulary. */
+export type FQDNDestinationStatus =
+  | "not_applicable"
+  | "feature_unavailable"
+  | "opt_in_disabled"
+  | "generation_pending"
+  | "active_generation"
+  | "generation_withdrawn"
+  | "generation_unavailable"
+  | "projection_unavailable"
+  // Compatibility-only while a web build can still receive the pre-Lane-3 API.
+  | "pending_compiler";
+
+export interface FQDNDestinationPresentation {
+  label: string;
+  searchText: string;
+  title: string;
+  tone: "positive" | "attention" | "danger" | "muted";
+}
+
+/**
+ * Present the server's projection verbatim in operator language. This never
+ * derives resolver health, entitlement, or enforcement in React.
+ */
+export function fqdnDestinationPresentation(
+  status: FQDNDestinationStatus,
+): FQDNDestinationPresentation | null {
+  switch (status) {
+    case "not_applicable":
+      return null;
+    case "active_generation":
+      return {
+        label: "FQDN ACTIVE GENERATION",
+        searchText: "fqdn active generation",
+        title: "The server reports a current selected-resolver FQDN generation. This alone does not prove a connection is permitted; rule lifecycle and Zero Trust enforcement still apply.",
+        tone: "positive",
+      };
+    case "feature_unavailable":
+      return {
+        label: "FQDN FEATURE UNAVAILABLE · NO TRAFFIC",
+        searchText: "fqdn feature unavailable no traffic",
+        title: "The server reports that the FQDN resource capability is unavailable. This destination grants no traffic.",
+        tone: "attention",
+      };
+    case "opt_in_disabled":
+      return {
+        label: "FQDN OPT-IN DISABLED · NO TRAFFIC",
+        searchText: "fqdn opt-in disabled no traffic",
+        title: "The server reports that organization FQDN enforcement opt-in is disabled. This destination grants no traffic.",
+        tone: "attention",
+      };
+    case "generation_pending":
+    case "pending_compiler":
+      return {
+        label: "FQDN GENERATION PENDING · NO TRAFFIC",
+        searchText: "fqdn generation pending no traffic",
+        title: "The server reports this FQDN generation is not active yet. This destination grants no traffic.",
+        tone: "attention",
+      };
+    case "generation_withdrawn":
+      return {
+        label: "FQDN GENERATION WITHDRAWN · NO TRAFFIC",
+        searchText: "fqdn generation withdrawn no traffic",
+        title: "The server withdrew the FQDN generation. This destination grants no traffic until a new generation is active.",
+        tone: "danger",
+      };
+    case "generation_unavailable":
+      return {
+        label: "FQDN GENERATION UNAVAILABLE · NO TRAFFIC",
+        searchText: "fqdn generation unavailable no traffic",
+        title: "The server has no active FQDN generation for this destination. This destination grants no traffic.",
+        tone: "danger",
+      };
+    case "projection_unavailable":
+      return {
+        label: "FQDN PROJECTION UNAVAILABLE · ENFORCEMENT UNKNOWN",
+        searchText: "fqdn projection unavailable enforcement unknown",
+        title: "The server could not read the authoritative FQDN projection. This does not imply traffic is granted or denied.",
+        tone: "muted",
+      };
+  }
+}
+
 // loaded flags say whether each referent SET loaded successfully. When a set failed to
 // load we cannot tell deleted from present, so an unfound ref is "unresolved", not "deleted".
 export interface LoadState {
   groupsLoaded: boolean;
   resourcesLoaded: boolean;
+  fqdnResourcesLoaded?: boolean;
   membersLoaded?: boolean; // S7.5.4: for resolving a per-user subject to a member name
   sitesLoaded?: boolean; // S8.2c WF-8: for resolving a site subject to its NAME (not the raw UUID)
   k8sServicesLoaded?: boolean; // S10.3: for resolving a k8s_service dst to its FQDN
@@ -302,6 +398,22 @@ function resolveResource(
   return { id, label: `deleted resource ${short(id)}`, state: "deleted" };
 }
 
+function resolveFQDNResource(
+  id: string,
+  resources: FQDNResource[],
+  loaded: boolean,
+): RefLabel {
+  const resource = resources.find((candidate) => candidate.id === id);
+  if (resource) return { id, label: resource.name, state: "ok" };
+  if (!loaded)
+    return {
+      id,
+      label: `unavailable FQDN resource ${short(id)}. Refresh.`,
+      state: "unresolved",
+    };
+  return { id, label: `deleted FQDN resource ${short(id)}`, state: "deleted" };
+}
+
 // resolveSite (WF-8): render a site subject by its NAME. The raw truncated UUID was both unreadable
 // AND ambiguous — sites are UUIDv7 (time-ordered), so two sites created seconds apart share a prefix
 // (`019f762b…`) and rendered identically. Falls back to "site <id>" only when the sites set is
@@ -365,6 +477,7 @@ export function ruleRow(
   sites: Site[],
   loaded: LoadState,
   services: K8sService[] = [],
+  fqdnResources: FQDNResource[] = [],
 ): RuleRow {
   // S7.5.4: a rule's source is a group OR a single user (S8.2: OR a site) — resolve each to a NAME,
   // honestly (a removed-user / deleted-group / deleted-site ref shows distinctly, never mislabeled).
@@ -412,12 +525,18 @@ export function ruleRow(
             sites,
             loaded.sitesLoaded ?? false,
           )
-        : rule.dst_kind === "k8s_service" // S10.3: resolve to the Service FQDN, never the resource branch
+      : rule.dst_kind === "k8s_service" // S10.3: resolve to the Service FQDN, never the resource branch
           ? resolveK8sService(
               rule.dst_k8s_service_id ?? "",
               services,
-              loaded.k8sServicesLoaded ?? false,
-            )
+            loaded.k8sServicesLoaded ?? false,
+          )
+          : rule.dst_kind === "fqdn_resource"
+            ? resolveFQDNResource(
+                rule.dst_fqdn_resource_id ?? "",
+                fqdnResources,
+                loaded.fqdnResourcesLoaded ?? false,
+              )
           : resolveResource(
               rule.dst_resource_id ?? "",
               resources,
@@ -431,11 +550,34 @@ export function ruleRow(
     broken: src.state !== "ok" || dst.state !== "ok",
     cidrOutsideRanges: rule.cidr_outside_org_ranges,
     k8sServiceVanished: rule.dst_k8s_service_vanished,
+    // Lane 3 owns the generated API union. The explicit compatibility cast lets
+    // this isolated console lane render the new server values before its client
+    // artifact is integrated, without treating an unknown value as active.
+    fqdnDestinationStatus: rule.dst_kind === "fqdn_resource"
+      ? fqdnStatusFromServer(rule.fqdn_destination_status)
+      : "not_applicable",
     managedByOperator: rule.managed_by_operator,
     managedByAgentTemplate: rule.managed_by_agent_template,
     managedByAgentAccess: rule.managed_by_agent_access,
     agentAccessRequestId: rule.agent_access_request_id,
   };
+}
+
+function fqdnStatusFromServer(value: unknown): FQDNDestinationStatus {
+  switch (value) {
+    case "feature_unavailable":
+    case "opt_in_disabled":
+    case "generation_pending":
+    case "active_generation":
+    case "generation_withdrawn":
+    case "generation_unavailable":
+    case "projection_unavailable":
+    case "pending_compiler":
+      return value;
+    default:
+      // A missing or future projection must never look like an active generation.
+      return "projection_unavailable";
+  }
 }
 
 // ── S7.5.4 temporary-grant expiry (the linger model — expired grants stay VISIBLE) ────
@@ -533,14 +675,16 @@ export function rulesSummary(i: {
 // reason (re-review #4: the src-side fix left the dst side able to dead-end). Priority: an existing rule's
 // kind (edit) → else groups if present → else the other available kind. PURE (unit-pins the dead-end fix).
 export function defaultDstKind(i: {
-  editingKind?: "group" | "resource" | "site";
+  editingKind?: "group" | "resource" | "site" | "fqdn_resource";
   hasGroups: boolean;
   hasResources: boolean;
   hasSites: boolean;
-}): "group" | "resource" | "site" {
+  hasFQDNResources?: boolean;
+}): "group" | "resource" | "site" | "fqdn_resource" {
   if (i.editingKind) return i.editingKind;
   if (i.hasGroups) return "group";
   if (i.hasResources) return "resource";
+  if (i.hasFQDNResources) return "fqdn_resource";
   if (i.hasSites) return "site";
   return "group"; // empty org — the modal isn't reachable (Add-rule gated), so any value is inert
 }
@@ -582,7 +726,7 @@ export function ruleSourceReady(i: {
 
 export interface RuleBodyInput {
   srcKind: "group" | "user" | "site" | "cidr" | "agent";
-  dstKind: "group" | "resource" | "site" | "k8s_service";
+  dstKind: "group" | "resource" | "site" | "k8s_service" | "fqdn_resource";
   src: string; // group id
   srcUser: string;
   srcSite: string;
@@ -592,6 +736,7 @@ export interface RuleBodyInput {
   dstResource: string;
   dstSite: string;
   dstK8sService: string; // S10.3: exposed-Service id (dst_kind='k8s_service')
+  dstFQDNResource?: string;
   expiresAt: string; // datetime-local, "" = permanent
   editing: boolean; // expiry is create-only
 }
@@ -619,6 +764,11 @@ export function ruleBody(i: RuleBodyInput): CreatePolicyRuleRequest {
               dst_kind: "k8s_service" as const,
               dst_k8s_service_id: i.dstK8sService,
             }
+          : i.dstKind === "fqdn_resource"
+            ? {
+                dst_kind: "fqdn_resource" as const,
+                dst_fqdn_resource_id: i.dstFQDNResource,
+              }
           : { dst_kind: "resource" as const, dst_resource_id: i.dstResource };
   const expiry =
     !i.editing && i.expiresAt
@@ -1272,6 +1422,7 @@ export function destinationOptions(i: {
   resources: Array<{ id: string; name: string }>;
   sites: Array<{ id: string; name: string }>;
   services: Array<{ id: string; name: string }>;
+  fqdnResources?: Array<{ id: string; name: string; fqdn: string; state: string }>;
   srcKind: string;
   srcSite: string;
 }): RuleOption[] {
@@ -1289,6 +1440,14 @@ export function destinationOptions(i: {
       kind: "k8s_service",
       tag: "k8s",
       label: s.name,
+      section: DST_SCOPED,
+    })),
+    ...(i.fqdnResources ?? []).map((resource) => ({
+      value: resource.id,
+      kind: "fqdn_resource",
+      tag: "fqdn",
+      label: resource.name,
+      detail: `${resource.fqdn} · ${resource.state}`,
       section: DST_SCOPED,
     })),
     ...i.groups.map((g) => ({
@@ -1348,6 +1507,12 @@ export function ruleEffectSummary(i: {
 
   // ⛔ `wide` marks the port-unscoped destinations. It drives a warning, never a block.
   const wide = i.dstKind === "group" || i.dstKind === "site";
+  if (i.dstKind === "fqdn_resource") {
+    return {
+      text: `${subject} → FQDN resource ${i.dstLabel} will be stored as a rule reference. The server resolves and projects generation status after save; this preview does not claim enforcement or traffic availability.`,
+      wide: false,
+    };
+  }
   const object =
     i.dstKind === "group"
       ? `every device belonging to every member of ${i.dstLabel}`

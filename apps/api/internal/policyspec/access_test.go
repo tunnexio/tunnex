@@ -45,3 +45,29 @@ func TestEvaluateAccessOffModeMesh(t *testing.T) {
 		t.Fatalf("off-mode mesh should pass without enforcement hash: %+v", got)
 	}
 }
+
+func TestEvaluateAccessUsesOnlyActiveFQDNGenerationAnswers(t *testing.T) {
+	device := uuid.New()
+	compiled := &Compiled{Version: 8, Mode: "enforcing",
+		Subjects:        []SubjectAttribution{{SrcIP: "10.99.0.7", DeviceID: device.String()}},
+		Allow:           []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "8.8.8.8/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, SrcDeviceID: device.String()}},
+		FQDNGenerations: []FQDNGeneration{{ResourceID: uuid.NewString(), Name: "api.example.com", Generation: "17", Answers: []string{"8.8.8.8/32"}}},
+	}
+	if got := EvaluateAccess(compiled, device, "10.99.0.7", "api.example.com", "tcp", 443); !got.Allowed || len(got.DestinationAnswers) != 1 || got.DestinationAnswers[0] != "8.8.8.8" {
+		t.Fatalf("active FQDN answer must evaluate against expanded policy: %+v", got)
+	}
+	if got := EvaluateAccess(compiled, device, "10.99.0.7", "other.example.com", "tcp", 443); got.Allowed {
+		t.Fatalf("an unbound hostname must remain default denied: %+v", got)
+	}
+}
+
+func TestEvaluateAccessFQDNWithdrawalRemainsUnresolved(t *testing.T) {
+	device := uuid.New()
+	compiled := &Compiled{Version: 4, Mode: "enforcing",
+		Subjects: []SubjectAttribution{{SrcIP: "10.99.0.7", DeviceID: device.String()}},
+	}
+	got := EvaluateAccess(compiled, device, "10.99.0.7", "api.example.com", "tcp", 443)
+	if got.Allowed || len(got.DestinationAnswers) != 0 || got.PolicyVersion != 4 {
+		t.Fatalf("withdrawn FQDN generation must be unresolved and denied: %+v", got)
+	}
+}

@@ -55,7 +55,7 @@ const (
 // v4 bump is no longer "safe to safe-ignore" — it is the enforcement boundary the gate protects).
 // v6 (A3b, S8.6): pool_cidr on the site-gateway artifact (device-pool Docker accepts) — an old agent
 // would silently strand device transit on Docker hosts, so the gate refuses (lockstep with policyspec).
-const ProtocolVersion = 7
+const ProtocolVersion = policyspec.ProtocolVersion
 
 const joinTokenTTL = time.Hour
 
@@ -1969,6 +1969,11 @@ type AppliedPolicy struct {
 	// ovpn_binary_absent) — a DIFFERENT axis from policy health, stored so the gateway surface shows WHY
 	// an enabled gateway isn't serving.
 	OVPNHealth string `json:"ovpn_health"`
+	// DNSResolveRPCVersion is the highest selected-gateway DNS RPC wire version
+	// this agent supports. It is persisted in the existing server-built
+	// capabilities projection so known older gateways are refused before a DNS
+	// request is queued, rather than being misclassified as a resolver timeout.
+	DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
 }
 
 // ReportWGInfo records the agent's locally-generated WireGuard public key and
@@ -2018,6 +2023,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"k8s_endpoints_unavailable":   applied.K8sEndpointsUnavailable,
 		"max_policy_version":          applied.MaxSupportedVersion,
 		"ovpn_health":                 applied.OVPNHealth, // S9.1 4d
+		"dns_resolve_rpc_version":     applied.DNSResolveRPCVersion,
 	})
 	if err != nil {
 		return err
@@ -2126,6 +2132,19 @@ type NodeCapabilities struct {
 	// ovpn_binary_absent). Surfaced on the gateway so an operator sees WHY an OVPN-enabled gateway is
 	// not serving.
 	OVPNHealth string `json:"ovpn_health"`
+	// DNSResolveRPCVersion is the highest authenticated selected-gateway DNS
+	// RPC version the node reports. Zero is semantically an unsupported legacy
+	// node, not an unknown/optimistic capability: FQDN enforcement must refuse
+	// before queueing a resolver request when this is below the required wire
+	// version.
+	DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
+}
+
+// SupportsDNSResolveRPC is deliberately a capability comparison rather than a
+// truthiness check. Future protocol versions must not be accepted by a node
+// that merely reports some older DNS RPC implementation.
+func (c NodeCapabilities) SupportsDNSResolveRPC(required int) bool {
+	return required > 0 && c.DNSResolveRPCVersion >= required
 }
 
 // zeroTrustOff mirrors organizations.zero_trust_mode = 'off' (the compiler's ModeOff).

@@ -37,7 +37,13 @@ function renderPage() {
 }
 async function openCreate() {
   await screen.findByRole("button", { name: "Create resource" });
+  // The action is available as soon as permission resolves, but the CIDR form
+  // deliberately stays behind the inventory's loading state.  Wait for that
+  // state to settle before opening the chooser so this test exercises the
+  // port contract rather than racing the independent list request.
+  await screen.findByLabelText("Search resources");
   fireEvent.click(screen.getAllByRole("button", { name: "Create resource" })[0]);
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create CIDR resource" }));
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Jira" } });
   fireEvent.change(screen.getByLabelText("CIDR"), { target: { value: "10.0.0.4/32" } });
 }
@@ -130,7 +136,8 @@ describe("Access Resources port scope", () => {
     role = "member";
     resources = [{ id: "r1", name: "Private", cidr: "10.0.0.0/24", protocol: "any", port_low: null, port_high: null }];
     renderPage();
-    expect((await screen.findByRole("alert")).textContent).toContain("do not have permission");
+    expect(await screen.findByText("You do not have permission to manage CIDR resources.")).toBeTruthy();
+    expect(screen.queryByText(/FQDN resources are unavailable because your role lacks/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Create resource" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();

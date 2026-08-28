@@ -35,6 +35,8 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	apphttp "github.com/tunnexio/tunnex/apps/api/internal/http"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
@@ -53,6 +55,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpn"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpnca"
+	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
 	"github.com/tunnexio/tunnex/apps/api/internal/secrets"
@@ -273,9 +276,13 @@ func main() {
 	nodeSvc := nodes.NewService(pool, agentCA, sealer).WithLicence(licenceMgr)
 	// S7.2: wire the Zero Trust policy source for the desired state (nil in the open
 	// build -> no policy field -> agents keep the legacy mesh).
-	nodeSvc.SetPolicyProvider(apphttp.NewNodePolicyProvider(pool))
+	nodeSvc.SetPolicyProvider(apphttp.NewNodePolicyProvider(pool, licenceMgr))
 	nodes.LogPolicyHealthTuning(logger) // S7.4b: assumed R + derived T (operator discoverability)
 	pushHub := nodepush.New()
+	// One post-commit invalidator serves both resolver lifecycle transitions and
+	// explicit organization FQDN opt-in changes. Reusing it keeps every policy
+	// withdrawal on the same active-node wake path.
+	fqdnInvalidator := policy.NewFQDNInvalidator(pool, pushHub)
 	deviceSvc := devices.NewService(pool, pushHub, logger).WithLicence(licenceMgr)
 	// WF-OVPN-6: device-approval ENFORCEMENT follows the edition (enterprise only). The open build never
 	// enforces approval, so a stored device_approval='on' can't trap new devices when the admin surface is
@@ -468,7 +475,9 @@ func main() {
 		MCPToolApproval:       mcptoolapproval.New(pool),
 		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
-		Policy:                apphttp.NewPolicyPort(pool, pushHub),
+		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
+		FQDNResources:         fqdnresources.New(pool),
+		FQDNSettingNotify:     fqdnInvalidator,
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
 		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),
@@ -527,6 +536,26 @@ func main() {
 	defer stopElector()
 	elector := &leader.Elector{}
 	go elector.Run(electorCtx, pool, logger)
+	// FQDN resolution is deliberately a selected Site+Gateway transport. The
+	// durable mailbox rides the existing authenticated agent-pull channel: it
+	// never substitutes a public/control-plane resolver, and it wakes only the
+	// selected gateway after the request transaction commits. Like all writing
+	// schedulers, only the confirmed leader ticks it and shutdown cancels any
+	// bounded DNS attempt.
+	fqdnCtx, stopFQDNScheduler := context.WithCancel(electorCtx)
+	fqdnStore := fqdnresolver.NewPostgresStore(pool).WithAfterCommit(fqdnresolver.Hooks{
+		Policy: fqdnInvalidator,
+	})
+	fqdnMailbox := fqdnresolver.NewPostgresGatewayDNSMailbox(pool).WithNotifier(agentCh)
+	agentCh.SetGatewayDNSMailbox(fqdnMailbox)
+	fqdnScheduler := fqdnresolver.NewScheduler(
+		fqdnStore,
+		fqdnresolver.NewGatewayDNSRPCTransport(fqdnMailbox),
+		fqdnresolver.SchedulerConfig{MayTick: func() bool {
+			return elector.IsLeader() && elector.ConfirmLeader(fqdnCtx, pool)
+		}},
+	)
+	fqdnScheduler.Start(fqdnCtx, nil)
 
 	go func() {
 		t := time.NewTicker(accesslog.RetentionSweepInterval)
@@ -790,6 +819,7 @@ func main() {
 	defer cancel()
 	_ = agentSrv.Shutdown(ctx)
 	pollCancel()         // stop the idp-sync poller
+	stopFQDNScheduler()  // stop bounded FQDN work before releasing DB leadership/pool
 	stopElector()        // release scheduler leadership (and its connection) before the pool closes
 	close(retentionStop) // stop the retention sweep loop
 	if err := srv.Shutdown(ctx); err != nil {

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
+	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
 )
 
@@ -202,6 +203,10 @@ type PolicyStatus struct {
 	// who enabled OpenVPN on a gateway missing its material sees WHY (the conntrack_flush_unavailable
 	// precedent). Reported every tick; resolves on its own when the material/binary appears.
 	OVPNHealth string
+	// DNSResolveRPCVersion is this agent's highest supported brokered
+	// selected-gateway DNS RPC version. Zero/missing means an older agent and is
+	// a compatibility refusal for FQDN enforcement, never a public-DNS fallback.
+	DNSResolveRPCVersion int
 }
 
 // ReportInfo reports the node's locally-generated WireGuard public key, its public
@@ -215,7 +220,8 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,
 		"conntrack_flush_unavailable": ps.ConntrackFlushUnavailable, "k8s_endpoints_unavailable": ps.K8sEndpointsUnavailable, "max_policy_version": ps.MaxSupportedVersion,
-		"ovpn_health": ps.OVPNHealth,
+		"ovpn_health":             ps.OVPNHealth,
+		"dns_resolve_rpc_version": ps.DNSResolveRPCVersion,
 	})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/agent/report", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -227,6 +233,34 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("report status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// ReportDNSResolution posts one response to a request carried in desired state.
+// The endpoint is served on the existing mTLS node channel; its server-side
+// handler authenticates the gateway certificate and validates the echoed
+// request binding before accepting any answer. A transport error intentionally
+// leaves the response unacknowledged: the next desired-state fetch replays the
+// same request id and the responder returns its cached observation.
+func (c *Client) ReportDNSResolution(ctx context.Context, response fqdnrpc.Response) error {
+	body, err := json.Marshal(response)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/agent/dns-resolution", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("dns-resolution status %d", resp.StatusCode)
 	}
 	return nil
 }

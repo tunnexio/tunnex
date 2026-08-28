@@ -233,6 +233,27 @@ func TestRenderAllowRuleIDOnlyInLogClause(t *testing.T) {
 	}
 }
 
+func TestForwardRulesRenderDualStackExactHosts(t *testing.T) {
+	m := New("wg0")
+	pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing, Allow: []nodepolicy.AllowEntry{
+		{SrcIP: "10.99.0.7", DstCIDR: "203.0.113.41/32", Protocol: "tcp", PortLow: 443, PortHigh: 443},
+		{SrcIP: "fd42:99::7", DstCIDR: "2001:db8:21::41/128", Protocol: "udp", PortLow: 53, PortHigh: 53},
+	}}
+	v4, v6 := m.forwardRules(pol, true)
+	if !strings.Contains(v4, "ip saddr 10.99.0.7 ct original ip daddr 203.0.113.41/32 tcp dport 443") {
+		t.Fatalf("v4 exact-host allow missing: %s", v4)
+	}
+	if strings.Contains(v4, "2001:db8:21::41") {
+		t.Fatalf("v6 tuple leaked into ip table: %s", v4)
+	}
+	if !strings.Contains(v6, "ip6 saddr fd42:99::7 ct original ip6 daddr 2001:db8:21::41/128 udp dport 53") {
+		t.Fatalf("v6 exact-host allow missing: %s", v6)
+	}
+	if strings.Contains(v6, "203.0.113.41") {
+		t.Fatalf("v4 tuple leaked into ip6 table: %s", v6)
+	}
+}
+
 // forwardRules: flow logging OFF (default) renders NO log clause — the enforcement ruleset
 // is exactly pre-S7.5.1 (safety default). Logging ON adds the rule_id + deny log clauses
 // while every verdict line still ends accept/drop.
@@ -854,5 +875,17 @@ func TestZeroOVPNConfigByteIdentical(t *testing.T) {
 	// NO nft interface-set syntax anywhere — byte-identical to pre-OVPN.
 	if strings.Contains(rs, "iifname {") || strings.Contains(rs, "oifname {") {
 		t.Fatalf("zero-config must emit NO interface-set syntax; got:\n%s", rs)
+	}
+}
+
+func TestFQDNManagedAllowUsesReservedConntrackOwnershipMark(t *testing.T) {
+	m := New("wg0")
+	m.SetPolicy(&nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing, Allow: []nodepolicy.AllowEntry{
+		{SrcIP: "10.99.0.10", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, FQDNManaged: true},
+		{SrcIP: "10.99.0.11", DstCIDR: "203.0.113.11/32", Protocol: "tcp", PortLow: 443, PortHigh: 443},
+	}})
+	rs := m.ruleset("10.99.0.1/24")
+	if got := strings.Count(rs, "ct mark set ((ct mark & 0xf0ffffff) | 0x01000000)"); got != 1 {
+		t.Fatalf("only FQDN-expanded tuple may set reserved mark, got %d:\n%s", got, rs)
 	}
 }

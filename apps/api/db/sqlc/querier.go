@@ -284,6 +284,13 @@ type Querier interface {
 	CreateAgentAccessRequest(ctx context.Context, arg CreateAgentAccessRequestParams) (AgentAccessRequest, error)
 	CreateAgentBootstrapToken(ctx context.Context, arg CreateAgentBootstrapTokenParams) (AgentBootstrapToken, error)
 	CreateAgentGroup(ctx context.Context, arg CreateAgentGroupParams) (AgentGroup, error)
+	// F10's approval path must remain executable against the historical 0098
+	// schema. It deliberately names only the agent-access identity and destination
+	// columns that existed before 0113; JIT does not support FQDN destinations or
+	// machine ownership. Returning only the immutable rule ID prevents a later
+	// policy_rules projection from making an old-schema approval depend on new
+	// columns.
+	CreateAgentJITPolicyRule(ctx context.Context, arg CreateAgentJITPolicyRuleParams) (uuid.UUID, error)
 	CreateAgentMCPProfile(ctx context.Context, arg CreateAgentMCPProfileParams) (AgentMcpProfile, error)
 	CreateAgentPolicyTemplate(ctx context.Context, arg CreateAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -349,7 +356,6 @@ type Querier interface {
 	// (the token's column is NOT NULL); a NULL here means the node predates the marker — UNDETERMINED.
 	CreateNode(ctx context.Context, arg CreateNodeParams) (Node, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
-	// ── policy_rules (allow grants) ─────────────────────────────────────────────────
 	// S7.5.4: src_kind ∈ {group,user}; S8.2: +site; S8.7: +cidr (exactly one of src_group_id/src_user_id/
 	// src_site_id/src_cidr, CHECK-enforced). expires_at NULL = permanent, set = a temporary grant. S8.1: dst_kind
 	// ∈ {resource,group,site}; S10.3: +k8s_service (exactly one of dst_resource_id/dst_group_id/dst_site_id/
@@ -554,6 +560,9 @@ type Querier interface {
 	// lint:cross-org — SSO callback resolves the config by (provider, client_id)
 	// before an org context exists; org_id is a column on the returned row.
 	GetEnabledSSOConfigByProvider(ctx context.Context, arg GetEnabledSSOConfigByProviderParams) (SsoConfig, error)
+	// ── policy_rules (allow grants) ─────────────────────────────────────────────────
+	// A policy destination may only name a resource owned by this organization.
+	GetFQDNResourceForPolicy(ctx context.Context, arg GetFQDNResourceForPolicyParams) (uuid.UUID, error)
 	// S7.5.2 IdP-group sync. Enterprise. All tenant-scoped by org_id.
 	// The reconciler reads the desired membership from a DirectoryProvider (Graph/etc.) and drives
 	// these to converge group_members(origin='idp_sync') — NEVER touching manual rows (disjoint by D1).
@@ -666,8 +675,17 @@ type Querier interface {
 	// access to existing users; it does not JIT-provision — that's S2.5). Case-insensitive: the
 	// provider already lower-cases; users.email is stored lower-cased.
 	GetOrgUserByEmail(ctx context.Context, arg GetOrgUserByEmailParams) (GetOrgUserByEmailRow, error)
+	// This opt-in existed in 0097. Keep its read projection finite so historical
+	// migration checks do not accidentally depend on organization fields added by
+	// later stories.
+	GetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, id uuid.UUID) (bool, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
+	// Policy snapshot construction is used by F09 membership removal. Keep its
+	// organization read compatible with schema 0109 while still exposing the
+	// current FQDN opt-in when the additive column exists. JSONB extraction is
+	// deliberately fail-closed: an absent or null later column means disabled.
+	GetOrganizationPolicySnapshotSettings(ctx context.Context, id uuid.UUID) (GetOrganizationPolicySnapshotSettingsRow, error)
 	GetPlatformSecret(ctx context.Context, name string) (PlatformSecret, error)
 	// Resolve one rule (org-scoped) — S7.5.1 ingest enriches an allow event's kernel-stamped
 	// rule_id into the grant's destination (resource/group) it named, captured AT EVENT TIME so
@@ -802,7 +820,11 @@ type Querier interface {
 	// COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:
 	// an expired rule stops compiling on the next recompile REGARDLESS of the sweeper). The
 	// pure compiler stays clockless; this query applies now() at snapshot-build time.
-	ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UUID) ([]PolicyRule, error)
+	// Keep the compiler's ordinary policy projection readable on schema 0109 as
+	// well. The additive FQDN destination is extracted only when present; the
+	// FQDN-aware compiler later fail-closes unless its full current contract is
+	// available and enabled.
+	ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActivePolicyRulesForOrgRow, error)
 	// fetches the peers for its own node). TWO invariants own this query (both load-bearing):
 	//   IDENTITY-BINDING (main hotfix): a peer is present only while its owning user has an
 	//   ACTIVE, CURRENT-MEMBER identity — the users + memberships joins + NOT health_blocked
@@ -1095,7 +1117,12 @@ type Querier interface {
 	// lint:cross-org — org-scoped via the join. The admin review queue (advertised, awaiting approval).
 	ListPendingSiteSubnetsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListPendingSiteSubnetsForOrgRow, error)
 	// Admin LIST — every rule incl. expired ones (the UI shows a lapsed grant distinctly).
-	ListPolicyRulesByOrg(ctx context.Context, orgID uuid.UUID) ([]PolicyRule, error)
+	// 0113 added dst_fqdn_resource_id.  This LIST is also used by the historical
+	// 0109 agent-template route contract, so referencing the physical column
+	// directly would make an otherwise valid legacy policy inventory fail.  JSONB
+	// row extraction returns NULL when the additive key is absent, while retaining
+	// the current FQDN destination when it exists.
+	ListPolicyRulesByOrg(ctx context.Context, orgID uuid.UUID) ([]ListPolicyRulesByOrgRow, error)
 	// F05.2 warm stage: the candidate has deliberately empty AllowedIPs. The
 	// canonical devices.public_key peer above remains the sole owner of the
 	// agent's /32 until a real nonzero candidate handshake commits the cutover.
@@ -1463,7 +1490,7 @@ type Querier interface {
 	SetOrganizationAgentJITAccessEnabled(ctx context.Context, arg SetOrganizationAgentJITAccessEnabledParams) (Organization, error)
 	// F09 unlock-then-opt-in. Disabling is guarded by the agent-template service,
 	// which refuses while a live assignment exists.
-	SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (Organization, error)
+	SetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, arg SetOrganizationAgentPolicyTemplatesEnabledParams) (bool, error)
 	// F04 unlock-then-opt-in: the paid licence only unlocks this setting. The
 	// organization must explicitly enable runtime synchronization, and disabling
 	// it immediately withdraws the poll/report/status surface.

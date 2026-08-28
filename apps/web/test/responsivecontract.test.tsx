@@ -114,6 +114,7 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     renderShell("triage");
     expect(screen.getByRole("button", { name: /menu/i })).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
+    expect(document.getElementById("main-nav")?.classList.contains("hidden")).toBe(true);
   });
 
   it("[triage] opening the drawer moves focus inside and Escape returns it to Menu", async () => {
@@ -123,6 +124,8 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     fireEvent.click(menu);
 
     const nav = await screen.findByRole("navigation", { name: "Main" });
+    expect(nav.classList.contains("hidden")).toBe(false);
+    expect(nav.classList.contains("flex")).toBe(true);
     const firstDestination = within(nav).getAllByRole("link")[0];
     expect(document.activeElement).toBe(firstDestination);
 

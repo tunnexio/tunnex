@@ -57,3 +57,30 @@ func TestAgentJITAccessMigrationContract(t *testing.T) {
 		}
 	}
 }
+
+func TestAgentJITApprovalQueryStaysPre0113Compatible(t *testing.T) {
+	queryBytes, err := os.ReadFile("queries/policy.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := string(queryBytes)
+	start := strings.Index(query, "-- name: CreateAgentJITPolicyRule :one")
+	if start < 0 {
+		t.Fatal("missing dedicated JIT policy-rule query")
+	}
+	end := strings.Index(query[start:], ";\n")
+	if end < 0 {
+		t.Fatal("unterminated dedicated JIT policy-rule query")
+	}
+	statement := query[start : start+end]
+	for _, want := range []string{"src_kind, src_device_id", "dst_k8s_service_id", "expires_at", "RETURNING id"} {
+		if !strings.Contains(statement, want) {
+			t.Fatalf("JIT compatibility query missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{"dst_fqdn_resource_id", "managed_by_machine", "RETURNING *"} {
+		if strings.Contains(statement, forbidden) {
+			t.Fatalf("JIT compatibility query must not require post-0113 projection %q", forbidden)
+		}
+	}
+}

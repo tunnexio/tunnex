@@ -66,6 +66,7 @@ var ENFORCEMENT = map[string]enforcement{
 			"never gated: a licence may stop granting access, it must never stop removing it",
 	},
 	"agent_jit_access": {symbol: "FeatAgentJITAccess", why: "agent JIT handlers refuse until the Scale entitlement is present"},
+	"fqdn_resources":   {symbol: "FeatFQDNResources", why: "SetFQDNResourceEnabled refuses enabling FQDN enforcement without the named entitlement"},
 }
 
 // enforcementSites finds every non-test line in the API that mentions a symbol, EXCLUDING the licence

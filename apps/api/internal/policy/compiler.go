@@ -12,8 +12,12 @@
 package policy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/netip"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -79,7 +83,7 @@ type Rule struct {
 	SrcCIDR         string    // S8.7: src_kind='cidr' — a LITERAL source CIDR, placed on its containing site's gateway
 	SrcDeviceID     uuid.UUID // S15.3: src_kind='agent' — the agent DEVICE whose /32 is the source
 	SrcAgentGroupID uuid.UUID // F09: src_kind='agent_group' — current active managed-agent members
-	DstKind         string
+	DstKind         string    // resource | fqdn_resource | group | site | k8s_service
 	DstResourceID   uuid.UUID
 	DstGroupID      uuid.UUID
 	DstSiteID       uuid.UUID // S8.1: dst_kind='site' — resolved to the site's subnet CIDRs
@@ -106,13 +110,44 @@ type SiteNode struct {
 	Endpoint string // public WG endpoint; a non-empty endpoint makes this gateway hub-eligible (B1/Item 7)
 }
 
-// Resource is a static destination (a CIDR + optional L4 scope).
+// Resource is a legacy static CIDR destination (with optional L4 scope).
+// It MUST NOT carry FQDN data: FQDN resources have a separate identity and
+// rule-reference relation so a hostname can never be mistaken for a CIDR.
 type Resource struct {
 	ID       uuid.UUID
 	CIDR     string
 	Protocol string // any | tcp | udp
 	PortLow  int    // 0 => unset
 	PortHigh int    // 0 => unset
+}
+
+// FQDNResource is the distinct S21 destination identity. Active is populated
+// only from Lane 2's immutable selected Site+Gateway generation; no resolver
+// state, last-good answer, or legacy Resource is accepted here.
+type FQDNResource struct {
+	ID       uuid.UUID
+	FQDN     string
+	Protocol string
+	PortLow  int
+	PortHigh int
+	Active   *FQDNGeneration
+}
+
+type FQDNGeneration struct {
+	ResourceID            uuid.UUID
+	SelectedSiteID        uuid.UUID
+	SelectedGatewayID     uuid.UUID
+	ResolverConfigID      uuid.UUID
+	ResolverConfigVersion int64
+	Answers               []string
+}
+
+// FQDNRuleReference is the owned compiler seam for Lane 1's separate
+// fqdn_resource_rule_references relation. Exactly one matching reference is
+// required for a fqdn_resource rule; missing or ambiguous rows withdraw it.
+type FQDNRuleReference struct {
+	PolicyRuleID   uuid.UUID
+	FQDNResourceID uuid.UUID
 }
 
 // ExposedService (S10.3) is a Kubernetes Service exposed to the fabric: a STABLE identity resolved to its
@@ -175,9 +210,16 @@ func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
 
 // Snapshot is the full org policy state the compiler consumes.
 type Snapshot struct {
-	Mode                  string
-	Rules                 []Rule
-	Resources             []Resource
+	Mode               string
+	Rules              []Rule
+	Resources          []Resource
+	FQDNResources      []FQDNResource
+	FQDNRuleReferences []FQDNRuleReference
+	// FQDNResourcesLicensed is the entitlement decision captured with this
+	// snapshot. FQDN data is never compiled unless this and the org's explicit
+	// opt-in are both true; absent data therefore fails closed.
+	FQDNResourcesLicensed bool
+	FQDNResourcesEnabled  bool
 	ExposedServices       []ExposedService // S10.3: dst_kind='k8s_service' resolution (id → current VIP)
 	Memberships           []Membership
 	AgentGroupMemberships []AgentGroupMembership
@@ -291,6 +333,29 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	for _, r := range s.Resources {
 		resourceByID[r.ID] = r
 	}
+	fqdnEnabled := s.FQDNResourcesLicensed && s.FQDNResourcesEnabled
+	fqdnResourceByID := make(map[uuid.UUID]FQDNResource, len(s.FQDNResources))
+	for _, r := range s.FQDNResources {
+		// Duplicate resource identities are ambiguous input, never last-write-wins.
+		if _, exists := fqdnResourceByID[r.ID]; exists {
+			fqdnResourceByID[r.ID] = FQDNResource{}
+			continue
+		}
+		fqdnResourceByID[r.ID] = r
+	}
+	fqdnReferenceForRule := map[uuid.UUID]uuid.UUID{}
+	fqdnAmbiguousRule := map[uuid.UUID]bool{}
+	for _, ref := range s.FQDNRuleReferences {
+		if ref.PolicyRuleID == uuid.Nil || ref.FQDNResourceID == uuid.Nil {
+			fqdnAmbiguousRule[ref.PolicyRuleID] = true
+			continue
+		}
+		if _, exists := fqdnReferenceForRule[ref.PolicyRuleID]; exists {
+			fqdnAmbiguousRule[ref.PolicyRuleID] = true
+			continue
+		}
+		fqdnReferenceForRule[ref.PolicyRuleID] = ref.FQDNResourceID
+	}
 	// S10.3: exposed Services keyed by their STABLE id — a grant resolves to the CURRENT VIP here, never a
 	// snapshotted address, so a re-allocated VIP follows the identity and a vanished Service resolves to nothing.
 	serviceByID := make(map[uuid.UUID]ExposedService, len(s.ExposedServices))
@@ -359,12 +424,13 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		PortLow, PortHigh int
 	}
 	type nodeAcc struct {
-		set  map[allowKey]bool
-		list []policyspec.AllowEntry
+		set         map[allowKey]int
+		list        []policyspec.AllowEntry
+		generations map[string]policyspec.FQDNGeneration
 	}
 	acc := map[uuid.UUID]*nodeAcc{}
 	for nodeID := range nodeSet {
-		acc[nodeID] = &nodeAcc{set: map[allowKey]bool{}}
+		acc[nodeID] = &nodeAcc{set: map[allowKey]int{}, generations: map[string]policyspec.FQDNGeneration{}}
 	}
 	add := func(nodeID uuid.UUID, e policyspec.AllowEntry) {
 		// Every caller's target is in nodeSet by construction (devices + SiteNodes + the seeded hub) —
@@ -372,11 +438,21 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		// error the acc lookup surfaces immediately, never a silent artifact for an unvetted node.
 		a := acc[nodeID]
 		k := allowKey{e.SrcIP, e.DstCIDR, e.Protocol, e.PortLow, e.PortHigh}
-		if a.set[k] {
-			return // first rule to grant this tuple keeps the rule_id stamp
+		if index, exists := a.set[k]; exists {
+			// Preserve the first rule's observability metadata, but retain FQDN
+			// provenance when any current grant for this tuple came from an active
+			// FQDN generation. Otherwise a v9 gateway could treat it as an
+			// ordinary CIDR tuple during retirement recovery.
+			if e.FQDNManaged {
+				a.list[index].FQDNManaged = true
+			}
+			return
 		}
-		a.set[k] = true
+		a.set[k] = len(a.list)
 		a.list = append(a.list, e)
+	}
+	addGeneration := func(nodeID uuid.UUID, g policyspec.FQDNGeneration) {
+		acc[nodeID].generations[g.ResourceID] = g
 	}
 
 	// A3b (S8.6) far-grant placement: site subnets parsed ONCE so a device→dst grant whose destination
@@ -480,6 +556,19 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 						RuleID:      r.ID.String(),
 						SrcDeviceID: d.ID.String(),
 					})
+				}
+			case "fqdn_resource":
+				resourceID, referenced := fqdnReferenceForRule[r.ID]
+				res, found := fqdnResourceByID[resourceID]
+				generation, answers, active := activeFQDNGeneration(res)
+				if !fqdnEnabled || !referenced || fqdnAmbiguousRule[r.ID] || !found || !active {
+					continue // missing, ambiguous, inactive, or withdrawn: default deny
+				}
+				for _, node := range devGrantNodes(d.NodeID, uuid.Nil) {
+					addGeneration(node, generation)
+					for _, answer := range answers {
+						add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String(), FQDNManaged: true})
+					}
 				}
 			case "group":
 				for _, dstIP := range groupDeviceIPs[r.DstGroupID] {
@@ -622,8 +711,22 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		var dsts []policyspec.AllowEntry
 		switch r.DstKind {
 		case "resource":
-			if res, ok := resourceByID[r.DstResourceID]; ok && res.CIDR != "" {
-				dsts = append(dsts, policyspec.AllowEntry{DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+			if res, ok := resourceByID[r.DstResourceID]; ok {
+				if res.CIDR != "" {
+					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+				}
+			}
+		case "fqdn_resource":
+			resourceID, referenced := fqdnReferenceForRule[r.ID]
+			res, found := fqdnResourceByID[resourceID]
+			generation, answers, active := activeFQDNGeneration(res)
+			if fqdnEnabled && referenced && !fqdnAmbiguousRule[r.ID] && found && active {
+				for _, answer := range answers {
+					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, FQDNManaged: true})
+				}
+				for node := range enforceNodes {
+					addGeneration(node, generation)
+				}
 			}
 		case "group":
 			for _, dstIP := range groupDeviceIPs[r.DstGroupID] {
@@ -647,12 +750,13 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			for _, sc := range srcCIDRs {
 				for _, d := range dsts {
 					add(node, policyspec.AllowEntry{
-						SrcIP:    sc, // a CIDR — the site LAN source (the v5 content trigger, RequiredVersion)
-						DstCIDR:  d.DstCIDR,
-						Protocol: d.Protocol,
-						PortLow:  d.PortLow,
-						PortHigh: d.PortHigh,
-						RuleID:   r.ID.String(),
+						SrcIP:       sc, // a CIDR — the site LAN source (the v5 content trigger, RequiredVersion)
+						DstCIDR:     d.DstCIDR,
+						Protocol:    d.Protocol,
+						PortLow:     d.PortLow,
+						PortHigh:    d.PortHigh,
+						RuleID:      r.ID.String(),
+						FQDNManaged: d.FQDNManaged,
 					})
 				}
 			}
@@ -662,11 +766,146 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	for nodeID := range nodeSet {
 		list := acc[nodeID].list
 		sortAllows(list)
-		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list, Subjects: subjects}
+		generations := make([]policyspec.FQDNGeneration, 0, len(acc[nodeID].generations))
+		for _, generation := range acc[nodeID].generations {
+			generations = append(generations, generation)
+		}
+		sort.Slice(generations, func(i, j int) bool { return generations[i].ResourceID < generations[j].ResourceID })
+		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list, Subjects: subjects, FQDNGenerations: generations}
 		c.Version = policyspec.RequiredVersion(c) // content-derived (S8.2 D1b): v5 iff a CIDR source present
 		out[nodeID] = c
 	}
 	return out
+}
+
+// activeFQDNGeneration is a deliberately defensive compiler boundary. Resolver
+// lifecycle code supplies only selected-context, last-known-good generations; a
+// partial DB read or bad fixture must still withdraw rather than accidentally
+// turn a hostname into a broad CIDR allow.
+func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, bool) {
+	if r.ID == uuid.Nil || r.FQDN == "" || r.Active == nil || r.Active.ResourceID != r.ID || r.Active.SelectedSiteID == uuid.Nil || r.Active.SelectedGatewayID == uuid.Nil || r.Active.ResolverConfigID == uuid.Nil || r.Active.ResolverConfigVersion < 1 || len(r.Active.Answers) == 0 || len(r.Active.Answers) > 32 || !validFQDNL4Scope(r) {
+		return policyspec.FQDNGeneration{}, nil, false
+	}
+	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r.FQDN), "."))
+	if name == "" || r.FQDN != name {
+		return policyspec.FQDNGeneration{}, nil, false // Lane 1 publishes normalized names only.
+	}
+	seen := map[string]bool{}
+	answers := make([]string, 0, len(r.Active.Answers))
+	for _, raw := range r.Active.Answers {
+		addr, err := netip.ParseAddr(raw)
+		if err != nil || !usableFQDNAnswer(addr) {
+			return policyspec.FQDNGeneration{}, nil, false
+		}
+		prefix := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if !seen[prefix] {
+			seen[prefix] = true
+			answers = append(answers, prefix)
+		}
+	}
+	sort.Strings(answers)
+	identity := FQDNGenerationIdentityWithResolverConfig(r.ID, name, r.Active.SelectedSiteID, r.Active.SelectedGatewayID, r.Active.ResolverConfigID, r.Active.ResolverConfigVersion, answers)
+	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, ResolverConfigID: r.Active.ResolverConfigID.String(), ResolverConfigVersion: r.Active.ResolverConfigVersion, Answers: answers}, answers, true
+}
+
+// FQDNGenerationIdentity binds an immutable generation to its FQDN resource,
+// selected resolver authority and canonical answers. It intentionally does not
+// use a sequence number or timestamp: replaying the same selected generation
+// yields the same identity on every compiler.
+func FQDNGenerationIdentity(resourceID uuid.UUID, fqdn string, siteID, gatewayID uuid.UUID, answers []string) string {
+	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), "."))
+	if resourceID == uuid.Nil || siteID == uuid.Nil || gatewayID == uuid.Nil || name == "" || fqdn != name || len(answers) == 0 || len(answers) > 32 {
+		return ""
+	}
+	canonical := make([]string, 0, len(answers))
+	seen := make(map[string]bool, len(answers))
+	for _, raw := range answers {
+		addr, err := netip.ParseAddr(raw)
+		if err != nil || !usableFQDNAnswer(addr) {
+			return ""
+		}
+		prefix := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if !seen[prefix] {
+			seen[prefix] = true
+			canonical = append(canonical, prefix)
+		}
+	}
+	sort.Strings(canonical)
+	return fqdnGenerationIdentity(resourceID, name, siteID, gatewayID, canonical)
+}
+
+func fqdnGenerationIdentity(resourceID uuid.UUID, fqdn string, siteID, gatewayID uuid.UUID, answers []string) string {
+	parts := append([]string{resourceID.String(), strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), ".")), siteID.String(), gatewayID.String()}, answers...)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+// fqdnGenerationIdentityWithResolverConfig additionally binds the policy
+// artifact to the immutable direct-DNS configuration used to obtain the
+// active answer generation. This means a configuration revision change cannot
+// be treated as an identical FQDN policy even if its current answers happen to
+// match; old generations are rejected by the snapshot reader until re-resolved.
+func FQDNGenerationIdentityWithResolverConfig(resourceID uuid.UUID, fqdn string, siteID, gatewayID, configID uuid.UUID, configVersion int64, answers []string) string {
+	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), "."))
+	if resourceID == uuid.Nil || siteID == uuid.Nil || gatewayID == uuid.Nil || configID == uuid.Nil || configVersion < 1 || name == "" || fqdn != name || len(answers) == 0 || len(answers) > 32 {
+		return ""
+	}
+	canonical := make([]string, 0, len(answers))
+	seen := make(map[string]bool, len(answers))
+	for _, raw := range answers {
+		addr, err := netip.ParseAddr(strings.TrimSuffix(raw, "/32"))
+		if err != nil {
+			prefix, prefixErr := netip.ParsePrefix(raw)
+			if prefixErr != nil || prefix.Bits() != prefix.Addr().BitLen() {
+				return ""
+			}
+			addr = prefix.Addr()
+		}
+		if !usableFQDNAnswer(addr) {
+			return ""
+		}
+		prefix := netip.PrefixFrom(addr, addr.BitLen()).String()
+		if !seen[prefix] {
+			seen[prefix] = true
+			canonical = append(canonical, prefix)
+		}
+	}
+	sort.Strings(canonical)
+	parts := append([]string{resourceID.String(), name, siteID.String(), gatewayID.String(), configID.String(), strconv.FormatInt(configVersion, 10)}, canonical...)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+// validFQDNL4Scope makes the compiler's FQDN branch default deny if a
+// cross-lane read bypasses the resource validator. In particular, a malformed
+// protocol must never fall through normProto's legacy CIDR compatibility default
+// and become an unscoped "any" grant.
+func validFQDNL4Scope(r FQDNResource) bool {
+	if r.Protocol == "any" {
+		return r.PortLow == 0 && r.PortHigh == 0
+	}
+	if r.Protocol != "tcp" && r.Protocol != "udp" {
+		return false
+	}
+	if r.PortLow == 0 && r.PortHigh == 0 {
+		return true
+	}
+	return r.PortLow >= 1 && r.PortLow <= r.PortHigh && r.PortHigh <= 65535
+}
+
+func usableFQDNAnswer(addr netip.Addr) bool {
+	if !addr.IsValid() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsMulticast() || addr.IsUnspecified() {
+		return false
+	}
+	// Documentation ranges must never become a real authorization from test or
+	// resolver data. Metadata endpoints are rejected by the resolver lane too;
+	// retaining this guard here makes compiler failure closed.
+	for _, raw := range []string{"192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32", "169.254.169.254/32", "fd00:ec2::254/128"} {
+		if p, err := netip.ParsePrefix(raw); err == nil && p.Contains(addr) {
+			return false
+		}
+	}
+	return true
 }
 
 // AgentRouteCIDRs returns canonical destination prefixes present in compiled
@@ -724,6 +963,9 @@ func sortAllows(a []policyspec.AllowEntry) {
 		if a[i].PortLow != a[j].PortLow {
 			return a[i].PortLow < a[j].PortLow
 		}
-		return a[i].PortHigh < a[j].PortHigh
+		if a[i].PortHigh != a[j].PortHigh {
+			return a[i].PortHigh < a[j].PortHigh
+		}
+		return !a[i].FQDNManaged && a[j].FQDNManaged
 	})
 }

@@ -294,7 +294,7 @@ export function Modal({
   // THE TREE it happens to be rendered.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={headingId}
@@ -303,18 +303,18 @@ export function Modal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`w-full ${size === "wide" ? "max-w-2xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4]`}
+        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "wide" ? "max-w-2xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
         <h2
           id={headingId}
-          className={`text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}
+          className={`shrink-0 text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}
         >
           {title}
         </h2>
-        <div className="mt-3 text-cell text-ink-body">{children}</div>
-        <div className="mt-5 flex justify-end gap-2">{actions}</div>
+        <div className="mt-3 min-h-0 overflow-y-auto text-cell text-ink-body">{children}</div>
+        <div className="mt-5 shrink-0 flex justify-end gap-2">{actions}</div>
       </div>
     </div>,
     document.body,

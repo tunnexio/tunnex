@@ -14,6 +14,7 @@ import {
   type Role,
   type UserGroup,
   type Resource,
+  type FQDNResource,
   type Site,
   type K8sService,
   type PolicyRule,
@@ -48,7 +49,7 @@ import {
   modeEnableConfirm,
   policyGate,
   roleFromMembers,
-  ruleRow,
+  ruleRow as resolveRuleRow,
   disableConfirmText,
   sectionRender,
   staleNoticeText,
@@ -80,6 +81,7 @@ import {
   ruleEffectSummary,
   ruleEffectCaution,
   ruleSourceReady,
+  fqdnDestinationPresentation,
 } from "../lib/policyview";
 import { ManagedBadge } from "../components/ManagedBadge";
 import { AccessTabRail } from "../components/AccessTabRail";
@@ -87,6 +89,15 @@ import { AccessTabRail } from "../components/AccessTabRail";
 // Every GET here goes through loadOne — a raw api.GET whose emptiness is user-meaningful is
 // review-refused (S7.4a review): a fetch failure must render a legible retry, never a
 // reassuring empty state. (LoadRetry — the shared legible-retry affordance — lives in components/LoadRetry.)
+
+function fqdnDestinationBadgeClass(tone: "positive" | "attention" | "danger" | "muted") {
+  switch (tone) {
+    case "positive": return "border-emerald-800/50 bg-emerald-950/40 text-emerald-400";
+    case "attention": return "border-warn/40 bg-warn/10 text-warn";
+    case "danger": return "border-rose-800/50 bg-rose-950/40 text-rose-400";
+    case "muted": return "border-border bg-white/5 text-ink-tertiary";
+  }
+}
 
 export default function Access() {
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
@@ -247,6 +258,7 @@ export default function Access() {
             orgId={org.id}
             canManage={gate.canManagePolicy}
             canManageAgentTemplates={gate.canManageAgentTemplates}
+            canViewFQDNResources={can(myRole, "fqdn_resource:view")}
             subjectsRev={subjectsRev}
           />
         </div>
@@ -878,16 +890,19 @@ function RulesSection({
   orgId,
   canManage,
   canManageAgentTemplates,
+  canViewFQDNResources,
   subjectsRev,
 }: {
   orgId: string;
   canManage: boolean;
   canManageAgentTemplates: boolean;
+  canViewFQDNResources: boolean;
   subjectsRev: number;
 }) {
   const [rules, setRules] = useState<PolicyRule[]>([]);
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
+  const [fqdnResources, setFQDNResources] = useState<FQDNResource[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [sites, setSites] = useState<Site[]>([]); // S8.2c D5: site rule subjects
   const [services, setServices] = useState<K8sService[]>([]); // S10.3: k8s_service dst subjects
@@ -936,6 +951,17 @@ function RulesSection({
   const [srcGroupCounts, setSrcGroupCounts] = useState<
     Map<string, number | null>
   >(new Map());
+  // Keep every existing rule-list consumer on the same FQDN-aware resolver. A failed
+  // FQDN inventory read stays visibly unavailable rather than becoming a deleted target.
+  const ruleRow = useCallback((
+    rule: PolicyRule,
+    ruleGroups: UserGroup[],
+    ruleResources: Resource[],
+    ruleMembers: Member[],
+    ruleSites: Site[],
+    ruleLoaded: LoadState,
+    ruleServices: K8sService[] = [],
+  ) => resolveRuleRow(rule, ruleGroups, ruleResources, ruleMembers, ruleSites, ruleLoaded, ruleServices, fqdnResources), [fqdnResources]);
 
   const load = useCallback(async () => {
     setErr(null); // [310]: never carry a stale partial-load/mutation error into a fresh load
@@ -945,7 +971,7 @@ function RulesSection({
       agentsLoaded: false,
       agents: [],
     }));
-    const [rr, gr, resr, mr, mo, sr, ksr, ar, agr] = await Promise.all([
+    const [rr, gr, resr, fr, mr, mo, sr, ksr, ar, agr] = await Promise.all([
       loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/policies", {
           params: { path: { orgId } },
@@ -961,6 +987,13 @@ function RulesSection({
           params: { path: { orgId } },
         }),
       ),
+      canViewFQDNResources
+        ? loadOne(() =>
+            api.GET("/api/v1/organizations/{orgId}/fqdn-resources", {
+              params: { path: { orgId } },
+            }),
+          )
+        : Promise.resolve({ ok: false as const, error: "FQDN resources are unavailable because your role lacks fqdn_resource:view." }),
       loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/members", {
           params: { path: { orgId } },
@@ -1030,6 +1063,7 @@ function RulesSection({
     ).then((pairs) => setSrcGroupCounts(new Map(pairs)));
     setGroups((gr.ok ? (gr.data as UserGroup[]) : []) as UserGroup[]);
     setResources((resr.ok ? (resr.data as Resource[]) : []) as Resource[]);
+    setFQDNResources(fr.ok ? (fr.data as FQDNResource[]) : []);
     setMembers((mr.ok ? (mr.data as Member[]) : []) as Member[]);
     setSites((sr.ok ? (sr.data as Site[]) : []) as Site[]); // D5
     setServices((ksr.ok ? (ksr.data as K8sService[]) : []) as K8sService[]); // S10.3: k8s_service dst subjects
@@ -1047,6 +1081,7 @@ function RulesSection({
     setLoaded({
       groupsLoaded: gr.ok,
       resourcesLoaded: resr.ok,
+      fqdnResourcesLoaded: fr.ok,
       membersLoaded: mr.ok,
       sitesLoaded: sr.ok,
       k8sServicesLoaded: ksr.ok,
@@ -1056,14 +1091,14 @@ function RulesSection({
       agentGroups: agr.ok ? (agr.data as AgentGroup[]) : [],
     }); // sitesLoaded → WF-8; k8sServicesLoaded → S10.3
     setErr(
-      gr.ok && resr.ok && mr.ok && sr.ok && ksr.ok && ar.ok && agr.ok
+      gr.ok && resr.ok && fr.ok && mr.ok && sr.ok && ksr.ok && ar.ok && agr.ok
         ? null
-        : "Some groups/resources/members/sites/services/agents failed to load. names may show as unresolved. Refresh.",
+        : "Some groups/resources/FQDN resources/members/sites/services/agents failed to load. names may show as unavailable. Refresh.",
     ); // ksr.ok: a services-load failure must raise the banner too
     // The ONLY clear path (amendment A: gated on this successful load): drop stale ids no
     // longer present, keep the rest (B).
     setStaleRuleIds((prev) => pruneStaleRuleIds(prev, true, freshRules));
-  }, [canManageAgentTemplates, orgId]);
+  }, [canManageAgentTemplates, canViewFQDNResources, orgId]);
   useEffect(() => {
     load();
   }, [load, subjectsRev]); // S8.5: re-load when a sibling section mutates groups/resources (stale-button fix)
@@ -1765,9 +1800,13 @@ function RulesSection({
                             ),
                           )
                         : null;
+                    const fqdn = fqdnDestinationPresentation(
+                      row.fqdnDestinationStatus,
+                    );
                     return [
                       row.cidrOutsideRanges ? "outside ranges" : "",
                       row.k8sServiceVanished ? "vanished" : "",
+                      fqdn?.searchText ?? "",
                       empty ?? "",
                     ]
                       .filter(Boolean)
@@ -1791,6 +1830,9 @@ function RulesSection({
                             ),
                           )
                         : null;
+                    const fqdn = fqdnDestinationPresentation(
+                      row.fqdnDestinationStatus,
+                    );
                     return (
                       <span className="flex flex-wrap items-center gap-1">
                         {/* S8.7 warn-not-refuse (D1): the SERVER's read-time judgment, rendered verbatim —
@@ -1811,6 +1853,14 @@ function RulesSection({
                             title="The Kubernetes Service this rule reaches is no longer exposed. the grant matches nothing until it is re-exposed."
                           >
                             VANISHED
+                          </span>
+                        )}
+                        {fqdn && (
+                          <span
+                            className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${fqdnDestinationBadgeClass(fqdn.tone)}`}
+                            title={fqdn.title}
+                          >
+                            {fqdn.label}
                           </span>
                         )}
                         {/* ⛔ src_group_empty (S14.12) — measured at compiler.go:399: a group with zero
@@ -1847,6 +1897,7 @@ function RulesSection({
           orgId={orgId}
           groups={groups}
           resources={resources}
+          fqdnResources={fqdnResources}
           members={activeMembers(members)}
           sites={sites}
           services={services}
@@ -2094,6 +2145,7 @@ function RuleFormModal({
   orgId,
   groups,
   resources,
+  fqdnResources,
   members,
   sites,
   services,
@@ -2105,6 +2157,7 @@ function RuleFormModal({
   orgId: string;
   groups: UserGroup[];
   resources: Resource[];
+  fqdnResources: FQDNResource[];
   members: Member[];
   sites: Site[];
   services: K8sService[];
@@ -2157,10 +2210,12 @@ function RuleFormModal({
   // Default to the first dst kind that HAS options (re-review #4: the src-side fix left the dst side able to
   // dead-end — a no-groups org with resources/sites opened on "group" with an empty select, un-submittable).
   const [dstKind, setDstKind] = useState<
-    "group" | "resource" | "site" | "k8s_service"
+    "group" | "resource" | "site" | "k8s_service" | "fqdn_resource"
   >(
     editing?.dst_kind === "k8s_service"
       ? "k8s_service"
+      : editing?.dst_kind === "fqdn_resource"
+        ? "fqdn_resource"
       : defaultDstKind({
           editingKind:
             editing?.dst_kind === "resource"
@@ -2171,6 +2226,7 @@ function RuleFormModal({
           hasGroups,
           hasResources: resources.length > 0,
           hasSites: sites.length > 0,
+          hasFQDNResources: fqdnResources.length > 0,
         }),
   );
   const [dstGroup, setDstGroup] = useState(
@@ -2185,6 +2241,9 @@ function RuleFormModal({
   const [dstK8sService, setDstK8sService] = useState(
     editing?.dst_k8s_service_id ?? services[0]?.id ?? "",
   ); // S10.3
+  const [dstFQDNResource, setDstFQDNResource] = useState(
+    editing?.dst_fqdn_resource_id ?? fqdnResources[0]?.id ?? "",
+  );
   // Temporary grant: an optional expiry (datetime-local). Empty = permanent.
   // Expiry is a CREATE-only field ([2]/[3] fix): editing a rule is create-then-delete, and a
   // same-(src,dst) edit carrying an expiry collides on the unique index (or resubmits a past
@@ -2206,6 +2265,7 @@ function RuleFormModal({
       dstResource,
       dstSite,
       dstK8sService,
+      dstFQDNResource,
       expiresAt,
       editing: !!editing,
     });
@@ -2281,7 +2341,9 @@ function RuleFormModal({
                   ? !dstResource
                   : dstKind === "k8s_service"
                     ? !dstK8sService
-                    : !dstSite)
+                    : dstKind === "fqdn_resource"
+                      ? !dstFQDNResource
+                      : !dstSite)
             }
             onClick={submit}
           >
@@ -2333,9 +2395,14 @@ function RuleFormModal({
             else setSrcCidr(o.value);
           }}
         />
+        {dstKind === "fqdn_resource" && (
+          <p role="status" className="rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-xs text-warn">
+            FQDN destination — the server determines whether this rule has an active selected-resolver generation after it is saved. Capability, organization opt-in, rule lifecycle, and Zero Trust enforcement still apply; this form cannot confirm traffic is permitted.
+          </p>
+        )}
         <EntityPicker
           label="Destination"
-          placeholder="Search groups, resources, sites, services…"
+          placeholder="Search groups, resources, FQDN resources, sites, services…"
           value={
             dstKind === "group"
               ? dstGroup
@@ -2343,13 +2410,16 @@ function RuleFormModal({
                 ? dstResource
                 : dstKind === "site"
                   ? dstSite
-                  : dstK8sService
+                  : dstKind === "k8s_service"
+                    ? dstK8sService
+                    : dstFQDNResource
           }
           options={destinationOptions({
             groups,
             resources,
             sites,
             services,
+            fqdnResources,
             srcKind,
             srcSite,
           })}
@@ -2358,7 +2428,8 @@ function RuleFormModal({
             if (o.kind === "group") setDstGroup(o.value);
             else if (o.kind === "resource") setDstResource(o.value);
             else if (o.kind === "site") setDstSite(o.value);
-            else setDstK8sService(o.value);
+            else if (o.kind === "k8s_service") setDstK8sService(o.value);
+            else setDstFQDNResource(o.value);
           }}
         />
         {/* ⛔ WHAT THE RULE WILL DO, IN WORDS, BEFORE Create. Two pickers and a button let an operator
@@ -2398,6 +2469,7 @@ function RuleFormModal({
               resources,
               sites,
               services,
+              fqdnResources,
               srcKind,
               srcSite,
             }).find(
@@ -2410,7 +2482,9 @@ function RuleFormModal({
                       ? dstResource
                       : dstKind === "site"
                         ? dstSite
-                        : dstK8sService),
+                        : dstKind === "k8s_service"
+                          ? dstK8sService
+                          : dstFQDNResource),
             )?.label ?? "";
           if (!srcLabel || !dstLabel) return null;
           const eff = ruleEffectSummary({

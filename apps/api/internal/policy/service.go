@@ -21,6 +21,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -32,6 +33,12 @@ type Service struct {
 	pool   *pgxpool.Pool
 	q      *sqlc.Queries
 	notify Notifier // nil => no push (provider-only service / tests)
+	// fqdnGenerations is deliberately a read-only Lane 2 seam. It returns
+	// immutable active snapshots from the server-selected resolver context; this
+	// service remains responsible for deciding whether the named entitlement and
+	// organization opt-in make those snapshots enforceable.
+	fqdnGenerations fqdnresolver.ActiveGenerationReader
+	fqdnEntitled    func() bool
 }
 
 // SetNotifier wires the push hub (S7.2). Call on the CRUD service; the desired-
@@ -40,6 +47,15 @@ func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
 func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool, q: sqlc.New(pool)}
+}
+
+// WithFQDNGenerations wires the persisted Lane 2 snapshot reader into this
+// policy provider. A nil reader or entitlement function is fail closed: FQDN
+// rules remain stored but compile to no authorization.
+func (s *Service) WithFQDNGenerations(reader fqdnresolver.ActiveGenerationReader, entitled func() bool) *Service {
+	s.fqdnGenerations = reader
+	s.fqdnEntitled = entitled
+	return s
 }
 
 // ── groups ──────────────────────────────────────────────────────────────────────
@@ -319,7 +335,38 @@ func (s *Service) DeleteResource(ctx context.Context, orgID, resourceID uuid.UUI
 // ── rules ───────────────────────────────────────────────────────────────────────
 
 func (s *Service) ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.PolicyRule, error) {
-	return s.q.ListPolicyRulesByOrg(ctx, orgID)
+	rows, err := s.q.ListPolicyRulesByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]sqlc.PolicyRule, 0, len(rows))
+	for _, row := range rows {
+		// ListPolicyRulesByOrg deliberately projects the post-0109 FQDN
+		// destination through JSONB so it can read an old policy_rules table
+		// where the additive column does not exist. sqlc represents that
+		// nullable derived UUID as uuid.UUID; uuid.Nil is therefore the
+		// historical no-FQDN value rather than a valid destination.
+		fqdn := pgtype.UUID{}
+		if row.DstFqdnResourceID != uuid.Nil {
+			fqdn = pgtype.UUID{Bytes: row.DstFqdnResourceID, Valid: true}
+		}
+		out = append(out, sqlc.PolicyRule{
+			ID: row.ID, OrgID: row.OrgID,
+			SrcGroupID: row.SrcGroupID, DstKind: row.DstKind,
+			DstResourceID: row.DstResourceID, DstGroupID: row.DstGroupID,
+			CreatedAt: row.CreatedAt, SrcKind: row.SrcKind,
+			SrcUserID: row.SrcUserID, ExpiresAt: row.ExpiresAt,
+			DstSiteID: row.DstSiteID, SrcSiteID: row.SrcSiteID,
+			SrcCidr: row.SrcCidr, Disabled: row.Disabled,
+			DstK8sServiceID:   row.DstK8sServiceID,
+			ManagedByMachine:  row.ManagedByMachine,
+			SrcDeviceID:       row.SrcDeviceID,
+			DstK8sClusterID:   row.DstK8sClusterID,
+			SrcAgentGroupID:   row.SrcAgentGroupID,
+			DstFqdnResourceID: fqdn,
+		})
+	}
+	return out, nil
 }
 
 func (s *Service) AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]bool, error) {
@@ -458,23 +505,27 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 	// Destination shape: exactly one dst_* set, matching dst_kind.
 	switch in.DstKind {
 	case "resource":
-		if in.DstResourceID == nil || in.DstGroupID != nil || in.DstSiteID != nil {
+		if in.DstResourceID == nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=resource requires dst_resource_id (and no dst_group_id/dst_site_id)")
 		}
 	case "group":
-		if in.DstGroupID == nil || in.DstResourceID != nil || in.DstSiteID != nil {
+		if in.DstGroupID == nil || in.DstResourceID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=group requires dst_group_id (and no dst_resource_id/dst_site_id)")
 		}
 	case "site":
-		if in.DstSiteID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstK8sServiceID != nil {
+		if in.DstSiteID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstK8sServiceID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=site requires dst_site_id (and no dst_resource_id/dst_group_id/dst_k8s_service_id)")
 		}
 	case "k8s_service": // S10.3: a grant reaching an exposed K8s Service (governance is enterprise)
-		if in.DstK8sServiceID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil {
+		if in.DstK8sServiceID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstFQDNResourceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=k8s_service requires dst_k8s_service_id (and no dst_resource_id/dst_group_id/dst_site_id)")
 		}
+	case "fqdn_resource":
+		if in.DstFQDNResourceID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil {
+			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=fqdn_resource requires dst_fqdn_resource_id (and no other dst_ id)")
+		}
 	default:
-		return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind must be resource, group, site, or k8s_service")
+		return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind must be resource, group, site, k8s_service, or fqdn_resource")
 	}
 	// ⛔ THE FIRST CROSS-FIELD CHECK THIS FUNCTION HAS EVER HAD, AND ITS ABSENCE WAS THE DEFECT.
 	//
@@ -596,13 +647,21 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 				return e
 			}
 		}
+		if in.DstFQDNResourceID != nil {
+			if _, e := q.GetFQDNResourceForPolicy(ctx, sqlc.GetFQDNResourceForPolicyParams{ID: *in.DstFQDNResourceID, OrgID: orgID}); e != nil {
+				if errors.Is(e, pgx.ErrNoRows) {
+					return apierr.BadRequest("fqdn_resource_not_found", "dst FQDN resource not found")
+				}
+				return e
+			}
+		}
 		var e error
 		r, e = q.CreatePolicyRule(ctx, sqlc.CreatePolicyRuleParams{
 			OrgID: orgID, SrcKind: srcKind, SrcGroupID: toPgUUIDVal(in.SrcGroupID), SrcUserID: toPgUUID(in.SrcUserID),
 			SrcSiteID: toPgUUID(in.SrcSiteID), SrcCidr: in.SrcCIDR,
 			SrcDeviceID: toPgUUID(in.SrcAgentDeviceID),
 			DstKind:     in.DstKind, DstResourceID: toPgUUID(in.DstResourceID), DstGroupID: toPgUUID(in.DstGroupID),
-			DstSiteID: toPgUUID(in.DstSiteID), DstK8sServiceID: toPgUUID(in.DstK8sServiceID), ExpiresAt: toPgTimestamptz(in.ExpiresAt),
+			DstSiteID: toPgUUID(in.DstSiteID), DstK8sServiceID: toPgUUID(in.DstK8sServiceID), DstFqdnResourceID: toPgUUID(in.DstFQDNResourceID), ExpiresAt: toPgTimestamptz(in.ExpiresAt),
 			ManagedByMachine: pgtype.UUID{Bytes: managedByMachine, Valid: managedByMachine != uuid.Nil},
 		})
 		if e != nil {
@@ -902,7 +961,40 @@ func (s *Service) SetMode(ctx context.Context, orgID uuid.UUID, mode string) (st
 // BuildSnapshot loads the org's full policy state into the pure-compiler input.
 // S7.2 calls Compile(BuildSnapshot(...)) when serving a node's desired state.
 func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot, error) {
-	return BuildSnapshotWithQueries(ctx, s.q, orgID)
+	snap, err := BuildSnapshotWithQueries(ctx, s.q, orgID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if s.fqdnEntitled != nil {
+		snap.FQDNResourcesLicensed = s.fqdnEntitled()
+	}
+	// A missing dependency, disabled opt-in, or absent entitlement is not an
+	// error and must not revive a stored FQDN rule. The compiler sees an empty
+	// FQDN input and default-denies that destination.
+	if err := appendActiveFQDNGenerations(ctx, &snap, s.fqdnGenerations, orgID); err != nil {
+		return Snapshot{}, err
+	}
+	return snap, nil
+}
+
+func appendActiveFQDNGenerations(ctx context.Context, snap *Snapshot, reader fqdnresolver.ActiveGenerationReader, orgID uuid.UUID) error {
+	if snap == nil || !snap.FQDNResourcesLicensed || !snap.FQDNResourcesEnabled || reader == nil {
+		return nil
+	}
+	generations, err := reader.ActiveGenerations(ctx, orgID)
+	if err != nil {
+		// Do not compile against stale in-memory DNS state if the authoritative
+		// persisted snapshot cannot be read.
+		return err
+	}
+	for _, generation := range generations {
+		resource, err := fqdnResourceFromActiveGeneration(generation)
+		if err != nil {
+			return err
+		}
+		snap.FQDNResources = append(snap.FQDNResources, resource)
+	}
+	return nil
 }
 
 // BuildSnapshotWithQueries exposes the canonical snapshot loader to an
@@ -910,7 +1002,7 @@ func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot,
 // destination or membership resolution, so its digest and mutation are based
 // on the exact same rows as the compiler.
 func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID) (Snapshot, error) {
-	org, err := q.GetOrganizationByID(ctx, orgID)
+	settings, err := q.GetOrganizationPolicySnapshotSettings(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -941,9 +1033,9 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snap := Snapshot{Mode: org.ZeroTrustMode}
+	snap := Snapshot{Mode: settings.ZeroTrustMode, FQDNResourcesEnabled: settings.FqdnResourcesEnabled}
 	for _, r := range rules {
-		snap.Rules = append(snap.Rules, Rule{
+		rule := Rule{
 			ID:      r.ID,
 			SrcKind: r.SrcKind, SrcGroupID: fromPgUUID(r.SrcGroupID), SrcUserID: fromPgUUID(r.SrcUserID),
 			SrcSiteID:       fromPgUUID(r.SrcSiteID),       // S8.2: src_kind='site' resolution
@@ -955,7 +1047,11 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			DstSiteID:       fromPgUUID(r.DstSiteID),
 			DstK8sServiceID: fromPgUUID(r.DstK8sServiceID), // S10.3: dst_kind='k8s_service' resolution
 			Disabled:        r.Disabled,                    // F3: carried to the compiler, which OWNS the skip
-		})
+		}
+		snap.Rules = append(snap.Rules, rule)
+		if r.DstKind == "fqdn_resource" && r.DstFqdnResourceID != uuid.Nil {
+			snap.FQDNRuleReferences = append(snap.FQDNRuleReferences, FQDNRuleReference{PolicyRuleID: r.ID, FQDNResourceID: r.DstFqdnResourceID})
+		}
 	}
 	for _, ss := range siteSubnets {
 		snap.SiteSubnets = append(snap.SiteSubnets, SiteSubnet{SiteID: ss.SiteID, CIDR: ss.Cidr.String()})
@@ -1091,11 +1187,26 @@ type Notifier interface{ NotifyMany(nodeIDs []uuid.UUID) }
 // recompile+push triggers. The push is best-effort (a missed signal is caught by the
 // agent's reconcile-interval safety net); it never fails the mutation.
 func (s *Service) mutate(ctx context.Context, orgID uuid.UUID, fn func(*sqlc.Queries) error) error {
-	if err := s.withTx(ctx, fn); err != nil {
+	if err := s.withOrgTx(ctx, orgID, fn); err != nil {
 		return err
 	}
 	s.pushOrg(ctx, orgID)
 	return nil
+}
+
+func (s *Service) withOrgTx(ctx context.Context, orgID uuid.UUID, fn func(*sqlc.Queries) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, orgID); err != nil {
+		return err
+	}
+	if err := fn(sqlc.New(tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // pushOrg notifies every gateway that currently hosts an active device in the org
@@ -1271,4 +1382,52 @@ func derefI32(p *int32) int {
 		return 0
 	}
 	return int(*p)
+}
+
+// fqdnResourceFromActiveGeneration is the only adapter from Lane 2's durable
+// resolver snapshot to compiler input. It rejects malformed context rather
+// than treating an answer set as portable across Sites or gateways.
+func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration) (FQDNResource, error) {
+	site, err := uuid.Parse(g.Context.ResolverID)
+	if err != nil || site == uuid.Nil {
+		return FQDNResource{}, fmt.Errorf("invalid selected Site in active FQDN generation %s", g.ResourceID)
+	}
+	gateway, err := uuid.Parse(g.Context.GatewayID)
+	if err != nil || gateway == uuid.Nil {
+		return FQDNResource{}, fmt.Errorf("invalid selected gateway in active FQDN generation %s", g.ResourceID)
+	}
+	if g.ResourceID == uuid.Nil || g.Hostname == "" || len(g.Addresses) == 0 || len(g.Addresses) > fqdnresolver.MaxAnswers {
+		return FQDNResource{}, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)
+	}
+	configID, err := uuid.Parse(g.ResolverConfig.ID)
+	if err != nil || configID == uuid.Nil || g.ResolverConfig.Version < 1 || len(g.ResolverConfig.Endpoints) == 0 || len(g.ResolverConfig.Endpoints) > 8 {
+		return FQDNResource{}, fmt.Errorf("invalid resolver configuration snapshot for active FQDN generation %s", g.ResourceID)
+	}
+	for _, endpoint := range g.ResolverConfig.Endpoints {
+		if !endpoint.Address.IsValid() || endpoint.Address.IsUnspecified() || endpoint.Address.IsLoopback() || endpoint.Address.IsMulticast() || endpoint.Address.IsLinkLocalUnicast() || endpoint.Port == 0 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+			return FQDNResource{}, fmt.Errorf("invalid resolver endpoint snapshot for active FQDN generation %s", g.ResourceID)
+		}
+	}
+	answers := make([]string, 0, len(g.Addresses))
+	for _, address := range g.Addresses {
+		if !address.IsValid() {
+			return FQDNResource{}, fmt.Errorf("invalid active FQDN answer for %s", g.ResourceID)
+		}
+		answers = append(answers, address.String())
+	}
+	return FQDNResource{
+		ID:       g.ResourceID,
+		FQDN:     g.Hostname,
+		Protocol: g.Protocol,
+		PortLow:  derefI32(g.PortLow),
+		PortHigh: derefI32(g.PortHigh),
+		Active: &FQDNGeneration{
+			ResourceID:            g.ResourceID,
+			SelectedSiteID:        site,
+			SelectedGatewayID:     gateway,
+			ResolverConfigID:      configID,
+			ResolverConfigVersion: g.ResolverConfig.Version,
+			Answers:               answers,
+		},
+	}, nil
 }

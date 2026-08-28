@@ -25,6 +25,9 @@ const (
 	// FeatIdpSync — IdP directory sync. ⚠ Its DEPROVISION half is not gated: a licence may stop granting
 	// access, it must never stop removing it.
 	FeatIdpSync Feature = "idp_sync"
+	// FeatFQDNResources is the one-binary entitlement for resolver-backed FQDN
+	// enforcement. It unlocks capability only; organizations still opt in.
+	FeatFQDNResources Feature = "fqdn_resources"
 )
 
 // Tier is what a licence grants. ⚠ Community is the no-key tier: holding no licence IS being Community.
@@ -90,10 +93,10 @@ var tierFeatures = map[Tier]map[Feature]bool{
 	// otherwise buy PERMANENT free SSO for anyone who takes one: the trial-band law, exactly. What stops
 	// at lapse is everything that ONBOARDS SOMEBODY NEW — JIT provisioning and domain-capture auto-join —
 	// so the free-forever surface is capped at the humans who already existed during the trial.
-	TierTrial:   {FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true},
-	TierStarter: {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
-	TierGrowth:  {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true},
-	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatAgentJITAccess: true},
+	TierTrial:   {FeatMultiGateway: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true},
+	TierStarter: {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true},
+	TierGrowth:  {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true},
+	TierScale:   {FeatMultiGateway: true, FeatMultiOrg: true, FeatSSO: true, FeatIdpSync: true, FeatFQDNResources: true, FeatAgentJITAccess: true},
 }
 
 // GatewayCeilingFor is the number of gateways a tier may ENROL. nil means unlimited.

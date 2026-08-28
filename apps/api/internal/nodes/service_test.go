@@ -196,7 +196,7 @@ func TestNodeEnrollmentLifecycle(t *testing.T) {
 	wgKeyBytes := make([]byte, 32)
 	wgKeyBytes[0] = 1 // non-zero: an all-zero key is a degenerate point (rejected)
 	wgKey := base64.StdEncoding.EncodeToString(wgKeyBytes)
-	if err := svc.ReportWGInfo(ctx, node, wgKey, "1.2.3.4:51820", true, false, AppliedPolicy{}); err != nil {
+	if err := svc.ReportWGInfo(ctx, node, wgKey, "1.2.3.4:51820", true, false, AppliedPolicy{DNSResolveRPCVersion: 1}); err != nil {
 		t.Fatalf("report valid key: %v", err)
 	}
 	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); stored.WgPublicKey != wgKey || stored.Endpoint != "1.2.3.4:51820" {
@@ -204,6 +204,9 @@ func TestNodeEnrollmentLifecycle(t *testing.T) {
 	}
 	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); !Capabilities(stored.Capabilities).EgressNAT {
 		t.Fatalf("egress_nat capability not stored: %s", stored.Capabilities)
+	}
+	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); !Capabilities(stored.Capabilities).SupportsDNSResolveRPC(1) || Capabilities(stored.Capabilities).SupportsDNSResolveRPC(2) {
+		t.Fatalf("dns RPC compatibility capability must retain its reported version: %s", stored.Capabilities)
 	}
 	// A malformed endpoint (newline injection) is rejected.
 	if err := svc.ReportWGInfo(ctx, node, wgKey, "1.2.3.4:51820\nInject = x", false, false, AppliedPolicy{}); code(err) != "invalid_endpoint" {

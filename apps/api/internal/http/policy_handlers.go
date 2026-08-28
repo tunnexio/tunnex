@@ -11,6 +11,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
@@ -330,9 +331,10 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 	if err != nil {
 		return nil, err
 	}
+	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, rs)
 	out := make([]api.PolicyRule, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, toAPIRule(r, warn[r.ID], vanished[r.ID], policyRuleOwnership{
+		out = append(out, toAPIRuleWithFQDNStatus(r, warn[r.ID], vanished[r.ID], fqdnStatus[r.ID], policyRuleOwnership{
 			agentTemplate: templateManaged[r.ID], agentAccessRequestID: jitManaged[r.ID],
 		}))
 	}
@@ -355,16 +357,17 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
 	in := policyspec.RuleInput{
-		SrcUserID:        req.Body.SrcUserId,
-		SrcSiteID:        req.Body.SrcSiteId,   // S8.2: src_kind=site
-		SrcCIDR:          req.Body.SrcCidr,     // S8.7: src_kind=cidr
-		SrcAgentDeviceID: req.Body.SrcDeviceId, // S15.3: src_kind=agent
-		DstKind:          string(req.Body.DstKind),
-		DstResourceID:    req.Body.DstResourceId,
-		DstGroupID:       req.Body.DstGroupId,
-		DstSiteID:        req.Body.DstSiteId,       // S8.1: dst_kind=site
-		DstK8sServiceID:  req.Body.DstK8sServiceId, // S10.3: dst_kind=k8s_service
-		ExpiresAt:        req.Body.ExpiresAt,
+		SrcUserID:         req.Body.SrcUserId,
+		SrcSiteID:         req.Body.SrcSiteId,   // S8.2: src_kind=site
+		SrcCIDR:           req.Body.SrcCidr,     // S8.7: src_kind=cidr
+		SrcAgentDeviceID:  req.Body.SrcDeviceId, // S15.3: src_kind=agent
+		DstKind:           string(req.Body.DstKind),
+		DstResourceID:     req.Body.DstResourceId,
+		DstGroupID:        req.Body.DstGroupId,
+		DstSiteID:         req.Body.DstSiteId,       // S8.1: dst_kind=site
+		DstK8sServiceID:   req.Body.DstK8sServiceId, // S10.3: dst_kind=k8s_service
+		DstFQDNResourceID: req.Body.DstFqdnResourceId,
+		ExpiresAt:         req.Body.ExpiresAt,
 	}
 	if req.Body.SrcKind != nil {
 		in.SrcKind = string(*req.Body.SrcKind)
@@ -385,7 +388,8 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 	if err != nil {
 		return nil, err
 	}
-	return api.CreatePolicyRule201JSONResponse{Body: toAPIRule(r, warn[r.ID], van[r.ID]), Headers: api.CreatePolicyRule201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, []sqlc.PolicyRule{r})
+	return api.CreatePolicyRule201JSONResponse{Body: toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), Headers: api.CreatePolicyRule201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRuleRequestObject) (api.DeletePolicyRuleResponseObject, error) {
@@ -431,7 +435,8 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return api.ExtendGrant200JSONResponse{Body: toAPIRule(r, warn[r.ID], van[r.ID]), Headers: api.ExtendGrant200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, []sqlc.PolicyRule{r})
+	return api.ExtendGrant200JSONResponse{Body: toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), Headers: api.ExtendGrant200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 // SetPolicyRuleEnabled (F3) — enable/disable a rule without deleting it. policy:manage;
@@ -461,7 +466,8 @@ func (s apiServer) SetPolicyRuleEnabled(ctx context.Context, req api.SetPolicyRu
 	if err != nil {
 		return nil, err
 	}
-	return api.SetPolicyRuleEnabled200JSONResponse{Body: toAPIRule(r, warn[r.ID], van[r.ID]), Headers: api.SetPolicyRuleEnabled200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, []sqlc.PolicyRule{r})
+	return api.SetPolicyRuleEnabled200JSONResponse{Body: toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), Headers: api.SetPolicyRuleEnabled200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 // ── enforcement mode ──────────────────────────────────────────────────────────
@@ -587,12 +593,107 @@ func (s apiServer) k8sVanishedMap(ctx context.Context, orgID uuid.UUID, rules []
 	return out, nil
 }
 
+// fqdnDestinationStatusMap is a server-owned read projection for the FQDN
+// destination identity already present on a policy rule. It is deliberately
+// best-effort: an unavailable FQDN projection must not make the authoritative
+// policy inventory disappear or turn an unknown state into a permissive one.
+func (s apiServer) fqdnDestinationStatusMap(ctx context.Context, orgID uuid.UUID, rules []sqlc.PolicyRule) map[uuid.UUID]api.PolicyRuleFqdnDestinationStatus {
+	out := map[uuid.UUID]api.PolicyRuleFqdnDestinationStatus{}
+	var fqdnRules []sqlc.PolicyRule
+	for _, rule := range rules {
+		if rule.DstKind == "fqdn_resource" {
+			fqdnRules = append(fqdnRules, rule)
+		}
+	}
+	if len(fqdnRules) == 0 {
+		return out
+	}
+	setAll := func(status api.PolicyRuleFqdnDestinationStatus) {
+		for _, rule := range fqdnRules {
+			out[rule.ID] = status
+		}
+	}
+	if s.licence == nil || !licence.Has(s.licence.Evaluate(time.Now()).Tier, licence.FeatFQDNResources) {
+		setAll(fqdnDestinationStatusFor(false, false, true, true, ""))
+		return out
+	}
+	svc, err := s.fqdnService()
+	if err != nil {
+		setAll(fqdnDestinationStatusFor(true, false, false, true, ""))
+		return out
+	}
+	enabled, err := svc.Setting(ctx, orgID)
+	if err != nil {
+		setAll(fqdnDestinationStatusFor(true, false, false, true, ""))
+		return out
+	}
+	if !enabled {
+		setAll(fqdnDestinationStatusFor(true, false, true, true, ""))
+		return out
+	}
+	resources, err := svc.List(ctx, orgID)
+	if err != nil {
+		setAll(fqdnDestinationStatusFor(true, true, false, true, ""))
+		return out
+	}
+	stateByID := make(map[uuid.UUID]string, len(resources))
+	for _, resource := range resources {
+		stateByID[resource.ID] = resource.State
+	}
+	for _, rule := range fqdnRules {
+		if !rule.DstFqdnResourceID.Valid {
+			out[rule.ID] = fqdnDestinationStatusFor(true, true, true, false, "")
+			continue
+		}
+		state, exists := stateByID[uuid.UUID(rule.DstFqdnResourceID.Bytes)]
+		out[rule.ID] = fqdnDestinationStatusFor(true, true, true, exists, state)
+	}
+	return out
+}
+
+func fqdnDestinationStatusFor(entitled, optedIn, projectionReadable, resourceExists bool, state string) api.PolicyRuleFqdnDestinationStatus {
+	if !entitled {
+		return api.FeatureUnavailable
+	}
+	if !projectionReadable {
+		return api.ProjectionUnavailable
+	}
+	if !optedIn {
+		return api.OptInDisabled
+	}
+	if !resourceExists {
+		return api.GenerationUnavailable
+	}
+	return fqdnDestinationStatus(state)
+}
+
+func fqdnDestinationStatus(state string) api.PolicyRuleFqdnDestinationStatus {
+	switch state {
+	case "healthy":
+		return api.ActiveGeneration
+	case "draft", "resolving":
+		return api.GenerationPending
+	case "stale", "nxdomain", "failed":
+		return api.GenerationWithdrawn
+	default:
+		return api.GenerationUnavailable
+	}
+}
+
 type policyRuleOwnership struct {
 	agentTemplate        bool
 	agentAccessRequestID uuid.UUID
 }
 
 func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...policyRuleOwnership) api.PolicyRule {
+	status := api.NotApplicable
+	if r.DstKind == "fqdn_resource" {
+		status = api.GenerationUnavailable
+	}
+	return toAPIRuleWithFQDNStatus(r, cidrOutside, k8sVanished, status, ownership...)
+}
+
+func toAPIRuleWithFQDNStatus(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, fqdnStatus api.PolicyRuleFqdnDestinationStatus, ownership ...policyRuleOwnership) api.PolicyRule {
 	var owner policyRuleOwnership
 	if len(ownership) != 0 {
 		owner = ownership[0]
@@ -600,8 +701,9 @@ func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...po
 	out := api.PolicyRule{
 		Id: r.ID, OrgId: r.OrgID, SrcKind: api.PolicyRuleSrcKind(r.SrcKind),
 		DstKind: api.PolicyRuleDstKind(r.DstKind), CreatedAt: r.CreatedAt,
-		CidrOutsideOrgRanges:   cidrOutside,              // S8.7 warn-not-refuse (D1); always false for non-cidr sources
-		DstK8sServiceVanished:  k8sVanished,              // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
+		CidrOutsideOrgRanges:   cidrOutside, // S8.7 warn-not-refuse (D1); always false for non-cidr sources
+		DstK8sServiceVanished:  k8sVanished, // S10.3 warn-not-refuse; the dst Service is gone (grant compiles to nothing)
+		FqdnDestinationStatus:  fqdnStatus,
 		Enabled:                !r.Disabled,              // F3: positive framing — a rule is enabled unless disabled
 		ManagedByOperator:      r.ManagedByMachine.Valid, // S10.2 D2 cond 1: GitOps-managed → badge + warn-on-edit
 		ManagedByAgentTemplate: owner.agentTemplate,
@@ -648,6 +750,10 @@ func toAPIRule(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, ownership ...po
 	if r.DstK8sServiceID.Valid { // S10.3: dst_kind=k8s_service
 		u := uuid.UUID(r.DstK8sServiceID.Bytes)
 		out.DstK8sServiceId = &u
+	}
+	if r.DstFqdnResourceID.Valid {
+		u := uuid.UUID(r.DstFqdnResourceID.Bytes)
+		out.DstFqdnResourceId = &u
 	}
 	if r.ExpiresAt.Valid {
 		t := r.ExpiresAt.Time

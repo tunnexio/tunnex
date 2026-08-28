@@ -1818,6 +1818,155 @@ export interface paths {
         patch: operations["updateResource"];
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/fqdn-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List resolver-backed FQDN access resources */
+        get: operations["listFQDNResources"];
+        put?: never;
+        /** Create a normalized FQDN access resource or draft */
+        post: operations["createFQDNResource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resources/{resourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the bounded authoritative FQDN resource workspace projection
+         * @description Current answer addresses are returned only from the active immutable generation and are capped at 32. Unavailable facts are explicit and never inferred.
+         */
+        get: operations["getFQDNResourceDetail"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an unreferenced FQDN resource
+         * @description Server refuses deletion while a rule reference or active generation exists; read impact first.
+         */
+        delete: operations["deleteFQDNResource"];
+        options?: never;
+        head?: never;
+        /** Update an FQDN resource and selected Site/Gateway pair */
+        patch: operations["updateFQDNResource"];
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resources/{resourceId}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        /** Read server-computed FQDN deletion impact */
+        get: operations["getFQDNResourceImpact"];
+        put?: never;
+        /**
+         * Preview the server-known impact of an enforcement-changing FQDN resource edit
+         * @description The preview is exact for current rule references and active generation state. It deliberately refuses to predict a future DNS answer set.
+         */
+        post: operations["previewFQDNResourceImpact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resources/setting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read explicit FQDN enforcement opt-in */
+        get: operations["getFQDNResourceSetting"];
+        /**
+         * Set explicit FQDN enforcement opt-in
+         * @description Enabling requires the current server-issued impact token. Entitlement unlocks enforcement capability; this setting alone gates compilation, never drafts or reads.
+         */
+        put: operations["setFQDNResourceEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resources/setting/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the current bounded rule impact before changing FQDN enforcement opt-in
+         * @description This is an at-read-time preview, not a confirmed enforcement set. Enabling requires its current server-issued impact token and is recomputed under write locks.
+         */
+        get: operations["getFQDNResourceSettingImpact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/fqdn-resolver-contexts/{siteId}/{gatewayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the server-managed DNS endpoints for a selected Site/Gateway context
+         * @description Only the returned private endpoint addresses may be queried for this context. A missing configuration is not a fallback to host, public, or control-plane DNS.
+         */
+        get: operations["getFQDNResolverContextConfig"];
+        /**
+         * Atomically replace the server-managed DNS endpoints for a selected Site/Gateway context
+         * @description Retires the prior configuration and creates an immutable active revision. A resolver failure withdraws FQDN access; endpoints are never inferred from host DNS.
+         */
+        put: operations["setFQDNResolverContextConfig"];
+        post?: never;
+        /**
+         * Remove the active DNS resolver endpoint configuration for a selected Site/Gateway context
+         * @description Existing resolver history remains visible. Bound FQDN resources fail closed until an authorized operator saves a new configuration.
+         */
+        delete: operations["deleteFQDNResolverContextConfig"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/policies": {
         parameters: {
             query?: never;
@@ -4005,6 +4154,196 @@ export interface components {
             /** @description Free-text note describing what this destination IS. Operator-asserted; never inferred. */
             label?: string | null;
         };
+        FQDNResource: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            name: string;
+            /**
+             * @description Exactly one destination kind. This contract is only for normalized FQDN destinations; static CIDR resources retain the existing Resource contract.
+             * @enum {string}
+             */
+            destination_kind: "fqdn";
+            /** @description Normalized lower-case IDNA ASCII FQDN without a trailing dot. Never a URL, IP literal, wildcard, port, underscore, or empty label. */
+            fqdn: string;
+            /** @enum {string} */
+            protocol: "any" | "tcp" | "udp";
+            port_low?: number | null;
+            port_high?: number | null;
+            label?: string | null;
+            /** @description Null means saved draft: it must not compile or authorize traffic. */
+            resolver_context?: components["schemas"]["FQDNResolverContext"] | null;
+            /**
+             * Format: int64
+             * @description Active resolver generation only.
+             */
+            generation?: number | null;
+            /**
+             * @description unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic.
+             * @enum {string}
+             */
+            state: "draft" | "unconfigured" | "resolving" | "healthy" | "stale" | "failed" | "nxdomain";
+            /** @description Active-generation answer count; never an inferred DNS result. */
+            answer_count: number;
+            effective_ttl_seconds?: number | null;
+            /** Format: date-time */
+            refreshed_at?: string | null;
+            /** Format: date-time */
+            last_good_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        FQDNResourceRequest: {
+            name: string;
+            /** @description Input normalized and validated by the server against the FQDN-only contract. */
+            fqdn: string;
+            /** @enum {string} */
+            protocol: "any" | "tcp" | "udp";
+            port_low?: number | null;
+            port_high?: number | null;
+            label?: string | null;
+            /** @description An explicit selected Site/Gateway resolver context. Null saves an unbound draft only. */
+            resolver_context?: components["schemas"]["FQDNResolverContextRequest"] | null;
+            /** @description Server-issued token from the immediately relevant impact preview. Required only for enforcement-changing PATCH operations. */
+            expected_impact_token?: string | null;
+        };
+        FQDNResolverContext: {
+            /** Format: uuid */
+            site_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            site_name: string;
+            gateway_name: string;
+            /** @description The active, server-managed direct DNS configuration. Null means this bound context cannot resolve and must fail closed. */
+            resolver_config?: components["schemas"]["FQDNResolverContextConfig"] | null;
+        };
+        FQDNResolverContextRequest: {
+            /** Format: uuid */
+            site_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+        };
+        FQDNResolverEndpoint: {
+            /**
+             * Format: ip
+             * @description Literal private or public resolver address selected by the tenant; hostnames are not permitted.
+             */
+            address: string;
+            /** @default 53 */
+            port: number;
+            /** @enum {string} */
+            transport: "udp" | "tcp";
+        };
+        FQDNResolverContextConfig: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            /** Format: uuid */
+            site_id: string;
+            /** Format: uuid */
+            gateway_id: string;
+            /** Format: int64 */
+            version: number;
+            /** @enum {string} */
+            state: "active" | "retired";
+            endpoints: components["schemas"]["FQDNResolverEndpoint"][];
+            /** Format: date-time */
+            created_at: string;
+        };
+        FQDNResolverContextConfigRequest: {
+            endpoints: components["schemas"]["FQDNResolverEndpoint"][];
+        };
+        FQDNResourceSetting: {
+            /** @description Persisted false-default opt-in. It gates compilation only. */
+            enabled: boolean;
+            /** @description Required when enabling; copied from the current setting impact preview. */
+            expected_impact_token?: string | null;
+        };
+        FQDNResourceImpact: {
+            /** Format: uuid */
+            resource_id: string;
+            /** @description Server-computed active policy-rule impact; never browser-inferred. */
+            referencing_rule_count: number;
+            /** @description Bounded policy rule identities blocking deletion, projected by the server for truthful recovery UI. */
+            referencing_rule_ids: string[];
+            /** @description True when more referenced rules exist than the bounded identity list returns. */
+            rule_ids_truncated: boolean;
+            /** @description True only when a live FQDN generation exists and must be withdrawn before deletion. */
+            generation_withdrawal_required: boolean;
+        };
+        FQDNResourceRuleReference: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            source_kind: "group" | "user" | "site" | "cidr" | "agent" | "agent_group";
+            /** @description Current rule state, projected from the authoritative policy row. */
+            enabled: boolean;
+        };
+        FQDNResourceAuditProjection: {
+            /** @enum {string} */
+            target_type: "fqdn_resource";
+            /** Format: uuid */
+            target_id: string;
+            /**
+             * Format: date-time
+             * @description Null when no existing audit event targets this resource.
+             */
+            latest_event_at?: string | null;
+        };
+        FQDNResourceDetail: {
+            resource: components["schemas"]["FQDNResource"];
+            /** @description Addresses from the current active immutable generation only; empty is not a DNS lookup. */
+            active_answer_addresses: string[];
+            /** @enum {string} */
+            status_source: "resource_configuration" | "resolver_configuration" | "latest_generation" | "active_generation";
+            /** Format: date-time */
+            observed_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Resolved-at plus the server-recorded effective TTL for an active generation only.
+             */
+            fresh_until_at?: string | null;
+            /** @description Stored server failure reason when available; never browser-derived. */
+            server_reason?: string | null;
+            /** @enum {string} */
+            next_action: "edit_resource" | "configure_resolver" | "wait_for_resolution" | "refresh" | "review_resolver" | "none";
+            /** @description True only when the selected context has an active server-managed resolver configuration. */
+            resolver_ready: boolean;
+            referencing_rule_count: number;
+            referencing_rules: components["schemas"]["FQDNResourceRuleReference"][];
+            references_truncated: boolean;
+            audit: components["schemas"]["FQDNResourceAuditProjection"];
+        };
+        FQDNResourceMutationPreview: {
+            /** Format: uuid */
+            resource_id: string;
+            /** @description True when FQDN, protocol/ports, or resolver binding differs from the stored resource. */
+            enforcement_inputs_changed: boolean;
+            /** @description Present for an enforcement-changing preview and required by its corresponding PATCH. */
+            expected_impact_token?: string | null;
+            referencing_rule_count: number;
+            referencing_rule_ids: string[];
+            rule_ids_truncated: boolean;
+            generation_withdrawal_required: boolean;
+            mutation_allowed: boolean;
+            /** @description Explicit refusal rather than a guessed enforcement result. */
+            refusal_reason: string | null;
+        };
+        FQDNResourceSettingImpact: {
+            enabled: boolean;
+            /** @description Count of enabled compiler-eligible FQDN rules at read time; it is recomputed before enable. */
+            enforcement_ready_rule_count: number;
+            enforcement_ready_rule_ids: string[];
+            rule_ids_truncated: boolean;
+            /** @description False means enabling is refused regardless of this preview. */
+            entitlement_available: boolean;
+            /** @description Required by an enable request; it is invalid after a relevant rule, generation, config, or setting change. */
+            expected_impact_token?: string | null;
+        };
         PolicyRule: {
             managed_by_operator: boolean;
             /** @description True when the row is owned by an F09 agent-policy-template assignment. It is read-only in ordinary policy surfaces. */
@@ -4043,7 +4382,7 @@ export interface components {
             src_agent_group_id?: string | null;
             cidr_outside_org_ranges: boolean;
             /** @enum {string} */
-            dst_kind: "resource" | "group" | "site" | "k8s_service";
+            dst_kind: "resource" | "group" | "site" | "k8s_service" | "fqdn_resource";
             /** Format: uuid */
             dst_resource_id?: string | null;
             /** Format: uuid */
@@ -4055,6 +4394,16 @@ export interface components {
              * @description Set when dst_kind=k8s_service (S10.3): the exposed Service the grant reaches; the compiler resolves it to the Service's CURRENT VIP.
              */
             dst_k8s_service_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated.
+             */
+            dst_fqdn_resource_id?: string | null;
+            /**
+             * @description Truthful server projection for an FQDN destination. active_generation means the entitled, opted-in organization has a current active selected-resolver generation. generation_withdrawn and generation_unavailable grant no traffic. projection_unavailable means the server could not read the authoritative FQDN projection and never implies traffic is granted.
+             * @enum {string}
+             */
+            fqdn_destination_status: "not_applicable" | "feature_unavailable" | "opt_in_disabled" | "generation_pending" | "active_generation" | "generation_withdrawn" | "generation_unavailable" | "projection_unavailable";
             dst_k8s_service_vanished: boolean;
             /** Format: date-time */
             expires_at?: string | null;
@@ -4087,7 +4436,7 @@ export interface components {
              */
             src_device_id?: string | null;
             /** @enum {string} */
-            dst_kind: "resource" | "group" | "site" | "k8s_service";
+            dst_kind: "resource" | "group" | "site" | "k8s_service" | "fqdn_resource";
             /**
              * Format: uuid
              * @description Required when dst_kind=resource.
@@ -4108,6 +4457,11 @@ export interface components {
              * @description Required when dst_kind=k8s_service (S10.3); the compiler resolves it to the exposed Service's CURRENT VIP.
              */
             dst_k8s_service_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Required when dst_kind=fqdn_resource. Must name an FQDN resource in this organization.
+             */
+            dst_fqdn_resource_id?: string | null;
             /**
              * Format: date-time
              * @description Set = a temporary grant that expires at this time (must be future); omit for a permanent grant.
@@ -8431,6 +8785,332 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Resource"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listFQDNResources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drafts and truthful resolver/generation projections. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResource"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createFQDNResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResource"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResourceDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteFQDNResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateFQDNResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResource"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResourceImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Impact */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    previewFQDNResourceImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                resourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceMutationPreview"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResourceSetting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setFQDNResourceEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResourceSetting"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceSetting"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResourceSettingImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Opt-in impact */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResourceSettingImpact"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getFQDNResolverContextConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active resolver configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResolverContextConfig"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setFQDNResolverContextConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FQDNResolverContextConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Active resolver configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FQDNResolverContextConfig"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteFQDNResolverContextConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration removed and future resolution withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

@@ -89,28 +89,65 @@ DELETE FROM resources
 WHERE id = $1 AND org_id = $2;
 
 -- ── policy_rules (allow grants) ─────────────────────────────────────────────────
+-- name: GetFQDNResourceForPolicy :one
+-- A policy destination may only name a resource owned by this organization.
+SELECT id FROM fqdn_resources
+WHERE id = $1 AND org_id = $2;
+
 -- name: CreatePolicyRule :one
 -- S7.5.4: src_kind ∈ {group,user}; S8.2: +site; S8.7: +cidr (exactly one of src_group_id/src_user_id/
 -- src_site_id/src_cidr, CHECK-enforced). expires_at NULL = permanent, set = a temporary grant. S8.1: dst_kind
 -- ∈ {resource,group,site}; S10.3: +k8s_service (exactly one of dst_resource_id/dst_group_id/dst_site_id/
 -- dst_k8s_service_id, CHECK-enforced).
-INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, src_site_id, src_cidr, src_device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, expires_at, managed_by_machine)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, src_site_id, src_cidr, src_device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_fqdn_resource_id, expires_at, managed_by_machine)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING *;
+
+-- name: CreateAgentJITPolicyRule :one
+-- F10's approval path must remain executable against the historical 0098
+-- schema. It deliberately names only the agent-access identity and destination
+-- columns that existed before 0113; JIT does not support FQDN destinations or
+-- machine ownership. Returning only the immutable rule ID prevents a later
+-- policy_rules projection from making an old-schema approval depend on new
+-- columns.
+INSERT INTO policy_rules (org_id, src_kind, src_device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, expires_at)
+VALUES ($1, 'agent', $2, $3, $4, $5, $6, $7, $8)
+RETURNING id;
 
 -- name: ListPolicyRulesByOrg :many
 -- Admin LIST — every rule incl. expired ones (the UI shows a lapsed grant distinctly).
-SELECT * FROM policy_rules
-WHERE org_id = $1
-ORDER BY created_at;
+-- 0113 added dst_fqdn_resource_id.  This LIST is also used by the historical
+-- 0109 agent-template route contract, so referencing the physical column
+-- directly would make an otherwise valid legacy policy inventory fail.  JSONB
+-- row extraction returns NULL when the additive key is absent, while retaining
+-- the current FQDN destination when it exists.
+SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
+       p.dst_group_id, p.created_at, p.src_kind, p.src_user_id, p.expires_at,
+       p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
+       p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
+       p.dst_k8s_cluster_id, p.src_agent_group_id,
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+FROM policy_rules p
+WHERE p.org_id = $1
+ORDER BY p.created_at;
 
 -- name: ListActivePolicyRulesForOrg :many
 -- COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:
 -- an expired rule stops compiling on the next recompile REGARDLESS of the sweeper). The
 -- pure compiler stays clockless; this query applies now() at snapshot-build time.
-SELECT * FROM policy_rules
-WHERE org_id = $1 AND (expires_at IS NULL OR expires_at > now())
-ORDER BY created_at, id;
+-- Keep the compiler's ordinary policy projection readable on schema 0109 as
+-- well. The additive FQDN destination is extracted only when present; the
+-- FQDN-aware compiler later fail-closes unless its full current contract is
+-- available and enabled.
+SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
+       p.dst_group_id, p.created_at, p.src_kind, p.src_user_id, p.expires_at,
+       p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
+       p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
+       p.dst_k8s_cluster_id, p.src_agent_group_id,
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+FROM policy_rules p
+WHERE p.org_id = $1 AND (p.expires_at IS NULL OR p.expires_at > now())
+ORDER BY p.created_at, p.id;
 
 -- name: DeletePolicyRule :execrows
 DELETE FROM policy_rules

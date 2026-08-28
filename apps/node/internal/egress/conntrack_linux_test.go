@@ -6,6 +6,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +16,130 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
+
+func TestFQDNBaselineRestartFlushesRetiredDualStackTuples(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+	active := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing,
+		Allow: []nodepolicy.AllowEntry{
+			{SrcIP: "10.99.0.10/32", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v4", FQDNManaged: true},
+			{SrcIP: "2001:db8:99::10/128", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "v6", FQDNManaged: true},
+		}, FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: "r", Name: "api.example.com", Generation: "g1", Answers: []string{"203.0.113.10/32", "2001:db8:203::10/128"}}}}
+	m1 := &Manager{apply: func(context.Context, string) error { return nil }, now: time.Now, ctFlush: func(context.Context, []flowTuple) (int, error) { return 0, nil }}
+	m1.SetFQDNBaselinePath(path)
+	if err := m1.applyAndTrack(context.Background(), "active", active); err != nil {
+		t.Fatalf("persist active baseline: %v", err)
+	}
+	var flushed []flowTuple
+	m2 := &Manager{apply: func(context.Context, string) error { return nil }, now: time.Now, ctFlush: func(_ context.Context, tuples []flowTuple) (int, error) {
+		flushed = append(flushed, tuples...)
+		return len(tuples), nil
+	}}
+	m2.SetFQDNBaselinePath(path)
+	if m2.fqdnRecoveryRequired {
+		t.Fatal("committed baseline must be usable after restart")
+	}
+	if err := m2.applyAndTrack(context.Background(), "withdraw", &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}); err != nil {
+		t.Fatalf("withdraw after restart: %v", err)
+	}
+	m2.drainFlush(context.Background())
+	if len(flushed) != 2 {
+		t.Fatalf("restart withdrawal must flush every retired dual-stack tuple, got %+v", flushed)
+	}
+	seen := map[string]bool{}
+	for _, tuple := range flushed {
+		seen[tuple.ruleID] = true
+	}
+	if !seen["v4"] || !seen["v6"] {
+		t.Fatalf("families lost on restart: %+v", flushed)
+	}
+}
+
+func TestFQDNBaselineMissingWithoutProvenHistoryDoesNotFlush(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+	m := &Manager{apply: func(context.Context, string) error {
+		t.Fatal("CIDR-only/new gateway must not install recovery deny")
+		return nil
+	}, now: time.Now}
+	m.SetFQDNBaselinePath(path)
+	if m.fqdnRecoveryRequired {
+		t.Fatal("missing baseline without history must not flush innocent traffic")
+	}
+	if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnversionedFQDNBaselineRefusesWithoutBroadFlush(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+	if err := os.WriteFile(path, []byte(`{"state":"committed","generations":[{"resource_id":"r","name":"api.example.com","generation":"old","answers":["203.0.113.10/32"]}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	flushed := false
+	m := &Manager{apply: func(context.Context, string) error {
+		t.Fatal("unversioned state must not install automatic recovery")
+		return nil
+	}, now: time.Now,
+		ctFlushRecovery: func(context.Context) (int, error) { flushed = true; return 0, nil }}
+	m.SetFQDNBaselinePath(path)
+	pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing, FQDNGenerations: []nodepolicy.FQDNGeneration{{ResourceID: "r"}}}
+	if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", pol); err == nil {
+		t.Fatal("unversioned FQDN state must require controlled recovery")
+	}
+	if flushed {
+		t.Fatal("unversioned state must never broad/selectively guess old ownership")
+	}
+}
+
+func TestFQDNBaselineMissingOrCorruptWithProvenHistoryFailsClosedBeforePolicy(t *testing.T) {
+	for _, tc := range []struct{ name, content string }{{"missing", ""}, {"corrupt", "not-json"}, {"pending", `{"state":"pending"}`}} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "fqdn-baseline.json")
+			if tc.content != "" {
+				if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := writeFQDNHistory(path + ".history"); err != nil {
+				t.Fatal(err)
+			}
+			var order []string
+			m := &Manager{apply: func(_ context.Context, rules string) error {
+				order = append(order, "deny")
+				if !strings.Contains(rules, "tunnex_default_drop") {
+					t.Fatalf("recovery must install deny-all first: %s", rules)
+				}
+				return nil
+			}, now: time.Now,
+				ctFlushRecovery: func(context.Context) (int, error) { order = append(order, "flush"); return 2, nil }}
+			m.SetFQDNBaselinePath(path)
+			if !m.fqdnRecoveryRequired {
+				t.Fatal("missing/corrupt state must require recovery")
+			}
+			pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}
+			if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", pol); err != nil {
+				t.Fatalf("recovery: %v", err)
+			}
+			if got := strings.Join(order, ","); got != "deny,flush" {
+				t.Fatalf("must deny before selective FQDN flush, got %s", got)
+			}
+			if m.fqdnRecoveryRequired {
+				t.Fatal("successful recovery must clear gate")
+			}
+		})
+	}
+}
+
+func TestFQDNBaselineRecoveryFlushFailureKeepsGateClosed(t *testing.T) {
+	m := &Manager{apply: func(context.Context, string) error { return nil }, now: time.Now, fqdnBaselinePath: "/configured", fqdnRecoveryRequired: true,
+		ctFlushRecovery: func(context.Context) (int, error) { return 0, errors.New("netlink unavailable") }}
+	pol := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}
+	if err := m.recoverFQDNBaseline(context.Background(), "10.99.0.1/24", pol); err == nil {
+		t.Fatal("recovery flush failure must refuse policy traffic")
+	}
+	if !m.fqdnRecoveryRequired {
+		t.Fatal("failed recovery must remain closed for retry")
+	}
+}
 
 func ipp(s string) *net.IP  { p := net.ParseIP(s); return &p }
 func u8p(v uint8) *uint8    { return &v }
@@ -23,6 +150,32 @@ func con(src, dst string, proto uint8, dport uint16) conntrack.Con {
 		Src: ipp(src), Dst: ipp(dst),
 		Proto: &conntrack.ProtoTuple{Number: u8p(proto), DstPort: u16p(dport)},
 	}}
+}
+
+func markedCon(src, dst string, proto uint8, dport uint16, mark uint32) conntrack.Con {
+	c := con(src, dst, proto, dport)
+	c.Mark = &mark
+	return c
+}
+
+func TestFQDNConntrackMarkIsolatedFromUnrelatedBits(t *testing.T) {
+	if FQDNConntrackMark&^FQDNConntrackMarkMask != 0 {
+		t.Fatal("FQDN mark must fit its reserved mask")
+	}
+	if FQDNConntrackMarkMask&0x00ffffff != 0 {
+		t.Fatal("reserved FQDN field must not consume lower unrelated bits")
+	}
+	marked := markedCon("10.99.0.10", "203.0.113.10", 6, 443, FQDNConntrackMark|0x80000042)
+	if !hasFQDNConntrackMark(marked) {
+		t.Fatal("S21-marked flow must be selected")
+	}
+	innocent := markedCon("10.99.0.11", "203.0.113.11", 6, 443, 0x80000042)
+	if hasFQDNConntrackMark(innocent) {
+		t.Fatal("unrelated mark bits must not select innocent flow")
+	}
+	if got := (uint32(0x80000042) &^ FQDNConntrackMarkMask) | FQDNConntrackMark; got != 0x81000042 {
+		t.Fatalf("mark update must preserve unrelated bits, got %#x", got)
+	}
 }
 
 // TestMatchesTupleScoped — the INNOCENT-NEIGHBOR centerpiece (S8.7 Slice 2): the flush filter matches the
@@ -67,6 +220,12 @@ func TestMatchesTupleScoped(t *testing.T) {
 	}
 	if matchesTuple(con("172.31.9.9", "10.9.9.9", 17, 53), wide) {
 		t.Fatal("a different dst must survive even a proto-any grant")
+	}
+}
+
+func TestTupleFromAllowRejectsMixedFamilies(t *testing.T) {
+	if _, ok := tupleFromAllow(nodepolicy.AllowEntry{SrcIP: "10.99.0.7", DstCIDR: "2001:db8::7/128", Protocol: "tcp", PortLow: 443, PortHigh: 443}); ok {
+		t.Fatal("a tuple that no nft address-family chain can enforce must not flush conntrack")
 	}
 }
 
@@ -120,6 +279,71 @@ func TestFlushWiringOnRemoval(t *testing.T) {
 	m.drainFlush(ctx)
 	if len(flushed) != 1 || len(flushed[0]) != 1 || flushed[0][0].ruleID != "rB" {
 		t.Fatalf("removing B must flush EXACTLY B's tuple (A survives), got %+v", flushed)
+	}
+}
+
+// TestFQDNWithdrawalFlushesDualStackOnlyAfterAtomicApply pins the runtime half
+// of S21's active-generation withdrawal. The compiler has already expanded the
+// selected resolver answers into ordinary allow tuples; when the replacement
+// snapshot withdraws those answers, both native families are queued for teardown
+// only after nft accepted the complete replacement ruleset. A failed replacement
+// leaves the prior ruleset and its conntrack entries untouched.
+func TestFQDNWithdrawalFlushesDualStackOnlyAfterAtomicApply(t *testing.T) {
+	var flushed [][]flowTuple
+	applyErr := error(nil)
+	m := &Manager{
+		apply: func(context.Context, string) error { return applyErr },
+		now:   time.Now,
+		ctFlush: func(_ context.Context, tuples []flowTuple) (int, error) {
+			flushed = append(flushed, append([]flowTuple(nil), tuples...))
+			return len(tuples), nil
+		},
+	}
+	ctx := context.Background()
+	active := &nodepolicy.Compiled{
+		Version: nodepolicy.MaxSupportedVersion,
+		Mode:    nodepolicy.ModeEnforcing,
+		Allow: []nodepolicy.AllowEntry{
+			{SrcIP: "10.99.0.10", DstCIDR: "203.0.113.10/32", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v4", FQDNManaged: true},
+			{SrcIP: "2001:db8:99::10", DstCIDR: "2001:db8:203::10/128", Protocol: "tcp", PortLow: 443, PortHigh: 443, RuleID: "fqdn-v6", FQDNManaged: true},
+		},
+		FQDNGenerations: []nodepolicy.FQDNGeneration{{
+			ResourceID: "resource-api", Name: "api.example.com", Generation: "content-a",
+			Answers: []string{"203.0.113.10/32", "2001:db8:203::10/128"},
+		}},
+	}
+	if err := m.applyAndTrack(ctx, "active", active); err != nil {
+		t.Fatalf("baseline apply: %v", err)
+	}
+	m.drainFlush(ctx)
+	if len(flushed) != 0 {
+		t.Fatalf("first active generation must not flush: %+v", flushed)
+	}
+
+	withdrawn := &nodepolicy.Compiled{Version: nodepolicy.MaxSupportedVersion, Mode: nodepolicy.ModeEnforcing}
+	applyErr = errors.New("nft rejected replacement")
+	if err := m.applyAndTrack(ctx, "withdrawn", withdrawn); !errors.Is(err, applyErr) {
+		t.Fatalf("failed withdrawal apply = %v, want %v", err, applyErr)
+	}
+	m.drainFlush(ctx)
+	if len(flushed) != 0 {
+		t.Fatalf("failed atomic replacement must not flush still-enforced answers: %+v", flushed)
+	}
+
+	applyErr = nil
+	if err := m.applyAndTrack(ctx, "withdrawn", withdrawn); err != nil {
+		t.Fatalf("successful withdrawal apply: %v", err)
+	}
+	m.drainFlush(ctx)
+	if len(flushed) != 1 || len(flushed[0]) != 2 {
+		t.Fatalf("withdrawal must flush both retired family tuples after apply, got %+v", flushed)
+	}
+	got := map[string]bool{}
+	for _, tuple := range flushed[0] {
+		got[tuple.ruleID] = true
+	}
+	if !got["fqdn-v4"] || !got["fqdn-v6"] {
+		t.Fatalf("withdrawal must retain exact dual-stack tuple identity, got %+v", flushed[0])
 	}
 }
 

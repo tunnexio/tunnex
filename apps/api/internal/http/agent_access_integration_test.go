@@ -108,6 +108,7 @@ func TestAgentAccessDiagnosticPostgresContract(t *testing.T) {
 	if allowed.Overall != api.AgentAccessDiagnosticOverallAllowed || len(allowed.Checks) != 7 || allowed.Checks[5].Code != "matching_grant" {
 		t.Fatalf("allowed diagnostic: %#v", allowed)
 	}
+	assertDiagnosticOrder(t, allowed, "route_configured", "matching_grant")
 	if allowed.Checks[5].Facts == nil || (*allowed.Checks[5].Facts)["rule_id"] != rule.String() || (*allowed.Checks[5].Facts)["policy_hash"] != evaluation.PolicyHash {
 		t.Fatalf("allowed diagnostic omitted exact compiled facts: %#v", allowed.Checks[5])
 	}
@@ -117,6 +118,7 @@ func TestAgentAccessDiagnosticPostgresContract(t *testing.T) {
 		t.Fatalf("hostname without agent DNS must be inconclusive: %#v", hostname)
 	}
 	assertBlocker(hostname, "agent_dns_not_observed")
+	assertDiagnosticOrder(t, hostname, "agent_dns_not_observed", "route_destination_unresolved")
 	assertBlocker(diagnose("192.0.2.10"), "route_not_configured")
 
 	exec(`UPDATE policy_rules SET expires_at=now()-interval '1 minute' WHERE id=$1`, rule)
@@ -168,5 +170,21 @@ func TestAgentAccessDiagnosticPostgresContract(t *testing.T) {
 	_, missingErr := s.TestAgentAccess(memberCtx(outsider, rbac.RoleMember), missingReq)
 	if !hasCode(knownErr, 403, "forbidden") || !hasCode(missingErr, 403, "forbidden") || knownErr.Error() != missingErr.Error() {
 		t.Fatalf("known/missing member no-oracle mismatch: known=%v missing=%v", knownErr, missingErr)
+	}
+}
+
+func assertDiagnosticOrder(t *testing.T, diagnostic api.AgentAccessDiagnostic, before, after string) {
+	t.Helper()
+	beforeAt, afterAt := -1, -1
+	for i, check := range diagnostic.Checks {
+		if check.Code == before {
+			beforeAt = i
+		}
+		if check.Code == after {
+			afterAt = i
+		}
+	}
+	if beforeAt < 0 || afterAt < 0 || beforeAt >= afterAt {
+		t.Fatalf("expected %q before %q, checks=%#v", before, after, diagnostic.Checks)
 	}
 }

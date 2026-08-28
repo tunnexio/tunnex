@@ -33,6 +33,7 @@ import {
   FLOW_GRAPH_MAX_RULES,
   ruleBody,
   grantControls,
+  fqdnDestinationPresentation,
   type LoadState,
 } from "../src/lib/policyview";
 import { loadOne, type Loaded } from "../src/lib/api";
@@ -251,6 +252,41 @@ describe("D-a6 rule label — NEVER omit; DELETED ≠ UNRESOLVED", () => {
     expect(row.dst.state).toBe("unresolved");
     expect(row.dst.label).toMatch(/refresh/i);
   });
+
+  it("renders an FQDN destination by name and carries the server's generation-pending projection", () => {
+    const rule = {
+      id: "fqdn-rule",
+      src_group_id: "g-eng",
+      dst_kind: "fqdn_resource",
+      dst_fqdn_resource_id: "fqdn-1",
+      fqdn_destination_status: "generation_pending" as any,
+    } as PolicyRule;
+    const row = ruleRow(rule, groups, resources, [], [], {
+      ...LOADED,
+      fqdnResourcesLoaded: true,
+    }, [], [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com" } as any]);
+    expect(row.dst.label).toBe("Orders API");
+    expect(row.fqdnDestinationStatus).toBe("generation_pending");
+  });
+
+  it("keeps active, unavailable, and all no-traffic FQDN projections distinct", () => {
+    expect(fqdnDestinationPresentation("active_generation")).toMatchObject({
+      label: "FQDN ACTIVE GENERATION",
+      tone: "positive",
+    });
+    for (const status of ["feature_unavailable", "opt_in_disabled", "generation_pending", "generation_unavailable"] as const) {
+      expect(fqdnDestinationPresentation(status)?.label).toContain("NO TRAFFIC");
+    }
+    expect(fqdnDestinationPresentation("generation_withdrawn")).toMatchObject({
+      label: "FQDN GENERATION WITHDRAWN · NO TRAFFIC",
+      tone: "danger",
+    });
+    expect(fqdnDestinationPresentation("projection_unavailable")).toMatchObject({
+      label: "FQDN PROJECTION UNAVAILABLE · ENFORCEMENT UNKNOWN",
+      tone: "muted",
+    });
+    expect(fqdnDestinationPresentation("projection_unavailable")?.title).not.toMatch(/active|healthy/i);
+  });
 });
 
 describe("S8.7 ruleRow — cidr source: literal label + read-time warn badge (served verbatim, no client re-derivation)", () => {
@@ -428,6 +464,7 @@ describe("S8.2c D5 ruleBody — the Access builder now creates SITE-subject rule
     dstResource: "r1",
     dstSite: "s2",
     dstK8sService: "k1",
+    dstFQDNResource: "fqdn-1",
     expiresAt: "",
     editing: false,
   };
@@ -512,6 +549,16 @@ describe("S8.2c D5 ruleBody — the Access builder now creates SITE-subject rule
     });
     expect("dst_resource_id" in b).toBe(false);
     expect("dst_site_id" in b).toBe(false);
+  });
+  it("FQDN destination sets ONLY the published FQDN identity", () => {
+    const b = ruleBody({ ...base, srcKind: "group", dstKind: "fqdn_resource" });
+    expect(b).toMatchObject({
+      src_kind: "group",
+      dst_kind: "fqdn_resource",
+      dst_fqdn_resource_id: "fqdn-1",
+    });
+    expect("dst_resource_id" in b).toBe(false);
+    expect("dst_k8s_service_id" in b).toBe(false);
   });
 });
 
@@ -942,6 +989,9 @@ describe("defaultSrcKind / defaultDstKind — the modal opens on a kind that HAS
       defaultDstKind({ hasGroups: false, hasResources: false, hasSites: true }),
     ).toBe("site");
     expect(defaultSrcKind({ hasGroups: false, hasSites: true })).toBe("site");
+  });
+  it("FQDN-only destinations open on FQDN instead of an empty group picker", () => {
+    expect(defaultDstKind({ hasGroups: false, hasResources: false, hasSites: false, hasFQDNResources: true })).toBe("fqdn_resource");
   });
   it("a no-group, no-site org with an agent defaults to the agent source", () => {
     expect(

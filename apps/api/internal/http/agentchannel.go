@@ -1,9 +1,11 @@
 package http
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodepush"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
@@ -29,12 +32,21 @@ import (
 // against. It authorizes every request by the client CERTIFICATE (serial ->
 // node), never by anything in the request body (the machine-edition IDOR rule).
 type AgentChannel struct {
-	svc       *nodes.Service
-	ca        *agentca.CA
-	hub       *nodepush.Hub
-	logger    *slog.Logger
-	watchHold time.Duration
-	ingest    *accesslog.Ingester // nil until flow logging is configured (S7.5.1)
+	svc        *nodes.Service
+	ca         *agentca.CA
+	hub        *nodepush.Hub
+	logger     *slog.Logger
+	watchHold  time.Duration
+	ingest     *accesslog.Ingester // nil until flow logging is configured (S7.5.1)
+	dnsMailbox gatewayDNSMailbox
+}
+
+// gatewayDNSMailbox is the narrow control-channel seam. It intentionally
+// carries API-owned wire types only: apps/node mirrors the canonical JSON but
+// never imports this internal package.
+type gatewayDNSMailbox interface {
+	PendingForGateway(context.Context, uuid.UUID, uuid.UUID, int) ([]fqdnresolver.GatewayDNSRequest, error)
+	Complete(context.Context, uuid.UUID, uuid.UUID, fqdnresolver.GatewayDNSResponse) error
 }
 
 // NewAgentChannel builds the channel handler. hub may be nil (watch then falls
@@ -47,6 +59,20 @@ func NewAgentChannel(svc *nodes.Service, ca *agentca.CA, hub *nodepush.Hub, logg
 // /agent/flow-events endpoint replies 503 (flow logging not configured) — enforcement and
 // the rest of the channel are unaffected.
 func (a *AgentChannel) SetFlowIngester(ing *accesslog.Ingester) { a.ingest = ing }
+
+// SetGatewayDNSMailbox attaches the durable selected-gateway DNS RPC mailbox.
+// nil preserves the pre-S21 desired-state contract without inventing a
+// fallback resolver.
+func (a *AgentChannel) SetGatewayDNSMailbox(mailbox gatewayDNSMailbox) { a.dnsMailbox = mailbox }
+
+// NotifyGatewayDNSRequest is the mailbox's post-commit convergence hint. The
+// durable row is the source of truth; this wakes only the selected gateway's
+// watch and never broadcasts resolver work to peer nodes.
+func (a *AgentChannel) NotifyGatewayDNSRequest(_ context.Context, _ uuid.UUID, gatewayID uuid.UUID) {
+	if a.hub != nil {
+		a.hub.Notify(gatewayID)
+	}
+}
 
 // TLSConfig requires and verifies agent client certs against the CA, and
 // presents a CA-signed server cert.
@@ -74,6 +100,7 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post("/agent/report", a.report)
 	r.Post("/agent/status", a.status)
 	r.Post("/agent/flow-events", a.flowEvents)
+	r.Post("/agent/dns-resolution", a.dnsResolution)
 	return r
 }
 
@@ -167,12 +194,16 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		MaxPolicyVersion int `json:"max_policy_version"`
 		// S9.1 4d: the OpenVPN server's refuse-loudly health kind ("" / ovpn_certs_absent / ovpn_binary_absent).
 		OVPNHealth string `json:"ovpn_health"`
+		// DNSResolveRPCVersion is the selected-gateway DNS RPC compatibility
+		// signal. Missing/zero is an older agent and must refuse FQDN
+		// enforcement before a request is queued, never time out as DNS.
+		DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 16384)).Decode(&body); err != nil || body.PublicKey == "" {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth}
+	applied := nodes.AppliedPolicy{Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch
@@ -201,7 +232,73 @@ func (a *AgentChannel) desiredState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ds.Version = version
-	writeJSON(w, ds)
+	// A selected-gateway DNS request is additive desired state, but it remains
+	// atomically fetched with the rest of desired state: a mailbox read failure
+	// never makes the gateway reconcile a partial control-plane response.
+	state, err := a.withGatewayDNSRequest(r.Context(), node, ds)
+	if err != nil {
+		apierr.Write(w, r, err)
+		return
+	}
+	writeJSON(w, state)
+}
+
+type desiredStateWithGatewayDNSRequest struct {
+	nodes.DesiredState
+	DNSResolveRequest *fqdnresolver.GatewayDNSRequest `json:"dns_resolve_request,omitempty"`
+}
+
+func (a *AgentChannel) withGatewayDNSRequest(ctx context.Context, node sqlc.Node, state nodes.DesiredState) (desiredStateWithGatewayDNSRequest, error) {
+	out := desiredStateWithGatewayDNSRequest{DesiredState: state}
+	if a.dnsMailbox == nil {
+		return out, nil
+	}
+	pending, err := a.dnsMailbox.PendingForGateway(ctx, node.OrgID, node.ID, 1)
+	if err != nil {
+		return desiredStateWithGatewayDNSRequest{}, err
+	}
+	if len(pending) > 0 {
+		out.DNSResolveRequest = &pending[0]
+	}
+	return out, nil
+}
+
+// dnsResolution completes one mailbox request. authenticateAgent supplies the
+// only trusted org/gateway identity; every echoed response identity is then
+// checked again by the durable mailbox before it can influence lifecycle state.
+func (a *AgentChannel) dnsResolution(w http.ResponseWriter, r *http.Request) {
+	node, r, ok := a.authenticateAgent(w, r)
+	if !ok {
+		return
+	}
+	if a.dnsMailbox == nil {
+		http.Error(w, "fqdn DNS RPC unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	var response fqdnresolver.GatewayDNSResponse
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&response); err != nil {
+		http.Error(w, "invalid DNS response", http.StatusBadRequest)
+		return
+	}
+	if err := a.completeGatewayDNSResponse(r.Context(), node, response); err != nil {
+		switch {
+		case errors.Is(err, fqdnresolver.ErrGatewayDNSRPCReplay), errors.Is(err, fqdnresolver.ErrGatewayDNSRPCIdentity):
+			http.Error(w, "DNS response refused", http.StatusConflict)
+		case errors.Is(err, fqdnresolver.ErrGatewayDNSRPCMalformed), errors.Is(err, fqdnresolver.ErrGatewayDNSRPCStale), errors.Is(err, fqdnresolver.ErrGatewayDNSRPCVersion):
+			http.Error(w, "invalid DNS response", http.StatusBadRequest)
+		default:
+			apierr.Write(w, r, err)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *AgentChannel) completeGatewayDNSResponse(ctx context.Context, node sqlc.Node, response fqdnresolver.GatewayDNSResponse) error {
+	if a.dnsMailbox == nil {
+		return fqdnresolver.ErrGatewayDNSRPCUnavailable
+	}
+	return a.dnsMailbox.Complete(ctx, node.OrgID, node.ID, response)
 }
 
 // watch is a long-poll: it returns the instant this node's desired state changes
