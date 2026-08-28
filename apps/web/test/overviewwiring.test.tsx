@@ -206,6 +206,23 @@ describe("the gateway health summary uses the ONE health interpreter", () => {
   });
 });
 
+describe("the populated Overview consolidates operational state into four cards", () => {
+  it("renders the approved four regions without the former standalone panel chrome", async () => {
+    show();
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Fleet summary" })).toBeTruthy(),
+    );
+    expect(screen.getByRole("region", { name: "Gateway Health" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Device Health" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Infrastructure" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Peer Connection Status" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Device Posture" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "HA Hub Set" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Network map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Kubernetes" })).toBeNull();
+  });
+});
+
 describe("the get-started state appears only when the org is KNOWN to be empty", () => {
   it("a fresh org shows ONE get-started panel", async () => {
     empty = true;
