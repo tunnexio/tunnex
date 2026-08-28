@@ -887,7 +887,7 @@ describe("S7.5.4 activeMembers (D1 picker constraint)", () => {
 
 import { canEditRuleInModal } from "../src/lib/policyview";
 
-describe("canEditRuleInModal — site rules are NOT editable in the group/resource modal (S8.1 dst, S8.2 src)", () => {
+describe("canEditRuleInModal — dedicated and site rules are NOT editable in the group/resource modal", () => {
   it("group and resource rules (with a group/user source) are editable", () => {
     expect(canEditRuleInModal({ src_kind: "group", dst_kind: "group" })).toBe(
       true,
@@ -905,6 +905,9 @@ describe("canEditRuleInModal — site rules are NOT editable in the group/resour
     expect(canEditRuleInModal({ src_kind: "site", dst_kind: "group" })).toBe(
       false,
     );
+  });
+  it("a cluster-scope rule is NOT editable here because its dedicated API owns every mutation", () => {
+    expect(canEditRuleInModal({ src_kind: "group", dst_kind: "k8s_cluster_scope" })).toBe(false);
   });
 });
 

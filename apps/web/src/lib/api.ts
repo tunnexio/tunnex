@@ -79,6 +79,8 @@ export type DNSForward = components["schemas"]["DNSForward"];
 // S10.3 — Kubernetes cluster/Service connectivity.
 export type K8sCluster = components["schemas"]["K8sCluster"];
 export type K8sService = components["schemas"]["K8sService"];
+export type K8sHASettings = components["schemas"]["K8sHASettings"];
+export type K8sConnectorPoolHAStatus = components["schemas"]["K8sConnectorPoolHAStatus"];
 
 // apiErrorMessage pulls the human message out of the standard error envelope.
 export function apiErrorMessage(error: unknown, fallback: string): string {

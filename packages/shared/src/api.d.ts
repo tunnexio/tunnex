@@ -2891,6 +2891,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/provider-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Correct provider/platform presentation metadata without changing traffic (S20.4; k8s:manage)
+         * @description Changes installation and presentation context only. It does not discover a cloud resource, move the connector, alter networking, or grant access. Provider/platform must be one supported exact pair.
+         */
+        put: operations["setK8sClusterProviderMetadata"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/ha-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read the explicit organization connector-HA opt-in (S20.3b; k8s_ha:view) */
+        get: operations["getK8sHASettings"];
+        /** Enable or begin draining organization connector HA (S20.3b; k8s_ha:manage) */
+        put: operations["setK8sHASettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/connector-pools/ha-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List truthful requested/actual HA convergence per connector pool (S20.3b; k8s_ha:view) */
+        get: operations["listK8sConnectorPoolHAStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/connector-pools/{poolId}/ha-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                poolId: string;
+            };
+            cookie?: never;
+        };
+        /** Read truthful requested/actual HA convergence for one connector pool (S20.3b; k8s_ha:view) */
+        get: operations["getK8sConnectorPoolHAStatus"];
+        /** Request fenced HA or legacy drain for one pool (S20.3b; k8s_ha:manage) */
+        put: operations["setK8sConnectorPoolHAMode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/services": {
         parameters: {
             query?: never;
@@ -2909,6 +2992,189 @@ export interface paths {
          * @description Allocates a /32 VIP from the cluster's range and records the Service (a stable identity). Clients reach the VIP; the gateway DNATs it to the Service's real ClusterIP. 409 vip_range_exhausted when the range is full, 409 service_exists when that namespace/name is already exposed.
          */
         post: operations["exposeK8sService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/cluster-scope-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read the licensed, explicit cluster-scope opt-in (S20.4; k8s_scope:view + policy:view) */
+        get: operations["getK8sClusterScopeSettings"];
+        /** Opt an organization into or out of cluster-scope enforcement (S20.4; human k8s_scope:manage) */
+        put: operations["setK8sClusterScopeSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        /** Page current active-connector Service inventory without raw Kubernetes UIDs (S20.4; k8s:manage) */
+        get: operations["listK8sClusterInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory/{inventoryRef}/expose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+                inventoryRef: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomically expose selected exact ports from current connector inventory (S20.4; k8s:manage) */
+        post: operations["exposeK8sInventoryService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/cluster-scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List preserved cluster-scope grants (S20.4; k8s_scope:view + policy:view) */
+        get: operations["listK8sClusterScopes"];
+        put?: never;
+        /** Create one human-approved exact-child cluster scope (S20.4; k8s_scope:manage + policy:manage) */
+        post: operations["createK8sClusterScope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        /** Read one cluster scope (S20.4; k8s_scope:view + policy:view) */
+        get: operations["getK8sClusterScope"];
+        /** Enable or disable one scope with optimistic revision (S20.4; human k8s_scope:manage) */
+        put: operations["setK8sClusterScopeActive"];
+        post?: never;
+        /** Irreversibly delete one scope after explicit confirmation (S20.4; human k8s_scope:manage) */
+        delete: operations["deleteK8sClusterScope"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/initial-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        /** Page immutable initial offered/selected evidence (S20.4; k8s_scope:view + policy:view) */
+        get: operations["listK8sClusterScopeInitialCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        /** Page one scope's durable membership decisions (S20.4; k8s_scope:view + policy:view) */
+        get: operations["listK8sClusterScopeMemberships"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/cluster-scope-review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Page pending later-exposure decisions across the organization (S20.4; k8s_scope:view + policy:view) */
+        get: operations["listK8sClusterScopeReviewQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/memberships/{serviceChildId}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+                serviceChildId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Irreversibly approve or reject one pending later exposure (S20.4; human k8s_scope:approve) */
+        post: operations["decideK8sClusterScopeMembership"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4435,7 +4701,7 @@ export interface components {
             src_agent_group_id?: string | null;
             cidr_outside_org_ranges: boolean;
             /** @enum {string} */
-            dst_kind: "resource" | "group" | "site" | "k8s_service" | "fqdn_resource";
+            dst_kind: "resource" | "group" | "site" | "k8s_service" | "k8s_cluster_scope" | "fqdn_resource";
             /** Format: uuid */
             dst_resource_id?: string | null;
             /** Format: uuid */
@@ -4447,6 +4713,11 @@ export interface components {
              * @description Set when dst_kind=k8s_service (S10.3): the exposed Service the grant reaches; the compiler resolves it to the Service's CURRENT VIP.
              */
             dst_k8s_service_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Set when dst_kind=k8s_cluster_scope: the cluster whose approved exact-port memberships this specialized rule owns.
+             */
+            dst_k8s_cluster_id?: string | null;
             /**
              * Format: uuid
              * @description Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated.
@@ -4554,6 +4825,16 @@ export interface components {
              * @description The explicit in-cluster gateway that resolves ready endpoints and DNATs service VIPs; null means the cluster is not serving traffic.
              */
             connector_node_id?: string | null;
+            /**
+             * @description Operator-supplied presentation and installation context only; unknown for legacy callers/rows.
+             * @enum {string}
+             */
+            provider: "aws" | "azure" | "gcp" | "self_managed" | "unknown";
+            /**
+             * @description Operator-supplied presentation and installation context only; never cloud discovery or authority.
+             * @enum {string}
+             */
+            platform: "eks" | "aks" | "gke_standard" | "kubernetes" | "unknown";
             /** @description A DNS label; a hostname component of every exposed Service. */
             name: string;
             /** @description The cluster's synthetic VIP range (CIDR), disjoint from all other org ranges. */
@@ -4595,6 +4876,16 @@ export interface components {
              * @description The active in-cluster connector already bound to site_id; required by the authenticated handler so sessionless requests retain a uniform 401.
              */
             connector_node_id?: string | null;
+            /**
+             * @description Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair.
+             * @enum {string}
+             */
+            provider?: "aws" | "azure" | "gcp" | "self_managed" | "unknown";
+            /**
+             * @description Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair.
+             * @enum {string}
+             */
+            platform?: "eks" | "aks" | "gke_standard" | "kubernetes" | "unknown";
             /** @description A DNS label (lowercase a-z0-9 + hyphens). */
             name: string;
             /** @description The synthetic VIP range (CIDR), disjoint from pool/sites/other clusters. */
@@ -4603,6 +4894,223 @@ export interface components {
             service_cidr: string;
             /** @description The customer's DNS zone (e.g. k8s.acme.com); need not be publicly registered. */
             dns_zone: string;
+        };
+        K8sClusterProviderMetadataRequest: {
+            /** @enum {string} */
+            provider: "aws" | "azure" | "gcp" | "self_managed";
+            /** @enum {string} */
+            platform: "eks" | "aks" | "gke_standard" | "kubernetes";
+        };
+        K8sHASettings: {
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            actual_state: "disabled" | "enabled" | "drain_pending" | "blocked";
+            reason_code: string;
+            deployment_ready: boolean;
+            /** @enum {string} */
+            scheduler_state: "disabled" | "blocked" | "follower" | "leader_idle" | "leader_operating" | "degraded";
+            scheduler_reason_codes: string[];
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        SetK8sHASettingsRequest: {
+            enabled: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        K8sConnectorPoolHAStatus: {
+            /** Format: uuid */
+            pool_id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            /** Format: uuid */
+            active_node_id: string;
+            /** @enum {string} */
+            requested_mode: "legacy" | "fenced_ha";
+            /** @enum {string} */
+            actual_mode: "legacy" | "bootstrap_pending" | "fenced_ha" | "drain_pending" | "blocked";
+            /** Format: int64 */
+            promotion_generation: number;
+            membership_epoch_known: boolean;
+            /** Format: int64 */
+            membership_epoch?: number | null;
+            /** Format: int64 */
+            transition_revision: number;
+            reason_code: string;
+            /** Format: date-time */
+            requested_at?: string | null;
+            /** Format: date-time */
+            achieved_at?: string | null;
+        };
+        SetK8sConnectorPoolHAModeRequest: {
+            /** @enum {string} */
+            requested_mode: "legacy" | "fenced_ha";
+            /** Format: int64 */
+            expected_transition_revision: number;
+        };
+        K8sClusterScopeSettings: {
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            entitlement_unlocked: boolean;
+            /** @description True only when licensed and explicitly enabled. */
+            effective: boolean;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        SetK8sClusterScopeSettingsRequest: {
+            enabled: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        K8sInventoryPort: {
+            /** Format: uuid */
+            port_ref: string;
+            name?: string | null;
+            /** @enum {string} */
+            protocol: "tcp" | "udp";
+            service_port: number;
+        };
+        K8sInventoryService: {
+            /** Format: uuid */
+            inventory_ref: string;
+            namespace: string;
+            service: string;
+            ports: components["schemas"]["K8sInventoryPort"][];
+        };
+        K8sInventoryPage: {
+            items: components["schemas"]["K8sInventoryService"][];
+            next_cursor?: string | null;
+            /** Format: date-time */
+            observed_at: string;
+            /** Format: date-time */
+            fresh_until: string;
+        };
+        ExposeK8sInventoryServiceRequest: {
+            port_refs: string[];
+        };
+        ExposeK8sInventoryServiceResult: {
+            service_child_ids: string[];
+            pending_review_count: number;
+        };
+        K8sClusterScopeSource: {
+            /**
+             * @description agent_group is readable for preserved legacy rows but is not accepted by the v1 create contract.
+             * @enum {string}
+             */
+            kind: "group" | "user" | "site" | "cidr" | "agent" | "agent_group";
+            /**
+             * Format: uuid
+             * @description Required for every source kind except cidr.
+             */
+            id?: string | null;
+            /** @description Required only when kind=cidr. */
+            cidr?: string | null;
+        };
+        CreateK8sClusterScopeSource: {
+            /** @enum {string} */
+            kind: "group" | "user" | "site" | "cidr" | "agent";
+            /**
+             * Format: uuid
+             * @description Required for every source kind except cidr.
+             */
+            id?: string | null;
+            /** @description Required only when kind=cidr. */
+            cidr?: string | null;
+        };
+        K8sClusterScope: {
+            /** Format: uuid */
+            rule_id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            source: components["schemas"]["K8sClusterScopeSource"];
+            active: boolean;
+            /** Format: int64 */
+            revision: number;
+            initial_candidate_count: number;
+            /** Format: uuid */
+            created_by_user_id: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateK8sClusterScopeRequest: {
+            /** Format: uuid */
+            cluster_id: string;
+            source: components["schemas"]["CreateK8sClusterScopeSource"];
+            initial_service_child_ids: string[];
+            /** Format: date-time */
+            expires_at?: string | null;
+        };
+        SetK8sClusterScopeActiveRequest: {
+            active: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        K8sClusterScopeCandidate: {
+            /** Format: uuid */
+            service_child_id: string;
+            namespace: string;
+            service: string;
+            /** @enum {string} */
+            protocol: "tcp" | "udp";
+            port: number;
+            selected: boolean;
+            /** @description True only while the exact child still matches the latest fresh, attributed connector inventory and opaque Service identity. */
+            current: boolean;
+            /** @description True only when this selected candidate currently contributes scope-derived policy output. */
+            effective: boolean;
+            inactive_reason?: components["schemas"]["K8sClusterScopeInactiveReason"];
+        };
+        K8sClusterScopeCandidatePage: {
+            items: components["schemas"]["K8sClusterScopeCandidate"][];
+            next_cursor?: string | null;
+        };
+        K8sClusterScopeMembership: {
+            /** Format: uuid */
+            rule_id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            /** Format: uuid */
+            service_child_id: string;
+            namespace: string;
+            service: string;
+            /** @enum {string} */
+            protocol: "tcp" | "udp";
+            port: number;
+            /** @enum {string} */
+            origin: "initial" | "later";
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected";
+            /** @description True only while the exact child still matches the latest fresh, attributed connector inventory and opaque Service identity. */
+            current: boolean;
+            /** @description True only when this membership currently contributes scope-derived policy output. */
+            effective: boolean;
+            inactive_reason?: components["schemas"]["K8sClusterScopeInactiveReason"];
+            /** Format: uuid */
+            decided_by_user_id?: string | null;
+            /** Format: date-time */
+            decided_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * @description The first fail-closed compiler condition preventing effective access; null only when effective is true. Decision status remains separately visible.
+         * @enum {string|null}
+         */
+        K8sClusterScopeInactiveReason: "edition_locked" | "not_selected" | "pending" | "rejected" | "scope_disabled" | "organization_disabled" | "rule_disabled" | "rule_expired" | "inventory_stale" | "inventory_unavailable" | "identity_changed" | null;
+        K8sClusterScopeMembershipPage: {
+            items: components["schemas"]["K8sClusterScopeMembership"][];
+            next_cursor?: string | null;
+        };
+        DecideK8sClusterScopeMembershipRequest: {
+            /** @enum {string} */
+            decision: "approved" | "rejected";
         };
         ExposeK8sServiceRequest: {
             /** @description The Kubernetes Service name. */
@@ -10780,6 +11288,165 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    setK8sClusterProviderMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["K8sClusterProviderMetadataRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated presentation metadata. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sCluster"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getK8sHASettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Missing durable state is returned as disabled revision zero. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sHASettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setK8sHASettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetK8sHASettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Requested setting; disabling may remain drain_pending per pool. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sHASettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listK8sConnectorPoolHAStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Missing transition rows are explicit legacy revision zero. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sConnectorPoolHAStatus"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getK8sConnectorPoolHAStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                poolId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Missing transition state is explicit legacy revision zero. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sConnectorPoolHAStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setK8sConnectorPoolHAMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                poolId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetK8sConnectorPoolHAModeRequest"];
+            };
+        };
+        responses: {
+            /** @description Requested and actual asynchronous transition state. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sConnectorPoolHAStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listK8sServices: {
         parameters: {
             query?: never;
@@ -10829,6 +11496,359 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["K8sService"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getK8sClusterScopeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Missing durable state is disabled revision zero; effective also requires entitlement. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScopeSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setK8sClusterScopeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetK8sClusterScopeSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored and effective setting state. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScopeSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listK8sClusterInventory: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh inventory. Unavailable/stale is a typed error, never an empty success. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sInventoryPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exposeK8sInventoryService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+                inventoryRef: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExposeK8sInventoryServiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Exact child IDs and number of durable pending scope reviews created atomically. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExposeK8sInventoryServiceResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listK8sClusterScopes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cluster scopes, including disabled state. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScope"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createK8sClusterScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateK8sClusterScopeRequest"];
+            };
+        };
+        responses: {
+            /** @description Created scope; no initial child is selected by default. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScope"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getK8sClusterScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cluster scope. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScope"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setK8sClusterScopeActive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetK8sClusterScopeActiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated scope. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScope"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteK8sClusterScope: {
+        parameters: {
+            query: {
+                expected_revision: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted; append-only audit remains. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listK8sClusterScopeInitialCandidates: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Initial candidates without raw Service UID. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScopeCandidatePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listK8sClusterScopeMemberships: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Durable membership state without raw Service UID. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScopeMembershipPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listK8sClusterScopeReviewQueue: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pending review queue. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScopeMembershipPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    decideK8sClusterScopeMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                ruleId: string;
+                serviceChildId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideK8sClusterScopeMembershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored decision; exact same-decision retry is idempotent. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sClusterScopeMembership"];
                 };
             };
             default: components["responses"]["Error"];

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,8 +44,10 @@ type k8sTarget struct {
 // successful view for this Service (fault / not-yet-listed / unknown) => the classifier fails closed. A
 // non-cluster gateway has a nil source; it also has no VIPMappings, so ResolveK8sVIPs never calls this.
 type endpointSource interface {
-	// Targets returns the ready podIP:port backing (namespace, service) for the exposed servicePort.
-	Targets(namespace, service string, servicePort int) (targets []k8sTarget, ok bool)
+	// Targets returns the ready podIP:port backing the exact L4 Service port.
+	// Kubernetes permits TCP and UDP ServicePorts on the same number, so the
+	// protocol is part of the lookup identity and must never be guessed.
+	Targets(namespace, service, protocol string, servicePort int) (targets []k8sTarget, ok bool)
 }
 
 // ── in-cluster watcher ────────────────────────────────────────────────────────────────────────────────
@@ -64,16 +67,60 @@ const (
 	watchMaxDuration      = 6 * time.Minute
 )
 
-// svcPorts maps a Service's exposed port NUMBER -> its port NAME. The name is what correlates a service
-// port to an EndpointSlice port (which carries the RESOLVED container port number). We need the Service
-// only for this number->name map; the EndpointSlice carries the ready addresses AND the resolved ports.
-type svcPorts map[int]string
+type svcPortKey struct {
+	protocol string
+	port     int
+}
+
+type endpointPortKey struct {
+	protocol string
+	name     string
+}
+
+// svcPorts maps an exact Service protocol+port to its port name. The name and
+// protocol then correlate it to the resolved EndpointSlice target port.
+type svcPorts map[svcPortKey]string
+
+type serviceInfo struct {
+	ports svcPorts
+	uid   string // opaque metadata.uid; never endpoint or cluster authority
+}
+
+// ServiceUIDObservation is the watcher's deliberately narrow identity view.
+// It excludes endpoint, Pod, Node, address, and port data.
+type ServiceUIDObservation struct {
+	Namespace string
+	Service   string
+	UID       string
+	State     string // live | deleted
+}
+
+const (
+	maxServiceInventoryServices = 500
+	maxServiceInventoryPorts    = 32
+)
+
+// ServiceInventoryItem is the full, non-sensitive Service view used only by
+// the authenticated inventory reporter. It deliberately excludes ClusterIP,
+// endpoints, Pods, Nodes, credentials and cloud/network metadata.
+type ServiceInventoryItem struct {
+	Namespace string
+	Service   string
+	UID       string
+	Ports     []ServiceInventoryPort
+}
+
+type ServiceInventoryPort struct {
+	Name     string
+	Protocol string
+	Port     int
+}
 
 // epGroup is the union of a Service's EndpointSlices: ready addresses + the resolved (name->port) map. A
 // Service may have >1 EndpointSlice, so entries are keyed by slice name and merged at read time.
 type epGroup struct {
-	ready []string       // ready pod IPs (conditions.ready == true)
-	ports map[string]int // endpoint port NAME -> resolved container port number
+	ready []string                // ready pod IPs (conditions.ready == true)
+	ports map[endpointPortKey]int // endpoint protocol+name -> resolved container port number
 }
 
 type K8sWatcher struct {
@@ -84,8 +131,11 @@ type K8sWatcher struct {
 	kick   func() // signal the egress reconcile that the endpoint view changed (watch-driven, not polled)
 
 	mu       sync.RWMutex
-	services map[string]svcPorts           // ns/name -> port->name
+	services map[string]serviceInfo        // ns/name -> Service identity + port model
 	slices   map[string]map[string]epGroup // ns/service -> (sliceName -> group)
+	// One prior incarnation is enough to report the delete/recreate transition
+	// while bounding retained identity state per server-selected Service.
+	uidTombstones map[string]string
 	// *Synced (L12): has a full LIST of this resource SUCCEEDED and not since been cleared by a fault? This
 	// distinguishes "the API view is not live" (fail-closed, ok=false → drives k8s_endpoints_unavailable) from
 	// "the API view is live but this Service has no endpoints" (ok=true, zero targets → a per-Service refuse,
@@ -121,18 +171,19 @@ func NewInClusterWatcher(log *slog.Logger, kick func()) (*K8sWatcher, error) {
 		// No client Timeout: a watch is a long-lived stream. Per-request bounding is via ctx on list.
 	}
 	return &K8sWatcher{
-		base:     "https://" + host + ":" + port,
-		token:    strings.TrimSpace(string(token)),
-		client:   client,
-		log:      log,
-		kick:     kick,
-		services: map[string]svcPorts{},
-		slices:   map[string]map[string]epGroup{},
+		base:          "https://" + host + ":" + port,
+		token:         strings.TrimSpace(string(token)),
+		client:        client,
+		log:           log,
+		kick:          kick,
+		services:      map[string]serviceInfo{},
+		slices:        map[string]map[string]epGroup{},
+		uidTombstones: map[string]string{},
 	}, nil
 }
 
 // Targets implements endpointSource — a PURE read of the last-successful cache (no I/O in the render path).
-func (w *K8sWatcher) Targets(namespace, service string, servicePort int) ([]k8sTarget, bool) {
+func (w *K8sWatcher) Targets(namespace, service, protocol string, servicePort int) ([]k8sTarget, bool) {
 	key := namespace + "/" + service
 	w.mu.RLock()
 	defer w.mu.RUnlock()
@@ -143,14 +194,18 @@ func (w *K8sWatcher) Targets(namespace, service string, servicePort int) ([]k8sT
 	if !w.servicesSynced || !w.slicesSynced {
 		return nil, false
 	}
-	ports := w.services[key]
+	protocol, supported := normalizeServiceProtocol(protocol)
+	if !supported {
+		return nil, true // live view, but no target for an unsupported protocol
+	}
+	ports := w.services[key].ports
 	groups := w.slices[key]
 	// The EndpointSlice port NAME that backs the exposed servicePort. servicePort==0 is refused upstream
 	// (classify: all_ports_unsupported), so matchByName is effectively always true here; the guard stays for
 	// defense-in-depth.
 	wantName, matchByName := "", servicePort != 0
 	if matchByName {
-		n, ok := ports[servicePort]
+		n, ok := ports[svcPortKey{protocol: protocol, port: servicePort}]
 		if !ok {
 			return nil, true // API live, but this Service doesn't expose that port => zero targets (refuse)
 		}
@@ -161,7 +216,7 @@ func (w *K8sWatcher) Targets(namespace, service string, servicePort int) ([]k8sT
 	for _, g := range groups {
 		podPort := 0
 		if matchByName {
-			p, ok := g.ports[wantName]
+			p, ok := g.ports[endpointPortKey{protocol: protocol, name: wantName}]
 			if !ok {
 				continue // this slice has no port with the wanted name
 			}
@@ -177,6 +232,90 @@ func (w *K8sWatcher) Targets(namespace, service string, servicePort int) ([]k8sT
 		}
 	}
 	return out, true
+}
+
+// normalizeServiceProtocol implements Kubernetes' omitted-protocol default but
+// admits only protocols the Tunnex datapath can enforce. Unsupported values
+// cannot alias the TCP index.
+func normalizeServiceProtocol(protocol string) (string, bool) {
+	switch {
+	case protocol == "" || strings.EqualFold(protocol, "tcp"):
+		return "tcp", true
+	case strings.EqualFold(protocol, "udp"):
+		return "udp", true
+	default:
+		return "", false
+	}
+}
+
+// ServiceUIDObservations returns only one exact Service identity and fails
+// closed until a full Service LIST is live. It never exposes broad inventory.
+func (w *K8sWatcher) ServiceUIDObservations(namespace, service string) ([]ServiceUIDObservation, bool) {
+	key := namespace + "/" + service
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if !w.servicesSynced {
+		return nil, false
+	}
+	var out []ServiceUIDObservation
+	if uid := w.uidTombstones[key]; uid != "" {
+		out = append(out, ServiceUIDObservation{Namespace: namespace, Service: service, UID: uid, State: "deleted"})
+	}
+	if info, ok := w.services[key]; ok && info.uid != "" {
+		out = append(out, ServiceUIDObservation{Namespace: namespace, Service: service, UID: info.uid, State: "live"})
+	}
+	return out, len(out) != 0
+}
+
+// ServiceInventory returns one deterministic full snapshot of every Service
+// with at least one supported TCP/UDP port. It fails closed instead of
+// truncating when either locked v1 bound would be exceeded.
+func (w *K8sWatcher) ServiceInventory() ([]ServiceInventoryItem, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if !w.servicesSynced {
+		return nil, false
+	}
+	items := make([]ServiceInventoryItem, 0, len(w.services))
+	for key, info := range w.services {
+		if info.uid == "" {
+			return nil, false
+		}
+		parts := strings.SplitN(key, "/", 2)
+		if len(parts) != 2 {
+			return nil, false
+		}
+		ports := make([]ServiceInventoryPort, 0, len(info.ports))
+		for portKey, name := range info.ports {
+			ports = append(ports, ServiceInventoryPort{Name: name, Protocol: portKey.protocol, Port: portKey.port})
+		}
+		if len(ports) == 0 {
+			continue
+		}
+		if len(ports) > maxServiceInventoryPorts {
+			return nil, false
+		}
+		sort.Slice(ports, func(i, j int) bool {
+			if ports[i].Protocol != ports[j].Protocol {
+				return ports[i].Protocol < ports[j].Protocol
+			}
+			if ports[i].Port != ports[j].Port {
+				return ports[i].Port < ports[j].Port
+			}
+			return ports[i].Name < ports[j].Name
+		})
+		items = append(items, ServiceInventoryItem{Namespace: parts[0], Service: parts[1], UID: info.uid, Ports: ports})
+	}
+	if len(items) > maxServiceInventoryServices {
+		return nil, false
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Namespace != items[j].Namespace {
+			return items[i].Namespace < items[j].Namespace
+		}
+		return items[i].Service < items[j].Service
+	})
+	return items, true
 }
 
 // Run drives two independent list+watch loops (Services and EndpointSlices have independent
@@ -325,13 +464,26 @@ func (w *K8sWatcher) listServices(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := map[string]svcPorts{}
+	next := map[string]serviceInfo{}
 	for _, it := range items {
-		if key, ports, ok := parseService(it); ok {
-			next[key] = ports
+		if key, info, ok := parseService(it); ok {
+			next[key] = info
 		}
 	}
 	w.mu.Lock()
+	if w.uidTombstones == nil {
+		w.uidTombstones = map[string]string{}
+	}
+	for key, old := range w.services {
+		if _, stillLive := next[key]; !stillLive && old.uid != "" {
+			w.uidTombstones[key] = old.uid
+		}
+	}
+	for key, current := range next {
+		if old, existed := w.services[key]; existed && old.uid != "" && current.uid != "" && old.uid != current.uid {
+			w.uidTombstones[key] = old.uid
+		}
+	}
 	w.services = next
 	w.servicesSynced = true // a full LIST succeeded — the Services view is now live (L12)
 	w.mu.Unlock()
@@ -360,17 +512,26 @@ func (w *K8sWatcher) listSlices(ctx context.Context) (string, error) {
 }
 
 func (w *K8sWatcher) applyServiceEvent(evType string, obj json.RawMessage) {
-	key, ports, ok := parseService(obj)
+	key, info, ok := parseService(obj)
 	if !ok {
 		return
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.uidTombstones == nil {
+		w.uidTombstones = map[string]string{}
+	}
 	if evType == "DELETED" {
+		if info.uid != "" {
+			w.uidTombstones[key] = info.uid
+		}
 		delete(w.services, key)
 		return
 	}
-	w.services[key] = ports
+	if old, existed := w.services[key]; existed && old.uid != "" && info.uid != "" && old.uid != info.uid {
+		w.uidTombstones[key] = old.uid
+	}
+	w.services[key] = info
 }
 
 func (w *K8sWatcher) applySliceEvent(evType string, obj json.RawMessage) {
@@ -399,7 +560,8 @@ func (w *K8sWatcher) applySliceEvent(evType string, obj json.RawMessage) {
 // Targets returns ok=false (API-down) until a fresh LIST succeeds — never serving a stale entry.
 func (w *K8sWatcher) clearServices() {
 	w.mu.Lock()
-	w.services = map[string]svcPorts{}
+	w.services = map[string]serviceInfo{}
+	w.uidTombstones = map[string]string{}
 	w.servicesSynced = false
 	w.mu.Unlock()
 }
@@ -412,27 +574,32 @@ func (w *K8sWatcher) clearSlices() {
 
 // ── JSON shapes (minimal — only the fields we read) ─────────────────────────────────────────────────────
 
-func parseService(raw json.RawMessage) (key string, ports svcPorts, ok bool) {
+func parseService(raw json.RawMessage) (key string, info serviceInfo, ok bool) {
 	var s struct {
 		Metadata struct {
 			Name      string `json:"name"`
 			Namespace string `json:"namespace"`
+			UID       string `json:"uid"`
 		} `json:"metadata"`
 		Spec struct {
 			Ports []struct {
-				Name string `json:"name"`
-				Port int    `json:"port"`
+				Name     string `json:"name"`
+				Port     int    `json:"port"`
+				Protocol string `json:"protocol"`
 			} `json:"ports"`
 		} `json:"spec"`
 	}
 	if err := json.Unmarshal(raw, &s); err != nil || s.Metadata.Name == "" || s.Metadata.Namespace == "" {
-		return "", nil, false
+		return "", serviceInfo{}, false
 	}
-	ports = svcPorts{}
+	info.ports = svcPorts{}
+	info.uid = s.Metadata.UID
 	for _, p := range s.Spec.Ports {
-		ports[p.Port] = p.Name
+		if protocol, supported := normalizeServiceProtocol(p.Protocol); supported {
+			info.ports[svcPortKey{protocol: protocol, port: p.Port}] = p.Name
+		}
 	}
-	return s.Metadata.Namespace + "/" + s.Metadata.Name, ports, true
+	return s.Metadata.Namespace + "/" + s.Metadata.Name, info, true
 }
 
 func parseSlice(raw json.RawMessage) (svcKey, sliceName string, g epGroup, ok bool) {
@@ -449,8 +616,9 @@ func parseSlice(raw json.RawMessage) (svcKey, sliceName string, g epGroup, ok bo
 			} `json:"conditions"`
 		} `json:"endpoints"`
 		Ports []struct {
-			Name string `json:"name"`
-			Port *int   `json:"port"`
+			Name     string `json:"name"`
+			Port     *int   `json:"port"`
+			Protocol string `json:"protocol"`
 		} `json:"ports"`
 	}
 	if err := json.Unmarshal(raw, &s); err != nil {
@@ -460,10 +628,10 @@ func parseSlice(raw json.RawMessage) (svcKey, sliceName string, g epGroup, ok bo
 	if svc == "" || s.Metadata.Namespace == "" || s.Metadata.Name == "" {
 		return "", "", epGroup{}, false // an orphan slice (no owning Service) is not ours to map
 	}
-	g = epGroup{ports: map[string]int{}}
+	g = epGroup{ports: map[endpointPortKey]int{}}
 	for _, p := range s.Ports {
-		if p.Port != nil {
-			g.ports[p.Name] = *p.Port
+		if protocol, supported := normalizeServiceProtocol(p.Protocol); p.Port != nil && supported {
+			g.ports[endpointPortKey{protocol: protocol, name: p.Name}] = *p.Port
 		}
 	}
 	for _, e := range s.Endpoints {

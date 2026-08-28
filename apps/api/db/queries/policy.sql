@@ -149,6 +149,111 @@ FROM policy_rules p
 WHERE p.org_id = $1 AND (p.expires_at IS NULL OR p.expires_at > now())
 ORDER BY p.created_at, p.id;
 
+-- name: ListApprovedK8sClusterScopeExpansions :many
+-- S20.4 compiler input. One row lowers an active scope rule to one ordinary
+-- exact k8s_service destination. The selected report is the latest eligible
+-- snapshot for the exact current connector generation; an older still-fresh
+-- report must not retain a Service omitted by a newer snapshot. Every
+-- approval identity is rejoined to the current UID attribution and exact
+-- protocol/port child. Missing opt-in, stale inventory, moved ownership,
+-- malformed over-limit state, or an identity mismatch therefore yields zero
+-- rows rather than a wildcard or a guessed sibling port.
+WITH eligible_reports AS (
+    SELECT DISTINCT ON (report.org_id, report.cluster_id)
+           report.id, report.org_id, report.site_id, report.cluster_id,
+           report.connector_node_id, report.replay_state_id,
+           report.replay_sequence
+    FROM k8s_service_inventory_reports report
+    JOIN k8s_service_uid_observation_replay_states replay
+      ON replay.id=report.replay_state_id AND replay.org_id=report.org_id
+     AND replay.site_id=report.site_id AND replay.cluster_id=report.cluster_id
+     AND replay.connector_node_id=report.connector_node_id
+     AND replay.sequence=report.replay_sequence
+    JOIN k8s_clusters cluster
+      ON cluster.id=report.cluster_id AND cluster.org_id=report.org_id
+     AND cluster.site_id=report.site_id
+    JOIN nodes reporter
+      ON reporter.id=report.connector_node_id AND reporter.org_id=report.org_id
+     AND reporter.site_id=report.site_id AND reporter.status='active'
+     AND reporter.revoked_at IS NULL
+    WHERE report.org_id=$1 AND report.fresh_until>now()
+      AND (
+        (cluster.connector_pool_id IS NULL
+         AND cluster.connector_node_id=report.connector_node_id
+         AND report.promotion_generation=0)
+        OR
+        (cluster.connector_node_id IS NULL AND EXISTS (
+            SELECT 1
+            FROM k8s_connector_pools pool
+            JOIN k8s_connector_pool_members member
+              ON member.pool_id=pool.id AND member.org_id=pool.org_id
+             AND member.site_id=pool.site_id AND member.node_id=pool.active_node_id
+            WHERE pool.id=cluster.connector_pool_id
+              AND pool.org_id=cluster.org_id AND pool.site_id=cluster.site_id
+              AND pool.cluster_id=cluster.id
+              AND pool.active_node_id=report.connector_node_id
+              AND pool.generation=report.promotion_generation
+              AND pool.generation>0
+        ))
+      )
+    ORDER BY report.org_id,report.cluster_id,report.replay_sequence DESC,
+             report.received_at DESC,report.id DESC
+)
+SELECT DISTINCT rule.id AS policy_rule_id, child.id AS service_child_id
+FROM policy_rules rule
+JOIN k8s_cluster_scope_grants scope
+  ON scope.rule_id=rule.id AND scope.org_id=rule.org_id
+ AND scope.cluster_id=rule.dst_k8s_cluster_id AND scope.active
+JOIN k8s_cluster_scope_settings setting
+  ON setting.org_id=scope.org_id AND setting.enabled
+JOIN k8s_cluster_scope_memberships membership
+  ON membership.rule_id=scope.rule_id AND membership.org_id=scope.org_id
+ AND membership.cluster_id=scope.cluster_id AND membership.status='approved'
+JOIN k8s_services child
+  ON child.id=membership.service_child_id AND child.org_id=membership.org_id
+ AND child.cluster_id=membership.cluster_id AND child.deleted_at IS NULL
+ AND child.namespace=membership.namespace AND child.protocol=membership.protocol
+ AND child.port_low=membership.port_low AND child.port_high=membership.port_high
+JOIN k8s_service_identities identity
+  ON identity.id=child.identity_id AND identity.org_id=child.org_id
+ AND identity.cluster_id=child.cluster_id AND identity.namespace=child.namespace
+ AND identity.name=child.name AND identity.deleted_at IS NULL
+JOIN eligible_reports report
+  ON report.org_id=scope.org_id AND report.cluster_id=scope.cluster_id
+JOIN k8s_service_inventory_items inventory
+  ON inventory.report_id=report.id AND inventory.org_id=report.org_id
+ AND inventory.cluster_id=report.cluster_id
+ AND inventory.namespace=membership.namespace AND inventory.service=identity.name
+ AND inventory.service_uid=membership.service_uid
+JOIN k8s_service_inventory_ports inventory_port
+  ON inventory_port.report_id=inventory.report_id
+ AND inventory_port.inventory_ref=inventory.inventory_ref
+ AND inventory_port.protocol=membership.protocol
+ AND inventory_port.service_port=membership.port_low
+JOIN k8s_service_uid_observation_ledgers ledger
+  ON ledger.org_id=scope.org_id AND ledger.cluster_id=scope.cluster_id
+JOIN k8s_service_uid_observation_current current_uid
+  ON current_uid.ledger_id=ledger.id AND current_uid.org_id=ledger.org_id
+ AND current_uid.namespace=membership.namespace AND current_uid.service=identity.name
+ AND current_uid.uid=membership.service_uid AND current_uid.state='live'
+ AND current_uid.replay_sequence=report.replay_sequence
+JOIN k8s_service_uid_observation_current_attributions attribution
+  ON attribution.ledger_id=current_uid.ledger_id
+ AND attribution.org_id=current_uid.org_id
+ AND attribution.namespace=current_uid.namespace
+ AND attribution.service=current_uid.service
+ AND attribution.replay_state_id=report.replay_state_id
+ AND attribution.replay_sequence=report.replay_sequence
+WHERE rule.org_id=$1 AND rule.dst_kind='k8s_cluster_scope'
+  AND NOT rule.disabled AND (rule.expires_at IS NULL OR rule.expires_at>now())
+  AND (SELECT count(*) FROM k8s_cluster_scope_memberships bounded
+       WHERE bounded.rule_id=scope.rule_id)<=500
+  AND (SELECT count(*) FROM k8s_cluster_scope_grants active_scope
+       WHERE active_scope.org_id=scope.org_id
+         AND active_scope.cluster_id=scope.cluster_id
+         AND active_scope.active)<=20
+ORDER BY rule.id,child.id;
+
 -- name: DeletePolicyRule :execrows
 DELETE FROM policy_rules
 WHERE id = $1 AND org_id = $2;

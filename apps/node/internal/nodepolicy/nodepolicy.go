@@ -126,6 +126,10 @@ type FQDNGeneration struct {
 // VIPMapping mirrors policyspec.VIPMapping — one exposed K8s Service (VIP -> Service identity the agent
 // DNATs + DNS-rewrites). Fields/tags match the CP shape exactly (marshal parity).
 type VIPMapping struct {
+	// ServiceID is the stable exact-port child exposure UUID. Optional for
+	// rolling compatibility; legacy maps still render but cannot produce a
+	// reportable ownership VIP-map digest. Mirror of policyspec.VIPMapping.
+	ServiceID string `json:"service_id,omitempty"`
 	VIP       string `json:"vip"`
 	Namespace string `json:"namespace"`
 	Service   string `json:"service"`

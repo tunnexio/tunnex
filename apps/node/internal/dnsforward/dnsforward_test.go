@@ -34,6 +34,44 @@ func (l *fakeListener) Close() error {
 	return nil
 }
 
+func TestAppliedK8sStateSeparatesCompiledTableFromSuccessfulListeners(t *testing.T) {
+	f := New(nil, func(netip.Addr, []byte) ([]byte, error) { return nil, nil })
+	f.SetK8sAnswers([]K8sEntry{
+		{FQDN: "API.Prod.SVC.Cluster.Example", VIP: "100.64.0.10"},
+		{FQDN: "bad name", VIP: "not-an-ip"},
+	}, []string{"Cluster.Example", "bad zone"})
+	a := netip.MustParseAddr("100.64.0.2")
+	live := map[netip.Addr]context.CancelFunc{}
+	f.reconcileBinds(t.Context(), func(string) ([]netip.Addr, error) { return []netip.Addr{a}, nil },
+		func(netip.Addr) (udpListener, error) { return newFakeListener(), nil }, "wg0", live)
+	state := f.AppliedK8sState()
+	if len(state.Answers) != 1 || state.Answers[0] != (K8sEntry{FQDN: "api.prod.svc.cluster.example", VIP: "100.64.0.10"}) {
+		t.Fatalf("applied answers=%+v", state.Answers)
+	}
+	if len(state.Zones) != 1 || state.Zones[0] != "cluster.example" || len(state.Listeners) != 1 || state.Listeners[0] != a.String() {
+		t.Fatalf("applied state=%+v", state)
+	}
+
+	// Successful empty address enumeration closes the socket synchronously and
+	// the readback stops claiming it immediately.
+	f.reconcileBinds(t.Context(), func(string) ([]netip.Addr, error) { return nil, nil },
+		func(netip.Addr) (udpListener, error) { return newFakeListener(), nil }, "wg0", live)
+	if got := f.AppliedK8sState(); len(got.Listeners) != 0 || len(got.Answers) != 1 {
+		t.Fatalf("listener withdrawal changed table or stayed live: %+v", got)
+	}
+}
+
+func TestAppliedK8sStateNeverClaimsFailedBind(t *testing.T) {
+	f := New(nil, nil)
+	a := netip.MustParseAddr("100.64.0.2")
+	live := map[netip.Addr]context.CancelFunc{}
+	f.reconcileBinds(t.Context(), func(string) ([]netip.Addr, error) { return []netip.Addr{a}, nil },
+		func(netip.Addr) (udpListener, error) { return nil, errors.New("bind refused") }, "wg0", live)
+	if got := f.AppliedK8sState(); len(got.Listeners) != 0 || len(live) != 0 {
+		t.Fatalf("failed bind was reported applied: state=%+v live=%v", got, live)
+	}
+}
+
 // TestServeBindReconcileLifecycle (F1) — the forwarder binds when wg0 APPEARS after start (not at boot,
 // where wg0 doesn't exist yet), re-binds after an address flap, and closes listeners when the interface
 // goes. Drives reconcileBinds directly across interface states with injected seams.

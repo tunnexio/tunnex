@@ -220,6 +220,27 @@ func TestK8sHandoffGraphUsesLocalEdgePair(t *testing.T) {
 	}
 }
 
+func TestResolveK8sConnectorReadKeepsLegacyAndPoolModesSeparate(t *testing.T) {
+	legacy, active := uuid.New(), uuid.New()
+	legacyPG := pgtype.UUID{Bytes: legacy, Valid: true}
+	activePG := pgtype.UUID{Bytes: active, Valid: true}
+	generation := int64(4)
+
+	if got, ok := resolveK8sConnectorRead(false, legacyPG, pgtype.UUID{}, nil); !ok || got != legacy {
+		t.Fatalf("legacy connector = %s, %v; want %s, true", got, ok, legacy)
+	}
+	if got, ok := resolveK8sConnectorRead(true, legacyPG, activePG, &generation); !ok || got != active {
+		t.Fatalf("pool connector = %s, %v; want %s, true", got, ok, active)
+	}
+	if got, ok := resolveK8sConnectorRead(true, legacyPG, pgtype.UUID{}, &generation); ok || got != uuid.Nil {
+		t.Fatalf("pool mode must not fall back to legacy connector: %s, %v", got, ok)
+	}
+	zero := int64(0)
+	if got, ok := resolveK8sConnectorRead(true, legacyPG, activePG, &zero); ok || got != uuid.Nil {
+		t.Fatalf("non-positive pool generation must fail closed: %s, %v", got, ok)
+	}
+}
+
 // TestDesiredStateFailsWholeFetchOnTopologyError — S8.2 F1/R1/B3 (terminal): a site-topology load error
 // FAILS the whole DesiredState fetch (atomic + fail-static), so the agent holds last-good everything and
 // tears nothing down. NOT the omit-and-teardown attempt (full-sweep reconcile deletes an omitted section).
@@ -518,6 +539,77 @@ func TestLoadSiteTopologyGroupsVIPMapByConnector(t *testing.T) {
 	m := topo.vipMappings[connector]
 	if len(m) != 1 || m[0].VIP != "100.64.0.5" || m[0].Service != "api" || m[0].Namespace != "prod" {
 		t.Fatalf("loadSiteTopology must group the exposed Service under its explicit connector, got %+v", m)
+	}
+}
+
+func TestLoadSiteTopologyWithdrawsIneligiblePoolConnector(t *testing.T) {
+	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	org, site, cluster, connector, connectorPool := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	ex := func(q string, a ...any) {
+		if _, e := pool.Exec(ctx, q, a...); e != nil {
+			t.Fatalf("seed %q: %v", q, e)
+		}
+	}
+	ex(`INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'Pool topology',$2,'10.99.0.0/24')`, org, "kpt-"+org.String()[:8])
+	ex(`INSERT INTO sites (id,org_id,name) VALUES ($1,$2,'A')`, site, org)
+	ex(`INSERT INTO nodes (id,org_id,name,cert_serial,site_id,wg_public_key,endpoint,status) VALUES ($1,$2,'connector',$3,$4,'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=','172.31.1.10:51820','active')`, connector, org, "kpc-"+connector.String(), site)
+	ex(`INSERT INTO k8s_clusters (id,org_id,site_id,name,vip_range,service_cidr,dns_zone,dns_vip) VALUES ($1,$2,$3,'pool','100.65.0.0/16','10.96.0.0/12','cluster.test','100.65.0.2')`, cluster, org, site)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `INSERT INTO k8s_connector_pools (id,org_id,site_id,cluster_id,preferred_node_id,active_node_id) VALUES ($1,$2,$3,$4,$5,$5)`, connectorPool, org, site, cluster, connector); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO k8s_connector_pool_members (pool_id,org_id,site_id,node_id) VALUES ($1,$2,$3,$4)`, connectorPool, org, site, connector); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE k8s_clusters SET connector_pool_id=$1 WHERE id=$2`, connectorPool, cluster); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ex(`INSERT INTO k8s_services (id,org_id,cluster_id,name,namespace,protocol,port_low,port_high,vip) VALUES ($1,$2,$3,'api','prod','tcp',443,443,'100.65.0.3')`, uuid.New(), org, cluster)
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
+
+	svc := &Service{pool: pool, q: sqlc.New(pool)}
+	assertTopology := func(t *testing.T, wantProgrammed bool) {
+		t.Helper()
+		topo, err := svc.loadSiteTopology(ctx, org)
+		if err != nil {
+			t.Fatal(err)
+		}
+		programmed := len(topo.vipMappings[connector]) != 0 || len(topo.k8sDNS[connector]) != 0
+		_, hasConnector := topo.k8sConnectors[connector]
+		if programmed != wantProgrammed || hasConnector != wantProgrammed {
+			t.Fatalf("pool connector programmed=%v registered=%v, want %v; vip=%+v dns=%+v", programmed, hasConnector, wantProgrammed, topo.vipMappings, topo.k8sDNS)
+		}
+	}
+
+	assertTopology(t, true)
+	for name, invalidate := range map[string]string{
+		"inactive revoked status": `UPDATE nodes SET status='revoked' WHERE id=$1`,
+		"revoked marker":          `UPDATE nodes SET revoked_at=now() WHERE id=$1`,
+		"malformed key":           `UPDATE nodes SET wg_public_key='malformed' WHERE id=$1`,
+		"empty endpoint":          `UPDATE nodes SET endpoint='   ' WHERE id=$1`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ex(`UPDATE nodes SET status='active', revoked_at=NULL, wg_public_key='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', endpoint='172.31.1.10:51820' WHERE id=$1`, connector)
+			ex(invalidate, connector)
+			assertTopology(t, false)
+		})
 	}
 }
 

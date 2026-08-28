@@ -70,6 +70,10 @@ spec:
               value: {{ .Values.nodeAgentImage | quote }}
             - name: TUNNEX_CORS_ALLOWED_ORIGINS
               value: {{ .Values.corsAllowedOrigins | quote }}
+            # Deployment composition gate; the organization opt-in is separate
+            # and also defaults OFF.
+            - name: TUNNEX_K8S_HA_ENABLED
+              value: {{ .Values.kubernetesHA.enabled | quote }}
             # External store (URL-wins; API pings both at boot, fails loud if unreachable).
             {{- if .Values.database.urlSecret }}
             - name: TUNNEX_DATABASE_URL

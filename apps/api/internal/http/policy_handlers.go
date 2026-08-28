@@ -11,6 +11,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
@@ -268,10 +269,10 @@ func (s apiServer) DeleteResource(ctx context.Context, req api.DeleteResourceReq
 
 // ── rules ───────────────────────────────────────────────────────────────────────
 
-// requireAgentGrantForExistingRule adds F06's second gate only when the
-// already-authorized policy mutation targets an agent-source rule. Ordinary
-// group/user/site/CIDR rules retain their existing policy:manage boundary.
-func (s apiServer) requireAgentGrantForExistingRule(ctx context.Context, orgID, ruleID uuid.UUID) error {
+// requireSpecialPermissionsForExistingRule preserves the named capability
+// boundaries of policy rows that have a dedicated management surface. A
+// generic policy mutation must never become a lower-permission bypass.
+func (s apiServer) requireSpecialPermissionsForExistingRule(ctx context.Context, orgID, ruleID uuid.UUID) error {
 	rules, err := s.policy.ListPolicyRules(ctx, orgID)
 	if err != nil {
 		return err
@@ -280,11 +281,27 @@ func (s apiServer) requireAgentGrantForExistingRule(ctx context.Context, orgID, 
 		if rule.ID != ruleID {
 			continue
 		}
-		if rule.SrcKind != "agent" {
-			return nil
+		if rule.SrcKind == "agent" {
+			if _, err := authorize(ctx, orgID, rbac.PermAgentGrantAccess); err != nil {
+				return err
+			}
 		}
-		_, err := authorize(ctx, orgID, rbac.PermAgentGrantAccess)
-		return err
+		if rule.DstKind == "k8s_cluster_scope" {
+			if _, err := authorize(ctx, orgID, rbac.PermK8sScopeManage); err != nil {
+				return err
+			}
+			p, ok := authctx.PrincipalFrom(ctx)
+			if !ok || p.UserID == uuid.Nil || p.IsMachine() || p.AuthMethod == authctx.AuthAgent || p.NodeID != uuid.Nil {
+				return apierr.Forbidden("human_actor_required", "a verified human organization member is required")
+			}
+			// Cluster scopes own revision checks, membership-count semantics, and
+			// their audit contract. Letting an authorized caller mutate the
+			// backing policy row here would bypass all three, so callers must use
+			// the dedicated scope endpoint even after crossing the named
+			// permission and human-actor boundaries above.
+			return apierr.Conflict("cluster_scope_dedicated_api_required", "Kubernetes cluster scopes must be changed through the dedicated cluster-scope API with expected_revision")
+		}
+		return nil
 	}
 	// Preserve the existing service's normalized not-found response; this
 	// helper must not invent a second existence oracle.
@@ -303,15 +320,20 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 		return nil, err
 	}
 	_, mayViewAgentTemplates := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage)
-	if mayViewAgentTemplates != nil {
-		filtered := rs[:0]
-		for _, rule := range rs {
-			if rule.SrcKind != "agent_group" {
-				filtered = append(filtered, rule)
-			}
+	filtered := rs[:0]
+	for _, rule := range rs {
+		if mayViewAgentTemplates != nil && rule.SrcKind == "agent_group" {
+			continue
 		}
-		rs = filtered
+		// Cluster scopes are governed through their dedicated API. Exposing their
+		// backing rows here would make the generic policy UI look authoritative
+		// and invite a create-then-delete edit that the mutation boundary rejects.
+		if rule.DstKind == "k8s_cluster_scope" {
+			continue
+		}
+		filtered = append(filtered, rule)
 	}
+	rs = filtered
 	warn, err := s.policy.PolicyRuleCidrWarnings(ctx, req.OrgId, rs) // S8.7 read-time warn (D1); reuse the fetched rules ([15])
 	if err != nil {
 		return nil, err
@@ -399,7 +421,7 @@ func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRul
 	if s.policy == nil {
 		return nil, policyServiceUnavailable()
 	}
-	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+	if err := s.requireSpecialPermissionsForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
 	}
 	uid, sys, cause := auditActor(ctx)
@@ -417,7 +439,7 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 	if s.policy == nil {
 		return nil, policyServiceUnavailable()
 	}
-	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+	if err := s.requireSpecialPermissionsForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -448,7 +470,7 @@ func (s apiServer) SetPolicyRuleEnabled(ctx context.Context, req api.SetPolicyRu
 	if s.policy == nil {
 		return nil, policyServiceUnavailable()
 	}
-	if err := s.requireAgentGrantForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+	if err := s.requireSpecialPermissionsForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -750,6 +772,10 @@ func toAPIRuleWithFQDNStatus(r sqlc.PolicyRule, cidrOutside, k8sVanished bool, f
 	if r.DstK8sServiceID.Valid { // S10.3: dst_kind=k8s_service
 		u := uuid.UUID(r.DstK8sServiceID.Bytes)
 		out.DstK8sServiceId = &u
+	}
+	if r.DstK8sClusterID.Valid {
+		u := uuid.UUID(r.DstK8sClusterID.Bytes)
+		out.DstK8sClusterId = &u
 	}
 	if r.DstFqdnResourceID.Valid {
 		u := uuid.UUID(r.DstFqdnResourceID.Bytes)

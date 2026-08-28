@@ -49,6 +49,8 @@ func toAPIK8sCluster(c sqlc.K8sCluster) api.K8sCluster {
 	return api.K8sCluster{
 		Id: c.ID, SiteId: c.SiteID, Name: c.Name,
 		ConnectorNodeId: connectorNodeID,
+		Provider:        api.K8sClusterProvider(c.Provider),
+		Platform:        api.K8sClusterPlatform(c.Platform),
 		VipRange:        c.VipRange.String(), ServiceCidr: c.ServiceCidr.String(),
 		DnsZone: c.DnsZone, DnsVip: dnsVIP, CreatedAt: &created,
 		ManagedByOperator: c.ManagedByMachine.Valid, // D2 cond 1: badge + warn-on-edit surface
@@ -125,12 +127,37 @@ func (s apiServer) RegisterK8sCluster(ctx context.Context, req api.RegisterK8sCl
 	if err != nil {
 		return nil, apierr.BadRequest("invalid_service_cidr", "service_cidr must be a valid CIDR (e.g. 10.96.0.0/12)")
 	}
+	provider, platform := "unknown", "unknown"
+	if (req.Body.Provider == nil) != (req.Body.Platform == nil) {
+		return nil, apierr.BadRequest("invalid_k8s_provider_platform", "provider and platform must be supplied together")
+	}
+	if req.Body.Provider != nil {
+		provider, platform = string(*req.Body.Provider), string(*req.Body.Platform)
+	}
 	uid, sys, cause := auditActor(ctx)
-	c, err := s.k8s.RegisterClusterWithConnector(ctx, req.OrgId, req.Body.SiteId, uuid.UUID(*req.Body.ConnectorNodeId), req.Body.Name, vipRange, serviceCIDR, req.Body.DnsZone, machineID(ctx), uid, sys, cause)
+	c, err := s.k8s.RegisterClusterWithConnectorMetadata(ctx, req.OrgId, req.Body.SiteId, uuid.UUID(*req.Body.ConnectorNodeId), req.Body.Name, vipRange, serviceCIDR, req.Body.DnsZone, provider, platform, machineID(ctx), uid, sys, cause)
 	if err != nil {
 		return nil, err
 	}
 	return api.RegisterK8sCluster201JSONResponse{Body: toAPIK8sCluster(c), Headers: api.RegisterK8sCluster201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) SetK8sClusterProviderMetadata(ctx context.Context, req api.SetK8sClusterProviderMetadataRequestObject) (api.SetK8sClusterProviderMetadataResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "a request body is required")
+	}
+	uid, sys, cause := auditActor(ctx)
+	cluster, err := s.k8s.SetClusterProviderMetadata(ctx, req.OrgId, req.ClusterId, uid, sys, cause, string(req.Body.Provider), string(req.Body.Platform))
+	if err != nil {
+		return nil, err
+	}
+	return api.SetK8sClusterProviderMetadata200JSONResponse{
+		Body:    toAPIK8sCluster(cluster),
+		Headers: api.SetK8sClusterProviderMetadata200ResponseHeaders{XRequestId: reqID(ctx)},
+	}, nil
 }
 
 func (s apiServer) SetK8sClusterConnector(ctx context.Context, req api.SetK8sClusterConnectorRequestObject) (api.SetK8sClusterConnectorResponseObject, error) {

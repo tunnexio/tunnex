@@ -429,6 +429,70 @@ func TestK8sServiceRuleCreation(t *testing.T) {
 	}
 }
 
+func TestK8sPoolEligibilityWithdrawsPolicyArtifacts(t *testing.T) {
+	pool := testPool(t)
+	f := seed(t, pool)
+	ctx := context.Background()
+	site, cluster, connector, connectorPool, serviceID, ruleID := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	ex := func(q string, a ...any) {
+		if _, err := pool.Exec(ctx, q, a...); err != nil {
+			t.Fatalf("seed %q: %v", q, err)
+		}
+	}
+	ex(`UPDATE organizations SET zero_trust_mode='enforcing' WHERE id=$1`, f.org)
+	ex(`INSERT INTO sites (id,org_id,name) VALUES ($1,$2,'K8s pool')`, site, f.org)
+	ex(`INSERT INTO nodes (id,org_id,name,cert_serial,site_id,wg_public_key,endpoint,status) VALUES ($1,$2,'connector',$3,$4,'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=','172.31.2.10:51820','active')`, connector, f.org, "policy-pool-"+connector.String(), site)
+	ex(`INSERT INTO k8s_clusters (id,org_id,site_id,name,vip_range) VALUES ($1,$2,$3,'pool','100.66.0.0/16')`, cluster, f.org, site)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `INSERT INTO k8s_connector_pools (id,org_id,site_id,cluster_id,preferred_node_id,active_node_id) VALUES ($1,$2,$3,$4,$5,$5)`, connectorPool, f.org, site, cluster, connector); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO k8s_connector_pool_members (pool_id,org_id,site_id,node_id) VALUES ($1,$2,$3,$4)`, connectorPool, f.org, site, connector); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE k8s_clusters SET connector_pool_id=$1 WHERE id=$2`, connectorPool, cluster); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ex(`INSERT INTO k8s_services (id,org_id,cluster_id,name,namespace,protocol,port_low,port_high,vip) VALUES ($1,$2,$3,'api','prod','tcp',443,443,'100.66.0.3')`, serviceID, f.org, cluster)
+	ex(`INSERT INTO policy_rules (id,org_id,src_kind,src_user_id,dst_kind,dst_k8s_service_id) VALUES ($1,$2,'user',$3,'k8s_service',$4)`, ruleID, f.org, f.user, serviceID)
+
+	assertPolicy := func(t *testing.T, wantAllowed bool) {
+		t.Helper()
+		snapshot, err := policy.BuildSnapshotWithQueries(ctx, sqlc.New(pool), f.org)
+		if err != nil {
+			t.Fatalf("build snapshot: %v", err)
+		}
+		compiled := policy.Compile(snapshot)
+		sourceAllowed := hasAllow(allowsFor(compiled, f.node), "10.99.0.10", "100.66.0.3/32")
+		connectorAllowed := hasAllow(allowsFor(compiled, connector), "10.99.0.10", "100.66.0.3/32")
+		if sourceAllowed != wantAllowed || connectorAllowed != wantAllowed {
+			t.Fatalf("source allow=%v connector allow=%v, want %v; exposed=%+v", sourceAllowed, connectorAllowed, wantAllowed, snapshot.ExposedServices)
+		}
+	}
+
+	assertPolicy(t, true)
+	for name, invalidate := range map[string]string{
+		"inactive revoked status": `UPDATE nodes SET status='revoked' WHERE id=$1`,
+		"revoked marker":          `UPDATE nodes SET revoked_at=now() WHERE id=$1`,
+		"malformed key":           `UPDATE nodes SET wg_public_key='malformed' WHERE id=$1`,
+		"empty endpoint":          `UPDATE nodes SET endpoint='   ' WHERE id=$1`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ex(`UPDATE nodes SET status='active', revoked_at=NULL, wg_public_key='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', endpoint='172.31.2.10:51820' WHERE id=$1`, connector)
+			ex(invalidate, connector)
+			assertPolicy(t, false)
+		})
+	}
+}
+
 func auditCount(t *testing.T, pool *pgxpool.Pool, org uuid.UUID, action string) int {
 	t.Helper()
 	var n int

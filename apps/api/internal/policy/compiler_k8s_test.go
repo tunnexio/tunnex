@@ -69,6 +69,34 @@ func TestK8sServiceSelectedConnectorReceivesGrant(t *testing.T) {
 	}
 }
 
+func TestK8sPoolBoundServiceRequiresResolvedGeneration(t *testing.T) {
+	for name, svc := range map[string]policy.ExposedService{
+		"missing active":     {ID: svcA, VIP: "100.64.0.5", PoolBound: true, ConnectorGeneration: 2},
+		"missing generation": {ID: svcA, VIP: "100.64.0.5", PoolBound: true, ConnectorNodeID: nodeB},
+	} {
+		t.Run(name, func(t *testing.T) {
+			compiled := policy.Compile(k8sBase(svcA, []policy.ExposedService{svc}))
+			if a := allowsFor(compiled, nodeA); len(a) != 0 {
+				t.Fatalf("unresolved pool-bound Service must compile to nothing, got %+v", a)
+			}
+			if _, ok := compiled[nodeB]; ok {
+				t.Fatal("unresolved pool-bound Service must not create a connector artifact")
+			}
+		})
+	}
+
+	resolved := policy.ExposedService{
+		ID: svcA, VIP: "100.64.0.5", PoolBound: true,
+		ConnectorNodeID: nodeB, ConnectorGeneration: 2,
+	}
+	compiled := policy.Compile(k8sBase(svcA, []policy.ExposedService{resolved}))
+	for _, node := range []uuid.UUID{nodeA, nodeB} {
+		if a := allowsFor(compiled, node); !hasAllow(a, "10.99.0.10", "100.64.0.5/32") {
+			t.Fatalf("resolved pool-bound Service must compile on node %s, got %+v", node, a)
+		}
+	}
+}
+
 func TestK8sServiceGrantAlsoAllowsItsPrivateDNSVIP(t *testing.T) {
 	snap := k8sBase(svcA, []policy.ExposedService{{
 		ID: svcA, VIP: "100.64.0.5", DNSVIP: "100.64.0.2", Protocol: "tcp", PortLow: 80, PortHigh: 80,

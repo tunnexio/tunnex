@@ -61,6 +61,9 @@ type DesiredState struct {
 	// gateway. Older control planes omit it; older agents omit its response and are
 	// compatibility-refused by the control plane rather than silently falling back.
 	DNSResolveRequest *fqdnrpc.Request `json:"dns_resolve_request,omitempty"`
+	// KubernetesOwnershipBaseAuthority is optional for mixed-version rollout.
+	// Absence preserves legacy traffic and can never release a durable fence.
+	KubernetesOwnershipBaseAuthority *KubernetesOwnershipBaseAuthority `json:"kubernetes_ownership_base_authority,omitempty"`
 }
 
 // OVPNPushRoutes is the range set an OpenVPN server PUSHES to its clients: the UNION of the org's remote
@@ -139,6 +142,38 @@ type PeerStat struct {
 	Endpoint      string `json:"endpoint,omitempty"`
 }
 
+// ReturnRule is one routing-policy rule owned by the agent. The Linux backend
+// only reports the exact Tunnex shape (priority 100, destination prefix,
+// lookup main); foreign rules are never folded into this state.
+type ReturnRule struct {
+	Priority    int    `json:"priority"`
+	Destination string `json:"destination"`
+	Lookup      string `json:"lookup"`
+}
+
+// OwnedRoute is one route carrying the complete kernel ownership proof used by
+// ApplyRoutes. Destination-only readback is insufficient: a same-prefix route
+// on another device, with another protocol/metric, is foreign state.
+type OwnedRoute struct {
+	Family      string `json:"family"`
+	Destination string `json:"destination"`
+	Device      string `json:"device"`
+	Protocol    string `json:"protocol"`
+	Metric      int    `json:"metric"`
+	Source      string `json:"source,omitempty"`
+}
+
+// WGBackendReadback is the effective state observed from the substrates the
+// WG backend owns: the complete WireGuard peer set plus only the routes and
+// policy rules carrying Tunnex's ownership markers. It is actual state, not a
+// copy of the last desired input.
+type WGBackendReadback struct {
+	Peers        []Peer       `json:"peers"`
+	Routes       []string     `json:"routes"`
+	RouteDetails []OwnedRoute `json:"route_details"`
+	ReturnRules  []ReturnRule `json:"return_rules"`
+}
+
 // WGBackend abstracts the WireGuard data plane. The real adapter wraps wgctrl;
 // the fake drives unit tests.
 type WGBackend interface {
@@ -147,6 +182,10 @@ type WGBackend interface {
 	Configure(ctx context.Context, cfg InterfaceConfig) error
 	Peers(ctx context.Context) ([]Peer, error)
 	ApplyPeers(ctx context.Context, peers []Peer) error
+	// Readback observes the full effective peer set and the agent-owned
+	// route/rule set. It must enumerate the same ownership markers ApplyRoutes
+	// reconciles; callers must never treat last-written desired state as proof.
+	Readback(ctx context.Context) (WGBackendReadback, error)
 	// ApplyRoutes reconciles the kernel routes to remote SITE subnets (S8.2): install each desired
 	// route via the tunnel iface (idempotent — heals a flushed route next tick) and PRUNE our routes
 	// no longer desired (the full-sweep contract: a site unbind/subnet removal drops the route). Only
@@ -198,6 +237,7 @@ type Reconciler struct {
 	// It has no return path into reconcile: a resolver timeout/disconnect must not
 	// tear down WireGuard or alter the last applied policy.
 	onDNSResolve func(DesiredState)
+	onDesired    func(context.Context, DesiredState) (DesiredState, error)
 	// siteLinkStale (S8.2 H5) is an optional sink: each reconcile, the agent checks its SITE-LINK peers'
 	// WG handshakes and stores whether any is stale/absent, so the report loop can surface site_link_down.
 	// nil when not wired (e.g. tests) → the check is skipped.
@@ -294,6 +334,13 @@ func (r *Reconciler) OnOVPN(fn func(DesiredState)) { r.onOVPN = fn }
 // before Run. The callback posts its bound response through the mTLS client.
 func (r *Reconciler) OnDNSResolve(fn func(DesiredState)) { r.onDNSResolve = fn }
 
+// OnDesired registers a serialized full-base observer. It runs before any
+// substrate apply and may fail closed (for example, if a durable ownership
+// fence cannot accept the new base snapshot).
+func (r *Reconciler) OnDesired(fn func(context.Context, DesiredState) (DesiredState, error)) {
+	r.onDesired = fn
+}
+
 // New builds a Reconciler with the node's WireGuard key pair (public key is used
 // only for the clamp-safe "is the interface key already set" check).
 func New(backend WGBackend, privateKey, publicKey string, logger *slog.Logger) *Reconciler {
@@ -305,6 +352,19 @@ func New(backend WGBackend, privateKey, publicKey string, logger *slog.Logger) *
 // backend failure — NET_ADMIN missing, port bound, device collision — surfaces
 // as not-ready and diagnosable, never a silent success or crash-loop.
 func (r *Reconciler) Healthy() bool { return r.healthy.Load() }
+
+// ReconcileOnce performs one complete desired-state fetch and convergence. It
+// is exported for the agent's serialized command lane: every data-plane writer
+// (normal desired state, Kubernetes ownership, expiry withdrawal and periodic
+// healing) must execute on that one lane rather than in independent goroutines.
+func (r *Reconciler) ReconcileOnce(ctx context.Context, client ControlClient) (bool, error) {
+	return r.runOnce(ctx, client)
+}
+
+// DesiredVersion is the last fetched control-plane version. Watch producers
+// may read it without becoming data-plane writers; the actual fetch/apply still
+// runs only through ReconcileOnce on the serialized command lane.
+func (r *Reconciler) DesiredVersion() uint64 { return r.version.Load() }
 
 // Reconcile converges the backend to the desired peer set. It applies the FULL
 // set (a resync), so a long-disconnected agent recovers correctly. Returns
@@ -332,7 +392,22 @@ func (r *Reconciler) runOnce(ctx context.Context, client ControlClient) (bool, e
 		r.healthy.Store(false)
 		return false, err
 	}
+	return r.ApplyDesiredState(ctx, ds)
+}
+
+// ApplyDesiredState converges an already-fetched full snapshot. Transport
+// waits stay outside the serialized data-plane command lane; only this apply
+// phase enters it.
+func (r *Reconciler) ApplyDesiredState(ctx context.Context, ds DesiredState) (bool, error) {
 	r.version.Store(ds.Version) // echoed on the next Watch to close the fetch-gap
+	if r.onDesired != nil {
+		projected, err := r.onDesired(ctx, ds)
+		if err != nil {
+			r.healthy.Store(false)
+			return false, err
+		}
+		ds = projected
+	}
 	// Deliver the compiled policy BEFORE the WG converge (and regardless of its
 	// outcome): enforcement is orthogonal to interface config, and a policy pushed
 	// for revocation must not wait on an unrelated backend failure. nil (absent
@@ -347,19 +422,39 @@ func (r *Reconciler) runOnce(ctx context.Context, client ControlClient) (bool, e
 	if r.onDNSResolve != nil && ds.DNSResolveRequest != nil {
 		r.onDNSResolve(ds)
 	}
-	// Idempotently ensure the interface config, then converge peers.
-	if err := r.backend.Configure(ctx, InterfaceConfig{
-		PrivateKey: r.privateKey, PublicKey: r.publicKey,
-		ListenPort: ds.ListenPort, Address: ds.InterfaceAddress, MTU: ds.MTU,
-	}); err != nil {
+	changed, err := r.ApplyWireGuardDesired(ctx, ds)
+	if err != nil {
+		return false, err
+	}
+	if err := r.ApplyRoutesDesired(ctx, ds); err != nil {
+		return false, err
+	}
+	// H5: refresh the site-link-staleness signal (best-effort; never fails the reconcile).
+	if r.siteLinkStale != nil {
+		r.updateSiteLinkStale(ctx, ds.Peers)
+	}
+	r.healthy.Store(true)
+	return changed, nil
+}
+
+// ApplyWireGuardDesired is the existing reconcile owner exposed as a stage for
+// v3 ownership projection. It never fetches control-plane state.
+func (r *Reconciler) ApplyWireGuardDesired(ctx context.Context, ds DesiredState) (bool, error) {
+	if err := r.backend.Configure(ctx, InterfaceConfig{PrivateKey: r.privateKey, PublicKey: r.publicKey, ListenPort: ds.ListenPort, Address: ds.InterfaceAddress, MTU: ds.MTU}); err != nil {
 		r.healthy.Store(false)
 		return false, err
 	}
 	changed, err := r.Reconcile(ctx, ds.Peers)
 	if err != nil {
 		r.healthy.Store(false)
-		return false, err
 	}
+	return changed, err
+}
+
+// ApplyRoutesDesired is the existing route owner exposed as a stage for v3
+// ownership projection. Route source and health semantics remain identical to
+// the normal desired-state path.
+func (r *Reconciler) ApplyRoutesDesired(ctx context.Context, ds DesiredState) error {
 	// S8.2: converge the site-to-site kernel routes (from Policy.Routes — explicit intent, never
 	// inferred from a peer's AllowedIPs). After peers so the interface + crypto-routing exist.
 	var routes, localSubnets []string
@@ -400,14 +495,9 @@ func (r *Reconciler) runOnce(ctx context.Context, client ControlClient) (bool, e
 	}
 	if err := r.backend.ApplyRoutes(ctx, routes, srcHint); err != nil {
 		r.healthy.Store(false)
-		return false, err
+		return err
 	}
-	// H5: refresh the site-link-staleness signal (best-effort; never fails the reconcile).
-	if r.siteLinkStale != nil {
-		r.updateSiteLinkStale(ctx, ds.Peers)
-	}
-	r.healthy.Store(true)
-	return changed, nil
+	return nil
 }
 
 // Run drives reconciliation from two independent triggers: Watch (push, low

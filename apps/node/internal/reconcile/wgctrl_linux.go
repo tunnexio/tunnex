@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -47,6 +48,13 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 		return string(out), fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
+}
+
+func (b *wgctrlBackend) runCommand(ctx context.Context, name string, args ...string) (string, error) {
+	if b.runFn != nil {
+		return b.runFn(ctx, name, args...)
+	}
+	return run(ctx, name, args...)
 }
 
 // Configure idempotently ensures the interface exists and has the given key,
@@ -198,11 +206,35 @@ func (b *wgctrlBackend) ensureLinkUp(ctx context.Context, mtu int) error {
 
 // Peers reads the current peer set from the device.
 func (b *wgctrlBackend) Peers(ctx context.Context) ([]Peer, error) {
-	out, err := run(ctx, "wg", "show", b.iface, "dump")
+	out, err := b.runCommand(ctx, "wg", "show", b.iface, "dump")
 	if err != nil {
 		return nil, err
 	}
 	return parseWGDump(out), nil
+}
+
+// Readback observes every effective WireGuard peer and only the route/rule
+// shapes this backend owns. It deliberately reads the OS after apply; cached
+// desired input is never accepted as proof of convergence.
+func (b *wgctrlBackend) Readback(ctx context.Context) (WGBackendReadback, error) {
+	peers, err := b.Peers(ctx)
+	if err != nil {
+		return WGBackendReadback{}, err
+	}
+	routeDetails, err := b.agentOwnedRouteDetails(ctx)
+	if err != nil {
+		return WGBackendReadback{}, err
+	}
+	rules, err := b.agentOwnedReturnRules(ctx)
+	if err != nil {
+		return WGBackendReadback{}, err
+	}
+	return WGBackendReadback{
+		Peers:        peers,
+		Routes:       routeDestinations(routeDetails),
+		RouteDetails: routeDetails,
+		ReturnRules:  sortedReturnRules(rules),
+	}, nil
 }
 
 // Stats parses per-peer live telemetry from `wg show <iface> dump`.
@@ -345,25 +377,12 @@ func (b *wgctrlBackend) ApplyPeers(ctx context.Context, peers []Peer) error {
 // dedicated routing table: a table needs an `ip rule` to steer forwarding into it (policy routing on the
 // data path); a metric scopes ownership without touching how packets are routed (a lone route to a
 // prefix is selected regardless of metric).
-const siteRouteMetric = 8021
-
-// returnRulePriority is reserved by Tunnex for device-pool return routing. It
-// must run before provider CNI source rules (EKS VPC CNI uses priorities 512+)
-// while leaving the local rule at priority 0 authoritative.
-const returnRulePriority = 100
-
 // parseRouteDst canonicalizes a route destination token to a netip.Prefix. `ip route show` prints a host
 // route as a BARE address (no /32), so a desired "10.1.0.5/32" must compare equal to an enumerated
 // "10.1.0.5" (review #3: string compare churned /32 routes install→delete every tick). A bare address
 // becomes a full-length prefix.
 func parseRouteDst(tok string) (netip.Prefix, bool) {
-	if p, err := netip.ParsePrefix(tok); err == nil {
-		return p.Masked(), true
-	}
-	if a, err := netip.ParseAddr(tok); err == nil {
-		return netip.PrefixFrom(a, a.BitLen()), true
-	}
-	return netip.Prefix{}, false
+	return canonicalRoutePrefix(tok)
 }
 
 // routesToPrune is the PURE prune decision: enumerated route-destination tokens minus the desired set,
@@ -410,6 +429,156 @@ func returnRules(listing string) map[netip.Prefix]bool {
 	return out
 }
 
+// agentOwnedRoutes enumerates the exact route shape ApplyRoutes owns. IPv4
+// enumeration errors are fatal because a complete full-sweep/readback is then
+// impossible; IPv6 remains optional while the product admits IPv4 site ranges.
+func (b *wgctrlBackend) agentOwnedRoutes(ctx context.Context) (map[netip.Prefix]bool, error) {
+	details, err := b.agentOwnedRouteDetails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[netip.Prefix]bool, len(details))
+	for _, route := range details {
+		prefix, _ := canonicalRoutePrefix(route.Destination)
+		out[prefix] = true
+	}
+	return out, nil
+}
+
+func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRoute, error) {
+	metric := strconv.Itoa(siteRouteMetric)
+	var out []OwnedRoute
+	for _, family := range []string{"-4", "-6"} {
+		listing, err := b.runCommand(ctx, "ip", family, "route", "show", "dev", b.iface, "proto", "static", "metric", metric)
+		if err != nil {
+			if family == "-6" {
+				slog.Debug("site_route_enumerate_v6_skipped", "iface", b.iface, "error", err.Error())
+				continue
+			}
+			return nil, err
+		}
+		for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			route, err := parseOwnedRoute(line, family, b.iface)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, route)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Destination != out[j].Destination {
+			return out[i].Destination < out[j].Destination
+		}
+		return out[i].Family < out[j].Family
+	})
+	return out, nil
+}
+
+func parseOwnedRoute(line, familyFlag, iface string) (OwnedRoute, error) {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return OwnedRoute{}, fmt.Errorf("empty agent-owned route line")
+	}
+	prefix, ok := parseRouteDst(fields[0])
+	if !ok || (familyFlag == "-4") != prefix.Addr().Is4() {
+		return OwnedRoute{}, fmt.Errorf("invalid agent-owned route destination %q", fields[0])
+	}
+	route := OwnedRoute{Destination: prefix.String(), Family: "ipv6"}
+	if prefix.Addr().Is4() {
+		route.Family = "ipv4"
+	}
+	for i := 1; i < len(fields); i++ {
+		switch fields[i] {
+		case "dev", "proto", "metric", "src":
+			if i+1 >= len(fields) {
+				return OwnedRoute{}, fmt.Errorf("missing %s value in agent-owned route %q", fields[i], line)
+			}
+			value := fields[i+1]
+			i++
+			switch fields[i-1] {
+			case "dev":
+				route.Device = value
+			case "proto":
+				route.Protocol = value
+			case "metric":
+				parsed, err := strconv.Atoi(value)
+				if err != nil {
+					return OwnedRoute{}, fmt.Errorf("invalid agent-owned route metric %q", value)
+				}
+				route.Metric = parsed
+			case "src":
+				addr, err := netip.ParseAddr(value)
+				if err != nil || addr.Is4() != prefix.Addr().Is4() || addr.String() != value {
+					return OwnedRoute{}, fmt.Errorf("invalid agent-owned route source %q", value)
+				}
+				route.Source = value
+			}
+		}
+	}
+	if route.Device != iface || route.Protocol != "static" || route.Metric != siteRouteMetric {
+		return OwnedRoute{}, fmt.Errorf("route does not carry Tunnex ownership attributes: %q", line)
+	}
+	return route, nil
+}
+
+func routeDestinations(routes []OwnedRoute) []string {
+	out := make([]string, len(routes))
+	for i, route := range routes {
+		out[i] = route.Destination
+	}
+	sort.Strings(out)
+	return out
+}
+
+// agentOwnedReturnRules enumerates and parses only the exact Tunnex priority,
+// destination and lookup-main shape. Other rules at the same priority remain
+// foreign and invisible to both reconcile and readback.
+func (b *wgctrlBackend) agentOwnedReturnRules(ctx context.Context) (map[netip.Prefix]bool, error) {
+	out := make(map[netip.Prefix]bool)
+	for _, family := range []string{"-4", "-6"} {
+		current, err := b.agentOwnedReturnRulesForFamily(ctx, family)
+		if err != nil {
+			if family == "-6" {
+				continue
+			}
+			return nil, err
+		}
+		for prefix := range current {
+			out[prefix] = true
+		}
+	}
+	return out, nil
+}
+
+func (b *wgctrlBackend) agentOwnedReturnRulesForFamily(ctx context.Context, family string) (map[netip.Prefix]bool, error) {
+	listing, err := b.runCommand(ctx, "ip", family, "rule", "show", "pref", strconv.Itoa(returnRulePriority))
+	if err != nil {
+		return nil, err
+	}
+	return returnRules(listing), nil
+}
+
+func sortedPrefixStrings(prefixes map[netip.Prefix]bool) []string {
+	out := make([]string, 0, len(prefixes))
+	for prefix := range prefixes {
+		out = append(out, prefix.String())
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedReturnRules(prefixes map[netip.Prefix]bool) []ReturnRule {
+	routes := sortedPrefixStrings(prefixes)
+	out := make([]ReturnRule, len(routes))
+	for i, route := range routes {
+		out[i] = ReturnRule{Priority: returnRulePriority, Destination: route, Lookup: "main"}
+	}
+	return out
+}
+
 func (b *wgctrlBackend) reconcileReturnRules(ctx context.Context, desiredRoutes map[netip.Prefix]bool) error {
 	desired := make(map[netip.Prefix]bool)
 	for _, p := range b.interfacePrefixes {
@@ -419,28 +588,27 @@ func (b *wgctrlBackend) reconcileReturnRules(ctx context.Context, desiredRoutes 
 	}
 	priority := strconv.Itoa(returnRulePriority)
 	for _, fam := range []string{"-4", "-6"} {
-		listing, err := b.runFn(ctx, "ip", fam, "rule", "show", "pref", priority)
+		current, err := b.agentOwnedReturnRulesForFamily(ctx, fam)
 		if err != nil {
 			if fam == "-6" {
 				continue
 			}
 			return err
 		}
-		current := returnRules(listing)
 		for p := range desired {
 			if (fam == "-4") != p.Addr().Is4() || current[p] {
 				continue
 			}
-			if _, err := b.runFn(ctx, "ip", fam, "rule", "add", "pref", priority, "to", p.String(), "lookup", "main"); err != nil {
+			if _, err := b.runCommand(ctx, "ip", fam, "rule", "add", "pref", priority, "to", p.String(), "lookup", "main"); err != nil {
 				return err
 			}
 		}
 		for p := range current {
-			if desired[p] {
+			if (fam == "-4") != p.Addr().Is4() || desired[p] {
 				continue
 			}
 			slog.Info("tunnex_return_rule_pruned", "dst", p.String(), "priority", returnRulePriority)
-			if _, err := b.runFn(ctx, "ip", fam, "rule", "del", "pref", priority, "to", p.String(), "lookup", "main"); err != nil {
+			if _, err := b.runCommand(ctx, "ip", fam, "rule", "del", "pref", priority, "to", p.String(), "lookup", "main"); err != nil {
 				return err
 			}
 		}
@@ -477,36 +645,17 @@ func (b *wgctrlBackend) ApplyRoutes(ctx context.Context, cidrs []string, srcHint
 	if err := b.reconcileReturnRules(ctx, desired); err != nil {
 		return err
 	}
-	for _, fam := range []string{"-4", "-6"} {
-		out, err := b.runFn(ctx, "ip", fam, "route", "show", "dev", b.iface, "proto", "static", "metric", metric)
-		if err != nil {
-			// -6 is tolerated always (may be ipv6.disable=1; site subnets are v4-only today). -4 ALWAYS
-			// SURFACES (F3 terminal): we cannot know whether a stale route needs pruning without
-			// enumerating, so swallowing a -4 error would skip the full-sweep prune on the exact
-			// UNBOUND-gateway transition where it is owed (stale route blackholing while green). Under
-			// fail-static, a gateway whose `ip -4 route show` errors IS unhealthy — surfacing it is
-			// correct, not a false alarm (the tolerate-when-no-desired-routes convenience was refused: it
-			// could not distinguish never-had-routes from just-unbound, and the latter owes the sweep).
-			if fam == "-6" {
-				slog.Debug("site_route_enumerate_v6_skipped", "iface", b.iface, "error", err.Error())
-				continue
-			}
+	current, err := b.agentOwnedRoutes(ctx)
+	if err != nil {
+		return err
+	}
+	for _, p := range routesToPrune(sortedPrefixStrings(current), desired) {
+		// P8: log every deletion naming the route — our routes carry metric 8021, but a foreign route
+		// that happens to share it is indistinguishable here, so the deletion must be LEGIBLE (the
+		// metric-collision residual limitation made visible, not silent).
+		slog.Info("site_route_pruned", "dst", p.String(), "iface", b.iface, "metric", siteRouteMetric)
+		if _, err := b.runCommand(ctx, "ip", "route", "del", p.String(), "dev", b.iface, "proto", "static", "metric", metric); err != nil {
 			return err
-		}
-		var toks []string
-		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-			if f := strings.Fields(line); len(f) > 0 {
-				toks = append(toks, f[0])
-			}
-		}
-		for _, p := range routesToPrune(toks, desired) {
-			// P8: log every deletion naming the route — our routes carry metric 8021, but a foreign route
-			// that happens to share it is indistinguishable here, so the deletion must be LEGIBLE (the
-			// metric-collision residual limitation made visible, not silent).
-			slog.Info("site_route_pruned", "dst", p.String(), "iface", b.iface, "metric", siteRouteMetric)
-			if _, err := b.runFn(ctx, "ip", "route", "del", p.String(), "dev", b.iface, "proto", "static", "metric", metric); err != nil {
-				return err
-			}
 		}
 	}
 	return nil

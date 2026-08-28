@@ -19,5 +19,7 @@ func NewNodePolicyProvider(pool *pgxpool.Pool, licences *licence.Manager) nodes.
 	return policy.NewService(pool).WithFQDNGenerations(
 		fqdnresolver.NewPostgresStore(pool),
 		func() bool { return licence.Has(licences.Evaluate(time.Now()).Tier, licence.FeatFQDNResources) },
+	).WithK8sClusterScopesEntitlement(
+		func() bool { return licence.Has(licences.Evaluate(time.Now()).Tier, licence.FeatK8sClusterScopes) },
 	)
 }

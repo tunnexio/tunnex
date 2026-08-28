@@ -15,8 +15,11 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"strings"
+	"sync"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -34,17 +37,23 @@ import (
 // Both feed the exposed-Service hostname <service>.<namespace>.svc.<cluster>.<zone>, so they are validated
 // at RegisterCluster with typed teaching errors — a bad name never reaches the wire (S10.3 (B2)).
 var (
-	dnsLabelRE = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
-	dnsNameRE  = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+	dnsLabelRE    = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	dnsNameRE     = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+	wgPublicKeyRE = regexp.MustCompile(`^[A-Za-z0-9+/]{43}=$`)
 )
 
 func validDNSLabel(s string) bool { return len(s) >= 1 && len(s) <= 63 && dnsLabelRE.MatchString(s) }
 func validDNSName(s string) bool  { return len(s) >= 1 && len(s) <= 253 && dnsNameRE.MatchString(s) }
 
 type Service struct {
-	pool   *pgxpool.Pool
-	q      *sqlc.Queries
-	notify Notifier // nil => no push (tests / provider-only); wired in main.go to the nodepush hub
+	pool             *pgxpool.Pool
+	q                *sqlc.Queries
+	notify           Notifier // nil => no push (tests / provider-only); wired in main.go to the nodepush hub
+	haOperatorMu     sync.RWMutex
+	haOperatorStatus HAOperatorStatusSource
+	// connectorPoolConfigurationAfterMutationHook is an unexported test-only
+	// rollback seam for the transactional pool configuration service.
+	connectorPoolConfigurationAfterMutationHook func() error
 }
 
 // Notifier signals gateways to re-fetch desired state (the <5s push path, S7.2). The nodepush hub satisfies
@@ -54,6 +63,42 @@ type Service struct {
 type Notifier interface{ NotifyMany(nodeIDs []uuid.UUID) }
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool, q: sqlc.New(pool)} }
+
+// SetHAOperatorStatusSource attaches the read-only deployment/runtime
+// projection after the leader-aware composition has been constructed. It is
+// safe to call before the HTTP listener starts and safe for concurrent reads.
+func (s *Service) SetHAOperatorStatusSource(source HAOperatorStatusSource) {
+	if s == nil {
+		return
+	}
+	s.haOperatorMu.Lock()
+	s.haOperatorStatus = source
+	s.haOperatorMu.Unlock()
+}
+
+func (s *Service) loadHAOperatorStatus(ctx context.Context, orgID uuid.UUID) HAOperatorStatus {
+	if s == nil {
+		return HAOperatorStatus{SchedulerState: "blocked", SchedulerReasonCodes: []string{"status_projection_unavailable"}}
+	}
+	s.haOperatorMu.RLock()
+	source := s.haOperatorStatus
+	s.haOperatorMu.RUnlock()
+	if source == nil {
+		return HAOperatorStatus{SchedulerState: "blocked", SchedulerReasonCodes: []string{"status_projection_unavailable"}}
+	}
+	status, err := source.HandoffHAOperatorStatus(ctx, orgID)
+	if err != nil || !validHAOperatorStatus(status) {
+		return HAOperatorStatus{SchedulerState: "degraded", SchedulerReasonCodes: []string{"status_projection_unavailable"}}
+	}
+	status.SchedulerReasonCodes = append([]string(nil), status.SchedulerReasonCodes...)
+	return status
+}
+
+// HandoffCoordinatorServiceReady proves the coordinator uses the exact pool
+// owned by the scheduler fence. It performs no database I/O.
+func (s *Service) HandoffCoordinatorServiceReady(pool *pgxpool.Pool) bool {
+	return s != nil && pool != nil && s.pool == pool && s.q != nil
+}
 
 // SetNotifier wires the push hub (M5). Call at construction in main.go; nil leaves the ~25s long-poll as the
 // only propagation (acceptable for tests, not for a grant-cascading production sweep).
@@ -73,12 +118,53 @@ func (s *Service) pushOrg(ctx context.Context, orgID uuid.UUID) {
 }
 
 func (s *Service) withTx(ctx context.Context, fn func(*sqlc.Queries) error) error {
+	return s.withTxRaw(ctx, func(q *sqlc.Queries, _ pgx.Tx) error { return fn(q) })
+}
+
+func (s *Service) withTxRaw(ctx context.Context, fn func(*sqlc.Queries, pgx.Tx) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := fn(s.q.WithTx(tx)); err != nil {
+	if err := fn(s.q.WithTx(tx), tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// withLeaderTx binds a handoff mutation to the exact session-scoped advisory
+// lock in the same transaction as its SQL write.
+func (s *Service) withLeaderTx(ctx context.Context, conn *pgxpool.Conn, epoch HandoffLeadershipEpoch, fn func(*sqlc.Queries) error) error {
+	return s.withLeaderTxRaw(ctx, conn, epoch, func(q *sqlc.Queries, _ pgx.Tx) error { return fn(q) })
+}
+
+// withLeaderTxRaw is the coordinator variant for validating an external
+// durable prerequisite in the same leader-bound transaction as the write.
+func (s *Service) withLeaderTxRaw(ctx context.Context, conn *pgxpool.Conn, epoch HandoffLeadershipEpoch, fn func(*sqlc.Queries, pgx.Tx) error) error {
+	if conn == nil || !epoch.valid() {
+		return ErrHandoffLeadershipUnavailable
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var held bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM pg_locks
+			WHERE locktype = 'advisory' AND granted AND objsubid = 1
+			  AND pid = pg_backend_pid()
+			  AND ((classid::bigint << 32) | (objid::bigint & 4294967295)) = $1
+		)`, epoch.LockKey).Scan(&held)
+	if err != nil {
+		return err
+	}
+	if !held {
+		return ErrHandoffLeadershipUnavailable
+	}
+	if err := fn(sqlc.New(conn).WithTx(tx), tx); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -94,10 +180,13 @@ func (s *Service) withTx(ctx context.Context, fn func(*sqlc.Queries) error) erro
 // authctx.Principal.AuditActor().
 func (s *Service) audit(ctx context.Context, q *sqlc.Queries, orgID, actorUserID uuid.UUID, actorSystem, cause string, targetType, targetID, action string, meta map[string]any) error {
 	tt, ti := targetType, targetID
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	if cause != "" {
+		meta["cause"] = cause
+	}
 	if actorSystem != "" {
-		if cause != "" {
-			meta["cause"] = cause
-		}
 		b, _ := json.Marshal(meta)
 		as := actorSystem
 		_, err := q.InsertSystemAuditLog(ctx, sqlc.InsertSystemAuditLogParams{
@@ -138,16 +227,36 @@ func (s *Service) audit(ctx context.Context, q *sqlc.Queries, orgID, actorUserID
 // callers and migrations. A nil connector is an honest unserved state; the
 // HTTP/UI path uses RegisterClusterWithConnector and requires one.
 func (s *Service) RegisterCluster(ctx context.Context, orgID, siteID uuid.UUID, name string, vipRange, serviceCIDR netip.Prefix, dnsZone string, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.K8sCluster, error) {
-	return s.registerCluster(ctx, orgID, siteID, uuid.Nil, name, vipRange, serviceCIDR, dnsZone, managedByMachine, actorUserID, actorSystem, cause)
+	return s.registerCluster(ctx, orgID, siteID, uuid.Nil, name, vipRange, serviceCIDR, dnsZone, "unknown", "unknown", managedByMachine, actorUserID, actorSystem, cause)
 }
 
 func (s *Service) RegisterClusterWithConnector(ctx context.Context, orgID, siteID, connectorNodeID uuid.UUID, name string, vipRange, serviceCIDR netip.Prefix, dnsZone string, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.K8sCluster, error) {
-	return s.registerCluster(ctx, orgID, siteID, connectorNodeID, name, vipRange, serviceCIDR, dnsZone, managedByMachine, actorUserID, actorSystem, cause)
+	return s.registerCluster(ctx, orgID, siteID, connectorNodeID, name, vipRange, serviceCIDR, dnsZone, "unknown", "unknown", managedByMachine, actorUserID, actorSystem, cause)
 }
 
-func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorNodeID uuid.UUID, name string, vipRange, serviceCIDR netip.Prefix, dnsZone string, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.K8sCluster, error) {
+// RegisterClusterWithConnectorMetadata is the provider-first UI seam. The
+// metadata is presentation/install context only; legacy callers use the method
+// above and remain the explicit unknown/unknown pair.
+func (s *Service) RegisterClusterWithConnectorMetadata(ctx context.Context, orgID, siteID, connectorNodeID uuid.UUID, name string, vipRange, serviceCIDR netip.Prefix, dnsZone, provider, platform string, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.K8sCluster, error) {
+	return s.registerCluster(ctx, orgID, siteID, connectorNodeID, name, vipRange, serviceCIDR, dnsZone, provider, platform, managedByMachine, actorUserID, actorSystem, cause)
+}
+
+func validProviderPlatform(provider, platform string, allowUnknown bool) bool {
+	if allowUnknown && provider == "unknown" && platform == "unknown" {
+		return true
+	}
+	return (provider == "aws" && platform == "eks") ||
+		(provider == "azure" && platform == "aks") ||
+		(provider == "gcp" && platform == "gke_standard") ||
+		(provider == "self_managed" && platform == "kubernetes")
+}
+
+func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorNodeID uuid.UUID, name string, vipRange, serviceCIDR netip.Prefix, dnsZone, provider, platform string, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.K8sCluster, error) {
 	var out sqlc.K8sCluster
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		if !validProviderPlatform(provider, platform, true) {
+			return apierr.BadRequest("invalid_k8s_provider_platform", "provider and platform must be one supported pair: aws/eks, azure/aks, gcp/gke_standard, or self_managed/kubernetes")
+		}
 		// The cluster name becomes a hostname label (<service>.<namespace>.svc.<name>.<zone>), so it must be
 		// a DNS label; the zone is the customer's domain suffix. Typed teaching errors (S10.3 (B2)).
 		if !validDNSLabel(name) {
@@ -221,6 +330,7 @@ func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorN
 			OrgID: orgID, SiteID: siteID, ConnectorNodeID: pgtype.UUID{Bytes: connectorNodeID, Valid: connectorNodeID != uuid.Nil}, Name: name, VipRange: vipRange.Masked(), ServiceCidr: serviceCIDR.Masked(),
 			DnsZone: dnsZone, DnsVip: &dnsVIP,
 			ManagedByMachine: pgtype.UUID{Bytes: managedByMachine, Valid: managedByMachine != uuid.Nil},
+			Provider:         provider, Platform: platform,
 		})
 		if pgerr.IsUnique(e) {
 			return apierr.Conflict("cluster_exists", "a cluster with that name or VIP range already exists in this organization")
@@ -237,24 +347,56 @@ func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorN
 	return out, err
 }
 
+// SetClusterProviderMetadata corrects presentation metadata without touching
+// connector ownership, routing, DNS, inventory, or access policy.
+func (s *Service) SetClusterProviderMetadata(ctx context.Context, orgID, clusterID, actorUserID uuid.UUID, actorSystem, cause, provider, platform string) (sqlc.K8sCluster, error) {
+	if !validProviderPlatform(provider, platform, false) {
+		return sqlc.K8sCluster{}, apierr.BadRequest("invalid_k8s_provider_platform", "provider and platform must be one supported pair: aws/eks, azure/aks, gcp/gke_standard, or self_managed/kubernetes")
+	}
+	var out sqlc.K8sCluster
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		var err error
+		out, err = q.SetK8sClusterProviderMetadata(ctx, sqlc.SetK8sClusterProviderMetadataParams{
+			OrgID: orgID, ClusterID: clusterID, Provider: provider, Platform: platform,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
+		}
+		if err != nil {
+			return err
+		}
+		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_cluster", clusterID.String(), "k8s.cluster_provider_metadata_changed", map[string]any{
+			"provider": provider, "platform": platform,
+		})
+	})
+	return out, err
+}
+
 // SetClusterConnector assigns the one active same-site node that owns a
 // cluster's EndpointSlice watch and private VIP DNAT. It is separate from site
 // binding: a site may have HA edges, but selecting one by accident makes the
 // synthetic service route dead-while-green.
 func (s *Service) SetClusterConnector(ctx context.Context, orgID, clusterID, connectorNodeID, actorUserID uuid.UUID, actorSystem, cause string) error {
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
-		cluster, err := q.GetK8sCluster(ctx, sqlc.GetK8sClusterParams{OrgID: orgID, ID: clusterID})
+		cluster, err := q.GetK8sClusterForConnectorSetForUpdate(ctx, sqlc.GetK8sClusterForConnectorSetForUpdateParams{OrgID: orgID, ClusterID: clusterID})
 		if err != nil {
 			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
+		}
+		if cluster.ConnectorPoolID.Valid {
+			return apierr.Conflict("connector_pool_configured", "this cluster uses a connector pool; update its pool membership instead of selecting one direct connector")
 		}
 		if err := validateConnector(ctx, q, orgID, cluster.SiteID, connectorNodeID); err != nil {
 			return err
 		}
-		if _, err := q.SetK8sClusterConnector(ctx, sqlc.SetK8sClusterConnectorParams{OrgID: orgID, ID: clusterID, ConnectorNodeID: pgtype.UUID{Bytes: connectorNodeID, Valid: true}}); err != nil {
+		changed, err := q.SetK8sClusterConnector(ctx, sqlc.SetK8sClusterConnectorParams{OrgID: orgID, ID: clusterID, ConnectorNodeID: pgtype.UUID{Bytes: connectorNodeID, Valid: true}})
+		if err != nil {
 			if pgerr.IsUnique(err) {
 				return apierr.Conflict("connector_already_assigned", "that gateway already fronts another Kubernetes cluster")
 			}
 			return err
+		}
+		if changed != 1 {
+			return apierr.Conflict("connector_mode_changed", "the cluster connector mode changed; reload and retry")
 		}
 		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_cluster", clusterID.String(), "k8s.cluster_connector_set", map[string]any{"connector_node_id": connectorNodeID.String()})
 	})
@@ -272,11 +414,31 @@ func validateConnector(ctx context.Context, q *sqlc.Queries, orgID, siteID, conn
 	if err != nil {
 		return apierr.NotFound("connector_not_found", "no such gateway in this organization")
 	}
+	return validateConnectorNode(node, siteID)
+}
+
+// validateConnectorNode preserves the released legacy single-connector
+// contract: the key and endpoint must be present, but historical non-empty
+// values are not retroactively rejected by the P1 pool hardening.
+func validateConnectorNode(node sqlc.Node, siteID uuid.UUID) error {
 	if node.RevokedAt.Valid || node.Status != "active" || !node.SiteID.Valid || uuid.UUID(node.SiteID.Bytes) != siteID {
 		return apierr.Conflict("connector_not_in_cluster_site", "the connector must be an active gateway already bound to this cluster's site")
 	}
 	if node.WgPublicKey == "" || node.Endpoint == "" {
 		return apierr.Conflict("connector_not_ready", "the connector has not reported a WireGuard public key and endpoint yet")
+	}
+	return nil
+}
+
+// validateConnectorPoolMemberNode is the stricter P1 pool contract. Pool
+// membership is new and can fail closed on the exact peer material consumed by
+// topology without changing the released legacy setter.
+func validateConnectorPoolMemberNode(node sqlc.Node, siteID uuid.UUID) error {
+	if err := validateConnectorNode(node, siteID); err != nil {
+		return err
+	}
+	if !wgPublicKeyRE.MatchString(node.WgPublicKey) || strings.TrimSpace(node.Endpoint) == "" {
+		return apierr.Conflict("connector_not_ready", "a connector pool member needs a valid WireGuard public key and non-empty endpoint")
 	}
 	return nil
 }
@@ -453,7 +615,7 @@ func (s *Service) ListServicesForCluster(ctx context.Context, orgID, clusterID u
 // vanished-Service surface, rendered in API/web). The freed VIP is immediately reusable — SAFE because a
 // re-expose mints a NEW identity and the compiler resolves id -> CURRENT VIP, never a snapshot (Slice 2).
 func (s *Service) UnexposeService(ctx context.Context, actorUserID uuid.UUID, actorSystem, cause string, orgID, serviceID uuid.UUID) error {
-	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+	err := s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		svc, e := q.GetK8sService(ctx, sqlc.GetK8sServiceParams{OrgID: orgID, ID: serviceID})
 		if e != nil {
 			return apierr.NotFound("service_not_found", "no such exposed Service in this organization")
@@ -478,9 +640,22 @@ func (s *Service) UnexposeService(ctx context.Context, actorUserID uuid.UUID, ac
 		if e := q.SoftDeleteK8sService(ctx, sqlc.SoftDeleteK8sServiceParams{OrgID: orgID, ID: serviceID}); e != nil {
 			return e
 		}
+		var liveSiblings, retainedMemberships int
+		var logicalVIPReleased bool
+		if svc.IdentityID.Valid {
+			identityID := uuid.UUID(svc.IdentityID.Bytes)
+			if e := tx.QueryRow(ctx, `SELECT
+				(SELECT count(*) FROM k8s_services WHERE org_id=$1 AND identity_id=$2 AND deleted_at IS NULL),
+				EXISTS (SELECT 1 FROM k8s_service_identities WHERE org_id=$1 AND id=$2 AND deleted_at IS NOT NULL),
+				(SELECT count(*) FROM k8s_cluster_scope_memberships WHERE org_id=$1 AND service_child_id=$3)`,
+				orgID, identityID, serviceID).Scan(&liveSiblings, &logicalVIPReleased, &retainedMemberships); e != nil {
+				return e
+			}
+		}
 		// H2: audit the unexpose (a network-exposed Service leaving the fabric) — the RemoveSubnet analogue.
 		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_service", serviceID.String(), "k8s.service_unexposed",
-			map[string]any{"namespace": svc.Namespace, "name": svc.Name, "vip": svc.Vip.String()})
+			map[string]any{"cluster_id": svc.ClusterID.String(), "live_sibling_children": liveSiblings,
+				"logical_vip_released": logicalVIPReleased, "scope_memberships_retained": retainedMemberships})
 	})
 	if err == nil {
 		s.pushOrg(ctx, orgID) // M5: propagate at push speed, not the ~25s long-poll
@@ -493,10 +668,17 @@ func (s *Service) UnexposeService(ctx context.Context, actorUserID uuid.UUID, ac
 // frees the whole VIP range (incl the reserved DNS VIP) and the cluster's DNS zone for reuse — all in ONE
 // atomic delete. The next compile recompiles every affected gateway without the vanished cluster.
 func (s *Service) DeregisterCluster(ctx context.Context, actorUserID uuid.UUID, actorSystem, cause string, orgID, clusterID uuid.UUID) error {
-	err := s.withTx(ctx, func(q *sqlc.Queries) error {
-		cluster, e := q.GetK8sCluster(ctx, sqlc.GetK8sClusterParams{OrgID: orgID, ID: clusterID})
+	err := s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
+		cluster, e := q.GetK8sClusterForConnectorSetForUpdate(ctx, sqlc.GetK8sClusterForConnectorSetForUpdateParams{OrgID: orgID, ClusterID: clusterID})
 		if e != nil {
 			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
+		}
+		var scopeCount int
+		if e := tx.QueryRow(ctx, `SELECT count(*) FROM k8s_cluster_scope_grants WHERE org_id=$1 AND cluster_id=$2`, orgID, clusterID).Scan(&scopeCount); e != nil {
+			return e
+		}
+		if scopeCount != 0 {
+			return apierr.Conflict("cluster_scope_cleanup_required", fmt.Sprintf("%d Kubernetes cluster scopes must be deleted before deregistration", scopeCount))
 		}
 		if e := agentaccessguard.LockK8sClusterDestinations(ctx, q, orgID, clusterID); e != nil {
 			return e

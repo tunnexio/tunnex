@@ -60,6 +60,12 @@ nodeAgentImage: ghcr.io/tunnexio/tunnex-node-agent:0.2.0
 # Exact-origin CORS allowlist (desktop app). Leave default unless customizing.
 corsAllowedOrigins: "app://tunnex"
 
+# Connector ownership HA has two independent gates: this deployment-wide
+# composition flag and the per-organization opt-in. An edition unlock alone
+# enables neither. Keep OFF until the HA scheduler/data-plane rollout is ready.
+kubernetesHA:
+  enabled: false
+
 api:
   # HORIZONTAL SCALING IS NOW SUPPORTED (S11 D4). The in-process schedulers — the HA
   # failover tick, the CRL rebuild, the flow-log retention sweep — are LEADER-GATED by a

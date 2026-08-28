@@ -24,7 +24,29 @@ type fakeEntry struct {
 	ok      bool
 }
 
-func (f *fakeSource) Targets(ns, svc string, _ int) ([]k8sTarget, bool) {
+func TestReconcileDNSVIPsWithCandidatesRejectsSuccessfulCommandWithoutExactKernelState(t *testing.T) {
+	m := New("wg0")
+	m.SetPolicy(&nodepolicy.Compiled{Version: 7, K8sDNSZones: []nodepolicy.K8sDNSZone{{ListenVIP: "100.64.0.2", Zone: "cluster.example"}}})
+	// Both enumerations show only a stale prior VIP. Mutation commands claim
+	// success, but the final kernel state did not change; ACK must still fail.
+	m.runIPOutput = func(context.Context, ...string) (string, error) {
+		return "7: wg0 inet 100.64.0.3/32 scope global secondary wg0", nil
+	}
+	var commands []string
+	m.runIP = func(_ context.Context, args ...string) error {
+		commands = append(commands, strings.Join(args, " "))
+		return nil
+	}
+	err := m.ReconcileDNSVIPsWithCandidates(t.Context(), []string{"100.64.0.2", "100.64.0.3"})
+	if err == nil || !strings.Contains(err.Error(), "kernel readback mismatch") {
+		t.Fatalf("non-converged kernel state err=%v commands=%v", err, commands)
+	}
+	if got := m.RequestedDNSVIPs(); len(got) != 0 {
+		t.Fatalf("stale observed VIP must not be reported as applied desired: %v", got)
+	}
+}
+
+func (f *fakeSource) Targets(ns, svc, _ string, _ int) ([]k8sTarget, bool) {
 	e, found := f.m[ns+"/"+svc]
 	if !found {
 		return nil, false
@@ -320,13 +342,13 @@ func TestReconcileDNSVIPsAssignsAndSweeps(t *testing.T) {
 
 	// Fail-closed: an assign that errors is not recorded as applied → the NEXT reconcile retries it.
 	cmds = nil
-	fail["addr replace 100.64.0.2/32 dev wg0"] = true
+	fail["addr replace 100.64.0.2/32 dev wg0 label wg0:tnxk8s"] = true
 	m.SetPolicy(&nodepolicy.Compiled{Version: 7, K8sDNSZones: []nodepolicy.K8sDNSZone{{ListenVIP: "100.64.0.2", Zone: "prod.k8s.acme.com"}}})
 	if err := m.ReconcileDNSVIPs(context.Background()); err == nil {
 		t.Fatal("an assign failure must surface an error")
 	}
 	cmds = nil
-	fail["addr replace 100.64.0.2/32 dev wg0"] = false
+	fail["addr replace 100.64.0.2/32 dev wg0 label wg0:tnxk8s"] = false
 	_ = m.ReconcileDNSVIPs(context.Background())
 	if !strings.Contains(strings.Join(cmds, "\n"), "addr replace 100.64.0.2/32 dev wg0") {
 		t.Fatalf("a previously-FAILED assign must be retried (never recorded as applied), got:\n%s", strings.Join(cmds, "\n"))

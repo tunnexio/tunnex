@@ -241,6 +241,20 @@ func TestUnexposeServiceSweeps(t *testing.T) {
 	if unexposed != 1 {
 		t.Fatalf("unexpose must be audited once, got %d", unexposed)
 	}
+	var liveSiblings, retained int
+	var released, containsForbidden bool
+	if err := pool.QueryRow(ctx, `SELECT
+		(metadata->>'live_sibling_children')::int,
+		(metadata->>'scope_memberships_retained')::int,
+		(metadata->>'logical_vip_released')::boolean,
+		metadata ?| ARRAY['namespace','name','vip','protocol','port','service_port']
+		FROM audit_logs WHERE org_id=$1 AND action='k8s.service_unexposed'`, org).
+		Scan(&liveSiblings, &retained, &released, &containsForbidden); err != nil {
+		t.Fatal(err)
+	}
+	if liveSiblings != 0 || retained != 0 || !released || containsForbidden {
+		t.Fatalf("unexpose aftermath audit = siblings:%d retained:%d released:%v forbidden:%v", liveSiblings, retained, released, containsForbidden)
+	}
 	live, _ = svc.q.ListActiveK8sServicesForOrg(ctx, org)
 	if len(live) != 0 {
 		t.Fatalf("unexposed Service must vanish from the resolution, got %d", len(live))

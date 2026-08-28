@@ -2,9 +2,11 @@ package ovpnserver
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 )
 
 // TestProcAliveReflectsReapedProcess is the review-#2 red: it exercises the REAL procAlive (not the
@@ -42,13 +44,15 @@ func TestSupervisorSpawnsIfNotAliveElseNoop(t *testing.T) {
 	spawns := 0
 	alive := false
 	sup := &Supervisor{
-		spawn:   func(string) (*os.Process, error) { spawns++; return &os.Process{}, nil },
-		isAlive: func(*os.Process) bool { return alive },
+		spawn:          func(string) (*os.Process, error) { spawns++; return &os.Process{}, nil },
+		isAlive:        func(*os.Process) bool { return alive },
+		signal:         func(*os.Process, os.Signal) error { alive = false; return nil },
+		restartTimeout: time.Second,
 	}
 	ctx := context.Background()
 
 	// no process yet → spawn.
-	if err := sup.Ensure(ctx, "server.conf"); err != nil {
+	if _, err := sup.Ensure(ctx, "server.conf", "digest-a"); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	if spawns != 1 {
@@ -56,14 +60,80 @@ func TestSupervisorSpawnsIfNotAliveElseNoop(t *testing.T) {
 	}
 	// process alive → NO respawn.
 	alive = true
-	_ = sup.Ensure(ctx, "server.conf")
+	_, _ = sup.Ensure(ctx, "server.conf", "digest-a")
 	if spawns != 1 {
 		t.Fatalf("a live process must not be respawned; spawns=%d", spawns)
 	}
 	// process died → respawn (self-heal).
 	alive = false
-	_ = sup.Ensure(ctx, "server.conf")
+	_, _ = sup.Ensure(ctx, "server.conf", "digest-a")
 	if spawns != 2 {
 		t.Fatalf("a dead process must be respawned; spawns=%d", spawns)
+	}
+}
+
+func TestSupervisorControlledRestartOnArtifactChange(t *testing.T) {
+	spawns, signals := 0, 0
+	alive := false
+	sup := &Supervisor{
+		spawn:          func(string) (*os.Process, error) { spawns++; alive = true; return &os.Process{}, nil },
+		isAlive:        func(*os.Process) bool { return alive },
+		signal:         func(*os.Process, os.Signal) error { signals++; alive = false; return nil },
+		restartTimeout: time.Second,
+	}
+	if _, err := sup.Ensure(context.Background(), "server.conf", "digest-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sup.Ensure(context.Background(), "server.conf", "digest-a"); err != nil {
+		t.Fatal(err)
+	}
+	if spawns != 1 || signals != 0 {
+		t.Fatalf("same digest must retain live process: spawns=%d signals=%d", spawns, signals)
+	}
+	state, err := sup.Ensure(context.Background(), "server.conf", "digest-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spawns != 2 || signals != 1 || !state.Serving || state.AppliedDigest != "digest-b" {
+		t.Fatalf("changed artifact must restart exactly once: state=%+v spawns=%d signals=%d", state, spawns, signals)
+	}
+}
+
+func TestSupervisorReadinessFailureWithdrawsChild(t *testing.T) {
+	spawns, signals := 0, 0
+	alive := false
+	sup := &Supervisor{
+		spawn:          func(string) (*os.Process, error) { spawns++; alive = true; return &os.Process{}, nil },
+		isAlive:        func(*os.Process) bool { return alive },
+		signal:         func(*os.Process, os.Signal) error { signals++; alive = false; return nil },
+		restartTimeout: time.Second,
+		ready:          func(context.Context, *os.Process) error { return errors.New("config rejected") },
+	}
+	if _, err := sup.Ensure(context.Background(), "server.conf", "digest-a"); err == nil {
+		t.Fatal("child without readiness must be refused")
+	}
+	state, err := sup.Readback()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spawns != 1 || signals != 1 || alive || state.Serving {
+		t.Fatalf("unready child was not withdrawn: spawns=%d signals=%d alive=%v state=%+v", spawns, signals, alive, state)
+	}
+}
+
+func TestSupervisorCancellationNeverSpawns(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	spawns := 0
+	sup := &Supervisor{
+		spawn:          func(string) (*os.Process, error) { spawns++; return &os.Process{}, nil },
+		isAlive:        func(*os.Process) bool { return false },
+		restartTimeout: time.Second,
+	}
+	if _, err := sup.Ensure(ctx, "server.conf", "digest-a"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled ensure err=%v", err)
+	}
+	if spawns != 0 {
+		t.Fatalf("cancelled ensure spawned %d children", spawns)
 	}
 }
