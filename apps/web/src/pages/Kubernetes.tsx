@@ -210,6 +210,8 @@ export default function Kubernetes() {
   const [providerMetadataFor, setProviderMetadataFor] = useState<ClusterCard | null>(null);
   const [deregisterFor, setDeregisterFor] = useState<ClusterCard | null>(null);
   const [unexposeFor, setUnexposeFor] = useState<ServiceRow | null>(null);
+  const [trafficPathOpen, setTrafficPathOpen] = useState(false);
+  const [commandsOpen, setCommandsOpen] = useState(false);
 
   // Every exposed Service, flattened WITH its cluster, so the table is one scannable list rather than a list
   // per card. §6.2: the SERVICE list is the scaling surface, so it gets the table; the cluster list does not.
@@ -248,23 +250,22 @@ export default function Kubernetes() {
       key: "cluster",
       header: "Cluster",
       sortValue: (c: ClusterCard) => c.name,
-      cell: (c: ClusterCard) => (
-        <span className="flex flex-col gap-0.5">
-          <span className="flex items-center gap-2">
+      cell: (c: ClusterCard) => {
+        const provider = providerPlatformEntry(c.provider, c.platform);
+        const platform = provider
+          ? provider.platform === "gke_standard" ? "GKE" : provider.platform === "kubernetes" ? "K8s" : provider.platform.toUpperCase()
+          : "Legacy";
+        return (
+        <span className="flex items-center gap-2.5 whitespace-nowrap">
+          {provider && <ProviderMark provider={provider.provider} className="h-4 w-5 shrink-0" />}
+          <span className="flex min-w-0 items-center gap-2">
             <button type="button" className="font-medium text-ink-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35" onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}>{c.name}</button>
             {c.managedByOperator && <ManagedBadge />}
             {c.managedByOperator && <span className="sr-only" aria-label={managedEditWarning("cluster")} />}
           </span>
-          {providerPlatformEntry(c.provider, c.platform) ? (
-            <span className="flex items-center gap-1.5 text-micro text-ink-faint">
-              <ProviderMark provider={providerPlatformEntry(c.provider, c.platform)!.provider} className="h-3.5 w-4" />
-              {providerPlatformEntry(c.provider, c.platform)!.platformLabel}
-            </span>
-          ) : (
-            <span className="text-micro text-ink-faint">Legacy provider metadata</span>
-          )}
+          <Badge tone="neutral">{platform}</Badge>
         </span>
-      ),
+      );},
     },
     {
       key: "site",
@@ -274,20 +275,19 @@ export default function Kubernetes() {
         const connector = clusterConnectorState({ connectorNodeId: c.connectorNodeId, gateways });
         const name = siteName.get(c.siteId) ?? null;
         return (
-          <span className="flex flex-col gap-0.5">
-            <span className="text-cell text-ink-body">
-              {name === null ? "Site unavailable" : name}
+          <span className="flex items-center gap-2 whitespace-nowrap text-cell">
+            <span className="text-ink-body">{name === null ? "Site unavailable" : name}</span>
+            <span aria-hidden className="text-white/20">/</span>
+            <span className="text-ink-faint">
+              {c.connectorNodeId === null ? "Connector required" : nodeName.get(c.connectorNodeId) ?? "Connector unavailable"}
             </span>
-            <span className="text-micro text-ink-faint">
-              {c.connectorNodeId === null
-                ? "connector: not selected"
-                : nodeName.get(c.connectorNodeId) ?? "Connector unavailable"}
-            </span>
+            {c.connectorNodeId === null && <span className="sr-only">connector: not selected</span>}
             {/* ⛔ D9 SITS HERE, ON THE THING IT IS ABOUT. The claim is about the GATEWAY fronting the site, so
                 it belongs in this column and not on the Service rows, which would read as a fact about them. */}
             {!connector.configured && connector.why !== null && (
-              <span className="text-micro text-warn">{connector.why}</span>
+              <Badge tone="warn">Needs setup</Badge>
             )}
+            {!connector.configured && connector.why !== null && <span className="sr-only">{connector.why}</span>}
           </span>
         );
       },
@@ -481,20 +481,19 @@ export default function Kubernetes() {
           </>}
 
 
-          {section === "services" && <div className="flex flex-wrap items-end justify-between gap-3">
-            <Field label="Cluster filter">
-              <Select value={selectedId ?? ""} onChange={(event) => updateQuery({ cluster: event.target.value || null })} width="auto">
-                <option value="">All clusters</option>
-                {cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}
-              </Select>
-            </Field>
-            {gate.canManage && selected && !objectControls(selected.managedByOperator).withheld && <Button onClick={() => setExposeFor(selected)}>Expose service</Button>}
-          </div>}
-
           <div className={section === "operations" ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 items-start gap-3"}>
             <div className="flex min-w-0 flex-col gap-3">
               {section === "services" && <section aria-labelledby="k8s-services-heading" className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
-                <h2 id="k8s-services-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Exposed Services ({serviceRows.length})</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 id="k8s-services-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Exposed Services ({serviceRows.length})</h2>
+                  <div className="flex items-center gap-2">
+                    <Select aria-label="Filter services by cluster" value={selectedId ?? ""} onChange={(event) => updateQuery({ cluster: event.target.value || null })} width="auto">
+                      <option value="">All clusters</option>
+                      {cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}
+                    </Select>
+                    {gate.canManage && selected && !objectControls(selected.managedByOperator).withheld && <Button size="sm" onClick={() => setExposeFor(selected)}>Expose service</Button>}
+                  </div>
+                </div>
                 <DataTable
                   caption="Exposed Kubernetes Services"
                   columns={serviceColumns}
@@ -507,14 +506,11 @@ export default function Kubernetes() {
 
               {section === "operations" && <SettingGroup title="Kubernetes configuration">
                 <SettingRow label="Traffic path" description="Service names resolve to a synthetic VIP, then the selected connector forwards only to ready pod endpoints.">
-                  <details className="relative text-cell"><summary className="cursor-pointer select-none text-ink-body">View path</summary><div className="absolute right-0 z-10 mt-2 rounded-card border border-line bg-surface p-3 shadow-xl"><span className="whitespace-nowrap font-mono text-micro text-ink-body">device → service name → VIP → ready pod</span><p className="mt-2 max-w-md text-micro text-ink-faint">EndpointSlice faults fail closed. Policy enforcement stays keyed to the pre-DNAT VIP.</p></div></details>
+                  <Button size="sm" variant="ghost" onClick={() => setTrafficPathOpen(true)}>View path</Button>
                 </SettingRow>
                 {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
                 <SettingRow label="Operator and connector setup" description="Install both components with one-time secret references; credentials never belong in chart values.">
-                  <details className="relative text-cell"><summary className="cursor-pointer select-none text-ink-body">View commands</summary><pre className="absolute right-0 z-10 mt-2 w-[min(36rem,85vw)] overflow-x-auto rounded-card border border-line bg-surface p-3 text-micro text-ink-body shadow-xl">{`helm install gw tunnex/tunnex-gateway \\
-  --set joinToken.secretRef=tunnex-join
-helm install op tunnex/operator \\
-  --set machineToken.secretRef=tunnex-machine`}</pre></details>
+                  <Button size="sm" variant="ghost" onClick={() => setCommandsOpen(true)}>View commands</Button>
                 </SettingRow>
                 <SettingRow label="Operational visibility" description="Endpoint health is reported on Gateways; removed-service references remain visible on Access Policies.">
                   <SettingValue>{raw.machineCreds === null ? "Credentials unavailable" : `${raw.machineCreds} machine ${raw.machineCreds === 1 ? "credential" : "credentials"}`}</SettingValue>
@@ -575,6 +571,20 @@ helm install op tunnex/operator \\
               </div>
             )}
           </div>
+        </Modal>
+      )}
+      {trafficPathOpen && (
+        <Modal title="Kubernetes traffic path" onDismiss={() => setTrafficPathOpen(false)} actions={<Button variant="ghost" onClick={() => setTrafficPathOpen(false)}>Close</Button>}>
+          <p className="font-mono text-cell text-ink-heading">device → service name → VIP → ready pod</p>
+          <p className="mt-3 text-cell text-ink-tertiary">Endpoint inventory failures withdraw delivery. Policy remains keyed to the pre-DNAT VIP.</p>
+        </Modal>
+      )}
+      {commandsOpen && (
+        <Modal title="Operator and connector setup" onDismiss={() => setCommandsOpen(false)} actions={<Button variant="ghost" onClick={() => setCommandsOpen(false)}>Close</Button>}>
+          <pre className="overflow-x-auto rounded-input border border-line bg-black/30 p-3 text-micro text-ink-body">{`helm install gw tunnex/tunnex-gateway \\
+  --set joinToken.secretRef=tunnex-join
+helm install op tunnex/operator \\
+  --set machineToken.secretRef=tunnex-machine`}</pre>
         </Modal>
       )}
 

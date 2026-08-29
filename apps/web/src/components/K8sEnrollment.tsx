@@ -115,14 +115,14 @@ export function ProviderFirstEnrollmentModal({
       }
     >
       <p className="text-cell text-ink-tertiary">
-        Choose the provider context first. This records installation and presentation context only; Tunnex does not discover or access a cloud account.
+        Choose where the cluster runs, then connect it to a Site and connector.
+        <span className="sr-only"> Provider selection records context only; Tunnex does not discover or access a cloud account.</span>
       </p>
 
       <ProviderCards value={draft.provider} onChange={selectProvider} disabled={busy} />
 
-      <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_14rem]">
-        <div className="min-w-0 space-y-4">
-          <section aria-labelledby="k8s-enrollment-connection" className="space-y-3 rounded-card border border-line bg-ink-900/30 p-3">
+      <div className="mt-4 min-w-0 space-y-4">
+          <section aria-labelledby="k8s-enrollment-connection" className="space-y-3 border-t border-white/[0.08] pt-4">
             <h3 id="k8s-enrollment-connection" className="text-sm font-semibold text-ink-heading">Connection</h3>
             <Field label="Kubernetes service">
               <Select
@@ -134,7 +134,7 @@ export function ProviderFirstEnrollmentModal({
                 {selectedCatalog && <option value={selectedCatalog.platform}>{selectedCatalog.platformLabel}</option>}
               </Select>
             </Field>
-            {selectedCatalog && <p className="text-micro text-ink-faint">{selectedCatalog.guidance}</p>}
+            {selectedCatalog && <p className="sr-only">{selectedCatalog.guidance}</p>}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div><Field label="Fronting Site">
@@ -150,9 +150,6 @@ export function ProviderFirstEnrollmentModal({
                 </Select>
               </Field>{nodes === null && <p role={nodesError ? "alert" : "status"} className={`mt-1 text-micro ${nodesError ? "text-danger" : "text-ink-faint"}`}>{nodesError ? "Node inventory could not be loaded. No zero-connector result is inferred." : "Loading Node inventory…"}</p>}</div>
             </div>
-            <p className="text-micro text-ink-faint">
-              The connector watches ready Kubernetes endpoints. Selecting it does not claim that the cluster or workloads are ready.
-            </p>
             <div><Field label="Cluster name">
               <Input
                 value={draft.name}
@@ -168,7 +165,7 @@ export function ProviderFirstEnrollmentModal({
           <details
             open={advancedOpen}
             onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
-            className="rounded-card border border-line bg-ink-900/30 p-3"
+            className="border-t border-white/[0.08] pt-3"
           >
             <summary className="cursor-pointer text-sm font-semibold text-ink-heading">Advanced network values</summary>
             <p className="mt-2 text-micro text-ink-faint">
@@ -189,28 +186,18 @@ export function ProviderFirstEnrollmentModal({
               </div>
             </div>
           </details>
+        <div aria-label="Enrollment context" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-input border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-xs">
+          {draft.provider && <ProviderMark provider={draft.provider} className="h-5 w-6 shrink-0" />}
+          <strong className="text-ink-heading">{selectedCatalog?.providerLabel ?? "Choose a provider"}</strong>
+          <span aria-hidden className="text-white/20">/</span>
+          <span className="text-ink-tertiary">{selectedSite?.name ?? "Site not selected"}</span>
+          <span aria-hidden className="text-white/20">/</span>
+          <span className="text-ink-tertiary">{selectedConnector?.name ?? "Connector not selected"}</span>
+          <span aria-hidden className="text-white/20">/</span>
+          <span className="text-ink-tertiary">{draft.name.trim() || "Cluster unnamed"}</span>
+          <span className="ml-auto"><Badge tone={complete ? "ok" : "neutral"}>{complete ? "READY" : "INCOMPLETE"}</Badge></span>
+          <span className="sr-only">Registration records control-plane intent. Actual connector and workload state is reported separately.</span>
         </div>
-
-        <aside className="rounded-card border border-line bg-ink-900/50 p-3" aria-label="Enrollment context">
-          <h3 className="text-sm font-semibold text-ink-heading">Enrollment context</h3>
-          <div className="mt-3 flex items-center gap-2 border-b border-line pb-3">
-            {draft.provider && <ProviderMark provider={draft.provider} className="h-8 w-9" />}
-            <span className="text-xs font-semibold text-ink-body">{selectedCatalog?.providerLabel ?? "Provider not selected"}</span>
-          </div>
-          <dl className="divide-y divide-white/10 text-xs">
-            <ContextRow label="Service" value={draft.platform ? selectedCatalog?.platformLabel ?? "Unavailable" : "Not selected"} />
-            <ContextRow label="Site" value={selectedSite?.name ?? "Not selected"} />
-            <ContextRow label="Connector" value={selectedConnector?.name ?? "Not selected"} />
-            <ContextRow label="Cluster" value={draft.name.trim() || "Not entered"} />
-            <ContextRow label="Network" value={draft.vipRange && draft.serviceCidr && draft.dnsZone ? "Explicit values entered" : "Incomplete"} />
-          </dl>
-          <div className="mt-3">
-            <Badge tone={complete ? "ok" : "neutral"}>{complete ? "READY TO REGISTER" : "INCOMPLETE"}</Badge>
-            <p className="mt-2 text-micro text-ink-faint">
-              Registration records control-plane intent. Actual connector and workload state is reported separately.
-            </p>
-          </div>
-        </aside>
       </div>
 
       <div className="mt-3 space-y-2">
@@ -341,32 +328,26 @@ function ProviderCards({
                 className="peer sr-only"
                 type="radio"
                 name="k8s-provider"
+                aria-label={entry.providerLabel}
                 value={entry.provider}
                 checked={selected}
                 disabled={disabled}
                 onChange={() => onChange(entry.provider)}
               />
-              <span className="flex min-h-[8.25rem] flex-col items-center justify-center rounded-card border border-line bg-ink-900/50 px-2 py-3 text-center transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent-400 peer-checked:border-accent-400 peer-checked:bg-accent-400/5">
-                <ProviderMark provider={entry.provider} className="h-10 w-12" />
-                <strong className="mt-2 text-xs text-ink-heading">{entry.providerLabel}</strong>
-                <span className="mt-1 text-micro text-ink-faint">{entry.platformLabel}</span>
-                <span className={`mt-2 text-[10px] font-semibold uppercase tracking-wide ${selected ? "text-accent-400" : "text-transparent"}`} aria-hidden={!selected}>
-                  {selected ? "Selected" : "Not selected"}
+              <span className="flex min-h-[4.5rem] items-center gap-2.5 rounded-card border border-line bg-ink-900/40 px-3 py-2 text-left transition-colors peer-focus-visible:outline peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent-400 peer-checked:border-accent-400 peer-checked:bg-accent-400/5">
+                <ProviderMark provider={entry.provider} className="h-6 w-7 shrink-0" />
+                <span className="min-w-0">
+                  <strong className="block truncate text-xs text-ink-heading">
+                    {entry.provider === "aws" ? "AWS" : entry.provider === "azure" ? "Azure" : entry.providerLabel}
+                  </strong>
+                  <span className="mt-0.5 block text-micro text-ink-faint">{entry.platform === "gke_standard" ? "GKE" : entry.platform === "kubernetes" ? "K8s" : entry.platform.toUpperCase()}</span>
                 </span>
+                <span className={`ml-auto h-2 w-2 shrink-0 rounded-full ${selected ? "bg-accent-400" : "bg-transparent"}`} aria-hidden />
               </span>
             </label>
           );
         })}
       </div>
     </fieldset>
-  );
-}
-
-function ContextRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 py-2">
-      <dt className="text-ink-faint">{label}</dt>
-      <dd className="break-words text-ink-body">{value}</dd>
-    </div>
   );
 }
