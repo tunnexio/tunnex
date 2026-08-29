@@ -404,7 +404,7 @@ export default function Kubernetes() {
     : null;
 
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col gap-5">
       <PageHeader
         title="Kubernetes"
         subtitle="Clusters and private services available through Tunnex."
@@ -413,22 +413,21 @@ export default function Kubernetes() {
           : undefined}
       />
 
-      <nav aria-label="Kubernetes workspace" className="flex flex-wrap gap-1 border-b border-line pb-2">
+      <nav aria-label="Kubernetes workspace" className="flex flex-wrap gap-6 border-b border-white/[0.08]">
         {([
           ["clusters", "Clusters"],
           ["services", "Exposed services"],
           ["operations", "Setup & diagnostics"],
         ] as const).map(([id, label]) => (
-          <Button
+          <button
+            type="button"
             key={id}
-            size="sm"
-            variant="ghost"
             aria-current={section === id ? "page" : undefined}
-            className={section === id ? "bg-white/10 text-ink-heading" : ""}
+            className={`relative -mb-px px-0.5 py-2.5 text-cell font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35 ${section === id ? "text-white after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-white" : "text-ink-tertiary hover:text-ink-heading"}`}
             onClick={() => updateQuery({ section: id, cluster: id === "operations" ? null : selectedId })}
           >
             {label}
-          </Button>
+          </button>
         ))}
       </nav>
 
@@ -458,15 +457,15 @@ export default function Kubernetes() {
       {raw && !loadError && cards.length > 0 && (
         <>
           {section === "clusters" && <>
-            <section aria-labelledby="k8s-clusters-heading" className="flex flex-col gap-3">
+            <section aria-labelledby="k8s-clusters-heading" className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h2 id="k8s-clusters-heading" className="text-[15px] font-semibold text-ink-heading">Clusters</h2>
-                  <p className="mt-0.5 text-cell text-ink-tertiary">{visibleCards.length} of {cards.length} registered · {serviceRows.length} exposed {serviceRows.length === 1 ? "service" : "services"}</p>
+                  <h2 id="k8s-clusters-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Clusters</h2>
+                  <p className="mt-1 text-cell text-ink-tertiary">{visibleCards.length} registered <span aria-hidden className="mx-1.5 text-white/20">/</span> {serviceRows.length} exposed {serviceRows.length === 1 ? "service" : "services"}</p>
                 </div>
                 <label className="block w-full sm:w-80">
                 <span className="sr-only">Search clusters</span>
-                <Input value={query} onChange={(event) => updateQuery({ q: event.target.value })} placeholder="Search clusters" />
+                <Input className="bg-black/30" value={query} onChange={(event) => updateQuery({ q: event.target.value })} placeholder="Search clusters" />
                 </label>
               </div>
               <DataTable
@@ -494,8 +493,8 @@ export default function Kubernetes() {
 
           <div className={section === "operations" ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 items-start gap-3"}>
             <div className="flex min-w-0 flex-col gap-3">
-              {section === "services" && <section aria-labelledby="k8s-services-heading" className="flex flex-col gap-3">
-                <h2 id="k8s-services-heading" className="text-[15px] font-semibold text-ink-heading">Exposed Services ({serviceRows.length})</h2>
+              {section === "services" && <section aria-labelledby="k8s-services-heading" className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+                <h2 id="k8s-services-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Exposed Services ({serviceRows.length})</h2>
                 <DataTable
                   caption="Exposed Kubernetes Services"
                   columns={serviceColumns}
@@ -563,16 +562,16 @@ helm install op tunnex/operator \\
               <p className="text-micro text-ink-tertiary" aria-label={managedEditWarning("cluster")}>Managed by GitOps. Edit its CR to change this cluster.</p>
             ) : gate.canManage ? (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setConnectorFor(selected)}>{selected.connectorNodeId === null ? "Select connector" : "Change connector"}</Button>
-                <Button size="sm" variant="ghost" onClick={() => setProviderMetadataFor(selected)}>Correct provider metadata</Button>
-                <Button size="sm" onClick={() => setExposeFor(selected)}>Expose service</Button>
+                <Button size="sm" variant="ghost" onClick={() => { updateQuery({ cluster: null }); setConnectorFor(selected); }}>{selected.connectorNodeId === null ? "Select connector" : "Change connector"}</Button>
+                <Button size="sm" variant="ghost" onClick={() => { updateQuery({ cluster: null }); setProviderMetadataFor(selected); }}>Correct provider metadata</Button>
+                <Button size="sm" onClick={() => { updateQuery({ cluster: null }); setExposeFor(selected); }}>Expose service</Button>
               </div>
             ) : null}
 
             {gate.canManage && !objectControls(selected.managedByOperator).withheld && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-danger/30 pt-4">
                 <span className="text-micro text-ink-faint">Deregistering also removes this cluster&rsquo;s exposed Services.</span>
-                <Button size="sm" variant="danger" onClick={() => setDeregisterFor(selected)}>Deregister</Button>
+                <Button size="sm" variant="danger" onClick={() => { updateQuery({ cluster: null }); setDeregisterFor(selected); }}>Deregister</Button>
               </div>
             )}
           </div>
