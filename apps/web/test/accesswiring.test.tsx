@@ -301,7 +301,7 @@ describe("Access — FQDN destination status is the server projection", () => {
     fireEvent.click(add);
     fireEvent.focus(screen.getByRole("combobox", { name: "Destination" }));
     fireEvent.click(await screen.findByRole("button", { name: /Orders API/ }));
-    expect(screen.getAllByText(/server determines whether this rule has an active selected-resolver generation/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Private DNS access remains fail-closed until this hostname has an active resolver generation/i).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(postedBodies).toHaveLength(1));
     expect(postedBodies[0]).toMatchObject({ dst_kind: "fqdn_resource", dst_fqdn_resource_id: "fqdn-1" });
@@ -401,7 +401,7 @@ describe("Access — wiring: the screen must not claim enforcement it does not h
     withAuth(<Access />);
     // F3's rule. Hiding a disabled rule would make the list read as the complete set of what is in force,
     // which is the same lie as (a) one row down.
-    await waitFor(() => expect(screen.getByText("disabled")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Disabled")).toBeTruthy());
   });
 });
 
@@ -458,9 +458,9 @@ describe("Access Rules — authoritative loading and empty states", () => {
     expect((await screen.findByRole("status")).textContent).toContain("Loading rules…");
     expect(screen.queryByText("Rules could not be loaded. refresh to try again.")).toBeNull();
     expect(screen.queryByTestId("visualization-count")).toBeNull();
-    expect(screen.queryByText(/No matching rules to visualize/)).toBeNull();
-    expect((screen.getByRole("button", { name: "Add rule" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.queryByRole("button", { name: "Visualize filtered rules" })).toBeNull();
+    expect(screen.queryByText(/No matching rules to map/)).toBeNull();
+    expect((await screen.findByRole("button", { name: "Add rule" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "View access map" })).toBeNull();
     await waitFor(() => {
       expect(resolveDeferredRules).not.toBeNull();
       expect(resolveDeferredMode).not.toBeNull();
@@ -473,8 +473,8 @@ describe("Access Rules — authoritative loading and empty states", () => {
     expect((await screen.findByTestId("visualization-count")).textContent).toContain("0 matching rules · visualization limit 20");
     expect(screen.queryByRole("status")).toBeNull();
     expect((screen.getByRole("button", { name: "Add rule" }) as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByText("No matching rules to visualize. Adjust the filter to include rules.")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Visualize filtered rules" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("No matching rules to map.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "View access map" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("keeps successful zero-rule consequences distinct for enforcing and off mode", async () => {
@@ -492,29 +492,29 @@ describe("Access Rules — authoritative loading and empty states", () => {
 describe("Access Rules visualization eligibility", () => {
   it("disables visualization for zero matching rules and says why", async () => {
     withAuth(<Access />);
-    fireEvent.change(await screen.findByRole("textbox", { name: "Filter Rules" }), { target: { value: "does-not-exist" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Search rules" }), { target: { value: "does-not-exist" } });
     expect((await screen.findByTestId("visualization-count")).textContent).toContain("0 matching rules · visualization limit 20");
-    expect(screen.getByText("No matching rules to visualize. Adjust the filter to include rules.")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Visualize filtered rules" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("No matching rules to map.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "View access map" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("renders all exactly-20 representable rules and then hides the complete graph", async () => {
     rulesForTest = Array.from({ length: 20 }, (_, index) => ({ ...RULES[0], id: `r-${index}` }));
     withAuth(<Access />);
     expect((await screen.findByTestId("visualization-count")).textContent).toContain("20 matching rules · visualization limit 20");
-    fireEvent.click(screen.getByRole("button", { name: "Visualize filtered rules" }));
+    fireEvent.click(screen.getByRole("button", { name: "View access map" }));
     expect((await screen.findByRole("img", { name: /20 of 20 rules drawn/ })).getAttribute("aria-label")).toContain("20 of 20 rules drawn");
-    expect(screen.getByRole("button", { name: "Hide visualization" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Hide visualization" }));
+    expect(screen.getByRole("button", { name: "Hide access map" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Hide access map" }));
     await waitFor(() => expect(document.querySelector('svg[role="img"]')).toBeNull());
-    expect(screen.getByRole("button", { name: "Visualize filtered rules" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View access map" })).toBeTruthy();
   });
 
   it("refuses more than 20 filtered rules without relabelling the inactive control", async () => {
     rulesForTest = Array.from({ length: 21 }, (_, index) => ({ ...RULES[0], id: `r-${index}` }));
     withAuth(<Access />);
-    expect(await screen.findByText("21 matching rules; visualization limit is 20. Narrow the filter.")).toBeTruthy();
-    const button = screen.getByRole("button", { name: "Visualize filtered rules" }) as HTMLButtonElement;
+    expect(await screen.findByText("Narrow the search to 20 rules or fewer to view the map.")).toBeTruthy();
+    const button = screen.getByRole("button", { name: "View access map" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.getAttribute("aria-describedby")).toBe("rules-visualization-status");
     expect(document.querySelector('svg[role="img"]')).toBeNull();
@@ -523,8 +523,8 @@ describe("Access Rules visualization eligibility", () => {
   it("refuses every incomplete layout, including one that would otherwise cover more than half the flows", async () => {
     setDistinctFlowRules();
     withAuth(<Access />);
-    expect(await screen.findByText("Only 8 of 10 flows can be represented. Narrow the filter.")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Visualize filtered rules" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(await screen.findByText("This selection is too connected for a truthful compact map. Narrow the search.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "View access map" }) as HTMLButtonElement).disabled).toBe(true);
     expect(document.querySelector('svg[role="img"]')).toBeNull();
   });
 
@@ -534,14 +534,14 @@ describe("Access Rules visualization eligibility", () => {
       ...Array.from({ length: 20 }, (_, index) => ({ ...RULES[0], id: `r-engineering-${index}` })),
     ];
     withAuth(<Access />);
-    const filter = await screen.findByRole("textbox", { name: "Filter Rules" });
+    const filter = await screen.findByRole("textbox", { name: "Search rules" });
     fireEvent.change(filter, { target: { value: "Operations" } });
-    fireEvent.click(screen.getByRole("button", { name: "Visualize filtered rules" }));
+    fireEvent.click(screen.getByRole("button", { name: "View access map" }));
     await screen.findByRole("img", { name: /1 of 1 rules drawn/ });
     fireEvent.change(filter, { target: { value: "" } });
     await waitFor(() => expect(document.querySelector('svg[role="img"]')).toBeNull());
-    expect(screen.getByText("21 matching rules; visualization limit is 20. Narrow the filter.")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Visualize filtered rules" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Narrow the search to 20 rules or fewer to view the map.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "View access map" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -557,10 +557,10 @@ describe("Access Rules visualization eligibility", () => {
 describe("Access flow panel — the geometry contract and the type tags", () => {
   it("draws only the current filtered inventory and never silently restores omitted rules", async () => {
     withAuth(<Access />);
-    fireEvent.change(await screen.findByRole("textbox", { name: "Filter Rules" }), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Search rules" }), {
       target: { value: "Operations" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Visualize filtered rules" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View access map" }));
     const svg = await waitFor(() => {
       const el = document.querySelector('svg[role="img"]');
       if (!el) throw new Error("filtered flow SVG not rendered");
@@ -575,7 +575,7 @@ describe("Access flow panel — the geometry contract and the type tags", () => 
     // `className="w-full"` over a viewBox let the container stretch 152x36 boxes to ~490x130 and truncate
     // every name. THE SCALE IS A CONTRACT. Second occurrence after the Sites map.
     withAuth(<Access />);
-    fireEvent.click(await screen.findByRole("button", { name: "Visualize filtered rules" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View access map" }));
     const svg = await waitFor(() => {
       const el = document.querySelector('svg[role="img"]');
       if (!el) throw new Error("flow SVG not rendered");
@@ -597,7 +597,7 @@ describe("Access flow panel — the geometry contract and the type tags", () => 
     // `label.startsWith(m.name)` is ALWAYS TRUE when a member has an empty name — which users.name
     // (NOT NULL DEFAULT '') produces for 144 rows. Every resource read USER.
     withAuth(<Access />);
-    fireEvent.click(await screen.findByRole("button", { name: "Visualize filtered rules" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View access map" }));
     const svg = await waitFor(() => {
       const el = document.querySelector('svg[role="img"]');
       if (!el) throw new Error("flow SVG not rendered");
@@ -619,7 +619,7 @@ describe("Access flow panel — the geometry contract and the type tags", () => 
     // and every temporary edge drew SOLID while the legend promised "- - - temporary".
     //   AN ANIMATION AND A SEMANTIC ENCODING MUST NOT SHARE A PROPERTY.
     withAuth(<Access />);
-    fireEvent.click(await screen.findByRole("button", { name: "Visualize filtered rules" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View access map" }));
     const svg = await waitFor(() => {
       const el = document.querySelector('svg[role="img"]');
       if (!el) throw new Error("flow SVG not rendered");

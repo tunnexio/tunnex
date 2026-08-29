@@ -206,13 +206,7 @@ export default function Access() {
           style object using `Instrument Sans` and raw hex, neither of which is in the token set. */}
       <PageHeader
         title="Access policies"
-        subtitle={
-          <>
-            {org ? org.name : "…"} ·{" "}
-            <span className="text-ink-secondary">control plane</span>{" "}
-            <span className="text-ink-body">● healthy</span>
-          </>
-        }
+        subtitle={org ? `${org.name} · who can reach what` : "Loading policy context…"}
       />
       <AccessTabRail />
 
@@ -238,41 +232,35 @@ export default function Access() {
         </Card>
       )}
 
-      {org && gate.canView && roleResolved && (
-        <TestAccessSection key={org.id} orgId={org.id} />
-      )}
-
-      {org && roleResolved && (can(myRole, "agent:grant_access") || can(myRole, "agent_access:approve")) && (
-        <AgentJITCapabilitySection
-          key={`f10-${org.id}`}
-          orgId={org.id}
-          enabled={org.agent_jit_access_enabled}
-          canApprove={can(myRole, "agent_access:approve")}
-          currentUserId={myId}
-        />
-      )}
-
       {view === "admin_body" && org && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {can(myRole, "k8s_scope:view") && can(myRole, "policy:view") && (
-            <Card>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-ink-heading">Kubernetes access scopes</h2>
-                  <p className="mt-1 text-cell text-ink-tertiary">Create approval-gated exact Service access and review later exposures.</p>
-                </div>
-                <a className="inline-flex min-h-11 items-center rounded-md border border-white/10 px-4 py-2 text-sm font-medium text-ink-heading hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400" href="/access/kubernetes-scopes">Open scope governance</a>
+          <Card className="overflow-hidden !p-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3">
+              <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
+              <div className="flex flex-wrap items-center gap-2">
+                <TestAccessSection key={org.id} orgId={org.id} />
+                {can(myRole, "k8s_scope:view") && can(myRole, "policy:view") && (
+                  <a className="inline-flex min-h-8 items-center rounded-md border border-white/10 px-2.5 py-1 text-xs font-medium text-ink-body hover:bg-white/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35" href="/access/kubernetes-scopes">Kubernetes scopes</a>
+                )}
               </div>
-            </Card>
+            </div>
+            <RulesSection
+              orgId={org.id}
+              canManage={gate.canManagePolicy}
+              canManageAgentTemplates={gate.canManageAgentTemplates}
+              canViewFQDNResources={can(myRole, "fqdn_resource:view")}
+              subjectsRev={subjectsRev}
+            />
+          </Card>
+          {(can(myRole, "agent:grant_access") || can(myRole, "agent_access:approve")) && (
+            <AgentJITCapabilitySection
+              key={`f10-${org.id}`}
+              orgId={org.id}
+              enabled={org.agent_jit_access_enabled}
+              canApprove={can(myRole, "agent_access:approve")}
+              currentUserId={myId}
+            />
           )}
-          <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
-          <RulesSection
-            orgId={org.id}
-            canManage={gate.canManagePolicy}
-            canManageAgentTemplates={gate.canManageAgentTemplates}
-            canViewFQDNResources={can(myRole, "fqdn_resource:view")}
-            subjectsRev={subjectsRev}
-          />
         </div>
       )}
     </div>
@@ -292,7 +280,7 @@ function AgentJITCapabilitySection({ orgId, enabled, canApprove, currentUserId }
   if (!licence.ok) return <Card><p className="text-cell text-ink-tertiary">Could not load just-in-time access capability.</p><ErrorText>{licence.error}</ErrorText></Card>;
   if (!Array.isArray(licence.data.features)) return <Card><h2 className="text-sm font-semibold text-ink-heading">Just-in-time access</h2><p className="mt-1 text-cell text-ink-tertiary">The control plane returned an invalid licence capability response.</p><ErrorText>Refresh the page or contact an administrator if the problem continues.</ErrorText></Card>;
   if (!licence.data.features.includes("agent_jit_access")) return null;
-  if (!enabled) return <div className="rounded-md border border-border bg-white/5 px-3 py-2 text-cell text-ink-tertiary">Just-in-time access is available on this plan but disabled for this organization. <Link className="font-medium text-accent-400 hover:underline" to="/settings">Enable it in Org Settings</Link>.</div>;
+  if (!enabled) return <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-ink-tertiary"><span className="h-1.5 w-1.5 rounded-full bg-slate-600" aria-hidden="true" /><span>Just-in-time access is off.</span><Link className="font-medium text-ink-body hover:underline" to="/settings">Configure</Link></div>;
   return <AgentJITAccessSection orgId={orgId} enabled={enabled} canApprove={canApprove} currentUserId={currentUserId} />;
 }
 
@@ -611,6 +599,7 @@ function TestAccessSection({ orgId }: { orgId: string }) {
   const [result, setResult] = useState<AgentAccessDiagnostic | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const loadEpoch = useRef(0);
   const runEpoch = useRef(0);
   const tupleKey = `${orgId}\u0000${agentId}\u0000${destination.trim()}\u0000${protocol}\u0000${port}`;
@@ -695,37 +684,33 @@ function TestAccessSection({ orgId }: { orgId: string }) {
 
   return (
     <div data-testid="test-access-panel">
-      <Card>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-52 flex-1">
-          <h2 className="text-sm font-semibold text-slate-200">Test access</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Explain current control-plane intent. No packet, DNS query, or policy change is sent.
-          </p>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>Test access</Button>
+      {open && <Modal title="Test access" size="wide" onDismiss={() => setOpen(false)} actions={<Button variant="ghost" onClick={() => setOpen(false)}>Close</Button>}>
+        <p className="mb-4 text-cell text-ink-tertiary">Explain current policy intent without sending traffic, resolving DNS, or changing policy.</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_minmax(14rem,1.5fr)_7rem_6rem_auto] lg:items-end">
+          <Field label="Agent">
+            <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+              {agents.map((agent) => (
+                <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Destination IP or hostname">
+            <Input value={destination} placeholder="10.20.0.15" onChange={(e) => setDestination(e.target.value)} />
+          </Field>
+          <Field label="Protocol">
+            <Select value={protocol} onChange={(e) => setProtocol(e.target.value as "tcp" | "udp")}>
+              <option value="tcp">TCP</option><option value="udp">UDP</option>
+            </Select>
+          </Field>
+          <Field label="Port">
+            <Input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
+          </Field>
+          <Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Run test"}</Button>
         </div>
-        <Field label="Agent">
-          <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-            {agents.map((agent) => (
-              <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Destination IP or hostname">
-          <Input value={destination} placeholder="10.20.0.15" onChange={(e) => setDestination(e.target.value)} />
-        </Field>
-        <Field label="Protocol">
-          <Select value={protocol} onChange={(e) => setProtocol(e.target.value as "tcp" | "udp")}>
-            <option value="tcp">TCP</option><option value="udp">UDP</option>
-          </Select>
-        </Field>
-        <Field label="Port">
-          <Input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
-        </Field>
-        <Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Test access"}</Button>
-      </div>
-      <ErrorText>{error}</ErrorText>
-      {result && (
-        <div className="mt-4" data-testid="test-access-result">
+        <ErrorText>{error}</ErrorText>
+        {result && (
+        <div className="mt-4 border-t border-white/[0.08] pt-4" data-testid="test-access-result">
           <p className="text-sm font-medium text-slate-200">
             {result.overall === "allowed" ? "Allowed by current Tunnex intent" : result.overall === "denied" ? "Blocked by current Tunnex intent" : "Inconclusive from current evidence"}
           </p>
@@ -749,8 +734,8 @@ function TestAccessSection({ orgId }: { orgId: string }) {
             ))}
           </ol>
         </div>
-      )}
-      </Card>
+        )}
+      </Modal>}
     </div>
   );
 }
@@ -828,24 +813,19 @@ function ModeSection({
   const confirm = modeEnableConfirm(confirmCount);
 
   return (
-    <Card className="mt-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-300">
-            Zero Trust mode
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            {mode === "enforcing"
-              ? "Enforcing. default-deny; only your allow rules pass."
-              : mode === "off"
-                ? "Off. legacy full-mesh (all devices reach all devices)."
-                : loadError
-                  ? "n/a"
-                  : "…"}
-          </p>
-        </div>
+    <div className="min-w-[18rem] flex-1">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <h2 className="text-sm font-semibold text-ink-heading">Enforcement</h2>
+        <span className={`h-2 w-2 rounded-full ${mode === "enforcing" ? "bg-emerald-400" : mode === "off" ? "bg-warn" : "bg-slate-600"}`} aria-hidden="true" />
+        <strong className="text-sm font-medium text-ink-body">
+          {mode === "enforcing" ? "On" : mode === "off" ? "Off" : loadError ? "Unavailable" : "Loading…"}
+        </strong>
+        <span className="text-xs text-ink-tertiary">
+          {mode === "enforcing" ? "Only matching allow rules pass." : mode === "off" ? "Legacy full mesh is open." : ""}
+        </span>
         {canManage && mode != null && !loadError && (
           <Button
+            size="sm"
             variant={mode === "enforcing" ? "ghost" : "primary"}
             disabled={busy}
             onClick={() =>
@@ -860,7 +840,7 @@ function ModeSection({
       <ErrorText>{err}</ErrorText>
 
       {affected && (
-        <div className="mt-3 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300">
+        <div className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300">
           Now enforcing. {affected.length} full-tunnel device(s) lost internet
           egress until a rule allows it:
           <span className="text-amber-200">
@@ -893,7 +873,7 @@ function ModeSection({
           {confirm.body}
         </Modal>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -1199,15 +1179,21 @@ function RulesSection({
   const rulesAuthoritative = rulesResult?.ok === true;
 
   return (
-    <Card className="mt-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-300">Rules</h2>
+    <section aria-labelledby="access-rules-heading" className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="access-rules-heading" className="text-base font-semibold text-ink-heading">Rules</h2>
+          <p className="mt-0.5 text-xs text-ink-tertiary">
+            {rulesResult?.ok ? `${rulesResult.data} total · ${rules.filter((rule) => rule.enabled).length} active` : "Loading rule inventory…"}
+          </p>
+        </div>
         {/* TWO seams, both producing ABSENCE, and the ORDER is the decision (S14.2 D3):
             PERMISSION first, WIDTH second. A member who may not manage rules sees nothing — never
             "read-only on this screen size", which would imply a wider window grants what their role does not. */}
         {canManage && !view.showRetry && (
           <ComposeGate surface="Access rules">
             <Button
+              size="sm"
               onClick={() => setCreating(true)}
               disabled={
                 !rulesAuthoritative ||
@@ -1221,10 +1207,6 @@ function RulesSection({
           </ComposeGate>
         )}
       </div>
-      <p className="mt-1 text-xs text-slate-500">
-        Allow rules: a source group may reach a destination group or resource.
-      </p>
-
       {/* S8.3 CP: the posture summary line. enforcing+0 is LOUD (a live default-deny with no rules); a
           failed load reads "unavailable", never the reassuring 0-rules message. */}
       {(() => {
@@ -1271,30 +1253,27 @@ function RulesSection({
               a rule.
             </p>
           )}
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs text-slate-500">The table is the authoritative rules inventory.</p>
-              <p className="mt-1 text-xs text-slate-400" data-testid="visualization-count">{filteredRules.length} matching rules · visualization limit {FLOW_GRAPH_MAX_RULES}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="min-w-[14rem] flex-1">
               <Input
-                aria-label="Filter Rules"
+                aria-label="Search rules"
                 value={ruleQuery}
                 onChange={(event) => setRuleQuery(event.target.value)}
-                placeholder="Filter loaded rules…"
+                placeholder="Search source, destination, or status"
               />
-              <Button size="sm" variant="ghost" aria-describedby="rules-visualization-status" disabled={visualization.kind !== "draw"} onClick={() => {
-                if (visualizing) setVisualizing(false);
-                else if (visualization.kind === "draw") setVisualizing(true);
-              }}>
-                {visualizing && visualization.kind === "draw" ? "Hide visualization" : "Visualize filtered rules"}
-              </Button>
             </div>
+            <Button size="sm" variant="ghost" aria-describedby="rules-visualization-status" disabled={visualization.kind !== "draw"} onClick={() => {
+              if (visualizing) setVisualizing(false);
+              else if (visualization.kind === "draw") setVisualizing(true);
+            }}>
+              {visualizing && visualization.kind === "draw" ? "Hide access map" : "View access map"}
+            </Button>
           </div>
-          {visualization.kind === "empty" && <p id="rules-visualization-status" className="mt-2 text-xs text-slate-500">No matching rules to visualize. Adjust the filter to include rules.</p>}
-          {visualization.kind === "too-many" && <p id="rules-visualization-status" className="mt-2 text-xs text-amber-300">{flowRows.length} matching rules; visualization limit is {FLOW_GRAPH_MAX_RULES}. Narrow the filter.</p>}
-          {visualization.kind === "omitted" && <p id="rules-visualization-status" className="mt-2 text-xs text-amber-300">Only {flowProbe.shown.length} of {flowRows.length} flows can be represented. Narrow the filter.</p>}
-          {visualization.kind === "draw" && <p id="rules-visualization-status" className="sr-only">All matching rules can be visualized.</p>}
+          <p className="sr-only" data-testid="visualization-count">{filteredRules.length} matching rules · visualization limit {FLOW_GRAPH_MAX_RULES}</p>
+          {visualization.kind === "empty" && <p id="rules-visualization-status" className="mt-2 text-xs text-ink-tertiary">No matching rules to map.</p>}
+          {visualization.kind === "too-many" && <p id="rules-visualization-status" className="mt-2 text-xs text-warn">Narrow the search to {FLOW_GRAPH_MAX_RULES} rules or fewer to view the map.</p>}
+          {visualization.kind === "omitted" && <p id="rules-visualization-status" className="mt-2 text-xs text-warn">This selection is too connected for a truthful compact map. Narrow the search.</p>}
+          {visualization.kind === "draw" && <p id="rules-visualization-status" className="sr-only">All matching rules can be mapped.</p>}
           {/* ── ACCESS FLOW ({{ polFlow }}) — built from the handoff's buildPolicyFlow(), not from a screenshot.
               GEOMETRY VERBATIM: canvas 600x312 rx14 over a 16px dot field; node boxes 152x36 rx10 at cx±76,
               columns at LX=95 / RX=505 so the paths own the middle 260px; vertical pitch 68 from cy=54;
@@ -1476,6 +1455,7 @@ function RulesSection({
               caption="Rules"
               rows={filteredRules}
               rowKey={(r) => r.id}
+              rowLabel={(r) => ruleRow(r, groups, resources, members, sites, loaded, services).src.label}
               filterable={false}
               // ⛔ THE PAGE OWNS THE EMPTY COPY, because it distinguishes states this component cannot see:
               // an ENFORCING org with zero rules is a lockout warning, not an emptiness.
@@ -1640,96 +1620,43 @@ function RulesSection({
               }
               columns={[
                 {
-                  key: "src",
-                  header: "Source",
-                  sortValue: (r) =>
-                    ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    ).src.label,
-                  cell: (r) => {
-                    const row = ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    );
-                    return (
-                      <RefText
-                        label={row.src.label}
-                        broken={row.src.state !== "ok"}
-                      />
-                    );
+                  key: "path",
+                  header: "Access path",
+                  sortValue: (r) => {
+                    const row = ruleRow(r, groups, resources, members, sites, loaded, services);
+                    return `${row.src.label} ${row.dst.label}`;
                   },
-                },
-                {
-                  key: "arrow",
-                  header: "",
-                  cell: () => (
-                    <span aria-hidden className="text-slate-600">
-                      →
-                    </span>
-                  ),
-                },
-                {
-                  key: "dst",
-                  header: "Destination",
-                  sortValue: (r) =>
-                    ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    ).dst.label,
                   cell: (r) => {
-                    const row = ruleRow(
-                      r,
-                      groups,
-                      resources,
-                      members,
-                      sites,
-                      loaded,
-                      services,
-                    );
+                    const row = ruleRow(r, groups, resources, members, sites, loaded, services);
                     return (
-                      <RefText
-                        label={row.dst.label}
-                        broken={row.dst.state !== "ok"}
-                      />
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-medium text-ink-body">
+                        <RefText label={row.src.label} broken={row.src.state !== "ok"} />
+                        <span aria-hidden="true" className="text-ink-faint">→</span>
+                        <RefText label={row.dst.label} broken={row.dst.state !== "ok"} />
+                      </div>
                     );
                   },
                 },
                 {
                   key: "status",
-                  header: "Status",
+                  header: "State",
                   // ⛔ THE WORD, NOT THE STYLING. A disabled rule used to be signalled by opacity on the
                   // whole row; opacity is invisible to a search and to anyone who cannot see it.
                   sortValue: (r) => (r.enabled ? "active" : "disabled"),
                   cell: (r) =>
                     r.enabled ? (
-                      <span className="text-xs text-slate-400">active</span>
+                      <span className="inline-flex items-center gap-1.5 text-xs text-ink-secondary"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />Active</span>
                     ) : (
                       /* F3: a disabled rule is shown DISTINCTLY, never hidden — the list must not lie
                          about what is enforcing. */
                       <span className="rounded-full border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-400">
-                        disabled
-                      </span>
+                          Disabled
+                        </span>
                     ),
                 },
                 {
                   key: "type",
-                  header: "Type",
+                  header: "Managed by",
                   sortValue: (r) => {
                     const row = ruleRow(
                       r,
@@ -1746,7 +1673,7 @@ function RulesSection({
                       return "managed by agent template";
                     if (row.managedByOperator) return "managed by gitops";
                     return grantExpiry(r, Date.now()).state === "permanent"
-                      ? "standard"
+                      ? "manual"
                       : "temporary";
                   },
                   cell: (r) => {
@@ -1776,7 +1703,7 @@ function RulesSection({
                     if (row.managedByOperator) return <ManagedBadge />;
                     const exp = grantExpiry(r, Date.now());
                     return exp.state === "permanent" ? (
-                      <span className="text-xs text-slate-600">standard</span>
+                      <span className="text-xs text-ink-tertiary">Manual</span>
                     ) : (
                       /* S7.5.4 linger model: a temporary grant shows its window; an EXPIRED grant stays
                          visible (audit history), rendered distinctly — never hidden. */
@@ -1790,7 +1717,7 @@ function RulesSection({
                 },
                 {
                   key: "notes",
-                  header: "Notes",
+                  header: "Attention",
                   // ⚠ EVERY WARN KIND IS SEARCHABLE BY ITS OWN WORDS. These are the states an operator most
                   // needs to find — each one means a rule that reads ACTIVE and compiles to NOTHING — and a
                   // badge contributes no text, so without this they would be the least findable rows here.
@@ -2070,7 +1997,7 @@ function RulesSection({
           </div>
         </Modal>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -2125,6 +2052,7 @@ function ExtendGrantModal({
       }
     >
       <div className="space-y-3">
+        <p className="text-cell text-ink-tertiary">Choose who can initiate access and the destination they can reach.</p>
         <p className="text-xs text-slate-400">
           {now.state === "expired"
             ? `This grant ${now.label}. Extending a lapsed grant is refused. create a new grant instead.`
@@ -2408,8 +2336,8 @@ function RuleFormModal({
           }}
         />
         {dstKind === "fqdn_resource" && (
-          <p role="status" className="rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-xs text-warn">
-            FQDN destination — the server determines whether this rule has an active selected-resolver generation after it is saved. Capability, organization opt-in, rule lifecycle, and Zero Trust enforcement still apply; this form cannot confirm traffic is permitted.
+          <p role="status" className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
+            Private DNS access remains fail-closed until this hostname has an active resolver generation.
           </p>
         )}
         <EntityPicker
@@ -2509,8 +2437,9 @@ function RuleFormModal({
           return (
             <div
               data-testid="rule-effect"
-              className={`rounded-md border px-3 py-2 text-xs ${eff.wide ? "border-warn/40 bg-warn/5 text-warn" : "border-white/10 bg-white/5 text-ink-body"}`}
+              className={`rounded-md border px-3 py-2.5 text-xs ${eff.wide ? "border-warn/40 bg-warn/5 text-warn" : "border-white/[0.08] bg-white/[0.025] text-ink-body"}`}
             >
+              <span className="mb-1 block text-micro font-semibold uppercase tracking-wide text-ink-faint">Access granted</span>
               {eff.text}
               {/* ⚠ THE EXTRA SENTENCE FOR THE ONE SHAPE THAT IS USUALLY A MISTAKE — attached to it alone,
                   because a caution on every rule is a caution nobody reads. */}

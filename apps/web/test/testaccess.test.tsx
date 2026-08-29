@@ -77,15 +77,16 @@ describe("released F08 Test Access panel", () => {
   it("renders ordered server checks and ignores a superseded tuple response", async () => {
     render(<MemoryRouter><Access /></MemoryRouter>);
     await screen.findByTestId("test-access-panel");
+    fireEvent.click(screen.getByRole("button", { name: "Test access" }));
     const destination = screen.getByPlaceholderText("10.20.0.15");
-    const button = screen.getByRole("button", { name: "Test access" });
+    const button = screen.getByRole("button", { name: "Run test" });
 
     fireEvent.change(destination, { target: { value: "10.0.0.1" } });
     fireEvent.click(button);
     await waitFor(() => expect(releaseFirst).not.toBeNull());
 
     fireEvent.change(destination, { target: { value: "10.0.0.2" } });
-    fireEvent.click(screen.getByRole("button", { name: "Test access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
     await screen.findByText("Blocked by current Tunnex intent");
     releaseFirst?.({ data: diagnostic("10.0.0.1", "allowed") });
     await Promise.resolve();
@@ -96,7 +97,7 @@ describe("released F08 Test Access panel", () => {
     expect(screen.queryByRole("button", { name: /apply|fix|probe/i })).toBeNull();
 
     fireEvent.change(destination, { target: { value: "10.0.0.3" } });
-    fireEvent.click(screen.getByRole("button", { name: "Test access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run test" }));
     await screen.findByText("Allowed by current Tunnex intent");
     expect(screen.getByText("rule-1")).toBeTruthy();
   });
