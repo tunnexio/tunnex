@@ -30,7 +30,6 @@ import {
   Select,
 } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
-import { Icon, type IconName } from "../components/Icon";
 import { roleFromMembers } from "../lib/policyview";
 import {
   assembleClusters,
@@ -38,7 +37,6 @@ import {
   k8sGate,
   managedEditWarning,
   objectControls,
-  statTiles,
   type ClusterCard,
   type ServiceRow,
 } from "../lib/k8sview";
@@ -84,8 +82,6 @@ export default function Kubernetes() {
   const [raw, setRaw] = useState<Raw | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
-  const selectedClusterRef = useRef<HTMLDivElement>(null);
-  const priorSelectedRef = useRef<string | null>(null);
   const [params, setParams] = useSearchParams();
   const requestedSection = params.get("section");
   const section = requestedSection === "services" || requestedSection === "operations" ? requestedSection : "clusters";
@@ -203,10 +199,6 @@ export default function Kubernetes() {
       })),
     [raw],
   );
-  const tiles = useMemo(
-    () => statTiles(cards, raw?.machineCreds ?? null),
-    [cards, raw],
-  );
 
   // ⛔ ONE MODAL OWNER AT PAGE LEVEL. The per-cluster card used to hold its own modal state; the wireframe's
   // layout is a TABLE, and a table row cannot own a modal without one instance per row. Hoisting it here is
@@ -238,12 +230,6 @@ export default function Kubernetes() {
   }, [cards, query]);
   const selected = cards.find((card) => card.id === selectedId) ?? null;
   useEffect(() => {
-    if (!selected || section !== "clusters" || priorSelectedRef.current === selected.id) return;
-    priorSelectedRef.current = selected.id;
-    // A navigation-owned target, not a global scroll reset: ordinary data rerenders retain operator position.
-    selectedClusterRef.current?.scrollIntoView?.({ block: "start", behavior: "auto" });
-  }, [selected, section]);
-  useEffect(() => {
     if (selectedId && raw && !selected) updateQuery({ cluster: null });
   }, [raw, selected, selectedId]);
   function updateQuery(changes: Record<string, string | null>) {
@@ -259,44 +245,41 @@ export default function Kubernetes() {
     {
       key: "cluster",
       header: "Cluster",
+      sortValue: (c: ClusterCard) => c.name,
       cell: (c: ClusterCard) => (
         <span className="flex flex-col gap-0.5">
           <span className="flex items-center gap-2">
-          <button type="button" className="font-mono text-ink-primary underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400" onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}>{c.name}</button>
+            <button type="button" className="font-medium text-ink-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/35" onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}>{c.name}</button>
             {c.managedByOperator && <ManagedBadge />}
+            {c.managedByOperator && <span className="sr-only" aria-label={managedEditWarning("cluster")} />}
           </span>
-          {/* The handoff's sub-line, and it carries the REASON the address is untouchable. */}
-          {c.dnsVip !== null && (
-            <span className="font-mono text-micro text-ink-faint">
-              DNS VIP {c.dnsVip} (reserved, never handed to a Service)
-            </span>
-          )}
           {providerPlatformEntry(c.provider, c.platform) ? (
             <span className="flex items-center gap-1.5 text-micro text-ink-faint">
               <ProviderMark provider={providerPlatformEntry(c.provider, c.platform)!.provider} className="h-3.5 w-4" />
-              {providerPlatformEntry(c.provider, c.platform)!.providerLabel} · {providerPlatformEntry(c.provider, c.platform)!.platformLabel}
+              {providerPlatformEntry(c.provider, c.platform)!.platformLabel}
             </span>
           ) : (
-            <span className="text-micro text-ink-faint">Provider unknown — legacy registration</span>
+            <span className="text-micro text-ink-faint">Legacy provider metadata</span>
           )}
         </span>
       ),
     },
     {
       key: "site",
-      header: "Fronted by",
+      header: "Site & connector",
+      sortValue: (c: ClusterCard) => siteName.get(c.siteId) ?? "",
       cell: (c: ClusterCard) => {
         const connector = clusterConnectorState({ connectorNodeId: c.connectorNodeId, gateways });
         const name = siteName.get(c.siteId) ?? null;
         return (
           <span className="flex flex-col gap-0.5">
-            <span className="font-mono text-cell text-ink-body">
-              {name === null ? "site unknown" : `site: ${name}`}
+            <span className="text-cell text-ink-body">
+              {name === null ? "Site unavailable" : name}
             </span>
-            <span className="font-mono text-micro text-ink-faint">
+            <span className="text-micro text-ink-faint">
               {c.connectorNodeId === null
                 ? "connector: not selected"
-                : `connector: ${nodeName.get(c.connectorNodeId) ?? "unavailable"}`}
+                : nodeName.get(c.connectorNodeId) ?? "Connector unavailable"}
             </span>
             {/* ⛔ D9 SITS HERE, ON THE THING IT IS ABOUT. The claim is about the GATEWAY fronting the site, so
                 it belongs in this column and not on the Service rows, which would read as a fact about them. */}
@@ -308,27 +291,22 @@ export default function Kubernetes() {
       },
     },
     {
-      key: "vip",
-      header: "VIP range",
+      key: "network",
+      header: "Service network",
+      sortValue: (c: ClusterCard) => c.dnsZone,
       cell: (c: ClusterCard) => (
-        <span className="font-mono text-cell text-ink-body">{c.vipRange}</span>
-      ),
-    },
-    {
-      key: "svccidr",
-      header: "Service CIDR",
-      cell: (c: ClusterCard) => (
-        <span className="font-mono text-cell text-ink-body">
-          {c.serviceCidr}
+        <span className="flex flex-col gap-0.5 font-mono text-cell text-ink-body">
+          <span>{c.vipRange}</span>
+          <span className="text-micro text-ink-faint">{c.dnsZone || "DNS zone not set"}</span>
         </span>
       ),
     },
     {
-      key: "zone",
-      header: "DNS zone",
-      cell: (c: ClusterCard) => (
-        <span className="font-mono text-cell text-ink-body">{c.dnsZone}</span>
-      ),
+      key: "services",
+      header: "Services",
+      numeric: true,
+      sortValue: (c: ClusterCard) => c.services.length,
+      cell: (c: ClusterCard) => <span className="text-cell text-ink-body">{c.services.length}</span>,
     },
     {
       key: "owner",
@@ -342,30 +320,17 @@ export default function Kubernetes() {
     {
       key: "actions",
       header: "",
-      // ⛔ `numeric` IS THE RIGHT-ALIGN PROP DataTable ALREADY HAS. The buttons sat mid-column with a gap to
-      // the table edge, so the row's actions read as unrelated to the row. Using the existing prop rather than
-      // a wrapper div keeps one alignment mechanism in the table, not two.
       numeric: true,
-      cell: (c: ClusterCard) =>
-        !gate.canManage ? null : objectControls(c.managedByOperator)
-            .withheld ? (
-          // The destructive control is WITHHELD, not faked: a dashboard edit would be reconciled away.
-          //
-          // ⛔ THE ACCESSIBLE NAME CARRIES THE FULL GUIDANCE, and it is load-bearing rather than decoration:
-          // the visible text is a fragment that fits a table cell, so a screen-reader user would otherwise get
-          // "edit the CR, not here" with no statement of WHAT is managed or WHY the control is absent. My first
-          // pass rendered the visible text only and the wiring test caught the regression.
-          <span
-            className="text-micro text-ink-faint"
-            aria-label={managedEditWarning("cluster")}
-          >
-            edit the CR, not here
-          </span>
-        ) : (
-          <span className="flex items-center justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}>Manage</Button>
-          </span>
-        ),
+      cell: (c: ClusterCard) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`View ${c.name}`}
+          onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}
+        >
+          View
+        </Button>
+      ),
     },
   ];
 
@@ -373,12 +338,13 @@ export default function Kubernetes() {
   const serviceColumns = [
     {
       key: "fqdn",
-      header: "Exposed Service — FQDN (copy, don't construct)",
+      header: "Service",
+      sortValue: (r: SvcRow) => r.fqdn,
       cell: (r: SvcRow) => (
         <span className="flex flex-col gap-0.5">
           <span className="font-mono text-ink-primary">{r.fqdn}</span>
           <span className="text-micro text-ink-faint">
-            ns {r.namespace} · name {r.name}
+            {r.namespace} / {r.name}
             {cards.length > 1 ? ` · cluster ${r.clusterName}` : ""}
           </span>
         </span>
@@ -387,13 +353,14 @@ export default function Kubernetes() {
     {
       key: "vip",
       header: "VIP",
+      sortValue: (r: SvcRow) => r.vip,
       cell: (r: SvcRow) => (
         <span className="font-mono text-cell text-ink-body">{r.vip}</span>
       ),
     },
     {
       key: "ports",
-      header: "Ports",
+      header: "Port",
       cell: (r: SvcRow) => (
         <span className="font-mono text-cell text-ink-body">
           {r.protocol} {r.ports}
@@ -430,29 +397,19 @@ export default function Kubernetes() {
     },
   ];
 
-  const TILE_ICON: Record<string, IconName> = {
-    Clusters: "boxes",
-    "Exposed Services": "route",
-    "Machine credentials": "key",
-  };
-
   const selectedProviderContext = selected
     ? providerPlatformEntry(selected.provider, selected.platform)
     : null;
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <PageHeader
-            title="Kubernetes"
-            subtitle="Clusters, exposed Services and the VIPs clients reach them at. A Service is reached by name over the tunnel, never by its ClusterIP."
-          />
-        </div>
-        {section === "clusters" && raw && gate.canManage && (raw.sites?.length ?? 0) > 0 && (
-          <Button onClick={() => setRegistering(true)}>Register cluster</Button>
-        )}
-      </div>
+      <PageHeader
+        title="Kubernetes"
+        subtitle="Clusters and private services available through Tunnex."
+        actions={section === "clusters" && raw && gate.canManage && (raw.sites?.length ?? 0) > 0
+          ? <Button onClick={() => setRegistering(true)}>Register cluster</Button>
+          : undefined}
+      />
 
       <nav aria-label="Kubernetes workspace" className="flex flex-wrap gap-1 border-b border-line pb-2">
         {([
@@ -498,79 +455,38 @@ export default function Kubernetes() {
 
       {raw && !loadError && cards.length > 0 && (
         <>
-          {section === "clusters" && <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="min-w-[14rem] flex-1 text-sm text-ink-tertiary">
-              Search clusters
-              <Input value={query} onChange={(event) => updateQuery({ q: event.target.value })} placeholder="Cluster name" />
-            </label>
-            <span className="text-micro text-ink-faint">{visibleCards.length} matching cluster{visibleCards.length === 1 ? "" : "s"}</span>
-          </div>}
-          {section === "clusters" && <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {tiles.slice(0, 2).map((t) => (
-              <li
-                key={t.label}
-                className="rounded-card border border-line bg-surface px-3.5 py-3"
-              >
-                <p className="flex items-center gap-2 text-micro uppercase tracking-wide text-ink-tertiary">
-                  <Icon name={TILE_ICON[t.label] ?? "boxes"} size={13} />
-                  {t.label}
-                </p>
-                <p className="mt-1 text-[22px] font-semibold text-ink-heading">
-                  {/* ⛔ "n/a", NOT AN EM-DASH. A null never renders 0 — "we could not look" is a different
-                      fact from "there are none" — but the ABSENT MARKER ITSELF was the banned glyph.
-                      S14.5 already resolved this exact collision on hubsetview: an em-dash "is not READ as
-                      'we have no value' by anyone who has not been told that it means that. It reads as a
-                      dash, as a minus, or as NOTHING AT ALL to a screen reader."
-                      This site carried a WRITTEN EXEMPTION for the case that law had already decided — and
-                      that law's closing line names the reflex verbatim: "the reflex in that moment is to
-                      claim an exemption for the older rule." */}
-                  {t.value === null ? "n/a" : t.value}
-                </p>
-                <p className="text-micro text-ink-faint">{t.hint}</p>
-              </li>
-            ))}
-          </ul>}
+          {section === "clusters" && <>
+            <dl className="grid grid-cols-2 divide-x divide-y divide-line overflow-hidden rounded-card border border-line bg-surface sm:grid-cols-4 sm:divide-y-0">
+              {[
+                ["Clusters", cards.length],
+                ["Exposed services", serviceRows.length],
+                ["Connector paths", cards.filter((card) => clusterConnectorState({ connectorNodeId: card.connectorNodeId, gateways }).configured).length],
+                ["Machine credentials", raw.machineCreds === null ? "n/a" : raw.machineCreds],
+              ].map(([label, value]) => <div key={String(label)} className="px-4 py-3">
+                <dt className="text-micro uppercase tracking-wide text-ink-faint">{label}</dt>
+                <dd className="mt-0.5 text-xl font-semibold text-ink-heading">{value}</dd>
+              </div>)}
+            </dl>
 
-          {section === "clusters" && <Panel title={`Clusters (${visibleCards.length})`}>
-            <DataTable
-              caption="Registered Kubernetes clusters"
-              columns={clusterColumns}
-              rows={visibleCards}
-              rowKey={(c: ClusterCard) => c.id}
-              empty="No clusters registered."
-              failed={false}
-            />
-          </Panel>}
-
-          {section === "clusters" && selected && (
-            <div ref={selectedClusterRef} tabIndex={-1} aria-label={`Selected cluster: ${selected.name}`}>
-            <Panel title={selected.name}>
-              <div className="grid gap-3 text-cell text-ink-tertiary sm:grid-cols-4">
-                <p><strong className="text-ink-body">Site</strong><br />{siteName.get(selected.siteId) ?? "Site record unavailable"}</p>
-                <p><strong className="text-ink-body">Services</strong><br />{selected.services.length} exposed</p>
-                <p><strong className="text-ink-body">Connector</strong><br />{selected.connectorNodeId ? (nodeName.get(selected.connectorNodeId) ?? "Unavailable") : "Not selected"}</p>
-                <span>
-                  <strong className="text-ink-body">Provider</strong><br />
-                  {selectedProviderContext ? (
-                    <span className="mt-0.5 inline-flex items-center gap-1.5">
-                      <ProviderMark provider={selectedProviderContext.provider} className="h-4 w-5" />
-                      {selectedProviderContext.providerLabel} · {selectedProviderContext.platformLabel}
-                    </span>
-                  ) : "Unknown (legacy registration; not inferred)"}
-                </span>
-              </div>
-              <p className="mt-3 text-micro text-ink-faint">Connector configuration is control-plane state, not workload readiness. Use the operator and workload telemetry for endpoint readiness.</p>
-              {gate.canManage && !objectControls(selected.managedByOperator).withheld && <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setConnectorFor(selected)}>{selected.connectorNodeId === null ? "Select connector" : "Change connector"}</Button>
-                <Button size="sm" variant="ghost" onClick={() => setProviderMetadataFor(selected)}>Correct provider metadata</Button>
-                <Button size="sm" variant="ghost" onClick={() => setExposeFor(selected)}>Expose service</Button>
-              </div>}
-              {gate.canManage && !objectControls(selected.managedByOperator).withheld && <div className="mt-4 flex items-center justify-between gap-3 border-t border-danger/30 pt-3">
-                <span className="text-micro text-ink-faint">Deregistering permanently removes this cluster and its exposed Services. Recovery is to register it again.</span>
-                <Button size="sm" variant="danger" onClick={() => setDeregisterFor(selected)}>Deregister</Button>
-              </div>}
-            </Panel></div>
-          )}
+            <Panel
+              title={`Clusters (${visibleCards.length})`}
+              actions={<span className="text-micro text-ink-faint">{visibleCards.length} of {cards.length}</span>}
+            >
+              <label className="mb-3 block max-w-md">
+                <span className="sr-only">Search clusters</span>
+                <Input value={query} onChange={(event) => updateQuery({ q: event.target.value })} placeholder="Search clusters" />
+              </label>
+              <DataTable
+                caption="Registered Kubernetes clusters"
+                columns={clusterColumns}
+                rows={visibleCards}
+                rowKey={(c: ClusterCard) => c.id}
+                empty="No clusters match this search."
+                failed={false}
+                filterable={false}
+              />
+            </Panel>
+          </>}
 
 
           {section === "services" && <div className="flex flex-wrap items-end justify-between gap-3">
@@ -596,16 +512,13 @@ export default function Kubernetes() {
                 />
               </Panel>}
 
-              {section === "operations" && <Panel title="How Kubernetes access works">
-                {/* The handoff's HORIZONTAL flow, not a numbered list: the point is that these are four hops in
-                    sequence, and a vertical list reads as four independent facts. */}
+              {section === "operations" && <Panel title="Traffic path">
                 <div className="flex flex-wrap items-center gap-1.5 text-micro">
                   {[
                     "device",
-                    "DNS VIP answers the FQDN",
-                    "the Service's VIP",
-                    "gateway DNATs to a READY POD endpoint",
-                    "pod endpoint",
+                    "service name",
+                    "VIP",
+                    "ready pod",
                   ].map((step, i, all) => (
                     <span key={step} className="flex items-center gap-1.5">
                       <span className="rounded-input border border-line bg-surface-inset px-2 py-1 font-mono text-ink-body">
@@ -619,86 +532,89 @@ export default function Kubernetes() {
                     </span>
                   ))}
                 </div>
-                <p className="mt-2 text-micro text-ink-tertiary">
-                  <strong className="text-ink-body">
-                    Not a ClusterIP DNAT.
-                  </strong>{" "}
-                  netfilter applies one destination NAT per prerouting pass, so
-                  kube-proxy&rsquo;s ClusterIP rule would be a no-op after ours
-                  and the packet would die addressed to the ClusterIP. The
-                  gateway targets a ready pod directly, fed by an EndpointSlice
-                  watch, and fails closed on every fault.
-                </p>
-                <p className="text-micro text-ink-faint">
-                  <strong className="text-ink-body">
-                    Enforcement keys the pre-DNAT VIP.
-                  </strong>{" "}
-                  The grant matches the original destination, so a bare
-                  destination match cannot miss the post-DNAT pod IP and a broad
-                  grant cannot slip past.
-                </p>
+                <p className="mt-2 text-micro text-ink-tertiary">Tunnex resolves the service name to its synthetic VIP, then the selected connector sends traffic only to ready pod endpoints.</p>
+                <details className="mt-2 border-t border-line pt-2 text-micro text-ink-faint">
+                  <summary className="cursor-pointer select-none text-ink-tertiary">Technical enforcement details</summary>
+                  <p className="mt-2">The gateway targets ready pod endpoints from its EndpointSlice watch and fails closed on faults. Policy enforcement remains keyed to the pre-DNAT VIP.</p>
+                </details>
               </Panel>}
             </div>
 
             {section === "operations" && <div className="flex min-w-0 flex-col gap-3">
               {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
               <Panel title="Operator and connector setup">
-                {/* ⛔ NAMED AS COPY, NOT A CAPABILITY. This screen installs nothing. */}
-                <p className="text-micro text-ink-tertiary">
-                  Reference only. Run these yourself; this screen does not
-                  install anything.
-                </p>
-                <pre className="overflow-x-auto rounded-input border border-line bg-surface-inset p-2.5 text-micro text-ink-body">
-                  {`helm install gw tunnex/tunnex-gateway \\
+                <p className="text-micro text-ink-tertiary">Install the gateway and operator with one-time secret references.</p>
+                <details className="mt-2 text-micro">
+                  <summary className="cursor-pointer select-none text-ink-body">View Helm commands</summary>
+                  <pre className="mt-2 overflow-x-auto rounded-input border border-line bg-surface-inset p-2.5 text-micro text-ink-body">
+                    {`helm install gw tunnex/tunnex-gateway \\
   --set joinToken.secretRef=tunnex-join
 helm install op tunnex/operator \\
   --set machineToken.secretRef=tunnex-machine`}
-                </pre>
-                <p className="text-micro text-ink-faint">
-                  Both secrets are one-time ceremonies you create, never chart
-                  values. The gateway pod runs with a read-only role on services
-                  and endpointslices: it cannot read Secrets, write, or
-                  escalate.
-                </p>
+                  </pre>
+                  <p className="mt-2 text-ink-faint">Create both one-time secrets outside chart values. The gateway reads Services and EndpointSlices only; it cannot read Secrets or write cluster objects.</p>
+                </details>
               </Panel>
 
-              <Panel title="Current control-plane visibility">
-                <ul className="flex flex-col gap-1.5 text-micro text-ink-tertiary">
-                  <li>
-                    <strong className="text-ink-body">
-                      The GitOps CR panel.
-                    </strong>{" "}
-                    The operator and its CRs are built and shipping; what does
-                    not exist is any API reporting their status here. Reconcile
-                    time, per-kind ready counts, refused grants and the
-                    operator&rsquo;s version are not served, so every value on
-                    that panel would be invented.{" "}
-                    <strong className="text-ink-body">
-                      What IS served is ownership
-                    </strong>{" "}
-                    — which is why the withheld control above is real.
-                  </li>
-                  <li>
-                    <strong className="text-ink-body">
-                      A per-Service ready state.
-                    </strong>{" "}
-                    The agent does watch endpoints, so readiness is observed; it
-                    is not reported per Service. The node-level view is on
-                    Gateways.
-                  </li>
-                  <li>
-                    <strong className="text-ink-body">A state column.</strong>{" "}
-                    The API returns live Services only, so the column would
-                    carry one value forever. A grant pointing at a removed
-                    Service is flagged on{" "}
-                    <strong className="text-ink-body">Access Policies</strong>,
-                    which is where that fact is served.
-                  </li>
-                </ul>
+              <Panel title="Visibility">
+                <p className="text-micro text-ink-tertiary">This page shows registered clusters, ownership and exposed service identities. Endpoint health remains on Gateways; removed-service references remain on Access Policies.</p>
               </Panel>
             </div>}
           </div>
         </>
+      )}
+
+      {section === "clusters" && selected && (
+        <Modal
+          title={selected.name}
+          onDismiss={() => updateQuery({ cluster: null })}
+          actions={<Button variant="ghost" onClick={() => updateQuery({ cluster: null })}>Close</Button>}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedProviderContext ? (
+                <span className="inline-flex items-center gap-2 text-cell text-ink-body">
+                  <ProviderMark provider={selectedProviderContext.provider} className="h-4 w-5" />
+                  {selectedProviderContext.providerLabel} · {selectedProviderContext.platformLabel}
+                </span>
+              ) : <span className="text-cell text-ink-tertiary">Unknown (legacy registration; not inferred)</span>}
+              {selected.managedByOperator && <ManagedBadge />}
+            </div>
+
+            <dl className="grid gap-x-6 gap-y-4 border-y border-line py-4 text-cell sm:grid-cols-2">
+              {[
+                ["Site", siteName.get(selected.siteId) ?? "Site record unavailable"],
+                ["Connector", selected.connectorNodeId ? (nodeName.get(selected.connectorNodeId) ?? "Unavailable") : "Not selected"],
+                ["Exposed services", String(selected.services.length)],
+                ["DNS VIP", selected.dnsVip ?? "Not allocated"],
+                ["VIP range", selected.vipRange],
+                ["Service CIDR", selected.serviceCidr],
+                ["DNS zone", selected.dnsZone || "Not configured"],
+                ["Managed by", selected.managedByOperator ? "GitOps operator" : "Dashboard"],
+              ].map(([label, value]) => <div key={label}>
+                <dt className="text-micro uppercase tracking-wide text-ink-faint">{label}</dt>
+                <dd className="mt-1 break-words font-mono text-ink-body">{value}</dd>
+              </div>)}
+            </dl>
+
+            {objectControls(selected.managedByOperator).withheld ? (
+              <p className="text-micro text-ink-tertiary" aria-label={managedEditWarning("cluster")}>Managed by GitOps. Edit its CR to change this cluster.</p>
+            ) : gate.canManage ? (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setConnectorFor(selected)}>{selected.connectorNodeId === null ? "Select connector" : "Change connector"}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setProviderMetadataFor(selected)}>Correct provider metadata</Button>
+                <Button size="sm" onClick={() => setExposeFor(selected)}>Expose service</Button>
+              </div>
+            ) : null}
+
+            {gate.canManage && !objectControls(selected.managedByOperator).withheld && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-danger/30 pt-4">
+                <span className="text-micro text-ink-faint">Deregistering also removes this cluster&rsquo;s exposed Services.</span>
+                <Button size="sm" variant="danger" onClick={() => setDeregisterFor(selected)}>Deregister</Button>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
 
       {registering && orgId && raw && (
