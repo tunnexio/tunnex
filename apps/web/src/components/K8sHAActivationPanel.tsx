@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, apiErrorMessage, type K8sConnectorPoolHAStatus, type K8sHASettings, type Role } from "../lib/api";
 import { can } from "../lib/rbac";
-import { Badge, Button, Modal, Panel } from "./ui";
+import { Badge, Button, Modal, SettingRow, SettingValue } from "./ui";
 
 export function K8sHAActivationPanel({ orgId, role, emailVerified }: { orgId: string; role: Role | undefined; emailVerified: boolean }) {
   const canView = can(role, "k8s_ha:view");
@@ -61,28 +61,23 @@ export function K8sHAActivationPanel({ orgId, role, emailVerified }: { orgId: st
     }
   }
 
-  return <Panel title="Connector HA activation">
-    {error && <div role="alert" className="mb-3 rounded-input border border-danger/40 bg-danger/10 p-2 text-micro text-danger">{error}</div>}
-    {!error && (!settings || pools === null) && <p className="text-micro text-ink-faint">Loading HA configuration…</p>}
+  return <>
+    {error && <SettingRow label="Connector HA activation" description="Controls fenced connector ownership and safe failover." error={error}><SettingValue tone="danger">Unavailable</SettingValue></SettingRow>}
+    {!error && (!settings || pools === null) && <SettingRow label="Connector HA activation" description="Controls fenced connector ownership and safe failover."><SettingValue>Loading…</SettingValue></SettingRow>}
     {settings && pools !== null && <>
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-input border border-line bg-surface-inset p-3">
-        <div>
-          <div className="flex items-center gap-2"><strong className="text-sm text-ink-heading">Organization opt-in</strong><Badge tone={settings.actual_state === "enabled" ? "ok" : settings.actual_state === "blocked" ? "danger" : "neutral"}>{settings.actual_state}</Badge></div>
-          <p className="mt-1 text-micro text-ink-tertiary">{settings.enabled ? "HA is available, but each connector pool still requires an explicit fenced-HA request." : "HA is off. Existing fenced pools drain safely; omission or timeout never unfences a node."}</p>
-          <p className="mt-1 font-mono text-micro text-ink-faint">reason {settings.reason_code} · revision {settings.revision}</p>
-        </div>
-        {canManage && <Button size="sm" variant={settings.enabled ? "danger" : "primary"} disabled={busy !== null} onClick={() => settings.enabled ? setConfirmDisable(true) : void setOrganizationEnabled(true)}>{settings.enabled ? "Begin safe HA drain" : "Enable HA availability"}</Button>}
-      </div>
-      <div className="mt-3 flex flex-col gap-2">
-        {pools.length === 0 ? <p className="text-micro text-ink-faint">No connector pools are configured. A direct single connector remains legacy mode.</p> : pools.map((pool) => <div key={pool.pool_id} className="flex flex-wrap items-center justify-between gap-3 rounded-input border border-line p-3">
-          <div>
-            <div className="flex items-center gap-2"><span className="font-mono text-micro text-ink-body">pool {pool.pool_id.slice(0, 8)}</span><Badge tone={pool.actual_mode === "fenced_ha" ? "ok" : pool.actual_mode === "blocked" ? "danger" : "neutral"}>{pool.actual_mode}</Badge></div>
-            <p className="mt-1 text-micro text-ink-faint">requested {pool.requested_mode} · generation {pool.promotion_generation} · {pool.membership_epoch_known ? `membership epoch ${pool.membership_epoch}` : "membership epoch unavailable"} · {pool.reason_code}</p>
-          </div>
-          {canManage && <Button size="sm" variant="ghost" disabled={busy !== null || (!settings.enabled && pool.requested_mode === "legacy")} onClick={() => void requestPoolMode(pool, pool.requested_mode === "fenced_ha" ? "legacy" : "fenced_ha")}>{pool.requested_mode === "fenced_ha" ? "Request safe legacy drain" : "Request fenced HA"}</Button>}
-        </div>)}
-      </div>
+      <SettingRow
+        label="Connector HA activation"
+        description={settings.enabled ? "Available for connector pools; each pool still requires an explicit fenced-HA request." : "Off. Existing fenced pools drain safely before returning to legacy mode."}
+      >
+        <div className="flex items-center gap-2" aria-label="Connector HA controls"><Badge tone={settings.actual_state === "enabled" ? "ok" : settings.actual_state === "blocked" ? "danger" : "neutral"}>{settings.actual_state}</Badge>{canManage && <Button size="sm" variant={settings.enabled ? "danger" : "primary"} disabled={busy !== null} onClick={() => settings.enabled ? setConfirmDisable(true) : void setOrganizationEnabled(true)}>{settings.enabled ? "Begin safe HA drain" : "Enable HA availability"}</Button>}</div>
+      </SettingRow>
+      <SettingRow
+        label="Connector pools"
+        description={pools.length === 0 ? "No pools configured. Direct connectors remain in legacy mode." : `${pools.length} connector ${pools.length === 1 ? "pool" : "pools"} configured.`}
+      >
+        {pools.length === 0 ? <SettingValue>Legacy</SettingValue> : <details className="relative text-cell"><summary className="cursor-pointer select-none text-ink-body">Review pools</summary><div className="absolute right-0 z-10 mt-2 w-[min(32rem,80vw)] rounded-card border border-line bg-surface p-3 shadow-xl">{pools.map((pool) => <div key={pool.pool_id} className="flex flex-wrap items-center justify-between gap-3 border-b border-line-row py-2 last:border-0"><div><div className="flex items-center gap-2"><span className="font-mono text-micro text-ink-body">pool {pool.pool_id.slice(0, 8)}</span><Badge tone={pool.actual_mode === "fenced_ha" ? "ok" : pool.actual_mode === "blocked" ? "danger" : "neutral"}>{pool.actual_mode}</Badge></div><p className="mt-1 text-micro text-ink-faint">requested {pool.requested_mode} · generation {pool.promotion_generation}</p></div>{canManage && <Button size="sm" variant="ghost" disabled={busy !== null || (!settings.enabled && pool.requested_mode === "legacy")} onClick={() => void requestPoolMode(pool, pool.requested_mode === "fenced_ha" ? "legacy" : "fenced_ha")}>{pool.requested_mode === "fenced_ha" ? "Request safe legacy drain" : "Request fenced HA"}</Button>}</div>)}</div></details>}
+      </SettingRow>
       {confirmDisable && <Modal title="Begin organization-wide safe HA drain?" danger onDismiss={busy ? () => {} : () => setConfirmDisable(false)} actions={<><Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmDisable(false)}>Cancel</Button><Button variant="danger" disabled={busy !== null} onClick={() => void setOrganizationEnabled(false)}>{busy ? "Starting safe drain…" : "Begin safe drain"}</Button></>}><div className="space-y-2 text-sm text-ink-tertiary"><p>This turns off new fenced-HA activation and asks every fenced pool to return through the safe drain path. It does not immediately unfence nodes or claim that traffic has moved.</p><p>Pool settings, transition history, and audit evidence survive. If ownership delivery, acknowledgement, or drain proof cannot complete, the pool remains fenced and reports a blocked or drain-pending actual state until an operator resolves it.</p></div></Modal>}
     </>}
-  </Panel>;
+  </>;
 }

@@ -26,8 +26,10 @@ import {
   Loading,
   Modal,
   PageHeader,
-  Panel,
   Select,
+  SettingGroup,
+  SettingRow,
+  SettingValue,
 } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
 import { roleFromMembers } from "../lib/policyview";
@@ -456,26 +458,17 @@ export default function Kubernetes() {
       {raw && !loadError && cards.length > 0 && (
         <>
           {section === "clusters" && <>
-            <dl className="grid grid-cols-2 divide-x divide-y divide-line overflow-hidden rounded-card border border-line bg-surface sm:grid-cols-4 sm:divide-y-0">
-              {[
-                ["Clusters", cards.length],
-                ["Exposed services", serviceRows.length],
-                ["Connector paths", cards.filter((card) => clusterConnectorState({ connectorNodeId: card.connectorNodeId, gateways }).configured).length],
-                ["Machine credentials", raw.machineCreds === null ? "n/a" : raw.machineCreds],
-              ].map(([label, value]) => <div key={String(label)} className="px-4 py-3">
-                <dt className="text-micro uppercase tracking-wide text-ink-faint">{label}</dt>
-                <dd className="mt-0.5 text-xl font-semibold text-ink-heading">{value}</dd>
-              </div>)}
-            </dl>
-
-            <Panel
-              title={`Clusters (${visibleCards.length})`}
-              actions={<span className="text-micro text-ink-faint">{visibleCards.length} of {cards.length}</span>}
-            >
-              <label className="mb-3 block max-w-md">
+            <section aria-labelledby="k8s-clusters-heading" className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 id="k8s-clusters-heading" className="text-[15px] font-semibold text-ink-heading">Clusters</h2>
+                  <p className="mt-0.5 text-cell text-ink-tertiary">{visibleCards.length} of {cards.length} registered · {serviceRows.length} exposed {serviceRows.length === 1 ? "service" : "services"}</p>
+                </div>
+                <label className="block w-full sm:w-80">
                 <span className="sr-only">Search clusters</span>
                 <Input value={query} onChange={(event) => updateQuery({ q: event.target.value })} placeholder="Search clusters" />
-              </label>
+                </label>
+              </div>
               <DataTable
                 caption="Registered Kubernetes clusters"
                 columns={clusterColumns}
@@ -485,7 +478,7 @@ export default function Kubernetes() {
                 failed={false}
                 filterable={false}
               />
-            </Panel>
+            </section>
           </>}
 
 
@@ -501,7 +494,8 @@ export default function Kubernetes() {
 
           <div className={section === "operations" ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 items-start gap-3"}>
             <div className="flex min-w-0 flex-col gap-3">
-              {section === "services" && <Panel title={`Exposed Services (${serviceRows.length})`}>
+              {section === "services" && <section aria-labelledby="k8s-services-heading" className="flex flex-col gap-3">
+                <h2 id="k8s-services-heading" className="text-[15px] font-semibold text-ink-heading">Exposed Services ({serviceRows.length})</h2>
                 <DataTable
                   caption="Exposed Kubernetes Services"
                   columns={serviceColumns}
@@ -510,56 +504,24 @@ export default function Kubernetes() {
                   empty="No Services exposed yet. Exposing one allocates a VIP and gives it a name clients can reach."
                   failed={false}
                 />
-              </Panel>}
+              </section>}
 
-              {section === "operations" && <Panel title="Traffic path">
-                <div className="flex flex-wrap items-center gap-1.5 text-micro">
-                  {[
-                    "device",
-                    "service name",
-                    "VIP",
-                    "ready pod",
-                  ].map((step, i, all) => (
-                    <span key={step} className="flex items-center gap-1.5">
-                      <span className="rounded-input border border-line bg-surface-inset px-2 py-1 font-mono text-ink-body">
-                        {step}
-                      </span>
-                      {i < all.length - 1 && (
-                        <span aria-hidden className="text-ink-faint">
-                          &rarr;
-                        </span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-                <p className="mt-2 text-micro text-ink-tertiary">Tunnex resolves the service name to its synthetic VIP, then the selected connector sends traffic only to ready pod endpoints.</p>
-                <details className="mt-2 border-t border-line pt-2 text-micro text-ink-faint">
-                  <summary className="cursor-pointer select-none text-ink-tertiary">Technical enforcement details</summary>
-                  <p className="mt-2">The gateway targets ready pod endpoints from its EndpointSlice watch and fails closed on faults. Policy enforcement remains keyed to the pre-DNAT VIP.</p>
-                </details>
-              </Panel>}
-            </div>
-
-            {section === "operations" && <div className="flex min-w-0 flex-col gap-3">
-              {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
-              <Panel title="Operator and connector setup">
-                <p className="text-micro text-ink-tertiary">Install the gateway and operator with one-time secret references.</p>
-                <details className="mt-2 text-micro">
-                  <summary className="cursor-pointer select-none text-ink-body">View Helm commands</summary>
-                  <pre className="mt-2 overflow-x-auto rounded-input border border-line bg-surface-inset p-2.5 text-micro text-ink-body">
-                    {`helm install gw tunnex/tunnex-gateway \\
+              {section === "operations" && <SettingGroup title="Kubernetes configuration">
+                <SettingRow label="Traffic path" description="Service names resolve to a synthetic VIP, then the selected connector forwards only to ready pod endpoints.">
+                  <details className="relative text-cell"><summary className="cursor-pointer select-none text-ink-body">View path</summary><div className="absolute right-0 z-10 mt-2 rounded-card border border-line bg-surface p-3 shadow-xl"><span className="whitespace-nowrap font-mono text-micro text-ink-body">device → service name → VIP → ready pod</span><p className="mt-2 max-w-md text-micro text-ink-faint">EndpointSlice faults fail closed. Policy enforcement stays keyed to the pre-DNAT VIP.</p></div></details>
+                </SettingRow>
+                {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
+                <SettingRow label="Operator and connector setup" description="Install both components with one-time secret references; credentials never belong in chart values.">
+                  <details className="relative text-cell"><summary className="cursor-pointer select-none text-ink-body">View commands</summary><pre className="absolute right-0 z-10 mt-2 w-[min(36rem,85vw)] overflow-x-auto rounded-card border border-line bg-surface p-3 text-micro text-ink-body shadow-xl">{`helm install gw tunnex/tunnex-gateway \\
   --set joinToken.secretRef=tunnex-join
 helm install op tunnex/operator \\
-  --set machineToken.secretRef=tunnex-machine`}
-                  </pre>
-                  <p className="mt-2 text-ink-faint">Create both one-time secrets outside chart values. The gateway reads Services and EndpointSlices only; it cannot read Secrets or write cluster objects.</p>
-                </details>
-              </Panel>
-
-              <Panel title="Visibility">
-                <p className="text-micro text-ink-tertiary">This page shows registered clusters, ownership and exposed service identities. Endpoint health remains on Gateways; removed-service references remain on Access Policies.</p>
-              </Panel>
-            </div>}
+  --set machineToken.secretRef=tunnex-machine`}</pre></details>
+                </SettingRow>
+                <SettingRow label="Operational visibility" description="Endpoint health is reported on Gateways; removed-service references remain visible on Access Policies.">
+                  <SettingValue>{raw.machineCreds === null ? "Credentials unavailable" : `${raw.machineCreds} machine ${raw.machineCreds === 1 ? "credential" : "credentials"}`}</SettingValue>
+                </SettingRow>
+              </SettingGroup>}
+            </div>
           </div>
         </>
       )}
@@ -969,7 +931,7 @@ export function ExposeServiceModal({
           <Button variant="ghost" onClick={onClose} disabled={busy || inventoryBusy}>
             Cancel
           </Button>
-          <Button
+          {manualOpen && <Button
             onClick={submit}
             disabled={
               busy ||
@@ -980,12 +942,12 @@ export function ExposeServiceModal({
               !portValid
             }
           >
-            {busy ? "Exposing manual value…" : "Expose manual value"}
-          </Button>
+            {busy ? "Exposing service…" : "Expose service"}
+          </Button>}
         </>
       }
     >
-      <K8sServiceInventoryStatus state={
+      <K8sServiceInventoryStatus variant="flat" state={
         inventoryState === "unavailable" ? { kind: "unavailable" } :
           inventoryState === "loading" ? { kind: "loading" } :
           inventoryState === "empty" ? { kind: "empty" } :
@@ -1017,14 +979,13 @@ export function ExposeServiceModal({
                 ) }
       } />
 
-      {(inventoryState === "stale" || inventoryState === "error") && <div className="mt-2"><Button variant="ghost" size="sm" disabled={inventoryBusy || busy} onClick={() => void loadInventory()}>Retry verified inventory</Button>{inventoryError && <ErrorText>{inventoryError}</ErrorText>}</div>}
+      {(inventoryState === "stale" || inventoryState === "error") && <div className="mt-2"><Button variant="ghost" size="sm" disabled={inventoryBusy || busy} onClick={() => void loadInventory()}>Retry inventory</Button></div>}
 
       <details
         open={manualOpen}
-        onToggle={(event) => setManualOpen(event.currentTarget.open)}
-        className="mt-3 rounded-card border border-line bg-ink-900/30 p-3"
+        className="mt-4 border-t border-line pt-3"
       >
-        <summary className="cursor-pointer text-sm font-semibold text-ink-heading">Advanced manual entry</summary>
+        <summary className="cursor-pointer text-sm font-semibold text-ink-heading" onClick={(event) => { event.preventDefault(); setManualOpen((current) => !current); }}>Advanced manual entry</summary>
         <p className="mt-2 text-micro text-warn">
           Manual values are not verified against connected-agent inventory. The server validates the existing compatibility request.
         </p>
