@@ -204,6 +204,35 @@ func (s apiServer) ListAlertDeliveries(ctx context.Context, req api.ListAlertDel
 	return api.ListAlertDeliveries200JSONResponse{Body: out, Headers: api.ListAlertDeliveries200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
 
+func (s apiServer) ListAlertOccurrences(ctx context.Context, req api.ListAlertOccurrencesRequestObject) (api.ListAlertOccurrencesResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingManage); err != nil {
+		return nil, err
+	}
+	if s.alertConfig == nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "alerting_unavailable", "alerting is temporarily unavailable")
+	}
+	var state alerts.EventState
+	if req.Params.State != nil {
+		state = alerts.EventState(*req.Params.State)
+	}
+	rows, err := s.alertConfig.ListOccurrences(ctx, req.OrgId, state)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.AlertOccurrence, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, api.AlertOccurrence{
+			Id: row.ID, EventKey: api.AlertEventKey(row.EventKey), DedupKey: row.DedupKey,
+			ResourceType: api.AlertResourceType(row.ResourceType), ResourceId: row.ResourceID,
+			ResourceName: row.ResourceName, Severity: api.AlertSeverity(row.Severity),
+			Subject: row.Subject, Fields: row.Fields, State: api.AlertOccurrenceState(row.State),
+			FirstObservedAt: row.FirstObservedAt, LastObservedAt: row.LastObservedAt,
+			ResolvedAt: row.ResolvedAt, OccurrenceCount: row.OccurrenceCount,
+		})
+	}
+	return api.ListAlertOccurrences200JSONResponse{Body: out, Headers: api.ListAlertOccurrences200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
+
 func toAPIAlertDestination(row sqlc.AlertDestination) api.AlertDestination {
 	return api.AlertDestination{Id: row.ID, Kind: api.AlertDestinationKind(row.Kind), Name: row.Name, EndpointHost: row.EndpointHost, EndpointFingerprint: row.EndpointFingerprint, AllowPrivate: row.AllowPrivate, SeverityFloor: api.AlertSeverity(row.SeverityFloor), CooldownSeconds: int(row.CooldownSeconds), Archived: row.ArchivedAt.Valid, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }

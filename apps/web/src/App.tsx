@@ -42,6 +42,7 @@ import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import AccessEvents from "./pages/AccessEvents";
 import AuditLog from "./pages/AuditLog";
+import Alerts from "./pages/Alerts";
 
 const VisualGallery = import.meta.env.VITE_VISUAL_GALLERY === "1"
   ? lazy(() => import("./pages/VisualGallery"))
@@ -187,6 +188,7 @@ function ProductApp() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/access-events" element={<AccessEvents />} />
             <Route path="/audit" element={<AuditLog />} />
+            <Route path="/alerts" element={<Alerts />} />
           </Route>
         </Route>
         {/* Default: the shell decides (RequireAuth bounces anon users to /login). */}

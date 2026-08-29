@@ -51,3 +51,28 @@ func TestEventValidationRejectsUnknownContractValues(t *testing.T) {
 		t.Fatal("unknown event key was accepted")
 	}
 }
+
+func TestEventValidationAcceptsResolvedResourceCondition(t *testing.T) {
+	t.Parallel()
+	event := Event{
+		OrgID: uuid.New(), Key: EventGatewayOffline, Severity: SeverityCritical,
+		DedupKey: "gateway:one:offline", Subject: "Gateway one recovered",
+		State:    EventStateResolved,
+		Resource: &ResourceRef{Type: "gateway", ID: uuid.NewString(), Name: "gateway-one"},
+	}
+	if err := event.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEventValidationRejectsPartialResource(t *testing.T) {
+	t.Parallel()
+	event := Event{
+		OrgID: uuid.New(), Key: EventDeviceOffline, Severity: SeverityWarning,
+		DedupKey: "device:one:offline", Subject: "Device one is offline",
+		Resource: &ResourceRef{Type: "device"},
+	}
+	if err := event.Validate(); err == nil {
+		t.Fatal("partial resource reference was accepted")
+	}
+}

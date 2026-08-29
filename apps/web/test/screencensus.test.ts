@@ -90,6 +90,8 @@ const COVERED: Record<string, string> = {
     "test/accesswiring.test.tsx — enforcement posture cannot be claimed without being read (both directions) + disabled rules shown + failed load never renders a count",
   "AccessKubernetesScopes.tsx":
     "test/k8sclusterscopewiring.test.tsx — named-permission DOM absence, failed-queue versus empty, zero-default exact-child creation, and irreversible decision confirmation",
+  "Alerts.tsx":
+    "test/alertswiring.test.tsx — active/history server-state wiring, resource navigation, management visibility, and failed reads never rendered as an all-clear",
   // SHEDDER, tested accordingly: assertions are written against the DECISION and name `subnets` as the
   // destination, so they travel through the split instead of becoming throwaway work.
   // S14.7. The one derivation it makes is the client-side attribution join, and the covered property is
@@ -193,7 +195,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(11);
+    expect(Object.keys(COVERED).length).toBe(12);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -213,7 +215,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 23 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(23);
+  it("the ledger is a snapshot of today — 24 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(24);
   });
 });

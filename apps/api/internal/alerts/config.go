@@ -8,6 +8,7 @@ import (
 	stdmail "net/mail"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -46,6 +47,25 @@ type ConfigService struct {
 	sender Sender
 }
 
+// Occurrence is the safe operator projection of a durable product condition.
+// It intentionally excludes notification payloads and transport credentials.
+type Occurrence struct {
+	ID              uuid.UUID
+	EventKey        EventKey
+	DedupKey        string
+	ResourceType    string
+	ResourceID      string
+	ResourceName    string
+	Severity        Severity
+	Subject         string
+	Fields          map[string]string
+	State           EventState
+	FirstObservedAt time.Time
+	LastObservedAt  time.Time
+	ResolvedAt      *time.Time
+	OccurrenceCount int64
+}
+
 func NewConfigService(pool *pgxpool.Pool, sealer *crypto.Sealer, mailer mail.Mailer) *ConfigService {
 	return &ConfigService{pool: pool, q: sqlc.New(pool), sealer: sealer, sender: NewWebhookSender(sealer, mailer)}
 }
@@ -76,6 +96,41 @@ func (s *ConfigService) ListSubscriptions(ctx context.Context, orgID, destinatio
 // package through an HTTP response.
 func (s *ConfigService) ListDeliveries(ctx context.Context, orgID uuid.UUID) ([]sqlc.AlertDelivery, error) {
 	return s.q.ListAlertDeliveries(ctx, sqlc.ListAlertDeliveriesParams{OrgID: orgID, Limit: 100})
+}
+
+// ListOccurrences returns a bounded, tenant-scoped condition history. The
+// state filter is optional; callers use "firing" for the active workspace.
+func (s *ConfigService) ListOccurrences(ctx context.Context, orgID uuid.UUID, state EventState) ([]Occurrence, error) {
+	if state != "" && state != EventStateFiring && state != EventStateResolved {
+		return nil, fmt.Errorf("invalid alert occurrence state %q", state)
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id,event_key,dedup_key,resource_type,resource_id,resource_name,
+			severity,subject,fields,state,first_observed_at,last_observed_at,resolved_at,occurrence_count
+		FROM alert_occurrences
+		WHERE org_id=$1 AND ($2='' OR state=$2)
+		ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+			last_observed_at DESC,id DESC
+		LIMIT 200`, orgID, string(state))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Occurrence, 0)
+	for rows.Next() {
+		var row Occurrence
+		var fields []byte
+		if err := rows.Scan(&row.ID, &row.EventKey, &row.DedupKey, &row.ResourceType, &row.ResourceID,
+			&row.ResourceName, &row.Severity, &row.Subject, &fields, &row.State, &row.FirstObservedAt,
+			&row.LastObservedAt, &row.ResolvedAt, &row.OccurrenceCount); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(fields, &row.Fields); err != nil {
+			return nil, fmt.Errorf("decode alert occurrence fields: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 func (s *ConfigService) Create(ctx context.Context, orgID, actor uuid.UUID, in DestinationInput) (sqlc.AlertDestination, error) {

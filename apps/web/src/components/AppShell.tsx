@@ -69,6 +69,7 @@ export const NAV_GROUPS: Array<{
   {
     group: "OBSERVE",
     items: [
+      { to: "/alerts", label: "Alerts", icon: "bell" },
       {
         to: "/access-events",
         label: "Access Events",

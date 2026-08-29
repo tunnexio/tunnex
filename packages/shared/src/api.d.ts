@@ -2662,6 +2662,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/alert-occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List active or resolved product alert conditions */
+        get: operations["listAlertOccurrences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/routed-ranges": {
         parameters: {
             query?: never;
@@ -4103,7 +4122,34 @@ export interface components {
         /** @enum {string} */
         AlertSeverity: "info" | "warning" | "critical";
         /** @enum {string} */
-        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift";
+        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" | "gateway.offline" | "gateway.policy_degraded" | "site.link_down" | "device.offline" | "device.posture_blocked" | "kubernetes.connector_degraded" | "kubernetes.inventory_stale" | "kubernetes.service_unavailable";
+        /** @enum {string} */
+        AlertOccurrenceState: "firing" | "resolved";
+        /** @enum {string} */
+        AlertResourceType: "agent" | "gateway" | "site" | "device" | "kubernetes_cluster" | "kubernetes_service";
+        AlertOccurrence: {
+            /** Format: uuid */
+            id: string;
+            event_key: components["schemas"]["AlertEventKey"];
+            dedup_key: string;
+            resource_type: components["schemas"]["AlertResourceType"];
+            resource_id: string;
+            resource_name: string;
+            severity: components["schemas"]["AlertSeverity"];
+            subject: string;
+            fields: {
+                [key: string]: string;
+            };
+            state: components["schemas"]["AlertOccurrenceState"];
+            /** Format: date-time */
+            first_observed_at: string;
+            /** Format: date-time */
+            last_observed_at: string;
+            /** Format: date-time */
+            resolved_at?: string | null;
+            /** Format: int64 */
+            occurrence_count: number;
+        };
         CreateAlertDestinationRequest: {
             kind: components["schemas"]["AlertDestinationKind"];
             name: string;
@@ -10876,6 +10922,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertDelivery"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAlertOccurrences: {
+        parameters: {
+            query?: {
+                state?: components["schemas"]["AlertOccurrenceState"];
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bounded tenant-scoped condition history without delivery payloads or endpoint secrets. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertOccurrence"][];
                 };
             };
             default: components["responses"]["Error"];

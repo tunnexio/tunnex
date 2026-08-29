@@ -14,6 +14,16 @@ type outboxStore struct {
 	org          sqlc.Organization
 	destinations []sqlc.AlertDestination
 	created      []sqlc.CreateAlertDeliveryParams
+	observed     []Event
+}
+
+func (s *outboxStore) ObserveOccurrence(_ context.Context, event Event, _ time.Time) error {
+	s.observed = append(s.observed, event)
+	return nil
+}
+
+func (s *outboxStore) ListFiringOccurrences(_ context.Context, _ uuid.UUID, _ []EventKey) ([]Event, error) {
+	return append([]Event(nil), s.observed...), nil
 }
 
 func (s *outboxStore) GetOrganizationByID(_ context.Context, _ uuid.UUID) (sqlc.Organization, error) {
@@ -42,6 +52,9 @@ func TestOutboxPublisherRequiresExplicitOrgOptIn(t *testing.T) {
 	if len(store.created) != 0 {
 		t.Fatalf("created %d deliveries while alerting was disabled", len(store.created))
 	}
+	if len(store.observed) != 0 {
+		t.Fatalf("occurrences=%#v, want legacy delivery-only event excluded", store.observed)
+	}
 }
 
 func TestOutboxPublisherQueuesEachEligibleDestination(t *testing.T) {
@@ -54,11 +67,15 @@ func TestOutboxPublisherQueuesEachEligibleDestination(t *testing.T) {
 	now := time.Date(2026, time.August, 20, 12, 0, 0, 0, time.UTC)
 	publisher.now = func() time.Time { return now }
 	event := testEvent()
+	event.Resource = &ResourceRef{Type: "agent", ID: "a-1", Name: "a-1"}
 	if err := publisher.Publish(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.created) != 2 {
 		t.Fatalf("created %d deliveries, want 2", len(store.created))
+	}
+	if len(store.observed) != 1 {
+		t.Fatalf("observed %d occurrences, want one independent of destination count", len(store.observed))
 	}
 	for _, created := range store.created {
 		if created.OrgID != event.OrgID || created.EventKey != string(event.Key) || created.Severity != string(event.Severity) || created.DedupKey != event.DedupKey {
@@ -77,10 +94,36 @@ func TestOutboxPublisherQueuesEachEligibleDestination(t *testing.T) {
 	}
 }
 
+func TestOutboxPublisherTracksExplicitLifecycleWithoutDeliveryOptIn(t *testing.T) {
+	t.Parallel()
+	store := &outboxStore{}
+	publisher := NewOutboxPublisher(store)
+	event := testEvent()
+	event.Resource = &ResourceRef{Type: "gateway", ID: "g-1", Name: "edge"}
+	if err := publisher.Publish(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.observed) != 1 || store.observed[0].State != EventStateFiring {
+		t.Fatalf("occurrences=%#v, want normalized firing condition", store.observed)
+	}
+}
+
 func testEvent() Event {
 	return Event{
 		OrgID: uuid.New(), Key: EventAgentOffline, Severity: SeverityWarning,
 		DedupKey: "agent:a-1:offline", Subject: "Agent a-1 is offline",
 		Fields: map[string]string{"agent_id": "a-1"},
+	}
+}
+
+func TestResolvedOccurrenceUsesIndependentDeliveryCooldown(t *testing.T) {
+	t.Parallel()
+	event := testEvent()
+	if got := occurrenceCooldownKey(event.normalized()); got != event.DedupKey {
+		t.Fatalf("firing cooldown key=%q", got)
+	}
+	event.State = EventStateResolved
+	if got := occurrenceCooldownKey(event); got != event.DedupKey+":resolved" {
+		t.Fatalf("resolved cooldown key=%q", got)
 	}
 }

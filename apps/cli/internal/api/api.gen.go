@@ -259,11 +259,35 @@ const (
 
 // Defines values for AlertEventKey.
 const (
-	AgentAccessExpiring     AlertEventKey = "agent.access_expiring"
-	AgentConfigurationDrift AlertEventKey = "agent.configuration_drift"
-	AgentDenialSpike        AlertEventKey = "agent.denial_spike"
-	AgentOffline            AlertEventKey = "agent.offline"
-	AgentRotationFailed     AlertEventKey = "agent.rotation_failed"
+	AlertEventKeyAgentAccessExpiring          AlertEventKey = "agent.access_expiring"
+	AlertEventKeyAgentConfigurationDrift      AlertEventKey = "agent.configuration_drift"
+	AlertEventKeyAgentDenialSpike             AlertEventKey = "agent.denial_spike"
+	AlertEventKeyAgentOffline                 AlertEventKey = "agent.offline"
+	AlertEventKeyAgentRotationFailed          AlertEventKey = "agent.rotation_failed"
+	AlertEventKeyDeviceOffline                AlertEventKey = "device.offline"
+	AlertEventKeyDevicePostureBlocked         AlertEventKey = "device.posture_blocked"
+	AlertEventKeyGatewayOffline               AlertEventKey = "gateway.offline"
+	AlertEventKeyGatewayPolicyDegraded        AlertEventKey = "gateway.policy_degraded"
+	AlertEventKeyKubernetesConnectorDegraded  AlertEventKey = "kubernetes.connector_degraded"
+	AlertEventKeyKubernetesInventoryStale     AlertEventKey = "kubernetes.inventory_stale"
+	AlertEventKeyKubernetesServiceUnavailable AlertEventKey = "kubernetes.service_unavailable"
+	AlertEventKeySiteLinkDown                 AlertEventKey = "site.link_down"
+)
+
+// Defines values for AlertOccurrenceState.
+const (
+	Firing   AlertOccurrenceState = "firing"
+	Resolved AlertOccurrenceState = "resolved"
+)
+
+// Defines values for AlertResourceType.
+const (
+	AlertResourceTypeAgent             AlertResourceType = "agent"
+	AlertResourceTypeDevice            AlertResourceType = "device"
+	AlertResourceTypeGateway           AlertResourceType = "gateway"
+	AlertResourceTypeKubernetesCluster AlertResourceType = "kubernetes_cluster"
+	AlertResourceTypeKubernetesService AlertResourceType = "kubernetes_service"
+	AlertResourceTypeSite              AlertResourceType = "site"
 )
 
 // Defines values for AlertSeverity.
@@ -1056,9 +1080,9 @@ const (
 
 // Defines values for ListAgentsParamsAccess.
 const (
-	Active  ListAgentsParamsAccess = "active"
-	None    ListAgentsParamsAccess = "none"
-	Pending ListAgentsParamsAccess = "pending"
+	ListAgentsParamsAccessActive  ListAgentsParamsAccess = "active"
+	ListAgentsParamsAccessNone    ListAgentsParamsAccess = "none"
+	ListAgentsParamsAccessPending ListAgentsParamsAccess = "pending"
 )
 
 // Defines values for ListAgentsParamsSort.
@@ -1897,6 +1921,30 @@ type AlertDestinationKind string
 
 // AlertEventKey defines model for AlertEventKey.
 type AlertEventKey string
+
+// AlertOccurrence defines model for AlertOccurrence.
+type AlertOccurrence struct {
+	DedupKey        string               `json:"dedup_key"`
+	EventKey        AlertEventKey        `json:"event_key"`
+	Fields          map[string]string    `json:"fields"`
+	FirstObservedAt time.Time            `json:"first_observed_at"`
+	Id              openapi_types.UUID   `json:"id"`
+	LastObservedAt  time.Time            `json:"last_observed_at"`
+	OccurrenceCount int64                `json:"occurrence_count"`
+	ResolvedAt      *time.Time           `json:"resolved_at"`
+	ResourceId      string               `json:"resource_id"`
+	ResourceName    string               `json:"resource_name"`
+	ResourceType    AlertResourceType    `json:"resource_type"`
+	Severity        AlertSeverity        `json:"severity"`
+	State           AlertOccurrenceState `json:"state"`
+	Subject         string               `json:"subject"`
+}
+
+// AlertOccurrenceState defines model for AlertOccurrenceState.
+type AlertOccurrenceState string
+
+// AlertResourceType defines model for AlertResourceType.
+type AlertResourceType string
 
 // AlertSeverity defines model for AlertSeverity.
 type AlertSeverity string
@@ -4323,6 +4371,11 @@ type TestAgentAccessParams struct {
 // TestAgentAccessParamsProtocol defines parameters for TestAgentAccess.
 type TestAgentAccessParamsProtocol string
 
+// ListAlertOccurrencesParams defines parameters for ListAlertOccurrences.
+type ListAlertOccurrencesParams struct {
+	State *AlertOccurrenceState `form:"state,omitempty" json:"state,omitempty"`
+}
+
 // ListAuditLogsParams defines parameters for ListAuditLogs.
 type ListAuditLogsParams struct {
 	// Actor Filter by acting user (must be an org member).
@@ -5244,6 +5297,9 @@ type ClientInterface interface {
 
 	// TestAlertDestination request
 	TestAlertDestination(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAlertOccurrences request
+	ListAlertOccurrences(ctx context.Context, orgId openapi_types.UUID, params *ListAlertOccurrencesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetOrganizationAlertingSetting request
 	GetOrganizationAlertingSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7810,6 +7866,18 @@ func (c *Client) RemoveAlertDestinationSubscription(ctx context.Context, orgId o
 
 func (c *Client) TestAlertDestination(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestAlertDestinationRequest(c.Server, orgId, destinationId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAlertOccurrences(ctx context.Context, orgId openapi_types.UUID, params *ListAlertOccurrencesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAlertOccurrencesRequest(c.Server, orgId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -15335,6 +15403,62 @@ func NewTestAlertDestinationRequest(server string, orgId openapi_types.UUID, des
 	return req, nil
 }
 
+// NewListAlertOccurrencesRequest generates requests for ListAlertOccurrences
+func NewListAlertOccurrencesRequest(server string, orgId openapi_types.UUID, params *ListAlertOccurrencesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/alert-occurrences", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetOrganizationAlertingSettingRequest generates requests for GetOrganizationAlertingSetting
 func NewGetOrganizationAlertingSettingRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -21862,6 +21986,9 @@ type ClientWithResponsesInterface interface {
 	// TestAlertDestinationWithResponse request
 	TestAlertDestinationWithResponse(ctx context.Context, orgId openapi_types.UUID, destinationId openapi_types.UUID, reqEditors ...RequestEditorFn) (*TestAlertDestinationResponse, error)
 
+	// ListAlertOccurrencesWithResponse request
+	ListAlertOccurrencesWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAlertOccurrencesParams, reqEditors ...RequestEditorFn) (*ListAlertOccurrencesResponse, error)
+
 	// GetOrganizationAlertingSettingWithResponse request
 	GetOrganizationAlertingSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOrganizationAlertingSettingResponse, error)
 
@@ -25040,6 +25167,29 @@ func (r TestAlertDestinationResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestAlertDestinationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAlertOccurrencesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AlertOccurrence
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAlertOccurrencesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAlertOccurrencesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -29502,6 +29652,15 @@ func (c *ClientWithResponses) TestAlertDestinationWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseTestAlertDestinationResponse(rsp)
+}
+
+// ListAlertOccurrencesWithResponse request returning *ListAlertOccurrencesResponse
+func (c *ClientWithResponses) ListAlertOccurrencesWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAlertOccurrencesParams, reqEditors ...RequestEditorFn) (*ListAlertOccurrencesResponse, error) {
+	rsp, err := c.ListAlertOccurrences(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAlertOccurrencesResponse(rsp)
 }
 
 // GetOrganizationAlertingSettingWithResponse request returning *GetOrganizationAlertingSettingResponse
@@ -34908,6 +35067,39 @@ func ParseTestAlertDestinationResponse(rsp *http.Response) (*TestAlertDestinatio
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AlertTestResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAlertOccurrencesResponse parses an HTTP response from a ListAlertOccurrencesWithResponse call
+func ParseListAlertOccurrencesResponse(rsp *http.Response) (*ListAlertOccurrencesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAlertOccurrencesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AlertOccurrence
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
