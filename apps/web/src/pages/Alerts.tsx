@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { AlertManagement } from "../components/AlertManagement";
 import { Badge, Button, Card, DataTable, EmptyState, ErrorText, Loading, PageHeader } from "../components/ui";
-import { api, apiErrorMessage, type AlertOccurrence, type AlertOccurrenceState } from "../lib/api";
+import { api, apiErrorMessage, type AlertOccurrence, type AlertOccurrenceState, type Role } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { relativeAge } from "../lib/format";
+import { can } from "../lib/rbac";
 import { useOrg } from "../lib/useOrg";
 
-type View = "active" | "history";
+type View = "active" | "history" | "management";
 
 function productLabel(row: AlertOccurrence): string {
   if (row.resource_type === "kubernetes_cluster" || row.resource_type === "kubernetes_service") return "Kubernetes";
@@ -30,12 +33,14 @@ function severityTone(severity: AlertOccurrence["severity"]): "danger" | "warn" 
 
 export default function Alerts() {
   const { org, loading: orgLoading, failed: orgFailed } = useOrg();
+  const { state: authState } = useAuth();
   const [view, setView] = useState<View>("active");
   const [rows, setRows] = useState<AlertOccurrence[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [myRole, setMyRole] = useState<Role | undefined>(undefined);
 
   const load = useCallback(async () => {
-    if (!org) return;
+    if (!org || view === "management") return;
     setRows(null);
     setError(null);
     const state: AlertOccurrenceState = view === "active" ? "firing" : "resolved";
@@ -50,6 +55,19 @@ export default function Alerts() {
   }, [org, view]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!org || authState.status !== "authed") return;
+    let cancelled = false;
+    void api.GET("/api/v1/organizations/{orgId}/members", {
+      params: { path: { orgId: org.id } },
+    }).then((response) => {
+      if (!cancelled) setMyRole(response.data?.find((member) => member.user_id === authState.user.id)?.role);
+    });
+    return () => { cancelled = true; };
+  }, [authState, org]);
+
+  const canManage = can(myRole, "alerting:manage");
+  const emailVerified = authState.status === "authed" && authState.user.email_verified;
 
   const counts = useMemo(() => ({
     critical: rows?.filter((row) => row.severity === "critical").length ?? 0,
@@ -62,17 +80,20 @@ export default function Alerts() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Alerts"
-        subtitle="Persistent product conditions across your network and workloads."
-        actions={<div className="flex gap-2"><Button variant="ghost" onClick={() => void load()}>Refresh</Button><Link className="inline-flex min-h-9 items-center rounded-md border border-white/10 px-3 text-cell font-medium text-ink-primary hover:bg-white/5" to="/settings?section=features">Notifications</Link></div>}
+        title="Alerting"
+        subtitle="Monitor product conditions and route them to your response channels."
+        actions={view !== "management" ? <Button variant="ghost" onClick={() => void load()}>Refresh</Button> : undefined}
       />
 
       <div className="flex items-center gap-5 border-b border-white/10" role="tablist" aria-label="Alert views">
-        {(["active", "history"] as const).map((item) => (
+        {(["active", "history", ...(canManage ? ["management" as const] : [])] as View[]).map((item) => (
           <button key={item} type="button" role="tab" aria-selected={view === item} onClick={() => setView(item)} className={`border-b-2 px-1 pb-2 text-cell font-medium capitalize ${view === item ? "border-white text-ink-heading" : "border-transparent text-ink-tertiary hover:text-ink-primary"}`}>{item}</button>
         ))}
       </div>
 
+      {view === "management" && canManage ? (
+        <AlertManagement orgId={org.id} canEdit={emailVerified} canAllowPrivate={myRole === "owner"} />
+      ) : <>
       {view === "active" && rows && rows.length > 0 && (
         <div className="grid grid-cols-3 divide-x divide-white/10 rounded-lg border border-white/10 bg-ink-panel px-1 py-3" aria-label="Active alert summary">
           <div className="px-4"><div className="font-mono text-stat text-ink-heading">{rows.length}</div><div className="text-badge uppercase tracking-wider text-ink-tertiary">Active</div></div>
@@ -99,6 +120,7 @@ export default function Alerts() {
           />
         </Card>
       )}
+      </>}
     </div>
   );
 }
