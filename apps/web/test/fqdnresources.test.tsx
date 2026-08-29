@@ -32,6 +32,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("FQDN resource operator index", () => {
+  it("uses CIDR and FQDN tabs instead of a resource-type select", async () => {
+    page();
+    const cidrTab = await screen.findByRole("button", { name: "CIDR" });
+    expect(cidrTab.getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("combobox", { name: "Resource type" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "FQDN" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "FQDN" }).getAttribute("aria-current")).toBe("page"));
+    expect(await screen.findByRole("heading", { name: "Private DNS resolvers" })).toBeTruthy();
+  });
+
   it("makes the one-time resolver setup discoverable from Resources and the FQDN empty state", async () => {
     page("/access/resources?type=fqdn");
     expect((await screen.findByRole("link", { name: "Private DNS resolvers" })).getAttribute("href")).toBe("/access/resources?type=fqdn#private-dns-heading");
