@@ -429,7 +429,10 @@ func returnRules(listing string) map[netip.Prefix]bool {
 	return out
 }
 
-// agentOwnedRoutes enumerates the exact route shape ApplyRoutes owns. IPv4
+// agentOwnedRoutes enumerates routes and retains the exact shape ApplyRoutes
+// owns. We cannot ask iproute2 to filter by the tunnel interface or ownership
+// attributes: on a host-network Kubernetes connector its filtered rendering
+// can omit the dev, proto, or metric fields. IPv4
 // enumeration errors are fatal because a complete full-sweep/readback is then
 // impossible; IPv6 remains optional while the product admits IPv4 site ranges.
 func (b *wgctrlBackend) agentOwnedRoutes(ctx context.Context) (map[netip.Prefix]bool, error) {
@@ -449,7 +452,7 @@ func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRout
 	metric := strconv.Itoa(siteRouteMetric)
 	var out []OwnedRoute
 	for _, family := range []string{"-4", "-6"} {
-		listing, err := b.runCommand(ctx, "ip", family, "route", "show", "dev", b.iface, "proto", "static", "metric", metric)
+		listing, err := b.runCommand(ctx, "ip", family, "route", "show")
 		if err != nil {
 			if family == "-6" {
 				slog.Debug("site_route_enumerate_v6_skipped", "iface", b.iface, "error", err.Error())
@@ -459,6 +462,9 @@ func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRout
 		}
 		for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
 			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			if !hasOwnedRouteAttributes(line, b.iface, metric) {
 				continue
 			}
 			route, err := parseOwnedRoute(line, family, b.iface)
@@ -475,6 +481,29 @@ func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRout
 		return out[i].Family < out[j].Family
 	})
 	return out, nil
+}
+
+// hasOwnedRouteAttributes is the narrow classifier for the broad route
+// readback. A kernel-created connected route on wg0 is foreign state; only the
+// exact proto+metric pair installed by ApplyRoutes is eligible for parsing or
+// pruning.
+func hasOwnedRouteAttributes(line, iface, metric string) bool {
+	fields := strings.Fields(line)
+	var device, protocol, routeMetric string
+	for i := 1; i+1 < len(fields); i++ {
+		switch fields[i] {
+		case "dev":
+			device = fields[i+1]
+			i++
+		case "proto":
+			protocol = fields[i+1]
+			i++
+		case "metric":
+			routeMetric = fields[i+1]
+			i++
+		}
+	}
+	return device == iface && protocol == "static" && routeMetric == metric
 }
 
 func parseOwnedRoute(line, familyFlag, iface string) (OwnedRoute, error) {

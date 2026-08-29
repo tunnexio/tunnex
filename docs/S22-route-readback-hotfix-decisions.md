@@ -12,8 +12,8 @@ the WireGuard peer roster.
 
 ## Decisions
 
-1. **Enumerate broadly, classify narrowly — locked.** Read all routes on the
-   Tunnex interface and retain only routes that carry both existing ownership
+1. **Enumerate broadly, classify narrowly — locked.** Read the full route
+   table and retain only routes on the Tunnex interface that carry both existing ownership
    attributes (`proto static`, metric `8021`). Kernel-managed connected routes
    are unrelated state and must be ignored, not treated as a reconcile error.
 2. **Keep the ownership marker unchanged — locked.** The static protocol and
