@@ -39,6 +39,10 @@ type Service struct {
 	// organization opt-in make those snapshots enforceable.
 	fqdnGenerations fqdnresolver.ActiveGenerationReader
 	fqdnEntitled    func() bool
+	// k8sClusterScopesEntitled is deployment licence state. A nil callback is
+	// deliberately fail closed: retained scope rows cannot become grants merely
+	// because a consumer constructed the generic snapshot service.
+	k8sClusterScopesEntitled func() bool
 }
 
 // SetNotifier wires the push hub (S7.2). Call on the CRUD service; the desired-
@@ -55,6 +59,14 @@ func NewService(pool *pgxpool.Pool) *Service {
 func (s *Service) WithFQDNGenerations(reader fqdnresolver.ActiveGenerationReader, entitled func() bool) *Service {
 	s.fqdnGenerations = reader
 	s.fqdnEntitled = entitled
+	return s
+}
+
+// WithK8sClusterScopesEntitlement wires the named deployment entitlement into
+// cluster-scope lowering. Organization opt-in and exact-child eligibility are
+// independently enforced by the compiler-input query.
+func (s *Service) WithK8sClusterScopesEntitlement(entitled func() bool) *Service {
+	s.k8sClusterScopesEntitled = entitled
 	return s
 }
 
@@ -961,7 +973,8 @@ func (s *Service) SetMode(ctx context.Context, orgID uuid.UUID, mode string) (st
 // BuildSnapshot loads the org's full policy state into the pure-compiler input.
 // S7.2 calls Compile(BuildSnapshot(...)) when serving a node's desired state.
 func (s *Service) BuildSnapshot(ctx context.Context, orgID uuid.UUID) (Snapshot, error) {
-	snap, err := BuildSnapshotWithQueries(ctx, s.q, orgID)
+	k8sScopesLicensed := s.k8sClusterScopesEntitled != nil && s.k8sClusterScopesEntitled()
+	snap, err := buildSnapshotWithQueries(ctx, s.q, orgID, k8sScopesLicensed)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -1002,6 +1015,17 @@ func appendActiveFQDNGenerations(ctx context.Context, snap *Snapshot, reader fqd
 // destination or membership resolution, so its digest and mutation are based
 // on the exact same rows as the compiler.
 func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID) (Snapshot, error) {
+	return buildSnapshotWithQueries(ctx, q, orgID, false)
+}
+
+// BuildSnapshotWithQueriesAndK8sClusterScopes is the transaction-scoped
+// variant for callers that have already resolved the named deployment
+// entitlement. False is the safe default and produces no scope-derived rules.
+func BuildSnapshotWithQueriesAndK8sClusterScopes(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, entitled bool) (Snapshot, error) {
+	return buildSnapshotWithQueries(ctx, q, orgID, entitled)
+}
+
+func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, k8sScopesLicensed bool) (Snapshot, error) {
 	settings, err := q.GetOrganizationPolicySnapshotSettings(ctx, orgID)
 	if err != nil {
 		return Snapshot{}, err
@@ -1034,6 +1058,7 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 		return Snapshot{}, err
 	}
 	snap := Snapshot{Mode: settings.ZeroTrustMode, FQDNResourcesEnabled: settings.FqdnResourcesEnabled}
+	scopeRules := make(map[uuid.UUID]Rule)
 	for _, r := range rules {
 		rule := Rule{
 			ID:      r.ID,
@@ -1048,9 +1073,35 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			DstK8sServiceID: fromPgUUID(r.DstK8sServiceID), // S10.3: dst_kind='k8s_service' resolution
 			Disabled:        r.Disabled,                    // F3: carried to the compiler, which OWNS the skip
 		}
+		if r.DstKind == "k8s_cluster_scope" {
+			// The dormant scope arm is never compiled directly. It is retained as
+			// the source template for exact approved-child expansions below.
+			scopeRules[r.ID] = rule
+			continue
+		}
 		snap.Rules = append(snap.Rules, rule)
 		if r.DstKind == "fqdn_resource" && r.DstFqdnResourceID != uuid.Nil {
 			snap.FQDNRuleReferences = append(snap.FQDNRuleReferences, FQDNRuleReference{PolicyRuleID: r.ID, FQDNResourceID: r.DstFqdnResourceID})
+		}
+	}
+	if k8sScopesLicensed && len(scopeRules) != 0 {
+		expansions, err := q.ListApprovedK8sClusterScopeExpansions(ctx, orgID)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		for _, expansion := range expansions {
+			rule, ok := scopeRules[expansion.PolicyRuleID]
+			if !ok {
+				// The active-rule projection is authoritative for expiry and
+				// disable state; never synthesize a source from the expansion.
+				continue
+			}
+			rule.DstKind = "k8s_service"
+			rule.DstK8sServiceID = expansion.ServiceChildID
+			rule.DstResourceID = uuid.Nil
+			rule.DstGroupID = uuid.Nil
+			rule.DstSiteID = uuid.Nil
+			snap.Rules = append(snap.Rules, rule)
 		}
 	}
 	for _, ss := range siteSubnets {
@@ -1076,10 +1127,18 @@ func BuildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 		return Snapshot{}, err
 	}
 	for _, e := range exposed {
+		connector := e.LegacyConnectorNodeID
+		if e.ConnectorPoolID.Valid {
+			connector = pgtype.UUID{}
+			if e.PoolConnectorEligible {
+				connector = e.PoolActiveNodeID // pool mode never falls back to legacy ownership
+			}
+		}
 		snap.ExposedServices = append(snap.ExposedServices, ExposedService{
 			ID: e.ID, VIP: e.Vip, DNSVIP: e.DnsVip, Protocol: e.Protocol,
 			PortLow: derefI32(e.PortLow), PortHigh: derefI32(e.PortHigh), SiteID: e.SiteID,
-			ConnectorNodeID: fromPgUUID(e.ConnectorNodeID),
+			ConnectorNodeID: fromPgUUID(connector),
+			PoolBound:       e.ConnectorPoolID.Valid, ConnectorGeneration: derefI64(e.ConnectorGeneration),
 		})
 	}
 	for _, m := range members {
@@ -1382,6 +1441,13 @@ func derefI32(p *int32) int {
 		return 0
 	}
 	return int(*p)
+}
+
+func derefI64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 // fqdnResourceFromActiveGeneration is the only adapter from Lane 2's durable

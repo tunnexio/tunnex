@@ -515,6 +515,20 @@ func main() {
 
 	// mTLS agent control channel (separate listener; client certs verified vs CA).
 	agentCh := apphttp.NewAgentChannel(nodeSvc, agentCA, pushHub, logger)
+	// S20.3a P2: ownership deliveries are a durable, private mTLS mailbox.
+	// Attaching the store starts no scheduler and does not issue work; old agents
+	// omit the capability header and retain their existing desired-state path.
+	// Only the later default-off, leader-fenced runtime can create v3 handoff
+	// deliveries, while v1/v2 polling remains wire-compatible.
+	poolVIPOwnershipStore := nodes.NewPostgresPoolVIPOwnershipDeliveryStore(pool)
+	agentCh.SetPoolVIPOwnershipDeliveryStore(poolVIPOwnershipStore)
+	// S20.3b P3: ordinary-base authority is delivered and acknowledged on the
+	// same authenticated mailbox. Merely attaching the durable store is inert;
+	// issuance remains gated by the default-off HA activation coordinator.
+	baseAuthorityStore := nodes.NewPostgresKubernetesOwnershipBaseAuthorityStore(pool)
+	agentCh.SetKubernetesOwnershipBaseAuthorityStore(baseAuthorityStore)
+	agentCh.SetK8sServiceUIDObservationStore(nodes.NewPostgresK8sServiceUIDObservationStore(pool))
+	agentCh.SetK8sServiceInventoryStore(nodes.NewPostgresK8sServiceInventoryStore(pool))
 	// S7.5.1 flow-event ingest: the PG hot-window (queryable access-event store), wired onto the
 	// SAME mTLS channel (node identity = client cert). (S7.5.1b) the JSONL on-disk source-of-truth
 	// + verbatim export are DEFERRED — v1 is PG-only.
@@ -536,6 +550,46 @@ func main() {
 	defer stopElector()
 	elector := &leader.Elector{}
 	go elector.Run(electorCtx, pool, logger)
+	// S20.3b P3: the deployment composition gate defaults OFF independently of
+	// organization settings. The base compiler deliberately does not stamp node
+	// liveness; authority preparation for a disconnected standby is not a report.
+	handoffBase := nodes.HandoffBaseStateSourceFunc(func(ctx context.Context, orgID, nodeID uuid.UUID) (nodes.DesiredState, error) {
+		node, err := sqlc.New(pool).GetNodeForOrg(ctx, sqlc.GetNodeForOrgParams{ID: nodeID, OrgID: orgID})
+		if err != nil {
+			return nodes.DesiredState{}, err
+		}
+		state, err := nodeSvc.HandoffBaseState(ctx, node)
+		if err != nil {
+			return nodes.DesiredState{}, err
+		}
+		state.Version = pushHub.Version(nodeID)
+		return state, nil
+	})
+	handoffComposition, err := nodes.NewHandoffSchedulerProductionComposition(cfg.K8sHAEnabled, pool, elector, nodeSvc, k8sSvc, poolVIPOwnershipStore, handoffBase, baseAuthorityStore)
+	if err != nil {
+		logger.Error("k8s_handoff_composition_failed", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	k8sSvc.SetHAOperatorStatusSource(nodes.NewHandoffHAOperatorStatusSource(
+		handoffComposition.Runtime,
+		nodes.NewPostgresHandoffOperatorStatusProjection(pool, nodeSvc, nodes.HandoffOperatorStatusProjectionConfig{
+			ReportFreshness: time.Minute, ObservationFreshness: time.Minute,
+		}),
+	))
+	if !cfg.K8sHAEnabled && handoffComposition.Runtime.Status().State != nodes.HandoffSchedulerDisabled {
+		logger.Error("k8s_handoff_default_off_invariant_failed")
+		os.Exit(1)
+	}
+	if cfg.K8sHAEnabled {
+		if !handoffComposition.Activation.Start(electorCtx) {
+			logger.Error("k8s_ha_activation_start_failed")
+			os.Exit(1)
+		}
+		if status := handoffComposition.Runtime.Start(electorCtx); status.State == nodes.HandoffSchedulerBlocked || status.State == nodes.HandoffSchedulerDisabled {
+			logger.Error("k8s_handoff_scheduler_start_failed", slog.Any("status", status))
+			os.Exit(1)
+		}
+	}
 	// FQDN resolution is deliberately a selected Site+Gateway transport. The
 	// durable mailbox rides the existing authenticated agent-pull channel: it
 	// never substitutes a public/control-plane resolver, and it wakes only the
@@ -544,6 +598,7 @@ func main() {
 	// bounded DNS attempt.
 	fqdnCtx, stopFQDNScheduler := context.WithCancel(electorCtx)
 	fqdnStore := fqdnresolver.NewPostgresStore(pool).WithAfterCommit(fqdnresolver.Hooks{
+		Audit:  fqdnresolver.NewPostgresAudit(pool),
 		Policy: fqdnInvalidator,
 	})
 	fqdnMailbox := fqdnresolver.NewPostgresGatewayDNSMailbox(pool).WithNotifier(agentCh)
@@ -818,8 +873,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = agentSrv.Shutdown(ctx)
-	pollCancel()         // stop the idp-sync poller
-	stopFQDNScheduler()  // stop bounded FQDN work before releasing DB leadership/pool
+	pollCancel()        // stop the idp-sync poller
+	stopFQDNScheduler() // stop bounded FQDN work before releasing DB leadership/pool
+	_ = handoffComposition.Activation.Stop(ctx)
+	_ = handoffComposition.Runtime.Stop(ctx)
 	stopElector()        // release scheduler leadership (and its connection) before the pool closes
 	close(retentionStop) // stop the retention sweep loop
 	if err := srv.Shutdown(ctx); err != nil {

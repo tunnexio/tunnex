@@ -19,6 +19,10 @@ package ovpnserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -92,6 +96,7 @@ const (
 	HealthCertsAbsent     = "ovpn_certs_absent"     // enabled + roster, but ca/server cert/key not placed
 	HealthBinaryAbsent    = "ovpn_binary_absent"    // enabled, but the openvpn binary is not on PATH
 	HealthTransitConflict = "ovpn_transit_conflict" // the server tun transit range overlaps the pool or a pushed route
+	HealthApplyFailed     = "ovpn_apply_failed"     // exact config/process transition failed; old process is withdrawn
 )
 
 // Manager owns the openvpn process + its config/CCD. Process control + filesystem are injectable so
@@ -102,9 +107,12 @@ type Manager struct {
 	desired atomic.Pointer[Desired]
 	health  atomic.Pointer[string]
 	serving atomic.Bool // the tun is up (preconditions met + process asserted) — gates egress.SetOVPNTun
+	// lastDesiredDigest binds the running process to the logical desired input.
+	// Access is serialized by the agent's data-plane command lane.
+	lastDesiredDigest string
 
 	// injectable seams (real implementations wired in New):
-	ensureProc func(ctx context.Context, confPath string) error // (re)start the process if not running (self-heal)
+	process    ProcessController
 	writeFile  func(path string, data []byte) error
 	removeFile func(path string) error
 	listCCD    func() ([]string, error)
@@ -121,7 +129,7 @@ func New(cfgDir string) *Manager {
 		cfgDir: cfgDir,
 		ccdDir: filepath.Join(cfgDir, "ccd"),
 	}
-	m.ensureProc = func(context.Context, string) error { return nil } // wired in main
+	m.process = noopProcessController{}
 	m.writeFile = func(path string, data []byte) error { return os.WriteFile(path, data, 0o600) }
 	m.removeFile = os.Remove
 	m.binaryPresent = func() bool { _, err := exec.LookPath("openvpn"); return err == nil }
@@ -162,10 +170,13 @@ func (m *Manager) TunName() string { return TunName }
 // SetDesired atomically swaps the desired state (called from the reconcile loop's OnPolicy each tick).
 func (m *Manager) SetDesired(d Desired) { m.desired.Store(&d) }
 
-// SetEnsureProc wires the real process supervisor (Supervisor.Ensure) — called only once preconditions
-// pass, so the supervisor is structurally unable to crash-loop. Default is a no-op stub (tests).
-func (m *Manager) SetEnsureProc(fn func(ctx context.Context, confPath string) error) {
-	m.ensureProc = fn
+// SetProcessController wires the real process supervisor. The controller binds
+// one exact on-disk artifact digest to the running process; a live process with
+// a different digest is restarted before Reconcile can report serving.
+func (m *Manager) SetProcessController(controller ProcessController) {
+	if controller != nil {
+		m.process = controller
+	}
 }
 
 // WriteServerMaterial writes the CP-delivered CA + server cert + server KEY + CRL to cfgDir (D-S9.6 +
@@ -175,7 +186,7 @@ func (m *Manager) SetEnsureProc(fn func(ctx context.Context, confPath string) er
 // clears the ovpn_certs_absent precondition (which now REQUIRES crl.pem).
 func (m *Manager) WriteServerMaterial(ca, cert, key, crl string) error {
 	if err := os.MkdirAll(m.cfgDir, 0o700); err != nil {
-		return err
+		return m.failServing(err)
 	}
 	files := []struct {
 		name string
@@ -187,9 +198,24 @@ func (m *Manager) WriteServerMaterial(ca, cert, key, crl string) error {
 		{"server.key", key, 0o600}, // the private key — restrictive perms, never logged
 		{"crl.pem", crl, 0o644},    // the revocation list (Slice 5) — public; empty is first-class
 	}
+	changed := false
+	for _, f := range files {
+		body, err := os.ReadFile(filepath.Join(m.cfgDir, f.name))
+		if err != nil || string(body) != f.data {
+			changed = true
+			break
+		}
+	}
+	// Never rewrite a live process's inputs in place. Stop first; then even a
+	// partial filesystem failure cannot leave a mixed bundle still serving.
+	if changed {
+		if err := m.stopServing(nil); err != nil {
+			return err
+		}
+	}
 	for _, f := range files {
 		if err := os.WriteFile(filepath.Join(m.cfgDir, f.name), []byte(f.data), f.perm); err != nil {
-			return err
+			return m.failServing(err)
 		}
 	}
 	return nil
@@ -197,10 +223,20 @@ func (m *Manager) WriteServerMaterial(ca, cert, key, crl string) error {
 
 // SweepServerMaterial removes the server material (D-S9.6: disable means nothing exists on disk;
 // the DB record survives, so re-enable re-delivers the same serial). Includes the CRL (Slice 5).
-func (m *Manager) SweepServerMaterial() {
-	for _, f := range []string{"ca.crt", "server.crt", "server.key", "crl.pem"} {
-		_ = os.Remove(filepath.Join(m.cfgDir, f))
+func (m *Manager) SweepServerMaterial() error {
+	if err := m.stopServing(nil); err != nil {
+		return err
 	}
+	var joined error
+	for _, f := range []string{"ca.crt", "server.crt", "server.key", "crl.pem"} {
+		if err := os.Remove(filepath.Join(m.cfgDir, f)); err != nil && !os.IsNotExist(err) {
+			joined = errors.Join(joined, err)
+		}
+	}
+	if joined != nil {
+		m.health.Store(ptr(HealthApplyFailed))
+	}
+	return joined
 }
 
 // Health returns the surfaced health kind ("" ok, or ovpn_certs_absent / ovpn_binary_absent) — the
@@ -386,42 +422,67 @@ esac
 func (m *Manager) Reconcile(ctx context.Context) error {
 	d := m.desired.Load()
 	if d == nil || d.PoolCIDR == "" {
-		m.health.Store(ptr(HealthOK)) // idle / not opted-in on this gateway — nothing to be unhealthy about
-		m.serving.Store(false)        // no tun up when idle
-		return nil                    // not configured / no pool yet — stay idle
+		if err := m.stopServing(nil); err != nil {
+			m.health.Store(ptr(HealthApplyFailed))
+			return err
+		}
+		m.health.Store(ptr(HealthOK)) // idle is healthy only after actual process absence is proven
+		return nil
 	}
 	// PRECONDITIONS BEFORE EXEC (4d, ruled): the supervisor is structurally unable to spawn when the
 	// binary or certs are missing — these guards run BEFORE ensureProc, refuse LOUDLY via the health
 	// surface (not a log, not a post-failure handler), and the gateway keeps doing everything else.
 	// Binary first (nothing to serve without it), then certs.
 	if !m.binaryPresent() {
+		if err := m.stopServing(nil); err != nil {
+			m.health.Store(ptr(HealthApplyFailed))
+			return err
+		}
 		m.health.Store(ptr(HealthBinaryAbsent))
-		m.serving.Store(false) // the tun is NOT up → the agent publishes SetOVPNTun("") → Slice-3 sweep
 		return nil
 	}
 	if !m.certsPresent() {
+		if err := m.stopServing(nil); err != nil {
+			m.health.Store(ptr(HealthApplyFailed))
+			return err
+		}
 		m.health.Store(ptr(HealthCertsAbsent))
-		m.serving.Store(false)
 		return nil
 	}
 	// LOCAL transit guard (WF-OVPN-2): refuse-loudly if the exempt transit /30 overlaps the pool or a
 	// pushed route on THIS gateway — the tun address is never validated-by-nobody.
 	if transitConflicts(d.PoolCIDR, d.Routes) {
+		if err := m.stopServing(nil); err != nil {
+			m.health.Store(ptr(HealthApplyFailed))
+			return err
+		}
 		m.health.Store(ptr(HealthTransitConflict))
-		m.serving.Store(false)
 		return nil
 	}
-	m.health.Store(ptr(HealthOK)) // preconditions met — clears any prior refusal on recovery
+	logicalDigest, err := DesiredDigest(*d)
+	if err != nil {
+		return m.failServing(err)
+	}
+	if m.serving.Load() {
+		process, readErr := m.process.Readback()
+		diskDigest, digestErr := m.artifactDigest()
+		if readErr != nil || digestErr != nil || !process.Serving || process.AppliedDigest != diskDigest || logicalDigest != m.lastDesiredDigest {
+			if err := m.stopServing(errors.Join(readErr, digestErr)); err != nil {
+				m.health.Store(ptr(HealthApplyFailed))
+				return err
+			}
+		}
+	}
 	mask, err := poolMask(d.PoolCIDR)
 	if err != nil {
-		return err
+		return m.failServing(err)
 	}
 	if err := os.MkdirAll(m.ccdDir, 0o700); err != nil {
-		return err
+		return m.failServing(err)
 	}
 	// learn-address hook (WF-OVPN-2): written before the config references it, root-owned 0700.
 	if err := m.writeLearnAddressScript(); err != nil {
-		return err
+		return m.failServing(err)
 	}
 	// The pool gateway IP (the host part of PoolCIDR, e.g. "10.99.0.1") — pushed to OVPN clients as their
 	// in-subnet route-gateway (WF-OVPN-7). PoolCIDR carries the gateway CIDR ("10.99.0.1/24").
@@ -431,7 +492,7 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 	}
 	// Server config (idempotent write).
 	if err := m.writeFile(filepath.Join(m.cfgDir, "server.conf"), []byte(m.serverConfig(gwIP, d.Routes, d.DNS))); err != nil {
-		return err
+		return m.failServing(err)
 	}
 	// CCD: desired set, keyed by common name.
 	want := map[string]string{} // CN -> rendered CCD body
@@ -449,29 +510,139 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 	sort.Strings(names) // deterministic write order (steady-state reconcile is byte-stable)
 	for _, cn := range names {
 		if err := m.writeFile(filepath.Join(m.ccdDir, cn), []byte(want[cn])); err != nil {
-			return err
+			return m.failServing(err)
 		}
 	}
 	// FULL-SWEEP: remove CCD files for clients no longer desired (a departed client leaves — no orphan
 	// grant-by-address in the server). Mirrors the DOCKER-USER + peer sweep discipline.
 	existing, err := m.listCCD()
 	if err != nil {
-		return err
+		return m.failServing(err)
 	}
 	for _, name := range existing {
 		if _, keep := want[name]; !keep {
 			if err := m.removeFile(filepath.Join(m.ccdDir, name)); err != nil {
-				return err
+				return m.failServing(err)
 			}
 		}
 	}
-	// Self-heal: (re)start the process if it isn't running.
-	if err := m.ensureProc(ctx, filepath.Join(m.cfgDir, "server.conf")); err != nil {
-		m.serving.Store(false) // spawn failed — the tun is not up
-		return err
+	artifactDigest, err := m.artifactDigest()
+	if err != nil {
+		return m.failServing(err)
+	}
+	// Self-heal or controlled-restart: a running process is accepted only when
+	// it loaded this exact server/material/CCD artifact set.
+	process, err := m.process.Ensure(ctx, filepath.Join(m.cfgDir, "server.conf"), artifactDigest)
+	if err != nil {
+		return m.failServing(err)
+	}
+	if !process.Serving || process.AppliedDigest != artifactDigest {
+		return m.failServing(fmt.Errorf("ovpnserver: process did not apply the exact artifact digest"))
 	}
 	m.serving.Store(true) // the process is asserted → the tun is up → the agent may publish SetOVPNTun
+	m.lastDesiredDigest = logicalDigest
+	m.health.Store(ptr(HealthOK))
 	return nil
+}
+
+// AppliedState is actual readback: the process must still be alive with the
+// exact digest of the files currently on disk. A cached successful write or
+// prior spawn is never sufficient for an ownership ACK.
+func (m *Manager) AppliedState() (ProcessState, error) {
+	desired := m.desired.Load()
+	if !m.serving.Load() || desired == nil || desired.PoolCIDR == "" || m.Health() != HealthOK {
+		process, err := m.process.Readback()
+		if err != nil {
+			return ProcessState{}, err
+		}
+		if process.Serving {
+			return process, fmt.Errorf("ovpnserver: process remains serving after fail-closed withdrawal")
+		}
+		return ProcessState{}, nil
+	}
+	process, err := m.process.Readback()
+	if err != nil {
+		return ProcessState{}, err
+	}
+	if !process.Serving {
+		return ProcessState{}, nil
+	}
+	digest, err := m.artifactDigest()
+	if err != nil {
+		return ProcessState{}, err
+	}
+	if process.AppliedDigest == "" || process.AppliedDigest != digest {
+		return ProcessState{}, fmt.Errorf("ovpnserver: running process artifact digest mismatch")
+	}
+	process.DesiredDigest = m.lastDesiredDigest
+	return process, nil
+}
+
+// DesiredDigest is the canonical logical input identity bound to a successful
+// process artifact. It lets ownership readback compare actual Manager state
+// with the projected clients/routes/DNS rather than trusting a desired echo.
+func DesiredDigest(desired Desired) (string, error) {
+	body, err := json.Marshal(desired)
+	if err != nil {
+		return "", fmt.Errorf("encode OpenVPN desired state: %w", err)
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// stopServing is the fail-closed half of every disable, refusal and failed
+// artifact transition. The previous process may have loaded a now-revoked CCD
+// or route set, so merely clearing the reported serving bit is insufficient.
+func (m *Manager) stopServing(cause error) error {
+	if err := m.process.Stop(); err != nil {
+		stopErr := fmt.Errorf("ovpnserver: stop stale process: %w", err)
+		if cause != nil {
+			return errors.Join(cause, stopErr)
+		}
+		return stopErr
+	}
+	m.serving.Store(false)
+	m.lastDesiredDigest = ""
+	return cause
+}
+
+func (m *Manager) failServing(cause error) error {
+	m.health.Store(ptr(HealthApplyFailed))
+	return m.stopServing(cause)
+}
+
+func (m *Manager) artifactDigest() (string, error) {
+	h := sha256.New()
+	for _, name := range []string{"ca.crt", "server.crt", "server.key", "crl.pem", "learn-address.sh", "server.conf"} {
+		body, err := os.ReadFile(filepath.Join(m.cfgDir, name))
+		if err != nil {
+			return "", fmt.Errorf("read OpenVPN artifact %s: %w", name, err)
+		}
+		_, _ = h.Write([]byte(name + "\x00"))
+		_, _ = h.Write(body)
+		_, _ = h.Write([]byte("\x00"))
+	}
+	entries, err := os.ReadDir(m.ccdDir)
+	if err != nil {
+		return "", fmt.Errorf("read OpenVPN CCD directory: %w", err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		body, err := os.ReadFile(filepath.Join(m.ccdDir, name))
+		if err != nil {
+			return "", fmt.Errorf("read OpenVPN CCD %s: %w", name, err)
+		}
+		_, _ = h.Write([]byte("ccd/" + name + "\x00"))
+		_, _ = h.Write(body)
+		_, _ = h.Write([]byte("\x00"))
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // TunActive reports whether the OpenVPN tun is up (preconditions met + the process asserted). The

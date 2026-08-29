@@ -46,7 +46,7 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	}()
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 116); err != nil {
+	if err := db.MigrateTo(testURL.String(), 118); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -273,7 +273,7 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	}
 	replacementDone := make(chan replacementResult, 1)
 	go func() {
-		configured, e := svc.SetResolverConfig(ctx, org, site, gateway, uuid.Nil, "resource-contract-test", "", []ResolverEndpoint{{Address: "10.53.0.54", Port: 53, Transport: "tcp"}})
+		configured, e := svc.SetResolverConfig(ctx, org, site, gateway, uuid.Nil, "resource-contract-test", "", nil, []ResolverEndpoint{{Address: "10.53.0.54", Port: 53, Transport: "tcp"}})
 		replacementDone <- replacementResult{config: configured, err: e}
 	}()
 	var replacement ResolverConfig

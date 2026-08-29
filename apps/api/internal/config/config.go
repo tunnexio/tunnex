@@ -55,6 +55,9 @@ type Config struct {
 	// (ghcr.io/…/tunnex-node-agent@sha256:…) and the stale-`:latest` drift that mis-convicted D2 becomes
 	// structurally impossible. Defaults to the `:latest` ref (matches the compose default).
 	NodeAgentImage string
+	// K8sHAEnabled is the deployment composition gate for connector ownership
+	// HA. It defaults OFF independently of edition and organization settings.
+	K8sHAEnabled bool
 	// Release metadata is an operator-provided, signed descriptor. Empty path means
 	// the upgrade center is unavailable rather than guessing from a mutable tag.
 	ReleaseManifestPath string
@@ -157,6 +160,7 @@ func Load() Config {
 		GatewayControlURL:      getenv("TUNNEX_GATEWAY_CONTROL_URL", ""),
 		AdminEmail:             getenv("TUNNEX_ADMIN_EMAIL", ""),
 		NodeAgentImage:         getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
+		K8sHAEnabled:           getbool("TUNNEX_K8S_HA_ENABLED", false),
 		ReleaseManifestPath:    getenv("TUNNEX_RELEASE_MANIFEST_PATH", ""),
 		ReleaseManifestURL:     getenv("TUNNEX_RELEASE_MANIFEST_URL", ""),
 		ReleasePublicKey:       getenv("TUNNEX_RELEASE_PUBLIC_KEY", ""),

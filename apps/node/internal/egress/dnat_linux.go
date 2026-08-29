@@ -145,7 +145,7 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 		var targets []k8sTarget
 		var sourceOK bool
 		if src != nil {
-			targets, sourceOK = src.Targets(vm.Namespace, vm.Service, vm.PortLow)
+			targets, sourceOK = src.Targets(vm.Namespace, vm.Service, vm.Protocol, vm.PortLow)
 		}
 		if sourceOK {
 			haveView++
@@ -179,6 +179,14 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 // runIP is the real `ip` runner (a single command, discarded output — errors carry the exit status).
 func runIP(ctx context.Context, args ...string) error {
 	return exec.CommandContext(ctx, "ip", args...).Run()
+}
+
+func runIPOutput(ctx context.Context, args ...string) (string, error) {
+	out, err := exec.CommandContext(ctx, "ip", args...).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ip %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
 }
 
 // defaultLocalIPs is the real gateway-local address set (M6): every IP assigned to a host interface. A DNAT
@@ -241,7 +249,7 @@ func (m *Manager) ReconcileDNSVIPs(ctx context.Context) error {
 	// and the gateway answers nothing there — never a half-owned VIP.
 	applied := make([]string, 0, len(want))
 	for v := range want {
-		if err := m.runIP(ctx, "addr", "replace", v+"/32", "dev", m.wgIface); err != nil {
+		if err := m.runIP(ctx, "addr", "replace", v+"/32", "dev", m.wgIface, "label", m.wgIface+":tnxk8s"); err != nil {
 			errs = append(errs, fmt.Errorf("assign %s: %w", v, err))
 			continue
 		}
@@ -250,6 +258,106 @@ func (m *Manager) ReconcileDNSVIPs(ctx context.Context) error {
 	sort.Strings(applied)
 	m.dnsVIPs.Store(&applied)
 	return errors.Join(errs...)
+}
+
+// ReconcileDNSVIPsWithCandidates is the restart-safe v3 path. candidates is
+// the union of current desired and every durably fenced prior DNS VIP. It
+// enumerates the kernel first, so a stale address from a previous process is
+// swept even when the in-memory dnsVIPs receipt starts empty.
+func (m *Manager) ReconcileDNSVIPsWithCandidates(ctx context.Context, candidates []string) error {
+	if !ifaceRE.MatchString(m.wgIface) {
+		return fmt.Errorf("invalid wg interface name %q", m.wgIface)
+	}
+	want := map[string]struct{}{}
+	if policy := m.policy.Load(); policy != nil {
+		for _, zone := range policy.K8sDNSZones {
+			addr, err := netip.ParseAddr(zone.ListenVIP)
+			if err != nil || !addr.Is4() || addr.String() != zone.ListenVIP {
+				return fmt.Errorf("invalid desired DNS VIP %q", zone.ListenVIP)
+			}
+			want[zone.ListenVIP] = struct{}{}
+		}
+	}
+	all := append([]string(nil), candidates...)
+	for vip := range want {
+		all = append(all, vip)
+	}
+	observed, err := m.ReadDNSVIPs(ctx, all)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, vip := range observed {
+		if _, keep := want[vip]; !keep {
+			if err := m.runIP(ctx, "addr", "del", vip+"/32", "dev", m.wgIface); err != nil {
+				errs = append(errs, fmt.Errorf("unassign %s: %w", vip, err))
+			}
+		}
+	}
+	for vip := range want {
+		if err := m.runIP(ctx, "addr", "replace", vip+"/32", "dev", m.wgIface, "label", m.wgIface+":tnxk8s"); err != nil {
+			errs = append(errs, fmt.Errorf("assign %s: %w", vip, err))
+		}
+	}
+	readback, readErr := m.ReadDNSVIPs(ctx, all)
+	if readErr != nil {
+		errs = append(errs, readErr)
+	} else {
+		applied := make([]string, 0, len(want))
+		readSet := make(map[string]struct{}, len(readback))
+		for _, vip := range readback {
+			readSet[vip] = struct{}{}
+			if _, keep := want[vip]; keep {
+				applied = append(applied, vip)
+			}
+		}
+		m.dnsVIPs.Store(&applied)
+		exact := len(readSet) == len(want)
+		for vip := range want {
+			if _, present := readSet[vip]; !present {
+				exact = false
+			}
+		}
+		if !exact {
+			errs = append(errs, fmt.Errorf("DNS VIP kernel readback mismatch: observed %v want %v", readback, mapKeys(want)))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func mapKeys(values map[string]struct{}) []string {
+	out := make([]string, 0, len(values))
+	for value := range values {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// RequestedDNSVIPs returns the successfully-issued local mutation receipt. It
+// is not readback; callers use ReadDNSVIPs for authority/ACK decisions.
+func (m *Manager) RequestedDNSVIPs() []string {
+	if values := m.dnsVIPs.Load(); values != nil {
+		return append([]string(nil), (*values)...)
+	}
+	return nil
+}
+
+// ReadDNSVIPs enumerates the interface and returns which explicit ownership
+// candidates are actually assigned. candidates must include both current and
+// durably fenced prior VIPs so stale ownership cannot hide after restart.
+func (m *Manager) ReadDNSVIPs(ctx context.Context, candidates []string) ([]string, error) {
+	if !ifaceRE.MatchString(m.wgIface) {
+		return nil, fmt.Errorf("invalid wg interface name %q", m.wgIface)
+	}
+	if m.runIPOutput == nil {
+		return nil, fmt.Errorf("DNS VIP kernel readback is unavailable")
+	}
+	out, err := m.runIPOutput(ctx, "-o", "-4", "addr", "show", "dev", m.wgIface)
+	if err != nil {
+		return nil, err
+	}
+	return parseOwnedDNSVIPs(out, m.wgIface, candidates)
 }
 
 // preroutingDNAT renders the VIP->endpoint DNAT chain from the LAST-RESOLVED map (PURE — no I/O). Priority
@@ -290,7 +398,8 @@ func dnatRule(r resolvedVIP) string {
 	// ALWAYS remaps VIP:svcPort -> podIP:targetPort (all-ports / range exposures are refused upstream).
 	match := fmt.Sprintf("ip daddr %s %s dport %d", r.vip, r.proto, r.svcPort)
 	if len(ts) == 1 {
-		return fmt.Sprintf("%s dnat to %s:%d comment \"tunnex_k8s_vip\"", match, ts[0].ip, ts[0].port)
+		rule := fmt.Sprintf("%s dnat to %s:%d", match, ts[0].ip, ts[0].port)
+		return attachDNATReceipt(r.vip, rule)
 	}
 	// N ready endpoints → nft-native per-flow load balancing: jhash over the src/dst pair (sticky per flow,
 	// no userspace round-robin, no state). Map values are the addr+port concatenation `ip . port`.
@@ -298,8 +407,67 @@ func dnatRule(r resolvedVIP) string {
 	for i, t := range ts {
 		parts = append(parts, fmt.Sprintf("%d : %s . %d", i, t.ip, t.port))
 	}
-	return fmt.Sprintf("%s dnat to jhash ip saddr . ip daddr mod %d map { %s } comment \"tunnex_k8s_vip\"",
-		match, len(ts), strings.Join(parts, ", "))
+	rule := fmt.Sprintf("%s dnat to jhash ip saddr . ip daddr mod %d map { %s }", match, len(ts), strings.Join(parts, ", "))
+	return attachDNATReceipt(r.vip, rule)
+}
+
+// RequestedK8sDNATReceipts derives exact receipts from the currently resolved
+// ready-endpoint snapshot. It is requested state, not proof of nft application.
+func (m *Manager) RequestedK8sDNATReceipts() []K8sDNATReceipt {
+	resolved := m.resolvedVIPs.Load()
+	if resolved == nil {
+		return nil
+	}
+	out := make([]K8sDNATReceipt, 0, len(*resolved))
+	for _, value := range *resolved {
+		rule := dnatRule(value)
+		match := k8sVIPReceiptRE.FindStringSubmatch(rule)
+		if len(match) == 2 {
+			out = append(out, K8sDNATReceipt{VIP: value.vip, Digest: match[1]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].VIP < out[j].VIP })
+	return out
+}
+
+// ReadK8sDNATReceiptDigests queries the live nft table (the table exists even
+// when the optional prerouting chain does not). Each digest
+// was embedded in the atomically accepted rule and binds its complete match and
+// target expression; a cached render/apply success is never returned here.
+func (m *Manager) ReadK8sDNATReceiptDigests(ctx context.Context) ([]string, error) {
+	if m.nftRun == nil {
+		return nil, fmt.Errorf("Kubernetes DNAT kernel readback is unavailable")
+	}
+	listing, err := m.nftRun(ctx, "list", "table", "ip", "tunnex")
+	if err != nil {
+		return nil, err
+	}
+	return parseK8sDNATReceipts(listing)
+}
+
+// EmergencyWithdrawK8s removes only agent-owned Kubernetes state when no
+// fresh ordinary desired baseline is available. The dedicated prerouting
+// chain contains only Tunnex Kubernetes DNAT; other Tunnex/foreign chains and
+// tables are preserved.
+func (m *Manager) EmergencyWithdrawK8s(ctx context.Context, candidates []string) error {
+	m.SetPolicy(nil)
+	var errs []error
+	if err := m.ReconcileDNSVIPsWithCandidates(ctx, candidates); err != nil {
+		errs = append(errs, err)
+	}
+	observed, err := m.ReadK8sDNATReceiptDigests(ctx)
+	if err != nil {
+		errs = append(errs, err)
+	} else if len(observed) > 0 {
+		if _, err := m.nftRun(ctx, "flush", "chain", "ip", "tunnex", "prerouting"); err != nil {
+			errs = append(errs, fmt.Errorf("flush Kubernetes DNAT chain: %w", err))
+		} else if remaining, err := m.ReadK8sDNATReceiptDigests(ctx); err != nil {
+			errs = append(errs, err)
+		} else if len(remaining) != 0 {
+			errs = append(errs, fmt.Errorf("Kubernetes DNAT emergency readback retained receipts %v", remaining))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // EndpointsUnavailable reports the k8s_endpoints_unavailable health kind (this gateway fronts exposed

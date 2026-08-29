@@ -27,7 +27,7 @@ func TestApplyFailureLeavesAppliedStale(t *testing.T) {
 	// hash (nodepolicy.CanonicalHash — the same bytes the control plane hashes; NEVER
 	// the ruleset text, which carries node-local subnet state).
 	rev1 := int64(1)
-	v1 := &nodepolicy.Compiled{Version: 1, Mode: nodepolicy.ModeEnforcing, Mesh: false, Subjects: []nodepolicy.SubjectAttribution{{SrcIP: "10.99.0.10", DeviceID: "agent-v1", Kind: "agent", ConfigRevision: &rev1}}}
+	v1 := &nodepolicy.Compiled{Version: 1, Mode: nodepolicy.ModeEnforcing, Mesh: false, Subjects: []nodepolicy.SubjectAttribution{{SrcIP: "10.99.0.10", DeviceID: "agent-v1", Kind: "agent", ConfigRevision: &rev1}}, VIPMappings: []nodepolicy.VIPMapping{{Namespace: "prod", Service: "api", VIP: "100.64.0.5"}}}
 	m.SetPolicy(v1)
 	if err := m.applyAndTrack(context.Background(), m.ruleset(""), v1); err != nil {
 		t.Fatalf("good apply: %v", err)
@@ -39,12 +39,20 @@ func TestApplyFailureLeavesAppliedStale(t *testing.T) {
 	if a := m.FlowAttribution("10.99.0.10"); a.SrcDeviceID != "agent-v1" || a.PolicyHash != goodHash || a.PolicyVersion != 1 {
 		t.Fatalf("last-good attribution not installed atomically: %+v", a)
 	}
+	appliedVIPs := m.AppliedVIPMap()
+	if len(appliedVIPs) != 1 || appliedVIPs[0].Service != "api" {
+		t.Fatalf("last-good VIP map not installed atomically: %+v", appliedVIPs)
+	}
+	appliedVIPs[0].Service = "mutated"
+	if got := m.AppliedVIPMap(); len(got) != 1 || got[0].Service != "api" {
+		t.Fatalf("AppliedVIPMap returned aliased state: %+v", got)
+	}
 
 	// Now: desired advances to version 2, but the apply FAILS (bad ruleset / no nft).
 	boom := errors.New("nft apply: rejected")
 	m.apply = func(context.Context, string) error { return boom }
 	rev2 := int64(2)
-	v2 := &nodepolicy.Compiled{Version: 2, Mode: nodepolicy.ModeEnforcing, Mesh: false, Subjects: []nodepolicy.SubjectAttribution{{SrcIP: "10.99.0.10", DeviceID: "agent-v2", Kind: "agent", ConfigRevision: &rev2}}}
+	v2 := &nodepolicy.Compiled{Version: 2, Mode: nodepolicy.ModeEnforcing, Mesh: false, Subjects: []nodepolicy.SubjectAttribution{{SrcIP: "10.99.0.10", DeviceID: "agent-v2", Kind: "agent", ConfigRevision: &rev2}}, VIPMappings: []nodepolicy.VIPMapping{{Namespace: "prod", Service: "web", VIP: "100.64.0.6"}}}
 	m.SetPolicy(v2)
 	if err := m.applyAndTrack(context.Background(), m.ruleset(""), v2); !errors.Is(err, boom) {
 		t.Fatalf("failed apply must return the error; got %v", err)
@@ -63,6 +71,9 @@ func TestApplyFailureLeavesAppliedStale(t *testing.T) {
 	}
 	if a := m.FlowAttribution("10.99.0.10"); a.SrcDeviceID != "agent-v1" || a.PolicyHash != goodHash || a.PolicyVersion != 1 {
 		t.Fatalf("failed candidate must preserve the last-good attribution snapshot: %+v", a)
+	}
+	if got := m.AppliedVIPMap(); len(got) != 1 || got[0].Service != "api" {
+		t.Fatalf("failed candidate replaced the last-good VIP map: %+v", got)
 	}
 }
 

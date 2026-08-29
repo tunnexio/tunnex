@@ -90,3 +90,14 @@ func TestReleaseCatalogDefaultsOnlyForProductionAndCanBeDisabled(t *testing.T) {
 		t.Fatalf("development must not make a release network request, got %q", got)
 	}
 }
+
+func TestKubernetesHADeploymentGateDefaultsOffAndRequiresExplicitOptIn(t *testing.T) {
+	os.Unsetenv("TUNNEX_K8S_HA_ENABLED")
+	if Load().K8sHAEnabled {
+		t.Fatal("Kubernetes HA deployment composition must default OFF")
+	}
+	t.Setenv("TUNNEX_K8S_HA_ENABLED", "true")
+	if !Load().K8sHAEnabled {
+		t.Fatal("explicit Kubernetes HA deployment opt-in was ignored")
+	}
+}

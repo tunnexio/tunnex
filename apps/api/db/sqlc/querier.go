@@ -27,9 +27,15 @@ type Querier interface {
 	// Returns rows-affected: 0 on conflict = already present → the caller reports didChange=false and
 	// skips BOTH the audit and the org-wide re-push.
 	AddIdpGroupMember(ctx context.Context, arg AddIdpGroupMemberParams) (int64, error)
+	AddK8sConnectorPoolMember(ctx context.Context, arg AddK8sConnectorPoolMemberParams) (K8sConnectorPoolMember, error)
+	AddK8sConnectorPoolMemberForConfig(ctx context.Context, arg AddK8sConnectorPoolMemberForConfigParams) (K8sConnectorPoolMember, error)
 	// lint:cross-org — site_id is org-checked by the caller (GetSite) before this insert; site_subnets
 	// has no org_id column of its own (it inherits the site's org via the FK).
 	AddSiteSubnet(ctx context.Context, arg AddSiteSubnetParams) (SiteSubnet, error)
+	// Every non-CAS phase advance has an operation-ID + exact-scope + expected
+	// phase CAS. The table trigger admits only the next ordered phase (or failed),
+	// while the receipt checks prevent a phase from claiming evidence it lacks.
+	AdvanceK8sConnectorHandoffOperationPhase(ctx context.Context, arg AdvanceK8sConnectorHandoffOperationPhaseParams) (K8sConnectorHandoffOperation, error)
 	ApproveAgentAccessRequest(ctx context.Context, arg ApproveAgentAccessRequestParams) (AgentAccessRequest, error)
 	// The browser leg binds the human's identity to the pending device code.
 	ApproveCliDeviceCode(ctx context.Context, arg ApproveCliDeviceCodeParams) (int64, error)
@@ -55,6 +61,12 @@ type Querier interface {
 	// an already-synced group a no-row (the app layer maps that + the not-empty check to a 409). The
 	// disjointness (D1) and the not-empty rule are enforced above this; this only flips a clean group.
 	BindGroupToIdp(ctx context.Context, arg BindGroupToIdpParams) (UserGroup, error)
+	// Do not let a pool bind silently replace the legacy selected connector.
+	BindK8sClusterConnectorPool(ctx context.Context, arg BindK8sClusterConnectorPoolParams) (int64, error)
+	// The bind is the one-way compatibility handoff inside the same transaction:
+	// legacy connector_node_id becomes NULL only after a matching exact pool was
+	// created with that connector as its unchanged active and preferred member.
+	BindK8sClusterConnectorPoolFromLegacyForConfig(ctx context.Context, arg BindK8sClusterConnectorPoolFromLegacyForConfigParams) (int64, error)
 	// Bind a gateway node to a site IN THE SAME ORG. The EXISTS guard refuses a cross-org bind (a
 	// node must not bind to another org's site). The single-node-per-site partial unique index makes a
 	// second bind to an already-occupied site a unique violation, which the service maps to a typed 409.
@@ -101,6 +113,12 @@ type Querier interface {
 	// signal. Canonical public key, device telemetry, and rotation state advance in
 	// one statement/transaction; the next desired state retires the old peer.
 	CommitAgentWireGuardCandidate(ctx context.Context, arg CommitAgentWireGuardCandidateParams) (CommitAgentWireGuardCandidateRow, error)
+	// This is the future scheduler's crash-safe boundary. One transaction locks
+	// and rechecks exact pool state, applies active+generation once, appends one
+	// append-only system audit, records its provenance, and advances the durable
+	// operation to enable_serving. If any predicate is stale, it returns no row;
+	// it cannot leave a pool CAS without its receipt/audit/phase record.
+	CommitK8sConnectorHandoffCAS(ctx context.Context, arg CommitK8sConnectorHandoffCASParams) (K8sConnectorHandoffOperation, error)
 	// lint:cross-org — user-scoped credential.
 	// Arm enrollment: only an UNCONFIRMED row flips to confirmed, stamping the confirming code's
 	// timestep as the replay clock so the very first login can't replay the confirmation code.
@@ -339,8 +357,13 @@ type Querier interface {
 	// ⚠ `enrols_kind` is the OPERATOR'S DECLARATION, captured at the same instant as the issuer. Absence is
 	// the CLOSED state: the column defaults to 'gateway', so a caller that omits it mints a plain gateway.
 	CreateJoinToken(ctx context.Context, arg CreateJoinTokenParams) (NodeJoinToken, error)
-	// S10.3: Kubernetes cluster + exposed-Service queries. Org-scoped (tenant isolation).
 	CreateK8sCluster(ctx context.Context, arg CreateK8sClusterParams) (K8sCluster, error)
+	CreateK8sConnectorPool(ctx context.Context, arg CreateK8sConnectorPoolParams) (CreateK8sConnectorPoolRow, error)
+	// A configuration may create only from the legacy single-selected-connector
+	// mode. The initial pool keeps that exact connector as both preferred and
+	// active; it neither performs a promotion nor changes generation.
+	CreateK8sConnectorPoolForConfig(ctx context.Context, arg CreateK8sConnectorPoolForConfigParams) (CreateK8sConnectorPoolForConfigRow, error)
+	CreateK8sConnectorPoolHealthState(ctx context.Context, arg CreateK8sConnectorPoolHealthStateParams) (K8sConnectorPoolHealthState, error)
 	CreateK8sService(ctx context.Context, arg CreateK8sServiceParams) (K8sService, error)
 	// Machine credentials (S10.2): an org-scoped, NON-USER principal for the GitOps operator. Mirror of the
 	// cli_credentials pattern — sha256 hash storage, fingerprint-only display, revoke-severs-on-next-request.
@@ -355,6 +378,12 @@ type Querier interface {
 	// ⚠ `enrolled_kind` is carried from the redeemed token. NULL is impossible for a node enrolled after 0069
 	// (the token's column is NOT NULL); a NULL here means the node predates the marker — UNDETERMINED.
 	CreateNode(ctx context.Context, arg CreateNodeParams) (Node, error)
+	// Idempotent create/resume has one operation UUID and one immutable intent.
+	// A new record requires the exact pool pre-CAS state and both members. A retry
+	// may resume the same immutable record after CAS changed the pool state. A
+	// competing operation ID returns zero rows rather than replacing it; a caller
+	// that raced an initial insert retries its same operation ID normally.
+	CreateOrResumeK8sConnectorHandoffOperation(ctx context.Context, arg CreateOrResumeK8sConnectorHandoffOperationParams) (CreateOrResumeK8sConnectorHandoffOperationRow, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	// S7.5.4: src_kind ∈ {group,user}; S8.2: +site; S8.7: +cidr (exactly one of src_group_id/src_user_id/
 	// src_site_id/src_cidr, CHECK-enforced). expires_at NULL = permanent, set = a temporary grant. S8.1: dst_kind
@@ -420,6 +449,7 @@ type Querier interface {
 	// since a token is most likely to still exist on one enrolled recently. That is backwards.
 	DeleteJoinTokensForNode(ctx context.Context, consumedNodeID pgtype.UUID) (int64, error)
 	DeleteK8sCluster(ctx context.Context, arg DeleteK8sClusterParams) error
+	DeleteK8sConnectorPoolMemberForConfig(ctx context.Context, arg DeleteK8sConnectorPoolMemberForConfigParams) (int64, error)
 	// lint:cross-org — user-scoped login challenge.
 	// Burn — on SUCCESS or on cap exhaustion (a token never survives its own resolution).
 	DeleteMfaChallenge(ctx context.Context, id uuid.UUID) error
@@ -572,6 +602,37 @@ type Querier interface {
 	// not org. Callers must still check expires_at/accepted_at/revoked_at (single-use).
 	GetInvitationByTokenHash(ctx context.Context, tokenHash []byte) (Invitation, error)
 	GetK8sCluster(ctx context.Context, arg GetK8sClusterParams) (K8sCluster, error)
+	// Basic cluster API projection. A pool-bound cluster resolves its active
+	// connector only through the exact org/site/cluster-owned pool join. The
+	// service rejects a non-null cluster pool ID lacking this exact row rather
+	// than selecting another pool or treating the connector as unassigned.
+	GetK8sClusterConnectorView(ctx context.Context, arg GetK8sClusterConnectorViewParams) (GetK8sClusterConnectorViewRow, error)
+	// S10.3: Kubernetes cluster + exposed-Service queries. Org-scoped (tenant isolation).
+	// Configuration serializes on the exact cluster before it looks up or creates
+	// its one cluster-owned pool. Site scope is intentional: a configuration
+	// caller must prove the full org/site/cluster relationship at the mutation
+	// boundary, rather than treating a globally unique cluster ID as authority.
+	GetK8sClusterForConnectorPoolConfigForUpdate(ctx context.Context, arg GetK8sClusterForConnectorPoolConfigForUpdateParams) (K8sCluster, error)
+	// The legacy setter and pool configuration take the same cluster lock. Once a
+	// cluster enters pool mode, the direct connector setter must return a typed
+	// conflict rather than falling through to the database mode constraint.
+	GetK8sClusterForConnectorSetForUpdate(ctx context.Context, arg GetK8sClusterForConnectorSetForUpdateParams) (K8sCluster, error)
+	// Exact operation lookup precedes a new health decision. A terminal record is
+	// deliberately still visible so a retry cannot reopen or replace it.
+	GetK8sConnectorHandoffOperation(ctx context.Context, arg GetK8sConnectorHandoffOperationParams) (K8sConnectorHandoffOperation, error)
+	// Delivery is held behind this row lock until its expected-phase CAS commits.
+	// A concurrent tick then rereads the advanced phase instead of sending a
+	// second transport request for the same operation key.
+	GetK8sConnectorHandoffOperationForUpdate(ctx context.Context, arg GetK8sConnectorHandoffOperationForUpdateParams) (K8sConnectorHandoffOperation, error)
+	GetK8sConnectorPoolForClusterForConfig(ctx context.Context, arg GetK8sConnectorPoolForClusterForConfigParams) (K8sConnectorPool, error)
+	GetK8sConnectorPoolForClusterForConfigForUpdate(ctx context.Context, arg GetK8sConnectorPoolForClusterForConfigForUpdateParams) (K8sConnectorPool, error)
+	GetK8sConnectorPoolForOrg(ctx context.Context, arg GetK8sConnectorPoolForOrgParams) (K8sConnectorPool, error)
+	// A promotion holds the exact pool row while it rechecks its observed active
+	// member and generation. Site scope is explicit even though pool ID is unique:
+	// a caller must never mutate an org peer's same-ID state by omission.
+	GetK8sConnectorPoolForPromotion(ctx context.Context, arg GetK8sConnectorPoolForPromotionParams) (K8sConnectorPool, error)
+	GetK8sConnectorPoolHealthState(ctx context.Context, arg GetK8sConnectorPoolHealthStateParams) (K8sConnectorPoolHealthState, error)
+	GetK8sConnectorPoolHealthStateForUpdate(ctx context.Context, arg GetK8sConnectorPoolHealthStateForUpdateParams) (K8sConnectorPoolHealthState, error)
 	GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K8sService, error)
 	// lint:cross-org — an auth lookup by the secret HASH; the row resolves the org (the hash IS the credential).
 	// Returns the row regardless of revoked state — the auth path applies the NO-ORACLE check (revoked /
@@ -644,6 +705,10 @@ type Querier interface {
 	// lint:cross-org — same reasoning as GetNodeByCertSerial and RekeyNode: the caller is an unauthenticated agent with
 	// no session and no org context, and the recorded key material IS the identity claim being tested.
 	GetNodesByCertKeyFingerprint(ctx context.Context, certKeyFingerprint *string) ([]Node, error)
+	// A fresh resolver must not mint a second intent while an operation for this
+	// exact tenant/site/pool is already durable. The partial unique index makes
+	// more than one row impossible; a missing row is the only fresh domain.
+	GetNonterminalK8sConnectorHandoffOperationForPool(ctx context.Context, arg GetNonterminalK8sConnectorHandoffOperationForPoolParams) (K8sConnectorHandoffOperation, error)
 	// The org's current signed CRL (delivery reads this; empty crl_pem = not-yet-ready, skip this tick).
 	GetOVPNCRLForOrg(ctx context.Context, orgID uuid.UUID) (GetOVPNCRLForOrgRow, error)
 	// lint:cross-org — keyed by node_id; the caller (DesiredState) already authorized the node via mTLS.
@@ -696,6 +761,10 @@ type Querier interface {
 	// the read and the UPDATE — extend and sweep serialize on this lock (extended-or-terminal,
 	// never torn, and old_expires_at is the true pre-update value).
 	GetPolicyRuleForUpdate(ctx context.Context, arg GetPolicyRuleForUpdateParams) (PolicyRule, error)
+	// Private P2 composition read. The four raw envelope bodies do not cross this
+	// query boundary into a public handler; the provenance facade selects one
+	// only after exact non-secret artifact identity validation.
+	GetPoolVIPOwnershipFreshHandoffEnvelopeBodies(ctx context.Context, arg GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesParams) (GetPoolVIPOwnershipFreshHandoffEnvelopeBodiesRow, error)
 	GetResource(ctx context.Context, arg GetResourceParams) (Resource, error)
 	GetSSOConfig(ctx context.Context, arg GetSSOConfigParams) (SsoConfig, error)
 	GetSite(ctx context.Context, arg GetSiteParams) (Site, error)
@@ -796,6 +865,8 @@ type Querier interface {
 	ListActiveFullTunnelDevices(ctx context.Context, orgID uuid.UUID) ([]ListActiveFullTunnelDevicesRow, error)
 	// ListActiveK8sServicesForOrg is the compiler's resolution source: id -> current VIP (+ proto/ports), LIVE
 	// only. A soft-deleted Service is absent, so a grant referencing it compiles to nothing (honest, not silent).
+	// Pool mode keeps legacy and active-pool columns separate. Callers must reject
+	// a pool-bound row without its exact active member and positive generation.
 	ListActiveK8sServicesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActiveK8sServicesForOrgRow, error)
 	ListActiveMCPAssignmentsForDevice(ctx context.Context, arg ListActiveMCPAssignmentsForDeviceParams) ([]ListActiveMCPAssignmentsForDeviceRow, error)
 	// S7.2 push targeting: every active gateway in the org. A policy change is org-wide,
@@ -909,6 +980,15 @@ type Querier interface {
 	ListAlertDestinationsForEvent(ctx context.Context, arg ListAlertDestinationsForEventParams) ([]AlertDestination, error)
 	ListAlertSubscriptions(ctx context.Context, arg ListAlertSubscriptionsParams) ([]AlertSubscription, error)
 	ListAlertingEnabledOrganizations(ctx context.Context) ([]uuid.UUID, error)
+	// S20.4 compiler input. One row lowers an active scope rule to one ordinary
+	// exact k8s_service destination. The selected report is the latest eligible
+	// snapshot for the exact current connector generation; an older still-fresh
+	// report must not retain a Service omitted by a newer snapshot. Every
+	// approval identity is rejoined to the current UID attribution and exact
+	// protocol/port child. Missing opt-in, stale inventory, moved ownership,
+	// malformed over-limit state, or an identity mismatch therefore yields zero
+	// rows rather than a wildcard or a guessed sibling port.
+	ListApprovedK8sClusterScopeExpansions(ctx context.Context, orgID uuid.UUID) ([]ListApprovedK8sClusterScopeExpansionsRow, error)
 	// Org-scoped audit feed with optional filters (actor / action / date range) and
 	// KEYSET pagination on (created_at, id) DESC. Every filter + cursor param is
 	// nullable, so the S4.3 dashboard passes none (latest N). The cursor is written
@@ -996,15 +1076,54 @@ type Querier interface {
 	// kinds of deletion would render differently for no reason a user could explain — and the soft
 	// one would keep publishing the address of an account we were asked to remove.
 	ListInvitations(ctx context.Context, orgID uuid.UUID) ([]ListInvitationsRow, error)
+	// One org-scoped query for the cluster list; handlers never do a per-cluster
+	// pool lookup. Malformed pool-bound rows are returned only as an unresolved
+	// join and are rejected fail-closed by the service before any partial list is
+	// emitted.
+	ListK8sClusterConnectorViewsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sClusterConnectorViewsForOrgRow, error)
 	// ListK8sClusterZonesForOrg feeds (a) cross-mechanism one-zone-one-resolver enforcement (S10.3 (A)): a site
 	// dns_forwarding domain must not collide with a K8s cluster's DNS zone (<cluster>.<dns_zone>), and vice versa;
 	// and (b) the client-side resolver push (fork-1): the {<cluster>.<dns_zone> -> reserved DNS VIP} mapping the
 	// routed-forwards channel hands split-tunnel/OVPN clients so they resolve exposed Service names.
 	ListK8sClusterZonesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sClusterZonesForOrgRow, error)
 	ListK8sClustersForOrg(ctx context.Context, orgID uuid.UUID) ([]K8sCluster, error)
+	// One exact pool-bound cluster snapshot for the durable plan resolver.  The
+	// cluster.connector_pool_id join deliberately forbids legacy fallback and a
+	// matching health row supplies the authoritative 0083 membership incarnation.
+	// Higher administrative priority wins; UUID breaks ties exactly as the pure
+	// pool model does for a stable candidate order.
+	ListK8sConnectorHandoffResolutionMembers(ctx context.Context, arg ListK8sConnectorHandoffResolutionMembersParams) ([]ListK8sConnectorHandoffResolutionMembersRow, error)
+	// The scheduler source sees only clusters explicitly bound to their exact
+	// org/site/cluster-owned pool. Every member is joined to its current node row
+	// in the same org/site; a partial or cross-scope relationship emits no row.
+	ListK8sConnectorHandoffTickMembers(ctx context.Context) ([]ListK8sConnectorHandoffTickMembersRow, error)
+	ListK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg ListK8sConnectorPoolHealthCandidateTicksParams) ([]K8sConnectorPoolHealthCandidateTick, error)
+	ListK8sConnectorPoolHealthCandidateTicksForUpdate(ctx context.Context, arg ListK8sConnectorPoolHealthCandidateTicksForUpdateParams) ([]K8sConnectorPoolHealthCandidateTick, error)
+	// S10.3c durable handoff-operation contract. The PostgreSQL tick source uses
+	// these generated read bindings; it remains unregistered and read-only.
+	// S10.3c durable health-history contract. A source may persist one CP-issued
+	// observation after it locks and rechecks this exact pool/member snapshot.
+	// These queries have no pool ownership mutation and no scheduler registration.
+	// The observer locks the exact current members and their CP-recorded node
+	// evidence with the pool row before it derives an idempotency fingerprint.
+	ListK8sConnectorPoolHealthObservationMembersForUpdate(ctx context.Context, arg ListK8sConnectorPoolHealthObservationMembersForUpdateParams) ([]ListK8sConnectorPoolHealthObservationMembersForUpdateRow, error)
+	// Operator status may expose only the durable health-state incarnation and
+	// CP receipt time for explicitly pool-bound clusters. observed_active_node_id
+	// is read only to reject an ownership-drifted snapshot; the projection never
+	// exposes it. The query omits member, artifact, lease, observation-key, and
+	// P2 identity fields.
+	ListK8sConnectorPoolHealthStatesForOperatorStatus(ctx context.Context, orgID uuid.UUID) ([]ListK8sConnectorPoolHealthStatesForOperatorStatusRow, error)
+	ListK8sConnectorPoolMembersForConfig(ctx context.Context, arg ListK8sConnectorPoolMembersForConfigParams) ([]K8sConnectorPoolMember, error)
+	ListK8sConnectorPoolMembersForConfigForUpdate(ctx context.Context, arg ListK8sConnectorPoolMembersForConfigForUpdateParams) ([]K8sConnectorPoolMember, error)
+	ListK8sConnectorPoolMembersForOrg(ctx context.Context, arg ListK8sConnectorPoolMembersForOrgParams) ([]K8sConnectorPoolMember, error)
+	// Lock the current member set too. This makes the source and selected target
+	// membership evidence stable through the active-state CAS and audit append.
+	ListK8sConnectorPoolMembersForPromotion(ctx context.Context, arg ListK8sConnectorPoolMembersForPromotionParams) ([]K8sConnectorPoolMember, error)
+	ListK8sConnectorPoolStatusMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sConnectorPoolStatusMembersForOrgRow, error)
 	// ListK8sServedZonesForOrg is the zones a connector ACTUALLY answers: a cluster with >=1 LIVE exposed Service
-	// AND an explicit connector. An unassigned cluster must not hand clients a resolver address that intentionally
-	// has no answering node.
+	// AND a resolved connector. A pool-bound cluster resolves only through its
+	// exact org/site/cluster-owned pool and a positive generation; it never falls
+	// back to the legacy connector column.
 	// This is the SAME live-service set the agent's K8sDNSZones is built from (loadSiteTopology →
 	// ListActiveK8sServicesForOrg), so the client resolver push (routedranges) and the gateway's own answer set
 	// agree BY CONSTRUCTION (L2): a zone the gateway would REFUSE for (no Service yet) is never handed to a client
@@ -1082,6 +1201,9 @@ type Querier interface {
 	// with the storage, consumed by S8.6 Slice 4 + Slice 6).
 	ListNodePeerStatusForOrg(ctx context.Context, orgID uuid.UUID) ([]NodePeerStatus, error)
 	ListNodes(ctx context.Context, orgID uuid.UUID) ([]Node, error)
+	// A resume read is restricted to the same explicit cluster-pool binding as
+	// discovery. Terminal records remain historical only and cannot be reopened.
+	ListNonterminalK8sConnectorHandoffOperationsForTick(ctx context.Context) ([]K8sConnectorHandoffOperation, error)
 	// S9.1 Slice 5: orgs with OpenVPN enabled — the scheduled CRL refresh regenerates each org's CRL well
 	// inside CRLValidity so no CRL ever EXPIRES (an expired CRL can fail-OPEN, silently un-revoking a fleet).
 	ListOVPNEnabledOrgs(ctx context.Context) ([]uuid.UUID, error)
@@ -1311,6 +1433,7 @@ type Querier interface {
 	RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error)
 	RequestAgentWireGuardRotation(ctx context.Context, arg RequestAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	ReserveAlertDeliveryCooldown(ctx context.Context, arg ReserveAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
+	ResetK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg ResetK8sConnectorPoolHealthCandidateTicksParams) (int64, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set
 	// from ListCascadeRevokedDevicesForNode.
 	// Restores ONE cascade-revoked device (S13.1 D5), to the address the caller resolved.
@@ -1462,6 +1585,11 @@ type Querier interface {
 	// lint:cross-org — keyed by id inside the org-authorized create transaction (same as CreateDevice's row).
 	SetDeviceProvisioning(ctx context.Context, arg SetDeviceProvisioningParams) error
 	SetK8sClusterConnector(ctx context.Context, arg SetK8sClusterConnectorParams) (int64, error)
+	SetK8sClusterProviderMetadata(ctx context.Context, arg SetK8sClusterProviderMetadataParams) (K8sCluster, error)
+	SetK8sConnectorPoolMemberPriorityForConfig(ctx context.Context, arg SetK8sConnectorPoolMemberPriorityForConfigParams) (K8sConnectorPoolMember, error)
+	// Expected-active-and-generation compare-and-swap is the persistence fence.
+	// A stale reconciler affects zero rows; it must not overwrite a newer promotion.
+	SetK8sConnectorPoolState(ctx context.Context, arg SetK8sConnectorPoolStateParams) (K8sConnectorPool, error)
 	// lint:cross-org — org-scoped. The admin pin (S8.6 D1): a nullable rank; NULL clears the pin. Org-checked
 	// so a cross-org node id no-ops (0 rows -> typed 404 at the service).
 	SetNodeHubPriority(ctx context.Context, arg SetNodeHubPriorityParams) (int64, error)
@@ -1584,6 +1712,7 @@ type Querier interface {
 	// Mode changes preserve the device principal, gateway, credential and pool allocation. The caller
 	// authorizes ownership; the service serializes this update with a row lock before invoking it.
 	UpdateDeviceMode(ctx context.Context, arg UpdateDeviceModeParams) (Device, error)
+	UpdateK8sConnectorPoolHealthState(ctx context.Context, arg UpdateK8sConnectorPoolHealthStateParams) (K8sConnectorPoolHealthState, error)
 	// Edits a gateway's NAME and/or ENDPOINT (S12.12 D3) — the two things an operator can get wrong at
 	// enrolment and, until now, could never correct.
 	//
@@ -1623,6 +1752,7 @@ type Querier interface {
 	// plaintext never reaches SQL. On re-set, credentials update but the sync-health columns are
 	// left intact (a credential rotation shouldn't fake a green health).
 	UpsertIdpSyncConfig(ctx context.Context, arg UpsertIdpSyncConfigParams) (IdpSyncConfig, error)
+	UpsertK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg UpsertK8sConnectorPoolHealthCandidateTicksParams) (K8sConnectorPoolHealthCandidateTick, error)
 	// Idempotent on (org_id, user_id).
 	UpsertMembership(ctx context.Context, arg UpsertMembershipParams) (Membership, error)
 	// lint:cross-org — keyed by node_id (the agent is cert-authorized for its own node) + the PEER's pubkey.

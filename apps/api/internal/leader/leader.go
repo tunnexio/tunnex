@@ -59,6 +59,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -80,12 +81,47 @@ const SchedulerLockKey int64 = 0x54554E4E58530001 // "TUNNXS" + slot 1
 // Elector reports whether THIS process currently holds scheduler leadership.
 type Elector struct {
 	leading atomic.Bool
+	// sessionMu serializes use of the dedicated lock-holding connection. A
+	// fenced scheduler callback therefore verifies and writes on the same
+	// PostgreSQL session, never a random pooled connection.
+	sessionMu  sync.Mutex
+	leaderConn *pgxpool.Conn
 	// leaderPID is the Postgres backend pid of the DEDICATED connection that holds the lock, captured at acquire.
 	//
 	// ConfirmLeader needs it because a pool query runs on SOME connection, not THIS one — the first draft of that
 	// check called pg_backend_pid() through the pool and was therefore asking about the wrong session entirely.
 	// Storing the pid makes the confirmation a question about the lock we actually hold.
 	leaderPID atomic.Int32
+}
+
+// WithLeaderSession runs fn only while the exact dedicated PostgreSQL session
+// still holds SchedulerLockKey. The callback is serialized with campaign ping
+// and unlock; callers must keep it bounded and must not retain conn.
+func (e *Elector) WithLeaderSession(ctx context.Context, wantPID int32, fn func(*pgxpool.Conn) error) (bool, error) {
+	if wantPID == 0 || fn == nil {
+		return false, nil
+	}
+	e.sessionMu.Lock()
+	defer e.sessionMu.Unlock()
+	if !e.leading.Load() || e.leaderPID.Load() != wantPID || e.leaderConn == nil {
+		return false, nil
+	}
+	var held bool
+	err := e.leaderConn.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM pg_locks
+			WHERE locktype = 'advisory' AND granted AND objsubid = 1
+			  AND pid = pg_backend_pid()
+			  AND ((classid::bigint << 32) | (objid::bigint & 4294967295)) = $1
+		)`, SchedulerLockKey).Scan(&held)
+	if err != nil || !held {
+		e.leading.Store(false)
+		return false, err
+	}
+	if err := fn(e.leaderConn); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 // IsLeader is a CHEAP, POSSIBLY STALE pre-filter. It is NOT an authorization to write.
@@ -108,12 +144,20 @@ func (e *Elector) IsLeader() bool { return e.leading.Load() }
 // Returns false on ANY doubt — a query error, a lost connection, a context that ended. Refusing to write because
 // we could not confirm is the safe direction; writing because our own flag said so is how the split brain happened.
 func (e *Elector) ConfirmLeader(ctx context.Context, pool *pgxpool.Pool) bool {
+	_, held := e.ConfirmLeaderEpoch(ctx, pool)
+	return held
+}
+
+// ConfirmLeaderEpoch returns the backend PID of the exact session that still
+// owns scheduler leadership. A zero PID or false result means no current
+// authorization to write.
+func (e *Elector) ConfirmLeaderEpoch(ctx context.Context, pool *pgxpool.Pool) (int32, bool) {
 	if !e.leading.Load() {
-		return false
+		return 0, false
 	}
 	pid := e.leaderPID.Load()
 	if pid == 0 {
-		return false
+		return 0, false
 	}
 	// A bigint advisory key is stored split across classid (high 32 bits) and objid (low 32), with objsubid = 1.
 	// Matching on the PID of our own lock-holding backend is what makes this a question about THIS process's lock
@@ -127,9 +171,9 @@ func (e *Elector) ConfirmLeader(ctx context.Context, pool *pgxpool.Pool) bool {
 			  AND ((classid::bigint << 32) | (objid::bigint & 4294967295)) = $2
 		)`, pid, SchedulerLockKey).Scan(&held)
 	if err != nil {
-		return false
+		return 0, false
 	}
-	return held
+	return pid, held
 }
 
 // Run campaigns for leadership until ctx is cancelled. It blocks, so callers run it in a goroutine.
@@ -208,6 +252,9 @@ func (e *Elector) campaign(ctx context.Context, pool *pgxpool.Pool, log *slog.Lo
 		return err
 	}
 	e.leaderPID.Store(pid)
+	e.sessionMu.Lock()
+	e.leaderConn = conn
+	e.sessionMu.Unlock()
 	e.leading.Store(true)
 	if log != nil {
 		log.Info("leader_acquired", "key", SchedulerLockKey, "backend_pid", pid)
@@ -219,7 +266,12 @@ func (e *Elector) campaign(ctx context.Context, pool *pgxpool.Pool, log *slog.Lo
 	defer func() {
 		e.leading.Store(false)
 		e.leaderPID.Store(0)
+		e.sessionMu.Lock()
+		if e.leaderConn == conn {
+			e.leaderConn = nil
+		}
 		e.unlock(conn, log, "campaign_exit")
+		e.sessionMu.Unlock()
 	}()
 
 	// Hold leadership until the context ends or the connection dies. The ping detects a dead connection so
@@ -233,12 +285,15 @@ func (e *Elector) campaign(ctx context.Context, pool *pgxpool.Pool, log *slog.Lo
 			// because two unlock sites meant the non-graceful paths had none.
 			return nil
 		case <-ticker.C:
+			e.sessionMu.Lock()
 			if err := conn.Ping(ctx); err != nil {
+				e.sessionMu.Unlock()
 				if errors.Is(err, context.Canceled) {
 					return nil
 				}
 				return err // connection dead → leadership lost → Postgres has freed the lock
 			}
+			e.sessionMu.Unlock()
 		}
 	}
 }

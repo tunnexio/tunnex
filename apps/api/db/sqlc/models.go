@@ -557,18 +557,21 @@ type FqdnGatewayDnsRequest struct {
 	ResolverConfigID      pgtype.UUID        `json:"resolver_config_id"`
 	ResolverConfigVersion *int64             `json:"resolver_config_version"`
 	ResolverEndpoints     []byte             `json:"resolver_endpoints"`
+	ResolverProfileID     pgtype.UUID        `json:"resolver_profile_id"`
+	ResolverMatchSuffix   *string            `json:"resolver_match_suffix"`
 }
 
 type FqdnResolverContextConfig struct {
-	ID        uuid.UUID          `json:"id"`
-	OrgID     uuid.UUID          `json:"org_id"`
-	SiteID    uuid.UUID          `json:"site_id"`
-	GatewayID uuid.UUID          `json:"gateway_id"`
-	Version   int64              `json:"version"`
-	State     string             `json:"state"`
-	CreatedAt time.Time          `json:"created_at"`
-	RetiredAt pgtype.Timestamptz `json:"retired_at"`
-	CreatedBy pgtype.UUID        `json:"created_by"`
+	ID           uuid.UUID          `json:"id"`
+	OrgID        uuid.UUID          `json:"org_id"`
+	SiteID       uuid.UUID          `json:"site_id"`
+	GatewayID    uuid.UUID          `json:"gateway_id"`
+	Version      int64              `json:"version"`
+	State        string             `json:"state"`
+	CreatedAt    time.Time          `json:"created_at"`
+	RetiredAt    pgtype.Timestamptz `json:"retired_at"`
+	CreatedBy    pgtype.UUID        `json:"created_by"`
+	ProviderHint *string            `json:"provider_hint"`
 }
 
 type FqdnResolverContextEndpoint struct {
@@ -578,6 +581,32 @@ type FqdnResolverContextEndpoint struct {
 	Address   netip.Addr `json:"address"`
 	Port      int32      `json:"port"`
 	Transport string     `json:"transport"`
+}
+
+type FqdnResolverContextProfile struct {
+	ID            uuid.UUID `json:"id"`
+	ConfigID      uuid.UUID `json:"config_id"`
+	OrgID         uuid.UUID `json:"org_id"`
+	Ordinal       int16     `json:"ordinal"`
+	Name          string    `json:"name"`
+	ProviderHint  string    `json:"provider_hint"`
+	LegacyDefault bool      `json:"legacy_default"`
+}
+
+type FqdnResolverContextProfileEndpoint struct {
+	ProfileID uuid.UUID  `json:"profile_id"`
+	OrgID     uuid.UUID  `json:"org_id"`
+	Ordinal   int16      `json:"ordinal"`
+	Address   netip.Addr `json:"address"`
+	Port      int32      `json:"port"`
+	Transport string     `json:"transport"`
+}
+
+type FqdnResolverContextProfileSuffix struct {
+	ProfileID uuid.UUID `json:"profile_id"`
+	ConfigID  uuid.UUID `json:"config_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	Suffix    string    `json:"suffix"`
 }
 
 type FqdnResource struct {
@@ -596,21 +625,23 @@ type FqdnResource struct {
 }
 
 type FqdnResourceAnswerGeneration struct {
-	ID               uuid.UUID          `json:"id"`
-	OrgID            uuid.UUID          `json:"org_id"`
-	ResourceID       uuid.UUID          `json:"resource_id"`
-	Generation       int64              `json:"generation"`
-	ResolverNodeID   uuid.UUID          `json:"resolver_node_id"`
-	State            string             `json:"state"`
-	EffectiveTtl     pgtype.Interval    `json:"effective_ttl"`
-	ResolvedAt       time.Time          `json:"resolved_at"`
-	LastGoodAt       pgtype.Timestamptz `json:"last_good_at"`
-	ActivatedAt      pgtype.Timestamptz `json:"activated_at"`
-	EndedAt          pgtype.Timestamptz `json:"ended_at"`
-	FailureCode      *string            `json:"failure_code"`
-	CreatedAt        time.Time          `json:"created_at"`
-	ResolverSiteID   pgtype.UUID        `json:"resolver_site_id"`
-	ResolverConfigID pgtype.UUID        `json:"resolver_config_id"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	ResourceID          uuid.UUID          `json:"resource_id"`
+	Generation          int64              `json:"generation"`
+	ResolverNodeID      uuid.UUID          `json:"resolver_node_id"`
+	State               string             `json:"state"`
+	EffectiveTtl        pgtype.Interval    `json:"effective_ttl"`
+	ResolvedAt          time.Time          `json:"resolved_at"`
+	LastGoodAt          pgtype.Timestamptz `json:"last_good_at"`
+	ActivatedAt         pgtype.Timestamptz `json:"activated_at"`
+	EndedAt             pgtype.Timestamptz `json:"ended_at"`
+	FailureCode         *string            `json:"failure_code"`
+	CreatedAt           time.Time          `json:"created_at"`
+	ResolverSiteID      pgtype.UUID        `json:"resolver_site_id"`
+	ResolverConfigID    pgtype.UUID        `json:"resolver_config_id"`
+	ResolverProfileID   pgtype.UUID        `json:"resolver_profile_id"`
+	ResolverMatchSuffix *string            `json:"resolver_match_suffix"`
 }
 
 type FqdnResourceGenerationAnswer struct {
@@ -666,6 +697,61 @@ type Invitation struct {
 	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
+type K8sBaseAuthorityAckReceipt struct {
+	DeliveryID         uuid.UUID `json:"delivery_id"`
+	OrgID              uuid.UUID `json:"org_id"`
+	SiteID             uuid.UUID `json:"site_id"`
+	NodeID             uuid.UUID `json:"node_id"`
+	AuthorityRevision  int64     `json:"authority_revision"`
+	PayloadDigest      string    `json:"payload_digest"`
+	AppliedBaseVersion int64     `json:"applied_base_version"`
+	AppliedBaseHash    string    `json:"applied_base_hash"`
+	AgentAppliedAt     time.Time `json:"agent_applied_at"`
+	ReceiptTime        time.Time `json:"receipt_time"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+type K8sBaseAuthorityDelivery struct {
+	ID                 uuid.UUID `json:"id"`
+	OrgID              uuid.UUID `json:"org_id"`
+	SiteID             uuid.UUID `json:"site_id"`
+	NodeID             uuid.UUID `json:"node_id"`
+	AuthorityRevision  int64     `json:"authority_revision"`
+	WireVersion        int32     `json:"wire_version"`
+	BaseVersion        int64     `json:"base_version"`
+	BaseHash           string    `json:"base_hash"`
+	PayloadDigest      string    `json:"payload_digest"`
+	Payload            []byte    `json:"payload"`
+	TransitionRevision int64     `json:"transition_revision"`
+	ExpiresAt          time.Time `json:"expires_at"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+type K8sBaseAuthorityDeliveryPool struct {
+	DeliveryID           uuid.UUID `json:"delivery_id"`
+	OrgID                uuid.UUID `json:"org_id"`
+	SiteID               uuid.UUID `json:"site_id"`
+	NodeID               uuid.UUID `json:"node_id"`
+	ClusterID            uuid.UUID `json:"cluster_id"`
+	PoolID               uuid.UUID `json:"pool_id"`
+	PromotionGeneration  int64     `json:"promotion_generation"`
+	Kind                 string    `json:"kind"`
+	Disposition          *string   `json:"disposition"`
+	Classification       []byte    `json:"classification"`
+	ClassificationDigest *string   `json:"classification_digest"`
+}
+
+type K8sBaseAuthorityNodeState struct {
+	OrgID                     uuid.UUID `json:"org_id"`
+	SiteID                    uuid.UUID `json:"site_id"`
+	NodeID                    uuid.UUID `json:"node_id"`
+	NextAuthorityRevision     int64     `json:"next_authority_revision"`
+	AcceptedAuthorityRevision int64     `json:"accepted_authority_revision"`
+	AcceptedPayloadDigest     *string   `json:"accepted_payload_digest"`
+	CreatedAt                 time.Time `json:"created_at"`
+	UpdatedAt                 time.Time `json:"updated_at"`
+}
+
 type K8sCluster struct {
 	ID               uuid.UUID    `json:"id"`
 	OrgID            uuid.UUID    `json:"org_id"`
@@ -680,6 +766,8 @@ type K8sCluster struct {
 	ManagedByMachine pgtype.UUID  `json:"managed_by_machine"`
 	ConnectorNodeID  pgtype.UUID  `json:"connector_node_id"`
 	ConnectorPoolID  pgtype.UUID  `json:"connector_pool_id"`
+	Provider         string       `json:"provider"`
+	Platform         string       `json:"platform"`
 }
 
 type K8sClusterScopeGrant struct {
@@ -691,6 +779,22 @@ type K8sClusterScopeGrant struct {
 	Active                bool      `json:"active"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
+	Revision              int64     `json:"revision"`
+}
+
+type K8sClusterScopeInitialCandidate struct {
+	RuleID            uuid.UUID `json:"rule_id"`
+	OrgID             uuid.UUID `json:"org_id"`
+	ClusterID         uuid.UUID `json:"cluster_id"`
+	ServiceChildID    uuid.UUID `json:"service_child_id"`
+	InventoryReportID uuid.UUID `json:"inventory_report_id"`
+	Namespace         string    `json:"namespace"`
+	ServiceUid        string    `json:"service_uid"`
+	Protocol          string    `json:"protocol"`
+	PortLow           int32     `json:"port_low"`
+	PortHigh          int32     `json:"port_high"`
+	Selected          bool      `json:"selected"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type K8sClusterScopeMembership struct {
@@ -709,6 +813,16 @@ type K8sClusterScopeMembership struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 	Origin          *string            `json:"origin"`
+}
+
+type K8sClusterScopeSetting struct {
+	OrgID       uuid.UUID `json:"org_id"`
+	Enabled     bool      `json:"enabled"`
+	Revision    int64     `json:"revision"`
+	ActorUserID uuid.UUID `json:"actor_user_id"`
+	Cause       string    `json:"cause"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type K8sConnectorHandoffOperation struct {
@@ -774,6 +888,28 @@ type K8sConnectorPool struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+type K8sConnectorPoolHaTransition struct {
+	PoolID                    uuid.UUID          `json:"pool_id"`
+	OrgID                     uuid.UUID          `json:"org_id"`
+	SiteID                    uuid.UUID          `json:"site_id"`
+	ClusterID                 uuid.UUID          `json:"cluster_id"`
+	RequestedMode             string             `json:"requested_mode"`
+	ActualMode                string             `json:"actual_mode"`
+	ActiveNodeID              uuid.UUID          `json:"active_node_id"`
+	PromotionGeneration       int64              `json:"promotion_generation"`
+	MembershipEpoch           *int64             `json:"membership_epoch"`
+	TransitionRevision        int64              `json:"transition_revision"`
+	AchievedAuthorityRevision *int64             `json:"achieved_authority_revision"`
+	ReasonCode                string             `json:"reason_code"`
+	ActorUserID               pgtype.UUID        `json:"actor_user_id"`
+	ActorSystem               *string            `json:"actor_system"`
+	Cause                     string             `json:"cause"`
+	RequestedAt               time.Time          `json:"requested_at"`
+	AchievedAt                pgtype.Timestamptz `json:"achieved_at"`
+	CreatedAt                 time.Time          `json:"created_at"`
+	UpdatedAt                 time.Time          `json:"updated_at"`
+}
+
 type K8sConnectorPoolHealthCandidateTick struct {
 	StateID      uuid.UUID `json:"state_id"`
 	OrgID        uuid.UUID `json:"org_id"`
@@ -814,6 +950,17 @@ type K8sConnectorPoolMember struct {
 	AdminPriority int32     `json:"admin_priority"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type K8sHaSetting struct {
+	OrgID       uuid.UUID   `json:"org_id"`
+	Enabled     bool        `json:"enabled"`
+	Revision    int64       `json:"revision"`
+	ActorUserID pgtype.UUID `json:"actor_user_id"`
+	ActorSystem *string     `json:"actor_system"`
+	Cause       string      `json:"cause"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
 type K8sPoolOwnershipV2Capability struct {
@@ -875,6 +1022,53 @@ type K8sServiceIdentity struct {
 	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type K8sServiceInventoryItem struct {
+	ReportID     uuid.UUID `json:"report_id"`
+	OrgID        uuid.UUID `json:"org_id"`
+	ClusterID    uuid.UUID `json:"cluster_id"`
+	InventoryRef uuid.UUID `json:"inventory_ref"`
+	Namespace    string    `json:"namespace"`
+	Service      string    `json:"service"`
+	ServiceUid   string    `json:"service_uid"`
+	PortCount    int32     `json:"port_count"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type K8sServiceInventoryPort struct {
+	ReportID     uuid.UUID `json:"report_id"`
+	InventoryRef uuid.UUID `json:"inventory_ref"`
+	PortRef      uuid.UUID `json:"port_ref"`
+	Name         *string   `json:"name"`
+	Protocol     string    `json:"protocol"`
+	ServicePort  int32     `json:"service_port"`
+	TargetPort   *int32    `json:"target_port"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type K8sServiceInventoryReport struct {
+	ID                  uuid.UUID `json:"id"`
+	OrgID               uuid.UUID `json:"org_id"`
+	SiteID              uuid.UUID `json:"site_id"`
+	ClusterID           uuid.UUID `json:"cluster_id"`
+	ConnectorNodeID     uuid.UUID `json:"connector_node_id"`
+	ReplayStateID       uuid.UUID `json:"replay_state_id"`
+	ReplaySequence      int64     `json:"replay_sequence"`
+	PromotionGeneration int64     `json:"promotion_generation"`
+	Digest              string    `json:"digest"`
+	ServiceCount        int32     `json:"service_count"`
+	ObservedAt          time.Time `json:"observed_at"`
+	ReceivedAt          time.Time `json:"received_at"`
+	FreshUntil          time.Time `json:"fresh_until"`
+	CreatedAt           time.Time `json:"created_at"`
+}
+
+type K8sServiceInventoryRetentionAuthorization struct {
+	BackendPid    int32     `json:"backend_pid"`
+	TransactionID int64     `json:"transaction_id"`
+	ReportID      uuid.UUID `json:"report_id"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type K8sServiceUidObservationCurrent struct {
 	LedgerID       uuid.UUID `json:"ledger_id"`
 	OrgID          uuid.UUID `json:"org_id"`
@@ -883,6 +1077,17 @@ type K8sServiceUidObservationCurrent struct {
 	Uid            string    `json:"uid"`
 	State          string    `json:"state"`
 	ReplaySequence int64     `json:"replay_sequence"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type K8sServiceUidObservationCurrentAttribution struct {
+	LedgerID       uuid.UUID `json:"ledger_id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	Namespace      string    `json:"namespace"`
+	Service        string    `json:"service"`
+	ReplayStateID  uuid.UUID `json:"replay_state_id"`
+	ReplaySequence int64     `json:"replay_sequence"`
+	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
@@ -1171,6 +1376,7 @@ type PoolVipOwnershipDelivery struct {
 	ExpiresAt            time.Time `json:"expires_at"`
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
+	OwnershipManifest    []byte    `json:"ownership_manifest"`
 }
 
 type PoolVipOwnershipDeliveryAckReceipt struct {
@@ -1188,6 +1394,7 @@ type PoolVipOwnershipDeliveryAckReceipt struct {
 	OwnedRouteDigest           *string   `json:"owned_route_digest"`
 	VipMapDigest               *string   `json:"vip_map_digest"`
 	CreatedAt                  time.Time `json:"created_at"`
+	AppliedManifest            []byte    `json:"applied_manifest"`
 }
 
 type PoolVipOwnershipDeliveryState struct {

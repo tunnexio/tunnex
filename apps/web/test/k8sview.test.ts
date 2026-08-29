@@ -12,6 +12,8 @@ const CL = (id: string, name: string): K8sCluster =>
   ({
     id,
     site_id: "s1",
+    provider: "unknown",
+    platform: "unknown",
     name,
     vip_range: "100.64.0.0/16",
     service_cidr: "10.96.0.0/12",
@@ -83,8 +85,13 @@ describe("assembleClusters — group Services under their cluster (the wire-trut
     expect(cards[0].services).toHaveLength(1);
     expect(cards[0].services[0].fqdn).toBe("api.prod.svc.prod.k8s.acme.com");
     expect(cards[0].dnsVip).toBe("100.64.0.2");
+    expect(cards[0]).toMatchObject({ provider: "unknown", platform: "unknown" });
     // c2 got only its own Service (no cross-cluster bleed).
     expect(cards[1].services.map((s) => s.id)).toEqual(["k2"]);
+  });
+  it("preserves exact provider metadata rather than deriving it from cluster names or networking", () => {
+    const cluster = { ...CL("c1", "prod-eks"), provider: "aws", platform: "eks" } as K8sCluster;
+    expect(assembleClusters([cluster], [])[0]).toMatchObject({ provider: "aws", platform: "eks" });
   });
   it("a cluster with no exposed Services renders an empty list, not an error", () => {
     expect(assembleClusters([CL("c1", "prod")], [])[0].services).toEqual([]);

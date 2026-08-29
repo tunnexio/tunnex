@@ -11,6 +11,41 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
+func TestReadAppliedOVPNTunnelRequiresLiveIPv4AndIPv6Semantics(t *testing.T) {
+	m := New("wg0")
+	m.SetOVPNTun("tunnex-ovpn")
+	live := "chain forward {\n  iifname != { \"wg0\", \"tunnex-ovpn\" } oifname != { \"wg0\", \"tunnex-ovpn\" } counter accept comment \"tunnex_native_forward_passthrough\"\n}"
+	m.nftRun = func(_ context.Context, args ...string) (string, error) { return live, nil }
+	if got, err := m.ReadAppliedOVPNTunnel(t.Context()); err != nil || got != "tunnex-ovpn" {
+		t.Fatalf("live OpenVPN tunnel readback=%q err=%v", got, err)
+	}
+	m.nftRun = func(_ context.Context, args ...string) (string, error) {
+		if len(args) > 2 && args[2] == "ip6" {
+			return "chain forward {\n  iifname != \"wg0\" oifname != \"wg0\" counter accept comment \"tunnex_native_forward_passthrough\"\n}", nil
+		}
+		return live, nil
+	}
+	if _, err := m.ReadAppliedOVPNTunnel(t.Context()); err == nil {
+		t.Fatal("IPv6 rules missing OpenVPN tunnel must fail readback")
+	}
+}
+
+func TestParseTunnelIngressInterfacesRejectsTamperedSemantics(t *testing.T) {
+	tests := map[string]string{
+		"inverted ingress": `iifname == { "wg0", "tunnex-ovpn" } oifname != { "wg0", "tunnex-ovpn" } counter accept comment "tunnex_native_forward_passthrough"`,
+		"missing egress":   `iifname != { "wg0", "tunnex-ovpn" } counter accept comment "tunnex_native_forward_passthrough"`,
+		"different sets":   `iifname != { "wg0", "tunnex-ovpn" } oifname != "wg0" counter accept comment "tunnex_native_forward_passthrough"`,
+		"drop verdict":     `iifname != { "wg0", "tunnex-ovpn" } oifname != { "wg0", "tunnex-ovpn" } counter drop comment "tunnex_native_forward_passthrough"`,
+	}
+	for name, listing := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got, err := parseTunnelIngressInterfaces(listing); err == nil {
+				t.Fatalf("tampered semantics accepted: %v", got)
+			}
+		})
+	}
+}
+
 // The tunnex ruleset must: masquerade tunnel→egress (any non-tunnel oif), forward
 // spoke↔spoke + spoke↔egress under a DROP policy (so the ct-state return guard is real
 // and the egress side can't initiate into spokes). With no live wg0 in this pure

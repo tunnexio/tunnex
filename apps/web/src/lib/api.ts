@@ -24,8 +24,14 @@ export type ResizeConflict = components["schemas"]["ResizeConflict"];
 export type AuditLogEntry = components["schemas"]["AuditLogEntry"];
 export type AccessEvent = components["schemas"]["AccessEvent"];
 // S7.4a — Zero Trust admin UI DTOs.
+export type FQDNResourceMutationPreview = components["schemas"]["FQDNResourceMutationPreview"];
 export type UserGroup = components["schemas"]["UserGroup"];
 export type GroupMember = components["schemas"]["GroupMember"];
+export type FQDNResolverContextConfig = components["schemas"]["FQDNResolverContextConfig"];
+export type FQDNResolverEndpoint = components["schemas"]["FQDNResolverEndpoint"];
+export type FQDNResolverProfile = components["schemas"]["FQDNResolverProfile"];
+export type FQDNResolverProfileRequest = components["schemas"]["FQDNResolverProfileRequest"];
+export type FQDNResolverProvider = NonNullable<FQDNResolverContextConfig["provider_hint"]>;
 export type Resource = components["schemas"]["Resource"];
 export type FQDNResource = components["schemas"]["FQDNResource"];
 export type FQDNResourceImpact = components["schemas"]["FQDNResourceImpact"];
@@ -73,6 +79,8 @@ export type DNSForward = components["schemas"]["DNSForward"];
 // S10.3 — Kubernetes cluster/Service connectivity.
 export type K8sCluster = components["schemas"]["K8sCluster"];
 export type K8sService = components["schemas"]["K8sService"];
+export type K8sHASettings = components["schemas"]["K8sHASettings"];
+export type K8sConnectorPoolHAStatus = components["schemas"]["K8sConnectorPoolHAStatus"];
 
 // apiErrorMessage pulls the human message out of the standard error envelope.
 export function apiErrorMessage(error: unknown, fallback: string): string {

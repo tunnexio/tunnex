@@ -20,7 +20,55 @@ import (
 func newTestWatcher(base string, client *http.Client, kick func()) *K8sWatcher {
 	return &K8sWatcher{
 		base: base, client: client, kick: kick,
-		services: map[string]svcPorts{}, slices: map[string]map[string]epGroup{},
+		services: map[string]serviceInfo{}, slices: map[string]map[string]epGroup{}, uidTombstones: map[string]string{},
+	}
+}
+
+func TestServiceUIDObservationsKeepDeleteRecreateIncarnationsSeparate(t *testing.T) {
+	w := newTestWatcher("", nil, func() {})
+	w.servicesSynced = true
+	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"api","namespace":"prod","uid":"uid-a"},"spec":{"ports":[{"port":80}]}}`))
+	if got, ok := w.ServiceUIDObservations("prod", "api"); !ok || len(got) != 1 || got[0].UID != "uid-a" || got[0].State != "live" {
+		t.Fatalf("live UID observation = %+v, ok=%v", got, ok)
+	}
+	w.applyServiceEvent("DELETED", json.RawMessage(`{"metadata":{"name":"api","namespace":"prod","uid":"uid-a"},"spec":{}}`))
+	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"api","namespace":"prod","uid":"uid-b"},"spec":{"ports":[{"port":80}]}}`))
+	got, ok := w.ServiceUIDObservations("prod", "api")
+	if !ok || len(got) != 2 || got[0].UID != "uid-a" || got[0].State != "deleted" || got[1].UID != "uid-b" || got[1].State != "live" {
+		t.Fatalf("delete/recreate observations = %+v, ok=%v", got, ok)
+	}
+	if _, ok := w.ServiceUIDObservations("prod", "other"); ok {
+		t.Fatal("exact lookup must not expose broad Service inventory")
+	}
+	w.clearServices()
+	if _, ok := w.ServiceUIDObservations("prod", "api"); ok {
+		t.Fatal("watch fault must clear UID observation state fail-closed")
+	}
+}
+
+func TestServiceInventoryIsDeterministicBoundedAndNonSensitive(t *testing.T) {
+	w := newTestWatcher("", nil, func() {})
+	w.servicesSynced = true
+	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"dns","namespace":"prod","uid":"uid-dns"},"spec":{"ports":[{"name":"dns-udp","port":53,"protocol":"UDP"},{"name":"dns-tcp","port":53,"protocol":"TCP"},{"name":"sctp","port":54,"protocol":"SCTP"}]}}`))
+	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"api","namespace":"apps","uid":"uid-api"},"spec":{"ports":[{"name":"https","port":443}]}}`))
+	items, ok := w.ServiceInventory()
+	if !ok || len(items) != 2 || items[0].Namespace != "apps" || items[1].Service != "dns" {
+		t.Fatalf("inventory ok=%v items=%+v", ok, items)
+	}
+	if len(items[1].Ports) != 2 || items[1].Ports[0].Protocol != "tcp" || items[1].Ports[1].Protocol != "udp" {
+		t.Fatalf("supported ordered ports=%+v", items[1].Ports)
+	}
+	tooManyPorts := svcPorts{}
+	for i := 1; i <= maxServiceInventoryPorts+1; i++ {
+		tooManyPorts[svcPortKey{protocol: "tcp", port: i}] = "p"
+	}
+	w.services["prod/overflow"] = serviceInfo{uid: "uid-overflow", ports: tooManyPorts}
+	if _, ok := w.ServiceInventory(); ok {
+		t.Fatal("port overflow was truncated instead of refused")
+	}
+	w.clearServices()
+	if _, ok := w.ServiceInventory(); ok {
+		t.Fatal("unsynced view was represented as empty inventory")
 	}
 }
 
@@ -42,7 +90,7 @@ func TestParseSliceReadyFiltering(t *testing.T) {
 	if len(g.ready) != 1 || g.ready[0] != "10.42.0.14" {
 		t.Fatalf("only the ready endpoint may survive (nil/false dropped), got %+v", g.ready)
 	}
-	if g.ports[""] != 8080 {
+	if g.ports[endpointPortKey{protocol: "tcp", name: ""}] != 8080 {
 		t.Fatalf("port name->number map wrong: %+v", g.ports)
 	}
 	// An orphan slice (no kubernetes.io/service-name label) is not ours to map.
@@ -56,21 +104,69 @@ func TestParseSliceReadyFiltering(t *testing.T) {
 func TestTargetsCorrelatesServicePortToEndpointPort(t *testing.T) {
 	w := newTestWatcher("", nil, func() {})
 	// Slices synced but Services NOT yet synced → the API view is not fully live → fail closed (L12).
-	w.slices["prod/api"] = map[string]epGroup{"s1": {ready: []string{"10.42.0.14"}, ports: map[string]int{"web": 8080}}}
+	w.slices["prod/api"] = map[string]epGroup{"s1": {ready: []string{"10.42.0.14"}, ports: map[endpointPortKey]int{{protocol: "tcp", name: "web"}: 8080}}}
 	w.slicesSynced = true
-	if _, ok := w.Targets("prod", "api", 80); ok {
+	if _, ok := w.Targets("prod", "api", "tcp", 80); ok {
 		t.Fatal("a not-fully-synced view must fail closed (ok=false)")
 	}
 	// Both synced: servicePort 80 has name "web" -> the slice's "web" port is 8080.
-	w.services["prod/api"] = svcPorts{80: "web"}
+	w.services["prod/api"] = serviceInfo{ports: svcPorts{{protocol: "tcp", port: 80}: "web"}}
 	w.servicesSynced = true
-	ts, ok := w.Targets("prod", "api", 80)
+	ts, ok := w.Targets("prod", "api", "tcp", 80)
 	if !ok || len(ts) != 1 || ts[0].ip != "10.42.0.14" || ts[0].port != 8080 {
 		t.Fatalf("expected 10.42.0.14:8080, got ok=%v %+v", ok, ts)
 	}
 	// A servicePort the Service does not expose -> ok=true but no target (refuse, not guess).
-	if ts, ok := w.Targets("prod", "api", 443); !ok || len(ts) != 0 {
+	if ts, ok := w.Targets("prod", "api", "tcp", 443); !ok || len(ts) != 0 {
 		t.Fatalf("an unexposed servicePort must yield zero targets, got ok=%v %+v", ok, ts)
+	}
+}
+
+func TestTargetsKeysSameServicePortByProtocol(t *testing.T) {
+	w := newTestWatcher("", nil, func() {})
+	w.services["prod/dns"] = serviceInfo{ports: svcPorts{
+		{protocol: "tcp", port: 53}: "dns-tcp",
+		{protocol: "udp", port: 53}: "dns-udp",
+	}}
+	w.slices["prod/dns"] = map[string]epGroup{"dns-1": {
+		ready: []string{"10.42.0.53"},
+		ports: map[endpointPortKey]int{
+			{protocol: "tcp", name: "dns-tcp"}: 5353,
+			{protocol: "udp", name: "dns-udp"}: 5354,
+		},
+	}}
+	w.servicesSynced, w.slicesSynced = true, true
+	for _, tc := range []struct {
+		protocol string
+		wantPort int
+	}{{"tcp", 5353}, {"udp", 5354}} {
+		t.Run(tc.protocol, func(t *testing.T) {
+			targets, ok := w.Targets("prod", "dns", tc.protocol, 53)
+			if !ok || len(targets) != 1 || targets[0] != (k8sTarget{ip: "10.42.0.53", port: tc.wantPort}) {
+				t.Fatalf("%s/53 targets = ok=%v %+v", tc.protocol, ok, targets)
+			}
+		})
+	}
+}
+
+func TestUnsupportedK8sProtocolsNeverAliasTCP(t *testing.T) {
+	service := json.RawMessage(`{"metadata":{"name":"api","namespace":"prod"},"spec":{"ports":[{"name":"https","port":443,"protocol":"SCTP"}]}}`)
+	key, info, ok := parseService(service)
+	if !ok || key != "prod/api" || len(info.ports) != 0 {
+		t.Fatalf("unsupported Service protocol entered target index: key=%q info=%+v ok=%v", key, info, ok)
+	}
+	slice := json.RawMessage(`{"metadata":{"name":"api-1","namespace":"prod","labels":{"kubernetes.io/service-name":"api"}},"endpoints":[{"addresses":["10.42.0.14"],"conditions":{"ready":true}}],"ports":[{"name":"https","port":8443,"protocol":"SCTP"}]}`)
+	_, _, group, ok := parseSlice(slice)
+	if !ok || len(group.ports) != 0 {
+		t.Fatalf("unsupported EndpointSlice protocol entered target index: ports=%+v ok=%v", group.ports, ok)
+	}
+	w := newTestWatcher("", nil, func() {})
+	w.services[key], w.slices[key] = info, map[string]epGroup{"api-1": group}
+	w.servicesSynced, w.slicesSynced = true, true
+	for _, protocol := range []string{"tcp", "SCTP"} {
+		if targets, live := w.Targets("prod", "api", protocol, 443); !live || len(targets) != 0 {
+			t.Fatalf("%s must fail closed without TCP alias: live=%v targets=%+v", protocol, live, targets)
+		}
 	}
 }
 
@@ -121,7 +217,7 @@ func TestWatchRelistOn410ReflectsCurrent(t *testing.T) {
 
 	deadline := time.After(3 * time.Second)
 	for {
-		ts, ok := w.Targets("prod", "api", 80)
+		ts, ok := w.Targets("prod", "api", "tcp", 80)
 		if ok && len(ts) == 1 && ts[0].ip == "10.42.0.99" && ts[0].port == 8080 {
 			return // relisted after the 410 and reflects the CURRENT (restarted) endpoint
 		}
@@ -142,9 +238,9 @@ func TestListFailureClearsView(t *testing.T) {
 
 	w := newTestWatcher(srv.URL, srv.Client(), func() {})
 	// Pre-populate a good, SYNCED view (ok=true), then let the failing loop CLEAR it (synced→false → ok=false).
-	w.services["prod/api"] = svcPorts{80: ""}
+	w.services["prod/api"] = serviceInfo{ports: svcPorts{{protocol: "tcp", port: 80}: ""}}
 	w.servicesSynced = true
-	w.slices["prod/api"] = map[string]epGroup{"s1": {ready: []string{"10.42.0.14"}, ports: map[string]int{"": 8080}}}
+	w.slices["prod/api"] = map[string]epGroup{"s1": {ready: []string{"10.42.0.14"}, ports: map[endpointPortKey]int{{protocol: "tcp", name: ""}: 8080}}}
 	w.slicesSynced = true
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -153,7 +249,7 @@ func TestListFailureClearsView(t *testing.T) {
 
 	deadline := time.After(3 * time.Second)
 	for {
-		if _, ok := w.Targets("prod", "api", 80); !ok {
+		if _, ok := w.Targets("prod", "api", "tcp", 80); !ok {
 			return // the failing list cleared the slice view → fail-closed
 		}
 		select {

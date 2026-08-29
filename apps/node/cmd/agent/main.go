@@ -31,6 +31,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/identity"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 	"github.com/tunnexio/tunnex/apps/node/internal/ovpnserver"
+	"github.com/tunnexio/tunnex/apps/node/internal/ownershiplease"
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
 )
 
@@ -53,6 +54,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	commandLane := newDataplaneCommandLane(logger)
 
 	stored := loadStored(certDir)
 	certPEM, keyPEM, caPEM := stored.CertPEM, stored.KeyPEM, stored.CAPEM
@@ -208,11 +210,6 @@ func main() {
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
 	// affect the tunnel (DNS-down ≠ tunnel-down, D2/D5). The table is (re)programmed from every policy.
 	dnsFwd := dnsforward.New(logger, nil)
-	go func() {
-		if err := dnsFwd.Serve(ctx, wgIface); err != nil {
-			logger.Warn("dns_forward_serve_failed", slog.String("error", err.Error())) // convenience: log, never fail the agent
-		}
-	}()
 	// S7.5.1 flow logging is OPT-IN per gateway: TUNNEX_FLOWLOG_GROUP>0 arms the forward-chain
 	// nflog rules (set BEFORE the first Reconcile so the log clauses render from the start) and
 	// the reader+drain below. 0 = OFF (the forward chain is byte-identical to pre-S7.5.1).
@@ -252,9 +249,15 @@ func main() {
 	} else if epw != nil {
 		egressMgr.SetEndpointSource(epw)
 	}
-	go egressLoop(ctx, egressMgr, &egressNAT, &egressIPv6, getdur("TUNNEX_AGENT_EGRESS_INTERVAL", 30*time.Second), policyKick, logger)
 	if epw != nil {
 		go epw.Run(ctx)
+		logger.Info("k8s_service_uid_report_enabled")
+		go reportK8sServiceUIDObservationsLoop(ctx, client, epw, egressMgr,
+			filepath.Join(certDir, "k8s-service-uid-sequence"),
+			getdur("TUNNEX_AGENT_K8S_UID_INTERVAL", 10*time.Second), logger)
+		go reportK8sServiceInventoryLoop(ctx, client, epw,
+			filepath.Join(certDir, "k8s-service-uid-sequence"),
+			getdur("TUNNEX_AGENT_K8S_INVENTORY_INTERVAL", 30*time.Second), logger)
 	}
 
 	reportEvery := getdur("TUNNEX_AGENT_REPORT_INTERVAL", 30*time.Second)
@@ -287,9 +290,11 @@ func main() {
 		egressMgr.SetPolicy(p)
 		dnsFwd.SetTable(dnsEntriesFrom(p))      // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
 		dnsFwd.SetK8sAnswers(k8sAnswersFrom(p)) // S10.3 A1: reprogram the K8s direct-answer set (nil policy → empty → answers nothing)
-		select {
-		case policyKick <- struct{}{}:
-		default: // a kick is already pending — the apply reads the latest policy anyway
+		// ReconcileOnce itself runs on the serialized command lane. Apply policy
+		// substrates inline so revocation is complete before the desired-state
+		// command yields; endpoint/timer healing remains a producer below.
+		if err := reconcileEgress(ctx, egressMgr, &egressNAT, &egressIPv6); err != nil {
+			logger.Warn("egress_policy_reconcile_degraded", slog.String("error", err.Error()))
 		}
 	})
 	// S21: the control plane brokers a DNS request through desired state only to
@@ -305,12 +310,16 @@ func main() {
 		if ds.DNSResolveRequest == nil {
 			return
 		}
-		response := dnsResponder.Handle(ctx, ds.NodeID, *ds.DNSResolveRequest)
-		if err := client.ReportDNSResolution(ctx, response); err != nil {
-			// Do not log hostname or answer data. The request id is enough to
-			// correlate the retried, cached response at the control plane.
-			logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
-		}
+		request := *ds.DNSResolveRequest
+		nodeID := ds.NodeID
+		go func() {
+			response := dnsResponder.Handle(ctx, nodeID, request)
+			if err := client.ReportDNSResolution(ctx, response); err != nil && ctx.Err() == nil {
+				// Do not log hostname or answer data. The request id is enough to
+				// correlate the retried, cached response at the control plane.
+				logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
+			}
+		}()
 	})
 
 	// S9.1 4d: the agent-owned OpenVPN server (opt-in PER GATEWAY, D-S9.5-OPTIN). Structurally safe —
@@ -318,17 +327,68 @@ func main() {
 	// cannot crash-loop; a missing binary/certs refuses LOUDLY on the health surface (reported below).
 	ovpnMgr := ovpnserver.New(getenv("TUNNEX_OVPN_CFG_DIR", "/etc/tunnex/ovpn"))
 	ovpnSup := ovpnserver.NewSupervisor()
-	ovpnMgr.SetEnsureProc(ovpnSup.Ensure)
-	defer ovpnSup.Stop()
+	ovpnMgr.SetProcessController(ovpnSup)
+	defer func() {
+		if err := ovpnSup.Stop(); err != nil {
+			logger.Error("ovpn_shutdown_stop_failed", slog.String("error", err.Error()))
+		}
+	}()
+
+	// P2 v3 ownership is composed entirely from existing substrate owners. The
+	// ordinary desired-state path is projected through the same durable fence,
+	// so a later v1-style resync cannot resurrect withdrawn Kubernetes fields.
+	fenceStore := ownershiplease.NewFileFenceStore(filepath.Join(certDir, "pool-vip-ownership-fences.json"))
+	leaseStore := ownershiplease.NewFileStateStore(filepath.Join(certDir, "pool-vip-ownership-lease.json"))
+	baseAuthorityStore := ownershiplease.NewFileBaseAuthorityStateStore(filepath.Join(certDir, "pool-vip-ownership-base-authority.json"))
+	baseSurface, err := ownershiplease.NewProductionReconcileSurface(r)
+	if err != nil {
+		logger.Error("ownership_reconcile_surface_failed", slog.String("error", err.Error()))
+		return
+	}
+	ownerSurface, err := ownershiplease.NewProductionOwnerSurfaceWithOVPN(baseSurface, egressMgr, dnsFwd, ovpnMgr, backend, fenceStore, wgIface)
+	if err != nil {
+		logger.Error("ownership_surface_failed", slog.String("error", err.Error()))
+		return
+	}
+	projector := ownershiplease.NewProjector()
+	ownershipCoordinator := ownershiplease.NewCoordinator(projector, ownerSurface, fenceStore).WithBaseAuthorityStateStore(baseAuthorityStore)
+	ownershipLifecycle := ownershiplease.New(ownershipCoordinator, leaseStore)
+	commandLane.setLeaseGuard(ownershipLifecycle.LeaseDeadline, ownershipLifecycle.Check)
+	ownershipAdapter, err := ownershiplease.NewV3DeliveryAdapter(ownershipLifecycle, ownershipCoordinator)
+	if err != nil {
+		logger.Error("ownership_v3_adapter_failed", slog.String("error", err.Error()))
+		return
+	}
+	ownershipAttestor := control.NewPoolVIPOwnershipAttestorV3(ownershipAdapter,
+		control.NewFilePoolVIPOwnershipAppliedStateStore(filepath.Join(certDir, "pool-vip-ownership-applied.json")))
+	r.OnDesired(func(commandCtx context.Context, desired reconcile.DesiredState) (reconcile.DesiredState, error) {
+		return ownershipCoordinator.UpdateBaseAndSnapshot(commandCtx, desired, ownershiplease.BaseAuthorityFromWire(desired.KubernetesOwnershipBaseAuthority))
+	})
 	r.OnOVPN(func(ds reconcile.DesiredState) {
+		withdrawOVPN := func(cause error) {
+			ovpnMgr.SetDesired(ovpnserver.Desired{})
+			stopErr := ovpnMgr.Reconcile(ctx)
+			egressErr := egressMgr.ReconcileOVPNTunnel(ctx, "")
+			if joined := errors.Join(cause, stopErr, egressErr); joined != nil {
+				logger.Warn("ovpn_fail_closed_withdraw_failed", slog.String("error", joined.Error()))
+			}
+			hk := ovpnserver.HealthApplyFailed
+			ovpnHealth.Store(&hk)
+		}
 		// D-S9.6: write the CP-delivered server material to disk (or SWEEP it when off) BEFORE Reconcile,
 		// so the certs-present precondition sees the current truth. Re-asserted every tick (self-heal).
 		if ds.OVPNServer != nil {
 			if err := ovpnMgr.WriteServerMaterial(ds.OVPNServer.CA, ds.OVPNServer.Cert, ds.OVPNServer.Key, ds.OVPNServer.CRL); err != nil {
 				logger.Warn("ovpn_server_material_write_failed", slog.String("error", err.Error()))
+				withdrawOVPN(err)
+				return
 			}
 		} else {
-			ovpnMgr.SweepServerMaterial()
+			if err := ovpnMgr.SweepServerMaterial(); err != nil {
+				logger.Warn("ovpn_server_material_sweep_failed", slog.String("error", err.Error()))
+				withdrawOVPN(err)
+				return
+			}
 		}
 		if !ds.OVPNEnabled {
 			ovpnMgr.SetDesired(ovpnserver.Desired{}) // not opted in on this gateway → idle: no server, no tun
@@ -359,15 +419,21 @@ func main() {
 			// InterfaceAddress ("10.99.0.1/24") carries the pool prefix — the CCD ifconfig-push mask.
 			ovpnMgr.SetDesired(ovpnserver.Desired{PoolCIDR: ds.InterfaceAddress, Clients: clients, Routes: routes, DNS: dns})
 		}
-		if err := ovpnMgr.Reconcile(ctx); err != nil {
-			logger.Warn("ovpn_reconcile_failed", slog.String("error", err.Error()))
+		ovpnErr := ovpnMgr.Reconcile(ctx)
+		if ovpnErr != nil {
+			logger.Warn("ovpn_reconcile_failed", slog.String("error", ovpnErr.Error()))
 		}
 		// STEP-5 ORDERING (ruled): publish the tun to egress ONLY once the server is actually up; when
 		// it dies (TunActive→false), CLEAR it so the Slice-3 sweep-on-departed-tun removes its egress rules.
-		if ovpnMgr.TunActive() {
-			egressMgr.SetOVPNTun(ovpnserver.TunName)
-		} else {
-			egressMgr.SetOVPNTun("")
+		tun := ""
+		if ovpnErr == nil && ovpnMgr.TunActive() {
+			tun = ovpnserver.TunName
+		}
+		if err := egressMgr.ReconcileOVPNTunnel(ctx, tun); err != nil {
+			logger.Warn("ovpn_tunnel_ingress_reconcile_failed", slog.String("error", err.Error()))
+			hk := ovpnserver.HealthApplyFailed
+			ovpnHealth.Store(&hk)
+			return
 		}
 		// Publish the OVPN health for the report loop → CP surface (refuse-loudly on the dashboard).
 		hk := ovpnMgr.Health()
@@ -417,7 +483,25 @@ func main() {
 	logger.Info("agent_reconciling", slog.String("node_name", nodeName))
 	// Interval is env-overridable so the data-plane e2e can sample device stability
 	// across ≥2 reconcile cycles quickly (default 60s in production).
-	r.Run(ctx, client, getdur("TUNNEX_AGENT_RECONCILE_INTERVAL", 60*time.Second), 5*time.Second)
+	laneDone := make(chan struct{})
+	go func() {
+		commandLane.run(ctx)
+		close(laneDone)
+	}()
+	if err := commandLane.submitAndWait(ctx, "ownership_startup_withdraw", ownershipLifecycle.StartupReconcile); err != nil && ctx.Err() == nil {
+		logger.Error("ownership_startup_reconcile_failed", slog.String("error", err.Error()))
+		stop()
+		<-laneDone
+		return
+	}
+	go egressLoop(ctx, commandLane, egressMgr, &egressNAT, &egressIPv6, getdur("TUNNEX_AGENT_EGRESS_INTERVAL", 30*time.Second), policyKick)
+	go produceDNSBindCommands(ctx, commandLane, dnsFwd, wgIface, getdur("TUNNEX_AGENT_DNS_BIND_INTERVAL", 5*time.Second))
+	go produceDesiredStateCommands(ctx, commandLane, r, client, ownershipCoordinator, getdur("TUNNEX_AGENT_RECONCILE_INTERVAL", 60*time.Second), 5*time.Second, logger)
+	go produceOwnershipCommands(ctx, commandLane, client, ownershipAttestor, ownershipLifecycle,
+		getdur("TUNNEX_AGENT_OWNERSHIP_POLL_INTERVAL", 2*time.Second),
+		getdur("TUNNEX_AGENT_OWNERSHIP_WATCHDOG_INTERVAL", time.Second), logger)
+	<-laneDone
+	dnsFwd.CloseK8sBinds()
 	logger.Info("agent_stopped")
 }
 
@@ -741,24 +825,12 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint
 // immediately on a policy kick (a pushed policy change must land within the <5s
 // revocation spec, not wait out the interval). A degraded reconcile (locked-down
 // host) sets egress_nat=false and logs, never crashing the agent.
-func egressLoop(ctx context.Context, mgr *egress.Manager, egressNAT, egressIPv6 *atomic.Bool, every time.Duration, kick <-chan struct{}, logger *slog.Logger) {
-	apply := func() {
-		// S10.3: resolve exposed-Service ClusterIPs (bounded per-lookup) BEFORE the reconcile. Resolution
-		// stores the resolved VIP->ClusterIP map; Reconcile's render reads it and does NO DNS I/O (pure) —
-		// so a slow resolver is bounded, never an unbounded stall of the nft apply.
-		mgr.ResolveK8sVIPs(ctx)
-		// S10.3 A1: own each cluster's reserved DNS VIP as a /32 on wg0 so the client's DNS query is delivered
-		// locally and the forwarder binds :53 on it. Fail-closed (a failed assign → no local addr → no answer);
-		// logged, never fatal — DNS-VIP-down is never tunnel-down.
-		if err := mgr.ReconcileDNSVIPs(ctx); err != nil {
-			logger.Warn("dns_vip_reconcile_degraded", slog.String("error", err.Error()))
-		}
-		ok, ok6, err := mgr.Reconcile(ctx)
-		egressNAT.Store(ok)
-		egressIPv6.Store(ok6)
-		if err != nil {
-			logger.Warn("egress_reconcile_degraded", slog.String("error", err.Error()))
-		}
+func egressLoop(ctx context.Context, lane *dataplaneCommandLane, mgr *egress.Manager, egressNAT, egressIPv6 *atomic.Bool, every time.Duration, kick <-chan struct{}) {
+	apply := func() bool {
+		_ = lane.submitAndWait(ctx, "egress_reconcile", func(commandCtx context.Context) error {
+			return reconcileEgress(commandCtx, mgr, egressNAT, egressIPv6)
+		})
+		return ctx.Err() == nil
 	}
 	// The initial probe/arm ran synchronously in main() before the first report — this
 	// loop only re-reconciles on the interval (heals a flushed table, tracks capability)
@@ -770,11 +842,26 @@ func egressLoop(ctx context.Context, mgr *egress.Manager, egressNAT, egressIPv6 
 		case <-ctx.Done():
 			return
 		case <-kick:
-			apply()
+			if !apply() {
+				return
+			}
 		case <-t.C:
-			apply()
+			if !apply() {
+				return
+			}
 		}
 	}
+}
+
+func reconcileEgress(ctx context.Context, mgr *egress.Manager, egressNAT, egressIPv6 *atomic.Bool) error {
+	// Resolve ready pod endpoints before rendering. The resolver is bounded and
+	// stores a snapshot; nft rendering itself performs no DNS/Kubernetes I/O.
+	mgr.ResolveK8sVIPs(ctx)
+	dnsErr := mgr.ReconcileDNSVIPs(ctx)
+	ok, ok6, reconcileErr := mgr.Reconcile(ctx)
+	egressNAT.Store(ok)
+	egressIPv6.Store(ok6)
+	return errors.Join(dnsErr, reconcileErr)
 }
 
 // sleepCtx sleeps for d, returning false if ctx is cancelled first.

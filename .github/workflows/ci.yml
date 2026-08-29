@@ -59,6 +59,14 @@ jobs:
       - name: Host upgrade contract
         run: sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
 
+      - name: Set up Helm for deployment contracts
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
+      - name: Kubernetes HA deployment gate contract
+        run: sh deploy/k8s-ha-deployment-gate-contract_test.sh
+
       - name: E2E heading locator contract
         run: node e2e/check-heading-locators.mjs
 

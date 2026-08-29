@@ -686,7 +686,10 @@ paths:
           description: Repeatable effective MCP-profile filter. Values are ORed.
           schema:
             type: array
-            items: { type: string, enum: [assigned, unassigned] }
+            items:
+              type: string
+              enum: [assigned, unassigned]
+              x-enum-varnames: [Assigned, Unassigned]
           style: form
           explode: true
         - name: access
@@ -3860,6 +3863,96 @@ paths:
         "204": { description: Connector set. }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/provider-metadata:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: clusterId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: setK8sClusterProviderMetadata
+      summary: Correct provider/platform presentation metadata without changing traffic (S20.4; k8s:manage)
+      description: >-
+        Changes installation and presentation context only. It does not discover a cloud resource, move the
+        connector, alter networking, or grant access. Provider/platform must be one supported exact pair.
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterProviderMetadataRequest" } } }
+      responses:
+        "200":
+          description: Updated presentation metadata.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sCluster" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/ha-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getK8sHASettings
+      summary: Read the explicit organization connector-HA opt-in (S20.3b; k8s_ha:view)
+      tags: [k8s]
+      responses:
+        "200":
+          description: Missing durable state is returned as disabled revision zero.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sHASettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setK8sHASettings
+      summary: Enable or begin draining organization connector HA (S20.3b; k8s_ha:manage)
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SetK8sHASettingsRequest" } } }
+      responses:
+        "200":
+          description: Requested setting; disabling may remain drain_pending per pool.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sHASettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/connector-pools/ha-status:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listK8sConnectorPoolHAStatus
+      summary: List truthful requested/actual HA convergence per connector pool (S20.3b; k8s_ha:view)
+      tags: [k8s]
+      responses:
+        "200":
+          description: Missing transition rows are explicit legacy revision zero.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/K8sConnectorPoolHAStatus" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/connector-pools/{poolId}/ha-mode:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: poolId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getK8sConnectorPoolHAStatus
+      summary: Read truthful requested/actual HA convergence for one connector pool (S20.3b; k8s_ha:view)
+      tags: [k8s]
+      responses:
+        "200":
+          description: Missing transition state is explicit legacy revision zero.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sConnectorPoolHAStatus" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setK8sConnectorPoolHAMode
+      summary: Request fenced HA or legacy drain for one pool (S20.3b; k8s_ha:manage)
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SetK8sConnectorPoolHAModeRequest" } } }
+      responses:
+        "200":
+          description: Requested and actual asynchronous transition state.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sConnectorPoolHAStatus" } } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/services:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3892,6 +3985,205 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/K8sService" } } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/k8s/cluster-scope-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getK8sClusterScopeSettings
+      summary: Read the licensed, explicit cluster-scope opt-in (S20.4; k8s_scope:view + policy:view)
+      tags: [k8s]
+      responses:
+        "200":
+          description: Missing durable state is disabled revision zero; effective also requires entitlement.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScopeSettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setK8sClusterScopeSettings
+      summary: Opt an organization into or out of cluster-scope enforcement (S20.4; human k8s_scope:manage)
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SetK8sClusterScopeSettingsRequest" } } }
+      responses:
+        "200":
+          description: Stored and effective setting state.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScopeSettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: clusterId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listK8sClusterInventory
+      summary: Page current active-connector Service inventory without raw Kubernetes UIDs (S20.4; k8s:manage)
+      tags: [k8s]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 100 } }
+      responses:
+        "200":
+          description: Fresh inventory. Unavailable/stale is a typed error, never an empty success.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sInventoryPage" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory/{inventoryRef}/expose:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: clusterId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: inventoryRef, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: exposeK8sInventoryService
+      summary: Atomically expose selected exact ports from current connector inventory (S20.4; k8s:manage)
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ExposeK8sInventoryServiceRequest" } } }
+      responses:
+        "201":
+          description: Exact child IDs and number of durable pending scope reviews created atomically.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/ExposeK8sInventoryServiceResult" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/cluster-scopes:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listK8sClusterScopes
+      summary: List preserved cluster-scope grants (S20.4; k8s_scope:view + policy:view)
+      tags: [k8s]
+      responses:
+        "200":
+          description: Cluster scopes, including disabled state.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/K8sClusterScope" } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createK8sClusterScope
+      summary: Create one human-approved exact-child cluster scope (S20.4; k8s_scope:manage + policy:manage)
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateK8sClusterScopeRequest" } } }
+      responses:
+        "201":
+          description: Created scope; no initial child is selected by default.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScope" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getK8sClusterScope
+      summary: Read one cluster scope (S20.4; k8s_scope:view + policy:view)
+      tags: [k8s]
+      responses:
+        "200":
+          description: Cluster scope.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScope" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setK8sClusterScopeActive
+      summary: Enable or disable one scope with optimistic revision (S20.4; human k8s_scope:manage)
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SetK8sClusterScopeActiveRequest" } } }
+      responses:
+        "200":
+          description: Updated scope.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScope" } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteK8sClusterScope
+      summary: Irreversibly delete one scope after explicit confirmation (S20.4; human k8s_scope:manage)
+      tags: [k8s]
+      parameters:
+        - { name: expected_revision, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        "204": { description: Deleted; append-only audit remains. }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/initial-candidates:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listK8sClusterScopeInitialCandidates
+      summary: Page immutable initial offered/selected evidence (S20.4; k8s_scope:view + policy:view)
+      tags: [k8s]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 100 } }
+      responses:
+        "200":
+          description: Initial candidates without raw Service UID.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScopeCandidatePage" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/memberships:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listK8sClusterScopeMemberships
+      summary: Page one scope's durable membership decisions (S20.4; k8s_scope:view + policy:view)
+      tags: [k8s]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 100 } }
+      responses:
+        "200":
+          description: Durable membership state without raw Service UID.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScopeMembershipPage" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/cluster-scope-review-queue:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listK8sClusterScopeReviewQueue
+      summary: Page pending later-exposure decisions across the organization (S20.4; k8s_scope:view + policy:view)
+      tags: [k8s]
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 100 } }
+      responses:
+        "200":
+          description: Pending review queue.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScopeMembershipPage" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/k8s/cluster-scopes/{ruleId}/memberships/{serviceChildId}/decision:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: serviceChildId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: decideK8sClusterScopeMembership
+      summary: Irreversibly approve or reject one pending later exposure (S20.4; human k8s_scope:approve)
+      tags: [k8s]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DecideK8sClusterScopeMembershipRequest" } } }
+      responses:
+        "200":
+          description: Stored decision; exact same-decision retry is idempotent.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/K8sClusterScopeMembership" } } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/k8s/services:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -5297,6 +5589,10 @@ components:
           allOf: [{ $ref: "#/components/schemas/FQDNResolverContext" }]
           nullable: true
           description: "Null means saved draft: it must not compile or authorize traffic."
+        resolver_profile_selection:
+          allOf: [{ $ref: "#/components/schemas/FQDNResolverProfileSelection" }]
+          nullable: true
+          description: "Server-recorded profile provenance for the latest answer lifecycle generation. Null means no profile has been selected or queried."
         generation: { type: integer, format: int64, nullable: true, description: "Active resolver generation only." }
         state: { type: string, enum: [draft, unconfigured, resolving, healthy, stale, failed, nxdomain], description: "unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic." }
         answer_count: { type: integer, minimum: 0, description: "Active-generation answer count; never an inferred DNS result." }
@@ -5359,7 +5655,7 @@ components:
 
     FQDNResolverContextConfig:
       type: object
-      required: [id, org_id, site_id, gateway_id, version, state, endpoints, created_at]
+      required: [id, org_id, site_id, gateway_id, version, state, endpoints, profiles, created_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
@@ -5368,15 +5664,65 @@ components:
         gateway_id: { type: string, format: uuid }
         version: { type: integer, format: int64, minimum: 1 }
         state: { type: string, enum: [active, retired] }
+        provider_hint:
+          type: string
+          nullable: true
+          enum: [aws, azure, google_cloud, on_premises]
+          description: "Operator-supplied display metadata only. It does not enable cloud discovery, credentials, hosted-zone import, or endpoint provisioning."
         endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+        profiles:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: { $ref: "#/components/schemas/FQDNResolverProfile" }
+          description: "Immutable named DNS authorities in this revision. Runtime chooses one profile by longest label-boundary suffix; endpoints from other profiles are never fallback targets."
         created_at: { type: string, format: date-time }
+
+    FQDNResolverProfile:
+      type: object
+      required: [id, name, provider_hint, zone_suffixes, endpoints, legacy_default]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid, description: "Immutable profile provenance bound to gateway DNS requests and answer generations." }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        provider_hint: { type: string, enum: [aws, azure, google_cloud, on_premises], description: "Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning." }
+        zone_suffixes: { type: array, maxItems: 16, items: { type: string, minLength: 1, maxLength: 253 }, description: "Normalized DNS suffixes. The most-specific matching suffix selects this profile." }
+        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+        legacy_default: { type: boolean, description: "True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes." }
+
+    FQDNResolverProfileRequest:
+      type: object
+      required: [name, provider_hint, zone_suffixes, endpoints]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        provider_hint: { type: string, enum: [aws, azure, google_cloud, on_premises] }
+        zone_suffixes: { type: array, minItems: 1, maxItems: 16, items: { type: string, minLength: 1, maxLength: 253 } }
+        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+
+    FQDNResolverProfileSelection:
+      type: object
+      required: [id, name, provider_hint, matched_suffix, config_version]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        provider_hint: { type: string, enum: [aws, azure, google_cloud, on_premises] }
+        matched_suffix: { type: string, description: "Normalized most-specific suffix selected for this hostname; empty only for a migrated legacy catch-all profile." }
+        config_version: { type: integer, format: int64, minimum: 1 }
 
     FQDNResolverContextConfigRequest:
       type: object
-      required: [endpoints]
       additionalProperties: false
+      description: "Send exactly one of profiles (current contract) or endpoints (legacy single-profile compatibility). The server rejects missing or ambiguous input."
       properties:
-        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+        provider_hint:
+          type: string
+          nullable: true
+          enum: [aws, azure, google_cloud, on_premises]
+          description: "Operator-supplied display metadata for this resolver boundary; never an instruction to discover or provision cloud resources."
+        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" }, description: "Legacy single-profile compatibility input. New clients should send profiles." }
+        profiles: { type: array, minItems: 1, maxItems: 16, items: { $ref: "#/components/schemas/FQDNResolverProfileRequest" } }
 
     FQDNResourceSetting:
       type: object
@@ -5509,11 +5855,12 @@ components:
         src_agent_group_id: { type: string, format: uuid, nullable: true, description: "F09 — set when src_kind=agent_group: the reusable managed-agent group expanded by the compiler." }
         # S8.7 warn-not-refuse: true when src_cidr is not inside any current org range (site subnet / routed range / device pool) — a rule matching nothing (a silent no-op wearing a rule's face). DERIVED at read time from CURRENT ranges, so it sheds once the range lands. false for non-cidr sources.
         cidr_outside_org_ranges: { type: boolean }
-        dst_kind: { type: string, enum: [resource, group, site, k8s_service, fqdn_resource] }
+        dst_kind: { type: string, enum: [resource, group, site, k8s_service, k8s_cluster_scope, fqdn_resource] }
         dst_resource_id: { type: string, format: uuid, nullable: true }
         dst_group_id: { type: string, format: uuid, nullable: true }
         dst_site_id: { type: string, format: uuid, nullable: true }
         dst_k8s_service_id: { type: string, format: uuid, nullable: true, description: "Set when dst_kind=k8s_service (S10.3): the exposed Service the grant reaches; the compiler resolves it to the Service's CURRENT VIP." }
+        dst_k8s_cluster_id: { type: string, format: uuid, nullable: true, description: "Set when dst_kind=k8s_cluster_scope: the cluster whose approved exact-port memberships this specialized rule owns." }
         dst_fqdn_resource_id: { type: string, format: uuid, nullable: true, description: "Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated." }
         fqdn_destination_status:
           type: string
@@ -5567,7 +5914,7 @@ components:
     # ── S10.3 Kubernetes ──
     K8sCluster:
       type: object
-      required: [id, site_id, name, vip_range, service_cidr, dns_zone, managed_by_operator]
+      required: [id, site_id, name, vip_range, service_cidr, dns_zone, provider, platform, managed_by_operator]
       additionalProperties: false
       properties:
         # S10.2 D2 cond 1: true = GitOps-operator-managed; the dashboard badges it and warns on manual edit.
@@ -5575,6 +5922,8 @@ components:
         id: { type: string, format: uuid }
         site_id: { type: string, format: uuid, description: "The site whose gateway fronts this cluster." }
         connector_node_id: { type: string, format: uuid, nullable: true, description: "The explicit in-cluster gateway that resolves ready endpoints and DNATs service VIPs; null means the cluster is not serving traffic." }
+        provider: { type: string, enum: [aws, azure, gcp, self_managed, unknown], description: "Operator-supplied presentation and installation context only; unknown for legacy callers/rows." }
+        platform: { type: string, enum: [eks, aks, gke_standard, kubernetes, unknown], description: "Operator-supplied presentation and installation context only; never cloud discovery or authority." }
         name: { type: string, description: "A DNS label; a hostname component of every exposed Service." }
         vip_range: { type: string, description: "The cluster's synthetic VIP range (CIDR), disjoint from all other org ranges." }
         service_cidr: { type: string, description: "The cluster's real Kubernetes Service CIDR (where ClusterIPs live)." }
@@ -5604,10 +5953,240 @@ components:
       properties:
         site_id: { type: string, format: uuid, description: "The site gateway that fronts this cluster (one gateway = one site)." }
         connector_node_id: { type: string, format: uuid, nullable: true, description: "The active in-cluster connector already bound to site_id; required by the authenticated handler so sessionless requests retain a uniform 401." }
+        provider: { type: string, enum: [aws, azure, gcp, self_managed, unknown], description: "Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair." }
+        platform: { type: string, enum: [eks, aks, gke_standard, kubernetes, unknown], description: "Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair." }
         name: { type: string, maxLength: 63, description: "A DNS label (lowercase a-z0-9 + hyphens)." }
         vip_range: { type: string, description: "The synthetic VIP range (CIDR), disjoint from pool/sites/other clusters." }
         service_cidr: { type: string, description: "The cluster's Kubernetes Service CIDR (e.g. 10.96.0.0/12)." }
         dns_zone: { type: string, description: "The customer's DNS zone (e.g. k8s.acme.com); need not be publicly registered." }
+    K8sClusterProviderMetadataRequest:
+      type: object
+      required: [provider, platform]
+      additionalProperties: false
+      properties:
+        provider: { type: string, enum: [aws, azure, gcp, self_managed] }
+        platform: { type: string, enum: [eks, aks, gke_standard, kubernetes] }
+    K8sHASettings:
+      type: object
+      required: [enabled, revision, actual_state, reason_code, deployment_ready, scheduler_state, scheduler_reason_codes]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64, minimum: 0 }
+        actual_state: { type: string, enum: [disabled, enabled, drain_pending, blocked] }
+        reason_code: { type: string }
+        deployment_ready: { type: boolean }
+        scheduler_state: { type: string, enum: [disabled, blocked, follower, leader_idle, leader_operating, degraded] }
+        scheduler_reason_codes:
+          type: array
+          items: { type: string }
+        updated_at: { type: string, format: date-time, nullable: true }
+    SetK8sHASettingsRequest:
+      type: object
+      required: [enabled, expected_revision]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    K8sConnectorPoolHAStatus:
+      type: object
+      required: [pool_id, cluster_id, active_node_id, requested_mode, actual_mode, promotion_generation, membership_epoch_known, transition_revision, reason_code]
+      additionalProperties: false
+      properties:
+        pool_id: { type: string, format: uuid }
+        cluster_id: { type: string, format: uuid }
+        active_node_id: { type: string, format: uuid }
+        requested_mode: { type: string, enum: [legacy, fenced_ha] }
+        actual_mode: { type: string, enum: [legacy, bootstrap_pending, fenced_ha, drain_pending, blocked] }
+        promotion_generation: { type: integer, format: int64, minimum: 1 }
+        membership_epoch_known: { type: boolean }
+        membership_epoch: { type: integer, format: int64, minimum: 0, nullable: true }
+        transition_revision: { type: integer, format: int64, minimum: 0 }
+        reason_code: { type: string }
+        requested_at: { type: string, format: date-time, nullable: true }
+        achieved_at: { type: string, format: date-time, nullable: true }
+    SetK8sConnectorPoolHAModeRequest:
+      type: object
+      required: [requested_mode, expected_transition_revision]
+      additionalProperties: false
+      properties:
+        requested_mode: { type: string, enum: [legacy, fenced_ha] }
+        expected_transition_revision: { type: integer, format: int64, minimum: 0 }
+    K8sClusterScopeSettings:
+      type: object
+      required: [enabled, revision, entitlement_unlocked, effective]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64, minimum: 0 }
+        entitlement_unlocked: { type: boolean }
+        effective: { type: boolean, description: "True only when licensed and explicitly enabled." }
+        updated_at: { type: string, format: date-time, nullable: true }
+    SetK8sClusterScopeSettingsRequest:
+      type: object
+      required: [enabled, expected_revision]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    K8sInventoryPort:
+      type: object
+      required: [port_ref, protocol, service_port]
+      additionalProperties: false
+      properties:
+        port_ref: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+        protocol: { type: string, enum: [tcp, udp] }
+        service_port: { type: integer, minimum: 1, maximum: 65535 }
+    K8sInventoryService:
+      type: object
+      required: [inventory_ref, namespace, service, ports]
+      additionalProperties: false
+      properties:
+        inventory_ref: { type: string, format: uuid }
+        namespace: { type: string }
+        service: { type: string }
+        ports:
+          type: array
+          maxItems: 32
+          items: { $ref: "#/components/schemas/K8sInventoryPort" }
+    K8sInventoryPage:
+      type: object
+      required: [items, observed_at, fresh_until]
+      additionalProperties: false
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/K8sInventoryService" } }
+        next_cursor: { type: string, nullable: true }
+        observed_at: { type: string, format: date-time }
+        fresh_until: { type: string, format: date-time }
+    ExposeK8sInventoryServiceRequest:
+      type: object
+      required: [port_refs]
+      additionalProperties: false
+      properties:
+        port_refs:
+          type: array
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    ExposeK8sInventoryServiceResult:
+      type: object
+      required: [service_child_ids, pending_review_count]
+      additionalProperties: false
+      properties:
+        service_child_ids: { type: array, minItems: 1, maxItems: 32, items: { type: string, format: uuid } }
+        pending_review_count: { type: integer, minimum: 0, maximum: 500 }
+    K8sClusterScopeSource:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [group, user, site, cidr, agent, agent_group], description: "agent_group is readable for preserved legacy rows but is not accepted by the v1 create contract." }
+        id: { type: string, format: uuid, nullable: true, description: "Required for every source kind except cidr." }
+        cidr: { type: string, nullable: true, description: "Required only when kind=cidr." }
+    CreateK8sClusterScopeSource:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [group, user, site, cidr, agent] }
+        id: { type: string, format: uuid, nullable: true, description: "Required for every source kind except cidr." }
+        cidr: { type: string, nullable: true, description: "Required only when kind=cidr." }
+    K8sClusterScope:
+      type: object
+      required: [rule_id, cluster_id, source, active, revision, initial_candidate_count, created_by_user_id, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        rule_id: { type: string, format: uuid }
+        cluster_id: { type: string, format: uuid }
+        source: { $ref: "#/components/schemas/K8sClusterScopeSource" }
+        active: { type: boolean }
+        revision: { type: integer, format: int64, minimum: 1 }
+        initial_candidate_count: { type: integer, minimum: 0, maximum: 500 }
+        created_by_user_id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateK8sClusterScopeRequest:
+      type: object
+      required: [cluster_id, source, initial_service_child_ids]
+      additionalProperties: false
+      properties:
+        cluster_id: { type: string, format: uuid }
+        source: { $ref: "#/components/schemas/CreateK8sClusterScopeSource" }
+        initial_service_child_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time, nullable: true }
+    SetK8sClusterScopeActiveRequest:
+      type: object
+      required: [active, expected_revision]
+      additionalProperties: false
+      properties:
+        active: { type: boolean }
+        expected_revision: { type: integer, format: int64, minimum: 1 }
+    K8sClusterScopeCandidate:
+      type: object
+      required: [service_child_id, namespace, service, protocol, port, selected, current, effective]
+      additionalProperties: false
+      properties:
+        service_child_id: { type: string, format: uuid }
+        namespace: { type: string }
+        service: { type: string }
+        protocol: { type: string, enum: [tcp, udp] }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        selected: { type: boolean }
+        current: { type: boolean, description: "True only while the exact child still matches the latest fresh, attributed connector inventory and opaque Service identity." }
+        effective: { type: boolean, description: "True only when this selected candidate currently contributes scope-derived policy output." }
+        inactive_reason: { $ref: "#/components/schemas/K8sClusterScopeInactiveReason" }
+    K8sClusterScopeCandidatePage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/K8sClusterScopeCandidate" } }
+        next_cursor: { type: string, nullable: true }
+    K8sClusterScopeMembership:
+      type: object
+      required: [rule_id, cluster_id, service_child_id, namespace, service, protocol, port, origin, status, current, effective, created_at]
+      additionalProperties: false
+      properties:
+        rule_id: { type: string, format: uuid }
+        cluster_id: { type: string, format: uuid }
+        service_child_id: { type: string, format: uuid }
+        namespace: { type: string }
+        service: { type: string }
+        protocol: { type: string, enum: [tcp, udp] }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        origin: { type: string, enum: [initial, later] }
+        status: { type: string, enum: [pending, approved, rejected] }
+        current: { type: boolean, description: "True only while the exact child still matches the latest fresh, attributed connector inventory and opaque Service identity." }
+        effective: { type: boolean, description: "True only when this membership currently contributes scope-derived policy output." }
+        inactive_reason: { $ref: "#/components/schemas/K8sClusterScopeInactiveReason" }
+        decided_by_user_id: { type: string, format: uuid, nullable: true }
+        decided_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    K8sClusterScopeInactiveReason:
+      type: string
+      nullable: true
+      enum: [edition_locked, not_selected, pending, rejected, scope_disabled, organization_disabled, rule_disabled, rule_expired, inventory_stale, inventory_unavailable, identity_changed]
+      description: "The first fail-closed compiler condition preventing effective access; null only when effective is true. Decision status remains separately visible."
+    K8sClusterScopeMembershipPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/K8sClusterScopeMembership" } }
+        next_cursor: { type: string, nullable: true }
+    DecideK8sClusterScopeMembershipRequest:
+      type: object
+      required: [decision]
+      additionalProperties: false
+      properties:
+        decision: { type: string, enum: [approved, rejected] }
     ExposeK8sServiceRequest:
       type: object
       required: [name, namespace]

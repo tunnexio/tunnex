@@ -305,9 +305,18 @@ describe("Sites — URL-backed workspace state", () => {
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=approvals"));
   });
 
+  it("keeps DNS forwarding out of primary navigation and exposes it as advanced Site Networking", async () => {
+    withAuth(<Sites />, ["/sites"]);
+    expect(await screen.findByRole("button", { name: "Review DNS forwarding" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "DNS overview" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Review DNS forwarding" }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=dns"));
+    expect(screen.getByText(/Private DNS Resolver remains the only primary configuration for FQDN access/)).toBeTruthy();
+  });
+
   it("uses selected-Site approved-range guidance for the DNS resolver without prefilling it", async () => {
     withAuth(<Sites />, ["/sites?section=overview&site=s1&dns=1"]);
-    const resolver = await screen.findByLabelText("Resolver IP");
+    const resolver = await screen.findByLabelText("Forwarding target IP");
     expect(resolver.getAttribute("placeholder")).toBe("Resolver IP inside 172.31.0.0/16");
     expect((resolver as HTMLInputElement).value).toBe("");
   });

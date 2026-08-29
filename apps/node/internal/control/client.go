@@ -325,6 +325,31 @@ func (c *Client) FetchDesired(ctx context.Context) (reconcile.DesiredState, erro
 	return ds, nil
 }
 
+// AcknowledgeKubernetesOwnershipBaseAuthority posts only the exact durable
+// applied receipt. It runs outside the data-plane command lane; a transport
+// failure leaves the local pending ACK intact for exact replay.
+func (c *Client) AcknowledgeKubernetesOwnershipBaseAuthority(ctx context.Context, ack reconcile.KubernetesOwnershipBaseAuthorityAck) error {
+	body, err := json.Marshal(ack)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/agent/kubernetes-ownership-base-authority/ack", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("Kubernetes ownership base-authority acknowledgement status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Watch long-polls the control plane; it returns when the server responds
 // (change or timeout), prompting a re-fetch. since is the version from the last
 // fetch — the server returns immediately if its version has advanced past it.

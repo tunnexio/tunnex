@@ -35,6 +35,7 @@ var (
 	ErrCNAMEChain        = errors.New("fqdn resolver invalid CNAME chain")
 	ErrNoUsableAddresses = errors.New("fqdn resolver has no usable addresses")
 	ErrLastGoodExpired   = errors.New("fqdn resolver last-good expired")
+	ErrNoMatchingProfile = errors.New("fqdn resolver has no matching DNS profile")
 )
 
 // Context identifies the Site/Gateway resolver selected by the server. A public
@@ -61,9 +62,13 @@ type ResolverEndpoint struct {
 // endpoint list binds a Gateway DNS RPC to exactly the configuration the
 // scheduler observed; a changed, absent, or retired revision fails closed.
 type ResolverConfig struct {
-	ID        string             `json:"id"`
-	Version   int64              `json:"version"`
-	Endpoints []ResolverEndpoint `json:"endpoints"`
+	ID              string             `json:"id"`
+	Version         int64              `json:"version"`
+	ProfileID       string             `json:"profile_id"`
+	ProfileName     string             `json:"profile_name"`
+	ProfileProvider string             `json:"profile_provider"`
+	MatchedSuffix   string             `json:"matched_suffix"`
+	Endpoints       []ResolverEndpoint `json:"endpoints"`
 }
 
 func (c ResolverConfig) valid() bool {
@@ -76,6 +81,64 @@ func (c ResolverConfig) valid() bool {
 		}
 	}
 	return true
+}
+
+// ResolverProfile is an immutable DNS authority inside one resolver-context
+// revision. Explicit suffix profiles never fall back to another profile. A
+// LegacyDefault is created only by migration/legacy API compatibility.
+type ResolverProfile struct {
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Provider      string             `json:"provider"`
+	ZoneSuffixes  []string           `json:"zone_suffixes"`
+	Endpoints     []ResolverEndpoint `json:"endpoints"`
+	LegacyDefault bool               `json:"legacy_default"`
+}
+
+func selectResolverProfile(hostname string, profiles []ResolverProfile) (ResolverProfile, string, error) {
+	hostname = dnsName(hostname)
+	if hostname == "" {
+		return ResolverProfile{}, "", ErrNoMatchingProfile
+	}
+	var selected ResolverProfile
+	matched, found := "", false
+	var legacy *ResolverProfile
+	seen := map[string]string{}
+	for i := range profiles {
+		profile := profiles[i]
+		if profile.LegacyDefault {
+			if legacy != nil {
+				return ResolverProfile{}, "", ErrDisagreement
+			}
+			copy := profile
+			legacy = &copy
+		}
+		for _, raw := range profile.ZoneSuffixes {
+			suffix := dnsName(raw)
+			if suffix == "" {
+				return ResolverProfile{}, "", ErrDisagreement
+			}
+			if owner, exists := seen[suffix]; exists && owner != profile.ID {
+				return ResolverProfile{}, "", ErrDisagreement
+			}
+			seen[suffix] = profile.ID
+			if hostname != suffix && !strings.HasSuffix(hostname, "."+suffix) {
+				continue
+			}
+			if !found || len(suffix) > len(matched) {
+				selected, matched, found = profile, suffix, true
+			} else if len(suffix) == len(matched) && profile.ID != selected.ID {
+				return ResolverProfile{}, "", ErrDisagreement
+			}
+		}
+	}
+	if found {
+		return selected, matched, nil
+	}
+	if legacy != nil {
+		return *legacy, "", nil
+	}
+	return ResolverProfile{}, "", ErrNoMatchingProfile
 }
 
 type Status string

@@ -16,8 +16,10 @@
 package dnsforward
 
 import (
+	"context"
 	"log/slog"
 	"net/netip"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -172,6 +174,12 @@ type Forwarder struct {
 	bindSource   func(string) ([]netip.Addr, error) // nil → wgBindAddrs
 	listen       func(netip.Addr) (udpListener, error)
 	bindInterval time.Duration // 0 → 5s
+	listenerMu   sync.Mutex
+	listeners    map[netip.Addr]boundListener
+	nextListener uint64
+	listenerWG   sync.WaitGroup
+	bindMu       sync.Mutex
+	ownedLive    map[netip.Addr]context.CancelFunc
 
 	mu        sync.Mutex
 	buckets   map[netip.Addr]*bucket // per-source token buckets
@@ -184,7 +192,10 @@ func New(log *slog.Logger, exchange exchangeFn) *Forwarder {
 	if exchange == nil {
 		exchange = udpExchange
 	}
-	f := &Forwarder{exchange: exchange, log: log, buckets: map[netip.Addr]*bucket{}}
+	f := &Forwarder{
+		exchange: exchange, log: log, buckets: map[netip.Addr]*bucket{},
+		listeners: map[netip.Addr]boundListener{}, ownedLive: map[netip.Addr]context.CancelFunc{},
+	}
 	f.tbl.Store(&table{})
 	f.k8s.Store(&k8sAnswers{})
 	return f
@@ -199,6 +210,38 @@ func (f *Forwarder) SetTable(entries []Entry) { f.tbl.Store(buildTable(entries, 
 // dead-while-green refusal: a stale map never fabricates an address).
 func (f *Forwarder) SetK8sAnswers(entries []K8sEntry, zones []string) {
 	f.k8s.Store(buildK8sAnswers(entries, zones, f.log))
+}
+
+// AppliedK8sState is the forwarder's actually installed immutable answer table
+// plus listeners whose socket bind succeeded and has not closed. It is distinct
+// from the caller's requested entries.
+type AppliedK8sState struct {
+	Answers   []K8sEntry
+	Zones     []string
+	Listeners []string
+}
+
+func (f *Forwarder) AppliedK8sState() AppliedK8sState {
+	state := AppliedK8sState{}
+	if applied := f.k8s.Load(); applied != nil {
+		for name, vip := range applied.names {
+			state.Answers = append(state.Answers, K8sEntry{FQDN: strings.TrimSuffix(name, "."), VIP: vip.String()})
+		}
+		for _, zone := range applied.zones {
+			state.Zones = append(state.Zones, strings.TrimSuffix(zone, "."))
+		}
+	}
+	f.listenerMu.Lock()
+	for addr := range f.listeners {
+		state.Listeners = append(state.Listeners, addr.String())
+	}
+	f.listenerMu.Unlock()
+	sort.Slice(state.Answers, func(i, j int) bool {
+		return state.Answers[i].FQDN+"\x00"+state.Answers[i].VIP < state.Answers[j].FQDN+"\x00"+state.Answers[j].VIP
+	})
+	sort.Strings(state.Zones)
+	sort.Strings(state.Listeners)
+	return state
 }
 
 // handle answers one query from src. Not-in-table -> REFUSED (scoped). In-table -> relay to the resolver;

@@ -43,6 +43,10 @@ const EXEMPT: Record<string, string> = {
   // `visualgallery.test.ts` proving the route is not shipped.
   "VisualGallery.tsx":
     "test fixture, build-flagged off; gated by the viewport leg and by the unshipped-route assertion",
+  "K8sEnrollmentLocalReview.tsx":
+    "test fixture, build-flagged off; fixture/API isolation and the unshipped-route contract are covered by k8senrollmentlocalreviewroute.test.ts",
+  "K8sScopeLocalReview.tsx":
+    "test fixture, build-flagged off; temporary transport restoration and the unshipped-route contract are covered by k8senrollmentlocalreviewroute.test.ts",
   "Login.tsx": "unauthenticated shell — no backend concept to disagree about",
   "Signup.tsx": "unauthenticated shell — no backend concept to disagree about",
   "ForgotPassword.tsx":
@@ -84,6 +88,8 @@ const COVERED: Record<string, string> = {
     "test/kuberneteswiring.test.tsx — health-kind mirror census (WF-S11-7) + withheld destructive control + LoadRetry reached",
   "Access.tsx":
     "test/accesswiring.test.tsx — enforcement posture cannot be claimed without being read (both directions) + disabled rules shown + failed load never renders a count",
+  "AccessKubernetesScopes.tsx":
+    "test/k8sclusterscopewiring.test.tsx — named-permission DOM absence, failed-queue versus empty, zero-default exact-child creation, and irreversible decision confirmation",
   // SHEDDER, tested accordingly: assertions are written against the DECISION and name `subnets` as the
   // destination, so they travel through the split instead of becoming throwaway work.
   // S14.7. The one derivation it makes is the client-side attribution join, and the covered property is
@@ -187,7 +193,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(10);
+    expect(Object.keys(COVERED).length).toBe(11);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -207,7 +213,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 22 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(22);
+  it("the ledger is a snapshot of today — 23 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(23);
   });
 });

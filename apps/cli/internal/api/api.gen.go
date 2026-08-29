@@ -275,14 +275,14 @@ const (
 
 // Defines values for AlertTestResultFailureCode.
 const (
-	Blocked       AlertTestResultFailureCode = "blocked"
-	Configuration AlertTestResultFailureCode = "configuration"
-	Credential    AlertTestResultFailureCode = "credential"
-	Dns           AlertTestResultFailureCode = "dns"
-	HttpError     AlertTestResultFailureCode = "http_error"
-	Network       AlertTestResultFailureCode = "network"
-	Response      AlertTestResultFailureCode = "response"
-	Timeout       AlertTestResultFailureCode = "timeout"
+	AlertTestResultFailureCodeBlocked       AlertTestResultFailureCode = "blocked"
+	AlertTestResultFailureCodeConfiguration AlertTestResultFailureCode = "configuration"
+	AlertTestResultFailureCodeCredential    AlertTestResultFailureCode = "credential"
+	AlertTestResultFailureCodeDns           AlertTestResultFailureCode = "dns"
+	AlertTestResultFailureCodeHttpError     AlertTestResultFailureCode = "http_error"
+	AlertTestResultFailureCodeNetwork       AlertTestResultFailureCode = "network"
+	AlertTestResultFailureCodeResponse      AlertTestResultFailureCode = "response"
+	AlertTestResultFailureCodeTimeout       AlertTestResultFailureCode = "timeout"
 )
 
 // Defines values for ChangeRoleRequestRole.
@@ -304,6 +304,15 @@ const (
 	Static  CreateDeviceRequestProvisioning = "static"
 )
 
+// Defines values for CreateK8sClusterScopeSourceKind.
+const (
+	CreateK8sClusterScopeSourceKindAgent CreateK8sClusterScopeSourceKind = "agent"
+	CreateK8sClusterScopeSourceKindCidr  CreateK8sClusterScopeSourceKind = "cidr"
+	CreateK8sClusterScopeSourceKindGroup CreateK8sClusterScopeSourceKind = "group"
+	CreateK8sClusterScopeSourceKindSite  CreateK8sClusterScopeSourceKind = "site"
+	CreateK8sClusterScopeSourceKindUser  CreateK8sClusterScopeSourceKind = "user"
+)
+
 // Defines values for CreatePolicyRuleRequestDstKind.
 const (
 	CreatePolicyRuleRequestDstKindFqdnResource CreatePolicyRuleRequestDstKind = "fqdn_resource"
@@ -320,6 +329,12 @@ const (
 	CreatePolicyRuleRequestSrcKindGroup CreatePolicyRuleRequestSrcKind = "group"
 	CreatePolicyRuleRequestSrcKindSite  CreatePolicyRuleRequestSrcKind = "site"
 	CreatePolicyRuleRequestSrcKindUser  CreatePolicyRuleRequestSrcKind = "user"
+)
+
+// Defines values for DecideK8sClusterScopeMembershipRequestDecision.
+const (
+	DecideK8sClusterScopeMembershipRequestDecisionApproved DecideK8sClusterScopeMembershipRequestDecision = "approved"
+	DecideK8sClusterScopeMembershipRequestDecisionRejected DecideK8sClusterScopeMembershipRequestDecision = "rejected"
 )
 
 // Defines values for DeviceHealthFailedChecksKind.
@@ -394,16 +409,56 @@ const (
 	ExposeK8sServiceRequestProtocolUdp ExposeK8sServiceRequestProtocol = "udp"
 )
 
+// Defines values for FQDNResolverContextConfigProviderHint.
+const (
+	FQDNResolverContextConfigProviderHintAws         FQDNResolverContextConfigProviderHint = "aws"
+	FQDNResolverContextConfigProviderHintAzure       FQDNResolverContextConfigProviderHint = "azure"
+	FQDNResolverContextConfigProviderHintGoogleCloud FQDNResolverContextConfigProviderHint = "google_cloud"
+	FQDNResolverContextConfigProviderHintOnPremises  FQDNResolverContextConfigProviderHint = "on_premises"
+)
+
 // Defines values for FQDNResolverContextConfigState.
 const (
 	FQDNResolverContextConfigStateActive  FQDNResolverContextConfigState = "active"
 	FQDNResolverContextConfigStateRetired FQDNResolverContextConfigState = "retired"
 )
 
+// Defines values for FQDNResolverContextConfigRequestProviderHint.
+const (
+	FQDNResolverContextConfigRequestProviderHintAws         FQDNResolverContextConfigRequestProviderHint = "aws"
+	FQDNResolverContextConfigRequestProviderHintAzure       FQDNResolverContextConfigRequestProviderHint = "azure"
+	FQDNResolverContextConfigRequestProviderHintGoogleCloud FQDNResolverContextConfigRequestProviderHint = "google_cloud"
+	FQDNResolverContextConfigRequestProviderHintOnPremises  FQDNResolverContextConfigRequestProviderHint = "on_premises"
+)
+
 // Defines values for FQDNResolverEndpointTransport.
 const (
 	FQDNResolverEndpointTransportTcp FQDNResolverEndpointTransport = "tcp"
 	FQDNResolverEndpointTransportUdp FQDNResolverEndpointTransport = "udp"
+)
+
+// Defines values for FQDNResolverProfileProviderHint.
+const (
+	FQDNResolverProfileProviderHintAws         FQDNResolverProfileProviderHint = "aws"
+	FQDNResolverProfileProviderHintAzure       FQDNResolverProfileProviderHint = "azure"
+	FQDNResolverProfileProviderHintGoogleCloud FQDNResolverProfileProviderHint = "google_cloud"
+	FQDNResolverProfileProviderHintOnPremises  FQDNResolverProfileProviderHint = "on_premises"
+)
+
+// Defines values for FQDNResolverProfileRequestProviderHint.
+const (
+	FQDNResolverProfileRequestProviderHintAws         FQDNResolverProfileRequestProviderHint = "aws"
+	FQDNResolverProfileRequestProviderHintAzure       FQDNResolverProfileRequestProviderHint = "azure"
+	FQDNResolverProfileRequestProviderHintGoogleCloud FQDNResolverProfileRequestProviderHint = "google_cloud"
+	FQDNResolverProfileRequestProviderHintOnPremises  FQDNResolverProfileRequestProviderHint = "on_premises"
+)
+
+// Defines values for FQDNResolverProfileSelectionProviderHint.
+const (
+	FQDNResolverProfileSelectionProviderHintAws         FQDNResolverProfileSelectionProviderHint = "aws"
+	FQDNResolverProfileSelectionProviderHintAzure       FQDNResolverProfileSelectionProviderHint = "azure"
+	FQDNResolverProfileSelectionProviderHintGoogleCloud FQDNResolverProfileSelectionProviderHint = "google_cloud"
+	FQDNResolverProfileSelectionProviderHintOnPremises  FQDNResolverProfileSelectionProviderHint = "on_premises"
 )
 
 // Defines values for FQDNResourceDestinationKind.
@@ -544,6 +599,129 @@ const (
 	JoinTokenRequestEnrolsKindGateway JoinTokenRequestEnrolsKind = "gateway"
 )
 
+// Defines values for K8sClusterPlatform.
+const (
+	K8sClusterPlatformAks         K8sClusterPlatform = "aks"
+	K8sClusterPlatformEks         K8sClusterPlatform = "eks"
+	K8sClusterPlatformGkeStandard K8sClusterPlatform = "gke_standard"
+	K8sClusterPlatformKubernetes  K8sClusterPlatform = "kubernetes"
+	K8sClusterPlatformUnknown     K8sClusterPlatform = "unknown"
+)
+
+// Defines values for K8sClusterProvider.
+const (
+	K8sClusterProviderAws         K8sClusterProvider = "aws"
+	K8sClusterProviderAzure       K8sClusterProvider = "azure"
+	K8sClusterProviderGcp         K8sClusterProvider = "gcp"
+	K8sClusterProviderSelfManaged K8sClusterProvider = "self_managed"
+	K8sClusterProviderUnknown     K8sClusterProvider = "unknown"
+)
+
+// Defines values for K8sClusterProviderMetadataRequestPlatform.
+const (
+	K8sClusterProviderMetadataRequestPlatformAks         K8sClusterProviderMetadataRequestPlatform = "aks"
+	K8sClusterProviderMetadataRequestPlatformEks         K8sClusterProviderMetadataRequestPlatform = "eks"
+	K8sClusterProviderMetadataRequestPlatformGkeStandard K8sClusterProviderMetadataRequestPlatform = "gke_standard"
+	K8sClusterProviderMetadataRequestPlatformKubernetes  K8sClusterProviderMetadataRequestPlatform = "kubernetes"
+)
+
+// Defines values for K8sClusterProviderMetadataRequestProvider.
+const (
+	K8sClusterProviderMetadataRequestProviderAws         K8sClusterProviderMetadataRequestProvider = "aws"
+	K8sClusterProviderMetadataRequestProviderAzure       K8sClusterProviderMetadataRequestProvider = "azure"
+	K8sClusterProviderMetadataRequestProviderGcp         K8sClusterProviderMetadataRequestProvider = "gcp"
+	K8sClusterProviderMetadataRequestProviderSelfManaged K8sClusterProviderMetadataRequestProvider = "self_managed"
+)
+
+// Defines values for K8sClusterScopeCandidateProtocol.
+const (
+	K8sClusterScopeCandidateProtocolTcp K8sClusterScopeCandidateProtocol = "tcp"
+	K8sClusterScopeCandidateProtocolUdp K8sClusterScopeCandidateProtocol = "udp"
+)
+
+// Defines values for K8sClusterScopeInactiveReason.
+const (
+	K8sClusterScopeInactiveReasonEditionLocked        K8sClusterScopeInactiveReason = "edition_locked"
+	K8sClusterScopeInactiveReasonIdentityChanged      K8sClusterScopeInactiveReason = "identity_changed"
+	K8sClusterScopeInactiveReasonInventoryStale       K8sClusterScopeInactiveReason = "inventory_stale"
+	K8sClusterScopeInactiveReasonInventoryUnavailable K8sClusterScopeInactiveReason = "inventory_unavailable"
+	K8sClusterScopeInactiveReasonNotSelected          K8sClusterScopeInactiveReason = "not_selected"
+	K8sClusterScopeInactiveReasonOrganizationDisabled K8sClusterScopeInactiveReason = "organization_disabled"
+	K8sClusterScopeInactiveReasonPending              K8sClusterScopeInactiveReason = "pending"
+	K8sClusterScopeInactiveReasonRejected             K8sClusterScopeInactiveReason = "rejected"
+	K8sClusterScopeInactiveReasonRuleDisabled         K8sClusterScopeInactiveReason = "rule_disabled"
+	K8sClusterScopeInactiveReasonRuleExpired          K8sClusterScopeInactiveReason = "rule_expired"
+	K8sClusterScopeInactiveReasonScopeDisabled        K8sClusterScopeInactiveReason = "scope_disabled"
+)
+
+// Defines values for K8sClusterScopeMembershipOrigin.
+const (
+	Initial K8sClusterScopeMembershipOrigin = "initial"
+	Later   K8sClusterScopeMembershipOrigin = "later"
+)
+
+// Defines values for K8sClusterScopeMembershipProtocol.
+const (
+	K8sClusterScopeMembershipProtocolTcp K8sClusterScopeMembershipProtocol = "tcp"
+	K8sClusterScopeMembershipProtocolUdp K8sClusterScopeMembershipProtocol = "udp"
+)
+
+// Defines values for K8sClusterScopeMembershipStatus.
+const (
+	K8sClusterScopeMembershipStatusApproved K8sClusterScopeMembershipStatus = "approved"
+	K8sClusterScopeMembershipStatusPending  K8sClusterScopeMembershipStatus = "pending"
+	K8sClusterScopeMembershipStatusRejected K8sClusterScopeMembershipStatus = "rejected"
+)
+
+// Defines values for K8sClusterScopeSourceKind.
+const (
+	K8sClusterScopeSourceKindAgent      K8sClusterScopeSourceKind = "agent"
+	K8sClusterScopeSourceKindAgentGroup K8sClusterScopeSourceKind = "agent_group"
+	K8sClusterScopeSourceKindCidr       K8sClusterScopeSourceKind = "cidr"
+	K8sClusterScopeSourceKindGroup      K8sClusterScopeSourceKind = "group"
+	K8sClusterScopeSourceKindSite       K8sClusterScopeSourceKind = "site"
+	K8sClusterScopeSourceKindUser       K8sClusterScopeSourceKind = "user"
+)
+
+// Defines values for K8sConnectorPoolHAStatusActualMode.
+const (
+	K8sConnectorPoolHAStatusActualModeBlocked          K8sConnectorPoolHAStatusActualMode = "blocked"
+	K8sConnectorPoolHAStatusActualModeBootstrapPending K8sConnectorPoolHAStatusActualMode = "bootstrap_pending"
+	K8sConnectorPoolHAStatusActualModeDrainPending     K8sConnectorPoolHAStatusActualMode = "drain_pending"
+	K8sConnectorPoolHAStatusActualModeFencedHa         K8sConnectorPoolHAStatusActualMode = "fenced_ha"
+	K8sConnectorPoolHAStatusActualModeLegacy           K8sConnectorPoolHAStatusActualMode = "legacy"
+)
+
+// Defines values for K8sConnectorPoolHAStatusRequestedMode.
+const (
+	K8sConnectorPoolHAStatusRequestedModeFencedHa K8sConnectorPoolHAStatusRequestedMode = "fenced_ha"
+	K8sConnectorPoolHAStatusRequestedModeLegacy   K8sConnectorPoolHAStatusRequestedMode = "legacy"
+)
+
+// Defines values for K8sHASettingsActualState.
+const (
+	K8sHASettingsActualStateBlocked      K8sHASettingsActualState = "blocked"
+	K8sHASettingsActualStateDisabled     K8sHASettingsActualState = "disabled"
+	K8sHASettingsActualStateDrainPending K8sHASettingsActualState = "drain_pending"
+	K8sHASettingsActualStateEnabled      K8sHASettingsActualState = "enabled"
+)
+
+// Defines values for K8sHASettingsSchedulerState.
+const (
+	K8sHASettingsSchedulerStateBlocked         K8sHASettingsSchedulerState = "blocked"
+	K8sHASettingsSchedulerStateDegraded        K8sHASettingsSchedulerState = "degraded"
+	K8sHASettingsSchedulerStateDisabled        K8sHASettingsSchedulerState = "disabled"
+	K8sHASettingsSchedulerStateFollower        K8sHASettingsSchedulerState = "follower"
+	K8sHASettingsSchedulerStateLeaderIdle      K8sHASettingsSchedulerState = "leader_idle"
+	K8sHASettingsSchedulerStateLeaderOperating K8sHASettingsSchedulerState = "leader_operating"
+)
+
+// Defines values for K8sInventoryPortProtocol.
+const (
+	K8sInventoryPortProtocolTcp K8sInventoryPortProtocol = "tcp"
+	K8sInventoryPortProtocolUdp K8sInventoryPortProtocol = "udp"
+)
+
 // Defines values for K8sServiceProtocol.
 const (
 	K8sServiceProtocolAny K8sServiceProtocol = "any"
@@ -669,11 +847,12 @@ const (
 
 // Defines values for PolicyRuleDstKind.
 const (
-	PolicyRuleDstKindFqdnResource PolicyRuleDstKind = "fqdn_resource"
-	PolicyRuleDstKindGroup        PolicyRuleDstKind = "group"
-	PolicyRuleDstKindK8sService   PolicyRuleDstKind = "k8s_service"
-	PolicyRuleDstKindResource     PolicyRuleDstKind = "resource"
-	PolicyRuleDstKindSite         PolicyRuleDstKind = "site"
+	PolicyRuleDstKindFqdnResource    PolicyRuleDstKind = "fqdn_resource"
+	PolicyRuleDstKindGroup           PolicyRuleDstKind = "group"
+	PolicyRuleDstKindK8sClusterScope PolicyRuleDstKind = "k8s_cluster_scope"
+	PolicyRuleDstKindK8sService      PolicyRuleDstKind = "k8s_service"
+	PolicyRuleDstKindResource        PolicyRuleDstKind = "resource"
+	PolicyRuleDstKindSite            PolicyRuleDstKind = "site"
 )
 
 // Defines values for PolicyRuleFqdnDestinationStatus.
@@ -698,6 +877,24 @@ const (
 	PolicyRuleSrcKindUser       PolicyRuleSrcKind = "user"
 )
 
+// Defines values for RegisterK8sClusterRequestPlatform.
+const (
+	RegisterK8sClusterRequestPlatformAks         RegisterK8sClusterRequestPlatform = "aks"
+	RegisterK8sClusterRequestPlatformEks         RegisterK8sClusterRequestPlatform = "eks"
+	RegisterK8sClusterRequestPlatformGkeStandard RegisterK8sClusterRequestPlatform = "gke_standard"
+	RegisterK8sClusterRequestPlatformKubernetes  RegisterK8sClusterRequestPlatform = "kubernetes"
+	RegisterK8sClusterRequestPlatformUnknown     RegisterK8sClusterRequestPlatform = "unknown"
+)
+
+// Defines values for RegisterK8sClusterRequestProvider.
+const (
+	RegisterK8sClusterRequestProviderAws         RegisterK8sClusterRequestProvider = "aws"
+	RegisterK8sClusterRequestProviderAzure       RegisterK8sClusterRequestProvider = "azure"
+	RegisterK8sClusterRequestProviderGcp         RegisterK8sClusterRequestProvider = "gcp"
+	RegisterK8sClusterRequestProviderSelfManaged RegisterK8sClusterRequestProvider = "self_managed"
+	RegisterK8sClusterRequestProviderUnknown     RegisterK8sClusterRequestProvider = "unknown"
+)
+
 // Defines values for ResourceProtocol.
 const (
 	ResourceProtocolAny ResourceProtocol = "any"
@@ -719,6 +916,12 @@ const (
 	RuntimeMCPToolApprovalPermitStateDenied   RuntimeMCPToolApprovalPermitState = "denied"
 	RuntimeMCPToolApprovalPermitStateExpired  RuntimeMCPToolApprovalPermitState = "expired"
 	RuntimeMCPToolApprovalPermitStatePending  RuntimeMCPToolApprovalPermitState = "pending"
+)
+
+// Defines values for SetK8sConnectorPoolHAModeRequestRequestedMode.
+const (
+	SetK8sConnectorPoolHAModeRequestRequestedModeFencedHa SetK8sConnectorPoolHAModeRequestRequestedMode = "fenced_ha"
+	SetK8sConnectorPoolHAModeRequestRequestedModeLegacy   SetK8sConnectorPoolHAModeRequestRequestedMode = "legacy"
 )
 
 // Defines values for SiteLinkTransport.
@@ -775,11 +978,11 @@ const (
 
 // Defines values for UpgradeStatusRollbackState.
 const (
-	UpgradeStatusRollbackStateAvailable         UpgradeStatusRollbackState = "available"
-	UpgradeStatusRollbackStateFailed            UpgradeStatusRollbackState = "failed"
-	UpgradeStatusRollbackStateInProgress        UpgradeStatusRollbackState = "in_progress"
-	UpgradeStatusRollbackStateNotNeeded         UpgradeStatusRollbackState = "not_needed"
-	UpgradeStatusRollbackStateRestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
+	Available         UpgradeStatusRollbackState = "available"
+	Failed            UpgradeStatusRollbackState = "failed"
+	InProgress        UpgradeStatusRollbackState = "in_progress"
+	NotNeeded         UpgradeStatusRollbackState = "not_needed"
+	RestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
 )
 
 // Defines values for UpgradeStatusState.
@@ -847,8 +1050,8 @@ const (
 
 // Defines values for ListAgentsParamsMcp.
 const (
-	Assigned   ListAgentsParamsMcp = "assigned"
-	Unassigned ListAgentsParamsMcp = "unassigned"
+	ListAgentsParamsMcpAssigned   ListAgentsParamsMcp = "assigned"
+	ListAgentsParamsMcpUnassigned ListAgentsParamsMcp = "unassigned"
 )
 
 // Defines values for ListAgentsParamsAccess.
@@ -871,8 +1074,8 @@ const (
 
 // Defines values for TestAgentAccessParamsProtocol.
 const (
-	TestAgentAccessParamsProtocolTcp TestAgentAccessParamsProtocol = "tcp"
-	TestAgentAccessParamsProtocolUdp TestAgentAccessParamsProtocol = "udp"
+	Tcp TestAgentAccessParamsProtocol = "tcp"
+	Udp TestAgentAccessParamsProtocol = "udp"
 )
 
 // AcceptInviteRequest defines model for AcceptInviteRequest.
@@ -1926,6 +2129,27 @@ type CreateDeviceResult struct {
 	PrivateKey      *string `json:"private_key,omitempty"`
 }
 
+// CreateK8sClusterScopeRequest defines model for CreateK8sClusterScopeRequest.
+type CreateK8sClusterScopeRequest struct {
+	ClusterId              openapi_types.UUID          `json:"cluster_id"`
+	ExpiresAt              *time.Time                  `json:"expires_at"`
+	InitialServiceChildIds []openapi_types.UUID        `json:"initial_service_child_ids"`
+	Source                 CreateK8sClusterScopeSource `json:"source"`
+}
+
+// CreateK8sClusterScopeSource defines model for CreateK8sClusterScopeSource.
+type CreateK8sClusterScopeSource struct {
+	// Cidr Required only when kind=cidr.
+	Cidr *string `json:"cidr"`
+
+	// Id Required for every source kind except cidr.
+	Id   *openapi_types.UUID             `json:"id"`
+	Kind CreateK8sClusterScopeSourceKind `json:"kind"`
+}
+
+// CreateK8sClusterScopeSourceKind defines model for CreateK8sClusterScopeSource.Kind.
+type CreateK8sClusterScopeSourceKind string
+
 // CreateOrganizationRequest defines model for CreateOrganizationRequest.
 type CreateOrganizationRequest struct {
 	Name string `json:"name"`
@@ -1984,6 +2208,14 @@ type DNSForward struct {
 	// ResolverIp The site's internal resolver — must be inside one of the site's approved subnets (S8.4).
 	ResolverIp string `json:"resolver_ip"`
 }
+
+// DecideK8sClusterScopeMembershipRequest defines model for DecideK8sClusterScopeMembershipRequest.
+type DecideK8sClusterScopeMembershipRequest struct {
+	Decision DecideK8sClusterScopeMembershipRequestDecision `json:"decision"`
+}
+
+// DecideK8sClusterScopeMembershipRequestDecision defines model for DecideK8sClusterScopeMembershipRequest.Decision.
+type DecideK8sClusterScopeMembershipRequestDecision string
 
 // Device defines model for Device.
 type Device struct {
@@ -2151,6 +2383,17 @@ type ExportOVPNProfileResult struct {
 	Profile     string `json:"profile"`
 }
 
+// ExposeK8sInventoryServiceRequest defines model for ExposeK8sInventoryServiceRequest.
+type ExposeK8sInventoryServiceRequest struct {
+	PortRefs []openapi_types.UUID `json:"port_refs"`
+}
+
+// ExposeK8sInventoryServiceResult defines model for ExposeK8sInventoryServiceResult.
+type ExposeK8sInventoryServiceResult struct {
+	PendingReviewCount int                  `json:"pending_review_count"`
+	ServiceChildIds    []openapi_types.UUID `json:"service_child_ids"`
+}
+
 // ExposeK8sServiceRequest defines model for ExposeK8sServiceRequest.
 type ExposeK8sServiceRequest struct {
 	// Name The Kubernetes Service name.
@@ -2191,23 +2434,40 @@ type FQDNResolverContext struct {
 
 // FQDNResolverContextConfig defines model for FQDNResolverContextConfig.
 type FQDNResolverContextConfig struct {
-	CreatedAt time.Time                      `json:"created_at"`
-	Endpoints []FQDNResolverEndpoint         `json:"endpoints"`
-	GatewayId openapi_types.UUID             `json:"gateway_id"`
-	Id        openapi_types.UUID             `json:"id"`
-	OrgId     openapi_types.UUID             `json:"org_id"`
-	SiteId    openapi_types.UUID             `json:"site_id"`
-	State     FQDNResolverContextConfigState `json:"state"`
-	Version   int64                          `json:"version"`
+	CreatedAt time.Time              `json:"created_at"`
+	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
+	GatewayId openapi_types.UUID     `json:"gateway_id"`
+	Id        openapi_types.UUID     `json:"id"`
+	OrgId     openapi_types.UUID     `json:"org_id"`
+
+	// Profiles Immutable named DNS authorities in this revision. Runtime chooses one profile by longest label-boundary suffix; endpoints from other profiles are never fallback targets.
+	Profiles []FQDNResolverProfile `json:"profiles"`
+
+	// ProviderHint Operator-supplied display metadata only. It does not enable cloud discovery, credentials, hosted-zone import, or endpoint provisioning.
+	ProviderHint *FQDNResolverContextConfigProviderHint `json:"provider_hint"`
+	SiteId       openapi_types.UUID                     `json:"site_id"`
+	State        FQDNResolverContextConfigState         `json:"state"`
+	Version      int64                                  `json:"version"`
 }
+
+// FQDNResolverContextConfigProviderHint Operator-supplied display metadata only. It does not enable cloud discovery, credentials, hosted-zone import, or endpoint provisioning.
+type FQDNResolverContextConfigProviderHint string
 
 // FQDNResolverContextConfigState defines model for FQDNResolverContextConfig.State.
 type FQDNResolverContextConfigState string
 
-// FQDNResolverContextConfigRequest defines model for FQDNResolverContextConfigRequest.
+// FQDNResolverContextConfigRequest Send exactly one of profiles (current contract) or endpoints (legacy single-profile compatibility). The server rejects missing or ambiguous input.
 type FQDNResolverContextConfigRequest struct {
-	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
+	// Endpoints Legacy single-profile compatibility input. New clients should send profiles.
+	Endpoints *[]FQDNResolverEndpoint       `json:"endpoints,omitempty"`
+	Profiles  *[]FQDNResolverProfileRequest `json:"profiles,omitempty"`
+
+	// ProviderHint Operator-supplied display metadata for this resolver boundary; never an instruction to discover or provision cloud resources.
+	ProviderHint *FQDNResolverContextConfigRequestProviderHint `json:"provider_hint"`
 }
+
+// FQDNResolverContextConfigRequestProviderHint Operator-supplied display metadata for this resolver boundary; never an instruction to discover or provision cloud resources.
+type FQDNResolverContextConfigRequestProviderHint string
 
 // FQDNResolverContextRequest defines model for FQDNResolverContextRequest.
 type FQDNResolverContextRequest struct {
@@ -2225,6 +2485,52 @@ type FQDNResolverEndpoint struct {
 
 // FQDNResolverEndpointTransport defines model for FQDNResolverEndpoint.Transport.
 type FQDNResolverEndpointTransport string
+
+// FQDNResolverProfile defines model for FQDNResolverProfile.
+type FQDNResolverProfile struct {
+	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
+
+	// Id Immutable profile provenance bound to gateway DNS requests and answer generations.
+	Id openapi_types.UUID `json:"id"`
+
+	// LegacyDefault True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes.
+	LegacyDefault bool   `json:"legacy_default"`
+	Name          string `json:"name"`
+
+	// ProviderHint Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning.
+	ProviderHint FQDNResolverProfileProviderHint `json:"provider_hint"`
+
+	// ZoneSuffixes Normalized DNS suffixes. The most-specific matching suffix selects this profile.
+	ZoneSuffixes []string `json:"zone_suffixes"`
+}
+
+// FQDNResolverProfileProviderHint Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning.
+type FQDNResolverProfileProviderHint string
+
+// FQDNResolverProfileRequest defines model for FQDNResolverProfileRequest.
+type FQDNResolverProfileRequest struct {
+	Endpoints    []FQDNResolverEndpoint                 `json:"endpoints"`
+	Name         string                                 `json:"name"`
+	ProviderHint FQDNResolverProfileRequestProviderHint `json:"provider_hint"`
+	ZoneSuffixes []string                               `json:"zone_suffixes"`
+}
+
+// FQDNResolverProfileRequestProviderHint defines model for FQDNResolverProfileRequest.ProviderHint.
+type FQDNResolverProfileRequestProviderHint string
+
+// FQDNResolverProfileSelection defines model for FQDNResolverProfileSelection.
+type FQDNResolverProfileSelection struct {
+	ConfigVersion int64              `json:"config_version"`
+	Id            openapi_types.UUID `json:"id"`
+
+	// MatchedSuffix Normalized most-specific suffix selected for this hostname; empty only for a migrated legacy catch-all profile.
+	MatchedSuffix string                                   `json:"matched_suffix"`
+	Name          string                                   `json:"name"`
+	ProviderHint  FQDNResolverProfileSelectionProviderHint `json:"provider_hint"`
+}
+
+// FQDNResolverProfileSelectionProviderHint defines model for FQDNResolverProfileSelection.ProviderHint.
+type FQDNResolverProfileSelectionProviderHint string
 
 // FQDNResource defines model for FQDNResource.
 type FQDNResource struct {
@@ -2253,6 +2559,9 @@ type FQDNResource struct {
 
 	// ResolverContext Null means saved draft: it must not compile or authorize traffic.
 	ResolverContext *FQDNResolverContext `json:"resolver_context"`
+
+	// ResolverProfileSelection Server-recorded profile provenance for the latest answer lifecycle generation. Null means no profile has been selected or queried.
+	ResolverProfileSelection *FQDNResolverProfileSelection `json:"resolver_profile_selection"`
 
 	// State unconfigured means a Site/Gateway pair is selected but has no active server-managed direct DNS endpoint configuration; it cannot compile or authorize traffic.
 	State     FQDNResourceState `json:"state"`
@@ -2661,6 +2970,12 @@ type K8sCluster struct {
 	// Name A DNS label; a hostname component of every exposed Service.
 	Name string `json:"name"`
 
+	// Platform Operator-supplied presentation and installation context only; never cloud discovery or authority.
+	Platform K8sClusterPlatform `json:"platform"`
+
+	// Provider Operator-supplied presentation and installation context only; unknown for legacy callers/rows.
+	Provider K8sClusterProvider `json:"provider"`
+
 	// ServiceCidr The cluster's real Kubernetes Service CIDR (where ClusterIPs live).
 	ServiceCidr string `json:"service_cidr"`
 
@@ -2669,6 +2984,200 @@ type K8sCluster struct {
 
 	// VipRange The cluster's synthetic VIP range (CIDR), disjoint from all other org ranges.
 	VipRange string `json:"vip_range"`
+}
+
+// K8sClusterPlatform Operator-supplied presentation and installation context only; never cloud discovery or authority.
+type K8sClusterPlatform string
+
+// K8sClusterProvider Operator-supplied presentation and installation context only; unknown for legacy callers/rows.
+type K8sClusterProvider string
+
+// K8sClusterProviderMetadataRequest defines model for K8sClusterProviderMetadataRequest.
+type K8sClusterProviderMetadataRequest struct {
+	Platform K8sClusterProviderMetadataRequestPlatform `json:"platform"`
+	Provider K8sClusterProviderMetadataRequestProvider `json:"provider"`
+}
+
+// K8sClusterProviderMetadataRequestPlatform defines model for K8sClusterProviderMetadataRequest.Platform.
+type K8sClusterProviderMetadataRequestPlatform string
+
+// K8sClusterProviderMetadataRequestProvider defines model for K8sClusterProviderMetadataRequest.Provider.
+type K8sClusterProviderMetadataRequestProvider string
+
+// K8sClusterScope defines model for K8sClusterScope.
+type K8sClusterScope struct {
+	Active                bool                  `json:"active"`
+	ClusterId             openapi_types.UUID    `json:"cluster_id"`
+	CreatedAt             time.Time             `json:"created_at"`
+	CreatedByUserId       openapi_types.UUID    `json:"created_by_user_id"`
+	ExpiresAt             *time.Time            `json:"expires_at"`
+	InitialCandidateCount int                   `json:"initial_candidate_count"`
+	Revision              int64                 `json:"revision"`
+	RuleId                openapi_types.UUID    `json:"rule_id"`
+	Source                K8sClusterScopeSource `json:"source"`
+	UpdatedAt             time.Time             `json:"updated_at"`
+}
+
+// K8sClusterScopeCandidate defines model for K8sClusterScopeCandidate.
+type K8sClusterScopeCandidate struct {
+	// Current True only while the exact child still matches the latest fresh, attributed connector inventory and opaque Service identity.
+	Current bool `json:"current"`
+
+	// Effective True only when this selected candidate currently contributes scope-derived policy output.
+	Effective bool `json:"effective"`
+
+	// InactiveReason The first fail-closed compiler condition preventing effective access; null only when effective is true. Decision status remains separately visible.
+	InactiveReason *K8sClusterScopeInactiveReason   `json:"inactive_reason"`
+	Namespace      string                           `json:"namespace"`
+	Port           int                              `json:"port"`
+	Protocol       K8sClusterScopeCandidateProtocol `json:"protocol"`
+	Selected       bool                             `json:"selected"`
+	Service        string                           `json:"service"`
+	ServiceChildId openapi_types.UUID               `json:"service_child_id"`
+}
+
+// K8sClusterScopeCandidateProtocol defines model for K8sClusterScopeCandidate.Protocol.
+type K8sClusterScopeCandidateProtocol string
+
+// K8sClusterScopeCandidatePage defines model for K8sClusterScopeCandidatePage.
+type K8sClusterScopeCandidatePage struct {
+	Items      []K8sClusterScopeCandidate `json:"items"`
+	NextCursor *string                    `json:"next_cursor"`
+}
+
+// K8sClusterScopeInactiveReason The first fail-closed compiler condition preventing effective access; null only when effective is true. Decision status remains separately visible.
+type K8sClusterScopeInactiveReason string
+
+// K8sClusterScopeMembership defines model for K8sClusterScopeMembership.
+type K8sClusterScopeMembership struct {
+	ClusterId openapi_types.UUID `json:"cluster_id"`
+	CreatedAt time.Time          `json:"created_at"`
+
+	// Current True only while the exact child still matches the latest fresh, attributed connector inventory and opaque Service identity.
+	Current         bool                `json:"current"`
+	DecidedAt       *time.Time          `json:"decided_at"`
+	DecidedByUserId *openapi_types.UUID `json:"decided_by_user_id"`
+
+	// Effective True only when this membership currently contributes scope-derived policy output.
+	Effective bool `json:"effective"`
+
+	// InactiveReason The first fail-closed compiler condition preventing effective access; null only when effective is true. Decision status remains separately visible.
+	InactiveReason *K8sClusterScopeInactiveReason    `json:"inactive_reason"`
+	Namespace      string                            `json:"namespace"`
+	Origin         K8sClusterScopeMembershipOrigin   `json:"origin"`
+	Port           int                               `json:"port"`
+	Protocol       K8sClusterScopeMembershipProtocol `json:"protocol"`
+	RuleId         openapi_types.UUID                `json:"rule_id"`
+	Service        string                            `json:"service"`
+	ServiceChildId openapi_types.UUID                `json:"service_child_id"`
+	Status         K8sClusterScopeMembershipStatus   `json:"status"`
+}
+
+// K8sClusterScopeMembershipOrigin defines model for K8sClusterScopeMembership.Origin.
+type K8sClusterScopeMembershipOrigin string
+
+// K8sClusterScopeMembershipProtocol defines model for K8sClusterScopeMembership.Protocol.
+type K8sClusterScopeMembershipProtocol string
+
+// K8sClusterScopeMembershipStatus defines model for K8sClusterScopeMembership.Status.
+type K8sClusterScopeMembershipStatus string
+
+// K8sClusterScopeMembershipPage defines model for K8sClusterScopeMembershipPage.
+type K8sClusterScopeMembershipPage struct {
+	Items      []K8sClusterScopeMembership `json:"items"`
+	NextCursor *string                     `json:"next_cursor"`
+}
+
+// K8sClusterScopeSettings defines model for K8sClusterScopeSettings.
+type K8sClusterScopeSettings struct {
+	// Effective True only when licensed and explicitly enabled.
+	Effective           bool       `json:"effective"`
+	Enabled             bool       `json:"enabled"`
+	EntitlementUnlocked bool       `json:"entitlement_unlocked"`
+	Revision            int64      `json:"revision"`
+	UpdatedAt           *time.Time `json:"updated_at"`
+}
+
+// K8sClusterScopeSource defines model for K8sClusterScopeSource.
+type K8sClusterScopeSource struct {
+	// Cidr Required only when kind=cidr.
+	Cidr *string `json:"cidr"`
+
+	// Id Required for every source kind except cidr.
+	Id *openapi_types.UUID `json:"id"`
+
+	// Kind agent_group is readable for preserved legacy rows but is not accepted by the v1 create contract.
+	Kind K8sClusterScopeSourceKind `json:"kind"`
+}
+
+// K8sClusterScopeSourceKind agent_group is readable for preserved legacy rows but is not accepted by the v1 create contract.
+type K8sClusterScopeSourceKind string
+
+// K8sConnectorPoolHAStatus defines model for K8sConnectorPoolHAStatus.
+type K8sConnectorPoolHAStatus struct {
+	AchievedAt           *time.Time                            `json:"achieved_at"`
+	ActiveNodeId         openapi_types.UUID                    `json:"active_node_id"`
+	ActualMode           K8sConnectorPoolHAStatusActualMode    `json:"actual_mode"`
+	ClusterId            openapi_types.UUID                    `json:"cluster_id"`
+	MembershipEpoch      *int64                                `json:"membership_epoch"`
+	MembershipEpochKnown bool                                  `json:"membership_epoch_known"`
+	PoolId               openapi_types.UUID                    `json:"pool_id"`
+	PromotionGeneration  int64                                 `json:"promotion_generation"`
+	ReasonCode           string                                `json:"reason_code"`
+	RequestedAt          *time.Time                            `json:"requested_at"`
+	RequestedMode        K8sConnectorPoolHAStatusRequestedMode `json:"requested_mode"`
+	TransitionRevision   int64                                 `json:"transition_revision"`
+}
+
+// K8sConnectorPoolHAStatusActualMode defines model for K8sConnectorPoolHAStatus.ActualMode.
+type K8sConnectorPoolHAStatusActualMode string
+
+// K8sConnectorPoolHAStatusRequestedMode defines model for K8sConnectorPoolHAStatus.RequestedMode.
+type K8sConnectorPoolHAStatusRequestedMode string
+
+// K8sHASettings defines model for K8sHASettings.
+type K8sHASettings struct {
+	ActualState          K8sHASettingsActualState    `json:"actual_state"`
+	DeploymentReady      bool                        `json:"deployment_ready"`
+	Enabled              bool                        `json:"enabled"`
+	ReasonCode           string                      `json:"reason_code"`
+	Revision             int64                       `json:"revision"`
+	SchedulerReasonCodes []string                    `json:"scheduler_reason_codes"`
+	SchedulerState       K8sHASettingsSchedulerState `json:"scheduler_state"`
+	UpdatedAt            *time.Time                  `json:"updated_at"`
+}
+
+// K8sHASettingsActualState defines model for K8sHASettings.ActualState.
+type K8sHASettingsActualState string
+
+// K8sHASettingsSchedulerState defines model for K8sHASettings.SchedulerState.
+type K8sHASettingsSchedulerState string
+
+// K8sInventoryPage defines model for K8sInventoryPage.
+type K8sInventoryPage struct {
+	FreshUntil time.Time             `json:"fresh_until"`
+	Items      []K8sInventoryService `json:"items"`
+	NextCursor *string               `json:"next_cursor"`
+	ObservedAt time.Time             `json:"observed_at"`
+}
+
+// K8sInventoryPort defines model for K8sInventoryPort.
+type K8sInventoryPort struct {
+	Name        *string                  `json:"name"`
+	PortRef     openapi_types.UUID       `json:"port_ref"`
+	Protocol    K8sInventoryPortProtocol `json:"protocol"`
+	ServicePort int                      `json:"service_port"`
+}
+
+// K8sInventoryPortProtocol defines model for K8sInventoryPort.Protocol.
+type K8sInventoryPortProtocol string
+
+// K8sInventoryService defines model for K8sInventoryService.
+type K8sInventoryService struct {
+	InventoryRef openapi_types.UUID `json:"inventory_ref"`
+	Namespace    string             `json:"namespace"`
+	Ports        []K8sInventoryPort `json:"ports"`
+	Service      string             `json:"service"`
 }
 
 // K8sService defines model for K8sService.
@@ -3096,6 +3605,9 @@ type PolicyRule struct {
 	DstFqdnResourceId *openapi_types.UUID `json:"dst_fqdn_resource_id"`
 	DstGroupId        *openapi_types.UUID `json:"dst_group_id"`
 
+	// DstK8sClusterId Set when dst_kind=k8s_cluster_scope: the cluster whose approved exact-port memberships this specialized rule owns.
+	DstK8sClusterId *openapi_types.UUID `json:"dst_k8s_cluster_id"`
+
 	// DstK8sServiceId Set when dst_kind=k8s_service (S10.3): the exposed Service the grant reaches; the compiler resolves it to the Service's CURRENT VIP.
 	DstK8sServiceId       *openapi_types.UUID `json:"dst_k8s_service_id"`
 	DstK8sServiceVanished bool                `json:"dst_k8s_service_vanished"`
@@ -3163,6 +3675,12 @@ type RegisterK8sClusterRequest struct {
 	// Name A DNS label (lowercase a-z0-9 + hyphens).
 	Name string `json:"name"`
 
+	// Platform Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair.
+	Platform *RegisterK8sClusterRequestPlatform `json:"platform,omitempty"`
+
+	// Provider Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair.
+	Provider *RegisterK8sClusterRequestProvider `json:"provider,omitempty"`
+
 	// ServiceCidr The cluster's Kubernetes Service CIDR (e.g. 10.96.0.0/12).
 	ServiceCidr string `json:"service_cidr"`
 
@@ -3172,6 +3690,12 @@ type RegisterK8sClusterRequest struct {
 	// VipRange The synthetic VIP range (CIDR), disjoint from pool/sites/other clusters.
 	VipRange string `json:"vip_range"`
 }
+
+// RegisterK8sClusterRequestPlatform Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair.
+type RegisterK8sClusterRequestPlatform string
+
+// RegisterK8sClusterRequestProvider Optional for old-client compatibility; both provider and platform must be omitted together or form one supported pair.
+type RegisterK8sClusterRequestProvider string
 
 // RegisterSiteRequest defines model for RegisterSiteRequest.
 type RegisterSiteRequest struct {
@@ -3365,6 +3889,33 @@ type SetAgentGroupMCPProfileRequest struct {
 // SetAgentJITAccessSettingRequest defines model for SetAgentJITAccessSettingRequest.
 type SetAgentJITAccessSettingRequest struct {
 	Enabled bool `json:"enabled"`
+}
+
+// SetK8sClusterScopeActiveRequest defines model for SetK8sClusterScopeActiveRequest.
+type SetK8sClusterScopeActiveRequest struct {
+	Active           bool  `json:"active"`
+	ExpectedRevision int64 `json:"expected_revision"`
+}
+
+// SetK8sClusterScopeSettingsRequest defines model for SetK8sClusterScopeSettingsRequest.
+type SetK8sClusterScopeSettingsRequest struct {
+	Enabled          bool  `json:"enabled"`
+	ExpectedRevision int64 `json:"expected_revision"`
+}
+
+// SetK8sConnectorPoolHAModeRequest defines model for SetK8sConnectorPoolHAModeRequest.
+type SetK8sConnectorPoolHAModeRequest struct {
+	ExpectedTransitionRevision int64                                         `json:"expected_transition_revision"`
+	RequestedMode              SetK8sConnectorPoolHAModeRequestRequestedMode `json:"requested_mode"`
+}
+
+// SetK8sConnectorPoolHAModeRequestRequestedMode defines model for SetK8sConnectorPoolHAModeRequest.RequestedMode.
+type SetK8sConnectorPoolHAModeRequestRequestedMode string
+
+// SetK8sHASettingsRequest defines model for SetK8sHASettingsRequest.
+type SetK8sHASettingsRequest struct {
+	Enabled          bool  `json:"enabled"`
+	ExpectedRevision int64 `json:"expected_revision"`
 }
 
 // SetOrganizationAgentQuotaRequest F02 H1-H3. Null explicitly clears the quota and means unlimited.
@@ -3793,6 +4344,35 @@ type UpdateDeviceModeParams struct {
 	FullTunnel *bool `form:"full_tunnel,omitempty" json:"full_tunnel,omitempty"`
 }
 
+// ListK8sClusterScopeReviewQueueParams defines parameters for ListK8sClusterScopeReviewQueue.
+type ListK8sClusterScopeReviewQueueParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// DeleteK8sClusterScopeParams defines parameters for DeleteK8sClusterScope.
+type DeleteK8sClusterScopeParams struct {
+	ExpectedRevision int64 `form:"expected_revision" json:"expected_revision"`
+}
+
+// ListK8sClusterScopeInitialCandidatesParams defines parameters for ListK8sClusterScopeInitialCandidates.
+type ListK8sClusterScopeInitialCandidatesParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListK8sClusterScopeMembershipsParams defines parameters for ListK8sClusterScopeMemberships.
+type ListK8sClusterScopeMembershipsParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListK8sClusterInventoryParams defines parameters for ListK8sClusterInventory.
+type ListK8sClusterInventoryParams struct {
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListRoutedRangesParams defines parameters for ListRoutedRanges.
 type ListRoutedRangesParams struct {
 	// DeviceId WF-A: when present, the response ALSO carries this device's dial (endpoint + gateway pubkey) derived from the org's ACTIVE HUB, so a running device re-homes on promotion via the SAME poll. The device MUST belong to the calling org AND be owned by the authenticated user — a device fetches only its OWN dial (cross-org/cross-device is refused). Omit for the pre-WF-A ranges-only behavior.
@@ -4021,14 +4601,38 @@ type ResendInvitationJSONRequestBody = EmailRequest
 // RevokeInvitationJSONRequestBody defines body for RevokeInvitation for application/json ContentType.
 type RevokeInvitationJSONRequestBody = EmailRequest
 
+// SetK8sClusterScopeSettingsJSONRequestBody defines body for SetK8sClusterScopeSettings for application/json ContentType.
+type SetK8sClusterScopeSettingsJSONRequestBody = SetK8sClusterScopeSettingsRequest
+
+// CreateK8sClusterScopeJSONRequestBody defines body for CreateK8sClusterScope for application/json ContentType.
+type CreateK8sClusterScopeJSONRequestBody = CreateK8sClusterScopeRequest
+
+// SetK8sClusterScopeActiveJSONRequestBody defines body for SetK8sClusterScopeActive for application/json ContentType.
+type SetK8sClusterScopeActiveJSONRequestBody = SetK8sClusterScopeActiveRequest
+
+// DecideK8sClusterScopeMembershipJSONRequestBody defines body for DecideK8sClusterScopeMembership for application/json ContentType.
+type DecideK8sClusterScopeMembershipJSONRequestBody = DecideK8sClusterScopeMembershipRequest
+
 // RegisterK8sClusterJSONRequestBody defines body for RegisterK8sCluster for application/json ContentType.
 type RegisterK8sClusterJSONRequestBody = RegisterK8sClusterRequest
 
 // SetK8sClusterConnectorJSONRequestBody defines body for SetK8sClusterConnector for application/json ContentType.
 type SetK8sClusterConnectorJSONRequestBody = BindSiteNodeRequest
 
+// ExposeK8sInventoryServiceJSONRequestBody defines body for ExposeK8sInventoryService for application/json ContentType.
+type ExposeK8sInventoryServiceJSONRequestBody = ExposeK8sInventoryServiceRequest
+
+// SetK8sClusterProviderMetadataJSONRequestBody defines body for SetK8sClusterProviderMetadata for application/json ContentType.
+type SetK8sClusterProviderMetadataJSONRequestBody = K8sClusterProviderMetadataRequest
+
 // ExposeK8sServiceJSONRequestBody defines body for ExposeK8sService for application/json ContentType.
 type ExposeK8sServiceJSONRequestBody = ExposeK8sServiceRequest
+
+// SetK8sConnectorPoolHAModeJSONRequestBody defines body for SetK8sConnectorPoolHAMode for application/json ContentType.
+type SetK8sConnectorPoolHAModeJSONRequestBody = SetK8sConnectorPoolHAModeRequest
+
+// SetK8sHASettingsJSONRequestBody defines body for SetK8sHASettings for application/json ContentType.
+type SetK8sHASettingsJSONRequestBody = SetK8sHASettingsRequest
 
 // MintMachineCredentialJSONRequestBody defines body for MintMachineCredential for application/json ContentType.
 type MintMachineCredentialJSONRequestBody = MintMachineCredentialRequest
@@ -4821,6 +5425,47 @@ type ClientInterface interface {
 
 	RevokeInvitation(ctx context.Context, orgId openapi_types.UUID, body RevokeInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListK8sClusterScopeReviewQueue request
+	ListK8sClusterScopeReviewQueue(ctx context.Context, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetK8sClusterScopeSettings request
+	GetK8sClusterScopeSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetK8sClusterScopeSettingsWithBody request with any body
+	SetK8sClusterScopeSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetK8sClusterScopeSettings(ctx context.Context, orgId openapi_types.UUID, body SetK8sClusterScopeSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListK8sClusterScopes request
+	ListK8sClusterScopes(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateK8sClusterScopeWithBody request with any body
+	CreateK8sClusterScopeWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateK8sClusterScope(ctx context.Context, orgId openapi_types.UUID, body CreateK8sClusterScopeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteK8sClusterScope request
+	DeleteK8sClusterScope(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sClusterScopeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetK8sClusterScope request
+	GetK8sClusterScope(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetK8sClusterScopeActiveWithBody request with any body
+	SetK8sClusterScopeActiveWithBody(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetK8sClusterScopeActive(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, body SetK8sClusterScopeActiveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListK8sClusterScopeInitialCandidates request
+	ListK8sClusterScopeInitialCandidates(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeInitialCandidatesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListK8sClusterScopeMemberships request
+	ListK8sClusterScopeMemberships(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeMembershipsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DecideK8sClusterScopeMembershipWithBody request with any body
+	DecideK8sClusterScopeMembershipWithBody(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DecideK8sClusterScopeMembership(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, body DecideK8sClusterScopeMembershipJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListK8sClusters request
 	ListK8sClusters(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -4840,6 +5485,19 @@ type ClientInterface interface {
 
 	SetK8sClusterConnector(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListK8sClusterInventory request
+	ListK8sClusterInventory(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExposeK8sInventoryServiceWithBody request with any body
+	ExposeK8sInventoryServiceWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ExposeK8sInventoryService(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetK8sClusterProviderMetadataWithBody request with any body
+	SetK8sClusterProviderMetadataWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetK8sClusterProviderMetadata(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterProviderMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListK8sServices request
 	ListK8sServices(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -4847,6 +5505,25 @@ type ClientInterface interface {
 	ExposeK8sServiceWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ExposeK8sService(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ExposeK8sServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListK8sConnectorPoolHAStatus request
+	ListK8sConnectorPoolHAStatus(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetK8sConnectorPoolHAStatus request
+	GetK8sConnectorPoolHAStatus(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetK8sConnectorPoolHAModeWithBody request with any body
+	SetK8sConnectorPoolHAModeWithBody(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetK8sConnectorPoolHAMode(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, body SetK8sConnectorPoolHAModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetK8sHASettings request
+	GetK8sHASettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetK8sHASettingsWithBody request with any body
+	SetK8sHASettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetK8sHASettings(ctx context.Context, orgId openapi_types.UUID, body SetK8sHASettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListK8sServicesForOrg request
 	ListK8sServicesForOrg(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7935,6 +8612,186 @@ func (c *Client) RevokeInvitation(ctx context.Context, orgId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListK8sClusterScopeReviewQueue(ctx context.Context, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sClusterScopeReviewQueueRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetK8sClusterScopeSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetK8sClusterScopeSettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterScopeSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterScopeSettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterScopeSettings(ctx context.Context, orgId openapi_types.UUID, body SetK8sClusterScopeSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterScopeSettingsRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListK8sClusterScopes(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sClusterScopesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateK8sClusterScopeWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateK8sClusterScopeRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateK8sClusterScope(ctx context.Context, orgId openapi_types.UUID, body CreateK8sClusterScopeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateK8sClusterScopeRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteK8sClusterScope(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sClusterScopeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteK8sClusterScopeRequest(c.Server, orgId, ruleId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetK8sClusterScope(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetK8sClusterScopeRequest(c.Server, orgId, ruleId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterScopeActiveWithBody(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterScopeActiveRequestWithBody(c.Server, orgId, ruleId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterScopeActive(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, body SetK8sClusterScopeActiveJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterScopeActiveRequest(c.Server, orgId, ruleId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListK8sClusterScopeInitialCandidates(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeInitialCandidatesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sClusterScopeInitialCandidatesRequest(c.Server, orgId, ruleId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListK8sClusterScopeMemberships(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeMembershipsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sClusterScopeMembershipsRequest(c.Server, orgId, ruleId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DecideK8sClusterScopeMembershipWithBody(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideK8sClusterScopeMembershipRequestWithBody(c.Server, orgId, ruleId, serviceChildId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DecideK8sClusterScopeMembership(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, body DecideK8sClusterScopeMembershipJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDecideK8sClusterScopeMembershipRequest(c.Server, orgId, ruleId, serviceChildId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListK8sClusters(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListK8sClustersRequest(c.Server, orgId)
 	if err != nil {
@@ -8019,6 +8876,66 @@ func (c *Client) SetK8sClusterConnector(ctx context.Context, orgId openapi_types
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListK8sClusterInventory(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sClusterInventoryRequest(c.Server, orgId, clusterId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExposeK8sInventoryServiceWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExposeK8sInventoryServiceRequestWithBody(c.Server, orgId, clusterId, inventoryRef, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExposeK8sInventoryService(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExposeK8sInventoryServiceRequest(c.Server, orgId, clusterId, inventoryRef, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterProviderMetadataWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterProviderMetadataRequestWithBody(c.Server, orgId, clusterId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterProviderMetadata(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterProviderMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterProviderMetadataRequest(c.Server, orgId, clusterId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListK8sServices(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListK8sServicesRequest(c.Server, orgId, clusterId)
 	if err != nil {
@@ -8045,6 +8962,90 @@ func (c *Client) ExposeK8sServiceWithBody(ctx context.Context, orgId openapi_typ
 
 func (c *Client) ExposeK8sService(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ExposeK8sServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExposeK8sServiceRequest(c.Server, orgId, clusterId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListK8sConnectorPoolHAStatus(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sConnectorPoolHAStatusRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetK8sConnectorPoolHAStatus(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetK8sConnectorPoolHAStatusRequest(c.Server, orgId, poolId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sConnectorPoolHAModeWithBody(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sConnectorPoolHAModeRequestWithBody(c.Server, orgId, poolId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sConnectorPoolHAMode(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, body SetK8sConnectorPoolHAModeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sConnectorPoolHAModeRequest(c.Server, orgId, poolId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetK8sHASettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetK8sHASettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sHASettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sHASettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sHASettings(ctx context.Context, orgId openapi_types.UUID, body SetK8sHASettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sHASettingsRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -16557,6 +17558,613 @@ func NewRevokeInvitationRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewListK8sClusterScopeReviewQueueRequest generates requests for ListK8sClusterScopeReviewQueue
+func NewListK8sClusterScopeReviewQueueRequest(server string, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scope-review-queue", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetK8sClusterScopeSettingsRequest generates requests for GetK8sClusterScopeSettings
+func NewGetK8sClusterScopeSettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scope-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetK8sClusterScopeSettingsRequest calls the generic SetK8sClusterScopeSettings builder with application/json body
+func NewSetK8sClusterScopeSettingsRequest(server string, orgId openapi_types.UUID, body SetK8sClusterScopeSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetK8sClusterScopeSettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetK8sClusterScopeSettingsRequestWithBody generates requests for SetK8sClusterScopeSettings with any type of body
+func NewSetK8sClusterScopeSettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scope-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListK8sClusterScopesRequest generates requests for ListK8sClusterScopes
+func NewListK8sClusterScopesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateK8sClusterScopeRequest calls the generic CreateK8sClusterScope builder with application/json body
+func NewCreateK8sClusterScopeRequest(server string, orgId openapi_types.UUID, body CreateK8sClusterScopeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateK8sClusterScopeRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateK8sClusterScopeRequestWithBody generates requests for CreateK8sClusterScope with any type of body
+func NewCreateK8sClusterScopeRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteK8sClusterScopeRequest generates requests for DeleteK8sClusterScope
+func NewDeleteK8sClusterScopeRequest(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sClusterScopeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "expected_revision", runtime.ParamLocationQuery, params.ExpectedRevision); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetK8sClusterScopeRequest generates requests for GetK8sClusterScope
+func NewGetK8sClusterScopeRequest(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetK8sClusterScopeActiveRequest calls the generic SetK8sClusterScopeActive builder with application/json body
+func NewSetK8sClusterScopeActiveRequest(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID, body SetK8sClusterScopeActiveJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetK8sClusterScopeActiveRequestWithBody(server, orgId, ruleId, "application/json", bodyReader)
+}
+
+// NewSetK8sClusterScopeActiveRequestWithBody generates requests for SetK8sClusterScopeActive with any type of body
+func NewSetK8sClusterScopeActiveRequestWithBody(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListK8sClusterScopeInitialCandidatesRequest generates requests for ListK8sClusterScopeInitialCandidates
+func NewListK8sClusterScopeInitialCandidatesRequest(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeInitialCandidatesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes/%s/initial-candidates", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListK8sClusterScopeMembershipsRequest generates requests for ListK8sClusterScopeMemberships
+func NewListK8sClusterScopeMembershipsRequest(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeMembershipsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes/%s/memberships", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDecideK8sClusterScopeMembershipRequest calls the generic DecideK8sClusterScopeMembership builder with application/json body
+func NewDecideK8sClusterScopeMembershipRequest(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, body DecideK8sClusterScopeMembershipJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDecideK8sClusterScopeMembershipRequestWithBody(server, orgId, ruleId, serviceChildId, "application/json", bodyReader)
+}
+
+// NewDecideK8sClusterScopeMembershipRequestWithBody generates requests for DecideK8sClusterScopeMembership with any type of body
+func NewDecideK8sClusterScopeMembershipRequestWithBody(server string, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "serviceChildId", runtime.ParamLocationPath, serviceChildId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/cluster-scopes/%s/memberships/%s/decision", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListK8sClustersRequest generates requests for ListK8sClusters
 func NewListK8sClustersRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -16774,6 +18382,200 @@ func NewSetK8sClusterConnectorRequestWithBody(server string, orgId openapi_types
 	return req, nil
 }
 
+// NewListK8sClusterInventoryRequest generates requests for ListK8sClusterInventory
+func NewListK8sClusterInventoryRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/inventory", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewExposeK8sInventoryServiceRequest calls the generic ExposeK8sInventoryService builder with application/json body
+func NewExposeK8sInventoryServiceRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExposeK8sInventoryServiceRequestWithBody(server, orgId, clusterId, inventoryRef, "application/json", bodyReader)
+}
+
+// NewExposeK8sInventoryServiceRequestWithBody generates requests for ExposeK8sInventoryService with any type of body
+func NewExposeK8sInventoryServiceRequestWithBody(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "inventoryRef", runtime.ParamLocationPath, inventoryRef)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/inventory/%s/expose", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetK8sClusterProviderMetadataRequest calls the generic SetK8sClusterProviderMetadata builder with application/json body
+func NewSetK8sClusterProviderMetadataRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterProviderMetadataJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetK8sClusterProviderMetadataRequestWithBody(server, orgId, clusterId, "application/json", bodyReader)
+}
+
+// NewSetK8sClusterProviderMetadataRequestWithBody generates requests for SetK8sClusterProviderMetadata with any type of body
+func NewSetK8sClusterProviderMetadataRequestWithBody(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/provider-metadata", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListK8sServicesRequest generates requests for ListK8sServices
 func NewListK8sServicesRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -16860,6 +18662,216 @@ func NewExposeK8sServiceRequestWithBody(server string, orgId openapi_types.UUID,
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListK8sConnectorPoolHAStatusRequest generates requests for ListK8sConnectorPoolHAStatus
+func NewListK8sConnectorPoolHAStatusRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/connector-pools/ha-status", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetK8sConnectorPoolHAStatusRequest generates requests for GetK8sConnectorPoolHAStatus
+func NewGetK8sConnectorPoolHAStatusRequest(server string, orgId openapi_types.UUID, poolId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "poolId", runtime.ParamLocationPath, poolId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/connector-pools/%s/ha-mode", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetK8sConnectorPoolHAModeRequest calls the generic SetK8sConnectorPoolHAMode builder with application/json body
+func NewSetK8sConnectorPoolHAModeRequest(server string, orgId openapi_types.UUID, poolId openapi_types.UUID, body SetK8sConnectorPoolHAModeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetK8sConnectorPoolHAModeRequestWithBody(server, orgId, poolId, "application/json", bodyReader)
+}
+
+// NewSetK8sConnectorPoolHAModeRequestWithBody generates requests for SetK8sConnectorPoolHAMode with any type of body
+func NewSetK8sConnectorPoolHAModeRequestWithBody(server string, orgId openapi_types.UUID, poolId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "poolId", runtime.ParamLocationPath, poolId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/connector-pools/%s/ha-mode", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetK8sHASettingsRequest generates requests for GetK8sHASettings
+func NewGetK8sHASettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/ha-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetK8sHASettingsRequest calls the generic SetK8sHASettings builder with application/json body
+func NewSetK8sHASettingsRequest(server string, orgId openapi_types.UUID, body SetK8sHASettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetK8sHASettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetK8sHASettingsRequestWithBody generates requests for SetK8sHASettings with any type of body
+func NewSetK8sHASettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/ha-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -20030,6 +22042,47 @@ type ClientWithResponsesInterface interface {
 
 	RevokeInvitationWithResponse(ctx context.Context, orgId openapi_types.UUID, body RevokeInvitationJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeInvitationResponse, error)
 
+	// ListK8sClusterScopeReviewQueueWithResponse request
+	ListK8sClusterScopeReviewQueueWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams, reqEditors ...RequestEditorFn) (*ListK8sClusterScopeReviewQueueResponse, error)
+
+	// GetK8sClusterScopeSettingsWithResponse request
+	GetK8sClusterScopeSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sClusterScopeSettingsResponse, error)
+
+	// SetK8sClusterScopeSettingsWithBodyWithResponse request with any body
+	SetK8sClusterScopeSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeSettingsResponse, error)
+
+	SetK8sClusterScopeSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetK8sClusterScopeSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeSettingsResponse, error)
+
+	// ListK8sClusterScopesWithResponse request
+	ListK8sClusterScopesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sClusterScopesResponse, error)
+
+	// CreateK8sClusterScopeWithBodyWithResponse request with any body
+	CreateK8sClusterScopeWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateK8sClusterScopeResponse, error)
+
+	CreateK8sClusterScopeWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateK8sClusterScopeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateK8sClusterScopeResponse, error)
+
+	// DeleteK8sClusterScopeWithResponse request
+	DeleteK8sClusterScopeWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sClusterScopeParams, reqEditors ...RequestEditorFn) (*DeleteK8sClusterScopeResponse, error)
+
+	// GetK8sClusterScopeWithResponse request
+	GetK8sClusterScopeWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sClusterScopeResponse, error)
+
+	// SetK8sClusterScopeActiveWithBodyWithResponse request with any body
+	SetK8sClusterScopeActiveWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeActiveResponse, error)
+
+	SetK8sClusterScopeActiveWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, body SetK8sClusterScopeActiveJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeActiveResponse, error)
+
+	// ListK8sClusterScopeInitialCandidatesWithResponse request
+	ListK8sClusterScopeInitialCandidatesWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeInitialCandidatesParams, reqEditors ...RequestEditorFn) (*ListK8sClusterScopeInitialCandidatesResponse, error)
+
+	// ListK8sClusterScopeMembershipsWithResponse request
+	ListK8sClusterScopeMembershipsWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeMembershipsParams, reqEditors ...RequestEditorFn) (*ListK8sClusterScopeMembershipsResponse, error)
+
+	// DecideK8sClusterScopeMembershipWithBodyWithResponse request with any body
+	DecideK8sClusterScopeMembershipWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideK8sClusterScopeMembershipResponse, error)
+
+	DecideK8sClusterScopeMembershipWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, body DecideK8sClusterScopeMembershipJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideK8sClusterScopeMembershipResponse, error)
+
 	// ListK8sClustersWithResponse request
 	ListK8sClustersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sClustersResponse, error)
 
@@ -20049,6 +22102,19 @@ type ClientWithResponsesInterface interface {
 
 	SetK8sClusterConnectorWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterConnectorResponse, error)
 
+	// ListK8sClusterInventoryWithResponse request
+	ListK8sClusterInventoryWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams, reqEditors ...RequestEditorFn) (*ListK8sClusterInventoryResponse, error)
+
+	// ExposeK8sInventoryServiceWithBodyWithResponse request with any body
+	ExposeK8sInventoryServiceWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExposeK8sInventoryServiceResponse, error)
+
+	ExposeK8sInventoryServiceWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*ExposeK8sInventoryServiceResponse, error)
+
+	// SetK8sClusterProviderMetadataWithBodyWithResponse request with any body
+	SetK8sClusterProviderMetadataWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterProviderMetadataResponse, error)
+
+	SetK8sClusterProviderMetadataWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterProviderMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterProviderMetadataResponse, error)
+
 	// ListK8sServicesWithResponse request
 	ListK8sServicesWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sServicesResponse, error)
 
@@ -20056,6 +22122,25 @@ type ClientWithResponsesInterface interface {
 	ExposeK8sServiceWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExposeK8sServiceResponse, error)
 
 	ExposeK8sServiceWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ExposeK8sServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*ExposeK8sServiceResponse, error)
+
+	// ListK8sConnectorPoolHAStatusWithResponse request
+	ListK8sConnectorPoolHAStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sConnectorPoolHAStatusResponse, error)
+
+	// GetK8sConnectorPoolHAStatusWithResponse request
+	GetK8sConnectorPoolHAStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sConnectorPoolHAStatusResponse, error)
+
+	// SetK8sConnectorPoolHAModeWithBodyWithResponse request with any body
+	SetK8sConnectorPoolHAModeWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sConnectorPoolHAModeResponse, error)
+
+	SetK8sConnectorPoolHAModeWithResponse(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, body SetK8sConnectorPoolHAModeJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sConnectorPoolHAModeResponse, error)
+
+	// GetK8sHASettingsWithResponse request
+	GetK8sHASettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sHASettingsResponse, error)
+
+	// SetK8sHASettingsWithBodyWithResponse request with any body
+	SetK8sHASettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sHASettingsResponse, error)
+
+	SetK8sHASettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetK8sHASettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sHASettingsResponse, error)
 
 	// ListK8sServicesForOrgWithResponse request
 	ListK8sServicesForOrgWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sServicesForOrgResponse, error)
@@ -24054,6 +26139,258 @@ func (r RevokeInvitationResponse) StatusCode() int {
 	return 0
 }
 
+type ListK8sClusterScopeReviewQueueResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScopeMembershipPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sClusterScopeReviewQueueResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sClusterScopeReviewQueueResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetK8sClusterScopeSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScopeSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetK8sClusterScopeSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetK8sClusterScopeSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetK8sClusterScopeSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScopeSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetK8sClusterScopeSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetK8sClusterScopeSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListK8sClusterScopesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]K8sClusterScope
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sClusterScopesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sClusterScopesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateK8sClusterScopeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *K8sClusterScope
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateK8sClusterScopeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateK8sClusterScopeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteK8sClusterScopeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteK8sClusterScopeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteK8sClusterScopeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetK8sClusterScopeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScope
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetK8sClusterScopeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetK8sClusterScopeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetK8sClusterScopeActiveResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScope
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetK8sClusterScopeActiveResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetK8sClusterScopeActiveResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListK8sClusterScopeInitialCandidatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScopeCandidatePage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sClusterScopeInitialCandidatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sClusterScopeInitialCandidatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListK8sClusterScopeMembershipsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScopeMembershipPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sClusterScopeMembershipsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sClusterScopeMembershipsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DecideK8sClusterScopeMembershipResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sClusterScopeMembership
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DecideK8sClusterScopeMembershipResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DecideK8sClusterScopeMembershipResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListK8sClustersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -24167,6 +26504,75 @@ func (r SetK8sClusterConnectorResponse) StatusCode() int {
 	return 0
 }
 
+type ListK8sClusterInventoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sInventoryPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sClusterInventoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sClusterInventoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ExposeK8sInventoryServiceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *ExposeK8sInventoryServiceResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ExposeK8sInventoryServiceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExposeK8sInventoryServiceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetK8sClusterProviderMetadataResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sCluster
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetK8sClusterProviderMetadataResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetK8sClusterProviderMetadataResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListK8sServicesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -24207,6 +26613,121 @@ func (r ExposeK8sServiceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ExposeK8sServiceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListK8sConnectorPoolHAStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]K8sConnectorPoolHAStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sConnectorPoolHAStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sConnectorPoolHAStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetK8sConnectorPoolHAStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sConnectorPoolHAStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetK8sConnectorPoolHAStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetK8sConnectorPoolHAStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetK8sConnectorPoolHAModeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sConnectorPoolHAStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetK8sConnectorPoolHAModeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetK8sConnectorPoolHAModeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetK8sHASettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sHASettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetK8sHASettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetK8sHASettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetK8sHASettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sHASettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetK8sHASettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetK8sHASettingsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -27559,6 +30080,137 @@ func (c *ClientWithResponses) RevokeInvitationWithResponse(ctx context.Context, 
 	return ParseRevokeInvitationResponse(rsp)
 }
 
+// ListK8sClusterScopeReviewQueueWithResponse request returning *ListK8sClusterScopeReviewQueueResponse
+func (c *ClientWithResponses) ListK8sClusterScopeReviewQueueWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListK8sClusterScopeReviewQueueParams, reqEditors ...RequestEditorFn) (*ListK8sClusterScopeReviewQueueResponse, error) {
+	rsp, err := c.ListK8sClusterScopeReviewQueue(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sClusterScopeReviewQueueResponse(rsp)
+}
+
+// GetK8sClusterScopeSettingsWithResponse request returning *GetK8sClusterScopeSettingsResponse
+func (c *ClientWithResponses) GetK8sClusterScopeSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sClusterScopeSettingsResponse, error) {
+	rsp, err := c.GetK8sClusterScopeSettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetK8sClusterScopeSettingsResponse(rsp)
+}
+
+// SetK8sClusterScopeSettingsWithBodyWithResponse request with arbitrary body returning *SetK8sClusterScopeSettingsResponse
+func (c *ClientWithResponses) SetK8sClusterScopeSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeSettingsResponse, error) {
+	rsp, err := c.SetK8sClusterScopeSettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterScopeSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetK8sClusterScopeSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetK8sClusterScopeSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeSettingsResponse, error) {
+	rsp, err := c.SetK8sClusterScopeSettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterScopeSettingsResponse(rsp)
+}
+
+// ListK8sClusterScopesWithResponse request returning *ListK8sClusterScopesResponse
+func (c *ClientWithResponses) ListK8sClusterScopesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sClusterScopesResponse, error) {
+	rsp, err := c.ListK8sClusterScopes(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sClusterScopesResponse(rsp)
+}
+
+// CreateK8sClusterScopeWithBodyWithResponse request with arbitrary body returning *CreateK8sClusterScopeResponse
+func (c *ClientWithResponses) CreateK8sClusterScopeWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateK8sClusterScopeResponse, error) {
+	rsp, err := c.CreateK8sClusterScopeWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateK8sClusterScopeResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateK8sClusterScopeWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateK8sClusterScopeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateK8sClusterScopeResponse, error) {
+	rsp, err := c.CreateK8sClusterScope(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateK8sClusterScopeResponse(rsp)
+}
+
+// DeleteK8sClusterScopeWithResponse request returning *DeleteK8sClusterScopeResponse
+func (c *ClientWithResponses) DeleteK8sClusterScopeWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sClusterScopeParams, reqEditors ...RequestEditorFn) (*DeleteK8sClusterScopeResponse, error) {
+	rsp, err := c.DeleteK8sClusterScope(ctx, orgId, ruleId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteK8sClusterScopeResponse(rsp)
+}
+
+// GetK8sClusterScopeWithResponse request returning *GetK8sClusterScopeResponse
+func (c *ClientWithResponses) GetK8sClusterScopeWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sClusterScopeResponse, error) {
+	rsp, err := c.GetK8sClusterScope(ctx, orgId, ruleId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetK8sClusterScopeResponse(rsp)
+}
+
+// SetK8sClusterScopeActiveWithBodyWithResponse request with arbitrary body returning *SetK8sClusterScopeActiveResponse
+func (c *ClientWithResponses) SetK8sClusterScopeActiveWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeActiveResponse, error) {
+	rsp, err := c.SetK8sClusterScopeActiveWithBody(ctx, orgId, ruleId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterScopeActiveResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetK8sClusterScopeActiveWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, body SetK8sClusterScopeActiveJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterScopeActiveResponse, error) {
+	rsp, err := c.SetK8sClusterScopeActive(ctx, orgId, ruleId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterScopeActiveResponse(rsp)
+}
+
+// ListK8sClusterScopeInitialCandidatesWithResponse request returning *ListK8sClusterScopeInitialCandidatesResponse
+func (c *ClientWithResponses) ListK8sClusterScopeInitialCandidatesWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeInitialCandidatesParams, reqEditors ...RequestEditorFn) (*ListK8sClusterScopeInitialCandidatesResponse, error) {
+	rsp, err := c.ListK8sClusterScopeInitialCandidates(ctx, orgId, ruleId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sClusterScopeInitialCandidatesResponse(rsp)
+}
+
+// ListK8sClusterScopeMembershipsWithResponse request returning *ListK8sClusterScopeMembershipsResponse
+func (c *ClientWithResponses) ListK8sClusterScopeMembershipsWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, params *ListK8sClusterScopeMembershipsParams, reqEditors ...RequestEditorFn) (*ListK8sClusterScopeMembershipsResponse, error) {
+	rsp, err := c.ListK8sClusterScopeMemberships(ctx, orgId, ruleId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sClusterScopeMembershipsResponse(rsp)
+}
+
+// DecideK8sClusterScopeMembershipWithBodyWithResponse request with arbitrary body returning *DecideK8sClusterScopeMembershipResponse
+func (c *ClientWithResponses) DecideK8sClusterScopeMembershipWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DecideK8sClusterScopeMembershipResponse, error) {
+	rsp, err := c.DecideK8sClusterScopeMembershipWithBody(ctx, orgId, ruleId, serviceChildId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideK8sClusterScopeMembershipResponse(rsp)
+}
+
+func (c *ClientWithResponses) DecideK8sClusterScopeMembershipWithResponse(ctx context.Context, orgId openapi_types.UUID, ruleId openapi_types.UUID, serviceChildId openapi_types.UUID, body DecideK8sClusterScopeMembershipJSONRequestBody, reqEditors ...RequestEditorFn) (*DecideK8sClusterScopeMembershipResponse, error) {
+	rsp, err := c.DecideK8sClusterScopeMembership(ctx, orgId, ruleId, serviceChildId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDecideK8sClusterScopeMembershipResponse(rsp)
+}
+
 // ListK8sClustersWithResponse request returning *ListK8sClustersResponse
 func (c *ClientWithResponses) ListK8sClustersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sClustersResponse, error) {
 	rsp, err := c.ListK8sClusters(ctx, orgId, reqEditors...)
@@ -27620,6 +30272,49 @@ func (c *ClientWithResponses) SetK8sClusterConnectorWithResponse(ctx context.Con
 	return ParseSetK8sClusterConnectorResponse(rsp)
 }
 
+// ListK8sClusterInventoryWithResponse request returning *ListK8sClusterInventoryResponse
+func (c *ClientWithResponses) ListK8sClusterInventoryWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams, reqEditors ...RequestEditorFn) (*ListK8sClusterInventoryResponse, error) {
+	rsp, err := c.ListK8sClusterInventory(ctx, orgId, clusterId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sClusterInventoryResponse(rsp)
+}
+
+// ExposeK8sInventoryServiceWithBodyWithResponse request with arbitrary body returning *ExposeK8sInventoryServiceResponse
+func (c *ClientWithResponses) ExposeK8sInventoryServiceWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExposeK8sInventoryServiceResponse, error) {
+	rsp, err := c.ExposeK8sInventoryServiceWithBody(ctx, orgId, clusterId, inventoryRef, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExposeK8sInventoryServiceResponse(rsp)
+}
+
+func (c *ClientWithResponses) ExposeK8sInventoryServiceWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*ExposeK8sInventoryServiceResponse, error) {
+	rsp, err := c.ExposeK8sInventoryService(ctx, orgId, clusterId, inventoryRef, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExposeK8sInventoryServiceResponse(rsp)
+}
+
+// SetK8sClusterProviderMetadataWithBodyWithResponse request with arbitrary body returning *SetK8sClusterProviderMetadataResponse
+func (c *ClientWithResponses) SetK8sClusterProviderMetadataWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterProviderMetadataResponse, error) {
+	rsp, err := c.SetK8sClusterProviderMetadataWithBody(ctx, orgId, clusterId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterProviderMetadataResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetK8sClusterProviderMetadataWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterProviderMetadataJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterProviderMetadataResponse, error) {
+	rsp, err := c.SetK8sClusterProviderMetadata(ctx, orgId, clusterId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterProviderMetadataResponse(rsp)
+}
+
 // ListK8sServicesWithResponse request returning *ListK8sServicesResponse
 func (c *ClientWithResponses) ListK8sServicesWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sServicesResponse, error) {
 	rsp, err := c.ListK8sServices(ctx, orgId, clusterId, reqEditors...)
@@ -27644,6 +30339,67 @@ func (c *ClientWithResponses) ExposeK8sServiceWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseExposeK8sServiceResponse(rsp)
+}
+
+// ListK8sConnectorPoolHAStatusWithResponse request returning *ListK8sConnectorPoolHAStatusResponse
+func (c *ClientWithResponses) ListK8sConnectorPoolHAStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sConnectorPoolHAStatusResponse, error) {
+	rsp, err := c.ListK8sConnectorPoolHAStatus(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sConnectorPoolHAStatusResponse(rsp)
+}
+
+// GetK8sConnectorPoolHAStatusWithResponse request returning *GetK8sConnectorPoolHAStatusResponse
+func (c *ClientWithResponses) GetK8sConnectorPoolHAStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sConnectorPoolHAStatusResponse, error) {
+	rsp, err := c.GetK8sConnectorPoolHAStatus(ctx, orgId, poolId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetK8sConnectorPoolHAStatusResponse(rsp)
+}
+
+// SetK8sConnectorPoolHAModeWithBodyWithResponse request with arbitrary body returning *SetK8sConnectorPoolHAModeResponse
+func (c *ClientWithResponses) SetK8sConnectorPoolHAModeWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sConnectorPoolHAModeResponse, error) {
+	rsp, err := c.SetK8sConnectorPoolHAModeWithBody(ctx, orgId, poolId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sConnectorPoolHAModeResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetK8sConnectorPoolHAModeWithResponse(ctx context.Context, orgId openapi_types.UUID, poolId openapi_types.UUID, body SetK8sConnectorPoolHAModeJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sConnectorPoolHAModeResponse, error) {
+	rsp, err := c.SetK8sConnectorPoolHAMode(ctx, orgId, poolId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sConnectorPoolHAModeResponse(rsp)
+}
+
+// GetK8sHASettingsWithResponse request returning *GetK8sHASettingsResponse
+func (c *ClientWithResponses) GetK8sHASettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sHASettingsResponse, error) {
+	rsp, err := c.GetK8sHASettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetK8sHASettingsResponse(rsp)
+}
+
+// SetK8sHASettingsWithBodyWithResponse request with arbitrary body returning *SetK8sHASettingsResponse
+func (c *ClientWithResponses) SetK8sHASettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sHASettingsResponse, error) {
+	rsp, err := c.SetK8sHASettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sHASettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetK8sHASettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetK8sHASettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sHASettingsResponse, error) {
+	rsp, err := c.SetK8sHASettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sHASettingsResponse(rsp)
 }
 
 // ListK8sServicesForOrgWithResponse request returning *ListK8sServicesForOrgResponse
@@ -33676,6 +36432,362 @@ func ParseRevokeInvitationResponse(rsp *http.Response) (*RevokeInvitationRespons
 	return response, nil
 }
 
+// ParseListK8sClusterScopeReviewQueueResponse parses an HTTP response from a ListK8sClusterScopeReviewQueueWithResponse call
+func ParseListK8sClusterScopeReviewQueueResponse(rsp *http.Response) (*ListK8sClusterScopeReviewQueueResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sClusterScopeReviewQueueResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScopeMembershipPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetK8sClusterScopeSettingsResponse parses an HTTP response from a GetK8sClusterScopeSettingsWithResponse call
+func ParseGetK8sClusterScopeSettingsResponse(rsp *http.Response) (*GetK8sClusterScopeSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetK8sClusterScopeSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScopeSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetK8sClusterScopeSettingsResponse parses an HTTP response from a SetK8sClusterScopeSettingsWithResponse call
+func ParseSetK8sClusterScopeSettingsResponse(rsp *http.Response) (*SetK8sClusterScopeSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetK8sClusterScopeSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScopeSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListK8sClusterScopesResponse parses an HTTP response from a ListK8sClusterScopesWithResponse call
+func ParseListK8sClusterScopesResponse(rsp *http.Response) (*ListK8sClusterScopesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sClusterScopesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []K8sClusterScope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateK8sClusterScopeResponse parses an HTTP response from a CreateK8sClusterScopeWithResponse call
+func ParseCreateK8sClusterScopeResponse(rsp *http.Response) (*CreateK8sClusterScopeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateK8sClusterScopeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest K8sClusterScope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteK8sClusterScopeResponse parses an HTTP response from a DeleteK8sClusterScopeWithResponse call
+func ParseDeleteK8sClusterScopeResponse(rsp *http.Response) (*DeleteK8sClusterScopeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteK8sClusterScopeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetK8sClusterScopeResponse parses an HTTP response from a GetK8sClusterScopeWithResponse call
+func ParseGetK8sClusterScopeResponse(rsp *http.Response) (*GetK8sClusterScopeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetK8sClusterScopeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetK8sClusterScopeActiveResponse parses an HTTP response from a SetK8sClusterScopeActiveWithResponse call
+func ParseSetK8sClusterScopeActiveResponse(rsp *http.Response) (*SetK8sClusterScopeActiveResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetK8sClusterScopeActiveResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScope
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListK8sClusterScopeInitialCandidatesResponse parses an HTTP response from a ListK8sClusterScopeInitialCandidatesWithResponse call
+func ParseListK8sClusterScopeInitialCandidatesResponse(rsp *http.Response) (*ListK8sClusterScopeInitialCandidatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sClusterScopeInitialCandidatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScopeCandidatePage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListK8sClusterScopeMembershipsResponse parses an HTTP response from a ListK8sClusterScopeMembershipsWithResponse call
+func ParseListK8sClusterScopeMembershipsResponse(rsp *http.Response) (*ListK8sClusterScopeMembershipsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sClusterScopeMembershipsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScopeMembershipPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDecideK8sClusterScopeMembershipResponse parses an HTTP response from a DecideK8sClusterScopeMembershipWithResponse call
+func ParseDecideK8sClusterScopeMembershipResponse(rsp *http.Response) (*DecideK8sClusterScopeMembershipResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DecideK8sClusterScopeMembershipResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sClusterScopeMembership
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListK8sClustersResponse parses an HTTP response from a ListK8sClustersWithResponse call
 func ParseListK8sClustersResponse(rsp *http.Response) (*ListK8sClustersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -33827,6 +36939,105 @@ func ParseSetK8sClusterConnectorResponse(rsp *http.Response) (*SetK8sClusterConn
 	return response, nil
 }
 
+// ParseListK8sClusterInventoryResponse parses an HTTP response from a ListK8sClusterInventoryWithResponse call
+func ParseListK8sClusterInventoryResponse(rsp *http.Response) (*ListK8sClusterInventoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sClusterInventoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sInventoryPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExposeK8sInventoryServiceResponse parses an HTTP response from a ExposeK8sInventoryServiceWithResponse call
+func ParseExposeK8sInventoryServiceResponse(rsp *http.Response) (*ExposeK8sInventoryServiceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExposeK8sInventoryServiceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ExposeK8sInventoryServiceResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetK8sClusterProviderMetadataResponse parses an HTTP response from a SetK8sClusterProviderMetadataWithResponse call
+func ParseSetK8sClusterProviderMetadataResponse(rsp *http.Response) (*SetK8sClusterProviderMetadataResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetK8sClusterProviderMetadataResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sCluster
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListK8sServicesResponse parses an HTTP response from a ListK8sServicesWithResponse call
 func ParseListK8sServicesResponse(rsp *http.Response) (*ListK8sServicesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -33880,6 +37091,171 @@ func ParseExposeK8sServiceResponse(rsp *http.Response) (*ExposeK8sServiceRespons
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListK8sConnectorPoolHAStatusResponse parses an HTTP response from a ListK8sConnectorPoolHAStatusWithResponse call
+func ParseListK8sConnectorPoolHAStatusResponse(rsp *http.Response) (*ListK8sConnectorPoolHAStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sConnectorPoolHAStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []K8sConnectorPoolHAStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetK8sConnectorPoolHAStatusResponse parses an HTTP response from a GetK8sConnectorPoolHAStatusWithResponse call
+func ParseGetK8sConnectorPoolHAStatusResponse(rsp *http.Response) (*GetK8sConnectorPoolHAStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetK8sConnectorPoolHAStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sConnectorPoolHAStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetK8sConnectorPoolHAModeResponse parses an HTTP response from a SetK8sConnectorPoolHAModeWithResponse call
+func ParseSetK8sConnectorPoolHAModeResponse(rsp *http.Response) (*SetK8sConnectorPoolHAModeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetK8sConnectorPoolHAModeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sConnectorPoolHAStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetK8sHASettingsResponse parses an HTTP response from a GetK8sHASettingsWithResponse call
+func ParseGetK8sHASettingsResponse(rsp *http.Response) (*GetK8sHASettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetK8sHASettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sHASettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetK8sHASettingsResponse parses an HTTP response from a SetK8sHASettingsWithResponse call
+func ParseSetK8sHASettingsResponse(rsp *http.Response) (*SetK8sHASettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetK8sHASettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sHASettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

@@ -29,6 +29,8 @@ func NewPolicyPortWithFQDN(pool *pgxpool.Pool, hub *nodepush.Hub, licences *lice
 	svc := policy.NewService(pool).WithFQDNGenerations(
 		fqdnresolver.NewPostgresStore(pool),
 		func() bool { return licence.Has(licences.Evaluate(time.Now()).Tier, licence.FeatFQDNResources) },
+	).WithK8sClusterScopesEntitlement(
+		func() bool { return licence.Has(licences.Evaluate(time.Now()).Tier, licence.FeatK8sClusterScopes) },
 	)
 	svc.SetNotifier(hub)
 	return svc

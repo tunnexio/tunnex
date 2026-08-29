@@ -358,7 +358,6 @@ export default function Sites() {
               ["overview", "Overview"],
               ["approvals", "Pending approvals"],
               ["ha", "Hub availability"],
-              ["dns", "DNS overview"],
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -470,6 +469,11 @@ export default function Sites() {
                 onSelect={selectSite}
               />
 
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-1 pt-3">
+                <p className="text-cell text-ink-tertiary"><strong className="font-medium text-ink-heading">Advanced Site Networking:</strong> cross-site zone forwarding is optional and is not required for FQDN access.</p>
+                <Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button>
+              </div>
+
               {selectedCard && (
                 <Modal title={selectedCard.name} size="workspace" showClose onDismiss={() => selectSite(null)}>
                   <div id="site-details">
@@ -515,12 +519,15 @@ export default function Sites() {
           )}
 
           {section === "dns" && (
-            <DNSForwardsPanel
-              view={raw.forwards}
-              siteCount={raw.sites.length}
-              canManage={gate.canManage}
-              onManageSite={(siteId) => updateQuery({ section: "overview", site: siteId, gateway: null, q: null, dns: "1" })}
-            />
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Advanced Site Networking</p><p className="mt-1 text-cell text-ink-tertiary">Optional site-to-site zone forwarding. Private DNS Resolver remains the only primary configuration for FQDN access.</p></div><Button variant="ghost" onClick={() => updateQuery({ section: "overview", site: null, gateway: null, q: null, dns: null })}>Back to Sites overview</Button></div>
+              <DNSForwardsPanel
+                view={raw.forwards}
+                siteCount={raw.sites.length}
+                canManage={gate.canManage}
+                onManageSite={(siteId) => updateQuery({ section: "overview", site: siteId, gateway: null, q: null, dns: "1" })}
+              />
+            </div>
           )}
         </>
       )}
@@ -571,8 +578,8 @@ function DNSForwardsPanel({
     { key: "action", header: "", cell: (row: OrgForwardsView["rows"][number]) => canManage ? <Button variant="ghost" size="sm" onClick={() => onManageSite(row.siteId)}>Manage</Button> : <span className="text-micro text-ink-faint">Read-only</span> },
   ];
   return (
-    <Panel title="DNS forwarding" className="min-w-0" actions={<span className="text-micro text-ink-tertiary">{view.rows.length} configured</span>}>
-      <p className="-mt-1 text-cell text-ink-tertiary">Optional Site-to-Site DNS routes. FQDN Access Resources use Private DNS Resolvers.</p>
+    <Panel title="Cross-site DNS forwarding" className="min-w-0" actions={<span className="text-micro text-ink-tertiary">{view.rows.length} configured</span>}>
+      <p className="-mt-1 text-cell text-ink-tertiary">Optional Site-to-Site zone routes. FQDN access uses <Link className="text-accent-400 hover:underline" to="/access/resources?type=fqdn#private-dns-heading">Private DNS Resolvers</Link>.</p>
       {/* ⛔ THE PARTIAL-LOAD BANNER COMES FIRST, above the rows it qualifies. Below them it would be read
           after the list had already been believed. */}
       {view.failedSites.length > 0 && (
@@ -1718,7 +1725,7 @@ function DNSForwardSection({
         Advanced Site DNS forwarding
       </summary>
       <div className="mt-2 space-y-2">
-        <p className="text-micro">Optional networking rule for forwarding a Site-local zone through an approved range. FQDN Access Resources use Private DNS Resolvers instead.</p>
+        <p className="text-micro">Forward a Site-local zone through an approved range. FQDN access uses Private DNS Resolvers instead.</p>
         <ul className="max-h-[7.25rem] space-y-1 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
           {forwards.map((f) => (
             <li key={f.domain} className="flex min-h-9 items-center gap-2 border-b border-line/70 last:border-0">
@@ -1747,7 +1754,7 @@ function DNSForwardSection({
             maxLength={253}
           />
           </Field>
-          <Field label="Resolver IP">
+          <Field label="Forwarding target IP">
           <Input
             value={resolverIp}
             onChange={(e) => setResolverIp(e.target.value)}

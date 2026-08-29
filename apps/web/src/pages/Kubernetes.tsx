@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { components } from "@tunnex/shared";
 import { useSearchParams } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
+  apiErrorCode,
   apiErrorMessage,
   loadOne,
   type Loaded,
@@ -44,6 +46,14 @@ import {
 // `site_id` and `policy_degraded_kind` "do not exist" with no hint that a different type was found.
 import type { Node } from "../lib/api";
 import { ManagedBadge } from "../components/ManagedBadge";
+import {
+  ProviderFirstEnrollmentModal,
+  ProviderMetadataCorrectionModal,
+} from "../components/K8sEnrollment";
+import { K8sServiceInventoryStatus } from "../components/K8sServiceInventoryStatus";
+import { K8sHAActivationPanel } from "../components/K8sHAActivationPanel";
+import { ProviderMark } from "../components/ProviderMarks";
+import { providerPlatformEntry } from "../lib/k8senrollment";
 
 // Kubernetes (S10.3): the in-cluster connectivity surface — register a cluster (a synthetic VIP range fronted
 // by a site gateway) and expose its Services to the fabric. CONNECTIVITY is CORE (all editions): this whole
@@ -54,10 +64,12 @@ import { ManagedBadge } from "../components/ManagedBadge";
 interface Raw {
   clusters: K8sCluster[];
   services: K8sService[];
-  sites: Site[]; // the register-cluster site picker (one gateway = one site)
+  sites: Site[] | null; // null means the inventory read failed; [] is a verified empty result
+  sitesError: string | null;
   // D9: gateways, for the reachability qualification. A cluster's Services must not read as reachable when a
   // gateway fronting its site has no endpoint view.
-  nodes: Node[];
+  nodes: Node[] | null;
+  nodesError: string | null;
   // NULL = the read failed. Distinct from 0, which means "we looked and there are none".
   machineCreds: number | null;
 }
@@ -94,6 +106,7 @@ export default function Kubernetes() {
     setRegistering(false);
     setExposeFor(null);
     setConnectorFor(null);
+    setProviderMetadataFor(null);
     setDeregisterFor(null);
     setUnexposeFor(null);
     // ⛔ THE ORG COMES FROM THE SEAM, NOT FROM INDEX ZERO (S12.5). This used to fetch the org list here and
@@ -148,8 +161,10 @@ export default function Kubernetes() {
     setRaw({
       clusters: cRes.data,
       services: svcRes.data,
-      sites: sRes.ok ? sRes.data : [],
-      nodes: nRes.ok ? nRes.data : [],
+      sites: sRes.ok ? sRes.data : null,
+      sitesError: sRes.ok ? null : sRes.error,
+      nodes: nRes.ok ? nRes.data : null,
+      nodesError: nRes.ok ? null : nRes.error,
       // NULL, not 0 — "we could not look" is a different fact from "there are none", and the tile says which.
       machineCreds: mcRes.ok ? mcRes.data.length : null,
     });
@@ -198,6 +213,7 @@ export default function Kubernetes() {
   // what makes the table possible, and it keeps every mutation path (expose / unexpose / deregister) intact.
   const [exposeFor, setExposeFor] = useState<ClusterCard | null>(null);
   const [connectorFor, setConnectorFor] = useState<ClusterCard | null>(null);
+  const [providerMetadataFor, setProviderMetadataFor] = useState<ClusterCard | null>(null);
   const [deregisterFor, setDeregisterFor] = useState<ClusterCard | null>(null);
   const [unexposeFor, setUnexposeFor] = useState<ServiceRow | null>(null);
 
@@ -254,6 +270,14 @@ export default function Kubernetes() {
             <span className="font-mono text-micro text-ink-faint">
               DNS VIP {c.dnsVip} (reserved, never handed to a Service)
             </span>
+          )}
+          {providerPlatformEntry(c.provider, c.platform) ? (
+            <span className="flex items-center gap-1.5 text-micro text-ink-faint">
+              <ProviderMark provider={providerPlatformEntry(c.provider, c.platform)!.provider} className="h-3.5 w-4" />
+              {providerPlatformEntry(c.provider, c.platform)!.providerLabel} · {providerPlatformEntry(c.provider, c.platform)!.platformLabel}
+            </span>
+          ) : (
+            <span className="text-micro text-ink-faint">Provider unknown — legacy registration</span>
           )}
         </span>
       ),
@@ -412,6 +436,10 @@ export default function Kubernetes() {
     "Machine credentials": "key",
   };
 
+  const selectedProviderContext = selected
+    ? providerPlatformEntry(selected.provider, selected.platform)
+    : null;
+
   return (
     <div className="flex flex-col gap-3.5">
       <div className="flex items-start justify-between gap-3">
@@ -421,7 +449,7 @@ export default function Kubernetes() {
             subtitle="Clusters, exposed Services and the VIPs clients reach them at. A Service is reached by name over the tunnel, never by its ClusterIP."
           />
         </div>
-        {section === "clusters" && raw && gate.canManage && raw.sites.length > 0 && (
+        {section === "clusters" && raw && gate.canManage && (raw.sites?.length ?? 0) > 0 && (
           <Button onClick={() => setRegistering(true)}>Register cluster</Button>
         )}
       </div>
@@ -454,10 +482,18 @@ export default function Kubernetes() {
         // ⛔ N=0 IS ONE EMPTY STATE, NOT EIGHT. Every panel below would render its own emptiness, and eight
         // simultaneous empty panels is the reassuring-empty defect multiplied. It names the precondition.
         <EmptyState>
-          {raw.sites.length === 0
+          {raw.sites === null
+            ? "The Site inventory could not be read. Cluster registration is unavailable until it loads; no zero-Site result is inferred."
+            : raw.sites.length === 0
             ? "Register a site with a gateway first: a cluster is fronted by one site's gateway, and without one no VIP can be programmed."
             : "No clusters registered. Registering one reserves a VIP range and a DNS zone, and then in-cluster Services can be exposed by name."}
         </EmptyState>
+      )}
+
+      {raw && (raw.sitesError || raw.nodesError) && cards.length > 0 && (
+        <p role="alert" className="rounded-md border border-amber-700/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          {[raw.sitesError && "Site inventory is unavailable; registration is disabled.", raw.nodesError && "Node inventory is unavailable; connector selection and reachability details are unavailable."].filter(Boolean).join(" ")}
+        </p>
       )}
 
       {raw && !loadError && cards.length > 0 && (
@@ -509,14 +545,24 @@ export default function Kubernetes() {
           {section === "clusters" && selected && (
             <div ref={selectedClusterRef} tabIndex={-1} aria-label={`Selected cluster: ${selected.name}`}>
             <Panel title={selected.name}>
-              <div className="grid gap-3 text-cell text-ink-tertiary sm:grid-cols-3">
+              <div className="grid gap-3 text-cell text-ink-tertiary sm:grid-cols-4">
                 <p><strong className="text-ink-body">Site</strong><br />{siteName.get(selected.siteId) ?? "Site record unavailable"}</p>
                 <p><strong className="text-ink-body">Services</strong><br />{selected.services.length} exposed</p>
                 <p><strong className="text-ink-body">Connector</strong><br />{selected.connectorNodeId ? (nodeName.get(selected.connectorNodeId) ?? "Unavailable") : "Not selected"}</p>
+                <span>
+                  <strong className="text-ink-body">Provider</strong><br />
+                  {selectedProviderContext ? (
+                    <span className="mt-0.5 inline-flex items-center gap-1.5">
+                      <ProviderMark provider={selectedProviderContext.provider} className="h-4 w-5" />
+                      {selectedProviderContext.providerLabel} · {selectedProviderContext.platformLabel}
+                    </span>
+                  ) : "Unknown (legacy registration; not inferred)"}
+                </span>
               </div>
               <p className="mt-3 text-micro text-ink-faint">Connector configuration is control-plane state, not workload readiness. Use the operator and workload telemetry for endpoint readiness.</p>
               {gate.canManage && !objectControls(selected.managedByOperator).withheld && <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setConnectorFor(selected)}>{selected.connectorNodeId === null ? "Select connector" : "Change connector"}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setProviderMetadataFor(selected)}>Correct provider metadata</Button>
                 <Button size="sm" variant="ghost" onClick={() => setExposeFor(selected)}>Expose service</Button>
               </div>}
               {gate.canManage && !objectControls(selected.managedByOperator).withheld && <div className="mt-4 flex items-center justify-between gap-3 border-t border-danger/30 pt-3">
@@ -595,6 +641,7 @@ export default function Kubernetes() {
             </div>
 
             {section === "operations" && <div className="flex min-w-0 flex-col gap-3">
+              {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
               <Panel title="Operator and connector setup">
                 {/* ⛔ NAMED AS COPY, NOT A CAPABILITY. This screen installs nothing. */}
                 <p className="text-micro text-ink-tertiary">
@@ -655,12 +702,43 @@ helm install op tunnex/operator \\
       )}
 
       {registering && orgId && raw && (
-        <RegisterClusterModal
-          orgId={orgId}
+        <ProviderFirstEnrollmentModal
           sites={raw.sites}
           nodes={raw.nodes}
-          onClose={() => setRegistering(false)}
-          onDone={reload}
+          sitesError={raw.sitesError}
+          nodesError={raw.nodesError}
+          onDismiss={() => setRegistering(false)}
+          onSubmit={async (draft) => {
+            if (!draft.provider || !draft.platform || !providerPlatformEntry(draft.provider, draft.platform)) {
+              return { ok: false as const, error: "Choose one supported provider and Kubernetes service pair." };
+            }
+            // The request is still constructed explicitly: UI-only draft state
+            // cannot leak onto the wire, and provider metadata remains context,
+            // never a cloud-discovery or authority claim.
+            const { error } = await api.POST(
+              "/api/v1/organizations/{orgId}/k8s/clusters",
+              {
+                params: { path: { orgId } },
+                body: {
+                  site_id: draft.siteId,
+                  connector_node_id: draft.connectorNodeId,
+                  provider: draft.provider,
+                  platform: draft.platform,
+                  name: draft.name,
+                  vip_range: draft.vipRange,
+                  service_cidr: draft.serviceCidr,
+                  dns_zone: draft.dnsZone,
+                },
+              },
+            );
+            return error
+              ? { ok: false as const, error: apiErrorMessage(error, "Could not register the cluster.") }
+              : { ok: true as const };
+          }}
+          onDone={() => {
+            setRegistering(false);
+            void reload();
+          }}
         />
       )}
       {exposeFor && orgId && (
@@ -675,9 +753,33 @@ helm install op tunnex/operator \\
         <SetConnectorModal
           orgId={orgId}
           cluster={connectorFor}
-          nodes={raw.nodes}
+          nodes={raw.nodes ?? []}
           onClose={() => setConnectorFor(null)}
           onDone={reload}
+        />
+      )}
+      {providerMetadataFor && orgId && (
+        <ProviderMetadataCorrectionModal
+          clusterName={providerMetadataFor.name}
+          initialProvider={providerMetadataFor.provider}
+          initialPlatform={providerMetadataFor.platform}
+          onDismiss={() => setProviderMetadataFor(null)}
+          onSubmit={async (provider, platform) => {
+            const { error } = await api.PUT(
+              "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/provider-metadata",
+              {
+                params: { path: { orgId, clusterId: providerMetadataFor.id } },
+                body: { provider, platform },
+              },
+            );
+            return error
+              ? { ok: false as const, error: apiErrorMessage(error, "Could not save provider metadata.") }
+              : { ok: true as const };
+          }}
+          onDone={() => {
+            setProviderMetadataFor(null);
+            void reload();
+          }}
         />
       )}
       {deregisterFor && orgId && (
@@ -697,142 +799,6 @@ helm install op tunnex/operator \\
         />
       )}
     </div>
-  );
-}
-
-function RegisterClusterModal({
-  orgId,
-  sites,
-  nodes,
-  onClose,
-  onDone,
-}: {
-  orgId: string;
-  sites: Site[];
-  nodes: Node[];
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [siteId, setSiteId] = useState(sites[0]?.id ?? "");
-  const connectors = nodes.filter(
-    (node) => node.status === "active" && node.site_id === siteId && node.endpoint,
-  );
-  const [connectorNodeId, setConnectorNodeId] = useState(connectors[0]?.id ?? "");
-  useEffect(() => {
-    setConnectorNodeId(connectors[0]?.id ?? "");
-  }, [siteId, nodes]);
-  const [name, setName] = useState("");
-  const [vipRange, setVipRange] = useState("");
-  const [serviceCidr, setServiceCidr] = useState("10.96.0.0/12");
-  const [dnsZone, setDnsZone] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit() {
-    setBusy(true);
-    setErr(null);
-    const { error } = await api.POST(
-      "/api/v1/organizations/{orgId}/k8s/clusters",
-      {
-        params: { path: { orgId } },
-        body: {
-          site_id: siteId,
-          connector_node_id: connectorNodeId,
-          name,
-          vip_range: vipRange,
-          service_cidr: serviceCidr,
-          dns_zone: dnsZone,
-        },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not register the cluster."));
-    onClose();
-    onDone();
-  }
-
-  return (
-    <Modal
-      title="Register a Kubernetes cluster"
-      onDismiss={onClose}
-      actions={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={
-              busy ||
-              !siteId ||
-              !connectorNodeId ||
-              name.trim() === "" ||
-              vipRange.trim() === "" ||
-              dnsZone.trim() === ""
-            }
-          >
-            Register
-          </Button>
-        </>
-      }
-    >
-      <Field label="Fronting Site">
-        <Select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-          {sites.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="In-cluster connector node">
-        <Select value={connectorNodeId} onChange={(e) => setConnectorNodeId(e.target.value)}>
-          {connectors.length === 0 ? (
-            <option value="">No active endpoint-bearing connector is bound to this site</option>
-          ) : (
-            connectors.map((node) => (
-              <option key={node.id} value={node.id}>
-                {node.name}
-              </option>
-            ))
-          )}
-        </Select>
-        <p className="mt-1 text-micro text-ink-faint">
-          This node watches ready Kubernetes endpoints and receives only the private service handoff. It is not the client-facing edge gateway.
-        </p>
-      </Field>
-      <Field label="Cluster name (a DNS label: it becomes part of every Service hostname)">
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. prod"
-          autoFocus
-        />
-      </Field>
-      <Field label="Synthetic VIP range (CIDR, disjoint from your pool, your sites, and other clusters)">
-        <Input
-          value={vipRange}
-          onChange={(e) => setVipRange(e.target.value)}
-          placeholder="e.g. 100.64.0.0/16"
-        />
-      </Field>
-      <Field label="Kubernetes Service CIDR (where the cluster's ClusterIPs live)">
-        <Input
-          value={serviceCidr}
-          onChange={(e) => setServiceCidr(e.target.value)}
-          placeholder="e.g. 10.96.0.0/12"
-        />
-      </Field>
-      <Field label="DNS zone (your domain suffix; need not be publicly registered)">
-        <Input
-          value={dnsZone}
-          onChange={(e) => setDnsZone(e.target.value)}
-          placeholder="e.g. k8s.acme.com"
-        />
-      </Field>
-      <ErrorText>{err}</ErrorText>
-    </Modal>
   );
 }
 
@@ -879,14 +845,14 @@ function SetConnectorModal({
   return (
     <Modal
       title={`Set connector for ${cluster.name}`}
-      onDismiss={onClose}
+      onDismiss={busy ? () => {} : onClose}
       actions={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button onClick={submit} disabled={busy || !connectorNodeId}>
-            Save connector
+            {busy ? "Saving connector…" : "Save connector"}
           </Button>
         </>
       }
@@ -894,6 +860,7 @@ function SetConnectorModal({
       <p className="mb-3 text-cell text-ink-tertiary">
         The connector is the selected in-cluster Tunnex node. It resolves ready pod endpoints and receives the encrypted service handoff from the existing site edge gateway.
       </p>
+      <p className="mb-3 text-micro text-warn">Changing it starts reconciliation against the new connector. Existing Service delivery may be withdrawn before the replacement connector has reported fresh inventory and is ready to serve it.</p>
       <Field label="In-cluster connector node">
         <Select value={connectorNodeId} onChange={(e) => setConnectorNodeId(e.target.value)}>
           {connectors.length === 0 ? (
@@ -912,19 +879,26 @@ function SetConnectorModal({
   );
 }
 
-function ExposeServiceModal({
+type InventoryService = components["schemas"]["K8sInventoryService"];
+type InventoryPage = components["schemas"]["K8sInventoryPage"];
+
+export function ExposeServiceModal({
   orgId,
   clusterId,
   onClose,
   onDone,
+  fixtureInventory,
+  onFixtureExpose,
 }: {
   orgId: string;
   clusterId: string;
   onClose: () => void;
   onDone: () => void;
+  fixtureInventory?: InventoryPage;
+  onFixtureExpose?: (inventoryRef: string, portRefs: string[]) => Promise<void>;
 }) {
   const [name, setName] = useState("");
-  const [namespace, setNamespace] = useState("default");
+  const [namespace, setNamespace] = useState("");
   // WF-K5 M8/M9: an exposure needs a SINGLE specific port + a protocol — the gateway DNATs VIP:port ->
   // podIP:targetPort, so all-ports/ranges are refused server-side. The form must offer the port the refusal
   // teaches the user to supply (offering the refusal without the field would make the dashboard structurally
@@ -933,6 +907,19 @@ function ExposeServiceModal({
   const [protocol, setProtocol] = useState<"tcp" | "udp">("tcp");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [inventory, setInventory] = useState<InventoryService[] | null>(null);
+  const [inventoryCursor, setInventoryCursor] = useState<string | null>(null);
+  const [inventoryState, setInventoryState] = useState<"unavailable" | "loading" | "ready" | "empty" | "stale" | "error">("loading");
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [inventoryObservedAt, setInventoryObservedAt] = useState<string | null>(null);
+  const [inventoryFreshUntil, setInventoryFreshUntil] = useState<string | null>(null);
+  const [inventoryBusy, setInventoryBusy] = useState(false);
+  const [selectedNamespace, setSelectedNamespace] = useState("");
+  const [selectedInventoryRef, setSelectedInventoryRef] = useState("");
+  const [selectedPortRefs, setSelectedPortRefs] = useState<string[]>([]);
+  const inventoryEpoch = useRef(0);
+  const inventoryItemsRef = useRef<InventoryService[]>([]);
 
   // Client-side UX validation ONLY — the server's ExposeService is the authoritative validator (one-validator):
   // its typed refusals (service_port_required / service_port_range_unsupported) render verbatim via apiErrorMessage.
@@ -940,92 +927,240 @@ function ExposeServiceModal({
   const portValid =
     Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535;
 
+  const namespaces = useMemo(
+    () => [...new Set((inventory ?? []).map((item) => item.namespace))].sort(),
+    [inventory],
+  );
+  const namespaceServices = useMemo(
+    () => (inventory ?? []).filter((item) => item.namespace === selectedNamespace),
+    [inventory, selectedNamespace],
+  );
+  const selectedInventory = namespaceServices.find((item) => item.inventory_ref === selectedInventoryRef) ?? null;
+
+  const loadInventory = useCallback(async (cursor?: string, append = false) => {
+    const epoch = ++inventoryEpoch.current;
+    if (!append) {
+      setInventory(null);
+      inventoryItemsRef.current = [];
+      setInventoryObservedAt(null);
+      setInventoryFreshUntil(null);
+      setInventoryState("loading");
+      setSelectedNamespace("");
+      setSelectedInventoryRef("");
+      setSelectedPortRefs([]);
+    }
+    setInventoryError(null);
+    const result = await loadOne(() => api.GET(
+      "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory",
+      { params: { path: { orgId, clusterId }, query: { cursor, limit: 100 } } },
+    ));
+    if (epoch !== inventoryEpoch.current) return;
+    if (!result.ok) {
+      const message = result.error || "Could not read authenticated connected-agent inventory.";
+      setInventoryError(message);
+      setInventoryState(message.toLowerCase().includes("stale") ? "stale" : "error");
+      return;
+    }
+    if (!result.data || !Array.isArray(result.data.items)) {
+      setInventoryState("unavailable");
+      setInventoryCursor(null);
+      return;
+    }
+    const items = append ? [...inventoryItemsRef.current, ...result.data.items] : result.data.items;
+    inventoryItemsRef.current = items;
+    setInventory(items);
+    setInventoryCursor(result.data.next_cursor ?? null);
+    setInventoryObservedAt(result.data.observed_at);
+    setInventoryFreshUntil(result.data.fresh_until);
+    setInventoryState(items.length === 0 ? "empty" : "ready");
+  }, [clusterId, orgId]);
+
+  useEffect(() => {
+    if (fixtureInventory) {
+      inventoryItemsRef.current = fixtureInventory.items;
+      setInventory(fixtureInventory.items);
+      setInventoryCursor(fixtureInventory.next_cursor ?? null);
+      setInventoryObservedAt(fixtureInventory.observed_at);
+      setInventoryFreshUntil(fixtureInventory.fresh_until);
+      setInventoryState(fixtureInventory.items.length === 0 ? "empty" : "ready");
+    } else void loadInventory();
+    return () => { inventoryEpoch.current += 1; };
+  }, [clusterId, fixtureInventory, orgId]);
+
   async function submit() {
+    if (busy || inventoryBusy) return;
     setBusy(true);
     setErr(null);
-    const { error } = await api.POST(
-      "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/services",
-      {
-        params: { path: { orgId, clusterId } },
-        // Single specific port: port_low == port_high (ranges are refused). Server stays authoritative.
-        body: {
-          name,
-          namespace,
-          protocol,
-          port_low: portNum,
-          port_high: portNum,
+    try {
+      const { error } = await api.POST(
+        "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/services",
+        {
+          params: { path: { orgId, clusterId } },
+          // Single specific port: port_low == port_high (ranges are refused). Server stays authoritative.
+          body: {
+            name,
+            namespace,
+            protocol,
+            port_low: portNum,
+            port_high: portNum,
+          },
         },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not expose the Service."));
-    onClose();
-    onDone();
+      );
+      if (error) return setErr(apiErrorMessage(error, "Could not expose the Service."));
+      onClose();
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exposeInventory() {
+    if (!selectedInventory || selectedPortRefs.length === 0 || busy || inventoryBusy) return;
+    setInventoryBusy(true);
+    setInventoryError(null);
+    try {
+      if (onFixtureExpose) {
+        await onFixtureExpose(selectedInventory.inventory_ref, selectedPortRefs);
+        return;
+      }
+      const response = await api.POST(
+        "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory/{inventoryRef}/expose",
+        {
+          params: { path: { orgId, clusterId, inventoryRef: selectedInventory.inventory_ref } },
+          body: { port_refs: selectedPortRefs },
+        },
+      );
+      if (response.error) {
+        const code = apiErrorCode(response.error) ?? "";
+        setInventoryError(apiErrorMessage(response.error, "Could not atomically expose the selected Service ports."));
+        if (code.includes("stale") || code.includes("inventory")) setInventoryState("stale");
+        return;
+      }
+      onClose();
+      onDone();
+    } finally {
+      setInventoryBusy(false);
+    }
   }
 
   return (
     <Modal
       title="Expose a Service"
-      onDismiss={onClose}
+      size="wide"
+      onDismiss={busy || inventoryBusy ? () => {} : onClose}
       actions={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={busy || inventoryBusy}>
             Cancel
           </Button>
           <Button
             onClick={submit}
             disabled={
               busy ||
+              inventoryBusy ||
+              !manualOpen ||
               name.trim() === "" ||
               namespace.trim() === "" ||
               !portValid
             }
           >
-            Expose
+            {busy ? "Exposing manual value…" : "Expose manual value"}
           </Button>
         </>
       }
     >
-      <Field label="Service name">
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. api"
-          autoFocus
-        />
-      </Field>
-      <Field label="Namespace">
-        <Input
-          value={namespace}
-          onChange={(e) => setNamespace(e.target.value)}
-          placeholder="e.g. prod"
-        />
-      </Field>
-      <Field label="Port">
-        <Input
-          type="number"
-          min={1}
-          max={65535}
-          value={port}
-          onChange={(e) => setPort(e.target.value)}
-          placeholder="the Service port clients dial, e.g. 80"
-        />
-        {port !== "" && !portValid && (
-          <p className="mt-1 text-xs text-amber-400">
-            Enter a single port between 1 and 65535.
-          </p>
-        )}
-      </Field>
-      <Field label="Protocol">
-        <Select
-          value={protocol}
-          onChange={(e) => setProtocol(e.target.value as "tcp" | "udp")}
-        >
-          <option value="tcp">tcp</option>
-          <option value="udp">udp</option>
-        </Select>
-      </Field>
+      <K8sServiceInventoryStatus state={
+        inventoryState === "unavailable" ? { kind: "unavailable" } :
+          inventoryState === "loading" ? { kind: "loading" } :
+          inventoryState === "empty" ? { kind: "empty" } :
+            inventoryState === "stale" ? { kind: "stale" } :
+              inventoryState === "error" ? { kind: "error", message: inventoryError ?? undefined } :
+                { kind: "ready", content: (
+                  <div className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Namespace">
+                        <Select value={selectedNamespace} onChange={(event) => { setSelectedNamespace(event.target.value); setSelectedInventoryRef(""); setSelectedPortRefs([]); }}>
+                          <option value="">Choose a verified namespace…</option>
+                          {namespaces.map((value) => <option key={value} value={value}>{value}</option>)}
+                        </Select>
+                      </Field>
+                      <Field label="Service">
+                        <Select disabled={!selectedNamespace} value={selectedInventoryRef} onChange={(event) => { setSelectedInventoryRef(event.target.value); setSelectedPortRefs([]); }}>
+                          <option value="">{selectedNamespace ? "Choose a verified Service…" : "Choose a namespace first"}</option>
+                          {namespaceServices.map((item) => <option key={item.inventory_ref} value={item.inventory_ref}>{item.service}</option>)}
+                        </Select>
+                      </Field>
+                    </div>
+                    {selectedInventory && <fieldset className="space-y-2"><legend className="text-xs font-semibold text-ink-body">Exact ports to expose</legend>{selectedInventory.ports.map((item) => { const checked = selectedPortRefs.includes(item.port_ref); return <label key={item.port_ref} className="flex cursor-pointer items-center gap-3 rounded-md border border-line px-3 py-2 text-sm text-ink-body"><input type="checkbox" className="h-4 w-4 accent-current" checked={checked} onChange={() => setSelectedPortRefs((current) => checked ? current.filter((ref) => ref !== item.port_ref) : [...current, item.port_ref])} /><span>{item.name ? `${item.name} · ` : ""}{item.protocol.toUpperCase()} {item.service_port}</span></label>; })}</fieldset>}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {inventoryCursor ? <Button variant="ghost" size="sm" disabled={inventoryBusy} onClick={() => void loadInventory(inventoryCursor, true)}>Load more inventory</Button> : <span className="text-micro text-ink-faint">Verified current inventory{inventoryObservedAt && inventoryFreshUntil ? ` · observed ${new Date(inventoryObservedAt).toLocaleString()} · fresh through ${new Date(inventoryFreshUntil).toLocaleString()}` : ""}</span>}
+                      <Button disabled={!selectedInventory || selectedPortRefs.length === 0 || inventoryBusy || busy} onClick={() => void exposeInventory()}>{inventoryBusy ? "Exposing selected ports…" : `Expose selected ports (${selectedPortRefs.length})`}</Button>
+                    </div>
+                    {inventoryError && <ErrorText>{inventoryError}</ErrorText>}
+                  </div>
+                ) }
+      } />
+
+      {(inventoryState === "stale" || inventoryState === "error") && <div className="mt-2"><Button variant="ghost" size="sm" disabled={inventoryBusy || busy} onClick={() => void loadInventory()}>Retry verified inventory</Button>{inventoryError && <ErrorText>{inventoryError}</ErrorText>}</div>}
+
+      <details
+        open={manualOpen}
+        onToggle={(event) => setManualOpen(event.currentTarget.open)}
+        className="mt-3 rounded-card border border-line bg-ink-900/30 p-3"
+      >
+        <summary className="cursor-pointer text-sm font-semibold text-ink-heading">Advanced manual entry</summary>
+        <p className="mt-2 text-micro text-warn">
+          Manual values are not verified against connected-agent inventory. The server validates the existing compatibility request.
+        </p>
+        <div className="mt-3 space-y-3">
+          <Field label="Service name">
+            <Input
+              disabled={!manualOpen}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. api"
+            />
+          </Field>
+          <Field label="Namespace">
+            <Input
+              disabled={!manualOpen}
+              value={namespace}
+              onChange={(e) => setNamespace(e.target.value)}
+              placeholder="e.g. prod"
+            />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Field label="Port">
+                <Input
+                  disabled={!manualOpen}
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={port}
+                  aria-invalid={port !== "" && !portValid ? true : undefined}
+                  aria-describedby={port !== "" && !portValid ? "k8s-manual-port-error" : undefined}
+                  onChange={(e) => setPort(e.target.value)}
+                  placeholder="e.g. 443"
+                />
+              </Field>
+              {port !== "" && !portValid && (
+                <p id="k8s-manual-port-error" role="alert" className="mt-1 text-xs text-amber-400">Enter a single port between 1 and 65535.</p>
+              )}
+            </div>
+            <Field label="Protocol">
+              <Select
+                disabled={!manualOpen}
+                value={protocol}
+                onChange={(e) => setProtocol(e.target.value as "tcp" | "udp")}
+              >
+                <option value="tcp">tcp</option>
+                <option value="udp">udp</option>
+              </Select>
+            </Field>
+          </div>
+        </div>
+      </details>
       <ErrorText>{err}</ErrorText>
     </Modal>
   );
@@ -1048,21 +1183,23 @@ function UnexposeServiceModal({
   async function submit() {
     setBusy(true);
     setErr(null);
-    const { error } = await api.DELETE(
-      "/api/v1/organizations/{orgId}/k8s/services/{serviceId}",
-      { params: { path: { orgId, serviceId: service.id } } },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(apiErrorMessage(error, "Could not unexpose the Service."));
-    onClose();
-    onDone();
+    try {
+      const { error } = await api.DELETE(
+        "/api/v1/organizations/{orgId}/k8s/services/{serviceId}",
+        { params: { path: { orgId, serviceId: service.id } } },
+      );
+      if (error) return setErr(apiErrorMessage(error, "Could not unexpose the Service."));
+      onClose();
+      onDone();
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <Modal
       title={`Unexpose ${service.name}`}
-      onDismiss={onClose}
+      onDismiss={busy ? () => {} : onClose}
       actions={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>
@@ -1079,12 +1216,15 @@ function UnexposeServiceModal({
           Unexpose <span className="font-medium text-ink-heading">{service.name}</span>{" "}
           at <span className="font-mono text-ink-body">{service.fqdn}</span> ({" "}
           <span className="font-mono text-ink-body">{service.vip}</span>). Its VIP and DNS
-          answer withdraw on the next compile.
+          answer withdraw on the next compile, and ordinary grants to this identity stop
+          compiling because the Service becomes vanished.
         </p>
         <p>
-          This is not an undo. Immutable Agent Policy Template references and live Agent
-          Access requests may refuse the change. If it succeeds, recovery is to expose the
-          Service again; that creates a new Service identity.
+          This is not an undo: live Agent Access requests or immutable Agent Policy Template
+          references may refuse the change. Cluster-scope memberships do not refuse it: they
+          are retained as vanished, ineffective evidence. If it succeeds, the audit records
+          the withdrawal and recovery requires a new exposure with a new Service identity; a
+          freed VIP may be reused.
         </p>
       </div>
       <ErrorText>{err}</ErrorText>
@@ -1110,28 +1250,28 @@ function DeregisterClusterModal({
   async function submit() {
     setBusy(true);
     setErr(null);
-    const { error } = await api.DELETE(
-      "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}",
-      {
-        params: { path: { orgId, clusterId: card.id } },
-      },
-    );
-    setBusy(false);
-    if (error)
-      return setErr(
-        apiErrorMessage(error, "Could not deregister the cluster."),
+    try {
+      const { error } = await api.DELETE(
+        "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}",
+        {
+          params: { path: { orgId, clusterId: card.id } },
+        },
       );
-    onClose();
-    onDone();
+      if (error) return setErr(apiErrorMessage(error, "Could not deregister the cluster."));
+      onClose();
+      onDone();
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <Modal
       title={`Deregister ${card.name}`}
-      onDismiss={onClose}
+      onDismiss={busy ? () => {} : onClose}
       actions={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button
@@ -1139,21 +1279,25 @@ function DeregisterClusterModal({
             onClick={submit}
             disabled={busy || typed !== card.name}
           >
-            Deregister
+            {busy ? "Deregistering…" : "Deregister"}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-2 text-sm text-ink-tertiary">
         <p>
-          This deletes the cluster, its exposed Services, and dependent policy
-          rules. Its VIP range, reserved DNS VIP, and DNS zone are freed for
-          reuse. Live Agent Access requests may refuse this change.
+          If accepted, this hard-deletes the cluster and its exposed Services;
+          dependent policy rules that directly grant those Services are cascade-deleted. The audit
+          records deleted Service and grant counts. Its VIP range, reserved DNS
+          VIP, and DNS zone are then freed for reuse.
         </p>
         <p>
-          There is no rollback or restore. Recovery requires registering the
-          cluster again, choosing an in-cluster connector node, exposing its
-          Services again, and recreating grants.
+          Live Agent Access requests, immutable Agent Policy Template references, or any
+          Kubernetes cluster scopes refuse deregistration until those references are cleared.
+          Connector-pool HA state and retained inventory are cascade-deleted with the cluster;
+          they do not preserve evidence or block the delete. A successful deregistration has no
+          rollback or restore: recovery requires registering the cluster again, selecting a
+          connector, exposing Services again, and recreating grants and scopes.
         </p>
         <p>
           Type the cluster name <span className="font-mono text-ink-body">{card.name}</span>{" "}

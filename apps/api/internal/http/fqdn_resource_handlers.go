@@ -36,6 +36,9 @@ func toAPIFQDNResource(r fqdnresources.Resource) api.FQDNResource {
 			out.ResolverContext.ResolverConfig = &config
 		}
 	}
+	if r.ResolverProfile != nil {
+		out.ResolverProfileSelection = &api.FQDNResolverProfileSelection{Id: r.ResolverProfile.ID, Name: r.ResolverProfile.Name, ProviderHint: api.FQDNResolverProfileSelectionProviderHint(r.ResolverProfile.ProviderHint), MatchedSuffix: r.ResolverProfile.MatchedSuffix, ConfigVersion: r.ResolverProfile.ConfigVersion}
+	}
 	return out
 }
 
@@ -44,7 +47,23 @@ func toAPIFQDNResolverConfig(c fqdnresources.ResolverConfig) api.FQDNResolverCon
 	for i, endpoint := range c.Endpoints {
 		endpoints[i] = api.FQDNResolverEndpoint{Address: endpoint.Address, Port: endpoint.Port, Transport: api.FQDNResolverEndpointTransport(endpoint.Transport)}
 	}
-	return api.FQDNResolverContextConfig{Id: c.ID, OrgId: c.OrgID, SiteId: c.SiteID, GatewayId: c.GatewayID, Version: c.Version, State: api.FQDNResolverContextConfigState(c.State), Endpoints: endpoints, CreatedAt: c.CreatedAt}
+	profiles := make([]api.FQDNResolverProfile, len(c.Profiles))
+	for i, profile := range c.Profiles {
+		profileEndpoints := make([]api.FQDNResolverEndpoint, len(profile.Endpoints))
+		for j, endpoint := range profile.Endpoints {
+			profileEndpoints[j] = api.FQDNResolverEndpoint{Address: endpoint.Address, Port: endpoint.Port, Transport: api.FQDNResolverEndpointTransport(endpoint.Transport)}
+		}
+		profiles[i] = api.FQDNResolverProfile{Id: profile.ID, Name: profile.Name, ProviderHint: api.FQDNResolverProfileProviderHint(profile.ProviderHint), ZoneSuffixes: profile.ZoneSuffixes, Endpoints: profileEndpoints, LegacyDefault: profile.LegacyDefault}
+	}
+	return api.FQDNResolverContextConfig{Id: c.ID, OrgId: c.OrgID, SiteId: c.SiteID, GatewayId: c.GatewayID, Version: c.Version, State: api.FQDNResolverContextConfigState(c.State), ProviderHint: (*api.FQDNResolverContextConfigProviderHint)(c.ProviderHint), Endpoints: endpoints, Profiles: profiles, CreatedAt: c.CreatedAt}
+}
+
+func fqdnResolverProfiles(in []api.FQDNResolverProfileRequest) []fqdnresources.ResolverProfile {
+	out := make([]fqdnresources.ResolverProfile, len(in))
+	for i, profile := range in {
+		out[i] = fqdnresources.ResolverProfile{Name: profile.Name, ProviderHint: string(profile.ProviderHint), ZoneSuffixes: append([]string(nil), profile.ZoneSuffixes...), Endpoints: fqdnResolverEndpoints(profile.Endpoints)}
+	}
+	return out
 }
 
 func fqdnResolverEndpoints(in []api.FQDNResolverEndpoint) []fqdnresources.ResolverEndpoint {
@@ -260,7 +279,22 @@ func (s apiServer) SetFQDNResolverContextConfig(ctx context.Context, req api.Set
 		return nil, err
 	}
 	uid, sys, cause := auditActor(ctx)
-	config, err := svc.SetResolverConfig(ctx, req.OrgId, req.SiteId, req.GatewayId, uid, sys, cause, fqdnResolverEndpoints(req.Body.Endpoints))
+	var config fqdnresources.ResolverConfig
+	if req.Body.Profiles != nil {
+		if req.Body.Endpoints != nil {
+			return nil, apierr.BadRequest("ambiguous_resolver_config", "send profiles or legacy endpoints, not both")
+		}
+		config, err = svc.SetResolverProfiles(ctx, req.OrgId, req.SiteId, req.GatewayId, uid, sys, cause, fqdnResolverProfiles(*req.Body.Profiles))
+	} else if req.Body.Endpoints != nil {
+		var providerHint *string
+		if req.Body.ProviderHint != nil {
+			provider := string(*req.Body.ProviderHint)
+			providerHint = &provider
+		}
+		config, err = svc.SetResolverConfig(ctx, req.OrgId, req.SiteId, req.GatewayId, uid, sys, cause, providerHint, fqdnResolverEndpoints(*req.Body.Endpoints))
+	} else {
+		return nil, apierr.BadRequest("invalid_resolver_config", "profiles are required")
+	}
 	if err != nil {
 		return nil, err
 	}
