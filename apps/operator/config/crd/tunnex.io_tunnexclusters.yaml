@@ -50,6 +50,11 @@ spec:
               RegisterCluster verb). The org is IMPLICIT — it is the org of the operator's machine credential (D3),
               never a spec field. The fronting site is referenced by its name.
             properties:
+              connector:
+                description: Connector is the active in-cluster gateway name. The
+                  operator resolves it to the control-plane node ID within Site before
+                  registration. Required.
+                type: string
               dnsZone:
                 description: DNSZone is the customer zone suffix of every exposed
                   Service's FQDN (e.g. k8s.acme.com). Required.
@@ -72,6 +77,7 @@ spec:
                   other clusters' ranges — the CP's Collect/OrgRanges validator enforces it). Required.
                 type: string
             required:
+            - connector
             - dnsZone
             - name
             - serviceCIDR

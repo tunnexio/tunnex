@@ -57,6 +57,26 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
 	}
+	connectorID, found, inSite, err := resolveConnector(ctx, r.CP, cr.Spec.Connector, siteID)
+	if err != nil {
+		return ctrl.Result{}, err // transport/5xx -> keep-last
+	}
+	if !found {
+		setReady(&cr.Status.Conditions, metav1.ConditionFalse, "connector_not_found",
+			"no active gateway named "+cr.Spec.Connector+" in this org", gen)
+		if e := r.Status().Update(ctx, &cr); e != nil {
+			return ctrl.Result{}, e
+		}
+		return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+	}
+	if !inSite {
+		setReady(&cr.Status.Conditions, metav1.ConditionFalse, "connector_not_in_cluster_site",
+			"gateway "+cr.Spec.Connector+" is not bound to site "+cr.Spec.Site, gen)
+		if e := r.Status().Update(ctx, &cr); e != nil {
+			return ctrl.Result{}, e
+		}
+		return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+	}
 
 	// Idempotent: find-by-name before create (reconcile runs repeatedly; never double-register).
 	clusters, err := r.CP.ListClusters(ctx)
@@ -88,7 +108,7 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	if reg == nil {
 		c, err := r.CP.RegisterCluster(ctx, cp.RegisterClusterRequest{
-			SiteID: siteID, Name: cr.Spec.Name, VipRange: cr.Spec.VIPRange,
+			SiteID: siteID, ConnectorNodeID: connectorID, Name: cr.Spec.Name, VipRange: cr.Spec.VIPRange,
 			ServiceCidr: cr.Spec.ServiceCIDR, DnsZone: cr.Spec.DNSZone,
 		})
 		if res, e, handled, persist := onCPError(&cr.Status.Conditions, err, gen); handled {

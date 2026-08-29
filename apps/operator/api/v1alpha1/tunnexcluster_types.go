@@ -9,6 +9,10 @@ type TunnexClusterSpec struct {
 	// Site is the name of the site whose gateway fronts this cluster. Required.
 	// +kubebuilder:validation:Required
 	Site string `json:"site"`
+	// Connector is the active in-cluster gateway name. The operator resolves it
+	// to the control-plane node ID within Site before registration. Required.
+	// +kubebuilder:validation:Required
+	Connector string `json:"connector"`
 	// Name is the cluster's name — a DNS label that becomes part of every exposed Service's FQDN. Required.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`

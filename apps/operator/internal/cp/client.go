@@ -140,6 +140,15 @@ type Cluster struct {
 	SiteID      string `json:"site_id"`
 }
 
+// Node is the deliberately small shape needed to resolve a TunnexCluster's
+// logical connector name. The operator reads nodes but never manages them.
+type Node struct {
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	SiteID *string `json:"site_id"`
+	Status string  `json:"status"`
+}
+
 type Service struct {
 	ID        string `json:"id"`
 	ClusterID string `json:"cluster_id"`
@@ -180,11 +189,12 @@ type Rule struct {
 }
 
 type RegisterClusterRequest struct {
-	SiteID      string `json:"site_id"`
-	Name        string `json:"name"`
-	VipRange    string `json:"vip_range"`
-	ServiceCidr string `json:"service_cidr"`
-	DnsZone     string `json:"dns_zone"`
+	SiteID          string `json:"site_id"`
+	ConnectorNodeID string `json:"connector_node_id"`
+	Name            string `json:"name"`
+	VipRange        string `json:"vip_range"`
+	ServiceCidr     string `json:"service_cidr"`
+	DnsZone         string `json:"dns_zone"`
 }
 
 type ExposeServiceRequest struct {
@@ -296,6 +306,13 @@ func (c *Client) DeleteGrant(ctx context.Context, ruleID, cause string) error {
 func (c *Client) ListSites(ctx context.Context) ([]Site, error) {
 	var out []Site
 	return out, c.do(ctx, http.MethodGet, c.orgPath("/sites"), "", nil, &out)
+}
+
+// ListNodes resolves a cluster connector name to its stable control-plane ID.
+// The machine role has only org:view for this read; it cannot mutate nodes.
+func (c *Client) ListNodes(ctx context.Context) ([]Node, error) {
+	var out []Node
+	return out, c.do(ctx, http.MethodGet, c.orgPath("/nodes"), "", nil, &out)
 }
 
 // ListMembers resolves a user-kind grant subject: email -> user id.

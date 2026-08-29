@@ -44,7 +44,13 @@ func fakeK8s(t *testing.T, objs ...client.Object) client.Client {
 
 func testCP(t *testing.T, h http.HandlerFunc) *cp.Client {
 	t.Helper()
-	srv := httptest.NewServer(h)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/nodes") {
+			json.NewEncoder(w).Encode([]map[string]string{{"id": "node-1", "name": "edge-gw", "site_id": "site-1", "status": "active"}})
+			return
+		}
+		h(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	return cp.New(srv.URL, "tnxm_test", "org-123")
 }
@@ -97,6 +103,7 @@ func TestOwnershipLabelStampedBeforeCP(t *testing.T) {
 // ── cluster: accepted / honest 4xx / keep-last 5xx / site_not_found ─────────────────────────────────────
 
 func TestClusterReconcileAccepted(t *testing.T) {
+	var posted cp.RegisterClusterRequest
 	cp := testCP(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/sites"):
@@ -104,6 +111,9 @@ func TestClusterReconcileAccepted(t *testing.T) {
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/k8s/clusters"):
 			json.NewEncoder(w).Encode([]map[string]string{})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/k8s/clusters"):
+			if err := json.NewDecoder(r.Body).Decode(&posted); err != nil {
+				t.Fatal(err)
+			}
 			json.NewEncoder(w).Encode(map[string]string{"id": "clu-1", "dns_vip": "100.64.0.53"})
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
@@ -111,7 +121,7 @@ func TestClusterReconcileAccepted(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
 	}
 	k := fakeK8s(t, cr)
 	r := &TunnexClusterReconciler{Client: k, CP: cp}
@@ -122,6 +132,9 @@ func TestClusterReconcileAccepted(t *testing.T) {
 	k.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "c"}, &got)
 	if got.Status.ClusterID != "clu-1" || got.Status.DNSVIP != "100.64.0.53" {
 		t.Fatalf("derived status not mirrored: %+v", got.Status)
+	}
+	if posted.ConnectorNodeID != "node-1" {
+		t.Fatalf("registration must carry the resolved connector ID, got %+v", posted)
 	}
 	if c := readyCond(t, got.Status.Conditions); c == nil || c.Status != metav1.ConditionTrue || c.Reason != "Accepted" {
 		t.Fatalf("want Ready=True/Accepted, got %+v", c)
@@ -142,7 +155,7 @@ func TestClusterReconcileHonest4xx(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Name: "prod", VIPRange: "10.0.0.0/8", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Name: "prod", VIPRange: "10.0.0.0/8", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
 	}
 	k := fakeK8s(t, cr)
 	r := &TunnexClusterReconciler{Client: k, CP: cp}
@@ -174,7 +187,7 @@ func TestClusterReconcileKeepLastOn5xx(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
 	}
 	k := fakeK8s(t, cr)
 	r := &TunnexClusterReconciler{Client: k, CP: cp}
@@ -195,7 +208,7 @@ func TestClusterReconcileSiteNotFound(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "ghost", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "ghost", Connector: "edge-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
 	}
 	k := fakeK8s(t, cr)
 	r := &TunnexClusterReconciler{Client: k, CP: cp}
@@ -206,6 +219,33 @@ func TestClusterReconcileSiteNotFound(t *testing.T) {
 	k.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "c"}, &got)
 	if c := readyCond(t, got.Status.Conditions); c == nil || c.Reason != "site_not_found" {
 		t.Fatalf("want Ready=False/site_not_found, got %+v", c)
+	}
+}
+
+func TestClusterReconcileConnectorNotFound(t *testing.T) {
+	cp := testCP(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/sites") {
+			json.NewEncoder(w).Encode([]map[string]string{{"id": "site-1", "name": "edge"}})
+			return
+		}
+		t.Errorf("connector resolution must stop before %s %s", r.Method, r.URL.Path)
+	})
+	cr := &tunnexv1.TunnexCluster{
+		ObjectMeta: managedMeta("ns", "c"),
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "missing-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+	}
+	k := fakeK8s(t, cr)
+	r := &TunnexClusterReconciler{Client: k, CP: cp}
+	res, err := r.Reconcile(context.Background(), req("ns", "c"))
+	if err != nil || res.RequeueAfter != clientErrRequeue {
+		t.Fatalf("missing connector must be a slow, honest requeue, got res=%+v err=%v", res, err)
+	}
+	var got tunnexv1.TunnexCluster
+	if err := k.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "c"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if c := readyCond(t, got.Status.Conditions); c == nil || c.Status != metav1.ConditionFalse || c.Reason != "connector_not_found" {
+		t.Fatalf("want Ready=False/connector_not_found, got %+v", c)
 	}
 }
 
@@ -454,7 +494,7 @@ func TestClusterDriftRecreatesAndSurfaces(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
 		Status:     tunnexv1.TunnexClusterStatus{ClusterID: "stale-1"}, // we believed it existed
 	}
 	k := fakeK8s(t, cr)
@@ -494,7 +534,7 @@ func TestClusterDriftConfirmPreventsFalseRecreate(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
 		Status:     tunnexv1.TunnexClusterStatus{ClusterID: "live-1"},
 	}
 	k := fakeK8s(t, cr)
@@ -635,7 +675,7 @@ func TestDriftHealEmitsEvent(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.local"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.local"},
 		Status:     tunnexv1.TunnexClusterStatus{ClusterID: "stale-1"},
 	}
 	k := fakeK8s(t, cr)
