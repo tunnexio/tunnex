@@ -5,6 +5,7 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/netip"
 	"sort"
@@ -15,6 +16,11 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
+
+// ErrWGInterfaceAbsent means the kernel has no interface to withdraw. It is
+// distinct from an unreadable interface: callers may treat this as already
+// withdrawn only on an emergency non-serving path.
+var ErrWGInterfaceAbsent = errors.New("WireGuard interface absent")
 
 // Peer mirrors the control plane's peer shape (JSON contract).
 type Peer struct {

@@ -219,15 +219,15 @@ func (b *wgctrlBackend) Peers(ctx context.Context) ([]Peer, error) {
 func (b *wgctrlBackend) Readback(ctx context.Context) (WGBackendReadback, error) {
 	peers, err := b.Peers(ctx)
 	if err != nil {
-		return WGBackendReadback{}, err
+		return WGBackendReadback{}, b.classifyReadbackError(err)
 	}
 	routeDetails, err := b.agentOwnedRouteDetails(ctx)
 	if err != nil {
-		return WGBackendReadback{}, err
+		return WGBackendReadback{}, b.classifyReadbackError(err)
 	}
 	rules, err := b.agentOwnedReturnRules(ctx)
 	if err != nil {
-		return WGBackendReadback{}, err
+		return WGBackendReadback{}, b.classifyReadbackError(err)
 	}
 	return WGBackendReadback{
 		Peers:        peers,
@@ -235,6 +235,15 @@ func (b *wgctrlBackend) Readback(ctx context.Context) (WGBackendReadback, error)
 		RouteDetails: routeDetails,
 		ReturnRules:  sortedReturnRules(rules),
 	}, nil
+}
+
+func (b *wgctrlBackend) classifyReadbackError(err error) error {
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, strings.ToLower(b.iface)) &&
+		(strings.Contains(message, "does not exist") || strings.Contains(message, "cannot find device") || strings.Contains(message, "unable to access interface")) {
+		return fmt.Errorf("%w: %v", ErrWGInterfaceAbsent, err)
+	}
+	return err
 }
 
 // Stats parses per-peer live telemetry from `wg show <iface> dump`.

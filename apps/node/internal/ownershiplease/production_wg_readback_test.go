@@ -84,6 +84,26 @@ func TestProductionWGReadbackSurfaceFailsClosedOnBackendReadError(t *testing.T) 
 	}
 }
 
+func TestProductionWGReadbackEmergencyWithdrawalAcceptsAbsentInterface(t *testing.T) {
+	domain := &emergencyDomain{}
+	wg := &fakeWGReadbackOwner{err: reconcile.ErrWGInterfaceAbsent}
+	surface, err := NewProductionWGReadbackSurface(domain, wg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emergency, ok := surface.(EmergencyDomainSurface)
+	if !ok {
+		t.Fatal("production surface must expose emergency withdrawal")
+	}
+	fences := []PoolFence{{}}
+	if err := emergency.EmergencyWithdraw(t.Context(), fences); err != nil {
+		t.Fatalf("missing interface is already withdrawn: %v", err)
+	}
+	if !reflect.DeepEqual(domain.fences, fences) {
+		t.Fatalf("downstream withdrawal was skipped: got %+v want %+v", domain.fences, fences)
+	}
+}
+
 func TestCoordinatorProductionWGReadbackRejectsUnappliedOwnershipAndCompensates(t *testing.T) {
 	ctx := t.Context()
 	base := projectorBase()

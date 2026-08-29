@@ -2,6 +2,7 @@ package ownershiplease
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -69,6 +70,15 @@ func (s *productionWGReadbackSurface) EmergencyWithdraw(ctx context.Context, fen
 	}
 	wg, err := s.wg.Readback(ctx)
 	if err != nil {
+		if errors.Is(err, reconcile.ErrWGInterfaceAbsent) {
+			// There is no kernel interface carrying the fenced state. This is a
+			// successful non-serving withdrawal at cold start, not an unknown
+			// readback; still let lower owners remove their Kubernetes state.
+			if downstream, ok := s.domain.(EmergencyDomainSurface); ok {
+				return downstream.EmergencyWithdraw(ctx, fences)
+			}
+			return nil
+		}
 		return fmt.Errorf("read emergency WireGuard ownership: %w", err)
 	}
 	blockedRoutes := map[string]struct{}{}
