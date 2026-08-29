@@ -89,7 +89,7 @@ export default function Alerts() {
             rowKey={(row) => row.id}
             failed={false}
             pageSize={25}
-            empty={<EmptyState>{view === "active" ? "No active conditions. Your monitored product signals are clear." : "No resolved alerts recorded yet."}</EmptyState>}
+            empty={<EmptyState>{view === "active" ? "No active conditions have been recorded." : "No resolved alerts recorded yet."}</EmptyState>}
             columns={[
               { key: "severity", header: "Severity", cell: (row) => <Badge tone={severityTone(row.severity)}>{row.severity}</Badge>, sortValue: (row) => row.severity },
               { key: "condition", header: "Condition", cell: (row) => <div><div className="font-medium text-ink-heading">{row.subject}</div><div className="mt-0.5 text-badge text-ink-tertiary">{row.event_key}</div></div>, sortValue: (row) => row.subject },

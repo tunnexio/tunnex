@@ -743,7 +743,11 @@ func main() {
 	// configuration while exactly one process sends a subscribed notification.
 	alertDispatcher := alerts.NewDispatcher(sqlc.New(pool), alerts.NewWebhookSender(sealer, mailer))
 	alertConditions := alerts.NewConditionScanner(alerts.NewPostgresConditionStore(pool), alertPublisher)
-	productAlertConditions := alerts.NewProductConditionScanner(alerts.NewNodeProductHealthSource(pool, nodeSvc), alertPublisher)
+	productAlertConditions := []*alerts.ProductConditionScanner{
+		alerts.NewScopedProductConditionScanner(alerts.NewNodeProductHealthSource(pool, nodeSvc), alertPublisher, alerts.GatewaySiteKeys()),
+		alerts.NewScopedProductConditionScanner(alerts.NewDeviceProductHealthSource(pool), alertPublisher, alerts.DeviceKeys()),
+		alerts.NewScopedProductConditionScanner(alerts.NewKubernetesProductHealthSource(pool, nodeSvc), alertPublisher, alerts.KubernetesKeys()),
+	}
 	go func() {
 		t := time.NewTicker(alerts.DispatchInterval)
 		defer t.Stop()
@@ -778,8 +782,10 @@ func main() {
 				if err := alertConditions.RunOnce(ctx); err != nil {
 					logger.Error("alert_condition_tick_failed", slog.String("error", err.Error()))
 				}
-				if err := productAlertConditions.RunOnce(ctx); err != nil {
-					logger.Error("product_alert_condition_tick_failed", slog.String("error", err.Error()))
+				for _, scanner := range productAlertConditions {
+					if err := scanner.RunOnce(ctx); err != nil {
+						logger.Error("product_alert_condition_tick_failed", slog.String("error", err.Error()))
+					}
 				}
 				cancel()
 			}

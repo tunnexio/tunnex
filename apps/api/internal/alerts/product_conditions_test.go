@@ -22,8 +22,9 @@ func (s productSource) Snapshots(context.Context) ([]ProductHealthSnapshot, erro
 }
 
 type lifecycleRecorder struct {
-	active    []Event
-	published []Event
+	active     []Event
+	published  []Event
+	listedKeys []EventKey
 }
 
 func (p *lifecycleRecorder) Publish(_ context.Context, event Event) error {
@@ -31,7 +32,8 @@ func (p *lifecycleRecorder) Publish(_ context.Context, event Event) error {
 	return event.Validate()
 }
 
-func (p *lifecycleRecorder) ListFiringOccurrences(context.Context, uuid.UUID, []EventKey) ([]Event, error) {
+func (p *lifecycleRecorder) ListFiringOccurrences(_ context.Context, _ uuid.UUID, keys []EventKey) ([]Event, error) {
+	p.listedKeys = append([]EventKey(nil), keys...)
 	return append([]Event(nil), p.active...), nil
 }
 
@@ -65,6 +67,19 @@ func TestProductScannerDoesNotInferRecoveryFromSourceFailure(t *testing.T) {
 	}
 }
 
+func TestProductScannerReconcilesOnlyItsEvidenceDomain(t *testing.T) {
+	t.Parallel()
+	orgID := uuid.New()
+	publisher := &lifecycleRecorder{}
+	scanner := NewScopedProductConditionScanner(productSource{snapshots: []ProductHealthSnapshot{{OrgID: orgID}}}, publisher, deviceKeys)
+	if err := scanner.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.listedKeys) != 1 || publisher.listedKeys[0] != EventDevicePostureBlocked {
+		t.Fatalf("listed keys=%v, want device domain only", publisher.listedKeys)
+	}
+}
+
 func TestGatewaySiteEventsAreResourceScopedAndSiteDeduplicated(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
@@ -92,5 +107,68 @@ func TestGatewaySiteEventsPreferOfflineOverStalePolicy(t *testing.T) {
 	events := gatewaySiteEvents(orgID, []sqlc.Node{row}, nil, map[uuid.UUID]nodes.PolicyHealth{gatewayID: {Degraded: true, Kind: nodes.KindSilentDesync}}, now)
 	if len(events) != 1 || events[0].Key != EventGatewayOffline {
 		t.Fatalf("events=%#v, want only gateway offline", events)
+	}
+}
+
+func TestDeviceEventsUseCanonicalPostureBlock(t *testing.T) {
+	t.Parallel()
+	orgID := uuid.New()
+	blockedID, pendingID := uuid.New(), uuid.New()
+	state := "noncompliant"
+	events := deviceEvents(orgID, []sqlc.ListDevicesByOrgRow{
+		{Device: sqlc.Device{ID: blockedID, OrgID: orgID, Name: "laptop", Status: "active", HealthBlocked: true}, EvaluatedState: &state},
+		{Device: sqlc.Device{ID: pendingID, OrgID: orgID, Name: "pending", Status: "pending", HealthBlocked: true}},
+	})
+	if len(events) != 1 || events[0].Key != EventDevicePostureBlocked || events[0].Resource == nil || events[0].Resource.ID != blockedID.String() {
+		t.Fatalf("events=%#v, want one active posture-blocked device", events)
+	}
+	if events[0].Fields["evaluated_state"] != state {
+		t.Fatalf("fields=%#v, want canonical evaluated state", events[0].Fields)
+	}
+}
+
+func TestKubernetesEventsBindConnectorInventoryAndServiceImpact(t *testing.T) {
+	t.Parallel()
+	orgID, clusterID, connectorID, poolID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	now := time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	clusters := []sqlc.ListK8sClusterConnectorViewsForOrgRow{{
+		ID: clusterID, OrgID: orgID, Name: "payments",
+		ConnectorPoolID:       pgtype.UUID{Bytes: poolID, Valid: true},
+		ActiveConnectorNodeID: pgtype.UUID{Bytes: connectorID, Valid: true},
+	}}
+	services := []sqlc.ListActiveK8sServicesForOrgRow{{
+		ID: uuid.New(), ClusterID: clusterID, Name: "api",
+		ConnectorPoolID: pgtype.UUID{Bytes: poolID, Valid: true}, PoolConnectorEligible: false,
+	}}
+	health := map[uuid.UUID]nodes.PolicyHealth{connectorID: {Degraded: true, Kind: nodes.KindK8sEndpointsUnavailable}}
+	events := kubernetesEvents(orgID, clusters, services, health, map[uuid.UUID]time.Time{clusterID: now.Add(-time.Minute)}, now)
+	want := map[EventKey]bool{
+		EventKubernetesConnectorDegraded:  false,
+		EventKubernetesInventoryStale:     false,
+		EventKubernetesServiceUnavailable: false,
+	}
+	for _, event := range events {
+		if _, ok := want[event.Key]; ok {
+			want[event.Key] = true
+		}
+		if event.Resource == nil || event.Resource.Type != "kubernetes_cluster" || event.Resource.ID != clusterID.String() {
+			t.Fatalf("event=%#v, want cluster provenance", event)
+		}
+	}
+	for key, seen := range want {
+		if !seen {
+			t.Fatalf("events=%#v, missing %s", events, key)
+		}
+	}
+}
+
+func TestKubernetesEventsDoNotCallFreshInventoryStale(t *testing.T) {
+	t.Parallel()
+	orgID, clusterID, connectorID := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now().UTC()
+	clusters := []sqlc.ListK8sClusterConnectorViewsForOrgRow{{ID: clusterID, OrgID: orgID, Name: "healthy", ConnectorNodeID: pgtype.UUID{Bytes: connectorID, Valid: true}}}
+	events := kubernetesEvents(orgID, clusters, nil, map[uuid.UUID]nodes.PolicyHealth{connectorID: {Kind: nodes.KindHealthy}}, map[uuid.UUID]time.Time{clusterID: now.Add(time.Minute)}, now)
+	if len(events) != 0 {
+		t.Fatalf("events=%#v, want no false condition", events)
 	}
 }
