@@ -44,7 +44,7 @@ export function Button({
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "ghost" | "danger";
+  variant?: "primary" | "ghost" | "danger" | "enforce";
   /**
    * `sm` for a button that lives INSIDE A TABLE ROW.
    *
@@ -88,6 +88,10 @@ export function Button({
       "border border-white/40 bg-white/[.16] text-ink-heading shadow-[0_4px_16px_rgba(0,0,0,.4)] backdrop-blur-[10px] hover:bg-white/25",
     ghost: "border border-white/10 text-slate-200 hover:bg-white/5",
     danger: "text-slate-400 hover:text-danger",
+    // The product-defining activation control is decisive, not decorative: a
+    // high-contrast solid action rather than a glow or gradient hero.
+    enforce:
+      "border border-white bg-white text-black shadow-[0_2px_10px_rgba(0,0,0,.28)] hover:bg-ink-emphasis",
   } as const;
   return (
     <button
@@ -1021,6 +1025,7 @@ export function DataTable<T>({
   rowActions,
   rowAttrs,
   expandable,
+  selectionBar = "always",
 }: {
   caption: string;
   columns: Array<Column<T>>;
@@ -1125,6 +1130,8 @@ export function DataTable<T>({
    * count. The row below is the only placement that gives it the table's full width.
    */
   expandable?: (row: T) => ReactNode | null;
+  /** Keep bulk actions out of the way until a row is selected on dense tables. */
+  selectionBar?: "always" | "active";
 }) {
   const searchable = columns.some((c) => c.sortValue);
   const showFilter = filterable ?? searchable;
@@ -1252,7 +1259,7 @@ export function DataTable<T>({
       {/* THE SELECTION BAR, ABOVE THE TABLE. Always present when the table is selectable — an empty-state bar that says
           "0 selected" teaches where the count will appear, and a bar that only materialises on the first
           click moves the layout under the operator's cursor. */}
-      {showSelect && (
+      {showSelect && (selectionBar === "always" || selected.size > 0) && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs">
           <span className="text-ink-secondary">
             <span className="tabular-nums text-slate-300">{selected.size}</span>{" "}

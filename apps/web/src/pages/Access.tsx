@@ -19,7 +19,6 @@ import {
   type K8sService,
   type PolicyRule,
   type ZeroTrustMode,
-  type AffectedDevice,
   type CreatePolicyRuleRequest,
   type AgentAccessDiagnostic,
   type AgentAccessDestination,
@@ -86,6 +85,7 @@ import {
 } from "../lib/policyview";
 import { ManagedBadge } from "../components/ManagedBadge";
 import { AccessTabRail } from "../components/AccessTabRail";
+import { toast } from "../components/Toasts";
 // swapRule + swapPartialMessage power the create-then-delete rule edit (D-a5) in RuleFormModal.
 // Every GET here goes through loadOne — a raw api.GET whose emptiness is user-meaningful is
 // review-refused (S7.4a review): a fetch failure must render a legible retry, never a
@@ -235,7 +235,7 @@ export default function Access() {
       {view === "admin_body" && org && (
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <Card className="overflow-hidden !p-0">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] px-4 py-3">
               <ModeSection orgId={org.id} canManage={gate.canManagePolicy} />
               <div className="flex flex-wrap items-center gap-2">
                 <TestAccessSection key={org.id} orgId={org.id} />
@@ -753,7 +753,6 @@ function ModeSection({
   const [confirming, setConfirming] = useState(false);
   const [confirmCount, setConfirmCount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [affected, setAffected] = useState<AffectedDevice[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -790,7 +789,6 @@ function ModeSection({
   async function setModeTo(next: "off" | "enforcing") {
     setBusy(true);
     setErr(null);
-    setAffected(null);
     const { data, error } = await api.PUT(
       "/api/v1/organizations/{orgId}/zero-trust-mode",
       {
@@ -805,8 +803,15 @@ function ModeSection({
     const zt = data as ZeroTrustMode | undefined;
     if (zt) {
       setMode(zt.mode);
-      if (zt.affected_full_tunnel_devices?.length)
-        setAffected(zt.affected_full_tunnel_devices);
+      const affected = zt.affected_full_tunnel_devices ?? [];
+      if (next === "enforcing" && affected.length > 0) {
+        toast.warning("Enforcement enabled", {
+          description: `${affected.length} full-tunnel device${affected.length === 1 ? "" : "s"} lost internet egress until an allow rule applies: ${affected.map((device) => device.name).join(", ")}`,
+          duration: 10_000,
+        });
+      } else {
+        toast.success(next === "enforcing" ? "Enforcement enabled" : "Enforcement disabled");
+      }
     }
   }
 
@@ -814,19 +819,18 @@ function ModeSection({
 
   return (
     <div className="min-w-[18rem] flex-1">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <h2 className="text-sm font-semibold text-ink-heading">Enforcement</h2>
-        <span className={`h-2 w-2 rounded-full ${mode === "enforcing" ? "bg-emerald-400" : mode === "off" ? "bg-warn" : "bg-slate-600"}`} aria-hidden="true" />
-        <strong className="text-sm font-medium text-ink-body">
-          {mode === "enforcing" ? "On" : mode === "off" ? "Off" : loadError ? "Unavailable" : "Loading…"}
-        </strong>
-        <span className="text-xs text-ink-tertiary">
-          {mode === "enforcing" ? "Only matching allow rules pass." : mode === "off" ? "Legacy full mesh is open." : ""}
-        </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${mode === "enforcing" ? "bg-ok" : mode === "off" ? "bg-warn" : "bg-slate-600"}`} aria-hidden="true" />
+        <div className="min-w-[12rem] flex-1 text-sm">
+          <h2 className="inline font-medium text-ink-heading">Enforcement</h2>
+          <span className="ml-2 text-ink-tertiary">
+            {mode === "enforcing" ? "On · Default-deny active; only matching allow rules pass." : mode === "off" ? "Off · Policy not enforced. Open mesh: every device reaches every device." : loadError ? "Unavailable" : "Loading…"}
+          </span>
+        </div>
         {canManage && mode != null && !loadError && (
           <Button
             size="sm"
-            variant={mode === "enforcing" ? "ghost" : "primary"}
+            variant={mode === "enforcing" ? "ghost" : "enforce"}
             disabled={busy}
             onClick={() =>
               mode === "enforcing" ? setModeTo("off") : openEnableConfirm()
@@ -839,17 +843,6 @@ function ModeSection({
       {loadError && <LoadRetry error={loadError} onRetry={load} />}
       <ErrorText>{err}</ErrorText>
 
-      {affected && (
-        <div className="mt-2 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300">
-          Now enforcing. {affected.length} full-tunnel device(s) lost internet
-          egress until a rule allows it:
-          <span className="text-amber-200">
-            {" "}
-            {affected.map((d) => d.name).join(", ")}
-          </span>
-        </div>
-      )}
-
       {confirming && (
         <Modal
           title={confirm.title}
@@ -861,7 +854,7 @@ function ModeSection({
                 Cancel
               </Button>
               <Button
-                variant={confirm.danger ? "danger" : "primary"}
+                variant={confirm.danger ? "danger" : "enforce"}
                 disabled={busy}
                 onClick={() => setModeTo("enforcing")}
               >
@@ -1212,7 +1205,7 @@ function RulesSection({
       {(() => {
         const s = rulesSummary({ modeResult, rulesResult });
         if (s.state === "loading") return null;
-        return (
+        return s.loud || s.state === "failed" ? (
           <p
             className={
               s.loud
@@ -1222,7 +1215,7 @@ function RulesSection({
           >
             {s.text}
           </p>
-        );
+        ) : <span className="sr-only">{s.text}</span>;
       })()}
 
       {/* [291] legibility signals COMPOSE: the partial-swap notice + a mutation error render at
@@ -1270,9 +1263,9 @@ function RulesSection({
             </Button>
           </div>
           <p className="sr-only" data-testid="visualization-count">{filteredRules.length} matching rules · visualization limit {FLOW_GRAPH_MAX_RULES}</p>
-          {visualization.kind === "empty" && <p id="rules-visualization-status" className="mt-2 text-xs text-ink-tertiary">No matching rules to map.</p>}
-          {visualization.kind === "too-many" && <p id="rules-visualization-status" className="mt-2 text-xs text-warn">Narrow the search to {FLOW_GRAPH_MAX_RULES} rules or fewer to view the map.</p>}
-          {visualization.kind === "omitted" && <p id="rules-visualization-status" className="mt-2 text-xs text-warn">This selection is too connected for a truthful compact map. Narrow the search.</p>}
+          {visualization.kind === "empty" && <p id="rules-visualization-status" className="sr-only">No matching rules to map.</p>}
+          {visualization.kind === "too-many" && <p id="rules-visualization-status" className="sr-only">Narrow the search to {FLOW_GRAPH_MAX_RULES} rules or fewer to view the map.</p>}
+          {visualization.kind === "omitted" && <p id="rules-visualization-status" className="sr-only">This selection is too connected for a truthful compact map. Narrow the search.</p>}
           {visualization.kind === "draw" && <p id="rules-visualization-status" className="sr-only">All matching rules can be mapped.</p>}
           {/* ── ACCESS FLOW ({{ polFlow }}) — built from the handoff's buildPolicyFlow(), not from a screenshot.
               GEOMETRY VERBATIM: canvas 600x312 rx14 over a 16px dot field; node boxes 152x36 rx10 at cx±76,
@@ -1457,6 +1450,7 @@ function RulesSection({
               rowKey={(r) => r.id}
               rowLabel={(r) => ruleRow(r, groups, resources, members, sites, loaded, services).src.label}
               filterable={false}
+              selectionBar="active"
               // ⛔ THE PAGE OWNS THE EMPTY COPY, because it distinguishes states this component cannot see:
               // an ENFORCING org with zero rules is a lockout warning, not an emptiness.
               failed={
