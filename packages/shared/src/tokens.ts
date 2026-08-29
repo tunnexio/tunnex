@@ -218,15 +218,18 @@ export const SPACING = {
 
 /** Type scale. Sizes only — families are TYPOGRAPHY, and the two are separate so a theme may re-scale without re-picking a face. */
 export const TYPE_SCALE = {
-  // The README's scale, in px, because the design is specified in px and a rem conversion would drift.
-  badge: "8.5px",
-  micro: "9px",
-  explainer: "9.5px",
-  mono: "10px",
-  cell: "11px",
-  nav: "12.5px",
-  title: "13.5px",
-  stat: "26px",
+  // Operational text must remain readable at normal desktop and mobile viewing distances. The former
+  // 8.5–11px ramp made metadata, table cells, and diagnostics visibly smaller than browser defaults and
+  // forced colour to carry hierarchy on an already-muted dark palette. Keep 12px as the metadata floor;
+  // normal inventory and navigation text begins at 14px.
+  badge: "12px",
+  micro: "12px",
+  explainer: "13px",
+  mono: "13px",
+  cell: "14px",
+  nav: "14px",
+  title: "16px",
+  stat: "28px",
 } as const;
 
 export const RADIUS = {

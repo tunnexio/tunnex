@@ -11,6 +11,7 @@ let groupMembers: Array<Record<string, unknown>> = [];
 let versions: Array<Record<string, unknown>> = [];
 let assignments: Array<Record<string, unknown>> = [];
 let f09Reads: string[] = [];
+let groupInventoryFail = false;
 
 vi.mock("../src/lib/useOrg", () => ({
   useOrg: () => ({ org: currentOrg, orgs: [currentOrg], setOrg: vi.fn(), loading: false, failed: false }),
@@ -29,8 +30,15 @@ vi.mock("../src/lib/api", async () => {
         const orgId = request?.params?.path?.orgId ?? currentOrg.id;
         if (path === "/api/v1/meta") return { data: { edition: "enterprise" } };
         if (path === "/api/v1/organizations/{orgId}/members") return { data: [{ user_id: "user-a", role, email_verified: true }] };
-        if (path.endsWith("/agent-groups")) { f09Reads.push(`${orgId}:groups`); return { data: orgId === "org-a" ? groups : [] }; }
-        if (path.endsWith("/groups")) return { data: orgId === "org-a" ? peopleGroups : [] };
+        if (path.endsWith("/agent-groups")) {
+          f09Reads.push(`${orgId}:groups`);
+          if (groupInventoryFail) return { error: { error: { code: "boom", message: "unavailable" } } };
+          return { data: orgId === "org-a" ? groups : [] };
+        }
+        if (path.endsWith("/groups")) {
+          if (groupInventoryFail) return { error: { error: { code: "boom", message: "unavailable" } } };
+          return { data: orgId === "org-a" ? peopleGroups : [] };
+        }
         if (path.endsWith("/agent-policy-templates")) { f09Reads.push(`${orgId}:templates`); return { data: orgId === "org-a" ? templates : [] }; }
         if (path.endsWith("/agent-policy-template-assignments")) { f09Reads.push(`${orgId}:assignments`); return { data: orgId === "org-a" ? assignments : [] }; }
         if (path.endsWith("/agent-groups/{groupId}/members")) return { data: groupMembers };
@@ -86,6 +94,7 @@ beforeEach(() => {
   versions = [];
   assignments = [];
   f09Reads = [];
+  groupInventoryFail = false;
   vi.mocked(api.GET).mockClear();
   vi.mocked(api.POST).mockClear();
   vi.mocked(api.DELETE).mockClear();
@@ -98,6 +107,18 @@ afterEach(() => {
 });
 
 describe("released F09 agent group and template workflow", () => {
+  it("replaces a failed group load with one retryable error state", async () => {
+    groupInventoryFail = true;
+    render(<MemoryRouter><AccessGroups /></MemoryRouter>);
+
+    expect(await screen.findByText("Could not load the group inventory.")).toBeTruthy();
+    expect(screen.queryByText("Loading groups…")).toBeNull();
+
+    groupInventoryFail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("button", { name: "Create group" })).toBeTruthy();
+  });
+
   it("renders exact valid member counts and refuses a stale or malformed count contract", async () => {
     peopleGroups = [
       { id: "people-zero", name: "empty people", member_count: 0 },

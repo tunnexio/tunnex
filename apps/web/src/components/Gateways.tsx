@@ -163,6 +163,7 @@ export function Gateways({
   initiallyOpen = false,
   hideHeader = false,
   showGatewayEndpointSettings = true,
+  onCancel,
   onEnrollmentAcknowledged,
 }: {
   org: Org;
@@ -172,6 +173,8 @@ export function Gateways({
   hideHeader?: boolean;
   /** Show the deployment-wide control endpoint status/editor in enrollment. */
   showGatewayEndpointSettings?: boolean;
+  /** Cancel an enrollment owned by a surrounding dialog. */
+  onCancel?: () => void;
   /** Close an embedding enrollment workspace after the one-time secret is acknowledged. */
   onEnrollmentAcknowledged?: () => void;
 }) {
@@ -267,7 +270,7 @@ export function Gateways({
       setGatewayEndpointConfigured(data.configured);
       setGatewayEndpointDraft(data.url);
       setGatewayControlURL(data.configured ? data.url : undefined);
-      setGatewayEndpointEditing(!data.configured);
+      setGatewayEndpointEditing(false);
     } catch {
       setGatewayEndpointState("error");
       setGatewayEndpointReadError("Could not reach the API.");
@@ -344,73 +347,7 @@ export function Gateways({
   }
 
   return (
-    <Card>
-      {showGatewayEndpointSettings && gatewayEndpointState === "loading" && (
-        <p className="mb-4 text-sm text-slate-400">
-          Checking Gateway control endpoint…
-        </p>
-      )}
-      {showGatewayEndpointSettings && gatewayEndpointState === "error" && (
-        <div className="mb-4 rounded-lg border border-danger/30 bg-danger/5 p-4">
-          <ErrorText>{gatewayEndpointReadError}</ErrorText>
-          <Button className="mt-3" variant="ghost" onClick={() => void loadGatewayEndpoint()}>
-            Retry
-          </Button>
-        </div>
-      )}
-      {showGatewayEndpointSettings &&
-        gatewayEndpointState !== "loading" &&
-        gatewayEndpointState !== "error" &&
-        Boolean(gatewayControlURL) &&
-        !gatewayEndpointEditing &&
-        gatewayControlURL && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-ink-900 px-4 py-3">
-            <p className="text-sm text-slate-300">
-              Control endpoint: <span className="font-medium text-white">{controlEndpointHostname(gatewayControlURL)}</span>
-              {" · "}<span className="text-slate-200">Configured</span>
-            </p>
-            {gatewayEndpointState === "authorized" && (
-              <Button variant="ghost" onClick={() => setGatewayEndpointEditing(true)}>
-                Change
-              </Button>
-            )}
-          </div>
-        )}
-      {showGatewayEndpointSettings &&
-        gatewayEndpointState === "restricted" &&
-        !gatewayControlURL && (
-          <div className="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200">
-            A deployment admin must configure the Gateway control endpoint before a join token can be issued.
-          </div>
-        )}
-      {showGatewayEndpointSettings && gatewayEndpointState === "authorized" && gatewayEndpointEditing && (
-        <div className="mb-4 rounded-lg border border-white/10 bg-ink-900 p-4">
-          <div className="text-sm font-semibold text-white">Gateway control URL (DNS hostname)</div>
-          <p className="mt-1 text-xs text-slate-400">Deployment-wide raw mTLS endpoint used in new join commands. Gateways reach this DNS hostname on port 8443; keep it DNS-only or behind TCP passthrough.</p>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <div className="min-w-[18rem] flex-1">
-              <Field label="Gateway control URL (DNS hostname)">
-                <Input value={gatewayEndpointDraft} onChange={(e) => setGatewayEndpointDraft(e.target.value)} placeholder="https://agent.example.com:8443" maxLength={300} />
-              </Field>
-            </div>
-            <Button onClick={saveGatewayEndpoint} disabled={gatewayEndpointBusy || gatewayEndpointDraft.trim() === ""}>
-              {gatewayEndpointBusy ? "Saving…" : "Save endpoint"}
-            </Button>
-            {gatewayEndpointConfigured && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setGatewayEndpointDraft(gatewayControlURL ?? "");
-                  setGatewayEndpointEditing(false);
-                }}
-                disabled={gatewayEndpointBusy}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+    <Card variant={hideHeader ? "plain" : "glass"}>
       {!hideHeader && <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-300">Gateways</h2>
         <Button variant="ghost" onClick={() => setOpen((v) => !v)}>
@@ -419,8 +356,12 @@ export function Gateways({
       </div>}
 
       {open && (
-        <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-white/5 pt-3">
-          <div className="min-w-[12rem] flex-1">
+        <div className={`${hideHeader ? "" : "mt-3 border-t border-white/5 pt-3"}`}>
+          <div className="mb-3">
+            <h3 className="text-cell font-semibold text-ink-heading">Gateway</h3>
+            <p className="mt-1 text-micro text-ink-tertiary">Name the host. Add a public endpoint only when peers can dial it directly.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Gateway name (optional)">
               <Input
                 value={nodeName}
@@ -429,9 +370,7 @@ export function Gateways({
                 maxLength={100}
               />
             </Field>
-          </div>
-          <div className="min-w-[12rem] flex-1">
-            <Field label="Public endpoint (optional: the ip:port peers dial)">
+            <Field label="Public endpoint (optional)">
               <Input
                 value={endpoint}
                 onChange={(e) => setEndpoint(e.target.value)}
@@ -440,13 +379,79 @@ export function Gateways({
               />
             </Field>
           </div>
-          <Button onClick={issue} disabled={busy || !metaLoaded || !gatewayEndpointReady}>
-            {busy
-              ? "Generating…"
-              : !metaLoaded || !gatewayEndpointSettled
-                ? "Checking control plane…"
-                : "Generate join token"}
-          </Button>
+          {!hideHeader && <div className="mt-4 flex justify-end">
+            <Button onClick={issue} disabled={busy || !metaLoaded || !gatewayEndpointReady}>
+              {busy
+                ? "Generating…"
+                : !metaLoaded || !gatewayEndpointSettled
+                  ? "Checking control plane…"
+                  : "Generate join token"}
+            </Button>
+          </div>}
+        </div>
+      )}
+
+      {open && showGatewayEndpointSettings && gatewayEndpointState === "loading" && (
+        <p className="mt-3 text-micro text-ink-tertiary">Checking control connection…</p>
+      )}
+      {open && showGatewayEndpointSettings && gatewayEndpointState === "error" && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2">
+          <ErrorText>{gatewayEndpointReadError}</ErrorText>
+          <Button size="sm" variant="ghost" onClick={() => void loadGatewayEndpoint()}>Retry</Button>
+        </div>
+      )}
+      {open && showGatewayEndpointSettings && gatewayEndpointState !== "loading" && gatewayEndpointState !== "error" && !gatewayEndpointEditing && (gatewayEndpointState === "authorized" || Boolean(gatewayControlURL)) && (
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/[.08] pt-3">
+          <div className="min-w-0">
+            <p className="text-micro font-medium uppercase tracking-wide text-ink-faint">Control connection</p>
+            <p className="mt-0.5 truncate text-cell text-ink-body">
+              {gatewayControlURL ? controlEndpointHostname(gatewayControlURL) : "Automatic from control-plane URL"}
+              <span className={`ml-2 text-micro ${gatewayControlURL ? "text-ok" : "text-ink-faint"}`}>
+                {gatewayControlURL ? "Configured" : "Default"}
+              </span>
+            </p>
+          </div>
+          {gatewayEndpointState === "authorized" && (
+            <Button size="sm" variant="ghost" onClick={() => setGatewayEndpointEditing(true)}>
+              {gatewayControlURL ? "Change" : "Customize"}
+            </Button>
+          )}
+        </div>
+      )}
+      {open && showGatewayEndpointSettings && gatewayEndpointState === "restricted" && !gatewayControlURL && (
+        <div className="mt-3 rounded-md border border-amber-400/20 bg-amber-400/5 px-3 py-2 text-cell text-amber-200">
+          A deployment admin must configure the control endpoint before enrollment.
+        </div>
+      )}
+      {open && showGatewayEndpointSettings && gatewayEndpointState === "authorized" && gatewayEndpointEditing && (
+        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-cell font-semibold text-ink-heading">Custom control endpoint</div>
+              <p className="mt-0.5 text-micro text-ink-tertiary">Advanced: override the raw mTLS endpoint with a DNS hostname on port 8443.</p>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setGatewayEndpointDraft(gatewayControlURL ?? "");
+                setGatewayEndpointEditing(false);
+              }}
+              disabled={gatewayEndpointBusy}
+            >
+              {gatewayEndpointConfigured ? "Keep current" : "Use automatic"}
+            </Button>
+          </div>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <Field label="Gateway control URL (DNS hostname)">
+                <Input value={gatewayEndpointDraft} onChange={(e) => setGatewayEndpointDraft(e.target.value)} placeholder="https://agent.example.com:8443" maxLength={300} />
+              </Field>
+            </div>
+            <Button onClick={saveGatewayEndpoint} disabled={gatewayEndpointBusy || gatewayEndpointDraft.trim() === ""}>
+              {gatewayEndpointBusy ? "Saving…" : "Save endpoint"}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -459,18 +464,6 @@ export function Gateways({
           before enrolling a gateway.
         </ErrorText>
       )}
-      {open &&
-        metaLoaded &&
-        gatewayEndpointSettled &&
-        !gatewayControlURL &&
-        gatewayEndpointState !== "error" && (
-          <p className="mt-2 text-xs text-ink-faint">
-            No explicit Gateway control URL is saved. This command derives the
-            raw mTLS endpoint from the configured control-plane URL on port
-            8443. A deployment admin can save an explicit endpoint for future
-            commands.
-          </p>
-        )}
       {open && ep.ok && ep.usedFallback && metaError && (
         <p className="mt-2 text-xs text-amber-400">
           Couldn't confirm the control plane's public URL (metadata unavailable)
@@ -486,6 +479,19 @@ export function Gateways({
         <CeilingUpgrade message={error} kind={ceiling} />
       ) : (
         <ErrorText>{error}</ErrorText>
+      )}
+
+      {open && hideHeader && (
+        <div className="mt-5 flex items-center justify-end gap-2 border-t border-white/[.08] pt-4">
+          {onCancel && <Button variant="ghost" onClick={onCancel}>Cancel</Button>}
+          <Button onClick={issue} disabled={busy || !metaLoaded || !gatewayEndpointReady}>
+            {busy
+              ? "Generating…"
+              : !metaLoaded || !gatewayEndpointSettled
+                ? "Checking control plane…"
+                : "Generate join token"}
+          </Button>
+        </div>
       )}
 
       {/* One-time join-token CEREMONY — the token authenticates a new agent on its

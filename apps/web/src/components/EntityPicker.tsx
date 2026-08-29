@@ -137,12 +137,12 @@ export function EntityPicker({
             setOpen(false);
           }
         }}
-        className="mt-1 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+        className="mt-1 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2.5 pr-20 text-sm text-white placeholder:text-slate-600 transition-colors hover:border-white/20 focus-visible:border-white/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30"
       />
       {/* The chosen thing keeps saying WHAT it is once the box is closed — otherwise "eu-lan" alone is
           ambiguous between a site and a group with the same name. */}
       {!open && selected && (
-        <span className="pointer-events-none absolute right-3 top-[2.1rem] font-mono text-[10px] text-slate-500">
+        <span className="pointer-events-none absolute right-3 top-[2.05rem] rounded border border-white/10 bg-white/[.04] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-400">
           {selected.tag}
         </span>
       )}
@@ -151,10 +151,10 @@ export function EntityPicker({
           id={`list-${label}`}
           role="listbox"
           aria-label={label}
-          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-white/20 bg-ink-900 py-1 shadow-[0_12px_32px_rgba(0,0,0,.6)]"
+          className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-white/[.14] bg-[#141414] p-1 shadow-[0_18px_48px_rgba(0,0,0,.72)]"
         >
           {shown.length === 0 && (
-            <li className="px-3 py-2 text-xs text-ink-secondary">
+            <li className="px-3 py-3 text-xs text-ink-secondary">
               Nothing matches “{query}”.
               {acceptCidr &&
                 " Type a CIDR (e.g. 10.0.5.0/24) to use a literal address."}
@@ -173,7 +173,7 @@ export function EntityPicker({
               {o.section && o.section !== shown[idx - 1]?.section && (
                 <div
                   role="presentation"
-                  className="px-3 pb-0.5 pt-2 font-mono text-[10px] uppercase tracking-wide text-ink-tertiary"
+                  className="sticky top-0 z-10 bg-[#141414]/95 px-2.5 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[.14em] text-ink-tertiary backdrop-blur"
                 >
                   {o.section}
                 </div>
@@ -189,29 +189,20 @@ export function EntityPicker({
                   setOpen(false);
                   setQuery("");
                 }}
-                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm ${
+                className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
                   o.unavailable
                     ? "cursor-not-allowed text-slate-600"
                     : active === idx
-                      ? "bg-white/10 text-slate-100"
-                      : "text-slate-200 hover:bg-white/10"
+                      ? "bg-white/[.09] text-slate-100 ring-1 ring-inset ring-white/10"
+                      : "text-slate-200 hover:bg-white/[.06]"
                 }`}
               >
-                {/* ⚠ A FIXED-WIDTH TAG COLUMN. Ragged tags turn the list into a staircase and the labels
-                    stop forming a scannable column, which is the entire point of one picker. */}
-                <span className="w-[4.5rem] shrink-0 font-mono text-[10px] uppercase tracking-wide text-slate-500">
-                  {o.tag}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{o.label}</span>
-                {o.detail && (
-                  <span className="shrink-0 truncate text-xs text-ink-secondary">
-                    {o.detail}
-                  </span>
-                )}
+                <span className="min-w-0"><span className="block truncate font-medium">{o.label}</span>{o.detail && <span className="mt-0.5 block truncate text-xs text-ink-tertiary">{o.detail}</span>}</span>
+                <span className="rounded border border-white/10 bg-white/[.035] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-400">{o.tag}</span>
                 {/* ⛔ THE REASON IS SHOWN IN THE ROW, not only on hover. A disabled option whose
                     explanation requires a mouse is no explanation on a touch screen or to a reader. */}
                 {o.unavailable && (
-                  <span className="ml-auto shrink-0 text-[10px] text-warn">
+                  <span className="col-span-2 mt-1 text-[10px] text-warn">
                     {o.unavailable}
                   </span>
                 )}

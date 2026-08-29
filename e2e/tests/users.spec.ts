@@ -43,7 +43,7 @@ test("a member sees the roster but no management controls", async ({
     page.getByRole("row").filter({ hasText: MEMBER.email }),
   ).toBeVisible();
   // No invite form, and no role <select> or Deactivate anywhere.
-  await expect(page.getByLabel("Invite by email")).toHaveCount(0);
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
   await expect(page.locator("select")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Deactivate" })).toHaveCount(0);
 });
@@ -53,7 +53,9 @@ test("an owner sees the invite form and per-member controls", async ({
   page,
 }) => {
   await loginAs(page, OWNER);
-  await expect(page.getByLabel("Invite by email")).toBeVisible();
+  await page.getByRole("button", { name: "Invite user" }).click();
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
   // ⚠ SCOPED TO THE MEMBERS TABLE. The page now renders a second table — Invitations — and the seeded
   // roster member also has an ACCEPTED invitation, so an unscoped row filter matches both and trips strict
   // mode. Naming the table is the fix; loosening the filter would have made the assertion ambiguous.
@@ -79,7 +81,7 @@ test("an unverified admin is offered no mutating controls despite the role", asy
   await expect(
     page.getByRole("row").filter({ hasText: MEMBER.email }),
   ).toBeVisible(); // can still read the roster
-  await expect(page.getByLabel("Invite by email")).toHaveCount(0);
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
   await expect(page.locator("select")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Deactivate" })).toHaveCount(0);
 });
@@ -133,8 +135,9 @@ test("invite renders identically for an existing account vs a new email", async 
   // so the modal would never appear and an error would be masked. The modal is
   // dismissed between invites (it's a fixed overlay covering the form).
   async function inviteSucceedsCleanly(email: string) {
-    await page.getByLabel("Invite by email").fill(email);
-    await page.getByRole("button", { name: "Send invite" }).click();
+    await page.getByRole("button", { name: "Invite user" }).click();
+    await page.getByLabel("Email address").fill(email);
+    await page.getByRole("button", { name: "Create invite" }).click();
     await expect(page.getByText("Invitation link")).toBeVisible();
     await expect(
       page.getByText(/could not create the invitation/i),

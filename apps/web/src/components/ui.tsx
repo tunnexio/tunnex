@@ -22,21 +22,19 @@ import type {
 // theme tokens (accent/ink/slate), so a palette swap restyles everything.
 
 /**
- * ⛔ THE GLASS RECIPE, IN ONE PLACE. Every surface in the product composes from this constant.
+ * Product-wide structural card material.
  *
- * It was previously spelled out on `Stat` and NOT on `Panel`, so the stat row rendered as glass and every
- * panel below it rendered as flat plastic — in the same screenshot. A material defined per-component is a
- * material that WILL be half-applied, and the half that is missing reads as a rendering bug rather than a
- * missing class.
- *
- * `bg-surface` is TRANSLUCENT (`rgba(31,31,31,.72)`), and the blur needs the page's radial field behind it to
- * refract (index.css). Opaque fill or flat backdrop and the effect disappears entirely.
- *
- * NO INSET WHITE HIGHLIGHT LINE — the designer removed it explicitly. Do not reintroduce
- * `inset 0 1px 0 rgba(255,255,255,…)`.
+ * Organization Settings established the clearest hierarchy in the product: a dense, nearly opaque neutral
+ * surface with a quiet boundary. Structural cards now share that material instead of alternating between
+ * translucent glass, gradients, and one-off dark fills. Inputs, menus, modals, and semantic alerts retain
+ * their own surfaces because they communicate different interaction or state.
  */
-export const GLASS =
-  "rounded-card border border-white/[.14] bg-surface shadow-card backdrop-blur-[24px] backdrop-saturate-[1.4]";
+export const CARD_SURFACE =
+  "tnx-card-surface";
+
+// Compatibility alias for existing dashboard composition imports. New structural surfaces should use
+// CARD_SURFACE so the material's purpose stays explicit.
+export const GLASS = CARD_SURFACE;
 
 export function Button({
   variant = "primary",
@@ -44,7 +42,7 @@ export function Button({
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "ghost" | "danger";
+  variant?: "primary" | "ghost" | "danger" | "enforce";
   /**
    * `sm` for a button that lives INSIDE A TABLE ROW.
    *
@@ -61,7 +59,7 @@ export function Button({
   const pad =
     size === "sm"
       ? "min-h-8 px-2.5 py-1 text-xs"
-      : "min-h-11 px-4 py-2 text-sm";
+      : "min-h-9 px-3.5 py-1.5 text-sm";
   const base = `inline-flex items-center justify-center rounded-md ${pad} font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400`;
   // ⛔ THE PRIMARY BUTTON WAS UNREADABLE, PRODUCT-WIDE, AND THE PALETTE SWAP IS WHY.
   //
@@ -88,6 +86,10 @@ export function Button({
       "border border-white/40 bg-white/[.16] text-ink-heading shadow-[0_4px_16px_rgba(0,0,0,.4)] backdrop-blur-[10px] hover:bg-white/25",
     ghost: "border border-white/10 text-slate-200 hover:bg-white/5",
     danger: "text-slate-400 hover:text-danger",
+    // The product-defining activation control is decisive, not decorative: a
+    // high-contrast solid action rather than a glow or gradient hero.
+    enforce:
+      "border border-white bg-white text-black shadow-[0_2px_10px_rgba(0,0,0,.28)] hover:bg-ink-emphasis",
   } as const;
   return (
     <button
@@ -99,12 +101,18 @@ export function Button({
 
 export function Card({
   className = "",
+  variant = "glass",
   children,
 }: {
   className?: string;
+  variant?: "glass" | "plain";
   children: ReactNode;
 }) {
-  return <div className={`${GLASS} p-4 ${className}`}>{children}</div>;
+  return (
+    <div className={`${variant === "glass" ? `${GLASS} p-4` : ""} ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 export function Field({
@@ -137,7 +145,7 @@ export function Input({
 }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
+      className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 ${className}`}
       {...props}
     />
   );
@@ -182,7 +190,7 @@ export function Select({
 }) {
   return (
     <select
-      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${className}`}
+      className={`${width === "auto" ? "w-auto min-w-[9rem]" : "w-full"} min-h-11 rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 ${className}`}
       {...props}
     >
       {children}
@@ -202,12 +210,14 @@ export function Modal({
   children,
   actions,
   size = "default",
+  showClose = false,
 }: {
   title: string;
   danger?: boolean;
   onDismiss: () => void;
   children: ReactNode;
-  actions: ReactNode;
+  actions?: ReactNode;
+  showClose?: boolean;
   /**
    * `wide` for a dialog whose content is a pair of searchable pickers rather than a sentence and a button.
    *
@@ -216,7 +226,7 @@ export function Modal({
    * happens to order last — which is not attribute order, so the "fix" works or does not depending on the
    * build.
    */
-  size?: "default" | "wide";
+  size?: "default" | "wide" | "workspace" | "enrollment";
 }) {
   const headingId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -303,18 +313,18 @@ export function Modal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "wide" ? "max-w-2xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
+        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "workspace" ? "max-w-4xl" : size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
-        <h2
-          id={headingId}
-          className={`shrink-0 text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}
-        >
-          {title}
-        </h2>
+        <div className="flex shrink-0 items-center justify-between gap-3">
+          <h2 id={headingId} className={`text-title font-semibold ${danger ? "text-danger" : "text-ink-heading"}`}>{title}</h2>
+          {showClose && (
+            <button type="button" aria-label={`Close ${title}`} onClick={onDismiss} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-lg leading-none text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35">×</button>
+          )}
+        </div>
         <div className="mt-3 min-h-0 overflow-y-auto text-cell text-ink-body">{children}</div>
-        <div className="mt-5 shrink-0 flex justify-end gap-2">{actions}</div>
+        {actions && <div className="mt-5 shrink-0 flex justify-end gap-2">{actions}</div>}
       </div>
     </div>,
     document.body,
@@ -566,7 +576,7 @@ export function SettingGroup({
       // Named by its own heading rather than by its tab: the heading is the more specific label, and it is
       // the one a reader sees.
       aria-labelledby={headingId}
-      className={`rounded-2xl border border-white/[0.08] bg-[#121215]/95 p-6 shadow-xl backdrop-blur-xl scroll-mt-6 ${className}`}
+      className={`${CARD_SURFACE} p-6 scroll-mt-6 ${className}`}
     >
       <h2
         id={headingId}
@@ -801,12 +811,41 @@ export function EmptyState({
   );
 }
 
-/** In-flight state. Announced, not merely drawn: a spinner nothing announces is invisible to a screen reader. */
-export function Loading({ label = "Loading…" }: { label?: string }) {
+/**
+ * The product-wide in-flight state. The moving pulse follows a short network
+ * path instead of using an unrelated spinner, while reduced-motion users get
+ * the same readable static mark. The label is always announced.
+ */
+export function Loading({
+  label = "Loading…",
+  size = "section",
+}: {
+  label?: string;
+  size?: "inline" | "section" | "page";
+}) {
+  const layout =
+    size === "inline"
+      ? "inline-flex min-h-8 items-center gap-2 py-1"
+      : size === "page"
+        ? "flex min-h-[45vh] flex-col items-center justify-center gap-3 py-12"
+        : "flex min-h-28 flex-col items-center justify-center gap-3 py-8";
   return (
-    <p role="status" className="py-10 text-cell text-ink-tertiary">
-      {label}
-    </p>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className={layout}
+    >
+      <span
+        aria-hidden="true"
+        className={`tnx-loader-mark ${size === "inline" ? "tnx-loader-mark--inline" : ""}`}
+      >
+        <span className="tnx-loader-node tnx-loader-node--start" />
+        <span className="tnx-loader-node tnx-loader-node--middle" />
+        <span className="tnx-loader-node tnx-loader-node--end" />
+      </span>
+      <span className="text-cell font-medium text-ink-tertiary">{label}</span>
+    </div>
   );
 }
 
@@ -973,6 +1012,7 @@ export function DataTable<T>({
   empty,
   failed,
   filterable,
+  variant = "flat",
   defaultSortKey,
   pageSize: initialPageSize = 25,
   selectable,
@@ -983,6 +1023,7 @@ export function DataTable<T>({
   rowActions,
   rowAttrs,
   expandable,
+  selectionBar = "always",
 }: {
   caption: string;
   columns: Array<Column<T>>;
@@ -1017,6 +1058,12 @@ export function DataTable<T>({
    * silently misses everything the page has not rendered.
    */
   filterable?: boolean;
+  /**
+   * Shared inventory presentation. `flat` is the product default so every
+   * roster uses the same header, row and hover treatment; `default` remains
+   * available only for deliberately legacy/demo surfaces.
+   */
+  variant?: "default" | "flat";
   /** Column key to sort by initially. Omit to keep the caller's order, which is often deliberate. */
   defaultSortKey?: string;
   /**
@@ -1081,6 +1128,8 @@ export function DataTable<T>({
    * count. The row below is the only placement that gives it the table's full width.
    */
   expandable?: (row: T) => ReactNode | null;
+  /** Keep bulk actions out of the way until a row is selected on dense tables. */
+  selectionBar?: "always" | "active";
 }) {
   const searchable = columns.some((c) => c.sortValue);
   const showFilter = filterable ?? searchable;
@@ -1184,7 +1233,7 @@ export function DataTable<T>({
   return (
     <div>
       {(showFilter || toolbar) && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-white/[.08] pb-3">
           {showFilter ? (
             <input
               type="search"
@@ -1197,7 +1246,7 @@ export function DataTable<T>({
               }}
               placeholder={`Search ${caption.toLowerCase()}…`}
               aria-label={`Filter ${caption}`}
-              className="w-64 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-white/20 focus:outline-none"
+              className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
             />
           ) : (
             <span />
@@ -1208,8 +1257,8 @@ export function DataTable<T>({
       {/* THE SELECTION BAR, ABOVE THE TABLE. Always present when the table is selectable — an empty-state bar that says
           "0 selected" teaches where the count will appear, and a bar that only materialises on the first
           click moves the layout under the operator's cursor. */}
-      {showSelect && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs">
+      {showSelect && (selectionBar === "always" || selected.size > 0) && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs">
           <span className="text-ink-secondary">
             <span className="tabular-nums text-slate-300">{selected.size}</span>{" "}
             selected
@@ -1307,7 +1356,12 @@ export function DataTable<T>({
           <thead>
             {/* Sticky: on a long roster the header is the only thing telling you what a column means, and
                 scrolling past it turns every cell into an unlabelled string. */}
-            <tr className="sticky top-0 z-10 bg-ink-900 text-[11px] uppercase tracking-wide text-slate-500">
+            <tr
+              className={
+                "sticky top-0 z-10 text-[11px] uppercase tracking-wide text-slate-500 " +
+                (variant === "flat" ? "bg-white/[.025]" : "bg-ink-900")
+              }
+            >
               {showSelect && (
                 <th
                   scope="col"
@@ -1416,7 +1470,11 @@ export function DataTable<T>({
                     {...(rowAttrs?.(r) ?? {})}
                     // Zebra + hover: scanning across a wide row is where the eye loses its line, and this is
                     // presentation only — never the carrier of a state the row needs to announce in words.
-                    className={`border-b border-white/5 hover:bg-white/[0.06] ${i % 2 ? "bg-white/[0.02]" : ""}`}
+                    className={
+                      variant === "flat"
+                        ? "border-b border-white/[.06] hover:bg-white/[.035]"
+                        : `border-b border-white/5 hover:bg-white/[0.06] ${i % 2 ? "bg-white/[0.02]" : ""}`
+                    }
                   >
                     {showSelect && (
                       <td className="w-8 py-1.5 pl-3 pr-2 align-middle">

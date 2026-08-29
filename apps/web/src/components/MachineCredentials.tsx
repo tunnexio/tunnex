@@ -14,6 +14,7 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   SettingDialogRow,
   SettingValue,
 } from "./ui";
@@ -35,17 +36,32 @@ export function refusedCount(creds: readonly MachineCredential[]): number {
   return creds.filter((c) => !c.owner_user_id).length;
 }
 
+type MachineCredentialsCacheEntry = {
+  credentials: Loaded<MachineCredential[]> | null;
+  request: Promise<Loaded<MachineCredential[]>> | null;
+};
+
+export type MachineCredentialsCache = {
+  entries: Map<string, MachineCredentialsCacheEntry>;
+};
+
 export function MachineCredentials({
   orgId,
   canManage,
+  members: suppliedMembers,
+  cache,
 }: {
   orgId: string;
   canManage: boolean;
+  members?: Member[];
+  cache?: MachineCredentialsCache;
 }) {
   // ⛔ Loaded<T>, NOT `T[] | null`. A bare array cannot distinguish "no credentials" from "the list failed to
   // load", and on THIS screen that difference is the whole point: an unreachable query rendering as an empty
   // list is "migration complete" written by an error path.
-  const [creds, setCreds] = useState<Loaded<MachineCredential[]> | null>(null);
+  const [creds, setCreds] = useState<Loaded<MachineCredential[]> | null>(
+    cache?.entries.get(orgId)?.credentials ?? null,
+  );
   const [owner, setOwner] = useState<Record<string, string>>({});
   // The org roster, for the owner picker. ⚠ A FAILED ROSTER IS NOT AN EMPTY ORG — if it cannot load, the
   // picker offers nothing and the copy below says so, rather than implying there is nobody to choose.
@@ -58,14 +74,33 @@ export function MachineCredentials({
   // ⛔ ROUTED THROUGH loadOne. A raw api.GET was here, and it is review-refused on a list whose emptiness is
   // user-meaningful: `error` and a network REJECTION are two different paths, and a component that reads only
   // `data` renders a reassuring empty state for both.
-  async function load() {
-    setCreds(
-      await loadOne<MachineCredential[]>(() =>
+  async function load(force = false) {
+    const cached = cache?.entries.get(orgId);
+    if (!force && cached?.credentials) {
+      setCreds(cached.credentials);
+      return;
+    }
+    const request =
+      (!force ? cached?.request : null) ??
+      loadOne<MachineCredential[]>(() =>
         api.GET("/api/v1/organizations/{orgId}/machine-credentials", {
           params: { path: { orgId } },
         }),
-      ),
-    );
+      );
+    if (cache) {
+      cache.entries.set(orgId, {
+        credentials: cached?.credentials ?? null,
+        request,
+      });
+    }
+    const next = await request;
+    if (cache) {
+      cache.entries.set(orgId, {
+        credentials: next.ok ? next : null,
+        request: null,
+      });
+    }
+    setCreds(next);
   }
 
   // Assign the human this credential acts for. The admin CHOOSES — see the copy below.
@@ -82,10 +117,14 @@ export function MachineCredentials({
     if (error)
       return setErr(apiErrorMessage(error, "Could not assign an owner."));
     setOwner((o) => ({ ...o, [credentialId]: "" }));
-    void load();
+    void load(true);
   }
   useEffect(() => {
     void load();
+    if (suppliedMembers !== undefined) {
+      setMembers(suppliedMembers);
+      return;
+    }
     void (async () => {
       const r = await loadOne<Member[]>(() =>
         api.GET("/api/v1/organizations/{orgId}/members", {
@@ -95,7 +134,7 @@ export function MachineCredentials({
       if (r.ok) setMembers(r.data);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, suppliedMembers]);
 
   async function mint(e: FormEvent) {
     e.preventDefault();
@@ -113,7 +152,7 @@ export function MachineCredentials({
       return setErr(apiErrorMessage(error, "Could not mint the credential."));
     setName("");
     setSecret(data?.token ?? null); // shown once — the server never re-serves it
-    void load();
+    void load(true);
   }
 
   async function revoke(id: string) {
@@ -125,7 +164,7 @@ export function MachineCredentials({
     );
     if (error)
       return setErr(apiErrorMessage(error, "Could not revoke the credential."));
-    void load();
+    void load(true);
   }
 
   return (
@@ -186,7 +225,7 @@ export function MachineCredentials({
           "migration complete" written by an error path — and on a migration screen that is exactly the
           reassurance that must be earned rather than defaulted to. */}
       {creds === null ? (
-        <p className="mt-3 text-xs text-ink-secondary">Loading…</p>
+        <Loading size="inline" label="Loading machine credentials…" />
       ) : !creds.ok ? (
         <p
           data-state="load-failed"

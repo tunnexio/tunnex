@@ -47,9 +47,10 @@ describe("verified Kubernetes inventory exposure", () => {
 
   it("keeps unverified manual entry behind a separate advanced path", () => {
     render(<ExposeServiceModal orgId="org" clusterId="cluster" fixtureInventory={INVENTORY} onFixtureExpose={async () => {}} onClose={() => {}} onDone={() => {}} />);
-    expect((screen.getByRole("button", { name: "Expose manual value" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Expose service" })).toBeNull();
     fireEvent.click(screen.getByText("Advanced manual entry"));
     expect(screen.getByText(/Manual values are not verified/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Expose service" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("uses the atomic inventory-reference endpoint in production mode", async () => {

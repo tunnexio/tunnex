@@ -44,8 +44,11 @@ describe("every structural primitive is queryable by ROLE and NAME", () => {
   });
 
   it("Loading is ANNOUNCED, not merely drawn — a spinner nothing announces is invisible to a screen reader", () => {
-    render(<Loading />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    const { container } = render(<Loading label="Loading gateways…" size="inline" />);
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("Loading gateways…");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(container.querySelector(".tnx-loader-mark")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("Field associates its <label> with its control, so the control's accessible NAME is the label", () => {

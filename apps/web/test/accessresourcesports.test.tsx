@@ -96,7 +96,7 @@ describe("Access Resources port scope", () => {
       { id: "range", name: "Range", cidr: "10.0.2.0/24", protocol: "tcp", port_low: 443, port_high: 445, label: "" },
     ];
     renderPage();
-    await screen.findAllByText("—");
+    await screen.findAllByText("No description");
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect((screen.getByLabelText("Port scope") as HTMLSelectElement).value).toBe("all");
     expect(screen.queryByText(/Use whole ports/)).toBeNull();

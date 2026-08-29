@@ -22,10 +22,13 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   Modal,
   PageHeader,
+  Select,
   StatusDot,
 } from "../components/ui";
+import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import { DevicesTabRail } from "../components/DevicesTabRail";
 import {
@@ -71,6 +74,8 @@ export default function Devices() {
   const [org, setOrg] = useState<Org | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(true);
+  const [devicesLoadError, setDevicesLoadError] = useState<string | null>(null);
   // OWNER sub-line. A SECOND-CLASS read: `Device` serves `user_id` and no email, so the roster supplies the
   // label. An empty map means the sub-line is simply absent — never an id, never "unknown owner".
   const [ownerEmail, setOwnerEmail] = useState<Map<string, string>>(new Map());
@@ -105,15 +110,19 @@ export default function Devices() {
   const ovpnEnabled = org?.ovpn_enabled === true;
 
   async function loadDevices(orgId: string) {
+    setDevicesLoading(true);
+    setDevicesLoadError(null);
     const { data, error } = await api.GET(
       "/api/v1/organizations/{orgId}/devices",
       { params: { path: { orgId } } },
     );
     if (error) {
-      setError(apiErrorMessage(error, "Could not load devices."));
+      setDevicesLoadError(apiErrorMessage(error, "Could not load devices."));
+      setDevicesLoading(false);
       return;
     }
     setDevices(data ?? []);
+    setDevicesLoading(false);
     // Fired after the devices land, awaited separately: a failed roster read degrades the OWNER sub-line and
     // nothing else. The device list is this screen's subject; the owner's email is a courtesy.
     const m = await api.GET("/api/v1/organizations/{orgId}/members", {
@@ -163,6 +172,8 @@ export default function Devices() {
           return;
         }
         setOrg(first);
+        setDevicesLoading(true);
+        setDevicesLoadError(null);
         const { data: ns, error: nodeErr } = await api.GET(
           "/api/v1/organizations/{orgId}/nodes",
           {
@@ -339,7 +350,16 @@ export default function Devices() {
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap: "14px" }}>
         <div style={{ flex: 1 }}>
-          <PageHeader title="Devices" subtitle={org ? org.name : "…"} />
+          <PageHeader
+            title="Devices"
+            subtitle={
+              org
+                ? devicesLoading
+                  ? org.name
+                  : `${org.name} · ${counts.all} enrolled${counts.attention ? ` · ${counts.attention} need attention` : ""}`
+                : "…"
+            }
+          />
         </div>
         {/* ⛔ THE CREATE FORM MOVES INTO A MODAL, matching Add rule. Inline, it was a permanently-open
             four-control card sitting between the page title and the roster — the roster is what this screen
@@ -392,10 +412,15 @@ export default function Devices() {
             </>
           }
         >
-          <form id="add-device-form" onSubmit={create}>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[12rem] flex-1">
-                <Field label="New device name">
+          <form id="add-device-form" onSubmit={create} className="space-y-5">
+            <div>
+              <p className="text-sm text-ink-secondary">
+                Create a one-time configuration for a device and its gateway path.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
+              <div>
+                <Field label="Device name">
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -406,41 +431,50 @@ export default function Devices() {
               </div>
               {/* The transport selector is present ONLY when the org has opted into OpenVPN
                 (D-S9.5-OPTIN(a): absent, not a disabled affordance). Otherwise WireGuard is implicit. */}
-              {ovpnEnabled && (
-                <Field label="Type">
-                  <select
+              {ovpnEnabled ? (
+                <Field label="Protocol">
+                  <Select
                     value={kind}
                     onChange={(e) => setKind(e.target.value as ExportKind)}
-                    className="rounded-md border border-white/10 bg-ink-950 px-2 py-1.5 text-sm text-slate-200"
                   >
                     <option value="wireguard">WireGuard</option>
                     <option value="openvpn">OpenVPN</option>
-                  </select>
+                  </Select>
                 </Field>
+              ) : (
+                <div className="rounded-md border border-white/10 bg-white/[.025] px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[.12em] text-ink-tertiary">Protocol</p>
+                  <p className="mt-1 text-sm text-ink-heading">WireGuard</p>
+                </div>
               )}
               {/* WF-OVPN-3: full tunnel is a per-device choice for BOTH transports. For WireGuard it shapes
                 the exported config's AllowedIPs; for OpenVPN the server pushes redirect-gateway per client.
                 Either way the gateway must be able to source-NAT egress (gateway_no_egress refuses otherwise). */}
-              <label className="flex items-center gap-2 text-sm text-slate-300">
+            </div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 bg-white/[.025] px-3 py-3 text-sm text-slate-300 hover:border-white/20">
                 <input
                   type="checkbox"
                   checked={fullTunnel}
                   onChange={(e) => setFullTunnel(e.target.checked)}
+                  className="mt-0.5"
                 />
-                Full tunnel
+                <span>
+                  <span className="block font-medium text-ink-heading">Route all traffic through Tunnex</span>
+                  <span className="mt-0.5 block text-xs text-ink-tertiary">
+                    Leave off for private-network access only.
+                  </span>
+                </span>
               </label>
-            </div>
             {/* ⛔ S14.21b: ASK, DO NOT GUESS. The old rule was "the first active gateway in created_at
               order", which on a real fleet homed a laptop onto an in-cluster Kubernetes gateway
               because it happened to be enrolled first. Nothing in the payload distinguishes a gateway
               that can serve a laptop from one that cannot — so the product stops pretending it can. */}
             {requiresGatewayChoice(nodes) && (
               <Field label="Gateway">
-                <select
+                <Select
                   id="device-gateway"
                   value={nodeId}
                   onChange={(e) => setNodeId(e.target.value)}
-                  className="w-full rounded-md border border-line bg-surface-inset px-3 py-2 text-sm text-ink-body"
                 >
                   <option value="">Choose a gateway…</option>
                   {selectableNodes(nodes).map((n) => (
@@ -448,11 +482,9 @@ export default function Devices() {
                       {n.name}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <p className="mt-1 text-xs text-ink-secondary">
-                  This device connects through the gateway you pick. There is no
-                  safe default when several are enrolled — the config is issued
-                  once and cannot be re-issued.
+                  The exported configuration is bound to this gateway and is shown once.
                 </p>
               </Field>
             )}
@@ -526,12 +558,26 @@ export default function Devices() {
         </OneTimeSecretModal>
       )}
 
+      {devicesLoading ? (
+        <div className="mt-6">
+          <Loading label="Loading devices…" />
+        </div>
+      ) : devicesLoadError ? (
+        <div className="mt-6">
+          <LoadRetry
+            error={devicesLoadError}
+            onRetry={() => org && void loadDevices(org.id)}
+          />
+        </div>
+      ) : (
+        <>
       {/* S14.3 slice A: a real <table>. Devices are the most tabular surface in the product — name, address,
           state, posture are the same four facts per row — and rendering them as <li> blocks meant the tier
           could only find a device by matching its name as free text. Now: getByRole("row") / ("cell").
           Every badge keeps its TEXT: the status was never carried by colour alone and must not start now. */}
       {/* The chips. Counts derive from the SAME function the table filters with, so the two cannot disagree. */}
-      <div className="mt-6 flex flex-wrap items-center gap-2">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/10 p-1">
         {(
           [
             ["all", "All", counts.all],
@@ -544,20 +590,21 @@ export default function Devices() {
             type="button"
             aria-pressed={filter === key}
             onClick={() => setFilter(key)}
-            className={`rounded-full border px-3 py-1 text-xs ${
+            className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
               filter === key
-                ? "border-white/40 bg-white/[.16] text-white"
-                : "border-white/10 text-slate-400 hover:text-slate-200"
+                ? "bg-white/[.14] text-white shadow-sm"
+                : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
             }`}
           >
             {label} ({n})
           </button>
         ))}
+        </div>
         {counts.revoked > 0 && filter === "all" && (
           // Stated rather than left to arithmetic: `All` includes revoked and the other two do not, so
           // attention + revoked < all, which reads as a bug unless the screen says why.
-          <span className="text-[11px] text-slate-500">
-            {counts.revoked} revoked, shown under All
+          <span className="text-xs text-slate-500">
+            All includes {counts.revoked} revoked
           </span>
         )}
       </div>
@@ -624,24 +671,14 @@ export default function Devices() {
               ),
             },
             {
-              key: "protocol",
-              header: "Protocol",
-              sortValue: (d) => deviceProtocol(d.public_key),
+              key: "connection",
+              header: "Connection",
+              sortValue: (d) => `${deviceProtocol(d.public_key)} ${d.full_tunnel ? "full tunnel" : "split tunnel"}`,
               cell: (d) => (
-                // ⛔ DERIVED FROM `public_key`, because there is NO `protocol` FIELD ON Device — measured. An
-                // OpenVPN device is minted with "no WireGuard key", so an empty key IS the discriminator, and
-                // `public_key` is REQUIRED so it cannot go absent without a schema change.
-                <span className="font-mono text-xs text-slate-500">
-                  {deviceProtocol(d.public_key)}
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-xs text-ink-body">{deviceProtocol(d.public_key)}</span>
+                  <span className="text-[11px] text-ink-tertiary">{deviceModeLabel(d.full_tunnel)}</span>
                 </span>
-              ),
-            },
-            {
-              key: "mode",
-              header: "Mode",
-              sortValue: (d) => (d.full_tunnel ? "full tunnel" : "split tunnel"),
-              cell: (d) => (
-                <span className="text-xs text-slate-500">{deviceModeLabel(d.full_tunnel)}</span>
               ),
             },
             {
@@ -727,6 +764,8 @@ export default function Devices() {
           ]}
         />
       </div>
+        </>
+      )}
     </div>
   );
 }

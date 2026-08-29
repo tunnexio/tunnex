@@ -8,7 +8,9 @@ import {
   type Node,
   type Site,
   type Device,
+  type LicenseStatus,
 } from "./api";
+import { useLicenceResource } from "./licenceResource";
 import {
   FAILED,
   INITIAL_NAV_COUNTS,
@@ -36,6 +38,7 @@ const isOnline = (n: Node) => {
 
 export function useNavCounts(): NavCounts {
   const { org: currentOrg } = useOrg();
+  const licenceResource = useLicenceResource();
   const [counts, setCounts] = useState<NavCounts>(INITIAL_NAV_COUNTS);
   const location = useLocation();
 
@@ -72,8 +75,10 @@ export function useNavCounts(): NavCounts {
         }),
       ) as Promise<Loaded<Device[]>>,
       // ⚠ DEPLOYMENT-SCOPED, so it takes no orgId — the licence belongs to the box, not the tenant.
-      loadOne(() => api.GET("/api/v1/license")) as Promise<
-        Loaded<{ gateway_ceiling?: number | null; gateways_in_use?: number }>
+      (licenceResource
+        ? licenceResource.read()
+        : loadOne(() => api.GET("/api/v1/license"))) as Promise<
+        Loaded<LicenseStatus>
       >,
     ]);
 
@@ -98,7 +103,7 @@ export function useNavCounts(): NavCounts {
     });
     // ⚠ currentOrg IS A DEPENDENCY — the sidebar counts belong to ONE organization, and a switch that left
     // them stale would put another tenant's numbers beside this tenant's name.
-  }, [currentOrg]);
+  }, [currentOrg, licenceResource]);
 
   // Refresh on ROUTE CHANGE — the case that actually matters, because the user just did something and moved.
   useEffect(() => {

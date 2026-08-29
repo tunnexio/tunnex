@@ -25,6 +25,9 @@ vi.mock("../src/components/ui", () => ({
   Button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => createElement("button", props, children),
   Card: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => createElement("section", props, children),
   ErrorText: ({ children }: { children?: ReactNode }) => createElement("span", null, children),
+  Loading: ({ label }: { label?: string }) => createElement("div", { role: "status" }, label ?? "Loading…"),
+  Modal: ({ title, children, onDismiss }: { title: string; children?: ReactNode; onDismiss: () => void }) =>
+    createElement("div", { role: "dialog", "aria-label": title }, children, createElement("button", { onClick: onDismiss }, "Close")),
   DataTable: ({ rows, columns }: { rows: Array<Record<string, unknown>>; columns: Array<{ key: string; header: string; cell?: (row: Record<string, unknown>) => ReactNode }> }) => createElement("div", null,
     ...columns.map((c) => createElement("span", { key: c.key }, c.header)),
     ...rows.flatMap((row) => columns.map((c) => createElement("div", { key: String(row.id) + c.key }, c.cell?.(row)))),
@@ -45,7 +48,8 @@ describe("released access-event agent attribution", () => {
       const calls = vi.mocked(api.GET).mock.calls as unknown as Array<[string, { params?: { query?: { src_agent_id?: string } } }]>;
       expect(calls.some(([, req]) => req?.params?.query?.src_agent_id === "agent-a")).toBe(true);
     });
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    fireEvent.click(screen.getByRole("button", { name: "View DENY event details" }));
+    expect(screen.getByRole("dialog", { name: "Access event" })).toBeTruthy();
     expect(screen.getByText("Gateway not recorded · applied policy v7 · abcdef123456")).toBeTruthy();
     expect(screen.getByText("Source agent agent-a · configuration revision 4")).toBeTruthy();
 

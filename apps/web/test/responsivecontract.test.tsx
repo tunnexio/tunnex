@@ -142,15 +142,27 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     ).toBeTruthy();
   });
 
-  it("[triage] the triage bar carries a SUBSET of the real destinations, never a destination of its own", async () => {
+  it("[compose] the account menu escapes the collapsed rail at a readable width", async () => {
+    renderShell("compose");
+    const trigger = await screen.findByRole("button", { name: /signed in as/i });
+    const menu = document.getElementById("account-menu");
+    expect(menu).toBeTruthy();
+    expect(menu?.hidden).toBe(true);
+    await waitFor(() => {
+      expect(menu?.textContent).toContain("enterprise");
+      expect(menu?.textContent).toContain("admin");
+    });
+    fireEvent.click(trigger);
+    expect(menu?.hidden).toBe(false);
+    expect(menu?.textContent).not.toContain("Loading…");
+    expect(menu?.classList.contains("w-64")).toBe(true);
+    expect(menu?.className).toContain("left-[calc(100%+0.625rem)]");
+  });
+
+  it("[triage] uses the drawer as its single navigation model", async () => {
     renderShell("triage");
-    const bar = await screen.findByRole("navigation", { name: "Triage" });
-    const hrefs = within(bar)
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href")!);
-    expect(hrefs.length).toBeGreaterThan(0);
-    for (const h of hrefs)
-      expect(expected, `${h} is not a real destination`).toContain(h);
+    expect(screen.queryByRole("navigation", { name: "Triage" })).toBeNull();
+    expect(screen.getByRole("button", { name: /menu/i })).toBeTruthy();
   });
 
   it("the triage bar exists ONLY at triage — a second nav surface on a laptop is duplication, not redundancy", async () => {
@@ -204,7 +216,9 @@ describe("COMPOSITION IS ABSENT BELOW THE FLOOR — asserted BY ROLE, so `displa
     renderAccess("triage");
     // Wait on the surface being loaded before asserting an absence — asserting "not there" against a screen
     // that has not finished loading passes for the wrong reason (docs/laws.md, the vacuous-check family).
-    await waitFor(() => expect(screen.getByText(/Allow rules:/)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Rules" })).toBeTruthy(),
+    );
     expect(
       screen.queryByRole("button", { name: /add rule/i, hidden: true }),
     ).toBeNull();

@@ -161,7 +161,7 @@ describe("released F10 JIT agent access workflow", () => {
     currentOrg = { id: "org-b", name: "Organization B", agent_jit_access_enabled: true, agent_policy_templates_enabled: false };
     view.rerender(<Access />);
     expect(screen.queryByText(/ship release · pending/)).toBeNull();
-    expect(screen.getByText("Loading access policies…")).toBeTruthy();
+    expect(screen.getByText("Loading rules…")).toBeTruthy();
   });
 
   it("withholds every ordinary mutation for a JIT-owned rule", () => {

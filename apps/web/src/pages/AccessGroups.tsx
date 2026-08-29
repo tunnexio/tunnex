@@ -6,6 +6,7 @@ import { api, apiErrorMessage, listItems, loadOne, type AgentGroup, type AgentGr
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { isDirectoryManaged } from "../lib/idpsyncview";
+import { LoadRetry } from "../components/LoadRetry";
 
 type Kind = "people" | "agents" | "directory";
 
@@ -30,13 +31,17 @@ function AccessGroupsLoader() {
   const [agentGroups, setAgentGroups] = useState<AgentGroup[] | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
   const [error, setError] = useState("");
+  const [permissionAttempt, setPermissionAttempt] = useState(0);
   const reload = useCallback(async () => {
     if (!org || authorized !== true) return;
+    setError("");
+    setPeople(null);
+    setAgentGroups(null);
     const [peopleResult, agentResult] = await Promise.all([
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/groups", { params: { path: { orgId: org.id } } })),
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups", { params: { path: { orgId: org.id } } })),
     ]);
-    if (!peopleResult.ok || !agentResult.ok) { setError("Could not load the group inventory. Refresh to retry."); return; }
+    if (!peopleResult.ok || !agentResult.ok) { setError("Could not load the group inventory."); return; }
     setPeople(peopleResult.data);
     setAgentGroups(agentResult.data);
   }, [authorized, org?.id]);
@@ -44,20 +49,21 @@ function AccessGroupsLoader() {
     let cancelled = false;
     if (!org || state.status !== "authed") { setAuthorized(false); return; }
     setAuthorized(null);
+    setError("");
     void loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: org.id } } })).then((result) => {
       if (cancelled) return;
-      if (!result.ok) { setError(result.error); setAuthorized(false); return; }
+      if (!result.ok) { setError(result.error); return; }
       setMembers(result.data);
       const mine = result.data.find((member) => member.user_id === state.user.id);
       setAuthorized(mine?.role === "owner" || mine?.role === "admin");
     });
     return () => { cancelled = true; };
-  }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
+  }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", permissionAttempt]);
   useEffect(() => { void reload(); }, [reload]);
   const header = <><PageHeader title="Groups" subtitle="People, managed-agent, and directory-synced groups in one operational inventory." /><AccessTabRail /></>;
-  if (!org || authorized === null) return <div className="space-y-5">{header}<Card><Loading label="Checking group permissions…" /></Card></div>;
+  if (!org || authorized === null) return <div className="space-y-5">{header}<Card>{error ? <LoadRetry error={`Could not check group permissions: ${error}`} onRetry={() => setPermissionAttempt((attempt) => attempt + 1)} /> : <Loading label="Checking group permissions…" />}</Card></div>;
   if (!authorized) return <div className="space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage groups.</p><ErrorText>{error}</ErrorText></Card></div>;
-  if (!people || !agentGroups || !members) return <div className="space-y-5">{header}<Card><Loading label="Loading groups…" /><ErrorText>{error}</ErrorText></Card></div>;
+  if (!people || !agentGroups || !members) return <div className="space-y-5">{header}<Card>{error ? <LoadRetry error={error} onRetry={() => void reload()} /> : <Loading label="Loading groups…" />}</Card></div>;
   return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} peopleOptions={members} onReload={reload} />;
 }
 
@@ -113,7 +119,6 @@ function CanonicalGroupsWorkspace({
   const countsValid = people.every(hasExactMemberCount) && agentGroups.every(hasExactMemberCount);
   const selected = rows.find((row) => row.id === selectedId);
   const visible = rows.filter((row) => (type === "all" || row.kind === type) && row.name.toLowerCase().includes(query.toLowerCase()));
-  const visibleIds = visible.map((row) => row.id).join(",");
   const typeCounts = {
     all: rows.length,
     people: rows.filter((row) => row.kind === "people").length,
@@ -122,14 +127,6 @@ function CanonicalGroupsWorkspace({
   };
   const createLabel = type === "agents" ? "Create agent group" : type === "people" ? "Create people group" : "Create group";
   const canCreate = type !== "directory";
-  useEffect(() => {
-    const firstVisibleId = visibleIds.split(",")[0];
-    if (firstVisibleId && visibleIds.split(",").includes(selectedId)) return;
-    const next = new URLSearchParams(search);
-    if (firstVisibleId) next.set("group", firstVisibleId);
-    else next.delete("group");
-    setSearch(next, { replace: true });
-  }, [selectedId, setSearch, visibleIds]);
   const loadSelected = useCallback(async () => {
     if (!selected) { setSelectedMembers(null); return; }
     setSelectedMembers(null);
@@ -209,9 +206,14 @@ function CanonicalGroupsWorkspace({
     <AccessTabRail />
     <div className="flex flex-wrap items-center gap-2"><Input aria-label="Search groups" className="min-w-[14rem] flex-1 sm:max-w-sm" value={query} placeholder="Search groups" onChange={(event) => update({ q: event.target.value || null })} />{(["all", "people", "agents", "directory"] as const).map((value) => <Button key={value} size="sm" variant={type === value ? "primary" : "ghost"} onClick={() => update({ type: value === "all" ? null : value, group: null })}>{value === "all" ? "All" : value[0].toUpperCase() + value.slice(1)} <span className="ml-1 text-ink-tertiary">{typeCounts[value]}</span></Button>)}</div>
     <ErrorText>{error}</ErrorText>{notice && <p role="status" className="text-sm text-ok">{notice}</p>}
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,.75fr)]"><Card><DataTable caption="Groups inventory" rows={visible} rowKey={(row) => row.id} failed={false} filterable={false} pageSize={0} empty={<EmptyState>No groups match this view. Groups keep people and managed agents scoped to the policy and configuration that applies to them.</EmptyState>} columns={[{ key: "name", header: "Group name", cell: (row) => <button type="button" className="font-medium text-ink-heading hover:underline" onClick={() => update({ group: row.id })}>{row.name}</button> }, { key: "type", header: "Type", cell: (row) => <Badge tone="neutral">{row.kind === "agents" ? "Agent" : row.kind === "directory" ? "Directory" : "People"}</Badge> }, { key: "members", header: "Members", cell: (row) => memberLabel(row.memberCount) }, { key: "source", header: "Source", cell: (row) => row.source }, { key: "status", header: "Status", cell: (row) => <Badge tone={row.kind === "directory" ? "neutral" : "ok"}>{row.status}</Badge> }]} /></Card>
-      <Card>{!selected ? <EmptyState>Select a group to inspect membership, policy context, and safe management actions.</EmptyState> : <div className="space-y-4"><div><h2 className="text-base font-semibold text-ink-heading">{selected.name}</h2><p className="mt-1 text-cell text-ink-tertiary">{memberLabel(selected.memberCount)} · {selected.kind === "agents" ? "Managed-agent membership changes inherited MCP and template context." : selected.kind === "directory" ? "Directory-synced membership is managed in the connected directory." : "People membership controls policy subjects."}</p><dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-cell text-ink-tertiary"><div><dt>Type</dt><dd className="text-ink-heading">{selected.kind === "agents" ? "Agent" : selected.kind === "directory" ? "Directory" : "People"}</dd></div><div><dt>Source</dt><dd className="text-ink-heading">{selected.source}</dd></div><div><dt>Status</dt><dd className="text-ink-heading">{selected.status}</dd></div></dl></div>{selected.kind !== "directory" && <div className="flex flex-wrap gap-2"><Button size="sm" variant="ghost" onClick={() => { setName(selected.name); setDialog("rename"); }}>Rename</Button><Button size="sm" onClick={() => setDialog("add")}>Add member</Button><Button size="sm" variant="danger" onClick={() => setDialog("archive")}>Archive</Button></div>}<section className="border-t border-white/10 pt-3"><h3 className="text-sm font-medium text-ink-heading">Members</h3>{selectedMembers === null ? <Loading label="Loading members…" /> : selectedMembers.length === 0 ? <p className="mt-2 text-cell text-ink-tertiary">No members are currently returned. Add one to make this group’s scope meaningful.</p> : <div className="mt-2 divide-y divide-white/10">{selectedMembers.map((member) => { const id = selected.kind === "agents" ? (member as AgentGroupMember).device_id : (member as GroupMember).user_id; const label = selected.kind === "agents" ? (member as AgentGroupMember).name : (member as GroupMember).name || (member as GroupMember).email; return <div key={id} className="flex items-center justify-between gap-3 py-2 text-cell"><span>{label}</span>{selected.kind !== "directory" && <Button size="sm" variant="danger" disabled={busy} onClick={() => { setRemoving(member); setDialog("remove"); }}>Remove</Button>}</div>; })}</div>}</section><section className="border-t border-white/10 pt-3 text-cell text-ink-tertiary"><p>Policy usage: Not available from the current API.</p>{selected.kind === "agents" && <p className="mt-1">MCP profile/effective configuration: Not available until the assignment inventory API is live.</p>}<Link className="mt-2 inline-block text-accent-400 hover:underline" to="/audit">View audit context</Link></section></div>}</Card></div>
-    {dialog === "create" && <Modal title="Create group" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !name.trim()} onClick={() => void create()}>Create group</Button></>}><p className="mb-3 text-cell text-ink-tertiary">Choose the member model. Directory groups are externally synchronized and cannot be manually created.</p><Field label="Group type"><Select value={createKind} onChange={(event) => setCreateKind(event.target.value as "people" | "agents")}><option value="people">People — policy subjects made of users</option><option value="agents">Agents — managed devices with inherited configuration</option></Select></Field><p className="mt-2 text-xs text-ink-tertiary">{createKind === "agents" ? "Agent groups control shared template and MCP inheritance; they cannot contain people." : "People groups control policy subjects; they cannot contain managed agents."}</p><div className="mt-3"><Field label="Name"><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field></div></Modal>}
+    <Card><DataTable caption="Groups inventory" rows={visible} rowKey={(row) => row.id} failed={false} filterable={false} pageSize={0} empty={<EmptyState>No groups match this view.</EmptyState>} columns={[{ key: "name", header: "Group name", cell: (row) => <button type="button" className="font-medium text-ink-heading hover:underline" onClick={() => update({ group: row.id })}>{row.name}</button> }, { key: "type", header: "Type", cell: (row) => <Badge tone="neutral">{row.kind === "agents" ? "Agent" : row.kind === "directory" ? "Directory" : "People"}</Badge> }, { key: "members", header: "Members", cell: (row) => memberLabel(row.memberCount) }, { key: "source", header: "Source", cell: (row) => row.source }, { key: "status", header: "Status", cell: (row) => <Badge tone={row.kind === "directory" ? "neutral" : "ok"}>{row.status}</Badge> }]} /></Card>
+    {selected && dialog === null && <Modal title={selected.name} onDismiss={() => update({ group: null })} actions={<Button variant="ghost" onClick={() => update({ group: null })}>Close</Button>}><div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink-tertiary"><Badge tone={selected.kind === "directory" ? "neutral" : "ok"}>{selected.status}</Badge><span>{selected.kind === "agents" ? "Agent" : selected.kind === "directory" ? "Directory" : "People"}</span><span>{memberLabel(selected.memberCount)}</span><span>{selected.source}</span></div>
+      {selected.kind !== "directory" && <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => setDialog("add")}>Add member</Button><Button size="sm" variant="ghost" onClick={() => { setName(selected.name); setDialog("rename"); }}>Rename</Button><Button size="sm" variant="danger" onClick={() => setDialog("archive")}>Archive</Button></div>}
+      <section className="border-t border-white/10 pt-3"><h3 className="text-sm font-medium text-ink-heading">Members</h3>{selectedMembers === null ? <Loading label="Loading members…" /> : selectedMembers.length === 0 ? <p className="mt-2 text-sm text-ink-tertiary">No members.</p> : <div className="mt-2 max-h-72 divide-y divide-white/10 overflow-y-auto">{selectedMembers.map((member) => { const id = selected.kind === "agents" ? (member as AgentGroupMember).device_id : (member as GroupMember).user_id; const label = selected.kind === "agents" ? (member as AgentGroupMember).name : (member as GroupMember).name || (member as GroupMember).email; return <div key={id} className="flex items-center justify-between gap-3 py-2 text-sm"><span>{label}</span>{selected.kind !== "directory" && <Button size="sm" variant="ghost" disabled={busy} aria-label={`Remove ${label}`} onClick={() => { setRemoving(member); setDialog("remove"); }}>Remove</Button>}</div>; })}</div>}</section>
+      <Link className="inline-block text-sm text-accent-400 hover:underline" to="/audit">View audit context</Link>
+    </div></Modal>}
+    {dialog === "create" && <Modal title="Create group" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !name.trim()} onClick={() => void create()}>Create group</Button></>}><div className="space-y-3"><Field label="Group type"><Select value={createKind} onChange={(event) => setCreateKind(event.target.value as "people" | "agents")}><option value="people">People</option><option value="agents">Managed agents</option></Select></Field><p className="text-xs text-ink-tertiary">{createKind === "agents" ? "Shares inherited configuration with managed agents." : "Defines people used as policy subjects."}</p><Field label="Name"><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field></div></Modal>}
     {dialog === "rename" && <Modal title="Rename group" onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !name.trim()} onClick={() => void rename()}>Save name</Button></>}><Field label="Name"><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></Field><p className="mt-2 text-xs text-ink-tertiary">Rules and assignments follow the group identity, so renaming does not rebuild their scope.</p></Modal>}
     {dialog === "add" && <Modal title={`Add ${selected?.kind === "agents" ? "agent" : "person"} member`} onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !memberId} onClick={() => void addMember()}>Add member</Button></>}><p className="mb-3 text-cell text-ink-tertiary">{selected?.kind === "agents" ? "Adding an agent can give it this group’s desired inherited configuration. Queued does not mean applied." : "Adding a person expands rules that use this group as a subject."}</p><Field label={selected?.kind === "agents" ? "Agent" : "Person"}><Select value={memberId} onChange={(event) => setMemberId(event.target.value)}><option value="">Select {selected?.kind === "agents" ? "agent" : "person"}</option>{candidates.filter((candidate) => !memberIds.has(selected?.kind === "agents" ? (candidate as { device_id: string }).device_id : (candidate as Member).user_id)).map((candidate) => { const id = selected?.kind === "agents" ? (candidate as { device_id: string }).device_id : (candidate as Member).user_id; const label = selected?.kind === "agents" ? (candidate as { name: string }).name : (candidate as Member).name || (candidate as Member).email; return <option key={id} value={id}>{label}</option>; })}</Select></Field></Modal>}
     {dialog === "remove" && <Modal title="Remove member?" danger onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void removeMember()}>Remove member</Button></>}><p className="text-cell text-ink-tertiary">{selected?.kind === "agents" ? "This removes the agent’s inherited group context. Desired configuration is withdrawn after server reconciliation; other members are unchanged." : "This removes the person from this policy subject group. Rules scoped only through this group no longer apply to them."} Recovery is to explicitly add the member back.</p></Modal>}

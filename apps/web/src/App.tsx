@@ -7,7 +7,9 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import { AuthLayout } from "./components/AuthLayout";
 import { MfaSettings } from "./components/MfaSettings";
 import { AppShell } from "./components/AppShell";
+import { Loading } from "./components/ui";
 import { OrgProvider } from "./lib/useOrg";
+import { LicenceResourceProvider } from "./lib/licenceResource";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -155,7 +157,9 @@ function ProductApp() {
                     org context above it would make every page's org seam load for users who are being sent
                     away from every page. */}
                 <OrgProvider>
-                  <AppShell />
+                  <LicenceResourceProvider>
+                    <AppShell />
+                  </LicenceResourceProvider>
                 </OrgProvider>
               </RequireOrg>
             }
@@ -372,9 +376,5 @@ function AnonOnly({ children }: { children: React.ReactNode }) {
 }
 
 function FullScreenLoading() {
-  return (
-    <div className="grid min-h-full place-items-center text-sm text-slate-500">
-      Loading…
-    </div>
-  );
+  return <Loading size="page" label="Preparing your workspace…" />;
 }

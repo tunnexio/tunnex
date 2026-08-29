@@ -54,6 +54,13 @@ const bodyNames = () =>
     .map((r) => within(r).getAllByRole("cell")[0].textContent);
 
 describe("DataTable — scannability", () => {
+  it("uses the shared flat inventory treatment by default", () => {
+    table();
+    const firstDataRow = screen.getAllByRole("row")[1];
+    expect(firstDataRow.className).toContain("border-white/[.06]");
+    expect(firstDataRow.className).not.toContain("bg-white/[0.02]");
+  });
+
   it("⛔ A SORTABLE HEADER'S NAME IS STILL ITS HEADER", () => {
     // The sort indicator is an SVG precisely so it contributes no text. A character glyph would make this
     // column's name "Name↕" and silently break every query and test that names a column — which is how it

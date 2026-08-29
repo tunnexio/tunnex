@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, apiErrorMessage, loadOne, type Device, type DeviceApproval } from "../lib/api";
 import { relativeAge } from "../lib/format";
 import { NO_ADDRESS } from "../lib/postureview";
-import { Button, Card, DataTable, ErrorText, Modal } from "./ui";
+import { Badge, Button, Card, DataTable, ErrorText, Loading, Modal } from "./ui";
 import { LoadRetry } from "./LoadRetry";
 
 export function DeviceApprovalSection({
@@ -16,6 +16,7 @@ export function DeviceApprovalSection({
   const [mode, setMode] = useState<"off" | "on" | null>(null);
   const [modeError, setModeError] = useState<string | null>(null);
   const [pending, setPending] = useState<Device[]>([]);
+  const [pendingLoaded, setPendingLoaded] = useState(false);
   const [pendingError, setPendingError] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -23,6 +24,7 @@ export function DeviceApprovalSection({
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
+    setPendingLoaded(false);
     const [dr, pr] = await Promise.all([
       loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/device-approval", {
@@ -41,6 +43,7 @@ export function DeviceApprovalSection({
     // a device blocked from connecting. Show retry.
     setPendingError(pr.ok ? null : pr.error);
     if (pr.ok) setPending(pr.data as Device[]);
+    setPendingLoaded(true);
   }, [orgId]);
   useEffect(() => {
     load();
@@ -67,29 +70,35 @@ export function DeviceApprovalSection({
   }
 
   return (
-    <Card className="mt-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-300">
-            Device approval
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            {mode === "on"
-              ? "On. new devices enroll pending and cannot connect until approved."
-              : mode === "off"
-                ? "Off. new devices are active on enrollment."
-                : modeError
-                  ? "n/a"
-                  : "…"}
-          </p>
+    <Card
+      variant="plain"
+      className="tnx-card-surface mt-4 overflow-hidden"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-ink-heading">Enrollment approval</h2>
+            <p className="mt-0.5 text-xs text-ink-tertiary">
+              {mode === "on"
+                ? "New devices wait here before they can connect."
+                : mode === "off"
+                  ? "New devices become active immediately."
+                  : modeError
+                    ? "Status unavailable"
+                    : "Loading status…"}
+            </p>
+          </div>
+          {mode && <Badge tone={mode === "on" ? "ok" : "neutral"}>{mode === "on" ? "On" : "Off"}</Badge>}
         </div>
-        <Link className="inline-flex min-h-10 items-center text-sm font-medium text-accent-400 hover:underline" to="/settings?section=access-security">
-          Manage in Org Settings
+        <Link className="inline-flex min-h-9 items-center text-sm font-medium text-ink-body hover:text-ink-heading" to="/settings?section=access-security">
+          Manage setting →
         </Link>
       </div>
-      {modeError && <LoadRetry error={modeError} onRetry={load} />}
-      <ErrorText>{err}</ErrorText>
-      {notice && <p role="status" className="mt-2 text-sm text-ok">{notice}</p>}
+      <div className="px-4">
+        {modeError && <LoadRetry error={modeError} onRetry={load} />}
+        <ErrorText>{err}</ErrorText>
+        {notice && <p role="status" className="py-2 text-sm text-ok">{notice}</p>}
+      </div>
 
       {/* ⛔ PENDING DEVICES AS A TABLE. A device awaiting approval is the ONE list here where the operator
           is being asked to make a security decision — and the row gave them a name and an IP with no owner,
@@ -97,16 +106,24 @@ export function DeviceApprovalSection({
 
           ⚠ The wait is shown because it is the fact that decides urgency: a request from four minutes ago
           and one from nine days ago are different situations wearing the same row. */}
-      {pendingError ? (
-        <LoadRetry error={pendingError} onRetry={load} />
+      {!pendingLoaded ? (
+        <div className="py-8"><Loading label="Loading approval requests…" /></div>
+      ) : pendingError ? (
+        <div className="px-4 py-3"><LoadRetry error={pendingError} onRetry={load} /></div>
+      ) : pending.length === 0 ? (
+        <div className="px-4 py-8 text-center">
+          <p className="text-sm font-medium text-ink-heading">No approvals waiting</p>
+          <p className="mt-1 text-xs text-ink-tertiary">New enrollment requests will appear here.</p>
+        </div>
       ) : (
+        <div className="p-3">
         <DataTable<Device>
           caption="Pending devices"
           rows={pending}
           rowKey={(d) => d.id}
           failed={false}
           pageSize={10}
-          empty="No devices awaiting approval."
+          empty="No approvals waiting."
           rowActions={
             canManage
               ? [
@@ -163,6 +180,7 @@ export function DeviceApprovalSection({
             },
           ]}
         />
+        </div>
       )}
       {confirmation && <Modal title={`${confirmation.action === "approve" ? "Approve" : "Reject"} pending device${confirmation.devices.length === 1 ? "" : "s"}?`} danger={confirmation.action === "reject"} onDismiss={() => !busy && setConfirmation(null)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</Button><Button variant={confirmation.action === "reject" ? "danger" : "primary"} disabled={busy} onClick={() => void decide()}>{busy ? "Applying…" : confirmation.action === "approve" ? "Approve device" : "Reject device"}</Button></>}><p className="text-cell text-ink-tertiary">{confirmation.action === "approve" ? "Approval allows these pending devices to connect under the organization’s current policy. Recovery is revocation through Devices." : "Rejection keeps these devices from connecting. Recovery requires a fresh new enrollment request."}</p><ul className="mt-3 max-h-40 space-y-1 overflow-auto text-cell text-ink-heading">{confirmation.devices.map((device) => <li key={device.id}>{device.name}{device.assigned_ip ? ` / ${device.assigned_ip}` : " / no assigned address"}{device.owner_email ? ` / ${device.owner_email}` : " / owner unavailable"}</li>)}</ul><p className="mt-3 text-xs text-ink-tertiary">The server is authoritative. If a bulk action partially fails, successful decisions remain applied and each failed device is reported after refresh.</p></Modal>}
     </Card>

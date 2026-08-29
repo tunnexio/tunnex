@@ -53,7 +53,7 @@ describe("FQDN resource detail route", () => {
     page(undefined, { from: "/access/resources?type=fqdn&q=orders&status=stale&sort=name&dir=asc" });
     expect(await screen.findByRole("heading", { name: "Orders" })).toBeTruthy();
     expect(screen.getByText("Unavailable — no active generation")).toBeTruthy();
-    expect(screen.getByText(/exactly 2 referencing rules/i)).toBeTruthy();
+    expect(screen.getByText(/2 access rules reference this resource/i)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Audit log" }).getAttribute("href")).toBe("/audit");
     expect(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Resources" }).getAttribute("href")).toBe("/access/resources?type=fqdn&q=orders&status=stale&sort=name&dir=asc");
   });
@@ -78,10 +78,10 @@ describe("FQDN resource detail route", () => {
   it("keeps impact errors explicit and retryable without fabricating zero", async () => {
     impacts["org-a:fqdn-1"] = { error: { error: { message: "impact down" } } }; page();
     expect(await screen.findByText(/Could not load this FQDN resource: impact down/)).toBeTruthy();
-    expect(screen.queryByText(/exactly 0 referencing rules/i)).toBeNull();
+    expect(screen.queryByText(/No access rules currently reference this resource/i)).toBeNull();
     impacts["org-a:fqdn-1"] = { data: { referencing_rule_count: 1, referencing_rule_ids: ["rule-1"], generation_withdrawal_required: false } };
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText(/exactly 1 referencing rule/i)).toBeTruthy();
+    expect(await screen.findByText(/1 access rule references this resource/i)).toBeTruthy();
   });
 
   it("reports not-found and direct-load falls back to the complete current query", async () => {

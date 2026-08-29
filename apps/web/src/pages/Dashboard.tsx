@@ -1,16 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useOrg } from "../lib/useOrg";
 import { Icon, type IconName } from "../components/Icon";
-import {
-  GLASS,
-  PageHeader,
-} from "../components/ui";
+import { PageHeader } from "../components/ui";
 import { hubSetView } from "../lib/hubsetview";
 import { assembleTopology, meshFrom } from "../lib/sitesview";
 import { Donut, NodeLink } from "../components/viz";
-import { assembleClusters, serviceSlices } from "../lib/k8sview";
-import { motionAllowed } from "../lib/motion";
-import { useMotionPreference } from "../components/MotionProvider";
+import { assembleClusters } from "../lib/k8sview";
 import { Link } from "react-router-dom";
 import { UpgradeCenter } from "../components/UpgradeCenter";
 import {
@@ -30,11 +25,9 @@ import {
   type K8sService,
 } from "../lib/api";
 import {
-  Badge,
   EmptyState,
   ErrorText,
-  List,
-  ListItem,
+  GLASS,
   Loading,
   Panel,
 } from "../components/ui";
@@ -46,12 +39,10 @@ import {
 import { agentSummary, type AgentRow } from "../lib/agentview";
 import {
   isFreshOrg,
-  sortGateways,
   peerSlices,
   postureSplit,
   statFrom,
   statText,
-  type GatewayRow,
   type StatState,
 } from "../lib/overviewview";
 
@@ -79,8 +70,6 @@ export default function Dashboard() {
   const [rulesRes, setRulesRes] = useState<Loaded<PolicyRule[]> | null>(null);
   const [devicesRes, setDevicesRes] = useState<Loaded<Device[]> | null>(null);
   const [hubSetRes, setHubSetRes] = useState<Loaded<HubSet> | null>(null);
-  // The motion preference is read ONCE at the app edge and passed down; no component asks matchMedia itself.
-  const reducedMotion = useMotionPreference();
   // `null` = not resolved yet; `{ok:false}` = the read FAILED. Neither is "there are none" — the card says which.
   const [k8sClustersRes, setK8sClustersRes] = useState<Loaded<
     K8sCluster[]
@@ -89,7 +78,6 @@ export default function Dashboard() {
     K8sService[]
   > | null>(null);
   const [ztRes, setZtRes] = useState<Loaded<ZeroTrustMode> | null>(null);
-
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -264,12 +252,6 @@ export default function Dashboard() {
             // A summary card is visible only after its own source succeeds. This
             // preserves permission-before-entitlement behavior without using
             // legacy `/meta` edition metadata as a UI gate.
-            const STAT_CARDS =
-              4 +
-              (agentsRes?.ok ? 1 : 0) +
-              (rulesRes?.ok ? 1 : 0) +
-              (pendingRes?.ok ? 1 : 0);
-
             // NEEDS ATTENTION is COMPOSED, not fetched — every item names the source that produced it, and an
             // item appears only when its source has been READ. A source still loading contributes nothing;
             // a source that FAILED contributes nothing either, because "nothing needs attention" and "we could
@@ -286,11 +268,6 @@ export default function Dashboard() {
                   .length
               : null;
             const pendingInvites = null; // no endpoint for pending invites — the slot stays empty, not invented
-            const siteSub = sitesRes?.ok
-              ? sitesRes.data.length === 0
-                ? "none configured"
-                : `${sitesRes.data.length} in the mesh`
-              : null;
             const zeroTrust = ztRes?.ok
               ? ztRes.data.mode === "enforcing"
                 ? "enforcing"
@@ -305,9 +282,7 @@ export default function Dashboard() {
             const agentSum = agentsRes?.ok
               ? agentSummary(agentsRes.data)
               : null;
-            const agentSub = agentSum
-              ? (agentSum.note ?? "enrolled in this organization")
-              : null;
+            const agentSub = agentSum?.note ?? null;
             const fresh = isFreshOrg(gateways, devices, members);
 
             return (
@@ -340,13 +315,18 @@ export default function Dashboard() {
                     tokenrefs census failed on it within seconds of being written, on its own author. A local
                     layout variable is not a design token and must not wear the namespace that promises it is
                     held to the generated set. */}
-                <div
-                  className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:[grid-template-columns:repeat(var(--stat-cols),minmax(0,1fr))]"
-                  style={{ "--stat-cols": STAT_CARDS } as React.CSSProperties}
+                <section
+                  aria-label="Fleet summary"
+                  className={`${GLASS} p-4`}
                 >
+                  <section
+                    aria-label="Fleet summary metrics"
+                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-7 lg:divide-x lg:divide-white/10"
+                  >
                   <Stat
                     label="Members"
                     icon="users"
+                    to="/users"
                     value={members}
                     sub={
                       pendingInvites === null
@@ -357,55 +337,70 @@ export default function Dashboard() {
                   <Stat
                     label="Devices"
                     icon="laptop"
+                    to="/devices"
                     value={devices}
                     sub={
-                      pending.state === "ok"
+                      pending.state === "ok" && pending.value > 0
                         ? `${pending.value} awaiting approval`
                         : null
                     }
+                    subTone="warn"
                   />
                   <Stat
                     label="Gateways"
                     icon="server"
+                    to="/gateways"
                     value={gateways}
                     sub={
-                      degraded === null
+                      degraded === null || degraded === 0
                         ? null
-                        : `${degraded} reporting degraded kinds`
+                        : `${degraded} degraded`
                     }
+                    subTone="danger"
                   />
                   {/* Render only after the Agent inventory answers successfully. */}
                   {agentsRes?.ok && (
                     <Stat
                       label="AI Agents"
                       icon="bot"
+                      to="/agents"
                       value={statFrom(agentsRes, (r: AgentRow[]) => r.length)}
                       sub={agentSub}
+                      subTone="warn"
                     />
                   )}
                   <Stat
                     label="Sites"
                     icon="network"
+                    to="/sites"
                     value={sites}
-                    sub={siteSub}
                   />
                   {rulesRes?.ok && (
                     <Stat
                       label="Access Rules"
                       icon="shield"
+                      to="/access"
                       value={rules}
                       sub={zeroTrust === null ? null : zeroTrust}
+                      subTone={zeroTrust === "not enforced" ? "warn" : "ok"}
                     />
                   )}
                   {pendingRes?.ok && (
                     <Stat
-                      label="Pending approvals"
+                      label="Approvals"
                       icon="user-plus"
+                      to="/devices/approvals"
                       value={pending}
-                      sub="awaiting an admin"
+                      sub={
+                        pending.state === "ok" && pending.value > 0
+                          ? "needs review"
+                          : null
+                      }
+                      subTone="warn"
                     />
                   )}
-                </div>
+                  </section>
+                </section>
 
                 {/* Not in a grid — a sibling in the page column, so a `col-span-*` here would be a dead class. */}
                 {fresh && (
@@ -457,28 +452,7 @@ export default function Dashboard() {
                     Set and others gate too), so hand-ordering rows by height could not have worked: which
                     panels are present varies per org, and a row tuned for one tenant is ragged for the next.
                     Packing has to be automatic for that reason alone. */}
-                <div className="columns-1 gap-3 lg:columns-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
-                  <Panel title="Peer Connection Status">
-                    {/* ⚠ RE-SOURCED TO DEVICES. This counted GATEWAYS — a different and smaller population
-                        than the one the panel is named for. A chart can be perfectly honest about the wrong
-                        denominator, and nothing in the render would look wrong. */}
-                    <Donut
-                      label="Peer connection status"
-                      source={{
-                        endpoint: "/api/v1/organizations/{orgId}/devices",
-                      }}
-                      failed={devicesRes !== null && !devicesRes.ok}
-                      slices={devicesRes?.ok ? peerSlices(devicesRes.data) : []}
-                      centreLabel="devices"
-                      empty="No devices enrolled yet."
-                    />
-                    {/* The design's caption, verbatim — it states the product's rule, not a decoration. */}
-                    <p className="mt-2 text-explainer leading-[1.55] text-ink-tertiary">
-                      Status derived from WireGuard handshake liveness. Never
-                      green while dead.
-                    </p>
-                  </Panel>
-
+                <div className="grid gap-3 xl:grid-cols-2">
                   <Panel title="Gateway Health">
                     {nodesRes === null ? (
                       <Loading />
@@ -487,298 +461,467 @@ export default function Dashboard() {
                     ) : nodesRes.data.length === 0 ? (
                       <EmptyState>No gateway enrolled yet.</EmptyState>
                     ) : (
-                      <List label="Gateway health">
-                        {sortGateways(
-                          nodesRes.data.map((n): GatewayRow => {
-                            // ⛔ THE ROW VERDICT IS NOT FORMED HERE (S14.21). This panel used to read
-                            // `b ? b.label : "healthy"` — turning "no badge" into the CLAIM "healthy",
-                            // which is what put a green verdict on a revoked gateway. Deciding it here at
-                            // all was the defect; gatewayHealthRow owns it now.
-                            const v = gatewayHealthRow(n);
-                            // ⛔ A SECOND, INDEPENDENT BADGE — NOT A REPLACEMENT (S15.2, D25(C)). A gateway
-                            // can be perfectly healthy AND unattributable, so folding attribution into the
-                            // health verdict would force a choice between reporting an enforcement problem
-                            // and reporting an accountability one. Both, or neither.
-                            const a = attributionBadge(n);
-                            return {
-                              id: n.id,
-                              name: n.name,
-                              label: v.label,
-                              tone: v.tone,
-                              attribution: a ? a.label : null,
-                              attributionDetail: a ? a.detail : null,
-                            };
-                          }),
-                        ).map((g) => (
-                          <ListItem key={g.id}>
-                            <span className="flex items-center justify-between gap-2">
-                              <span className="truncate font-mono text-mono text-ink-primary">
-                                {g.name}
-                              </span>
-                              <span className="flex shrink-0 items-center gap-1.5">
-                                {/* ⚠ The detail rides a wrapping <span title>, not the Badge — Badge takes
-                                    only tone+children, and widening a shared primitive to carry one
-                                    caller's tooltip is how a design system stops being one. */}
-                                {g.attribution && (
-                                  <span
-                                    title={g.attributionDetail ?? undefined}
-                                  >
-                                    <Badge tone="warn">{g.attribution}</Badge>
-                                  </span>
-                                )}
-                                <Badge tone={g.tone}>{g.label}</Badge>
-                              </span>
-                            </span>
-                          </ListItem>
-                        ))}
-                      </List>
-                    )}
-                  </Panel>
-
-                  {/* ⛔ KUBERNETES ON OVERVIEW, AND ITS COUNTS DO NOT COME FROM `OrgOverview`.
-                      Measured: that schema is `members, devices, nodes, online, recent_activity` and carries
-                      nothing about clusters. So this reads the two live endpoints directly (both `org:view`,
-                      verified at the handler) as a SECOND-CLASS read — a failure degrades this card alone.
-
-                      THREE STATES, NOT TWO. `null` = still loading · `{ok:false}` = we could not look ·
-                      `[]` = there are genuinely none. A zero standing in for the middle case would claim an
-                      org has no clusters on the strength of a failed request. */}
-                  <Panel title="Kubernetes">
-                    {k8sClustersRes === null || k8sServicesRes === null ? (
-                      <Loading />
-                    ) : !k8sClustersRes.ok ? (
-                      <p className="text-cell text-warn">
-                        Could not read clusters. This card only; the rest of the
-                        page is unaffected.
-                      </p>
-                    ) : k8sClustersRes.data.length === 0 ? (
-                      <EmptyState>
-                        No clusters registered. Registering one reserves a VIP
-                        range and a DNS zone, and then in-cluster Services can
-                        be reached by name over the tunnel.
-                      </EmptyState>
-                    ) : (
-                      <>
-                        {/* ⛔ THE RING IS "EXPOSED SERVICES BY CLUSTER", not "1 cluster and 3 services".
-                            Two unrelated counts drawn as a ring would be a picture pretending to be a
-                            proportion; this is one total split by who carries it, and the legend states every
-                            number as text so the arc is never the only path to the value. */}
-                        {k8sServicesRes.ok ? (
-                          <Donut
-                            label="Exposed Services by cluster"
-                            // The endpoint the ring is drawn FROM, which is the contract VizSource exists to
-                            // force: a chart names its source or it cannot be audited later.
-                            source={{
-                              endpoint:
-                                "GET /organizations/{orgId}/k8s/clusters + /k8s/services",
-                            }}
-                            failed={false}
-                            slices={serviceSlices(
-                              assembleClusters(
-                                k8sClustersRes.data,
-                                k8sServicesRes.data,
-                              ),
-                            )}
-                            centreLabel="services"
-                            empty="No Services exposed yet. Exposing one allocates a VIP and gives it a name clients can reach."
-                            animate={motionAllowed(reducedMotion)}
-                          />
-                        ) : (
-                          // The services read is INDEPENDENT of the clusters read, so it has its own failure
-                          // arm. A ring drawn from a failed read would be a shape asserting a proportion.
-                          <p className="text-cell text-warn">
-                            {k8sClustersRes.data.length} cluster
-                            {k8sClustersRes.data.length === 1 ? "" : "s"}{" "}
-                            registered. The Service count could not be read, so
-                            no proportion is drawn.
-                          </p>
-                        )}
-                        <Link
-                          to="/kubernetes"
-                          className="text-micro text-ink-tertiary underline decoration-dotted underline-offset-2 hover:text-ink-body"
-                        >
-                          Open Kubernetes &rarr;
-                        </Link>
-                      </>
-                    )}
-                  </Panel>
-
-                  <Panel title="Device Posture">
-                    {devicesRes === null ? (
-                      <Loading />
-                    ) : !devicesRes.ok ? (
-                      <ErrorText>Device posture is unavailable.</ErrorText>
-                    ) : (
                       (() => {
-                        const ps = postureSplit(devicesRes.data);
-                        const none =
-                          ps.compliant + ps.blocked + ps.unknown === 0;
-                        if (none)
-                          return (
-                            <EmptyState>No devices enrolled yet.</EmptyState>
-                          );
+                        const health = nodesRes.data.map(gatewayHealthRow);
+                        const issues = health.filter(
+                          (verdict) => verdict.tone !== "ok",
+                        );
+                        const unhealthy = issues.filter(
+                          (verdict) => verdict.label !== "revoked",
+                        );
+                        const revoked = issues.filter(
+                          (verdict) => verdict.label === "revoked",
+                        );
+                        const healthy = health.filter(
+                          (verdict) => verdict.tone === "ok",
+                        );
+                        const issueGroups = Array.from(
+                          issues.reduce((groups, verdict) => {
+                            groups.set(
+                              verdict.label,
+                              (groups.get(verdict.label) ?? 0) + 1,
+                            );
+                            return groups;
+                          }, new Map<string, number>()),
+                        ).sort(
+                          ([labelA, countA], [labelB, countB]) =>
+                            countB - countA || labelA.localeCompare(labelB),
+                        );
+                        const unattributed = nodesRes.data.filter(
+                          (node) => attributionBadge(node) !== null,
+                        ).length;
+
                         return (
-                          <>
+                          <div className="grid gap-4 lg:grid-cols-[minmax(13rem,.8fr)_minmax(0,1.2fr)] lg:items-start">
                             <Donut
-                              label="Device posture"
+                              label="Gateway health summary"
                               source={{
                                 endpoint:
-                                  "/api/v1/organizations/{orgId}/devices",
+                                  "/api/v1/organizations/{orgId}/nodes",
                               }}
                               failed={false}
                               slices={[
                                 {
-                                  label: "Compliant",
-                                  value: ps.compliant,
+                                  label: "Healthy",
+                                  value: healthy.length,
                                   tone: "ok",
                                 },
                                 {
-                                  label: "Blocked",
-                                  value: ps.blocked,
+                                  label: "Unhealthy",
+                                  value: unhealthy.length,
                                   tone: "danger",
                                 },
                                 {
-                                  label: "Unknown",
-                                  value: ps.unknown,
+                                  label: "Revoked",
+                                  value: revoked.length,
                                   tone: "neutral",
                                 },
                               ]}
-                              centreLabel="devices"
-                              empty="No devices enrolled yet."
+                              centreLabel="total"
                             />
-                            {/* ⛔ THE STATE, IN WORDS — not "n/a".
-                                A big "n/a" is indistinguishable from a failed load at a glance, which is the
-                                exact confusion this screen exists to remove. When nothing has reported there
-                                is no percentage to state (0% would claim total non-compliance, 100% the
-                                opposite, and neither was measured) — so the SENTENCE says what is true. */}
-                            <p className="mt-2 text-explainer leading-[1.55] text-ink-tertiary">
-                              {ps.percent === null
-                                ? `No device has reported posture yet, so there is no compliance rate to show. Unknown is its own state: absence is not compliance.`
-                                : `${ps.percent}% of the ${ps.compliant + ps.blocked} devices that have reported are compliant. The ${ps.unknown} that have not reported are excluded — absence is not compliance.`}
-                            </p>
-                          </>
-                        );
-                      })()
-                    )}
-                  </Panel>
-
-                  <Panel title="HA Hub Set">
-                    {/* ⚠ THIS PANEL WAS CUT ON A WRONG MEASUREMENT. The audit checked the `Site` schema for
-                        hub/generation/pin fields, found none, and declared the data absent — but the hub set
-                        is its OWN endpoint and schema, and `hubsetview.ts` already projects it. An absence
-                        found by looking in one place is not an absence (docs/laws.md). */}
-                    {hubSetRes === null ? (
-                      <Loading />
-                    ) : !hubSetRes.ok ? (
-                      <ErrorText>The hub set is unavailable.</ErrorText>
-                    ) : (
-                      (() => {
-                        // Defensive: a served object without `members` must not throw the whole screen. One panel's
-                        // bad shape taking the page down is a blast radius nobody chose.
-                        const hv = hubSetRes.data?.members
-                          ? hubSetView(hubSetRes.data, Date.now())
-                          : null;
-                        if (!hv)
-                          return (
-                            <EmptyState>
-                              No HA hub set. Pin two or more gateways to create
-                              one.
-                            </EmptyState>
-                          );
-                        return (
-                          <>
-                            <Badge tone="neutral">GEN {hv.generation}</Badge>
-                            <List label="Hub set">
-                              {hv.members.map((m) => {
-                                // The row carries a nodeId; the NAME lives on /nodes, so the two are joined
-                                // here. An unjoinable id renders as the id rather than as a blank — an
-                                // unnamed member is still a member, and hiding it would understate the set.
-                                const node = nodesRes?.ok
-                                  ? nodesRes.data.find((n) => n.id === m.nodeId)
-                                  : undefined;
-                                const memberName =
-                                  node?.name ?? m.nodeId.slice(0, 8);
-                                const memberRole = m.demoted
-                                  ? "demoted"
-                                  : m.role;
-                                const memberStatus = !m.reporting
-                                  ? "not reporting"
-                                  : `hs ${m.handshakeAge}`;
-                                const memberLabel = `${memberName} (${memberRole}): ${memberStatus}`;
-
-                                return (
-                                  <ListItem
-                                    key={m.nodeId}
-                                    aria-label={memberLabel}
-                                  >
-                                    <span className="flex items-center justify-between gap-2">
-                                      <span className="truncate font-mono text-mono text-ink-primary">
-                                        {memberName}
+                            <div className="min-w-0">
+                            {issues.length > 0 || unattributed > 0 ? (
+                              <div>
+                                <p className="text-badge font-semibold uppercase tracking-wide text-ink-tertiary">
+                                  Needs attention
+                                </p>
+                                <div
+                                  role="group"
+                                  aria-label="Gateway health conditions"
+                                  className="mt-2 divide-y divide-white/10 border-y border-white/10"
+                                >
+                                  {unattributed > 0 && (
+                                    <div className="flex min-h-10 items-center gap-2 py-2 text-cell">
+                                      <span
+                                        aria-hidden="true"
+                                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+                                      />
+                                      <span className="min-w-0 flex-1 text-ink-secondary">
+                                        no recorded owner
+                                      </span>
+                                      <span className="shrink-0 tabular-nums text-warn">
+                                        {unattributed}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {issueGroups.map(([label, count]) => (
+                                    <div
+                                      key={label}
+                                      className="flex min-h-10 items-center gap-2 py-2 text-cell"
+                                    >
+                                      <span
+                                        aria-hidden="true"
+                                        className={
+                                          "h-1.5 w-1.5 shrink-0 rounded-full " +
+                                          (label === "revoked"
+                                            ? "bg-ink-tertiary"
+                                            : "bg-danger")
+                                        }
+                                      />
+                                      <span className="min-w-0 flex-1 text-ink-secondary">
+                                        {label}
                                       </span>
                                       <span
-                                        className="shrink-0 text-micro text-ink-tertiary"
-                                        role="status"
+                                        className={
+                                          "shrink-0 tabular-nums " +
+                                          (label === "revoked"
+                                            ? "text-ink-secondary"
+                                            : "text-danger")
+                                        }
                                       >
-                                        {memberRole} · {memberStatus}
+                                        {count}
                                       </span>
-                                    </span>
-                                  </ListItem>
-                                );
-                              })}
-                            </List>
-                            <p className="mt-2 text-explainer leading-[1.55] text-ink-tertiary">
-                              Pinned gateways form the hub set. members[0] is
-                              the acting primary, and the generation bumps on
-                              every promotion. Absent metrics are not an idle
-                              link.
-                            </p>
-                          </>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-cell text-ink-secondary">
+                                No gateway health issues reported.
+                              </p>
+                            )}
+                            <Link
+                              className="mt-3 inline-flex items-center gap-1 text-cell font-medium text-accent-400 hover:text-accent-400"
+                              to="/gateways"
+                            >
+                              {gatewayReviewLabel(issues.length)}
+                              <Icon name="chevron-right" size={14} />
+                            </Link>
+                            </div>
+                          </div>
                         );
                       })()
                     )}
                   </Panel>
 
-                  <Panel title="Network map">
-                    {/* ⚠ ALSO A RETRACTED CUT. Cut as "no SiteLink schema" — true, and beside the point:
-                        `assembleTopology()` already projects sites + their gateways from data this screen
-                        fetches. CATEGORY ONE, not category three: the capability exists and has no data yet,
-                        so it gets an EMPTY STATE rather than absence (docs/EPIC-14, the three-way test). */}
-                    {sitesRes === null || nodesRes === null ? (
+                  <Panel title="Device Health">
+                    {devicesRes === null ? (
                       <Loading />
-                    ) : !sitesRes.ok || !nodesRes.ok ? (
-                      <ErrorText>The topology is unavailable.</ErrorText>
+                    ) : !devicesRes.ok ? (
+                      <ErrorText>Device health is unavailable.</ErrorText>
+                    ) : devicesRes.data.length === 0 ? (
+                      <EmptyState>No devices enrolled yet.</EmptyState>
                     ) : (
-                      <NodeLink
-                        label="Site topology"
-                        source={{
-                          endpoint: "/api/v1/organizations/{orgId}/sites",
-                        }}
-                        failed={false}
-                        {...(() => {
-                          // ⛔ THE SAME FUNCTION THE SITES SCREEN USES. This panel built its own node list
-                          // inline with `links={[]}` — so Overview drew rings and NO EDGES while Sites drew
-                          // the mesh, from the same data, and the two screens disagreed about what the
-                          // network looks like.
-                          //
-                          // TWO RENDERINGS OF ONE FACT IS TWO PLACES TO BE WRONG. `meshFrom` is now the only
-                          // thing that turns sites + nodes into a topology.
-                          //
-                          // `subnetsKnown: false` because Overview does not fetch per-site subnets: without
-                          // it every node would claim "no approved subnet", which is a measurement this
-                          // screen never took.
-                          const m = meshFrom(
-                            assembleTopology(sitesRes.data, {}, nodesRes.data),
-                            nodesRes.data,
-                            hubSetRes?.ok
-                              ? hubSetRes.data
-                              : undefined,
-                            false,
-                          );
-                          return { nodes: m.nodes, links: m.links };
-                        })()}
-                        empty="No sites configured yet. Bind a gateway to a site to build the mesh."
-                      />
+                      (() => {
+                        const ps = postureSplit(devicesRes.data);
+                        return (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <h3 className="mb-2 text-cell font-medium text-ink-secondary">
+                                Connection
+                              </h3>
+                              <Donut
+                                label="Peer connection status"
+                                source={{
+                                  endpoint:
+                                    "/api/v1/organizations/{orgId}/devices",
+                                }}
+                                failed={false}
+                                slices={peerSlices(devicesRes.data)}
+                                centreLabel="devices"
+                                empty="No devices enrolled yet."
+                              />
+                            </div>
+                            <div className="border-t border-white/10 pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                              <h3 className="mb-2 text-cell font-medium text-ink-secondary">
+                                Posture
+                              </h3>
+                              <Donut
+                                label="Device posture"
+                                source={{
+                                  endpoint:
+                                    "/api/v1/organizations/{orgId}/devices",
+                                }}
+                                failed={false}
+                                slices={[
+                                  {
+                                    label: "Compliant",
+                                    value: ps.compliant,
+                                    tone: "ok",
+                                  },
+                                  {
+                                    label: "Blocked",
+                                    value: ps.blocked,
+                                    tone: "danger",
+                                  },
+                                  {
+                                    label: "Unknown",
+                                    value: ps.unknown,
+                                    tone: "neutral",
+                                  },
+                                ]}
+                                centreLabel="devices"
+                                empty="No devices enrolled yet."
+                              />
+                            </div>
+                            {pending.state === "ok" && pending.value > 0 && (
+                              <p className="border-t border-white/10 pt-3 text-center text-cell text-warn sm:col-span-2">
+                                {pending.value} device
+                                {pending.value === 1 ? "" : "s"} awaiting
+                                approval
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()
                     )}
+                  </Panel>
+
+                  <Panel title="Infrastructure" className="xl:col-span-2">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
+                      <div className="min-w-0 lg:pr-1">
+                        {sitesRes === null || nodesRes === null ? (
+                          <Loading />
+                        ) : !sitesRes.ok || !nodesRes.ok ? (
+                          <ErrorText>The topology is unavailable.</ErrorText>
+                        ) : (
+                          <NodeLink
+                            label="Site topology"
+                            source={{
+                              endpoint:
+                                "/api/v1/organizations/{orgId}/sites",
+                            }}
+                            failed={false}
+                            {...(() => {
+                              const mesh = meshFrom(
+                                assembleTopology(
+                                  sitesRes.data,
+                                  {},
+                                  nodesRes.data,
+                                ),
+                                nodesRes.data,
+                                hubSetRes?.ok ? hubSetRes.data : undefined,
+                                false,
+                              );
+                              return {
+                                nodes: mesh.nodes,
+                                links: mesh.links,
+                              };
+                            })()}
+                            empty="No sites configured yet. Bind a gateway to a site to build the mesh."
+                          />
+                        )}
+                      </div>
+
+                      <div className="border-t border-white/10 pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+                        <div className="pb-4">
+                          {hubSetRes === null ? (
+                            <>
+                              <InfrastructureHeading
+                                icon="server"
+                                title="HA Hub Set"
+                              />
+                              <div className="mt-3">
+                                <Loading />
+                              </div>
+                            </>
+                          ) : !hubSetRes.ok ? (
+                            <>
+                              <InfrastructureHeading
+                                icon="server"
+                                title="HA Hub Set"
+                              />
+                              <div className="mt-3">
+                                <ErrorText>
+                                  The hub set is unavailable.
+                                </ErrorText>
+                              </div>
+                            </>
+                          ) : (
+                            (() => {
+                              const hv = hubSetRes.data?.members
+                                ? hubSetView(hubSetRes.data, Date.now())
+                                : null;
+                              if (!hv) {
+                                return (
+                                  <>
+                                    <InfrastructureHeading
+                                      icon="server"
+                                      title="HA Hub Set"
+                                    />
+                                    <div className="mt-3">
+                                      <EmptyState>
+                                        No HA hub set. Pin two or more gateways
+                                        to create one.
+                                      </EmptyState>
+                                    </div>
+                                  </>
+                                );
+                              }
+                              return (
+                                <>
+                                  <InfrastructureHeading
+                                    icon="server"
+                                    title="HA Hub Set"
+                                    meta={`GEN ${hv.generation}`}
+                                  />
+                                  <ul
+                                    aria-label="Hub set"
+                                    className="mt-3 divide-y divide-white/10"
+                                  >
+                                    {hv.members.map((member) => {
+                                      const node = nodesRes?.ok
+                                        ? nodesRes.data.find(
+                                            (item) =>
+                                              item.id === member.nodeId,
+                                          )
+                                        : undefined;
+                                      const memberName =
+                                        node?.name ??
+                                        member.nodeId.slice(0, 8);
+                                      const memberRole = member.demoted
+                                        ? "demoted"
+                                        : member.role;
+                                      const memberStatus = !member.reporting
+                                        ? "not reporting"
+                                        : "hs " + member.handshakeAge;
+                                      const memberLabel =
+                                        memberName +
+                                        " (" +
+                                        memberRole +
+                                        "): " +
+                                        memberStatus;
+
+                                      return (
+                                        <li
+                                          key={member.nodeId}
+                                          aria-label={memberLabel}
+                                          className="flex min-h-11 items-center gap-2.5 py-2"
+                                        >
+                                          <span
+                                            aria-hidden="true"
+                                            className="inline-flex min-w-[4.5rem] shrink-0 justify-center rounded-full border border-white/10 px-2 py-1 text-micro font-semibold uppercase tracking-wide text-ink-secondary"
+                                          >
+                                            {memberRole}
+                                          </span>
+                                          <span className="min-w-0 flex-1">
+                                            <span className="block truncate text-cell font-medium text-ink-primary">
+                                              {memberName}
+                                            </span>
+                                          </span>
+                                          <span
+                                            className="flex shrink-0 items-center gap-1.5 text-micro text-ink-tertiary"
+                                            role="status"
+                                          >
+                                            {memberStatus}
+                                            <span
+                                              aria-hidden="true"
+                                              className={
+                                                "h-1.5 w-1.5 rounded-full " +
+                                                (member.reporting
+                                                  ? "bg-ok"
+                                                  : "bg-danger")
+                                              }
+                                            />
+                                          </span>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                  <InfrastructureLink
+                                    to="/sites"
+                                    icon="network"
+                                  >
+                                    Open infrastructure
+                                  </InfrastructureLink>
+                                </>
+                              );
+                            })()
+                          )}
+                        </div>
+
+                        <div className="mt-1 border-t border-white/[.16] pt-5">
+                          <InfrastructureHeading
+                            icon="boxes"
+                            title="Kubernetes"
+                          />
+                          <div className="mt-3">
+                            {k8sClustersRes === null ||
+                            k8sServicesRes === null ? (
+                              <Loading />
+                            ) : !k8sClustersRes.ok ? (
+                              <ErrorText>
+                                Kubernetes infrastructure is unavailable.
+                              </ErrorText>
+                            ) : k8sClustersRes.data.length === 0 ? (
+                              <EmptyState>
+                                No clusters registered. Register one to expose
+                                Services privately.
+                              </EmptyState>
+                            ) : !k8sServicesRes.ok ? (
+                              <ErrorText>
+                                Service inventory is unavailable.
+                              </ErrorText>
+                            ) : (
+                              (() => {
+                                const clusters = assembleClusters(
+                                  k8sClustersRes.data,
+                                  k8sServicesRes.data,
+                                );
+                                const serviceTotal = clusters.reduce(
+                                  (total, cluster) =>
+                                    total + cluster.services.length,
+                                  0,
+                                );
+                                const visibleClusters = clusters.slice(0, 3);
+                                const remainingClusters =
+                                  clusters.length - visibleClusters.length;
+
+                                return (
+                                  <div
+                                    role="group"
+                                    aria-label="Kubernetes summary"
+                                  >
+                                    <div className="flex min-h-10 items-center justify-between gap-3 border-b border-white/10 py-2">
+                                      <span className="text-micro font-semibold uppercase tracking-wide text-ink-tertiary">
+                                        Exposed services
+                                      </span>
+                                      <span className="text-xl font-semibold tabular-nums text-ink-heading">
+                                        {serviceTotal}
+                                      </span>
+                                    </div>
+                                    <ul className="divide-y divide-white/10">
+                                      {visibleClusters.map((cluster) => (
+                                        <li
+                                          key={cluster.id}
+                                          className="flex min-h-10 items-center gap-2.5 py-2"
+                                        >
+                                          <span
+                                            aria-hidden="true"
+                                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-tertiary"
+                                          />
+                                          <span className="min-w-0 flex-1 truncate text-cell font-medium text-ink-primary">
+                                            {cluster.name}
+                                          </span>
+                                          <span
+                                            className="inline-flex min-w-7 shrink-0 justify-center rounded-full bg-white/[.06] px-2 py-0.5 text-micro font-semibold tabular-nums text-ink-secondary"
+                                            aria-label={`${cluster.services.length} exposed services`}
+                                          >
+                                            {cluster.services.length}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {remainingClusters > 0 && (
+                                      <p className="pt-2 text-micro text-ink-tertiary">
+                                        {remainingClusters} more cluster
+                                        {remainingClusters === 1 ? "" : "s"}
+                                      </p>
+                                    )}
+                                    <InfrastructureLink
+                                      to="/kubernetes"
+                                      icon="boxes"
+                                    >
+                                      Open Kubernetes
+                                    </InfrastructureLink>
+                                  </div>
+                                );
+                              })()
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </Panel>
                 </div>
               </div>
@@ -790,85 +933,149 @@ export default function Dashboard() {
   );
 }
 
+function InfrastructureIcon({ name }: { name: IconName }) {
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 text-ink-secondary">
+      <Icon name={name} size={16} />
+    </span>
+  );
+}
+
+function InfrastructureHeading({
+  icon,
+  title,
+  meta,
+}: {
+  icon: IconName;
+  title: string;
+  meta?: string;
+}) {
+  return (
+    <div className="flex min-h-8 items-center gap-2">
+      <InfrastructureIcon name={icon} />
+      <h3 className="text-cell font-semibold text-ink-primary">{title}</h3>
+      {meta && (
+        <span className="rounded border border-white/10 px-1.5 py-0.5 text-micro font-medium text-ink-tertiary">
+          {meta}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function InfrastructureLink({
+  to,
+  icon,
+  children,
+}: {
+  to: string;
+  icon: IconName;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      className="mt-1 flex min-h-10 items-center gap-2 border-t border-white/10 pt-2 text-cell font-medium text-accent-400 hover:text-accent-400"
+    >
+      <InfrastructureIcon name={icon} />
+      <span>{children}</span>
+      <Icon name="chevron-right" size={14} className="ml-auto" />
+    </Link>
+  );
+}
+
 /**
- * A stat card — the README's composition, exactly:
- *
- *   [30px icon tile]  LABEL 500 11px
- *   VALUE 700 26px
- *   SUB-LINE 10px
- *
- * ⛔ `value` IS A STATE, NOT A NUMBER. `number` would let a caller write `data?.members ?? 0` — one keystroke,
- * typechecks, looks reasonable, and renders a confident zero for an org whose fetch failed. The three states
- * mean different things: loading (not learned yet) · failed (tried, could not learn) · ok (this is the number).
- *
- * ⛔ THE SUB-LINE IS STRUCTURAL, NOT DECORATION. In the design every card carries one and it holds the
- * QUALIFICATION — "seen in last 3 min", "3 awaiting approval". A card with a bare number states more than it
- * knows; the sub-line is where the number is told what it means.
+ * One metric inside the Fleet Summary surface. The metric keeps its independent
+ * loading/failed/known state while sharing one card with the rest of the fleet.
  */
 function Stat({
   label,
   icon,
+  to,
   value,
   sub,
   tone,
+  subTone = "neutral",
 }: {
   label: string;
   icon: IconName;
+  to: string;
   value: StatState;
-  /** The qualification. `null` when there is nothing honest to say — never filler. */
   sub?: ReactNode;
   tone?: "ok";
+  subTone?: "neutral" | "ok" | "warn" | "danger";
 }) {
   const text = statText(value);
+  const subColor =
+    subTone === "danger"
+      ? "text-danger"
+      : subTone === "warn"
+        ? "text-warn"
+        : subTone === "ok"
+          ? "text-ok"
+          : "text-ink-tertiary";
   return (
-    // Composes GLASS rather than restating it — the divergence between this card and Panel is exactly what
-    // produced a screenshot with glass stat cards above flat panels.
-    // ⛔ role="group" + aria-label MAKES THE CARD ADDRESSABLE BY NAME.
-    //
-    // The e2e specs read a stat's value with `getByText('Members').locator('xpath=preceding-sibling::div[1]')`
-    // — the value happened to be the div BEFORE the label. The design puts the icon+label row first and the
-    // value second, so that xpath now points at nothing, and three specs failed on a layout change that was
-    // asked for.
-    //
-    // Re-pointing the xpath would preserve the coupling. A NAMED GROUP survives any internal rearrangement,
-    // which is the same fix the DataTable conversion needed and the same lesson: when adding semantics breaks
-    // a query, the query was weak (docs/laws.md).
     <div
       role="group"
       aria-label={label}
-      className={`${GLASS} flex flex-col gap-2 p-3.5`}
+      className="min-w-0 px-2 sm:px-3"
     >
-      <div className="flex items-center gap-[9px]">
-        <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-inset border border-white/[.2] bg-white/[.09] text-ink-emphasis">
-          <Icon name={icon} size={15} />
+      <Link
+        to={to}
+        className="flex min-h-[5.75rem] min-w-0 flex-col rounded-sm px-1 outline-none transition-colors hover:text-ink-heading focus-visible:ring-2 focus-visible:ring-accent-400"
+      >
+        <span className="flex min-w-0 items-center justify-between gap-3">
+          <span className="block truncate text-cell font-medium text-ink-primary">
+            {label}
+          </span>
+          <span
+            aria-hidden="true"
+            className="flex h-6 w-6 shrink-0 items-center justify-center text-ink-tertiary"
+          >
+            <Icon name={icon} size={15} />
+          </span>
         </span>
-        <span className="text-cell font-medium text-ink-secondary">
-          {label}
-        </span>
-      </div>
-      {text === null ? (
-        <span
-          className="text-stat font-bold leading-none text-ink-secondary"
-          title={
-            value.state === "failed" ? "Could not load this count." : "Loading…"
-          }
-        >
-          {value.state === "failed" ? "n/a" : "…"}
-        </span>
-      ) : (
-        <span
-          className={`text-stat font-bold leading-none ${tone === "ok" ? "text-ok" : "text-ink-heading"}`}
-        >
-          {text}
-        </span>
-      )}
-      <span className="text-mono font-medium text-ink-tertiary">
-        {value.state === "failed" ? (
-          <span className="text-danger">could not load</span>
+        {text === null ? (
+          <span
+            className="mt-2 block h-8 text-xl font-bold leading-8 text-ink-secondary"
+            title={
+              value.state === "failed"
+                ? "Could not load this count."
+                : "Loading…"
+            }
+          >
+            {value.state === "failed" ? "n/a" : "…"}
+          </span>
         ) : (
-          sub
+          <span
+            className={
+              "mt-2 block h-8 text-[1.75rem] font-bold leading-8 tabular-nums tracking-tight " +
+              (tone === "ok" ? "text-ok" : "text-ink-heading")
+            }
+          >
+            {text}
+          </span>
         )}
-      </span>
+        <span
+          className={
+            "mt-auto block h-[1.125rem] truncate text-micro font-medium leading-[1.125rem] " +
+            (value.state === "failed" ? "text-danger" : subColor)
+          }
+          title={typeof sub === "string" ? sub : undefined}
+        >
+          {value.state === "failed" ? "could not load" : sub}
+        </span>
+      </Link>
     </div>
+  );
+}
+
+function gatewayReviewLabel(count: number): string {
+  if (count === 0) return "Review gateways";
+  return (
+    "Review " +
+    count +
+    " affected gateway" +
+    (count === 1 ? "" : "s")
   );
 }

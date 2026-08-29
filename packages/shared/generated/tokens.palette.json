@@ -72,14 +72,14 @@
     "24": "24px"
   },
   "fontSize": {
-    "badge": "8.5px",
-    "micro": "9px",
-    "explainer": "9.5px",
-    "mono": "10px",
-    "cell": "11px",
-    "nav": "12.5px",
-    "title": "13.5px",
-    "stat": "26px"
+    "badge": "12px",
+    "micro": "12px",
+    "explainer": "13px",
+    "mono": "13px",
+    "cell": "14px",
+    "nav": "14px",
+    "title": "16px",
+    "stat": "28px"
   },
   "borderRadius": {
     "chip": "6px",

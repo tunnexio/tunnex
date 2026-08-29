@@ -62,13 +62,16 @@ test("the config-download ceremony renders once with the amber one-time callout 
     });
   });
 
-  await page.getByRole("link", { name: "Devices" }).click();
+  await page
+    .getByLabel("Main")
+    .getByRole("link", { name: "Devices" })
+    .click();
   await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
 
   // ⚠ ONE CLICK ADDED, NOTHING ELSE CHANGED. The create form moved into a modal; the ceremony it opens is
   // the same ceremony, so every assertion below is untouched.
   await page.getByRole("button", { name: "Add device" }).click();
-  await page.getByLabel("New device name").fill("my-laptop");
+  await page.getByLabel("Device name").fill("my-laptop");
   await page.getByRole("button", { name: "Create device" }).click();
 
   // The ceremony modal: amber "shown once" callout, the config in a mono block,

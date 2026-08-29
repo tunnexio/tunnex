@@ -70,6 +70,7 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
   const { state: authState } = useAuth();
   const [params, setParams] = useSearchParams();
   const [state, setState] = useState<ViewState>(fixture?.state ?? { kind: "loading" });
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const query = useMemo(() => ({
     q: params.get("q") ?? "",
@@ -165,6 +166,7 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
   }
 
   const rows = state.kind === "ready" ? state.page.items : [];
+  const activeFilterCount = filters.reduce((count, [key]) => count + (query[key] ? 1 : 0), 0);
   return (
     <div className="flex flex-col gap-3.5">
       <PageHeader
@@ -175,27 +177,31 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
       <AgentsTabRail />
       {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow orgId={org.id} enabled onDismiss={() => update({ add: null })} />}
 
-      {state.kind === "ready" && <Card>
-        <div className="grid gap-2 lg:grid-cols-[minmax(16rem,1fr)_repeat(5,minmax(0,11rem))_auto]">
-          <Input aria-label="Search AI agents" placeholder="Search name, owner, address" value={query.q} onChange={(event) => update({ q: event.target.value }, true)} />
-          {filters.map(([key, label, options]) => (
-            <Select key={key} aria-label={label} value={query[key]} onChange={(event) => update({ [key]: event.target.value })}>
-              <option value="">{label}</option>
-              {options.map((option) => <option key={option} value={option}>{option.replace(/_/g, " ")}</option>)}
-            </Select>
-          ))}
-          <Select aria-label="Sort AI agents" width="auto" value={`${query.sort}:${query.dir}`} onChange={(event) => {
-            const [sort, dir] = event.target.value.split(":");
-            update({ sort, dir });
-          }}><option value="name:asc">Name, A–Z</option><option value="name:desc">Name, Z–A</option></Select>
-        </div>
-      </Card>}
-
       {state.kind === "loading" && <Card><Loading label="Loading AI agents…" /></Card>}
       {state.kind === "denied" && <Card><EmptyState>You do not have permission to view AI Agents in this organization.</EmptyState></Card>}
       {state.kind === "failed" && <Card><div role="alert" className="py-6 text-sm text-danger">{state.message} <Button variant="ghost" onClick={() => update({}, true)}>Retry</Button></div></Card>}
       {state.kind === "ready" && (
         <Card>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="min-w-[14rem] flex-1">
+              <Input aria-label="Search AI agents" placeholder="Search name, owner, address" value={query.q} onChange={(event) => update({ q: event.target.value }, true)} />
+            </div>
+            <Button size="sm" variant="ghost" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+              Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
+            </Button>
+            <Select aria-label="Sort AI agents" width="auto" value={`${query.sort}:${query.dir}`} onChange={(event) => {
+              const [sort, dir] = event.target.value.split(":");
+              update({ sort, dir });
+            }}><option value="name:asc">Name, A–Z</option><option value="name:desc">Name, Z–A</option></Select>
+          </div>
+          {(filtersOpen || activeFilterCount > 0) && <div className="mb-3 grid gap-2 border-t border-white/[0.08] pt-3 sm:grid-cols-2 xl:grid-cols-4">
+            {filters.map(([key, label, options]) => (
+              <Select key={key} aria-label={label} value={query[key]} onChange={(event) => update({ [key]: event.target.value })}>
+                <option value="">{label}</option>
+                {options.map((option) => <option key={option} value={option}>{option.replace(/_/g, " ")}</option>)}
+              </Select>
+            ))}
+          </div>}
           {state.page.partial && <p role="status" className="mb-3 rounded-md border border-warn/40 px-3 py-2 text-xs text-warn">Some agent posture data is unavailable. Rows below include the latest complete inventory data.</p>}
           <DataTable<AgentRow>
             caption="AI Agents"

@@ -110,8 +110,13 @@ test("the feed renders actions + resolved actors + secret-free details, with key
   await login(page);
   // Secret-free render: the fingerprint shows; no client_secret / sealed material.
   await expect(page.getByText("sso.config_updated")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Inspect sso.config_updated audit event" })
+    .click();
+  await expect(page.getByRole("dialog", { name: "Audit evidence" })).toBeVisible();
   await expect(page.getByText(/a1b2c3d4e5f6/)).toBeVisible();
   await expect(page.getByText(/client_secret/i)).toHaveCount(0);
+  await page.getByRole("button", { name: "Close" }).click();
   // RE-POINTED IN S14.3 SLICE A. The actor used to be rendered as the inline string "actor <name>"; the log
   // is now a table with an "Actor" COLUMN, so the label lives in the header and the cell carries the name
   // alone. Asserting the bare name is the stronger claim anyway — it survives the label being reworded.

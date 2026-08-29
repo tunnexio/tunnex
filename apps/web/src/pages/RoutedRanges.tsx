@@ -13,6 +13,7 @@ import { LoadRetry } from "../components/LoadRetry";
 import {
   DataTable,
   EmptyState,
+  Loading,
   PageHeader,
   Panel,
 } from "../components/ui";
@@ -23,7 +24,6 @@ import {
   attributeRanges,
   attributionClass,
   attributionLabel,
-  fanOutExceedsTripwire,
   forwardsEmptyCopy,
   mapAddressSpace,
   nextFreeRange,
@@ -117,6 +117,7 @@ export default function RoutedRangesPage() {
     label: string;
   }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [mapExpanded, setMapExpanded] = useState(true);
 
   const reload = useCallback(async () => {
     setLoadError(null);
@@ -272,6 +273,19 @@ export default function RoutedRangesPage() {
     () => (fanOut ?? []).filter((f) => !f.ok).length,
     [fanOut],
   );
+  const attributedSites = useMemo(
+    () =>
+      new Set(
+        rows.flatMap((row) =>
+          row.attribution.kind === "site" ? [row.attribution.siteId] : [],
+        ),
+      ).size,
+    [rows],
+  );
+  const pendingRanges = useMemo(
+    () => allocations.filter((allocation) => allocation.kind === "pending").length,
+    [allocations],
+  );
 
   const columns = [
     {
@@ -318,219 +332,147 @@ export default function RoutedRangesPage() {
       <PageHeader title="Routed ranges" subtitle={org ? org.name : "…"} />
 
       {loadError && <LoadRetry error={loadError} onRetry={reload} />}
-      {loading && <p className="text-cell text-ink-faint">Loading…</p>}
+      {loading && <Loading size="inline" label="Loading routed ranges…" />}
 
       {!loadError && org && ranges && forwards && (
-        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[8fr_4fr]">
-          <div className="flex min-w-0 flex-col gap-3">
-            {spaceMap.blocks.length > 0 && (
-              <Panel title="Address space map">
-                <p className="text-micro text-ink-faint">
-                  Everything that occupies address space, not only what is
-                  routed. A new LAN must avoid all of it, so the map draws all
-                  of it: approved subnets, pending ones, the device pool and
-                  cluster VIP ranges.
-                </p>
-                {spaceMap.blocks.map((m) => (
-                  <AddressSpaceMap
-                    key={m.block.key}
-                    map={m}
-                    animate={animate}
-                  />
-                ))}
-                {/* Legend, in text. The grid encodes three states by fill and inset; none of that reaches a
-                    screen reader, and colour alone would fail the same reader twice. */}
-                <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-micro text-ink-tertiary">
-                  {LEGEND.map((l) => (
-                    <li key={l.text} className="flex items-center gap-1.5">
-                      <span
-                        aria-hidden
-                        className={`rounded-[2px] ${l.small ? "h-[5px] w-[5px]" : "h-[9px] w-[9px]"} ${l.dashed ? "border border-dashed" : ""}`}
-                        style={
-                          l.dashed
-                            ? { borderColor: l.tone }
-                            : { background: l.tone, opacity: 0.55 }
-                        }
-                      />
-                      {l.text}
-                    </li>
-                  ))}
-                  <li className="flex items-center gap-1.5">
-                    <span
-                      aria-hidden
-                      className="h-[9px] w-[9px] rounded-[2px] border"
-                      style={{
-                        background: "var(--tnx-surface-inset)",
-                        borderColor: "var(--tnx-divider)",
-                      }}
-                    />
-                    free
-                  </li>
-                </ul>
+        <>
+          <section
+            aria-label="Routing summary"
+            className="grid overflow-hidden rounded-xl border border-line bg-ink-800 sm:grid-cols-2 xl:grid-cols-4"
+          >
+            {[
+              { label: "Approved ranges", value: ranges.length, detail: "published" },
+              { label: "Sites", value: attributedSites, detail: "carrying traffic" },
+              { label: "Pending", value: pendingRanges, detail: pendingRanges ? "needs approval" : "none waiting", attention: pendingRanges > 0 },
+              { label: "DNS forwards", value: forwards.length, detail: "reachable" },
+            ].map((stat) => (
+              <div key={stat.label} className="min-w-0 border-b border-line px-4 py-3 last:border-b-0 sm:border-r sm:[&:nth-child(2)]:border-r-0 sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:[&:nth-child(2)]:border-r xl:[&:nth-child(4)]:border-r-0">
+                <p className="text-micro font-medium uppercase tracking-wide text-ink-tertiary">{stat.label}</p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-title font-semibold tabular-nums text-ink-heading">{stat.value}</span>
+                  <span className={`truncate text-micro ${stat.attention ? "text-warn" : "text-ink-faint"}`}>{stat.detail}</span>
+                </div>
+              </div>
+            ))}
+          </section>
 
-                {/* ⛔ THE ANSWER, NOT JUST THE PICTURE. An address map is read to decide what to use next, and
-                    a /16 cell cannot say which /24s inside it are free. This line is interval arithmetic over
-                    EVERY allocation class, so it stays exact where the grid is too coarse — and it is
-                    WITHHELD entirely when any class failed to load, because a confident wrong range is worse
-                    than no suggestion. */}
-                {suggestion !== null && (
-                  <p className="mt-1 border-t border-line pt-2.5 text-cell text-ink-body">
-                    Next free in {suggestion.block.label}:{" "}
-                    {suggestion.at24 !== null && (
-                      <span className="font-mono text-ink-heading">
-                        {suggestion.at24}
-                      </span>
+          <Panel title="Routing inventory">
+            <DataTable
+              caption="Approved routed ranges"
+              columns={columns}
+              rows={rows}
+              rowKey={(r: RangeRow) => r.range}
+              empty="No LAN ranges are routed. Approve an advertised subnet in Sites to publish it here."
+              failed={false}
+            />
+            {failedSites > 0 && (
+              <p className="mt-2 text-micro text-warn">
+                {failedSites} site{failedSites === 1 ? "" : "s"} could not be read; unmatched ownership may be incomplete.
+              </p>
+            )}
+          </Panel>
+
+          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[7fr_5fr]">
+            {spaceMap.blocks.length > 0 && (
+              <Panel
+                title="Address space"
+                actions={
+                  <button
+                    type="button"
+                    aria-expanded={mapExpanded}
+                    aria-controls="address-space-details"
+                    onClick={() => setMapExpanded((current) => !current)}
+                    className="min-h-8 rounded-md px-2.5 text-micro font-medium text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
+                  >
+                    {mapExpanded ? "Hide map" : "View map"}
+                  </button>
+                }
+              >
+                <div className="grid grid-cols-2 gap-3 border-t border-line pt-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-micro uppercase tracking-wide text-ink-faint">Allocations</p>
+                    <p className="mt-1 text-cell font-semibold tabular-nums text-ink-heading">{allocations.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-micro uppercase tracking-wide text-ink-faint">Private blocks</p>
+                    <p className="mt-1 text-cell font-semibold tabular-nums text-ink-heading">{spaceMap.blocks.length}</p>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <p className="text-micro uppercase tracking-wide text-ink-faint">Next free</p>
+                    {suggestion?.at24 ? (
+                      <p className="mt-1 font-mono text-cell text-ink-heading">{suggestion.at24}</p>
+                    ) : (
+                      <p className={`mt-1 text-micro ${spaceComplete ? "text-ink-tertiary" : "text-warn"}`}>
+                        {spaceComplete ? "No suggestion" : "Census incomplete"}
+                      </p>
                     )}
-                    {suggestion.at16 !== null && (
-                      <>
-                        {suggestion.at24 !== null ? ", or " : ""}
-                        <span className="font-mono text-ink-heading">
-                          {suggestion.at16}
-                        </span>
-                        {" for a whole block"}
-                      </>
-                    )}
-                    <span className="text-ink-faint">
-                      {" "}
-                      — clear of every routed subnet, the device pool and
-                      cluster VIPs, so the disjointness check will accept it.
-                    </span>
-                  </p>
-                )}
-                {!spaceComplete && spaceMap.blocks.length > 0 && (
-                  <p className="text-micro text-warn">
-                    Not every allocation class could be read, so empty cells are
-                    not proof that space is free and no range is suggested.
-                  </p>
-                )}
-                {spaceMap.blocks.some((m) => m.lit.length > MAP_LIST_MAX) && (
-                  // A SILENT CAP IS A LIE ABOUT COVERAGE. Past six lit cells the connector fan is unreadable,
-                  // so the labelled list is dropped — and said so, with the complete list named.
-                  <p className="text-micro text-ink-faint">
-                    Some blocks have more than {MAP_LIST_MAX} lit cells, so
-                    their labelled call-outs are omitted as unreadable. Every
-                    range is in the table below.
-                  </p>
-                )}
-                {spaceMap.offMap.length > 0 && (
-                  // ⛔ THE DEFECT THE HANDOFF'S FIXED 10/8 GRID WOULD HAVE HAD: a range outside every drawn
-                  // block would simply not appear. Listed, never dropped.
-                  <p className="text-micro text-warn">
-                    Outside the private blocks and therefore not drawn:{" "}
-                    <span className="font-mono">
-                      {spaceMap.offMap.map((x) => x.cidr).join(", ")}
-                    </span>
-                    . They are routed exactly the same; only the map cannot
-                    place them.
-                  </p>
-                )}
-                {spaceMap.unparseable.length > 0 && (
-                  <p className="text-micro text-danger">
-                    Not a parseable IPv4 CIDR, so not drawn:{" "}
-                    <span className="font-mono">
-                      {spaceMap.unparseable.map((x) => x.cidr).join(", ")}
-                    </span>
-                    .
-                  </p>
-                )}
+                  </div>
+                </div>
+
+                <div id="address-space-details" className={mapExpanded ? "mt-3 space-y-3 border-t border-line pt-3" : "hidden"}>
+                  {spaceMap.blocks.map((m) => (
+                    <AddressSpaceMap key={m.block.key} map={m} animate={animate} />
+                  ))}
+                  <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-micro text-ink-tertiary">
+                    {LEGEND.map((l) => (
+                      <li key={l.text} className="flex items-center gap-1.5">
+                        <span
+                          aria-hidden
+                          className={`rounded-[2px] ${l.small ? "h-[5px] w-[5px]" : "h-[9px] w-[9px]"} ${l.dashed ? "border border-dashed" : ""}`}
+                          style={l.dashed ? { borderColor: l.tone } : { background: l.tone, opacity: 0.55 }}
+                        />
+                        {l.text}
+                      </li>
+                    ))}
+                    <li className="flex items-center gap-1.5">
+                      <span aria-hidden className="h-[9px] w-[9px] rounded-[2px] border" style={{ background: "var(--tnx-surface-inset)", borderColor: "var(--tnx-divider)" }} />
+                      free
+                    </li>
+                  </ul>
+                  {suggestion?.at16 && (
+                    <p className="text-micro text-ink-tertiary">
+                      Whole-block option: <span className="font-mono text-ink-heading">{suggestion.at16}</span>
+                    </p>
+                  )}
+                  {!spaceComplete && (
+                    <p className="text-micro text-warn">Empty cells are not verified while the allocation census is incomplete.</p>
+                  )}
+                  {spaceMap.blocks.some((m) => m.lit.length > MAP_LIST_MAX) && (
+                    <p className="text-micro text-ink-faint">Dense call-outs are capped; the routing inventory remains complete.</p>
+                  )}
+                  {spaceMap.offMap.length > 0 && (
+                    <p className="text-micro text-warn">
+                      Outside the private blocks and therefore not drawn: <span className="font-mono">{spaceMap.offMap.map((x) => x.cidr).join(", ")}</span>. They are routed exactly the same; only the map cannot place them.
+                    </p>
+                  )}
+                  {spaceMap.unparseable.length > 0 && (
+                    <p className="text-micro text-danger">
+                      Not a parseable IPv4 CIDR, so not drawn: <span className="font-mono">{spaceMap.unparseable.map((x) => x.cidr).join(", ")}</span>.
+                    </p>
+                  )}
+                </div>
               </Panel>
             )}
 
-            <Panel title={`Approved ranges (${ranges.length})`}>
-              <DataTable
-                caption="Approved routed ranges"
-                columns={columns}
-                rows={rows}
-                rowKey={(r: RangeRow) => r.range}
-                // ⛔ THE EMPTY STATE NAMES THE PRECONDITION, because on THIS screen empty is the common case
-                // for a fresh org and is a first-class answer from the endpoint. "No ranges" alone reads as a
-                // failure to a reader who does not know a range has to be approved first.
-                empty="No LAN ranges are routed. A site advertises a subnet, an admin approves it on Sites, and it appears here."
-                failed={false}
-              />
-              <p className="text-micro text-ink-tertiary">
-                This is the list a split-tunnel device reads, in the order it
-                reads it. Traffic to these ranges goes down the tunnel;
-                everything else does not.
-              </p>
-            </Panel>
-
-            {failedSites > 0 && (
-              // ⛔ THE DEGRADED READ IS STATED, NOT INFERRED FROM ITALICS. Without this line a reader sees
-              // some rows attributed and some not and concludes the unattributed ones have no site, which is
-              // the opposite of what happened.
-              <p className="text-micro text-warn">
-                {failedSites} site{failedSites === 1 ? "" : "s"} could not be
-                read, so any range without a site here may still belong to one.
-                Retry to complete the picture.
-              </p>
-            )}
-
-            {fanOutExceedsTripwire(sites.length) && (
-              // The tripwire from the commit-one, surfaced where it can actually be observed. A bound that
-              // only exists in a document is discovered at a customer.
-              <p className="text-micro text-ink-faint">
-                This organization has {sites.length} sites, so attribution costs{" "}
-                {sites.length + 1} requests per visit and will feel slow. The
-                fix is serving the site on the range itself.
-              </p>
-            )}
-
-            <p className="text-micro text-ink-faint">
-              Not shown, and why: the <strong>device count</strong> per range is
-              not a field we serve, and counting devices locally would count
-              ones that never fetched this list. <strong>Status</strong> is
-              omitted because this endpoint is approved-only, so the column
-              would carry one value forever; pending subnets are approved on{" "}
-              <strong>Sites</strong>, which is where the approve permission
-              lives.
-            </p>
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-3">
-            <Panel title={`Reachable DNS forwards (${forwards.length})`}>
+            <Panel title={`Reachable DNS (${forwards.length})`}>
               {forwards.length === 0 ? (
                 <EmptyState>{forwardsEmptyCopy(ranges.length)}</EmptyState>
               ) : (
-                <ul className="flex flex-col gap-1.5">
+                <ul className="max-h-44 space-y-0.5 overflow-y-auto [scrollbar-gutter:stable]">
                   {sortForwards(forwards).map((f) => (
-                    <li
-                      key={`${f.domain}@${f.resolver_ip}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-line bg-ink-800 px-2.5 py-2"
-                    >
-                      <span className="font-mono text-cell text-ink-body">
-                        {f.domain}
-                      </span>
-                      <span className="font-mono text-micro text-ink-tertiary">
-                        {f.resolver_ip}
-                      </span>
+                    <li key={`${f.domain}@${f.resolver_ip}`} className="flex min-h-10 items-center justify-between gap-3 rounded-md px-1.5 text-cell transition-colors hover:bg-white/[.03]">
+                      <span className="truncate font-mono text-ink-body" title={f.domain}>{f.domain}</span>
+                      <span className="shrink-0 font-mono text-micro text-ink-tertiary">{f.resolver_ip}</span>
                     </li>
                   ))}
                 </ul>
               )}
-              {/* ⛔ THE GATE, STATED WHETHER OR NOT THE LIST IS EMPTY. This panel's emptiness means something
-                  NARROWER than it looks, and the honest reading has to be available to someone who sees a
-                  NON-empty list too: a zone they configured and cannot find here was withheld, not lost. */}
-              <p className="text-micro text-ink-faint">
-                A forward is handed to devices only when its resolver falls
-                inside a routed range. A resolver outside every range is
-                withheld rather than handed over as a lookup that can only fail.
-              </p>
-            </Panel>
-
-            <Panel title="Where these come from">
-              <p className="text-cell text-ink-body">
-                A gateway advertises its LAN, an admin approves it, and the
-                control plane pushes the approved set to every split-tunnel
-                device.
-              </p>
-              <p className="text-micro text-ink-faint">
-                Ranges are validated disjoint from each other and from the
-                device pool, so two sites cannot advertise the same LAN.
+              <p className="mt-2 border-t border-white/[.06] pt-2 text-micro text-ink-faint">
+                A forward is handed to devices only when its resolver falls inside a routed range.
               </p>
             </Panel>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

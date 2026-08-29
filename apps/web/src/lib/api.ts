@@ -18,6 +18,7 @@ export type BootstrapRelease = components["schemas"]["AgentBootstrapRelease"];
 export type OrgOverview = components["schemas"]["OrgOverview"];
 export type Member = components["schemas"]["Member"];
 export type MachineCredential = components["schemas"]["MachineCredential"];
+export type LicenseStatus = components["schemas"]["LicenseStatus"];
 export type Role = Member["role"];
 export type SsoConfigView = components["schemas"]["SsoConfigView"];
 export type ResizeConflict = components["schemas"]["ResizeConflict"];

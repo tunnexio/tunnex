@@ -20,16 +20,70 @@ import { Link } from "react-router-dom";
 export function CeilingUpgrade({
   /** The server's own refusal text — already names band, ceiling, and what is unaffected. */
   message,
+  compact = false,
+  used,
+  ceiling,
   /** Which limit was hit. Only changes the wording of the route, never whether one is offered. */
   kind,
 }: {
   message: string;
+  /** Keep standing inventory notices compact without hiding their safety copy. */
+  compact?: boolean;
+  used?: number;
+  ceiling?: number;
   kind: "gateway" | "organization";
 }) {
   const what = kind === "gateway" ? "more gateways" : "more organizations";
+  if (compact) {
+    const over = used != null && ceiling != null ? Math.max(0, used - ceiling) : null;
+    return (
+      <aside className="rounded-md border border-warn/20 bg-warn/[.035] px-3 py-2.5" aria-label={`${kind} capacity warning`}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-warn" />
+          <div className="min-w-0 flex-1">
+            <p className="text-cell font-semibold text-ink-heading">
+              {kind === "gateway" ? "Gateway limit exceeded" : "Organization limit reached"}
+              {used != null && ceiling != null && (
+                <span className="ml-2 font-normal tabular-nums text-ink-tertiary">
+                  {used} enrolled · {ceiling} allowed
+                </span>
+              )}
+            </p>
+            <p className="mt-0.5 text-micro text-ink-tertiary">
+              {over != null && over > 0
+                ? `Existing gateways keep running. ${over} over the plan limit; retiring one will not free a slot.`
+                : "Enrollment is blocked until capacity is added or an existing gateway is safely retired."}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+            <Link
+              to="/settings#licence"
+              className="text-micro font-medium text-accent hover:underline"
+            >
+              Install key
+            </Link>
+            <a
+              href="https://tunnex.io/trial"
+              target="_blank"
+              rel="noreferrer"
+              className="text-micro font-medium text-accent hover:underline"
+            >
+              Get licence ↗
+            </a>
+          </div>
+        </div>
+        <details className="ml-6 mt-1.5 text-micro text-ink-tertiary">
+          <summary className="w-fit cursor-pointer select-none hover:text-ink-heading">
+            Why enrollment is blocked
+          </summary>
+          <p className="mt-1 max-w-5xl text-ink-body">{message}</p>
+        </details>
+      </aside>
+    );
+  }
   return (
     <div className="mt-3 rounded-card border border-warn/30 bg-warn/5 p-3">
-      <p className="text-cell text-ink-body">{message}</p>
+      <p className="min-w-0 text-cell text-ink-body">{message}</p>
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
         {/* ⭐ INSTALL COMES FIRST, DELIBERATELY. A customer who already HOLDS a key — bought minutes ago,
             or sitting in an inbox from a trial request — is one paste away from being unblocked, and

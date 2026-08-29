@@ -23,7 +23,7 @@ export default function DevicePosture() {
     });
     return () => { stale = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
-  return <div className="space-y-5"><PageHeader title="Device posture" subtitle="Client-reported posture policy for managed devices; it is not hardware-attested." /><DevicesTabRail />
+  return <div className="space-y-5"><PageHeader title="Devices" subtitle="Manage client-reported device checks." /><DevicesTabRail />
     {!org || canManage === null ? <Card><Loading label="Checking posture permission…" /></Card> : !canManage ? <Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage device posture.</p><ErrorText>{error}</ErrorText></Card> : <PostureChecksSection orgId={org.id} canManage />}
   </div>;
 }

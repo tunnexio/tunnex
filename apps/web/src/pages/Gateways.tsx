@@ -3,16 +3,14 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { Gateways as EnrolCeremony } from "../components/Gateways";
 import {
-  Badge,
   Button,
   Card,
   DataTable,
   EmptyState,
-  Input,
   Loading,
   Modal,
   PageHeader,
-  Select,
+  StatusDot,
 } from "../components/ui";
 import { CeilingUpgrade, ceilingSentence } from "../components/CeilingUpgrade";
 import { LoadRetry } from "../components/LoadRetry";
@@ -40,6 +38,15 @@ function lifecycle(row: GatewayRow) {
   return row.operationalState;
 }
 
+function matchesHealthFilter(row: GatewayRow, filter: HealthFilter) {
+  const state = lifecycle(row);
+  if (filter === "all") return true;
+  if (filter === "degraded") {
+    return state === "degraded" || state === "awaiting_first_connection";
+  }
+  return state === filter;
+}
+
 export default function GatewaysPage() {
   const { org, state, reload, canEnroll } = useGatewayInventory();
   const [params, setParams] = useSearchParams();
@@ -62,7 +69,7 @@ export default function GatewaysPage() {
     const needle = q.trim().toLowerCase();
     const result = state.nodes
       .map((node) => toGatewayRow(node, state.siteNames))
-      .filter((row) => filter === "all" || lifecycle(row) === filter)
+      .filter((row) => matchesHealthFilter(row, filter))
       .filter((row) =>
         needle
           ? `${row.name} ${row.siteName ?? ""} ${row.agentVersion} ${lifecycle(row)}`
@@ -113,7 +120,7 @@ export default function GatewaysPage() {
       header: "Gateway",
       cell: (row: GatewayRow) => (
         <span className="flex flex-col gap-0.5">
-          <Link className="font-mono font-medium text-ink-heading hover:text-accent-400" to={`/gateways/${row.id}`}>
+          <Link className="font-medium text-ink-heading hover:text-accent-400" to={`/gateways/${row.id}`}>
             {row.name}
           </Link>
           <span className="text-micro text-ink-faint">
@@ -128,26 +135,33 @@ export default function GatewaysPage() {
       cell: (row: GatewayRow) => {
         const status = lifecycle(row);
         return (
-          <Badge tone={status === "healthy" ? "ok" : status === "degraded" ? "warn" : "neutral"}>
-            {gatewayOperationalLabel(row)}
-          </Badge>
+          <span className="inline-flex items-center gap-2 text-cell text-ink-body">
+            <StatusDot
+              tone={
+                status === "healthy"
+                  ? "on"
+                  : status === "degraded"
+                    ? "warn"
+                    : "off"
+              }
+            />
+            <span>{gatewayOperationalLabel(row)}</span>
+          </span>
         );
       },
     },
     {
-      key: "seen",
-      header: "Freshness",
+      key: "runtime",
+      header: "Runtime",
       cell: (row: GatewayRow) => (
-        <span className="text-cell text-ink-tertiary" data-volatile>
-          {row.lastSeenAt ? `Last seen ${relativeAge(row.lastSeenAt)}` : "Never connected"}
+        <span className="flex flex-col gap-0.5">
+          <span className="font-mono text-cell text-ink-body">
+            {row.agentVersion || "Not reported"}
+          </span>
+          <span className="text-micro text-ink-faint" data-volatile>
+            {row.lastSeenAt ? `Seen ${relativeAge(row.lastSeenAt)}` : "Never connected"}
+          </span>
         </span>
-      ),
-    },
-    {
-      key: "agent",
-      header: "Agent",
-      cell: (row: GatewayRow) => (
-        <span className="font-mono text-cell text-ink-body">{row.agentVersion || "Not reported"}</span>
       ),
     },
     {
@@ -156,15 +170,15 @@ export default function GatewaysPage() {
       cell: (row: GatewayRow) => gatewayEgressLabel(row),
     },
     {
-      key: "manage",
+      key: "details",
       header: "",
       cell: (row: GatewayRow) => (
         <Link
-          aria-label={`Open details for ${row.name}`}
-          className="inline-flex min-h-8 items-center rounded-md border border-white/10 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-white/5"
           to={`/gateways/${row.id}`}
+          aria-label={`Open details for ${row.name}`}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-lg text-ink-tertiary hover:bg-white/[.06] hover:text-ink-heading focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
         >
-          Open details <span aria-hidden="true" className="ml-1">→</span>
+          <span aria-hidden="true">›</span>
         </Link>
       ),
     },
@@ -174,7 +188,7 @@ export default function GatewaysPage() {
   const closeEnrollment = () => setParam("enroll", "", "");
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <PageHeader
         title="Gateways"
         subtitle="Enroll, inspect, and safely retire the gateways carrying private traffic."
@@ -190,6 +204,9 @@ export default function GatewaysPage() {
       {state.kind === "ready" && state.licence?.gateway_ceiling != null && ceilingReached && (
         <CeilingUpgrade
           kind="gateway"
+          compact
+          used={state.licence.gateways_in_use ?? state.nodes.length}
+          ceiling={state.licence.gateway_ceiling}
           message={ceilingSentence(
             state.licence.gateways_in_use ?? state.nodes.length,
             state.licence.gateway_ceiling,
@@ -203,38 +220,75 @@ export default function GatewaysPage() {
 
       {state.kind === "ready" && (
         <>
-          <div className="flex min-w-0 flex-wrap items-end gap-3 rounded-card border border-hairline bg-surface-inset p-3">
-            <div className="min-w-[14rem] flex-1">
-              <Input
-                aria-label="Search gateways"
-                placeholder="Search gateway, site, version, or state"
-                value={q}
-                onChange={(event) => setParam("q", event.target.value)}
-              />
-            </div>
-            <Select
-              aria-label="Filter gateway health"
-              width="auto"
-              value={filter}
-              onChange={(event) => setParam("health", event.target.value, "all")}
-            >
-              <option value="all">All ({counts.all})</option>
-              <option value="healthy">Healthy ({counts.healthy})</option>
-              <option value="degraded">Needs attention ({counts.degraded})</option>
-              <option value="revoked">Revoked ({counts.revoked})</option>
-            </Select>
-            <Select aria-label="Sort gateways" width="auto" value={sort} onChange={(event) => setParam("sort", event.target.value, "name")}>
-              <option value="name">Name</option>
-              <option value="health">State</option>
-              <option value="seen">Freshness</option>
-              <option value="version">Agent version</option>
-            </Select>
-            <Button variant="ghost" onClick={() => setParam("dir", dir === "asc" ? "desc" : "asc", "asc")}>
-              {dir === "asc" ? "Ascending" : "Descending"}
-            </Button>
-          </div>
+          <section className="tnx-card-surface overflow-hidden">
+            <div className="flex min-w-0 flex-col gap-3 border-b border-white/[.08] p-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <input
+                  aria-label="Search gateways"
+                  placeholder="Search gateway, site, version, or state"
+                  value={q}
+                  onChange={(event) => setParam("q", event.target.value)}
+                  className="h-9 min-w-[16rem] flex-1 rounded-md border border-white/10 bg-black/25 px-3 text-cell text-ink-heading placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
+                />
+                <span className="ml-auto whitespace-nowrap px-1 text-micro font-medium tabular-nums text-ink-tertiary">
+                  {rows.length === counts.all
+                    ? `${counts.all} gateways`
+                    : `${rows.length} of ${counts.all}`}
+                </span>
+                <label className="sr-only" htmlFor="gateway-sort">Sort gateways</label>
+                <select
+                  id="gateway-sort"
+                  aria-label="Sort gateways"
+                  value={sort}
+                  onChange={(event) => setParam("sort", event.target.value, "name")}
+                  className="h-9 rounded-md border border-white/10 bg-black/25 px-2.5 text-cell text-ink-body focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
+                >
+                  <option value="name">Name</option>
+                  <option value="health">State</option>
+                  <option value="seen">Freshness</option>
+                  <option value="version">Agent version</option>
+                </select>
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 text-base text-ink-secondary hover:bg-white/[.05] hover:text-ink-heading focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+                  aria-label={dir === "asc" ? "Ascending" : "Descending"}
+                  title={dir === "asc" ? "Sort ascending" : "Sort descending"}
+                  onClick={() => setParam("dir", dir === "asc" ? "desc" : "asc", "asc")}
+                >
+                  <span aria-hidden="true">{dir === "asc" ? "↑" : "↓"}</span>
+                </button>
+              </div>
 
-          <Card>
+              <div
+                role="group"
+                aria-label="Filter gateway health"
+                className="flex w-fit max-w-full overflow-x-auto rounded-md border border-white/10 bg-black/20 p-0.5"
+              >
+                {(
+                  [
+                    ["all", "All", counts.all],
+                    ["healthy", "Healthy", counts.healthy],
+                    ["degraded", "Needs attention", counts.degraded],
+                    ["revoked", "Revoked", counts.revoked],
+                  ] as const
+                ).map(([value, label, count]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={filter === value}
+                    onClick={() => setParam("health", value, "all")}
+                    className={
+                      "whitespace-nowrap rounded px-3 py-1.5 text-micro font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 " +
+                      (filter === value
+                        ? "bg-white text-black shadow-sm"
+                        : "text-ink-tertiary hover:bg-white/[.05] hover:text-ink-heading")
+                    }
+                  >
+                    {label} <span className="tabular-nums opacity-70">{count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <DataTable
               caption="Gateway inventory"
               rows={rows}
@@ -242,6 +296,7 @@ export default function GatewaysPage() {
               failed={false}
               filterable={false}
               pageSize={25}
+              variant="flat"
               columns={columns}
               empty={
                 <EmptyState>
@@ -251,12 +306,12 @@ export default function GatewaysPage() {
                 </EmptyState>
               }
             />
-          </Card>
-          {state.licence && (
-            <p className="text-micro text-ink-faint">
-              Plan: {state.licence.tier}. Deployment usage: {state.licence.gateways_in_use ?? "not reported"} / {state.licence.gateway_ceiling == null ? "unlimited" : state.licence.gateway_ceiling} gateways.
-            </p>
-          )}
+            {state.licence && (
+              <div className="border-t border-white/[.08] px-3 py-2 text-micro text-ink-faint">
+                {state.licence.tier} plan · {state.licence.gateways_in_use ?? "not reported"} / {state.licence.gateway_ceiling == null ? "unlimited" : state.licence.gateway_ceiling} gateways
+              </div>
+            )}
+          </section>
         </>
       )}
 
@@ -264,16 +319,16 @@ export default function GatewaysPage() {
         <Modal
           title="Enroll gateway"
           onDismiss={closeEnrollment}
-          size="wide"
-          actions={<Button variant="ghost" onClick={closeEnrollment}>Close</Button>}
+          size="enrollment"
         >
           <p className="mb-3 text-cell text-ink-tertiary">
-            Issue a one-time command for a Linux gateway. Token issuance means only that the command is ready; enrollment and connectivity are not yet server-correlated.
+            Create a one-time command, then run it on the Linux host that will carry private traffic.
           </p>
           <EnrolCeremony
             org={org}
             initiallyOpen
             hideHeader
+            onCancel={closeEnrollment}
             onEnrollmentAcknowledged={closeEnrollment}
           />
         </Modal>

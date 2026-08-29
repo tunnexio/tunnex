@@ -9,11 +9,10 @@ import {
   type NavCollapse,
 } from "../lib/navcollapse";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Logo, PRODUCT_TAGLINE, Tagline } from "../brand";
+import { Logo, Tagline } from "../brand";
 import { useAuth } from "../lib/auth";
 import { useResendVerification } from "../lib/useResendVerification";
 import { Button } from "./ui";
-import { HealthStatus } from "./HealthStatus";
 import { IdentityBadges } from "./IdentityBadges";
 import { useLayoutCapability } from "./ComposeGate";
 import { CommandPalette } from "./CommandPalette";
@@ -80,7 +79,7 @@ export const NAV_GROUPS: Array<{
   },
   {
     group: "SETTINGS",
-    items: [{ to: "/settings", label: "Org Settings", icon: "settings" }],
+    items: [{ to: "/settings", label: "Settings", icon: "settings" }],
   },
 ];
 
@@ -88,7 +87,6 @@ export const NAV_GROUPS: Array<{
 export const NAV_DESTINATIONS = NAV_GROUPS.flatMap((g) => g.items);
 
 /** The triage set — the surfaces mobile exists FOR (read health, work the approval queue, act on devices). */
-const TRIAGE_SET = ["/dashboard", "/devices", "/access"];
 
 /**
  * The badge for a destination, or `null`.
@@ -208,6 +206,7 @@ function SidebarFooterProfile({
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const initials = useMemo(() => {
     if (!email) return "DA";
     const namePart = email.split("@")[0] || "";
@@ -227,32 +226,73 @@ function SidebarFooterProfile({
       .join(" ");
   }, [email]);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePress = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
   return (
-    <div className="relative mt-auto border-t border-line/60 pt-2.5">
+    <div ref={menuRef} className="relative mt-auto border-t border-line/60 pt-2.5">
       {/* Expandable Popover Menu */}
-      {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-full min-w-[210px] rounded-xl border border-white/10 bg-[#121215] p-3 shadow-2xl backdrop-blur-xl z-50">
-          <div className="mb-2 pb-2 border-b border-white/10">
-            <p className="text-xs font-semibold text-white truncate">
-              {displayName}
-            </p>
-            <p className="text-[11px] text-slate-400 truncate mt-0.5">
-              {email}
-            </p>
-            <div className="mt-2 flex items-center gap-1.5">
-              <IdentityBadges />
+      <div
+        id="account-menu"
+        aria-label="Account"
+        hidden={!open}
+        className={`absolute z-50 overflow-hidden rounded-2xl border border-white/[0.09] bg-[#1b1b1d] p-1.5 shadow-[0_22px_60px_rgba(0,0,0,0.52)] ${
+          collapsed
+            ? "bottom-0 left-[calc(100%+0.625rem)] w-64"
+            : "bottom-full inset-x-0 mb-2 w-full"
+        }`}
+      >
+          <div className="flex min-h-12 items-center gap-2.5 px-2.5 py-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-400/70 font-mono text-[11px] font-semibold text-white">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-100">
+                {displayName}
+              </p>
+              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                {email}
+              </p>
             </div>
           </div>
+          <div className="mx-1 border-t border-white/[0.07]" />
+          <div className="py-1">
+            <IdentityBadges variant="menu" />
+            <NavLink
+              to="/settings"
+              onClick={() => setOpen(false)}
+              className="flex min-h-9 items-center gap-2 rounded-lg px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-slate-300"
+            >
+              <Icon name="settings" size={15} className="text-slate-400" />
+              <span>Settings</span>
+            </NavLink>
+          </div>
+          <div className="mx-1 border-t border-white/[0.07]" />
           <button
             type="button"
-            onClick={onLogout}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-rose-400 transition-colors hover:bg-rose-500/10"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="mt-1 flex min-h-9 w-full items-center gap-2 rounded-lg px-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/[0.06] hover:text-rose-300 focus-visible:outline focus-visible:outline-1 focus-visible:outline-rose-400"
           >
-            <Icon name="log-out" size={14} />
+            <Icon name="log-out" size={15} />
             <span>Log out</span>
           </button>
-        </div>
-      )}
+      </div>
 
       {/* Main Profile Card Button */}
       {collapsed ? (
@@ -262,7 +302,9 @@ function SidebarFooterProfile({
             onClick={() => setOpen((o) => !o)}
             title={`Signed in as ${email}`}
             aria-label={`Signed in as ${email}`}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 border border-white/10 text-xs font-bold text-white transition-transform hover:scale-105"
+            aria-expanded={open}
+            aria-controls="account-menu"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-400/70 text-[11px] font-semibold text-white transition-colors hover:bg-accent-400/85 focus-visible:outline focus-visible:outline-1 focus-visible:outline-slate-300"
           >
             {initials}
           </button>
@@ -272,23 +314,23 @@ function SidebarFooterProfile({
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
+          aria-controls="account-menu"
           aria-label="User profile menu"
-          className="flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-left transition-colors hover:bg-white/[0.06]"
+          className="group flex min-h-11 w-full items-center gap-2.5 rounded-lg bg-white/[0.025] px-1.5 py-1.5 text-left ring-1 ring-inset ring-white/[0.06] transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-white/[0.16]"
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 border border-white/10 font-mono text-xs font-bold text-white shadow-sm">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-400/70 font-mono text-[11px] font-semibold text-white">
             {initials}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-white leading-tight">
+            <p className="truncate text-xs font-semibold leading-tight text-slate-100">
               {displayName}
             </p>
-            <p className="truncate text-[11px] text-slate-400 leading-tight mt-0.5">
-              {email}
-            </p>
           </div>
-          <span className="text-slate-400 shrink-0 text-[10px]">
-            {open ? "▲" : "▼"}
-          </span>
+          <Icon
+            name="chevron-right"
+            size={14}
+            className={`shrink-0 text-slate-500 transition-transform ${open ? "-rotate-90" : "rotate-90"}`}
+          />
         </button>
       )}
     </div>
@@ -445,37 +487,11 @@ function SidebarNav({
   );
 }
 
-/**
- * The triage bottom bar: the on-call subset, one tap away, at `triage` only.
- *
- * It is a SECOND surface carrying destinations that already exist in the drawer, so it is derived from
- * NAV_DESTINATIONS rather than re-listed — a hand-written copy is how the two drift apart.
- */
-function TriageBar() {
-  const items = NAV_DESTINATIONS.filter((i) => TRIAGE_SET.includes(i.to));
-  return (
-    <nav
-      aria-label="Triage"
-      className="sticky bottom-0 flex justify-around border-t border-white/5 bg-ink-950 px-2 py-2"
-    >
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          className="px-3 py-1 text-xs text-slate-400"
-        >
-          {item.label}
-        </NavLink>
-      ))}
-    </nav>
-  );
-}
-
 /** AppShell is the authenticated layout: header (brand + user + logout), sidebar
  * nav, and the routed page in the main area. */
 export function AppShell() {
   const { state, logout } = useAuth();
-  const { navMode, columns } = useLayoutCapability();
+  const { columns } = useLayoutCapability();
   const navigate = useNavigate();
   const location = useLocation();
   const pageRef = useRef<HTMLElement>(null);
@@ -525,7 +541,7 @@ export function AppShell() {
                 className="hidden items-center gap-2 rounded-input border border-line bg-surface-inset px-3 py-[7px] text-cell text-ink-secondary hover:text-ink-body md:flex"
               >
                 <Icon name="search" size={13} />
-                <span>Search users, devices, gateways, sites…</span>
+                <span>Go to a page…</span>
                 <span className="ml-2 font-mono text-badge text-ink-secondary">
                   ⌘K
                 </span>
@@ -552,12 +568,6 @@ export function AppShell() {
         </div>
       </div>
 
-      {navMode === "drawer" && <TriageBar />}
-
-      <footer className="flex shrink-0 items-center justify-between border-t border-white/5 px-6 py-3 text-xs text-slate-600">
-        <HealthStatus />
-        <span>{PRODUCT_TAGLINE}</span>
-      </footer>
     </div>
   );
 }

@@ -16,13 +16,15 @@ export type ConnectedAgentInventoryState =
  */
 export function K8sServiceInventoryStatus({
   state,
+  variant = "card",
 }: {
   state: ConnectedAgentInventoryState;
+  variant?: "card" | "flat";
 }) {
   return (
     <section
       aria-labelledby="verified-k8s-inventory"
-      className="rounded-card border border-line bg-ink-900/40 p-3"
+      className={variant === "card" ? "tnx-card-surface p-3" : "py-1"}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="verified-k8s-inventory" className="text-sm font-semibold text-ink-heading">

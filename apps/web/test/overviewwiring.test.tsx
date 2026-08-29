@@ -58,6 +58,78 @@ vi.mock("../src/lib/api", async () => {
             : { data: empty ? [] : [{ id: "s1" }] };
         if (path.endsWith("/devices/pending")) return { data: [] };
         if (path.endsWith("/devices")) return { data: [] };
+        if (path.endsWith("/k8s/clusters"))
+          return {
+            data: empty
+              ? []
+              : [
+                  {
+                    id: "k1",
+                    site_id: "s1",
+                    connector_node_id: null,
+                    name: "gitops-platform",
+                    vip_range: "100.96.0.0/24",
+                    service_cidr: "10.96.0.0/12",
+                    dns_zone: "gitops.internal",
+                    dns_vip: null,
+                    managed_by_operator: true,
+                  },
+                  {
+                    id: "k2",
+                    site_id: "s1",
+                    connector_node_id: null,
+                    name: "payments",
+                    vip_range: "100.97.0.0/24",
+                    service_cidr: "10.97.0.0/16",
+                    dns_zone: "payments.internal",
+                    dns_vip: null,
+                    managed_by_operator: false,
+                  },
+                ],
+          };
+        if (path.endsWith("/k8s/services"))
+          return {
+            data: empty
+              ? []
+              : [
+                  {
+                    id: "svc-1",
+                    cluster_id: "k1",
+                    name: "gitops",
+                    namespace: "platform",
+                    protocol: "tcp",
+                    port_low: 443,
+                    port_high: 443,
+                    vip: "100.96.0.10",
+                    fqdn: "gitops.gitops.internal",
+                    managed_by_operator: true,
+                  },
+                  {
+                    id: "svc-2",
+                    cluster_id: "k2",
+                    name: "api",
+                    namespace: "payments",
+                    protocol: "tcp",
+                    port_low: 443,
+                    port_high: 443,
+                    vip: "100.97.0.10",
+                    fqdn: "api.payments.internal",
+                    managed_by_operator: false,
+                  },
+                  {
+                    id: "svc-3",
+                    cluster_id: "k2",
+                    name: "worker",
+                    namespace: "payments",
+                    protocol: "tcp",
+                    port_low: null,
+                    port_high: null,
+                    vip: "100.97.0.11",
+                    fqdn: "worker.payments.internal",
+                    managed_by_operator: false,
+                  },
+                ],
+          };
         // The hub-set endpoint returns an OBJECT, not a list. The catch-all `{ data: [] }` below fed an array
         // into hubSetView and threw — which surfaced as "cannot find Members", i.e. the whole page failing to
         // render. A catch-all mock is a fixture that answers questions it was never asked.
@@ -150,7 +222,7 @@ describe("⛔ A FAILED COUNT NEVER RENDERS AS ZERO", () => {
     // The rule is not "never show 0". It is "NEVER SHOW 0 FOR SOMETHING WE DID NOT LEARN" — and a page-wide
     // text query cannot tell those apart, because on screen they are the same character. So the assertion is
     // scoped to the FAILED card, which is the only place the distinction lives.
-    const sitesCard = screen.getByText("Sites").closest("div")!.parentElement!;
+    const sitesCard = screen.getByRole("group", { name: "Sites" });
     // (copy changed with the design pass; the ASSERTION is unchanged — a failed card must not show a number)
     expect(within(sitesCard).queryByText("0")).toBeNull();
   });
@@ -165,15 +237,35 @@ describe("⛔ A FAILED COUNT NEVER RENDERS AS ZERO", () => {
   });
 });
 
-describe("the gateway health list uses the ONE health interpreter", () => {
-  it("renders the badge policyHealthBadge produces, not a second vocabulary", async () => {
+describe("the gateway health summary uses the ONE health interpreter", () => {
+  it("aggregates the verdict policyHealthBadge produces, not a second vocabulary", async () => {
     show();
-    const list = await waitFor(() =>
-      screen.getByRole("list", { name: "Gateway health" }),
+    const conditions = await waitFor(() =>
+      screen.getByRole("group", { name: "Gateway health conditions" }),
     );
     // `silent_desync` -> "silent desync" comes from lib/healthview.ts. If this screen grew its own mapping,
     // the two would drift and BOTH would still render — which is why there is exactly one interpreter.
-    expect(within(list).getByText("silent desync")).toBeTruthy();
+    const silentDesync = within(conditions).getByText("silent desync").closest("div");
+    expect(silentDesync && within(silentDesync).getByText("1")).toBeTruthy();
+    expect(within(conditions).queryByText("gw-a")).toBeNull();
+  });
+
+  it("summarizes total, healthy, unhealthy, and revoked gateways in a named figure", async () => {
+    show();
+    const summary = await waitFor(() =>
+      screen.getByRole("figure", { name: "Gateway health summary" }),
+    );
+    expect(within(summary).getByText("total")).toBeTruthy();
+    expect(within(summary).getByText("Healthy")).toBeTruthy();
+    expect(within(summary).getByText("Unhealthy")).toBeTruthy();
+    expect(within(summary).getByText("Revoked")).toBeTruthy();
+    const healthy = within(summary).getByText("Healthy").closest("li");
+    const unhealthy = within(summary).getByText("Unhealthy").closest("li");
+    const revoked = within(summary).getByText("Revoked").closest("li");
+    expect(healthy && within(healthy).getByText("0")).toBeTruthy();
+    expect(unhealthy && within(unhealthy).getByText("1")).toBeTruthy();
+    expect(revoked && within(revoked).getByText("0")).toBeTruthy();
+    expect(within(summary).getAllByText("1")).toHaveLength(2);
   });
 
   it("a failed /nodes says unavailable — never an empty 'all healthy' list", async () => {
@@ -183,7 +275,48 @@ describe("the gateway health list uses the ONE health interpreter", () => {
     await waitFor(() =>
       expect(screen.getByText("Gateway health is unavailable.")).toBeTruthy(),
     );
-    expect(screen.queryByRole("list", { name: "Gateway health" })).toBeNull();
+    expect(screen.queryByRole("figure", { name: "Gateway health summary" })).toBeNull();
+  });
+});
+
+describe("the populated Overview consolidates operational state into four cards", () => {
+  it("renders the approved four regions without the former standalone panel chrome", async () => {
+    show();
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Fleet summary" })).toBeTruthy(),
+    );
+    expect(screen.getByRole("region", { name: "Gateway Health" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Device Health" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Infrastructure" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Peer Connection Status" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Device Posture" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "HA Hub Set" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Network map" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Kubernetes" })).toBeNull();
+  });
+
+  it("keeps topology, HA, and compact Kubernetes state visible without a view toggle", async () => {
+    show();
+    const infrastructure = await waitFor(() =>
+      screen.getByRole("region", { name: "Infrastructure" }),
+    );
+    expect(
+      within(infrastructure).queryByRole("tablist", {
+        name: "Infrastructure views",
+      }),
+    ).toBeNull();
+    expect(within(infrastructure).getByText("HA Hub Set")).toBeTruthy();
+    expect(within(infrastructure).getByText("Kubernetes")).toBeTruthy();
+    const kubernetes = within(infrastructure).getByRole("group", {
+      name: "Kubernetes summary",
+    });
+    expect(within(kubernetes).getByText("Exposed services")).toBeTruthy();
+    expect(within(kubernetes).getByText("3")).toBeTruthy();
+    expect(within(kubernetes).getByText("gitops-platform")).toBeTruthy();
+    expect(within(kubernetes).getByText("payments")).toBeTruthy();
+    expect(
+      within(kubernetes).getByRole("link", { name: /Open Kubernetes/ }),
+    ).toBeTruthy();
   });
 });
 
@@ -271,7 +404,7 @@ describe("licence capability state does not suppress base operational cards", ()
     edition = "open";
     show();
     await waitFor(() => expect(screen.getByText("Members")).toBeTruthy());
-    expect(screen.getByText("Pending approvals")).toBeTruthy();
+    expect(screen.getByText("Approvals")).toBeTruthy();
     expect(screen.queryByText("could not load")).toBeNull();
   });
 
@@ -279,7 +412,7 @@ describe("licence capability state does not suppress base operational cards", ()
     edition = "enterprise";
     show();
     await waitFor(() =>
-      expect(screen.getByText("Pending approvals")).toBeTruthy(),
+      expect(screen.getByText("Approvals")).toBeTruthy(),
     );
   });
 
@@ -287,7 +420,7 @@ describe("licence capability state does not suppress base operational cards", ()
     edition = null;
     show();
     await waitFor(() => expect(screen.getByText("Members")).toBeTruthy());
-    expect(screen.getByText("Pending approvals")).toBeTruthy();
+    expect(screen.getByText("Approvals")).toBeTruthy();
   });
 });
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button, Field, Input } from "./ui";
 
 export type AgentProfileStatus = "pending" | "active" | "suspended" | "revoked";
 
@@ -51,29 +52,24 @@ export function AgentProfileEditor({ value, canManageLifecycle, onSaveMetadata, 
   }
 
   return (
-    <form className="grid gap-3 rounded-lg border border-line bg-ink-900/40 p-3" onSubmit={submit} aria-label="Agent metadata">
-      <label className="grid gap-1 text-xs text-ink-secondary">
-        Environment
-        <input className="rounded border border-line bg-ink-800 px-2 py-1 text-white" value={draft.environment} disabled={disabled} onChange={(e) => setDraft({ ...draft, environment: e.target.value })} />
-      </label>
-      <label className="grid gap-1 text-xs text-ink-secondary">
-        Runtime
-        <input className="rounded border border-line bg-ink-800 px-2 py-1 text-white" value={draft.runtime} disabled={disabled} onChange={(e) => setDraft({ ...draft, runtime: e.target.value })} />
-      </label>
-      <label className="grid gap-1 text-xs text-ink-secondary">
-        Labels (JSON)
-        <textarea aria-describedby={labelError ? "agent-label-error" : undefined} className="min-h-20 rounded border border-line bg-ink-800 px-2 py-1 font-mono text-xs text-white" value={labels} disabled={disabled} onChange={(e) => { setLabels(e.target.value); setLabelError(null); }} />
-      </label>
+    <form className="grid gap-3" onSubmit={submit} aria-label="Agent metadata">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Environment"><Input value={draft.environment} disabled={disabled} onChange={(e) => setDraft({ ...draft, environment: e.target.value })} /></Field>
+        <Field label="Runtime"><Input value={draft.runtime} disabled={disabled} onChange={(e) => setDraft({ ...draft, runtime: e.target.value })} /></Field>
+      </div>
+      <Field label="Labels (JSON)">
+        <textarea aria-describedby={labelError ? "agent-label-error" : undefined} className="min-h-20 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 font-mono text-xs text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" value={labels} disabled={disabled} onChange={(e) => { setLabels(e.target.value); setLabelError(null); }} />
+      </Field>
       {labelError && <p id="agent-label-error" role="alert" className="text-xs text-danger">{labelError}</p>}
-      <p className="text-xs text-ink-secondary">Lifecycle: {value.status}</p>
+      <p className="text-xs text-ink-tertiary">Lifecycle: <span className="text-ink-body">{value.status}</span></p>
       {value.status === "pending" && <p className="text-xs text-ink-secondary">Awaiting approval; this editor cannot bypass device approval.</p>}
       {value.status === "revoked" && <p className="text-xs text-ink-secondary">Revoked is terminal; enrol a new agent instead.</p>}
       {lifecycleAction && canManageLifecycle && (
-						<button type="button" className="w-fit rounded border border-line px-3 py-1 text-xs text-white disabled:opacity-50" disabled={lifecycleDisabled} onClick={() => onLifecycleChange(lifecycleAction === "suspend" ? "suspended" : "active")}>
+            <Button size="sm" variant="ghost" type="button" disabled={lifecycleDisabled} onClick={() => onLifecycleChange(lifecycleAction === "suspend" ? "suspended" : "active")}>
           {lifecycleAction === "suspend" ? "Suspend agent" : "Resume agent"}
-        </button>
+        </Button>
       )}
-      <button className="w-fit rounded bg-accent px-3 py-1 text-xs text-white disabled:opacity-50" type="submit" disabled={disabled}>Save metadata</button>
+      <Button size="sm" className="w-fit" type="submit" disabled={disabled}>Save metadata</Button>
     </form>
   );
 }

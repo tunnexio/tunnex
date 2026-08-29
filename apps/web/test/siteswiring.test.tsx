@@ -239,6 +239,10 @@ describe("Sites — served HA topology", () => {
     expect(document.querySelectorAll('[data-node-kind="hub"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-node-kind="hub-standby"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-node-kind="spoke"]')).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    expect(screen.queryByRole("figure", { name: "Site topology" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Expand" })).toBeTruthy();
+    expect(screen.getByText(/topology links/)).toBeTruthy();
   });
 });
 
@@ -324,11 +328,18 @@ describe("Sites — URL-backed workspace state", () => {
     await waitFor(() =>
       expect(screen.getByRole("region", { name: "Selected Site: us-east-dc" })).toBeTruthy(),
     );
+    expect(screen.getByRole("dialog", { name: "us-east-dc" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "View details" }).getAttribute("href")).toBe("#site-details");
     expect(screen.getByRole("button", { name: "Advertise subnet" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Unbind gateway" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete site" })).toBeTruthy();
     expect(screen.getByText("Danger zone")).toBeTruthy();
+    expect(screen.getByText("Advanced cloud routing").closest("details")?.hasAttribute("open")).toBe(false);
+    expect(screen.getByText("Advanced Site DNS forwarding").closest("details")?.hasAttribute("open")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Close us-east-dc" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "us-east-dc" })).toBeNull());
+    expect(screen.getByTestId("location").textContent).not.toContain("site=");
+    expect(screen.queryByText("Select a Site")).toBeNull();
   });
 });
 

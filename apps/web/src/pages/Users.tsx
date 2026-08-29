@@ -24,9 +24,11 @@ import {
   ErrorText,
   Field,
   Input,
+  Loading,
   Modal,
   PageHeader,
 } from "../components/ui";
+import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import { toast } from "../components/Toasts";
 import {
@@ -73,6 +75,8 @@ export default function Users() {
   const emailVerified = state.status === "authed" && state.user.email_verified;
   const [org, setOrg] = useState<Org | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [membersState, setMembersState] = useState<"loading" | "ready" | "error">("loading");
+  const [membersLoadError, setMembersLoadError] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<Member | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +84,7 @@ export default function Users() {
   const [invites, setInvites] = useState<Invitation[] | null>(null);
   const [inviteErr, setInviteErr] = useState<string | null>(null);
   const [inviteBusy, setInviteBusy] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
   // ⛔ `null` MEANS "NOT LOADED", AND IT IS NOT THE SAME AS `[]`. An empty array is a fetched answer; null is
   // the absence of one, and deviceCountFor / groupAccessState each have a DISTINCT arm for it. Initialising
   // these to `[]` would make a page that has not finished loading claim every member owns nothing.
@@ -112,13 +117,19 @@ export default function Users() {
   );
 
   async function loadMembers(orgId: string) {
+    setMembersState("loading");
+    setMembersLoadError(null);
     const { data, error } = await api.GET(
       "/api/v1/organizations/{orgId}/members",
       { params: { path: { orgId } } },
     );
-    if (error)
-      return setError(apiErrorMessage(error, "Could not load members."));
+    if (error) {
+      setMembersLoadError(apiErrorMessage(error, "Could not load members."));
+      setMembersState("error");
+      return;
+    }
     setMembers(data ?? []);
+    setMembersState("ready");
   }
 
   useEffect(() => {
@@ -150,12 +161,15 @@ export default function Users() {
         // accusation that the user does not belong here.
         if (orgLoading) return;
         const first = currentOrg;
-        if (!first)
-          return setError(
+        if (!first) {
+          setMembersLoadError(
             orgFailed
               ? "Could not load your organizations."
               : "You are not a member of any organization yet.",
           );
+          setMembersState("error");
+          return;
+        }
         setOrg(first);
         if (!cancelled) await loadMembers(first.id);
       } catch {
@@ -345,25 +359,101 @@ export default function Users() {
   // The table filters now, so the page hands it the whole roster.
   const shown = members;
 
+  if (membersState === "loading") {
+    return (
+      <div>
+        <PageHeader title="Users" subtitle={org ? org.name : "Loading organization…"} />
+        <Card>
+          <Loading label="Loading members…" />
+        </Card>
+      </div>
+    );
+  }
+
+  if (membersState === "error") {
+    return (
+      <div>
+        <PageHeader title="Users" subtitle={org ? org.name : "Organization unavailable"} />
+        <Card>
+          <LoadRetry
+            error={membersLoadError ?? "Could not load members."}
+            onRetry={() =>
+              org ? void loadMembers(org.id) : window.location.reload()
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <PageHeader title="Users" subtitle={org ? org.name : "…"} />
+      <PageHeader
+        title="Users & Roles"
+        subtitle={
+          org
+            ? `${org.name} · ${members.length} ${members.length === 1 ? "person" : "people"}`
+            : "…"
+        }
+        actions={
+          can(myRole, "member:invite") && emailVerified && org ? (
+            <Button onClick={() => setInviteOpen(true)}>Invite user</Button>
+          ) : undefined
+        }
+      />
       <ErrorText>{error}</ErrorText>
 
-      {/* ⛔ THE ROSTER COMES FIRST. It was FOURTH — below invitations, below a posture panel, below the
-          invite form — so the thing this page is named after was the last thing on it, reached only by
-          scrolling past three cards. The panels are CONTEXT; the roster is the SUBJECT.
-
-          ⚠ And the invite form now sits directly above the table it adds to, rather than adrift between
-          two panels — the same placement rule the Groups screen needed. */}
-      {can(myRole, "member:invite") && emailVerified && org && (
-        <InviteForm orgId={org.id} onInvited={() => loadMembers(org.id)} />
-      )}
+      <section
+        aria-labelledby="access-posture-heading"
+        className="mt-4 flex min-h-16 flex-wrap items-center gap-x-7 gap-y-3 border-y border-white/10 py-3"
+      >
+        <h2 id="access-posture-heading" className="sr-only">Access posture</h2>
+        <div className="flex items-baseline gap-2 border-r border-white/10 pr-7">
+          <span className="text-2xl font-semibold tabular-nums text-ink-heading">
+            {members.length}
+          </span>
+          <span className="text-xs font-medium uppercase tracking-[0.12em] text-ink-tertiary">
+            people
+          </span>
+          {members.some((m) => m.status === "deactivated") && (
+            <span className="ml-2 text-xs text-warn">
+              {members.filter((m) => m.status === "deactivated").length} deactivated
+            </span>
+          )}
+          <p className="sr-only">{rosterSubtitle(members)}</p>
+        </div>
+        <dl className="flex flex-wrap items-center gap-x-7 gap-y-2">
+          {roleDistribution(members).map((t) => (
+            <div key={t.role} className="flex items-baseline gap-2">
+              <dd className="text-lg font-semibold tabular-nums text-ink-heading">{t.n}</dd>
+              <dt className="text-[10px] uppercase tracking-[0.12em] text-ink-tertiary">
+                {t.role}{t.n === 1 ? "" : "s"}
+              </dt>
+              <span className="sr-only">{roleTallyLabel(t)}</span>
+            </div>
+          ))}
+        </dl>
+        <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-ink-tertiary">
+          <span>
+            <span className="font-medium text-ink-secondary">Groups</span>{" "}
+            {groupAccess.kind === "edges"
+              ? `· ${groupAccessLabel(groupAccess)} in this organization.`
+              : `· ${groupAccessLabel(groupAccess)}.`}
+            <span className="sr-only"> The count stands in for it until the relationship view is available.</span>
+          </span>
+          {can(myRole, "member:manage") && (
+            <span title={LAST_OWNER_NOTE}>Last owner is protected</span>
+          )}
+        </div>
+        {shape.gateNote && (
+          <p className="w-full text-xs text-ink-tertiary">{shape.gateNote}</p>
+        )}
+      </section>
 
       {/* S14.3 slice A: a real <table>. The roster is tabular — person, role, state, actions per row — and as
           <li> blocks the tier could only find a member by matching their email as free text. The role control
           and the action buttons keep their own accessible names, so they stay queryable INSIDE a cell. */}
-      <div className="mt-6">
+      <div className="mt-5">
         {/* ⛔ ONE FILTER, AND IT IS THE TABLE'S NOW. The page carried a separate "Filter members" field
             floating above the roster in its own box — disconnected from the thing it narrowed, and a second
             search input the moment the table grew one.
@@ -374,6 +464,7 @@ export default function Users() {
             weaker control to preserve a helper would have been keeping the test, not the capability. */}
         <DataTable
           caption="Members"
+          selectionBar="active"
           // ⛔ THE VERBS LEAVE THE ROWS. Deactivate / Reactivate / Reset 2FA were redrawn on every row —
           // three buttons per member, the same three words down the page, crowding out who the member IS.
           //
@@ -603,27 +694,23 @@ export default function Users() {
         {/* ⚠ CONTEXT, BELOW THE SUBJECT, AND SIDE BY SIDE — two short cards stacked full-width were a screen
           of scrolling to reach a roster. Columns, so a wider display adds a column rather than stretching
           either card. */}
-        <div className="mt-6 grid items-start gap-3.5 lg:grid-cols-2">
+        {invites !== null && inviteGate(myRole).kind === "ready" && (
+          <details className="group mt-5 border-y border-white/10 py-1">
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-ink-heading focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent-400">
+              <span>Invitation history</span>
+              <span className="flex items-center gap-3 text-xs font-normal text-ink-tertiary">
+                {outstandingCount(invites, new Date())} outstanding
+                <span aria-hidden="true" className="transition-transform group-open:rotate-180">⌄</span>
+              </span>
+            </summary>
           {/* ── Pending invitations ───────────────────────────────────────────────────────────────────────────
           ⛔ THE ONLY WRITE-ONLY STATE IN THE PRODUCT THAT IS ITSELF AN ACCESS GRANT. `resendInvitation` and
           `revokeInvitation` are keyed by EMAIL and nothing served the addresses, so an invitation could be
           created and then never seen, resent or revoked — while remaining redeemable into a membership.
           The other write-only items are CONFIGURATION whose effect shows up elsewhere; this one has no
           observable effect until the moment it becomes a member. */}
-          {invites !== null && inviteGate(myRole).kind === "ready" && (
-            <div className="mt-6">
+            <div className="pb-4 pt-2">
               <Card>
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-sm font-semibold text-white">
-                    Invitations
-                  </h2>
-                  {/* The count names OUTSTANDING rows only — pending plus expired. An accepted invitation is a
-                  member now and is already counted on the roster; counting it here would overstate how many
-                  people have a live path into the org, which is the number this panel exists to show. */}
-                  <span className="text-xs text-slate-400">
-                    {outstandingCount(invites, new Date())} outstanding
-                  </span>
-                </div>
                 {/* ⛔ A TABLE, BECAUSE THE ROW WAS WRAPPING. Email + badge + role + inviter + two buttons on
                   one flex line meant a long address pushed Resend/Revoke onto a second row for SOME
                   invitations and not others — the controls sat in a different place on every row, which is
@@ -632,9 +719,10 @@ export default function Users() {
                   ⚠ EVERY STATE STILL RENDERS, including accepted and revoked. They are the audit trail of
                   who was let in and who was withdrawn, and the "N outstanding" count above already keeps
                   them from inflating the number that matters. */}
-                <div className="mt-3">
+                <div>
                   <DataTable<Invitation>
                     caption="Invitations"
+                    selectionBar="active"
                     rows={orderInvitations(invites, new Date())}
                     rowKey={(inv) => inv.id}
                     rowAttrs={(inv) => ({
@@ -755,13 +843,13 @@ export default function Users() {
                 <ErrorText>{inviteErr}</ErrorText>
               </Card>
             </div>
-          )}
 
           {/* ── Access posture ────────────────────────────────────────────────────────────────────────────────
           The wireframe's subtitle promises `role hierarchy · MFA coverage · authentication sources` and the
           product projects ONE of the three. This panel ships that one and NAMES the two it does not have,
           rather than printing a subtitle that promises all three. `MFA enrolled 5/7` in particular is a
           NUMBER, and a reader trusts a number more than prose. */}
+          {false && (
           <div className="mt-6">
             <Card>
               <h2 className="text-sm font-semibold text-white">
@@ -810,28 +898,20 @@ export default function Users() {
               thing on this screen that renders the edition/permission seam — the four-gate shape the section
               exists to demonstrate. So it keeps its own line, named as standing in for teamMap.
               Registered: docs/DEFERRAL-REGISTER.md. */}
-              <p className="mt-3 border-t border-white/5 pt-3 text-xs text-slate-400">
-                <span className="text-slate-500">Group membership</span>{" "}
+              <p className="mt-3 border-t border-white/5 pt-3 text-cell text-ink-secondary">
+                <span className="font-medium text-ink-heading">Groups</span>{" "}
                 {groupAccess.kind === "edges"
                   ? `— ${groupAccessLabel(groupAccess)} in this organization.`
-                  : `— ${groupAccessLabel(groupAccess)}.`}{" "}
-                <span className="text-slate-500">
-                  The role-and-group map is not built yet; this stands in for
-                  it.
-                </span>
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                MFA coverage and authentication sources are not shown per member
-                yet: both are enforced by the server but not carried on the
-                roster response. Two-factor can still be reset per member from
-                the row actions.
+                  : `— ${groupAccessLabel(groupAccess)}.`}
               </p>
               {shape.gateNote && (
                 <p className="mt-2 text-xs text-slate-400">{shape.gateNote}</p>
               )}
             </Card>
           </div>
-        </div>
+          )}
+          </details>
+        )}
 
         {/* ⛔ §2.5 OF THE COMMIT-ONE SAID "NO CLIENT-SIDE OWNER COUNT" AND THE SCREEN ALREADY HAD ONE, with a
             written rationale (see isSoleOwner). I ruled on this screen's behaviour without reading the screen
@@ -842,10 +922,18 @@ export default function Users() {
               the REFUSAL is the server's — mutate() surfaces apiErrorMessage(error, fallback), server text
                                             first, and refetches so a lost race self-corrects
             What §2.5 must forbid is PREDICTING THE REFUSAL TEXT, not disabling a control. */}
-        {can(myRole, "member:manage") && (
-          <p className="mt-2 text-xs text-slate-500">{LAST_OWNER_NOTE}</p>
-        )}
       </div>
+      {inviteOpen && org && (
+        <InviteForm
+          orgId={org.id}
+          // Creating an invitation does not change the member roster until it is accepted.
+          // Refreshing members here put the whole page into its loading state, unmounting
+          // InviteForm before its one-time link could be shown. Refresh invitation history
+          // instead so the security-sensitive link remains visible for the operator to copy.
+          onInvited={() => void loadInvites()}
+          onDismiss={() => setInviteOpen(false)}
+        />
+      )}
       {resetTarget && (
         <Modal
           title="Reset two-factor authentication"
@@ -901,9 +989,11 @@ export default function Users() {
 function InviteForm({
   orgId,
   onInvited,
+  onDismiss,
 }: {
   orgId: string;
   onInvited: () => void;
+  onDismiss: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("member");
@@ -949,7 +1039,11 @@ function InviteForm({
       toast.error(msg);
       return;
     }
-    toast.success(`Invitation sent to ${email}`);
+    toast.success(
+      data.delivered === false
+        ? "Invitation created. Copy the one-time link now."
+        : `Invitation sent to ${email}`,
+    );
     setEmail("");
     // Build the accept link from THIS origin (correct host regardless of the API's
     // APP_BASE_URL) and show it once for the admin to copy + hand to the invitee —
@@ -960,65 +1054,71 @@ function InviteForm({
     onInvited();
   }
 
+  if (inviteLink) {
+    return (
+      <OneTimeSecretModal
+        title="Invitation link"
+        caption={
+          mailOn === false
+            ? "Copy this one-time link and share it securely. Email delivery is not configured, so this is the invitee's only delivery path."
+            : "Copy this one-time link if you want to hand it over directly. The invitee may also receive it by email."
+        }
+        secret={inviteLink}
+        copyLabel="Copy link"
+        onDismiss={() => {
+          setInviteLink(null);
+          onDismiss();
+        }}
+      />
+    );
+  }
+
   return (
-    <form onSubmit={submit} className="mt-6">
-      <Card>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[14rem] flex-1">
-            <Field label="Invite by email">
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="name@company.com"
-              />
-            </Field>
-          </div>
+    <Modal
+      title="Invite user"
+      onDismiss={onDismiss}
+      actions={
+        <>
+          <Button variant="ghost" onClick={onDismiss}>Cancel</Button>
+          <Button type="submit" form="invite-user-form" disabled={busy}>
+            {busy ? "Creating…" : "Create invite"}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-cell text-ink-tertiary">
+        Add a person to this organization and choose their starting role.
+      </p>
+      <form id="invite-user-form" onSubmit={submit} className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
+        <Field label="Email address">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoFocus
+            placeholder="name@company.com"
+          />
+        </Field>
+        <Field label="Role">
           <select
-            className={selectCls}
+            className={`${selectCls} min-h-11 w-full px-3 py-2`}
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
             aria-label="Role"
           >
             {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
+              <option key={r} value={r}>{r}</option>
             ))}
           </select>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Sending…" : "Send invite"}
-          </Button>
-        </div>
-        {/* ⛔ MAIL IS OFF, AND THE SCREEN SAYS SO BEFORE THE CLICK RATHER THAN AFTER THE SILENCE. The
-            invitation still works — the link modal is the delivery path — so this is an instruction, not a
-            refusal, and it must not read as one. */}
-        {mailOn === false && (
-          <p className="mt-3 text-cell text-warn">
-            Email is not configured on this deployment, so nothing will be sent.
-            The invitation is still created and you will get a link to hand over
-            yourself. Set SMTP_HOST and restart the API to send mail.
-          </p>
-        )}
-        {/* Success uses the accent, not green (green = liveness only, S4.4). The
-            copy is deliberately generic — it never reveals whether the address
-            already had an account. */}
-        <ErrorText>{err}</ErrorText>
-      </Card>
-      {inviteLink && (
-        <OneTimeSecretModal
-          title="Invitation link"
-          caption={
-            mailOn === false
-              ? "Copy this link and send it to the invitee. It works once, expires, and won't be shown again. Email is NOT configured on this deployment, so this link is the only way they will get in."
-              : "Copy this link and send it to the invitee. It works once, expires, and won't be shown again. If email is configured, they also received it."
-          }
-          secret={inviteLink}
-          copyLabel="Copy link"
-          onDismiss={() => setInviteLink(null)}
-        />
+        </Field>
+      </form>
+      {mailOn === false && (
+        <p className="mt-4 border-t border-white/5 pt-4 text-xs text-warn">
+          Email delivery is off. After creating the invitation, copy its one-time link and share it securely.
+        </p>
       )}
-    </form>
+      <ErrorText>{err}</ErrorText>
+    </Modal>
   );
 }
