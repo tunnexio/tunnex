@@ -685,9 +685,9 @@ function TestAccessSection({ orgId }: { orgId: string }) {
   return (
     <div data-testid="test-access-panel">
       <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>Test access</Button>
-      {open && <Modal title="Test access" size="wide" onDismiss={() => setOpen(false)} actions={<Button variant="ghost" onClick={() => setOpen(false)}>Close</Button>}>
+      {open && <Modal title="Test access" size="wide" onDismiss={() => setOpen(false)} actions={<><Button variant="ghost" onClick={() => setOpen(false)}>Close</Button><Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Run test"}</Button></>}>
         <p className="mb-4 text-cell text-ink-tertiary">Explain current policy intent without sending traffic, resolving DNS, or changing policy.</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_minmax(14rem,1.5fr)_7rem_6rem_auto] lg:items-end">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,.9fr)_minmax(14rem,1.4fr)_7rem_6rem] lg:items-end">
           <Field label="Agent">
             <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
               {agents.map((agent) => (
@@ -706,7 +706,6 @@ function TestAccessSection({ orgId }: { orgId: string }) {
           <Field label="Port">
             <Input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} />
           </Field>
-          <Button disabled={busy || !runnable} onClick={run}>{busy ? "Testing…" : "Run test"}</Button>
         </div>
         <ErrorText>{error}</ErrorText>
         {result && (
@@ -2297,7 +2296,9 @@ function RuleFormModal({
             ⚠ THE GUARD IS THE SERVER'S (invalid_rule_self_site). This mirrors it — the CLI and the GitOps CR
             path reach the same API and never see this form, so a picker that merely hid the option would be
             guarding one caller of three. What the picker adds is the EXPLANATION. */}
-        <EntityPicker
+        <p className="text-sm text-ink-tertiary">Choose who can initiate access and the destination they can reach.</p>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-start">
+        <div className="min-w-0"><EntityPicker
           label="Source"
           placeholder="Search groups, people, sites, agents… or type a CIDR"
           acceptCidr
@@ -2328,13 +2329,9 @@ function RuleFormModal({
             else if (o.kind === "agent") setSrcAgent(o.value);
             else setSrcCidr(o.value);
           }}
-        />
-        {dstKind === "fqdn_resource" && (
-          <p role="status" className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
-            Private DNS access remains fail-closed until this hostname has an active resolver generation.
-          </p>
-        )}
-        <EntityPicker
+        /></div>
+        <span aria-hidden="true" className="hidden pt-8 text-sm text-ink-faint md:block">→</span>
+        <div className="min-w-0"><EntityPicker
           label="Destination"
           placeholder="Search groups, resources, FQDN resources, sites, services…"
           value={
@@ -2365,7 +2362,13 @@ function RuleFormModal({
             else if (o.kind === "k8s_service") setDstK8sService(o.value);
             else setDstFQDNResource(o.value);
           }}
-        />
+        /></div>
+        </div>
+        {dstKind === "fqdn_resource" && (
+          <p role="status" className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">
+            Private DNS access remains fail-closed until this hostname has an active resolver generation.
+          </p>
+        )}
         {/* ⛔ WHAT THE RULE WILL DO, IN WORDS, BEFORE Create. Two pickers and a button let an operator
             choose two nouns and press go; nothing in that gesture says what the compiler will emit. The gap
             is enormous — "agent rajan → group Contractors" grants ONE MACHINE UNRESTRICTED ACCESS TO EVERY
