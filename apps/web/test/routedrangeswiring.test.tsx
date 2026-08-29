@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  fireEvent,
   render,
   screen,
   waitFor,
@@ -49,6 +50,13 @@ const { default: RoutedRanges } = await import("../src/pages/RoutedRanges");
 // property; "the range is in the list a device reads" is.
 const inTable = () =>
   within(screen.getByRole("table", { name: /approved routed ranges/i }));
+
+const expandAddressSpace = async () => {
+  const button = await screen.findByRole("button", { name: "Expand map" });
+  expect(button.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(button);
+  expect(button.getAttribute("aria-expanded")).toBe("true");
+};
 
 const ORG = [{ id: "o1", name: "Acme" }];
 const SITES = [
@@ -111,6 +119,28 @@ beforeEach(() => {
 });
 
 describe("RoutedRanges — the attribution join", () => {
+  it("summarizes routing state before the inventory without a text-only explainer card", async () => {
+    handler = backend({
+      ranges: ["10.20.0.0/24"],
+      forwards: [{ domain: "corp.local", resolver_ip: "10.20.0.53" }],
+      subnets: {
+        s1: [
+          approved("s1", "10.20.0.0/24"),
+          { ...approved("s1", "10.30.0.0/24"), status: "pending" },
+        ],
+      },
+    });
+    render(
+      <OrgProvider>
+        <RoutedRanges />
+      </OrgProvider>,
+    );
+    const summary = await screen.findByRole("region", { name: "Routing summary" });
+    expect(within(summary).getByText("Approved ranges")).toBeTruthy();
+    expect(within(summary).getByText("needs approval")).toBeTruthy();
+    expect(screen.queryByText("Where these come from")).toBeNull();
+  });
+
   it("attributes a range to its site once the fan-out lands", async () => {
     handler = backend({
       ranges: ["10.20.0.0/24"],
@@ -332,6 +362,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
+    await expandAddressSpace();
     expect(
       await screen.findByText(/pending, withheld until approved on Sites/i),
     ).toBeTruthy();
@@ -347,6 +378,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
+    await expandAddressSpace();
     // Two grids, each labelled, rather than one grid silently missing half the data.
     expect(
       await screen.findByRole("img", { name: /^10\.0\.0\.0\/8/ }),
@@ -363,6 +395,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
+    await expandAddressSpace();
     const note = await screen.findByText(/outside the private blocks/i);
     expect(note.textContent).toContain("203.0.113.0/24");
     // And it must not read as "not routed" — it is routed identically; only the drawing cannot place it.
@@ -389,6 +422,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
+    await expandAddressSpace();
     const svg = await screen.findByRole("img", { name: /^10\.0\.0\.0\/8/ });
     const name = svg.getAttribute("aria-label") ?? "";
     expect(name).toContain("1 routed");
