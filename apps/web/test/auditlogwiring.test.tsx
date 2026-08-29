@@ -187,6 +187,15 @@ describe("AuditLog — the actor column names the human", () => {
       .getAllByRole("row")
       .find((r) => r.textContent?.includes("Ada Auditor"))!;
     expect(firstRow.textContent).not.toMatch(/\bsystem\b/);
+
+    fireEvent.click(
+      within(firstRow).getByRole("button", {
+        name: "Inspect device.created audit event",
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Audit evidence" });
+    expect(dialog).toBeTruthy();
+    expect(within(dialog).getByText("device · d1")).toBeTruthy();
   });
 });
 

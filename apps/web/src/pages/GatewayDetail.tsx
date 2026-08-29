@@ -162,6 +162,9 @@ export default function GatewayDetail() {
   ];
   const status = row.operationalState;
   const statusLabel = gatewayOperationalLabel(row);
+  const canRevoke = node.status === "active" && canManage && homed === 0;
+  const canRestoreRevoked = node.status === "revoked" && canRestore;
+  const canDeleteRevoked = node.status === "revoked" && canManage;
 
   return (
     <div className="space-y-5">
@@ -296,7 +299,7 @@ export default function GatewayDetail() {
                   </p>
                 </div>
               </div>
-              {canManage && homed === 0 && <Button size="sm" variant="danger" onClick={() => openDialog("revoke")}>Revoke gateway</Button>}
+              {canRevoke && <Button size="sm" variant="danger" onClick={() => openDialog("revoke")}>Revoke gateway</Button>}
             </div>
           )}
 
@@ -307,14 +310,14 @@ export default function GatewayDetail() {
                   <h3 className="text-cell font-semibold text-ink-heading">Restore cascaded devices</h3>
                   <p className="mt-1 text-cell text-ink-tertiary">Move eligible cascade-revoked devices to a live replacement gateway.</p>
                 </div>
-                {canRestore && destinations.length > 0 && <Button size="sm" onClick={() => openDialog("restore")}>Restore cascaded devices</Button>}
+                {canRestoreRevoked && destinations.length > 0 && <Button size="sm" onClick={() => openDialog("restore")}>Restore cascaded devices</Button>}
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 py-3">
                 <div>
                   <h3 className="text-cell font-semibold text-danger">Delete gateway record</h3>
                   <p className="mt-1 text-cell text-ink-tertiary">Permanently remove the revoked record. Audit evidence remains.</p>
                 </div>
-                {canManage && <Button size="sm" variant="danger" onClick={() => openDialog("delete")}>Delete gateway record</Button>}
+                {canDeleteRevoked && <Button size="sm" variant="danger" onClick={() => openDialog("delete")}>Delete gateway record</Button>}
               </div>
             </>
           )}

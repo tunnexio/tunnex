@@ -16,11 +16,9 @@ import {
 } from "../lib/auditview";
 import {
   Button,
-  Card,
   DataTable,
   ErrorText,
-  Field,
-  Input,
+  Modal,
   PageHeader,
 } from "../components/ui";
 
@@ -37,6 +35,31 @@ const NO_FILTERS: Filters = { actor: "", action: "", from: "", to: "" };
 // zone (no trailing Z) and cover the whole day so `created_at <= to` is inclusive.
 const dayStart = (d: string) => new Date(`${d}T00:00:00`).toISOString();
 const dayEnd = (d: string) => new Date(`${d}T23:59:59.999`).toISOString();
+
+function actionLabel(action: string): string {
+  const leaf = action.split(".").at(-1) ?? action;
+  const words = leaf.replace(/[_-]+/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function actionArea(action: string): string {
+  const area = action.split(".")[0] || "system";
+  return area.replace(/[_-]+/g, " ");
+}
+
+function targetLabel(entry: AuditLogEntry): string {
+  if (!entry.target_type) return "No target recorded";
+  return entry.target_id
+    ? `${entry.target_type} · ${entry.target_id.slice(0, 8)}`
+    : entry.target_type;
+}
+
+function detailValue(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value, null, 2);
+}
 
 export default function AuditLog() {
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
@@ -55,6 +78,7 @@ export default function AuditLog() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [memberScoped, setMemberScoped] = useState(false);
+  const [selected, setSelected] = useState<AuditLogEntry | null>(null);
   // Generation token: each fetch bumps it; a response whose token is stale (a
   // newer fetch started, or the component unmounted) is discarded — so out-of-
   // order responses can't leave a stale page as the final list.
@@ -99,6 +123,7 @@ export default function AuditLog() {
     reqSeq.current++; // invalidate any in-flight fetch on unmount
     let cancelled = false;
     (async () => {
+      setSelected(null);
       // ⭐ THE ORG-LIST FETCH IS GONE FROM THIS PAGE (S12.5). It existed only to be indexed at zero.
       // OrgProvider reads the list once for the whole shell; a page that re-fetched it would not merely
       // waste a request, it would pick an org the switcher has no way to change.
@@ -159,26 +184,54 @@ export default function AuditLog() {
   function applyFilters(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setSelected(null);
     if (org) void fetchPage(org.id, filters); // from the top with the new filters
   }
 
+  const activeFilterCount = Object.values(applied).filter(Boolean).length;
+  const resolvedActors = entries.map((entry) => resolveActor(entry, members));
+  const humanCount = resolvedActors.filter((actor) =>
+    actor.kind === "human" || actor.kind === "unknown_human" || actor.kind === "cp_admin",
+  ).length;
+  const systemCount = resolvedActors.filter((actor) => actor.kind === "system").length;
+  const gapCount = unattributedCount(entries);
+  const actionAreaCount = new Set(entries.map((entry) => actionArea(entry.action))).size;
+
   return (
     <div>
-      <PageHeader title="Audit log" subtitle={org ? org.name : "…"} />
+      <PageHeader
+        title="Audit log"
+        subtitle={org ? `${org.name} · administrative change history` : "…"}
+      />
       {memberScoped && (
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-ink-tertiary">
           Showing your activity only. Organization-wide activity is visible to admins and owners.
         </p>
       )}
       <ErrorText>{error}</ErrorText>
 
-      <form onSubmit={applyFilters} className="mt-6">
-        <Card>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="text-sm text-slate-300">
-              <span className="block text-xs text-slate-500">Actor</span>
+      <section className="tnx-card-surface mt-5 overflow-hidden">
+        <div className="grid grid-cols-2 border-b border-line-row sm:grid-cols-4">
+          {[
+            { label: "Loaded changes", value: entries.length, tone: "text-white" },
+            { label: "Human actions", value: humanCount, tone: "text-ink-body" },
+            { label: "System actions", value: systemCount, tone: "text-accent-400" },
+            { label: "Attribution gaps", value: gapCount, tone: gapCount > 0 ? "text-warn" : "text-ink-body" },
+          ].map((metric) => (
+            <div key={metric.label} className="flex min-w-0 items-baseline gap-2 border-b border-line-row px-4 py-2.5 odd:border-r sm:border-b-0 sm:border-r sm:last:border-r-0">
+              <div className={`font-mono text-lg font-semibold tabular-nums ${metric.tone}`}>{metric.value}</div>
+              <div className="truncate text-micro font-medium uppercase tracking-[0.1em] text-ink-faint">{metric.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <form onSubmit={applyFilters} className="border-b border-line-row px-4 py-2.5">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            <label className="min-w-0 text-sm text-ink-tertiary lg:w-52">
+              <span className="sr-only">Actor</span>
               <select
-                className={`mt-1 ${selectCls}`}
+                aria-label="Actor"
+                className={`min-h-9 w-full ${selectCls}`}
                 value={filters.actor}
                 onChange={(e) =>
                   setFilters((f) => ({ ...f, actor: e.target.value }))
@@ -192,45 +245,59 @@ export default function AuditLog() {
                 ))}
               </select>
             </label>
-            <div className="w-40">
-              <Field label="Action">
-                <Input
-                  value={filters.action}
-                  onChange={(e) =>
-                    setFilters((f) => ({ ...f, action: e.target.value }))
-                  }
-                  placeholder="e.g. device.created"
-                />
-              </Field>
-            </div>
-            <label className="text-sm text-slate-300">
-              <span className="block text-xs text-slate-500">From</span>
+            <label className="min-w-0 flex-1 text-sm text-ink-tertiary">
+              <span className="sr-only">Action</span>
               <input
+                aria-label="Action"
+                value={filters.action}
+                onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
+                placeholder="e.g. device.created"
+                className="min-h-9 w-full rounded-md border border-white/10 bg-ink-900 px-3 text-sm text-white placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
+              />
+            </label>
+            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
+              <span className="shrink-0 text-micro font-medium uppercase tracking-wide text-ink-faint">From</span>
+              <input
+                aria-label="From"
                 type="date"
-                className={`mt-1 ${selectCls}`}
+                className={`min-h-9 min-w-0 ${selectCls}`}
                 value={filters.from}
                 onChange={(e) =>
                   setFilters((f) => ({ ...f, from: e.target.value }))
                 }
               />
             </label>
-            <label className="text-sm text-slate-300">
-              <span className="block text-xs text-slate-500">To</span>
+            <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
+              <span className="shrink-0 text-micro font-medium uppercase tracking-wide text-ink-faint">To</span>
               <input
+                aria-label="To"
                 type="date"
-                className={`mt-1 ${selectCls}`}
+                className={`min-h-9 min-w-0 ${selectCls}`}
                 value={filters.to}
                 onChange={(e) =>
                   setFilters((f) => ({ ...f, to: e.target.value }))
                 }
               />
             </label>
-            <Button type="submit" disabled={busy}>
-              Apply
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" type="submit" disabled={busy}>{busy ? "Applying…" : "Apply"}</Button>
+              {(Object.values(filters).some(Boolean) || activeFilterCount > 0) && (
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setFilters(NO_FILTERS);
+                    setSelected(null);
+                    if (org) void fetchPage(org.id, NO_FILTERS);
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
           </div>
-        </Card>
-      </form>
+        </form>
 
       {/* S14.3 slice A: a real <table>. The audit log IS tabular — action, actor, target, age are the same
           four facts on every row — and rendering it as <li> blocks meant the tier could only find rows by
@@ -241,13 +308,13 @@ export default function AuditLog() {
           operator hunting for a person who was never recorded. Registered server-side; until it is
           fixed this screen must surface it rather than hide it. */}
       {unattributedCount(entries) > 0 && (
-        <p className="mt-4 text-xs text-warn">
+        <p className="border-b border-warn/20 bg-warn/[.06] px-4 py-3 text-xs text-warn">
           {unattributedCount(entries)} of {entries.length} events on this page
           have no recorded actor. {UNATTRIBUTED_NOTE}
         </p>
       )}
 
-      <div className="mt-4">
+      <div className="px-4 py-3">
         {/* ⛔ NO CLIENT PAGER HERE: this page ALREADY pages server-side with a keyset cursor behind
                 "Load more". Two paging controls on one screen disagree — "Load more" appends rows the
                 operator cannot see without advancing a second pager, and the count then describes neither
@@ -279,12 +346,18 @@ export default function AuditLog() {
           columns={[
             {
               key: "action",
-              header: "Action",
+              header: "Change",
               sortValue: (a) => a.action,
               cell: (a) => (
-                <span className="font-mono text-xs text-slate-300">
-                  {a.action}
-                </span>
+                <button
+                  type="button"
+                  aria-label={`Inspect ${a.action} audit event`}
+                  onClick={() => setSelected(a)}
+                  className="group block min-w-0 text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  <span className="block text-sm font-medium text-ink-body group-hover:text-white">{actionLabel(a.action)}</span>
+                  <span className="mt-1 block font-mono text-micro text-ink-faint">{a.action}</span>
+                </button>
               ),
             },
             {
@@ -302,7 +375,7 @@ export default function AuditLog() {
                     data-testid="audit-actor"
                     data-actor-kind={actor.kind}
                     className={
-                      "text-xs " +
+                      "text-xs font-medium " +
                       (actor.gap
                         ? "text-warn"
                         : actor.kind === "system"
@@ -312,7 +385,7 @@ export default function AuditLog() {
                             // convey — rendering them in the same grey as a member would bury it.
                             actor.kind === "cp_admin"
                             ? "text-accent-400"
-                            : "text-slate-500")
+                            : "text-ink-tertiary")
                     }
                   >
                     {actor.label}
@@ -324,14 +397,7 @@ export default function AuditLog() {
               key: "target",
               header: "Target",
               cell: (a) => (
-                <span className="text-xs text-slate-500">
-                  {a.target_type ?? "n/a"}
-                  {a.details && Object.keys(a.details).length > 0 && (
-                    <span className="ml-2 font-mono text-slate-600">
-                      {JSON.stringify(a.details)}
-                    </span>
-                  )}
-                </span>
+                <span className="font-mono text-xs text-ink-tertiary">{targetLabel(a)}</span>
               ),
             },
             {
@@ -342,18 +408,21 @@ export default function AuditLog() {
               // as text, and an audit log ordered wrongly by time is worse than one not ordered at all.
               sortValue: (a) => Date.parse(a.created_at),
               cell: (a) => (
-                <span className="text-xs text-slate-500">
-                  {relativeAge(a.created_at)}
-                </span>
+                <span className="whitespace-nowrap font-mono text-xs text-ink-tertiary">{relativeAge(a.created_at)}</span>
               ),
             },
           ]}
         />
       </div>
 
-      {more && (
-        <div className="mt-4">
+      <div className="flex flex-col gap-2 border-t border-line-row px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <span className="font-mono text-micro text-ink-faint">
+          {entries.length} loaded · {actionAreaCount} {actionAreaCount === 1 ? "area" : "areas"} · newest first
+          {activeFilterCount > 0 ? ` · ${activeFilterCount} active ${activeFilterCount === 1 ? "filter" : "filters"}` : ""}
+        </span>
+        {more && (
           <Button
+            size="sm"
             variant="ghost"
             disabled={busy}
             onClick={() =>
@@ -362,8 +431,59 @@ export default function AuditLog() {
           >
             {busy ? "Loading…" : "Load more from server"}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
+      </section>
+
+      {selected && (() => {
+        const actor = resolveActor(selected, members);
+        const details = Object.entries(selected.details ?? {});
+        return (
+          <Modal title="Audit evidence" size="wide" showClose onDismiss={() => setSelected(null)}>
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line-row pb-4">
+                <div>
+                  <div className="text-lg font-semibold text-white">{actionLabel(selected.action)}</div>
+                  <div className="mt-1 font-mono text-xs text-ink-faint">{selected.action}</div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-sm font-medium ${actor.gap ? "text-warn" : actor.kind === "system" ? "text-accent-400" : "text-ink-body"}`}>{actor.label}</div>
+                  <div className="mt-1 text-micro uppercase tracking-wide text-ink-faint">{actor.kind.replace("_", " ")}</div>
+                </div>
+              </div>
+
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
+                  <dt className="text-micro font-medium uppercase tracking-[0.12em] text-ink-faint">Target</dt>
+                  <dd className="mt-2 break-all font-mono text-sm text-white">{targetLabel(selected)}</dd>
+                </div>
+                <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
+                  <dt className="text-micro font-medium uppercase tracking-[0.12em] text-ink-faint">Recorded</dt>
+                  <dd className="mt-2 font-mono text-sm text-white">{selected.created_at}</dd>
+                </div>
+              </dl>
+
+              <section aria-labelledby="audit-details-title">
+                <h3 id="audit-details-title" className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">Recorded details</h3>
+                {details.length === 0 ? (
+                  <p className="mt-3 text-sm text-ink-tertiary">No additional details were recorded for this change.</p>
+                ) : (
+                  <dl className="mt-3 divide-y divide-line-row rounded-md border border-line">
+                    {details.map(([key, value]) => (
+                      <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
+                        <dt className="font-mono text-xs text-ink-faint">{key}</dt>
+                        <dd className="break-all whitespace-pre-wrap font-mono text-xs text-ink-body">{detailValue(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              </section>
+
+              {actor.gap && <p className="rounded-md border border-warn/20 bg-warn/[.06] px-3 py-2 text-xs text-warn">{UNATTRIBUTED_NOTE}</p>}
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

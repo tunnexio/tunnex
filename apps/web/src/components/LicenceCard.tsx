@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, type LicenseStatus } from "../lib/api";
+import { useLicenceResource } from "../lib/licenceResource";
 import {
   Button,
   ErrorText,
@@ -7,22 +8,74 @@ import {
   SettingDialogRow,
   SettingValue,
 } from "./ui";
+import { Icon, type IconName } from "./Icon";
 
-type Status = {
-  state: "unlicensed" | "valid" | "expired" | "lapsed";
-  tier: string;
-  gateway_ceiling?: number | null;
-  org_ceiling?: number | null;
-  features: string[];
-  expires_at?: string | null;
-  grace_ends_at?: string | null;
-  clock_went_backwards?: boolean;
-  // ⚠ STORE HEALTH, NOT ENTITLEMENT. These ride BESIDE the tier and never replace it: a deployment whose
-  // store is unreachable is still entitled to whatever it last knew.
-  store_stale?: boolean;
-  store_rejected?:
-    "expired" | "malformed" | "unknown_kid" | "bad_signature" | null;
-  store_detail?: string | null;
+type PlanTier = "community" | "trial" | "starter" | "growth" | "scale";
+
+const PLAN_VISUALS: Record<
+  PlanTier,
+  { label: string; icon: IconName; className: string }
+> = {
+  community: {
+    label: "Community",
+    icon: "users",
+    className: "text-slate-300",
+  },
+  trial: { label: "Trial", icon: "timer", className: "text-amber-300" },
+  starter: { label: "Starter", icon: "rocket", className: "text-sky-300" },
+  growth: {
+    label: "Growth",
+    icon: "chart-no-axes-column-increasing",
+    className: "text-violet-300",
+  },
+  scale: {
+    label: "Scale",
+    icon: "building-2",
+    className: "text-fuchsia-300",
+  },
+};
+
+function planVisual(tier: string | undefined) {
+  const normalized = tier?.toLowerCase() as PlanTier | undefined;
+  return normalized && normalized in PLAN_VISUALS
+    ? PLAN_VISUALS[normalized]
+    : {
+        label: tier || "Plan unavailable",
+        icon: "key" as IconName,
+        className: "text-slate-400",
+      };
+}
+
+function PlanTierBadge({
+  tier,
+  prominent = false,
+}: {
+  tier?: string;
+  prominent?: boolean;
+}) {
+  const visual = planVisual(tier);
+  return (
+    <span
+      className={`inline-flex items-center gap-2 ${prominent ? "text-sm" : "text-xs"}`}
+    >
+      <span
+        aria-hidden
+        className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-white/[0.055] ring-1 ring-inset ring-white/[0.08] ${
+          prominent ? "h-9 w-9" : "h-7 w-7"
+        } ${visual.className}`}
+      >
+        <Icon name={visual.icon} size={prominent ? 17 : 14} />
+      </span>
+      <span className="font-medium text-ink-body">{visual.label}</span>
+    </span>
+  );
+}
+
+export type LicenceStatus = LicenseStatus;
+
+export type LicenceCardCache = {
+  status: LicenceStatus | null;
+  request?: Promise<LicenceStatus | null> | null;
 };
 
 /**
@@ -37,18 +90,48 @@ type Status = {
 // ⚠ NO orgId. The licence is DEPLOYMENT-WIDE and the org-scoped URL it used to call was an error — the
 // org was never passed to the manager, only to authorization and the audit row. Taking an orgId here would
 // have kept implying a per-tenant licence that the data cannot hold.
-export function LicenceCard({ canManage }: { canManage: boolean }) {
-  const [status, setStatus] = useState<Status | null>(null);
+export function LicenceCard({
+  canManage,
+  cache,
+}: {
+  canManage: boolean;
+  cache?: LicenceCardCache;
+}) {
+  const sharedLicence = useLicenceResource();
+  const [status, setStatus] = useState<LicenceStatus | null>(
+    cache?.status ?? null,
+  );
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void (async () => {
-      const { data } = await api.GET("/api/v1/license", {});
-      if (data) setStatus(data as Status);
-    })();
-  }, []);
+    if (status) return;
+    let cancelled = false;
+    const request =
+      cache?.request ??
+      (sharedLicence
+        ? sharedLicence
+            .read()
+            .then((result) => (result.ok ? (result.data as LicenceStatus) : null))
+        : (async () => {
+            const { data } = await api.GET("/api/v1/license", {});
+            return data ? (data as LicenceStatus) : null;
+          })());
+    if (cache) cache.request = request;
+    void request
+      .then((next) => {
+        if (!next) return;
+        if (cache) cache.status = next;
+        if (!cancelled) setStatus(next);
+      })
+      .finally(() => {
+        if (cache?.request === request) cache.request = null;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cache, sharedLicence, status]);
 
   // Closes only after the install is confirmed — a licence that failed to apply must leave the key and
   // the reason on screen, not vanish behind a closed dialog.
@@ -70,7 +153,10 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
       return;
     }
     if (data) {
-      setStatus(data as Status);
+      const next = data as LicenceStatus;
+      if (cache) cache.status = next;
+      sharedLicence?.publish(next);
+      setStatus(next);
       setKey("");
       onDone?.();
     }
@@ -107,28 +193,21 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
     // read when that answer is surprising. So the row states the tier and the dialog holds the rest —
     // including the key field, which is the one control here and is owner-only.
     <SettingDialogRow
-      label="Licence key"
-      description="Install or replace the key. Takes effect immediately — no restart."
+      label="Plan"
+      description={
+        canManage
+          ? "View entitlement or install a licence key."
+          : "Deployment entitlement and limits."
+      }
       value={
         status ? (
-          // A lapsed licence is not an "active" one, and the row is where that difference is cheapest to see.
-          <SettingValue
-            tone={
-              status.state === "lapsed"
-                ? "warn"
-                : status.state === "unlicensed"
-                  ? "muted"
-                  : "live"
-            }
-          >
-            {status.tier}
-          </SettingValue>
+          <PlanTierBadge tier={status.tier} />
         ) : (
           <SettingValue>…</SettingValue>
         )
       }
-      actionLabel={canManage ? "Install licence" : "View"}
-      dialogTitle="Licence"
+      actionLabel={canManage ? "Manage" : "View details"}
+      dialogTitle="Plan & licence"
       error={error}
       actions={(close) => (
         <>
@@ -159,22 +238,38 @@ export function LicenceCard({ canManage }: { canManage: boolean }) {
       )}
 
       {status && (
-        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-cell">
-          <dt className="text-ink-tertiary">Tier</dt>
-          <dd className="text-ink-body">{status.tier}</dd>
-          <dt className="text-ink-tertiary">Gateways</dt>
-          <dd className="text-ink-body">{ceiling(status.gateway_ceiling)}</dd>
-          <dt className="text-ink-tertiary">Organizations</dt>
-          <dd className="text-ink-body">{ceiling(status.org_ceiling)}</dd>
-          {status.expires_at && (
-            <>
-              <dt className="text-ink-tertiary">Expires</dt>
-              <dd className="text-ink-body">
-                {status.expires_at.slice(0, 10)}
-              </dd>
-            </>
-          )}
-        </dl>
+        <>
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3">
+            <PlanTierBadge tier={status.tier} prominent />
+            <span
+              className={`text-xs ${
+                status.state === "lapsed" || status.state === "expired"
+                  ? "text-warn"
+                  : "text-ink-tertiary"
+              }`}
+            >
+              {status.state === "unlicensed"
+                ? "No key installed"
+                : status.state}
+            </span>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-cell">
+            <dt className="text-ink-tertiary">Gateways</dt>
+            <dd className="text-ink-body">
+              {ceiling(status.gateway_ceiling)}
+            </dd>
+            <dt className="text-ink-tertiary">Organizations</dt>
+            <dd className="text-ink-body">{ceiling(status.org_ceiling)}</dd>
+            {status.expires_at && (
+              <>
+                <dt className="text-ink-tertiary">Expires</dt>
+                <dd className="text-ink-body">
+                  {status.expires_at.slice(0, 10)}
+                </dd>
+              </>
+            )}
+          </dl>
+        </>
       )}
 
       {/* ⛔ EXPIRED IS NOT LAPSED, AND THE COPY MUST NOT CONFLATE THEM. Nothing stops at expiry. */}

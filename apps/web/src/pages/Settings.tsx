@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   api,
   apiErrorCode,
@@ -21,6 +21,7 @@ import {
   type AlertDelivery,
 } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
+import { useLicenceResource } from "../lib/licenceResource";
 import { OrgSwitcher } from "../components/OrgSwitcher";
 import { relativeAge } from "../lib/format";
 import { can } from "../lib/rbac";
@@ -65,10 +66,13 @@ import {
   Select,
   Switch,
 } from "../components/ui";
-import { LicenceCard } from "../components/LicenceCard";
+import { LicenceCard, type LicenceCardCache } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
-import { MachineCredentials } from "../components/MachineCredentials";
-import { AgentQuotaCard, AgentRuntimeSettingCard } from "../components/AgentOrganizationSettings";
+import { MachineCredentials, type MachineCredentialsCache } from "../components/MachineCredentials";
+import {
+  AgentQuotaCard,
+  AgentRuntimeSettingCard,
+} from "../components/AgentOrganizationSettings";
 
 const PROVIDERS = ["google", "microsoft"] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -83,12 +87,21 @@ export default function Settings() {
   const emailVerified = state.status === "authed" && state.user.email_verified;
   const [meta, setMeta] = useState<Meta | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
+  const [members, setMembers] = useState<Member[] | null>(null);
   const [myRole, setMyRole] = useState<Role | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  // These reads belong to the Settings workspace, not to a transient tab panel. Keeping the successful
+  // values here prevents section navigation from re-fetching unchanged configuration while mutations still
+  // refresh their own cache entries.
+  const licenceCache = useRef<LicenceCardCache>({ status: null }).current;
+  const machineCredentialsCache = useRef<MachineCredentialsCache>({
+    entries: new Map(),
+  }).current;
 
   useEffect(() => {
     let cancelled = false;
     setOrg(null);
+    setMembers(null);
     setMyRole(undefined);
     setError(null);
     (async () => {
@@ -128,11 +141,13 @@ export default function Settings() {
             params: { path: { orgId: first.id } },
           },
         );
-        if (!cancelled)
+        if (!cancelled) {
+          setMembers((members as Member[] | undefined) ?? []);
           setMyRole(
             (members as Member[] | undefined)?.find((mm) => mm.user_id === myId)
               ?.role,
           );
+        }
       } catch {
         if (!cancelled) setError("Could not reach the API.");
       }
@@ -148,14 +163,16 @@ export default function Settings() {
 
   const isAdmin = can(myRole, "org:update");
   // ⛔ A TAB WHOSE PANEL WOULD BE EMPTY IS NOT RENDERED. "CUT MEANS ABSENT, NOT HIDDEN" (S14.4): a member who
-  // clicks Network and gets a blank card learns only that the product is broken. The gate that decides the
-  // panel decides the tab, from one expression, so the two cannot drift.
+  // clicks Network and gets a blank card learns only that the product is broken. Each rail entry names the
+  // exact generated server permission its panel requires, so navigation and controls cannot drift by role.
   const shown = useMemo(
     () =>
       RAIL.filter(
-        (r) => (!r.adminOnly || isAdmin) && (!r.needsOrg || org !== null),
+        (r) =>
+          (!r.requiredPermission || can(myRole, r.requiredPermission)) &&
+          (!r.needsOrg || org !== null),
       ),
-    [isAdmin, org],
+    [myRole, org],
   );
   const [section, setSection] = useState<string>(() => sectionFromLocation());
   // ⚠ FALL BACK WHEN THE SELECTION STOPS EXISTING. Switching to an org where you are a plain member must not
@@ -199,7 +216,11 @@ export default function Settings() {
     <div>
       <PageHeader
         title="Settings"
-        subtitle="Manage your organization, security, and integrations."
+        subtitle={
+          isAdmin
+            ? "Manage organization, security, and integrations."
+            : "Manage your account security and view your plan."
+        }
       />
       <ErrorText>{error}</ErrorText>
 
@@ -236,7 +257,7 @@ export default function Settings() {
           push it wider than its share, which is the class of bug that shaved this page's right edge off
           before. Below `lg` the rail is dropped rather than stacked: six labels above the content is six
           rows of chrome before the thing you came for. */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
         <SettingsRail
           sections={shown}
           active={active}
@@ -287,28 +308,24 @@ export default function Settings() {
               <SsoSettings orgId={org.id} canEdit={emailVerified} />
             )}
             {org && isAdmin && meta?.edition !== "enterprise" && (
-              <Card>
-                <h3 className="text-sm font-semibold text-slate-300">
-                  Single sign-on
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  SSO (Google / Microsoft) is a Tunnex Enterprise feature.
-                </p>
-              </Card>
+              <SettingRow
+                label="Single sign-on"
+                description="Google and Microsoft sign-in require an Enterprise plan."
+              >
+                <SettingValue>Not in current plan</SettingValue>
+              </SettingRow>
             )}
 
             {org && isAdmin && meta?.edition === "enterprise" && (
               <OrgMfaEnforce orgId={org.id} canEdit={emailVerified} />
             )}
             {org && isAdmin && meta?.edition !== "enterprise" && (
-              <Card>
-                <h3 className="text-sm font-semibold text-slate-300">
-                  Require two-factor authentication
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Org-wide MFA enforcement is a Tunnex Enterprise feature.
-                </p>
-              </Card>
+              <SettingRow
+                label="Require two-factor authentication"
+                description="Organization-wide enforcement requires an Enterprise plan."
+              >
+                <SettingValue>Not in current plan</SettingValue>
+              </SettingRow>
             )}
 
             {/* Directory sync renders OUTSIDE the `isAdmin` gate, on purpose but NOT because of a
@@ -388,19 +405,16 @@ export default function Settings() {
         {org && active === "licence" && (
           <SettingGroup id="licence" title="Licence &amp; plan"
             tabpanel>
-            <LicenceCard canManage={myRole === "owner"} />
+            <LicenceCard canManage={myRole === "owner"} cache={licenceCache} />
             {isAdmin && canMachines && (
-              <MachineCredentials orgId={org.id} canManage={canMachines} />
+              <MachineCredentials
+                orgId={org.id}
+                canManage={canMachines}
+                members={members ?? []}
+                cache={machineCredentialsCache}
+              />
             )}
           </SettingGroup>
-        )}
-
-        {org && !isAdmin && (
-          <Card>
-            <p className="text-sm text-slate-400">
-              Organization settings are managed by owners and admins.
-            </p>
-          </Card>
         )}
 
         {/* ⛔ THE CAPABILITY EXISTED AND NOTHING COULD REACH IT. `DELETE /organizations/{id}` has shipped
@@ -482,6 +496,7 @@ function AgentPolicyTemplatesToggle({
 }
 
 function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
+  const licenceResource = useLicenceResource();
   const [approval, setApproval] = useState<DeviceApproval | null>(null);
   const [licenceFeatures, setLicenceFeatures] = useState<string[] | null>(null);
   const [zeroTrust, setZeroTrust] = useState<
@@ -497,7 +512,9 @@ function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: bo
     setZeroTrust({ kind: "loading" });
     const [approvalResult, licenceResult, zeroTrustResult] = await Promise.all([
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/device-approval", { params: { path: { orgId } } })),
-      loadOne(() => api.GET("/api/v1/license")),
+      licenceResource
+        ? licenceResource.read()
+        : loadOne(() => api.GET("/api/v1/license")),
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", { params: { path: { orgId } } })),
     ]);
     if (!approvalResult.ok) setError(approvalResult.error);
@@ -510,7 +527,7 @@ function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: bo
     } else setZeroTrust({ kind: "error", message: "The API returned an invalid Zero Trust mode." });
   };
 
-  useEffect(() => { void load(); }, [orgId]);
+  useEffect(() => { void load(); }, [orgId, licenceResource]);
   const toggleApproval = async () => {
     if (!approval) return;
     setBusy(true);
@@ -1987,8 +2004,8 @@ const RAIL: ReadonlyArray<{
   id: string;
   label: string;
   hint: string;
-  /** Needs `org:update`; the panel and the tab read this same flag. */
-  adminOnly?: boolean;
+  /** The server-backed permission required for this section's controls. */
+  requiredPermission?: string;
   /**
    * Panel renders only with a loaded org.
    *
@@ -2005,14 +2022,14 @@ const RAIL: ReadonlyArray<{
     needsOrg: true,
     label: "Organization",
     hint: "Manage your organization information and preferences.",
-    adminOnly: true,
+    requiredPermission: "org:update",
   },
   {
     id: "network",
     needsOrg: true,
     label: "Network",
     hint: "Configure network settings and address pools.",
-    adminOnly: true,
+    requiredPermission: "org:update",
   },
   {
     id: "authentication",
@@ -2024,27 +2041,28 @@ const RAIL: ReadonlyArray<{
     needsOrg: true,
     label: "Directory sync",
     hint: "Sync users and groups from your identity provider.",
+    requiredPermission: "policy:manage",
   },
   {
     id: "access-security",
     needsOrg: true,
     label: "Access & security",
     hint: "Control organization-wide access safeguards and capability opt-ins.",
-    adminOnly: true,
+    requiredPermission: "org:update",
   },
   {
     id: "features",
     needsOrg: true,
     label: "Features",
     hint: "Enable and configure advanced capabilities.",
-    adminOnly: true,
+    requiredPermission: "org:update",
   },
   {
     id: "ai-agents",
     needsOrg: true,
     label: "AI Agents",
     hint: "Configure managed runtime, capacity, and Agent workspace opt-ins.",
-    adminOnly: true,
+    requiredPermission: "org:update",
   },
   {
     id: "licence",
@@ -2057,6 +2075,7 @@ const RAIL: ReadonlyArray<{
     needsOrg: true,
     label: "Danger zone",
     hint: "Irreversible and destructive actions for your organization.",
+    requiredPermission: "org:delete",
     danger: true,
   },
 ];
@@ -2080,7 +2099,7 @@ function SettingsRail({
       role="tablist"
       aria-orientation="vertical"
       aria-label="Settings sections"
-      className="flex gap-2 overflow-x-auto lg:sticky lg:top-6 lg:flex-col lg:gap-4 lg:overflow-visible"
+      className="flex gap-1.5 overflow-x-auto pb-1 lg:sticky lg:top-6 lg:flex-col lg:overflow-visible lg:rounded-xl lg:border lg:border-white/[0.07] lg:bg-white/[0.018] lg:p-1.5"
     >
       {sections.map((s) => {
         const on = s.id === active;
@@ -2097,34 +2116,25 @@ function SettingsRail({
             aria-selected={on}
             aria-controls={s.id}
             onClick={() => onSelect(s.id)}
-            /* The left rule is the design's active marker. `border-l-2` is always present and merely
-               transparent when inactive, so selecting a tab never shifts the text by two pixels. */
-            className={`group shrink-0 border-l-2 pl-3.5 text-left transition-colors duration-fast focus:outline-none ${
-              on ? "border-[#B03A45]" : "border-transparent hover:border-white/20"
+            title={s.hint}
+            className={`group flex min-h-10 shrink-0 items-center rounded-lg border px-3 py-2 text-left transition-colors duration-fast focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
+              on
+                ? "border-white/[0.09] bg-white/[0.08] text-white"
+                : "border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
             }`}
           >
             <span
-              className={`block font-mono text-xs font-semibold uppercase tracking-[0.14em] transition-colors ${
+              className={`whitespace-nowrap text-xs font-medium transition-colors ${
                 s.danger
                   ? on
-                    ? "text-rose-400 font-bold"
-                    : "text-rose-500/80 hover:text-rose-400"
+                    ? "text-rose-200"
+                    : "text-rose-400/80 group-hover:text-rose-300"
                   : on
-                    ? "text-white font-bold"
+                    ? "text-white"
                     : "text-slate-400 group-hover:text-slate-200"
               }`}
             >
               {s.label}
-            </span>
-            {/* The hint is for choosing between sections, so it is only worth space in the vertical rail. */}
-            <span
-              className={`mt-1 hidden text-xs leading-relaxed transition-colors lg:block ${
-                on
-                  ? "text-slate-300 font-normal"
-                  : "text-slate-500 group-hover:text-slate-400 font-normal"
-              }`}
-            >
-              {s.hint}
             </span>
           </button>
         );

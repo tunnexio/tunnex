@@ -220,7 +220,7 @@ export default function GatewaysPage() {
 
       {state.kind === "ready" && (
         <>
-          <section className="overflow-hidden rounded-card border border-white/[.12] bg-surface shadow-card backdrop-blur-[24px]">
+          <section className="tnx-card-surface overflow-hidden">
             <div className="flex min-w-0 flex-col gap-3 border-b border-white/[.08] p-3">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <input

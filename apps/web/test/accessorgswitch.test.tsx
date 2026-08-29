@@ -102,7 +102,7 @@ describe("released Access route organization isolation", () => {
 
     expect(screen.queryAllByText("old-org-agent")).toHaveLength(0);
     expect(screen.queryAllByText("old-org-resource")).toHaveLength(0);
-    expect(screen.getByText("Loading access policies…")).toBeTruthy();
+    expect(screen.getByText("Loading rules…")).toBeTruthy();
 
     await waitFor(() => expect(releaseOrgBMembers).not.toBeNull());
     currentOrg = { id: "org-c", name: "Organization C" };

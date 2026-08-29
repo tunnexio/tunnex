@@ -97,39 +97,34 @@ export function PostureChecksSection({
   });
 
   return (
-    <Card className="mt-4">
-      <h2 className="text-sm font-semibold text-slate-300">
-        Device posture checks
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Per-check requirements evaluated on every device self-report.{" "}
-        <span className="text-slate-400">warn</span> surfaces a warning;{" "}
-        <span className="text-amber-300">require</span> disconnects a
-        non-compliant device within seconds of its report.
-      </p>
-      {/* The honesty line — verbatim, at the point of configuration (D6, locked). */}
-      <div className="mt-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-400">
-        {POSTURE_HONESTY_LINE}
+    <Card
+      variant="plain"
+      className="tnx-card-surface mt-4 overflow-hidden"
+    >
+      <div className="border-b border-white/10 px-4 py-3">
+        <h2 className="text-sm font-semibold text-ink-heading">Posture policy</h2>
+        <p className="mt-0.5 text-xs text-ink-tertiary">
+          Warn operators or require a reported device condition.
+        </p>
       </div>
 
-      {loadError && <LoadRetry error={loadError} onRetry={load} />}
-      <ErrorText>{err}</ErrorText>
+      {loadError && <div className="px-4 py-3"><LoadRetry error={loadError} onRetry={load} /></div>}
+      <div className="px-4"><ErrorText>{err}</ErrorText></div>
       {saveNote && (
-        <div className="mt-3 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300">
+        <div className="mx-4 mt-3 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-amber-300">
           {saveNote}
         </div>
       )}
 
       {checks != null && !loadError && (
-        <div className="mt-4 space-y-4">
+        <div>
           {/* Disk encryption */}
-          <div className="rounded-md bg-white/5 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-200">Disk encryption</p>
-                <p className="text-xs text-slate-500">
-                  FileVault (macOS) / BitLocker (Windows), as reported by the
-                  device.
+                <p className="text-sm font-medium text-ink-heading">Disk encryption</p>
+                <p className="mt-0.5 text-xs text-ink-tertiary">
+                  FileVault or BitLocker, as reported by the device.
                 </p>
               </div>
               {canManage ? (
@@ -154,13 +149,12 @@ export function PostureChecksSection({
           </div>
 
           {/* OS version */}
-          <div className="rounded-md bg-white/5 px-3 py-3">
-            <div className="flex items-center justify-between">
+          <div className="px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm text-slate-200">Minimum OS version</p>
-                <p className="text-xs text-slate-500">
-                  Per-platform floors; leave a platform empty to not constrain
-                  it.
+                <p className="text-sm font-medium text-ink-heading">Minimum OS version</p>
+                <p className="mt-0.5 text-xs text-ink-tertiary">
+                  Optional minimum versions for macOS and Windows.
                 </p>
               </div>
               {canManage ? (
@@ -181,7 +175,7 @@ export function PostureChecksSection({
               )}
             </div>
             {osMode !== "off" && canManage && (
-              <div className="mt-3 flex flex-wrap items-end gap-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
                 <Field label="macOS minimum">
                   <Input
                     value={osMacos}
@@ -201,7 +195,7 @@ export function PostureChecksSection({
                 </Button>
                 {/* [6] Windows-version foot-gun: Win 11 reports major 10 (10.0.22000+),
                     so "11.0" would block the whole Windows fleet. Steer to build numbers. */}
-                <p className="w-full text-xs text-slate-500">
+                <p className="sm:col-span-2 lg:col-span-3 text-xs text-slate-500">
                   Windows uses build numbers. Windows 11 reports as{" "}
                   <span className="font-mono text-slate-400">10.0.22000</span>,
                   not 11.0. Enter the build (e.g.{" "}
@@ -216,7 +210,7 @@ export function PostureChecksSection({
                 could not be persisted from the UI (a dead-end). Off has nothing to configure, but it
                 still needs its own Save affordance — saveOsVersion() already handles the off case. */}
             {osMode === "off" && canManage && (
-              <div className="mt-3">
+              <div className="mt-3 flex justify-end">
                 <Button disabled={busy} onClick={saveOsVersion}>
                   Save
                 </Button>
@@ -226,7 +220,7 @@ export function PostureChecksSection({
                 a constrained platform shows its floor, an unconstrained one SAYS so. Never
                 a silent gap. */}
             {osMode !== "off" && (
-              <ul className="mt-2 space-y-0.5 text-xs">
+              <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                 {coverage.map((c) => (
                   <li
                     key={c.platform}
@@ -238,6 +232,12 @@ export function PostureChecksSection({
               </ul>
             )}
           </div>
+          <details className="border-t border-white/10 px-4 py-3 text-xs text-ink-tertiary">
+            <summary className="cursor-pointer select-none text-ink-body hover:text-ink-heading">
+              About posture signals
+            </summary>
+            <p className="mt-2 max-w-3xl leading-relaxed">{POSTURE_HONESTY_LINE}</p>
+          </details>
         </div>
       )}
     </Card>

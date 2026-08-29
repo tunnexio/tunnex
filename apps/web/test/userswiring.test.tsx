@@ -126,6 +126,7 @@ vi.mock("../src/lib/api", async () => {
 });
 
 import { OrgProvider } from "../src/lib/useOrg";
+import { api } from "../src/lib/api";
 import Users from "../src/pages/Users";
 import { AuthProvider } from "../src/lib/auth";
 
@@ -749,5 +750,38 @@ describe("Users — exactly one filter control", () => {
     ).toBeTruthy();
     const roleHeader = screen.getByRole("columnheader", { name: "Role" });
     expect(within(roleHeader).queryByRole("button")).not.toBeNull();
+  });
+});
+
+describe("Users — invitation delivery", () => {
+  it("keeps the one-time invitation link visible after creation", async () => {
+    vi.mocked(api.POST).mockResolvedValueOnce({
+      data: {
+        message: "Invitation created.",
+        invite_token: "one-time-preview-token",
+        delivered: false,
+      },
+    } as never);
+
+    withAuth(<Users />);
+    fireEvent.click(
+      await waitFor(() => screen.getByRole("button", { name: "Invite user" })),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Email address" }), {
+      target: { value: "new-person@acme.test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create invite" }));
+
+    const linkTitle = await waitFor(() => screen.getByText("Invitation link"));
+    const linkDialog = linkTitle.parentElement?.parentElement;
+    expect(linkDialog).toBeTruthy();
+    expect(
+      within(linkDialog as HTMLElement).getByText(
+        /accept-invite\?token=one-time-preview-token/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("dialog", { name: "Invite user" }),
+    ).toBeNull();
   });
 });

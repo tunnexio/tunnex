@@ -457,7 +457,7 @@ export default function Kubernetes() {
       {raw && !loadError && cards.length > 0 && (
         <>
           {section === "clusters" && <>
-            <section aria-labelledby="k8s-clusters-heading" className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+            <section aria-labelledby="k8s-clusters-heading" className="tnx-card-surface flex flex-col gap-4 p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h2 id="k8s-clusters-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Clusters</h2>
@@ -483,7 +483,7 @@ export default function Kubernetes() {
 
           <div className={section === "operations" ? "grid grid-cols-1 gap-3" : "grid grid-cols-1 items-start gap-3"}>
             <div className="flex min-w-0 flex-col gap-3">
-              {section === "services" && <section aria-labelledby="k8s-services-heading" className="flex flex-col gap-4 rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.012))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+              {section === "services" && <section aria-labelledby="k8s-services-heading" className="tnx-card-surface flex flex-col gap-4 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 id="k8s-services-heading" className="text-base font-semibold tracking-[-0.01em] text-white">Exposed Services ({serviceRows.length})</h2>
                   <div className="flex items-center gap-2">

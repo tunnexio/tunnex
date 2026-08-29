@@ -142,6 +142,23 @@ describe("RESPONSIVE MAY RE-ARRANGE, NEVER REMOVE", () => {
     ).toBeTruthy();
   });
 
+  it("[compose] the account menu escapes the collapsed rail at a readable width", async () => {
+    renderShell("compose");
+    const trigger = await screen.findByRole("button", { name: /signed in as/i });
+    const menu = document.getElementById("account-menu");
+    expect(menu).toBeTruthy();
+    expect(menu?.hidden).toBe(true);
+    await waitFor(() => {
+      expect(menu?.textContent).toContain("enterprise");
+      expect(menu?.textContent).toContain("admin");
+    });
+    fireEvent.click(trigger);
+    expect(menu?.hidden).toBe(false);
+    expect(menu?.textContent).not.toContain("Loading…");
+    expect(menu?.classList.contains("w-64")).toBe(true);
+    expect(menu?.className).toContain("left-[calc(100%+0.625rem)]");
+  });
+
   it("[triage] uses the drawer as its single navigation model", async () => {
     renderShell("triage");
     expect(screen.queryByRole("navigation", { name: "Triage" })).toBeNull();
@@ -199,7 +216,9 @@ describe("COMPOSITION IS ABSENT BELOW THE FLOOR — asserted BY ROLE, so `displa
     renderAccess("triage");
     // Wait on the surface being loaded before asserting an absence — asserting "not there" against a screen
     // that has not finished loading passes for the wrong reason (docs/laws.md, the vacuous-check family).
-    await waitFor(() => expect(screen.getByText(/Allow rules:/)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Rules" })).toBeTruthy(),
+    );
     expect(
       screen.queryByRole("button", { name: /add rule/i, hidden: true }),
     ).toBeNull();

@@ -40,6 +40,7 @@ afterEach(() => {
 let ssoFail = false; // docs/laws.md — no globals/setup file, so auto-cleanup never registers
 
 let edition: "open" | "enterprise" = "enterprise";
+let currentRole: "owner" | "admin" | "member" = "owner";
 let ovpnEnabled = false;
 let agentTemplatesEnabled = false;
 let jitAccessEnabled = false;
@@ -119,7 +120,7 @@ vi.mock("../src/lib/api", async () => {
         }
         if (path.endsWith("/members"))
           return {
-            data: [{ user_id: "u1", role: "owner", email_verified: true }],
+            data: [{ user_id: "u1", role: currentRole, email_verified: true }],
           };
         if (path.includes("/sso/"))
           return ssoFail
@@ -214,6 +215,7 @@ vi.mock("../src/lib/api", async () => {
 import { OrgProvider, useOrg } from "../src/lib/useOrg";
 import Settings from "../src/pages/Settings";
 import { AuthProvider } from "../src/lib/auth";
+import { api } from "../src/lib/api";
 
 // The REAL AuthProvider — stubbing puts the TEST's role gate under assertion, not the PRODUCT's.
 const withAuth = (ui: React.ReactElement) =>
@@ -244,6 +246,7 @@ beforeEach(() => {
   __cleaned = false;
   __lateGets = [];
   edition = "enterprise";
+  currentRole = "owner";
   ovpnEnabled = false;
   agentTemplatesEnabled = false;
   jitAccessEnabled = false;
@@ -345,6 +348,25 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
 });
 
 describe("Settings — URL-backed section rail", () => {
+  it("shows members only personal settings and plan details", async () => {
+    currentRole = "member";
+    withAuth(<Settings />);
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual([
+        "Authentication",
+        "Licence & plan",
+      ]),
+    );
+    expect(screen.queryByRole("tab", { name: "Organization" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Directory sync" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Danger zone" })).toBeNull();
+    expect(
+      screen.queryByText("Organization settings are managed by owners and admins."),
+    ).toBeNull();
+    expect(screen.getByText("Manage your account security and view your plan.")).toBeTruthy();
+  });
+
   it("opens a permitted direct section URL and keeps rail selection in the URL", async () => {
     window.history.replaceState({}, "", "/settings?section=access-security");
     withAuth(<Settings />);
@@ -352,6 +374,51 @@ describe("Settings — URL-backed section rail", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Licence & plan" }));
     expect(window.location.search).toBe("?section=licence");
     expect(screen.getByRole("tabpanel").id).toBe("licence");
+  });
+
+  it("keeps the section rail text-only and reuses licence workspace reads while switching tabs", async () => {
+    const getPaths = () =>
+      (
+        vi.mocked(api.GET).mock.calls as unknown as Array<
+          [path: string, ...args: unknown[]]
+        >
+      ).map(([path]) => path);
+    withAuth(<Settings />);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Licence & plan" })).toBeTruthy());
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab.querySelector("svg")).toBeNull();
+    }
+
+    const licenceReadsBefore = getPaths().filter(
+      (path) => path === "/api/v1/license",
+    ).length;
+    const credentialReadsBefore = getPaths().filter((path) =>
+      path.endsWith("/machine-credentials"),
+    ).length;
+    fireEvent.click(screen.getByRole("tab", { name: "Licence & plan" }));
+    await waitFor(() => {
+      expect(
+        getPaths().filter((path) => path === "/api/v1/license").length,
+      ).toBe(licenceReadsBefore + 1);
+      expect(
+        getPaths().filter((path) => path.endsWith("/machine-credentials")).length,
+      ).toBe(credentialReadsBefore + 1);
+    });
+    const memberReads = getPaths().filter((path) => path.endsWith("/members")).length;
+
+    fireEvent.click(screen.getByRole("tab", { name: "Authentication" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Licence & plan" }));
+    await waitFor(() => expect(screen.getByRole("tabpanel").id).toBe("licence"));
+
+    expect(
+      getPaths().filter((path) => path === "/api/v1/license").length,
+    ).toBe(licenceReadsBefore + 1);
+    expect(
+      getPaths().filter((path) => path.endsWith("/machine-credentials")).length,
+    ).toBe(credentialReadsBefore + 1);
+    expect(
+      getPaths().filter((path) => path.endsWith("/members")).length,
+    ).toBe(memberReads);
   });
 
   it("restores sections from browser Back/Forward and safely normalizes an invalid section", async () => {

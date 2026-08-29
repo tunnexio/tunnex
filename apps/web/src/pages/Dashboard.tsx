@@ -581,7 +581,7 @@ export default function Dashboard() {
                               </p>
                             )}
                             <Link
-                              className="mt-3 inline-flex items-center gap-1 text-cell font-medium text-accent-400 hover:text-accent-300"
+                              className="mt-3 inline-flex items-center gap-1 text-cell font-medium text-accent-400 hover:text-accent-400"
                               to="/gateways"
                             >
                               {gatewayReviewLabel(issues.length)}
@@ -975,7 +975,7 @@ function InfrastructureLink({
   return (
     <Link
       to={to}
-      className="mt-1 flex min-h-10 items-center gap-2 border-t border-white/10 pt-2 text-cell font-medium text-accent-400 hover:text-accent-300"
+      className="mt-1 flex min-h-10 items-center gap-2 border-t border-white/10 pt-2 text-cell font-medium text-accent-400 hover:text-accent-400"
     >
       <InfrastructureIcon name={icon} />
       <span>{children}</span>

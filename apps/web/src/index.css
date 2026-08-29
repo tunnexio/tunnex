@@ -89,6 +89,16 @@ body {
   background: var(--tnx-bg-page);
 }
 
+/* One structural card material across every product workspace. Inputs, menus, modals, and semantic alerts
+ * intentionally keep their own surfaces because they carry different interaction/state meaning. */
+.tnx-card-surface {
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 1rem;
+  background: rgba(18, 18, 21, .95);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .28);
+  backdrop-filter: blur(20px);
+}
+
 /* ⛔ THE FLOWING LINK — the handoff's `.tnx-edge`, verbatim geometry (dc.html L64).
  *
  * A short dash pattern crawling along a LINKED edge. It is the design's one piece of continuous motion and

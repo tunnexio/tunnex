@@ -22,21 +22,19 @@ import type {
 // theme tokens (accent/ink/slate), so a palette swap restyles everything.
 
 /**
- * ⛔ THE GLASS RECIPE, IN ONE PLACE. Every surface in the product composes from this constant.
+ * Product-wide structural card material.
  *
- * It was previously spelled out on `Stat` and NOT on `Panel`, so the stat row rendered as glass and every
- * panel below it rendered as flat plastic — in the same screenshot. A material defined per-component is a
- * material that WILL be half-applied, and the half that is missing reads as a rendering bug rather than a
- * missing class.
- *
- * `bg-surface` is TRANSLUCENT (`rgba(31,31,31,.72)`), and the blur needs the page's radial field behind it to
- * refract (index.css). Opaque fill or flat backdrop and the effect disappears entirely.
- *
- * NO INSET WHITE HIGHLIGHT LINE — the designer removed it explicitly. Do not reintroduce
- * `inset 0 1px 0 rgba(255,255,255,…)`.
+ * Organization Settings established the clearest hierarchy in the product: a dense, nearly opaque neutral
+ * surface with a quiet boundary. Structural cards now share that material instead of alternating between
+ * translucent glass, gradients, and one-off dark fills. Inputs, menus, modals, and semantic alerts retain
+ * their own surfaces because they communicate different interaction or state.
  */
-export const GLASS =
-  "rounded-card border border-white/[.14] bg-surface shadow-card backdrop-blur-[24px] backdrop-saturate-[1.4]";
+export const CARD_SURFACE =
+  "tnx-card-surface";
+
+// Compatibility alias for existing dashboard composition imports. New structural surfaces should use
+// CARD_SURFACE so the material's purpose stays explicit.
+export const GLASS = CARD_SURFACE;
 
 export function Button({
   variant = "primary",
@@ -578,7 +576,7 @@ export function SettingGroup({
       // Named by its own heading rather than by its tab: the heading is the more specific label, and it is
       // the one a reader sees.
       aria-labelledby={headingId}
-      className={`rounded-2xl border border-white/[0.08] bg-[#121215]/95 p-6 shadow-xl backdrop-blur-xl scroll-mt-6 ${className}`}
+      className={`${CARD_SURFACE} p-6 scroll-mt-6 ${className}`}
     >
       <h2
         id={headingId}
