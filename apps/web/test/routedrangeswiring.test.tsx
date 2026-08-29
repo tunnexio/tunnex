@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
-  fireEvent,
   render,
   screen,
   waitFor,
@@ -51,10 +50,8 @@ const { default: RoutedRanges } = await import("../src/pages/RoutedRanges");
 const inTable = () =>
   within(screen.getByRole("table", { name: /approved routed ranges/i }));
 
-const expandAddressSpace = async () => {
-  const button = await screen.findByRole("button", { name: "Expand map" });
-  expect(button.getAttribute("aria-expanded")).toBe("false");
-  fireEvent.click(button);
+const expectAddressSpaceExpanded = async () => {
+  const button = await screen.findByRole("button", { name: "Hide map" });
   expect(button.getAttribute("aria-expanded")).toBe("true");
 };
 
@@ -362,7 +359,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
-    await expandAddressSpace();
+    await expectAddressSpaceExpanded();
     expect(
       await screen.findByText(/pending, withheld until approved on Sites/i),
     ).toBeTruthy();
@@ -378,7 +375,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
-    await expandAddressSpace();
+    await expectAddressSpaceExpanded();
     // Two grids, each labelled, rather than one grid silently missing half the data.
     expect(
       await screen.findByRole("img", { name: /^10\.0\.0\.0\/8/ }),
@@ -395,7 +392,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
-    await expandAddressSpace();
+    await expectAddressSpaceExpanded();
     const note = await screen.findByText(/outside the private blocks/i);
     expect(note.textContent).toContain("203.0.113.0/24");
     // And it must not read as "not routed" — it is routed identically; only the drawing cannot place it.
@@ -422,7 +419,7 @@ describe("RoutedRanges — the address-space map", () => {
         <RoutedRanges />
       </OrgProvider>,
     );
-    await expandAddressSpace();
+    await expectAddressSpaceExpanded();
     const svg = await screen.findByRole("img", { name: /^10\.0\.0\.0\/8/ });
     const name = svg.getAttribute("aria-label") ?? "";
     expect(name).toContain("1 routed");

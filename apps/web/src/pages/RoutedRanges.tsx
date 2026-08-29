@@ -117,7 +117,7 @@ export default function RoutedRangesPage() {
     label: string;
   }> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [mapExpanded, setMapExpanded] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(true);
 
   const reload = useCallback(async () => {
     setLoadError(null);
@@ -384,7 +384,7 @@ export default function RoutedRangesPage() {
                     onClick={() => setMapExpanded((current) => !current)}
                     className="min-h-8 rounded-md px-2.5 text-micro font-medium text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
                   >
-                    {mapExpanded ? "Collapse map" : "Expand map"}
+                    {mapExpanded ? "Hide map" : "View map"}
                   </button>
                 }
               >
@@ -458,16 +458,16 @@ export default function RoutedRangesPage() {
               {forwards.length === 0 ? (
                 <EmptyState>{forwardsEmptyCopy(ranges.length)}</EmptyState>
               ) : (
-                <ul className="max-h-44 overflow-y-auto [scrollbar-gutter:stable]">
+                <ul className="max-h-44 space-y-0.5 overflow-y-auto [scrollbar-gutter:stable]">
                   {sortForwards(forwards).map((f) => (
-                    <li key={`${f.domain}@${f.resolver_ip}`} className="flex min-h-10 items-center justify-between gap-3 border-b border-line/70 text-cell last:border-0">
+                    <li key={`${f.domain}@${f.resolver_ip}`} className="flex min-h-10 items-center justify-between gap-3 rounded-md px-1.5 text-cell transition-colors hover:bg-white/[.03]">
                       <span className="truncate font-mono text-ink-body" title={f.domain}>{f.domain}</span>
                       <span className="shrink-0 font-mono text-micro text-ink-tertiary">{f.resolver_ip}</span>
                     </li>
                   ))}
                 </ul>
               )}
-              <p className="mt-2 border-t border-line pt-2 text-micro text-ink-faint">
+              <p className="mt-2 border-t border-white/[.06] pt-2 text-micro text-ink-faint">
                 A forward is handed to devices only when its resolver falls inside a routed range.
               </p>
             </Panel>
