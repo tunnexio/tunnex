@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +22,35 @@ func newTestWatcher(base string, client *http.Client, kick func()) *K8sWatcher {
 	return &K8sWatcher{
 		base: base, client: client, kick: kick,
 		services: map[string]serviceInfo{}, slices: map[string]map[string]epGroup{}, uidTombstones: map[string]string{},
+	}
+}
+
+func TestGetListReloadsProjectedServiceAccountToken(t *testing.T) {
+	tokenPath := t.TempDir() + "/token"
+	if err := os.WriteFile(tokenPath, []byte("first-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		got = append(got, req.Header.Get("Authorization"))
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(rw, `{"metadata":{"resourceVersion":"1"},"items":[]}`)
+	}))
+	defer srv.Close()
+	w := newTestWatcher(srv.URL, srv.Client(), func() {})
+	w.tokenPath = tokenPath
+	if _, _, err := w.getList(context.Background(), servicePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tokenPath, []byte("rotated-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := w.getList(context.Background(), servicePath); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Bearer first-token", "Bearer rotated-token"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("authorization headers = %q, want %q", got, want)
 	}
 }
 

@@ -124,11 +124,11 @@ type epGroup struct {
 }
 
 type K8sWatcher struct {
-	base   string // https://host:port
-	token  string
-	client *http.Client
-	log    *slog.Logger
-	kick   func() // signal the egress reconcile that the endpoint view changed (watch-driven, not polled)
+	base      string // https://host:port
+	tokenPath string
+	client    *http.Client
+	log       *slog.Logger
+	kick      func() // signal the egress reconcile that the endpoint view changed (watch-driven, not polled)
 
 	mu       sync.RWMutex
 	services map[string]serviceInfo        // ns/name -> Service identity + port model
@@ -154,8 +154,7 @@ func NewInClusterWatcher(log *slog.Logger, kick func()) (*K8sWatcher, error) {
 	if host == "" || port == "" {
 		return nil, nil // not in a cluster
 	}
-	token, err := os.ReadFile(saTokenPath)
-	if err != nil {
+	if _, err := readServiceAccountToken(saTokenPath); err != nil {
 		return nil, fmt.Errorf("read SA token: %w", err)
 	}
 	caPEM, err := os.ReadFile(saCAPath)
@@ -172,7 +171,7 @@ func NewInClusterWatcher(log *slog.Logger, kick func()) (*K8sWatcher, error) {
 	}
 	return &K8sWatcher{
 		base:          "https://" + host + ":" + port,
-		token:         strings.TrimSpace(string(token)),
+		tokenPath:     saTokenPath,
 		client:        client,
 		log:           log,
 		kick:          kick,
@@ -180,6 +179,33 @@ func NewInClusterWatcher(log *slog.Logger, kick func()) (*K8sWatcher, error) {
 		slices:        map[string]map[string]epGroup{},
 		uidTombstones: map[string]string{},
 	}, nil
+}
+
+func readServiceAccountToken(path string) (string, error) {
+	token, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	token = []byte(strings.TrimSpace(string(token)))
+	if len(token) == 0 {
+		return "", fmt.Errorf("empty token")
+	}
+	return string(token), nil
+}
+
+// setBearer reloads projected ServiceAccount credentials for every new API request.
+// Kubernetes rotates these files in place; retaining the startup token eventually
+// turns a healthy read-only watch into repeated 401s and must fail closed.
+func (w *K8sWatcher) setBearer(req *http.Request) error {
+	if w.tokenPath == "" { // test watcher: fake API does not require credentials
+		return nil
+	}
+	token, err := readServiceAccountToken(w.tokenPath)
+	if err != nil {
+		return fmt.Errorf("read SA token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
 }
 
 // Targets implements endpointSource — a PURE read of the last-successful cache (no I/O in the render path).
@@ -386,7 +412,9 @@ func (w *K8sWatcher) watch(ctx context.Context, path, rv string, onEvent func(st
 	if err != nil {
 		return false, err
 	}
-	req.Header.Set("Authorization", "Bearer "+w.token)
+	if err := w.setBearer(req); err != nil {
+		return false, err
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := w.client.Do(req)
 	if err != nil {
@@ -437,7 +465,9 @@ func (w *K8sWatcher) getList(ctx context.Context, path string) ([]json.RawMessag
 	if err != nil {
 		return nil, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+w.token)
+	if err := w.setBearer(req); err != nil {
+		return nil, "", err
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := w.client.Do(req)
 	if err != nil {
