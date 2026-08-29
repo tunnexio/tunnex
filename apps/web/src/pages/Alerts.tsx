@@ -95,7 +95,7 @@ export default function Alerts() {
         <AlertManagement orgId={org.id} canEdit={emailVerified} canAllowPrivate={myRole === "owner"} />
       ) : <>
       {view === "active" && rows && rows.length > 0 && (
-        <div className="grid grid-cols-3 divide-x divide-white/10 rounded-lg border border-white/10 bg-ink-panel px-1 py-3" aria-label="Active alert summary">
+        <div className="grid grid-cols-3 divide-x divide-white/10 rounded-lg border border-white/10 bg-surface px-1 py-3" aria-label="Active alert summary">
           <div className="px-4"><div className="font-mono text-stat text-ink-heading">{rows.length}</div><div className="text-badge uppercase tracking-wider text-ink-tertiary">Active</div></div>
           <div className="px-4"><div className="font-mono text-stat text-danger">{counts.critical}</div><div className="text-badge uppercase tracking-wider text-ink-tertiary">Critical</div></div>
           <div className="px-4"><div className="font-mono text-stat text-warn">{counts.warning}</div><div className="text-badge uppercase tracking-wider text-ink-tertiary">Warning</div></div>
