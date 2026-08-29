@@ -104,6 +104,22 @@ func TestProductionWGReadbackEmergencyWithdrawalAcceptsAbsentInterface(t *testin
 	}
 }
 
+func TestProductionWGReadbackEmergencyWithdrawalAcceptsRawAbsentDeviceError(t *testing.T) {
+	domain := &emergencyDomain{}
+	wg := &fakeWGReadbackOwner{err: errors.New(`ip -o -4 addr show dev wg0: Device "wg0" does not exist`)}
+	surface, err := NewProductionWGReadbackSurface(domain, wg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emergency := surface.(EmergencyDomainSurface)
+	if err := emergency.EmergencyWithdraw(t.Context(), []PoolFence{{}}); err != nil {
+		t.Fatalf("raw missing-device error is already withdrawn: %v", err)
+	}
+	if len(domain.fences) != 1 {
+		t.Fatal("downstream withdrawal was skipped")
+	}
+}
+
 func TestCoordinatorProductionWGReadbackRejectsUnappliedOwnershipAndCompensates(t *testing.T) {
 	ctx := t.Context()
 	base := projectorBase()

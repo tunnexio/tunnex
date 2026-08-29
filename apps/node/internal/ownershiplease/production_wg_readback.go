@@ -70,7 +70,7 @@ func (s *productionWGReadbackSurface) EmergencyWithdraw(ctx context.Context, fen
 	}
 	wg, err := s.wg.Readback(ctx)
 	if err != nil {
-		if errors.Is(err, reconcile.ErrWGInterfaceAbsent) {
+		if isWGInterfaceAbsent(err) {
 			// There is no kernel interface carrying the fenced state. This is a
 			// successful non-serving withdrawal at cold start, not an unknown
 			// readback; still let lower owners remove their Kubernetes state.
@@ -147,6 +147,15 @@ func (s *productionWGReadbackSurface) EmergencyWithdraw(ctx context.Context, fen
 		}
 	}
 	return nil
+}
+
+func isWGInterfaceAbsent(err error) bool {
+	if errors.Is(err, reconcile.ErrWGInterfaceAbsent) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "device") &&
+		(strings.Contains(message, "does not exist") || strings.Contains(message, "cannot find device"))
 }
 
 func (s *productionWGReadbackSurface) Readback(ctx context.Context) (AppliedDomainState, error) {
