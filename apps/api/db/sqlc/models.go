@@ -415,6 +415,24 @@ type AlertDestination struct {
 	UpdatedAt           time.Time          `json:"updated_at"`
 }
 
+type AlertOccurrence struct {
+	ID              uuid.UUID          `json:"id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	EventKey        string             `json:"event_key"`
+	DedupKey        string             `json:"dedup_key"`
+	ResourceType    string             `json:"resource_type"`
+	ResourceID      string             `json:"resource_id"`
+	ResourceName    string             `json:"resource_name"`
+	Severity        string             `json:"severity"`
+	Subject         string             `json:"subject"`
+	Fields          []byte             `json:"fields"`
+	State           string             `json:"state"`
+	FirstObservedAt time.Time          `json:"first_observed_at"`
+	LastObservedAt  time.Time          `json:"last_observed_at"`
+	ResolvedAt      pgtype.Timestamptz `json:"resolved_at"`
+	OccurrenceCount int64              `json:"occurrence_count"`
+}
+
 type AlertSubscription struct {
 	OrgID         uuid.UUID `json:"org_id"`
 	DestinationID uuid.UUID `json:"destination_id"`

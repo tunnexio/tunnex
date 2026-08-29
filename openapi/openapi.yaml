@@ -3610,6 +3610,25 @@ paths:
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AlertDelivery" } } } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/alert-occurrences:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAlertOccurrences
+      summary: List active or resolved product alert conditions
+      tags: [alerting]
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/AlertOccurrenceState" }
+      responses:
+        "200":
+          description: Bounded tenant-scoped condition history without delivery payloads or endpoint secrets.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AlertOccurrence" } } } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/routed-ranges:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -5196,7 +5215,33 @@ components:
       enum: [info, warning, critical]
     AlertEventKey:
       type: string
-      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift]
+      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable]
+
+    AlertOccurrenceState:
+      type: string
+      enum: [firing, resolved]
+    AlertResourceType:
+      type: string
+      enum: [agent, gateway, site, device, kubernetes_cluster, kubernetes_service]
+    AlertOccurrence:
+      type: object
+      additionalProperties: false
+      required: [id, event_key, dedup_key, resource_type, resource_id, resource_name, severity, subject, fields, state, first_observed_at, last_observed_at, occurrence_count]
+      properties:
+        id: { type: string, format: uuid }
+        event_key: { $ref: "#/components/schemas/AlertEventKey" }
+        dedup_key: { type: string }
+        resource_type: { $ref: "#/components/schemas/AlertResourceType" }
+        resource_id: { type: string }
+        resource_name: { type: string }
+        severity: { $ref: "#/components/schemas/AlertSeverity" }
+        subject: { type: string }
+        fields: { type: object, additionalProperties: { type: string } }
+        state: { $ref: "#/components/schemas/AlertOccurrenceState" }
+        first_observed_at: { type: string, format: date-time }
+        last_observed_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        occurrence_count: { type: integer, format: int64, minimum: 0 }
     CreateAlertDestinationRequest:
       type: object
       additionalProperties: false

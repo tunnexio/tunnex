@@ -717,6 +717,14 @@ const ALERT_EVENT_LABELS: Record<AlertEventKey, string> = {
   "agent.access_expiring": "Agent access expiring",
   "agent.rotation_failed": "Agent rotation failed",
   "agent.configuration_drift": "Agent configuration drift",
+  "gateway.offline": "Gateway offline",
+  "gateway.policy_degraded": "Gateway policy degraded",
+  "site.link_down": "Site link down",
+  "device.offline": "Device offline",
+  "device.posture_blocked": "Device posture blocked",
+  "kubernetes.connector_degraded": "Kubernetes connector degraded",
+  "kubernetes.inventory_stale": "Kubernetes inventory stale",
+  "kubernetes.service_unavailable": "Kubernetes service unavailable",
 };
 
 const ALERT_DESTINATION_LABELS: Record<AlertDestinationKind, string> = {
