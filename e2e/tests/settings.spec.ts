@@ -52,17 +52,19 @@ test("owner sees org settings; SSO config is gated to the enterprise edition", a
   // The enterprise notes live in Authentication now — one section at a time (the settings rail).
   await openSection(page, "Authentication");
   await expect(
-    page.getByText(/SSO .*is a Tunnex Enterprise feature/i),
+    page.getByText("Google and Microsoft sign-in require an Enterprise plan."),
   ).toBeVisible();
   await expect(
-    page.getByText(/Org-wide MFA enforcement is a Tunnex Enterprise feature/i),
+    page.getByText("Organization-wide enforcement requires an Enterprise plan."),
   ).toBeVisible();
   await expect(page.getByLabel("Client ID")).toHaveCount(0);
 });
 
 test("a plain member cannot manage settings", async ({ page }) => {
   await login(page, MEMBER);
-  await expect(page.getByText(/managed by owners and admins/i)).toBeVisible();
+  await expect(
+    page.getByText("Manage your account security and view your plan."),
+  ).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveCount(0);
 });
 

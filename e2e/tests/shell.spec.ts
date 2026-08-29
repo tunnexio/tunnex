@@ -42,7 +42,10 @@ test("signing in reaches the app shell and the dashboard, then navigates to devi
   // ⚠ THE FORM IS NO LONGER ON THE PAGE — it moved into an "Add device" modal. The CAPABILITY is unchanged
   // (Devices.tsx still renders the name field and the Create device submit inside the dialog), so this
   // asserts the affordance that reaches it rather than a form that is now one click away.
-  await page.getByRole("link", { name: "Devices" }).click();
+  await page
+    .getByLabel("Main")
+    .getByRole("link", { name: "Devices" })
+    .click();
   await expect(page.getByRole("heading", { name: "Devices" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add device" })).toBeVisible();
 
