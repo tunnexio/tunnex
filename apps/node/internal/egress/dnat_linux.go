@@ -123,6 +123,15 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 	if m.log != nil {
 		m.log.Info("k8s_resolve_begin", "vip_mappings", nVIP, "dns_zones", nDNS)
 	}
+	// A standby has no VIP mappings by design, but it still relays client packets
+	// to the active HA owner. Keep the observed CNI mechanism reconciled from this
+	// periodic resolver path as well as the egress path, so a controller refresh
+	// cannot silently break standby transit.
+	if m.kubernetesMode.Load() {
+		if err := m.reconcileK8sNetPrep(ctx, wgSubnet(ctx, m.wgIface)); err != nil && m.log != nil {
+			m.log.Warn("k8s_netprep_reconcile_failed", "error", err)
+		}
+	}
 	if p == nil || len(p.VIPMappings) == 0 {
 		m.resolvedVIPs.Store(&[]resolvedVIP{})
 		m.refusedK8sVIPs.Store(&[]refusedVIP{})
