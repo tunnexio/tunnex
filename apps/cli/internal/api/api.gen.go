@@ -863,6 +863,26 @@ const (
 	NodeStatusRevoked NodeStatus = "revoked"
 )
 
+// Defines values for NodeLifecycleClaimState.
+const (
+	Aborted      NodeLifecycleClaimState = "aborted"
+	Acknowledged NodeLifecycleClaimState = "acknowledged"
+	Consumed     NodeLifecycleClaimState = "consumed"
+	Expired      NodeLifecycleClaimState = "expired"
+	Issued       NodeLifecycleClaimState = "issued"
+)
+
+// Defines values for NodeLifecycleInstallOperationState.
+const (
+	NodeLifecycleInstallOperationStateAbortRequested NodeLifecycleInstallOperationState = "abort_requested"
+	NodeLifecycleInstallOperationStateAborted        NodeLifecycleInstallOperationState = "aborted"
+	NodeLifecycleInstallOperationStateAborting       NodeLifecycleInstallOperationState = "aborting"
+	NodeLifecycleInstallOperationStateActive         NodeLifecycleInstallOperationState = "active"
+	NodeLifecycleInstallOperationStateCompleted      NodeLifecycleInstallOperationState = "completed"
+	NodeLifecycleInstallOperationStateExpired        NodeLifecycleInstallOperationState = "expired"
+	NodeLifecycleInstallOperationStateReleased       NodeLifecycleInstallOperationState = "released"
+)
+
 // Defines values for OrphanReason.
 const (
 	OutOfRange        OrphanReason = "out_of_range"
@@ -1074,8 +1094,8 @@ const (
 
 // Defines values for ListAgentsParamsMcp.
 const (
-	ListAgentsParamsMcpAssigned   ListAgentsParamsMcp = "assigned"
-	ListAgentsParamsMcpUnassigned ListAgentsParamsMcp = "unassigned"
+	Assigned   ListAgentsParamsMcp = "assigned"
+	Unassigned ListAgentsParamsMcp = "unassigned"
 )
 
 // Defines values for ListAgentsParamsAccess.
@@ -3589,6 +3609,137 @@ type NodePolicyDegradedKind string
 // NodeStatus defines model for Node.Status.
 type NodeStatus string
 
+// NodeLifecycleClaimAbortRequest defines model for NodeLifecycleClaimAbortRequest.
+type NodeLifecycleClaimAbortRequest struct {
+	// ExpectedGeneration Zero atomically abandons the exact pre-mint claim; positive values abort an existing generation.
+	ExpectedGeneration int `json:"expected_generation"`
+
+	// NodeName Required when expected_generation is zero and checked when supplied for an existing generation.
+	NodeName  *string            `json:"node_name,omitempty"`
+	RequestId openapi_types.UUID `json:"request_id"`
+}
+
+// NodeLifecycleClaimCASRequest defines model for NodeLifecycleClaimCASRequest.
+type NodeLifecycleClaimCASRequest struct {
+	ExpectedGeneration int                `json:"expected_generation"`
+	RequestId          openapi_types.UUID `json:"request_id"`
+}
+
+// NodeLifecycleClaimRemintRequest defines model for NodeLifecycleClaimRemintRequest.
+type NodeLifecycleClaimRemintRequest struct {
+	// ExpectedGeneration Zero creates the claim; an expired retry names the exact current generation.
+	ExpectedGeneration int    `json:"expected_generation"`
+	NodeName           string `json:"node_name"`
+
+	// RequestId Idempotency identity persisted token-blind in Kubernetes before this request.
+	RequestId openapi_types.UUID `json:"request_id"`
+}
+
+// NodeLifecycleClaimRemintResponse defines model for NodeLifecycleClaimRemintResponse.
+type NodeLifecycleClaimRemintResponse struct {
+	Claim      openapi_types.UUID `json:"claim"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	Generation int                `json:"generation"`
+	JoinToken  string             `json:"join_token"`
+	RequestId  openapi_types.UUID `json:"request_id"`
+}
+
+// NodeLifecycleClaimState defines model for NodeLifecycleClaimState.
+type NodeLifecycleClaimState string
+
+// NodeLifecycleClaimStatus defines model for NodeLifecycleClaimStatus.
+type NodeLifecycleClaimStatus struct {
+	AbortedAt      *time.Time         `json:"aborted_at"`
+	AcknowledgedAt *time.Time         `json:"acknowledged_at"`
+	Claim          openapi_types.UUID `json:"claim"`
+	ConsumedAt     *time.Time         `json:"consumed_at"`
+	ExpiresAt      time.Time          `json:"expires_at"`
+
+	// Generation Zero is reserved for a credentialless claim tombstone created by pre-mint abort.
+	Generation int `json:"generation"`
+
+	// NodeId Exact lifecycle-claim node identity, present only after enrollment.
+	NodeId    *openapi_types.UUID     `json:"node_id"`
+	NodeName  string                  `json:"node_name"`
+	RequestId openapi_types.UUID      `json:"request_id"`
+	State     NodeLifecycleClaimState `json:"state"`
+}
+
+// NodeLifecycleInstallAbortFinalizeRequest defines model for NodeLifecycleInstallAbortFinalizeRequest.
+type NodeLifecycleInstallAbortFinalizeRequest struct {
+	ExpectedEpoch      int64 `json:"expected_epoch"`
+	ExpectedGeneration int   `json:"expected_generation"`
+
+	// ReleaseAbsent Explicit CLI attestation that the exact approved release and workloads are absent; false is refused.
+	ReleaseAbsent bool               `json:"release_absent"`
+	RequestId     openapi_types.UUID `json:"request_id"`
+}
+
+// NodeLifecycleInstallBeginRequest defines model for NodeLifecycleInstallBeginRequest.
+type NodeLifecycleInstallBeginRequest struct {
+	ExpectedGeneration int `json:"expected_generation"`
+
+	// InstallIntentDigest Canonical digest of the exact install intent; display-plan digests are not accepted here.
+	InstallIntentDigest string             `json:"install_intent_digest"`
+	OperationId         openapi_types.UUID `json:"operation_id"`
+	ReleaseName         string             `json:"release_name"`
+	ReleaseNamespace    string             `json:"release_namespace"`
+	RequestId           openapi_types.UUID `json:"request_id"`
+
+	// RequestedDurationSeconds Total Helm plus verification/completion budget; values outside the server cap are refused, never clipped.
+	RequestedDurationSeconds int `json:"requested_duration_seconds"`
+}
+
+// NodeLifecycleInstallCASRequest defines model for NodeLifecycleInstallCASRequest.
+type NodeLifecycleInstallCASRequest struct {
+	ExpectedEpoch      int64              `json:"expected_epoch"`
+	ExpectedGeneration int                `json:"expected_generation"`
+	RequestId          openapi_types.UUID `json:"request_id"`
+}
+
+// NodeLifecycleInstallCompleteRequest defines model for NodeLifecycleInstallCompleteRequest.
+type NodeLifecycleInstallCompleteRequest struct {
+	ExpectedEpoch      int64 `json:"expected_epoch"`
+	ExpectedGeneration int   `json:"expected_generation"`
+
+	// ReleaseReady Explicit CLI attestation for the exact operation's approved release scope; false is refused.
+	ReleaseReady bool               `json:"release_ready"`
+	RequestId    openapi_types.UUID `json:"request_id"`
+}
+
+// NodeLifecycleInstallOperationState defines model for NodeLifecycleInstallOperationState.
+type NodeLifecycleInstallOperationState string
+
+// NodeLifecycleInstallOperationStatus defines model for NodeLifecycleInstallOperationStatus.
+type NodeLifecycleInstallOperationStatus struct {
+	AbortRequestedAt *time.Time         `json:"abort_requested_at"`
+	AbortedAt        *time.Time         `json:"aborted_at"`
+	Claim            openapi_types.UUID `json:"claim"`
+	CompletedAt      *time.Time         `json:"completed_at"`
+	Epoch            int64              `json:"epoch"`
+	Generation       int                `json:"generation"`
+	HeartbeatAt      time.Time          `json:"heartbeat_at"`
+
+	// InstallIntentDigest Canonical digest of the exact install intent; distinct from any human-readable display-plan digest.
+	InstallIntentDigest string `json:"install_intent_digest"`
+
+	// NotAfter Immutable absolute deadline chosen from the PostgreSQL clock; heartbeat never extends it.
+	NotAfter         time.Time          `json:"not_after"`
+	OperationId      openapi_types.UUID `json:"operation_id"`
+	ReleaseName      string             `json:"release_name"`
+	ReleaseNamespace string             `json:"release_namespace"`
+	ReleasedAt       *time.Time         `json:"released_at"`
+	RequestId        openapi_types.UUID `json:"request_id"`
+
+	// RequestedDurationSeconds Requested total install budget. The immutable not_after may be earlier when the lifecycle token expires; clients must refuse unless not_after - server_time covers Helm plus deterministic verification/completion margin.
+	RequestedDurationSeconds int `json:"requested_duration_seconds"`
+
+	// ServerTime PostgreSQL time sampled after the operation transition/read. Clients derive a conservative monotonic timeout from request-start plus not_after - server_time and never compare the deadline to their wall clock.
+	ServerTime  time.Time                          `json:"server_time"`
+	State       NodeLifecycleInstallOperationState `json:"state"`
+	TakenOverAt *time.Time                         `json:"taken_over_at"`
+}
+
 // OVPNSetting defines model for OVPNSetting.
 type OVPNSetting struct {
 	// Enabled S9.1 D-S9.5-OPTIN: whether the org has opted into OpenVPN.
@@ -4729,6 +4880,33 @@ type SetMfaEnforceJSONRequestBody = MfaEnforce
 // IssueJoinTokenJSONRequestBody defines body for IssueJoinToken for application/json ContentType.
 type IssueJoinTokenJSONRequestBody = JoinTokenRequest
 
+// AbortNodeLifecycleClaimJSONRequestBody defines body for AbortNodeLifecycleClaim for application/json ContentType.
+type AbortNodeLifecycleClaimJSONRequestBody = NodeLifecycleClaimAbortRequest
+
+// AcknowledgeNodeLifecycleClaimJSONRequestBody defines body for AcknowledgeNodeLifecycleClaim for application/json ContentType.
+type AcknowledgeNodeLifecycleClaimJSONRequestBody = NodeLifecycleClaimCASRequest
+
+// BeginNodeLifecycleInstallJSONRequestBody defines body for BeginNodeLifecycleInstall for application/json ContentType.
+type BeginNodeLifecycleInstallJSONRequestBody = NodeLifecycleInstallBeginRequest
+
+// RequestNodeLifecycleInstallAbortJSONRequestBody defines body for RequestNodeLifecycleInstallAbort for application/json ContentType.
+type RequestNodeLifecycleInstallAbortJSONRequestBody = NodeLifecycleInstallCASRequest
+
+// CancelNodeLifecycleInstallJSONRequestBody defines body for CancelNodeLifecycleInstall for application/json ContentType.
+type CancelNodeLifecycleInstallJSONRequestBody = NodeLifecycleInstallCASRequest
+
+// CompleteNodeLifecycleInstallJSONRequestBody defines body for CompleteNodeLifecycleInstall for application/json ContentType.
+type CompleteNodeLifecycleInstallJSONRequestBody = NodeLifecycleInstallCompleteRequest
+
+// FinalizeNodeLifecycleInstallAbortJSONRequestBody defines body for FinalizeNodeLifecycleInstallAbort for application/json ContentType.
+type FinalizeNodeLifecycleInstallAbortJSONRequestBody = NodeLifecycleInstallAbortFinalizeRequest
+
+// HeartbeatNodeLifecycleInstallJSONRequestBody defines body for HeartbeatNodeLifecycleInstall for application/json ContentType.
+type HeartbeatNodeLifecycleInstallJSONRequestBody = NodeLifecycleInstallCASRequest
+
+// RemintNodeLifecycleClaimJSONRequestBody defines body for RemintNodeLifecycleClaim for application/json ContentType.
+type RemintNodeLifecycleClaimJSONRequestBody = NodeLifecycleClaimRemintRequest
+
 // UpdateNodeJSONRequestBody defines body for UpdateNode for application/json ContentType.
 type UpdateNodeJSONRequestBody = UpdateNodeRequest
 
@@ -5673,6 +5851,57 @@ type ClientInterface interface {
 	IssueJoinTokenWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	IssueJoinToken(ctx context.Context, orgId openapi_types.UUID, body IssueJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetNodeLifecycleClaim request
+	GetNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AbortNodeLifecycleClaimWithBody request with any body
+	AbortNodeLifecycleClaimWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AbortNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AbortNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AcknowledgeNodeLifecycleClaimWithBody request with any body
+	AcknowledgeNodeLifecycleClaimWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AcknowledgeNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AcknowledgeNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetLatestNodeLifecycleInstall request
+	GetLatestNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BeginNodeLifecycleInstallWithBody request with any body
+	BeginNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	BeginNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body BeginNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RequestNodeLifecycleInstallAbortWithBody request with any body
+	RequestNodeLifecycleInstallAbortWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RequestNodeLifecycleInstallAbort(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body RequestNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CancelNodeLifecycleInstallWithBody request with any body
+	CancelNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CancelNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CancelNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CompleteNodeLifecycleInstallWithBody request with any body
+	CompleteNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CompleteNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CompleteNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// FinalizeNodeLifecycleInstallAbortWithBody request with any body
+	FinalizeNodeLifecycleInstallAbortWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	FinalizeNodeLifecycleInstallAbort(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body FinalizeNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// HeartbeatNodeLifecycleInstallWithBody request with any body
+	HeartbeatNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	HeartbeatNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body HeartbeatNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemintNodeLifecycleClaimWithBody request with any body
+	RemintNodeLifecycleClaimWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RemintNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body RemintNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteNode request
 	DeleteNode(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -9437,6 +9666,246 @@ func (c *Client) IssueJoinTokenWithBody(ctx context.Context, orgId openapi_types
 
 func (c *Client) IssueJoinToken(ctx context.Context, orgId openapi_types.UUID, body IssueJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewIssueJoinTokenRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetNodeLifecycleClaimRequest(c.Server, orgId, claim)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AbortNodeLifecycleClaimWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAbortNodeLifecycleClaimRequestWithBody(c.Server, orgId, claim, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AbortNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AbortNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAbortNodeLifecycleClaimRequest(c.Server, orgId, claim, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AcknowledgeNodeLifecycleClaimWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcknowledgeNodeLifecycleClaimRequestWithBody(c.Server, orgId, claim, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AcknowledgeNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AcknowledgeNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcknowledgeNodeLifecycleClaimRequest(c.Server, orgId, claim, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetLatestNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetLatestNodeLifecycleInstallRequest(c.Server, orgId, claim)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BeginNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBeginNodeLifecycleInstallRequestWithBody(c.Server, orgId, claim, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) BeginNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body BeginNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBeginNodeLifecycleInstallRequest(c.Server, orgId, claim, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestNodeLifecycleInstallAbortWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestNodeLifecycleInstallAbortRequestWithBody(c.Server, orgId, claim, operationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestNodeLifecycleInstallAbort(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body RequestNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestNodeLifecycleInstallAbortRequest(c.Server, orgId, claim, operationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelNodeLifecycleInstallRequestWithBody(c.Server, orgId, claim, operationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CancelNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CancelNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCancelNodeLifecycleInstallRequest(c.Server, orgId, claim, operationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CompleteNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteNodeLifecycleInstallRequestWithBody(c.Server, orgId, claim, operationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CompleteNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CompleteNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCompleteNodeLifecycleInstallRequest(c.Server, orgId, claim, operationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) FinalizeNodeLifecycleInstallAbortWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFinalizeNodeLifecycleInstallAbortRequestWithBody(c.Server, orgId, claim, operationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) FinalizeNodeLifecycleInstallAbort(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body FinalizeNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewFinalizeNodeLifecycleInstallAbortRequest(c.Server, orgId, claim, operationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) HeartbeatNodeLifecycleInstallWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewHeartbeatNodeLifecycleInstallRequestWithBody(c.Server, orgId, claim, operationId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) HeartbeatNodeLifecycleInstall(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body HeartbeatNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewHeartbeatNodeLifecycleInstallRequest(c.Server, orgId, claim, operationId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemintNodeLifecycleClaimWithBody(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemintNodeLifecycleClaimRequestWithBody(c.Server, orgId, claim, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemintNodeLifecycleClaim(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body RemintNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemintNodeLifecycleClaimRequest(c.Server, orgId, claim, body)
 	if err != nil {
 		return nil, err
 	}
@@ -19836,6 +20305,609 @@ func NewIssueJoinTokenRequestWithBody(server string, orgId openapi_types.UUID, c
 	return req, nil
 }
 
+// NewGetNodeLifecycleClaimRequest generates requests for GetNodeLifecycleClaim
+func NewGetNodeLifecycleClaimRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAbortNodeLifecycleClaimRequest calls the generic AbortNodeLifecycleClaim builder with application/json body
+func NewAbortNodeLifecycleClaimRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, body AbortNodeLifecycleClaimJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAbortNodeLifecycleClaimRequestWithBody(server, orgId, claim, "application/json", bodyReader)
+}
+
+// NewAbortNodeLifecycleClaimRequestWithBody generates requests for AbortNodeLifecycleClaim with any type of body
+func NewAbortNodeLifecycleClaimRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/abort", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAcknowledgeNodeLifecycleClaimRequest calls the generic AcknowledgeNodeLifecycleClaim builder with application/json body
+func NewAcknowledgeNodeLifecycleClaimRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, body AcknowledgeNodeLifecycleClaimJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAcknowledgeNodeLifecycleClaimRequestWithBody(server, orgId, claim, "application/json", bodyReader)
+}
+
+// NewAcknowledgeNodeLifecycleClaimRequestWithBody generates requests for AcknowledgeNodeLifecycleClaim with any type of body
+func NewAcknowledgeNodeLifecycleClaimRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/ack", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetLatestNodeLifecycleInstallRequest generates requests for GetLatestNodeLifecycleInstall
+func NewGetLatestNodeLifecycleInstallRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/install-operations", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewBeginNodeLifecycleInstallRequest calls the generic BeginNodeLifecycleInstall builder with application/json body
+func NewBeginNodeLifecycleInstallRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, body BeginNodeLifecycleInstallJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBeginNodeLifecycleInstallRequestWithBody(server, orgId, claim, "application/json", bodyReader)
+}
+
+// NewBeginNodeLifecycleInstallRequestWithBody generates requests for BeginNodeLifecycleInstall with any type of body
+func NewBeginNodeLifecycleInstallRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/install-operations", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRequestNodeLifecycleInstallAbortRequest calls the generic RequestNodeLifecycleInstallAbort builder with application/json body
+func NewRequestNodeLifecycleInstallAbortRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body RequestNodeLifecycleInstallAbortJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRequestNodeLifecycleInstallAbortRequestWithBody(server, orgId, claim, operationId, "application/json", bodyReader)
+}
+
+// NewRequestNodeLifecycleInstallAbortRequestWithBody generates requests for RequestNodeLifecycleInstallAbort with any type of body
+func NewRequestNodeLifecycleInstallAbortRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "operationId", runtime.ParamLocationPath, operationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/install-operations/%s/abort", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCancelNodeLifecycleInstallRequest calls the generic CancelNodeLifecycleInstall builder with application/json body
+func NewCancelNodeLifecycleInstallRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CancelNodeLifecycleInstallJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCancelNodeLifecycleInstallRequestWithBody(server, orgId, claim, operationId, "application/json", bodyReader)
+}
+
+// NewCancelNodeLifecycleInstallRequestWithBody generates requests for CancelNodeLifecycleInstall with any type of body
+func NewCancelNodeLifecycleInstallRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "operationId", runtime.ParamLocationPath, operationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/install-operations/%s/cancel", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCompleteNodeLifecycleInstallRequest calls the generic CompleteNodeLifecycleInstall builder with application/json body
+func NewCompleteNodeLifecycleInstallRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CompleteNodeLifecycleInstallJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCompleteNodeLifecycleInstallRequestWithBody(server, orgId, claim, operationId, "application/json", bodyReader)
+}
+
+// NewCompleteNodeLifecycleInstallRequestWithBody generates requests for CompleteNodeLifecycleInstall with any type of body
+func NewCompleteNodeLifecycleInstallRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "operationId", runtime.ParamLocationPath, operationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/install-operations/%s/complete", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewFinalizeNodeLifecycleInstallAbortRequest calls the generic FinalizeNodeLifecycleInstallAbort builder with application/json body
+func NewFinalizeNodeLifecycleInstallAbortRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body FinalizeNodeLifecycleInstallAbortJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewFinalizeNodeLifecycleInstallAbortRequestWithBody(server, orgId, claim, operationId, "application/json", bodyReader)
+}
+
+// NewFinalizeNodeLifecycleInstallAbortRequestWithBody generates requests for FinalizeNodeLifecycleInstallAbort with any type of body
+func NewFinalizeNodeLifecycleInstallAbortRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "operationId", runtime.ParamLocationPath, operationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/install-operations/%s/finalize-abort", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewHeartbeatNodeLifecycleInstallRequest calls the generic HeartbeatNodeLifecycleInstall builder with application/json body
+func NewHeartbeatNodeLifecycleInstallRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body HeartbeatNodeLifecycleInstallJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewHeartbeatNodeLifecycleInstallRequestWithBody(server, orgId, claim, operationId, "application/json", bodyReader)
+}
+
+// NewHeartbeatNodeLifecycleInstallRequestWithBody generates requests for HeartbeatNodeLifecycleInstall with any type of body
+func NewHeartbeatNodeLifecycleInstallRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "operationId", runtime.ParamLocationPath, operationId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/install-operations/%s/heartbeat", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemintNodeLifecycleClaimRequest calls the generic RemintNodeLifecycleClaim builder with application/json body
+func NewRemintNodeLifecycleClaimRequest(server string, orgId openapi_types.UUID, claim openapi_types.UUID, body RemintNodeLifecycleClaimJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRemintNodeLifecycleClaimRequestWithBody(server, orgId, claim, "application/json", bodyReader)
+}
+
+// NewRemintNodeLifecycleClaimRequestWithBody generates requests for RemintNodeLifecycleClaim with any type of body
+func NewRemintNodeLifecycleClaimRequestWithBody(server string, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "claim", runtime.ParamLocationPath, claim)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/nodes/lifecycle-claims/%s/remint", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteNodeRequest generates requests for DeleteNode
 func NewDeleteNodeRequest(server string, orgId openapi_types.UUID, nodeId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -22500,6 +23572,57 @@ type ClientWithResponsesInterface interface {
 	IssueJoinTokenWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*IssueJoinTokenResponse, error)
 
 	IssueJoinTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, body IssueJoinTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueJoinTokenResponse, error)
+
+	// GetNodeLifecycleClaimWithResponse request
+	GetNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetNodeLifecycleClaimResponse, error)
+
+	// AbortNodeLifecycleClaimWithBodyWithResponse request with any body
+	AbortNodeLifecycleClaimWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AbortNodeLifecycleClaimResponse, error)
+
+	AbortNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AbortNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*AbortNodeLifecycleClaimResponse, error)
+
+	// AcknowledgeNodeLifecycleClaimWithBodyWithResponse request with any body
+	AcknowledgeNodeLifecycleClaimWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcknowledgeNodeLifecycleClaimResponse, error)
+
+	AcknowledgeNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AcknowledgeNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*AcknowledgeNodeLifecycleClaimResponse, error)
+
+	// GetLatestNodeLifecycleInstallWithResponse request
+	GetLatestNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetLatestNodeLifecycleInstallResponse, error)
+
+	// BeginNodeLifecycleInstallWithBodyWithResponse request with any body
+	BeginNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BeginNodeLifecycleInstallResponse, error)
+
+	BeginNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body BeginNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*BeginNodeLifecycleInstallResponse, error)
+
+	// RequestNodeLifecycleInstallAbortWithBodyWithResponse request with any body
+	RequestNodeLifecycleInstallAbortWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestNodeLifecycleInstallAbortResponse, error)
+
+	RequestNodeLifecycleInstallAbortWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body RequestNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestNodeLifecycleInstallAbortResponse, error)
+
+	// CancelNodeLifecycleInstallWithBodyWithResponse request with any body
+	CancelNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CancelNodeLifecycleInstallResponse, error)
+
+	CancelNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CancelNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*CancelNodeLifecycleInstallResponse, error)
+
+	// CompleteNodeLifecycleInstallWithBodyWithResponse request with any body
+	CompleteNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteNodeLifecycleInstallResponse, error)
+
+	CompleteNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CompleteNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteNodeLifecycleInstallResponse, error)
+
+	// FinalizeNodeLifecycleInstallAbortWithBodyWithResponse request with any body
+	FinalizeNodeLifecycleInstallAbortWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FinalizeNodeLifecycleInstallAbortResponse, error)
+
+	FinalizeNodeLifecycleInstallAbortWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body FinalizeNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*FinalizeNodeLifecycleInstallAbortResponse, error)
+
+	// HeartbeatNodeLifecycleInstallWithBodyWithResponse request with any body
+	HeartbeatNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*HeartbeatNodeLifecycleInstallResponse, error)
+
+	HeartbeatNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body HeartbeatNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*HeartbeatNodeLifecycleInstallResponse, error)
+
+	// RemintNodeLifecycleClaimWithBodyWithResponse request with any body
+	RemintNodeLifecycleClaimWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemintNodeLifecycleClaimResponse, error)
+
+	RemintNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body RemintNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*RemintNodeLifecycleClaimResponse, error)
 
 	// DeleteNodeWithResponse request
 	DeleteNodeWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteNodeResponse, error)
@@ -27465,6 +28588,262 @@ func (r IssueJoinTokenResponse) StatusCode() int {
 	return 0
 }
 
+type GetNodeLifecycleClaimResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleClaimStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetNodeLifecycleClaimResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetNodeLifecycleClaimResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AbortNodeLifecycleClaimResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleClaimStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AbortNodeLifecycleClaimResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AbortNodeLifecycleClaimResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AcknowledgeNodeLifecycleClaimResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleClaimStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AcknowledgeNodeLifecycleClaimResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AcknowledgeNodeLifecycleClaimResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetLatestNodeLifecycleInstallResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleInstallOperationStatus
+	JSON404      *Error
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetLatestNodeLifecycleInstallResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetLatestNodeLifecycleInstallResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type BeginNodeLifecycleInstallResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleInstallOperationStatus
+	JSON409      *Error
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r BeginNodeLifecycleInstallResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BeginNodeLifecycleInstallResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RequestNodeLifecycleInstallAbortResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleClaimStatus
+	JSON202      *NodeLifecycleInstallOperationStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RequestNodeLifecycleInstallAbortResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RequestNodeLifecycleInstallAbortResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CancelNodeLifecycleInstallResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleInstallOperationStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CancelNodeLifecycleInstallResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CancelNodeLifecycleInstallResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CompleteNodeLifecycleInstallResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleInstallOperationStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CompleteNodeLifecycleInstallResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CompleteNodeLifecycleInstallResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type FinalizeNodeLifecycleInstallAbortResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleClaimStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r FinalizeNodeLifecycleInstallAbortResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r FinalizeNodeLifecycleInstallAbortResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type HeartbeatNodeLifecycleInstallResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleInstallOperationStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r HeartbeatNodeLifecycleInstallResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r HeartbeatNodeLifecycleInstallResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemintNodeLifecycleClaimResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NodeLifecycleClaimRemintResponse
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RemintNodeLifecycleClaimResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemintNodeLifecycleClaimResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteNodeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -30989,6 +32368,177 @@ func (c *ClientWithResponses) IssueJoinTokenWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseIssueJoinTokenResponse(rsp)
+}
+
+// GetNodeLifecycleClaimWithResponse request returning *GetNodeLifecycleClaimResponse
+func (c *ClientWithResponses) GetNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetNodeLifecycleClaimResponse, error) {
+	rsp, err := c.GetNodeLifecycleClaim(ctx, orgId, claim, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetNodeLifecycleClaimResponse(rsp)
+}
+
+// AbortNodeLifecycleClaimWithBodyWithResponse request with arbitrary body returning *AbortNodeLifecycleClaimResponse
+func (c *ClientWithResponses) AbortNodeLifecycleClaimWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AbortNodeLifecycleClaimResponse, error) {
+	rsp, err := c.AbortNodeLifecycleClaimWithBody(ctx, orgId, claim, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAbortNodeLifecycleClaimResponse(rsp)
+}
+
+func (c *ClientWithResponses) AbortNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AbortNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*AbortNodeLifecycleClaimResponse, error) {
+	rsp, err := c.AbortNodeLifecycleClaim(ctx, orgId, claim, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAbortNodeLifecycleClaimResponse(rsp)
+}
+
+// AcknowledgeNodeLifecycleClaimWithBodyWithResponse request with arbitrary body returning *AcknowledgeNodeLifecycleClaimResponse
+func (c *ClientWithResponses) AcknowledgeNodeLifecycleClaimWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcknowledgeNodeLifecycleClaimResponse, error) {
+	rsp, err := c.AcknowledgeNodeLifecycleClaimWithBody(ctx, orgId, claim, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcknowledgeNodeLifecycleClaimResponse(rsp)
+}
+
+func (c *ClientWithResponses) AcknowledgeNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body AcknowledgeNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*AcknowledgeNodeLifecycleClaimResponse, error) {
+	rsp, err := c.AcknowledgeNodeLifecycleClaim(ctx, orgId, claim, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcknowledgeNodeLifecycleClaimResponse(rsp)
+}
+
+// GetLatestNodeLifecycleInstallWithResponse request returning *GetLatestNodeLifecycleInstallResponse
+func (c *ClientWithResponses) GetLatestNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetLatestNodeLifecycleInstallResponse, error) {
+	rsp, err := c.GetLatestNodeLifecycleInstall(ctx, orgId, claim, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetLatestNodeLifecycleInstallResponse(rsp)
+}
+
+// BeginNodeLifecycleInstallWithBodyWithResponse request with arbitrary body returning *BeginNodeLifecycleInstallResponse
+func (c *ClientWithResponses) BeginNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BeginNodeLifecycleInstallResponse, error) {
+	rsp, err := c.BeginNodeLifecycleInstallWithBody(ctx, orgId, claim, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBeginNodeLifecycleInstallResponse(rsp)
+}
+
+func (c *ClientWithResponses) BeginNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body BeginNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*BeginNodeLifecycleInstallResponse, error) {
+	rsp, err := c.BeginNodeLifecycleInstall(ctx, orgId, claim, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBeginNodeLifecycleInstallResponse(rsp)
+}
+
+// RequestNodeLifecycleInstallAbortWithBodyWithResponse request with arbitrary body returning *RequestNodeLifecycleInstallAbortResponse
+func (c *ClientWithResponses) RequestNodeLifecycleInstallAbortWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestNodeLifecycleInstallAbortResponse, error) {
+	rsp, err := c.RequestNodeLifecycleInstallAbortWithBody(ctx, orgId, claim, operationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestNodeLifecycleInstallAbortResponse(rsp)
+}
+
+func (c *ClientWithResponses) RequestNodeLifecycleInstallAbortWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body RequestNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestNodeLifecycleInstallAbortResponse, error) {
+	rsp, err := c.RequestNodeLifecycleInstallAbort(ctx, orgId, claim, operationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestNodeLifecycleInstallAbortResponse(rsp)
+}
+
+// CancelNodeLifecycleInstallWithBodyWithResponse request with arbitrary body returning *CancelNodeLifecycleInstallResponse
+func (c *ClientWithResponses) CancelNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CancelNodeLifecycleInstallResponse, error) {
+	rsp, err := c.CancelNodeLifecycleInstallWithBody(ctx, orgId, claim, operationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelNodeLifecycleInstallResponse(rsp)
+}
+
+func (c *ClientWithResponses) CancelNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CancelNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*CancelNodeLifecycleInstallResponse, error) {
+	rsp, err := c.CancelNodeLifecycleInstall(ctx, orgId, claim, operationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCancelNodeLifecycleInstallResponse(rsp)
+}
+
+// CompleteNodeLifecycleInstallWithBodyWithResponse request with arbitrary body returning *CompleteNodeLifecycleInstallResponse
+func (c *ClientWithResponses) CompleteNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CompleteNodeLifecycleInstallResponse, error) {
+	rsp, err := c.CompleteNodeLifecycleInstallWithBody(ctx, orgId, claim, operationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteNodeLifecycleInstallResponse(rsp)
+}
+
+func (c *ClientWithResponses) CompleteNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body CompleteNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*CompleteNodeLifecycleInstallResponse, error) {
+	rsp, err := c.CompleteNodeLifecycleInstall(ctx, orgId, claim, operationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCompleteNodeLifecycleInstallResponse(rsp)
+}
+
+// FinalizeNodeLifecycleInstallAbortWithBodyWithResponse request with arbitrary body returning *FinalizeNodeLifecycleInstallAbortResponse
+func (c *ClientWithResponses) FinalizeNodeLifecycleInstallAbortWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*FinalizeNodeLifecycleInstallAbortResponse, error) {
+	rsp, err := c.FinalizeNodeLifecycleInstallAbortWithBody(ctx, orgId, claim, operationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFinalizeNodeLifecycleInstallAbortResponse(rsp)
+}
+
+func (c *ClientWithResponses) FinalizeNodeLifecycleInstallAbortWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body FinalizeNodeLifecycleInstallAbortJSONRequestBody, reqEditors ...RequestEditorFn) (*FinalizeNodeLifecycleInstallAbortResponse, error) {
+	rsp, err := c.FinalizeNodeLifecycleInstallAbort(ctx, orgId, claim, operationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseFinalizeNodeLifecycleInstallAbortResponse(rsp)
+}
+
+// HeartbeatNodeLifecycleInstallWithBodyWithResponse request with arbitrary body returning *HeartbeatNodeLifecycleInstallResponse
+func (c *ClientWithResponses) HeartbeatNodeLifecycleInstallWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*HeartbeatNodeLifecycleInstallResponse, error) {
+	rsp, err := c.HeartbeatNodeLifecycleInstallWithBody(ctx, orgId, claim, operationId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseHeartbeatNodeLifecycleInstallResponse(rsp)
+}
+
+func (c *ClientWithResponses) HeartbeatNodeLifecycleInstallWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, operationId openapi_types.UUID, body HeartbeatNodeLifecycleInstallJSONRequestBody, reqEditors ...RequestEditorFn) (*HeartbeatNodeLifecycleInstallResponse, error) {
+	rsp, err := c.HeartbeatNodeLifecycleInstall(ctx, orgId, claim, operationId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseHeartbeatNodeLifecycleInstallResponse(rsp)
+}
+
+// RemintNodeLifecycleClaimWithBodyWithResponse request with arbitrary body returning *RemintNodeLifecycleClaimResponse
+func (c *ClientWithResponses) RemintNodeLifecycleClaimWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemintNodeLifecycleClaimResponse, error) {
+	rsp, err := c.RemintNodeLifecycleClaimWithBody(ctx, orgId, claim, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemintNodeLifecycleClaimResponse(rsp)
+}
+
+func (c *ClientWithResponses) RemintNodeLifecycleClaimWithResponse(ctx context.Context, orgId openapi_types.UUID, claim openapi_types.UUID, body RemintNodeLifecycleClaimJSONRequestBody, reqEditors ...RequestEditorFn) (*RemintNodeLifecycleClaimResponse, error) {
+	rsp, err := c.RemintNodeLifecycleClaim(ctx, orgId, claim, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemintNodeLifecycleClaimResponse(rsp)
 }
 
 // DeleteNodeWithResponse request returning *DeleteNodeResponse
@@ -38239,6 +39789,390 @@ func ParseIssueJoinTokenResponse(rsp *http.Response) (*IssueJoinTokenResponse, e
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetNodeLifecycleClaimResponse parses an HTTP response from a GetNodeLifecycleClaimWithResponse call
+func ParseGetNodeLifecycleClaimResponse(rsp *http.Response) (*GetNodeLifecycleClaimResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetNodeLifecycleClaimResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleClaimStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAbortNodeLifecycleClaimResponse parses an HTTP response from a AbortNodeLifecycleClaimWithResponse call
+func ParseAbortNodeLifecycleClaimResponse(rsp *http.Response) (*AbortNodeLifecycleClaimResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AbortNodeLifecycleClaimResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleClaimStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAcknowledgeNodeLifecycleClaimResponse parses an HTTP response from a AcknowledgeNodeLifecycleClaimWithResponse call
+func ParseAcknowledgeNodeLifecycleClaimResponse(rsp *http.Response) (*AcknowledgeNodeLifecycleClaimResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AcknowledgeNodeLifecycleClaimResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleClaimStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetLatestNodeLifecycleInstallResponse parses an HTTP response from a GetLatestNodeLifecycleInstallWithResponse call
+func ParseGetLatestNodeLifecycleInstallResponse(rsp *http.Response) (*GetLatestNodeLifecycleInstallResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetLatestNodeLifecycleInstallResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleInstallOperationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseBeginNodeLifecycleInstallResponse parses an HTTP response from a BeginNodeLifecycleInstallWithResponse call
+func ParseBeginNodeLifecycleInstallResponse(rsp *http.Response) (*BeginNodeLifecycleInstallResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BeginNodeLifecycleInstallResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleInstallOperationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRequestNodeLifecycleInstallAbortResponse parses an HTTP response from a RequestNodeLifecycleInstallAbortWithResponse call
+func ParseRequestNodeLifecycleInstallAbortResponse(rsp *http.Response) (*RequestNodeLifecycleInstallAbortResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RequestNodeLifecycleInstallAbortResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleClaimStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest NodeLifecycleInstallOperationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCancelNodeLifecycleInstallResponse parses an HTTP response from a CancelNodeLifecycleInstallWithResponse call
+func ParseCancelNodeLifecycleInstallResponse(rsp *http.Response) (*CancelNodeLifecycleInstallResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CancelNodeLifecycleInstallResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleInstallOperationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCompleteNodeLifecycleInstallResponse parses an HTTP response from a CompleteNodeLifecycleInstallWithResponse call
+func ParseCompleteNodeLifecycleInstallResponse(rsp *http.Response) (*CompleteNodeLifecycleInstallResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CompleteNodeLifecycleInstallResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleInstallOperationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseFinalizeNodeLifecycleInstallAbortResponse parses an HTTP response from a FinalizeNodeLifecycleInstallAbortWithResponse call
+func ParseFinalizeNodeLifecycleInstallAbortResponse(rsp *http.Response) (*FinalizeNodeLifecycleInstallAbortResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &FinalizeNodeLifecycleInstallAbortResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleClaimStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseHeartbeatNodeLifecycleInstallResponse parses an HTTP response from a HeartbeatNodeLifecycleInstallWithResponse call
+func ParseHeartbeatNodeLifecycleInstallResponse(rsp *http.Response) (*HeartbeatNodeLifecycleInstallResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &HeartbeatNodeLifecycleInstallResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleInstallOperationStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemintNodeLifecycleClaimResponse parses an HTTP response from a RemintNodeLifecycleClaimWithResponse call
+func ParseRemintNodeLifecycleClaimResponse(rsp *http.Response) (*RemintNodeLifecycleClaimResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemintNodeLifecycleClaimResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NodeLifecycleClaimRemintResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

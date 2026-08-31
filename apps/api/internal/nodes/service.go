@@ -481,7 +481,7 @@ func (s *Service) Enroll(ctx context.Context, rawToken, csrPEM, nodeName, agentV
 		node, e := q.CreateNode(ctx, sqlc.CreateNodeParams{OrgID: tok.OrgID, Name: nodeName, CertSerial: iss.Serial,
 			AgentVersion: agentVersion, CertNotAfter: pgtype.Timestamptz{Time: iss.NotAfter, Valid: true},
 			CertPublicKey: spkiText(iss.PublicKeySPKI), OwnerUserID: tok.IssuedBy,
-			EnrolledKind: &tok.EnrolsKind})
+			EnrolledKind: &tok.EnrolsKind, LifecycleClaim: tok.LifecycleClaim})
 		if e != nil {
 			if pgerr.IsUnique(e) {
 				return apierr.Conflict("node_exists", "a node with this name already exists")
@@ -2798,45 +2798,58 @@ func (s *Service) Revoke(ctx context.Context, actor, orgID, nodeID uuid.UUID) er
 	binding, bErr := s.q.GetNodeSiteBinding(ctx, sqlc.GetNodeSiteBindingParams{ID: nodeID, OrgID: orgID})
 	wasGateway := bErr == nil && binding.Valid
 	if err := s.withTx(ctx, func(q *sqlc.Queries) error {
-		// ⛔ REVOKE DOES NOT PROCEED WHILE DEVICES ARE STILL HOMED HERE (S12.12 D1).
-		//
-		// The cascade below is real and permanent: a revoked gateway is never active again, so an operator who
-		// revokes with fifty devices homed here has disconnected fifty people with no un-revoke. The old design
-		// answered that with a warning that COUNTED the devices; the ruling replaced it with a step that MOVES
-		// them, and a refusal is what makes the step unskippable.
-		//
-		// ⭐ THE ORDER IS THE WHOLE POINT. Transfer-first means the abandoned state is "devices moved, old
-		// gateway still running" — harmless and resumable. Cascade-then-restore's abandoned state is an outage
-		// the product cannot undo, because the operator who closed the tab halfway has no way back.
-		//
-		// ⚠ INSIDE THE TRANSACTION, and it must stay here. RevokeNode already took this node's row lock, so an
-		// enrolment racing to home a device onto this gateway either commits first (we count it and refuse) or
-		// waits behind us. Asked before the transaction, the check could pass and the device arrive anyway —
-		// which is a revoke that disconnects someone after proving it would not.
-		live, cErr := q.CountLiveDevicesForNode(ctx, nodeID)
-		if cErr != nil {
-			return cErr
-		}
-		if live > 0 {
-			return errDevicesStillHomed(live)
-		}
-		if e := q.RevokeNode(ctx, sqlc.RevokeNodeParams{OrgID: orgID, ID: nodeID}); e != nil {
-			return e
-		}
-		// Cascade: the node's peers can no longer reach a gateway, so revoke them
-		// too — no dangling active devices counting against caps or peer lists.
-		if _, e := q.RevokeDevicesForNode(ctx, nodeID); e != nil {
-			return e
-		}
-		// S9.1 Slice 5 (B2): the same sweep revokes those devices' OVPN client certs in-tx (the second
-		// revocation path — the CRL rebuild after commit is the SHARED seam, D-S9.5-1 iii).
-		if _, e := q.RevokeOVPNClientCertsForNode(ctx, nodeID); e != nil {
-			return e
-		}
-		return audit(ctx, q, orgID, &actor, "node.revoked", "node", nodeID.String(), map[string]any{})
+		return s.revokeNodeInTx(ctx, q, actor, orgID, nodeID)
 	}); err != nil {
 		return err
 	}
+	s.afterNodeRevoke(ctx, orgID, wasGateway)
+	return nil
+}
+
+func (s *Service) revokeNodeInTx(ctx context.Context, q *sqlc.Queries, actor, orgID, nodeID uuid.UUID) error {
+	return s.revokeNodeInTxAttributed(ctx, q, actor, "", "", orgID, nodeID)
+}
+
+func (s *Service) revokeNodeInTxAttributed(ctx context.Context, q *sqlc.Queries, actorUserID uuid.UUID, actorSystem, cause string, orgID, nodeID uuid.UUID) error {
+	// ⛔ REVOKE DOES NOT PROCEED WHILE DEVICES ARE STILL HOMED HERE (S12.12 D1).
+	//
+	// The cascade below is real and permanent: a revoked gateway is never active again, so an operator who
+	// revokes with fifty devices homed here has disconnected fifty people with no un-revoke. The old design
+	// answered that with a warning that COUNTED the devices; the ruling replaced it with a step that MOVES
+	// them, and a refusal is what makes the step unskippable.
+	//
+	// ⭐ THE ORDER IS THE WHOLE POINT. Transfer-first means the abandoned state is "devices moved, old
+	// gateway still running" — harmless and resumable. Cascade-then-restore's abandoned state is an outage
+	// the product cannot undo, because the operator who closed the tab halfway has no way back.
+	//
+	// ⚠ INSIDE THE TRANSACTION, and it must stay here. RevokeNode already took this node's row lock, so an
+	// enrolment racing to home a device onto this gateway either commits first (we count it and refuse) or
+	// waits behind us. Asked before the transaction, the check could pass and the device arrive anyway —
+	// which is a revoke that disconnects someone after proving it would not.
+	live, cErr := q.CountLiveDevicesForNode(ctx, nodeID)
+	if cErr != nil {
+		return cErr
+	}
+	if live > 0 {
+		return errDevicesStillHomed(live)
+	}
+	if e := q.RevokeNode(ctx, sqlc.RevokeNodeParams{OrgID: orgID, ID: nodeID}); e != nil {
+		return e
+	}
+	// Cascade: the node's peers can no longer reach a gateway, so revoke them
+	// too — no dangling active devices counting against caps or peer lists.
+	if _, e := q.RevokeDevicesForNode(ctx, nodeID); e != nil {
+		return e
+	}
+	// S9.1 Slice 5 (B2): the same sweep revokes those devices' OVPN client certs in-tx (the second
+	// revocation path — the CRL rebuild after commit is the SHARED seam, D-S9.5-1 iii).
+	if _, e := q.RevokeOVPNClientCertsForNode(ctx, nodeID); e != nil {
+		return e
+	}
+	return auditAttributed(ctx, q, orgID, actorUserID, actorSystem, cause, "node.revoked", "node", nodeID.String(), map[string]any{})
+}
+
+func (s *Service) afterNodeRevoke(ctx context.Context, orgID uuid.UUID, wasGateway bool) {
 	// S8.6 #4/#9: a revoked GATEWAY left the hub-set candidate pool (status='active' filter) → re-elect +
 	// persist so the drop is durable + audited immediately. Best-effort belt: a hiccup self-heals on the next
 	// failover tick (the configured corrector). Gated on gateway-ness — a laptop revoke is a no-op here.
@@ -2853,7 +2866,6 @@ func (s *Service) Revoke(ctx context.Context, actor, orgID, nodeID uuid.UUID) er
 			slog.WarnContext(ctx, "ovpn_crl_rebuild_failed_after_node_revoke", "org_id", orgID.String(), "error", err.Error())
 		}
 	}
-	return nil
 }
 
 // ListNodes returns an org's nodes.
@@ -2899,16 +2911,34 @@ func newToken() (raw string, hash []byte, err error) {
 func hashToken(raw string) []byte { h := sha256.Sum256([]byte(raw)); return h[:] }
 
 func audit(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, actor *uuid.UUID, action, targetType, targetID string, meta map[string]any) error {
-	b := []byte("{}")
-	if meta != nil {
-		b, _ = json.Marshal(meta)
-	}
-	actorID := pgtype.UUID{}
+	actorID := uuid.Nil
 	if actor != nil {
-		actorID = pgtype.UUID{Bytes: [16]byte(*actor), Valid: true}
+		actorID = *actor
+	}
+	return auditAttributed(ctx, q, orgID, actorID, "", "", action, targetType, targetID, meta)
+}
+
+func auditLifecycle(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, actor LifecycleActor, action, targetType, targetID string, meta map[string]any) error {
+	return auditAttributed(ctx, q, orgID, actor.AuditUserID, actor.AuditSystem, actor.Cause, action, targetType, targetID, meta)
+}
+
+func auditAttributed(ctx context.Context, q *sqlc.Queries, orgID, actorUserID uuid.UUID, actorSystem, cause, action, targetType, targetID string, meta map[string]any) error {
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	if cause != "" {
+		meta["cause"] = cause
+	}
+	b, _ := json.Marshal(meta)
+	if actorSystem != "" {
+		_, err := q.InsertSystemAuditLog(ctx, sqlc.InsertSystemAuditLogParams{
+			OrgID: pgtype.UUID{Bytes: orgID, Valid: true}, ActorSystem: &actorSystem,
+			Action: action, TargetType: &targetType, TargetID: &targetID, Metadata: b,
+		})
+		return err
 	}
 	_, err := q.InsertAuditLog(ctx, sqlc.InsertAuditLogParams{
-		OrgID: pgtype.UUID{Bytes: [16]byte(orgID), Valid: true}, ActorUserID: actorID,
+		OrgID: pgtype.UUID{Bytes: orgID, Valid: true}, ActorUserID: pgtype.UUID{Bytes: actorUserID, Valid: actorUserID != uuid.Nil},
 		Action: action, TargetType: &targetType, TargetID: &targetID, Metadata: b,
 	})
 	return err

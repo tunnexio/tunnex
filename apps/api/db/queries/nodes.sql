@@ -33,14 +33,18 @@ RETURNING *;
 -- ⚠ THIS DOES NOT WEAKEN SINGLE-USE. ConsumeJoinToken still performs the atomic claim; this only lets the
 -- pre-flight checks run first, and both happen inside one transaction.
 SELECT * FROM node_join_tokens
-WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now();
+WHERE token_hash = $1
+  AND consumed_at IS NULL
+  AND lifecycle_aborted_at IS NULL
+  AND expires_at > now();
 
 -- name: ConsumeJoinToken :one
 -- lint:cross-org — the token itself is the credential; the org comes from the
 -- returned row. Single-use + expiring.
 UPDATE node_join_tokens
-SET consumed_at = now()
+SET consumed_at = now(), lifecycle_token_sealed = NULL
 WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
+  AND lifecycle_aborted_at IS NULL
 RETURNING *;
 
 -- name: CreateNode :one
@@ -49,8 +53,8 @@ RETURNING *;
 -- owner — it degrades and is flagged. The refusal lives at enrolment (slice 2), on NEW nodes.
 -- ⚠ `enrolled_kind` is carried from the redeemed token. NULL is impossible for a node enrolled after 0069
 -- (the token's column is NOT NULL); a NULL here means the node predates the marker — UNDETERMINED.
-INSERT INTO nodes (org_id, name, cert_serial, agent_version, cert_not_after, cert_public_key, owner_user_id, enrolled_kind)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO nodes (org_id, name, cert_serial, agent_version, cert_not_after, cert_public_key, owner_user_id, enrolled_kind, lifecycle_claim)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, sqlc.narg(lifecycle_claim))
 RETURNING *;
 
 -- name: GetNodeByCertSerial :one
