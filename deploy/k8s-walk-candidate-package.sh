@@ -106,10 +106,14 @@ git -C "$REPO_ROOT" cat-file -e "${source_sha}^{commit}"
 worktree_status=$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=normal)
 [[ -z "$worktree_status" ]] || fail "source tree must be a clean committed HEAD; commit or remove every tracked and untracked change first"
 
-# One scalar identifies every private candidate surface. The full source SHA
-# avoids a second mutable lookup and remains a valid Helm SemVer prerelease and
-# OCI image-tag scalar.
-candidate_version="0.0.0-walk.sha${source_sha}"
+# One bounded scalar identifies every runtime/package surface. The API accepts
+# at most 50 characters for agent_version, so the scalar carries a 128-bit
+# source abbreviation while the manifest below remains authoritative for the
+# complete immutable source identity.
+candidate_source_prefix=${source_sha:0:32}
+[[ "$candidate_source_prefix" =~ ^[0-9a-f]{32}$ ]] || fail "could not derive the candidate source abbreviation"
+candidate_version="0.0.0-walk.sha${candidate_source_prefix}"
+((${#candidate_version} <= 50)) || fail "candidate version exceeds the agent_version API limit"
 
 stage=$(mktemp -d "${output_parent}/.tunnex-k8s-walk-candidate.XXXXXX")
 cleanup() {

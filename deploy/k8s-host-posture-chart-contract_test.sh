@@ -62,8 +62,8 @@ expect_fail() {
 
 helm template tunnex-host-posture "${CHART}" "${BASE[@]}" >"${TMP}/rendered.yaml"
 
-# Private qualification versions include the full committed SHA. Kubernetes
-# label values are capped at 63 bytes even though Helm SemVer is not.
+# A deliberately long prerelease remains a useful Kubernetes-label boundary
+# fixture even though private walk candidates now use a bounded source prefix.
 LONG_VERSION=0.0.0-walk.shaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 mkdir "${TMP}/long-version"
 helm package "${CHART}" --version "${LONG_VERSION}" --app-version "${LONG_VERSION}" \

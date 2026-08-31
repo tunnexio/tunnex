@@ -118,8 +118,17 @@ CANDIDATE_VERSION=$(jq -r .candidate_version \
 
 The bundle contains a Linux amd64 CLI, four byte-reproducible chart packages,
 their checksums, and a token-free manifest binding every input to the full
-source commit. It does not log in, upload, deploy, or change a cluster. Private
-registry publication and deployment are separate authorized operations; after
+source commit. The CLI, charts, and node runtime use a bounded
+`0.0.0-walk.sha<32-hex-source-prefix>` candidate version so enrollment stays
+within the API's 50-character `agent_version` contract; that abbreviation is
+not source provenance. The packager stamps only the CLI and charts: the
+separate node-image build must pass this exact value as its Dockerfile `VERSION`
+input, and qualification must record that input plus the exact post-enrollment
+control-plane `agent_version` readback with no runtime override. Always verify
+the manifest's full `source.sha`, artifact checksums, and image digests, and
+refuse a reused candidate version whose full source SHA differs. The command
+does not log in, upload, deploy, or change a cluster. Private registry
+publication and deployment are separate authorized operations; after
 publication, prove that each pulled chart has the recorded checksum and use the
 manifest's node/operator image digests explicitly. This is pre-release walk
 evidence only. It does not create a Git tag, public release, customer support

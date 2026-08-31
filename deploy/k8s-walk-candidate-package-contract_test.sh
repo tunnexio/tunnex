@@ -114,7 +114,8 @@ git -C "$REPO" config user.email contract@example.test
 git -C "$REPO" add .
 git -C "$REPO" commit -qm 'fixture'
 SOURCE_SHA=$(git -C "$REPO" rev-parse HEAD)
-VERSION="0.0.0-walk.sha${SOURCE_SHA}"
+VERSION="0.0.0-walk.sha${SOURCE_SHA:0:32}"
+[[ ${#VERSION} -le 50 ]] || fail "fixture candidate version exceeds the agent_version API limit"
 
 digest() {
   local char=$1
@@ -142,6 +143,8 @@ jq -e --arg sha "$SOURCE_SHA" --arg version "$VERSION" '
   .public_release == false and
   .source == {sha: $sha, state: "clean-committed-head"} and
   .candidate_version == $version and
+  (.candidate_version | test("^0[.]0[.]0-walk[.]sha[0-9a-f]{32}$")) and
+  (.candidate_version | length) <= 50 and
   .cli.version == $version and
   (.charts | length) == 4 and
   ([.charts[].version] | unique) == [$version] and

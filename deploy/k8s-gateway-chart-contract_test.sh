@@ -81,8 +81,8 @@ expect_fail() {
 helm lint "${CHART}" "${ENROLL[@]}"
 helm template gw-a "${CHART}" "${ENROLL[@]}" >"${TMP}/enroll.yaml"
 
-# Full-SHA private qualification versions must remain valid Kubernetes label
-# values after the chart name is added.
+# A deliberately long prerelease remains a useful Kubernetes-label boundary
+# fixture after the chart name is added.
 LONG_VERSION=0.0.0-walk.shaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 mkdir "${TMP}/long-version"
 helm package "${CHART}" --version "${LONG_VERSION}" --app-version "${LONG_VERSION}" \
