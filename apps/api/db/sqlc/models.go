@@ -740,9 +740,10 @@ type K8sBaseAuthorityDelivery struct {
 	BaseHash           string    `json:"base_hash"`
 	PayloadDigest      string    `json:"payload_digest"`
 	Payload            []byte    `json:"payload"`
-	TransitionRevision int64     `json:"transition_revision"`
+	TransitionRevision *int64    `json:"transition_revision"`
 	ExpiresAt          time.Time `json:"expires_at"`
 	CreatedAt          time.Time `json:"created_at"`
+	AuthorityKind      string    `json:"authority_kind"`
 }
 
 type K8sBaseAuthorityDeliveryPool struct {

@@ -90,15 +90,16 @@ func (t HandoffSchedulerTiming) schedulerConfig() k8s.HandoffSchedulerConfig {
 // PostgresHandoffSchedulerMigrationGate verifies the durable P2 prerequisites
 // before an enabled scheduler is permitted to start its first loop. It binds
 // to the exact pool used by the observer, source, and coordinator. Version
-// 0120 is the first schema with both exact v3 delivery and the P3 opt-in,
-// transition, base-authority, and receipt ledger. Earlier schemas remain
-// compatible for ordinary traffic but can never authorize this scheduler.
+// 0129 is the first schema with both the exact v3 delivery/P3 ledgers and the
+// authority-kind discriminator consumed by the scheduler's transition reads.
+// Earlier schemas remain compatible for ordinary traffic but can never
+// authorize this scheduler.
 type PostgresHandoffSchedulerMigrationGate struct {
 	pool  *pgxpool.Pool
 	check func(context.Context, *pgxpool.Pool) bool // deterministic package-test seam
 }
 
-const minHandoffSchedulerSchemaVersion int64 = 120
+const minHandoffSchedulerSchemaVersion int64 = 129
 
 func NewPostgresHandoffSchedulerMigrationGate(pool *pgxpool.Pool) *PostgresHandoffSchedulerMigrationGate {
 	return &PostgresHandoffSchedulerMigrationGate{pool: pool}

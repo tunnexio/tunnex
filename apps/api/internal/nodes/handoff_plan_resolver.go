@@ -35,6 +35,14 @@ type HandoffLeaderBoundFreshPlanProvenanceSource interface {
 	ResolveFreshHandoffPlanWithLeadership(context.Context, HandoffTickIntent, k8s.HandoffLeadershipEpoch, *pgxpool.Conn) (k8s.DurableHandoffPlan, bool, error)
 }
 
+// HandoffLeaderBoundFreshPlanClaimSource closes the production composition
+// gap between a health decision and its immutable P2 provenance.  The claim
+// is built and persisted from CP-owned topology on the caller's exact leader
+// connection; agent input can never manufacture it.
+type HandoffLeaderBoundFreshPlanClaimSource interface {
+	BuildAndClaimFreshHandoffPlanWithLeadership(context.Context, HandoffTickIntent, k8s.HandoffLeadershipEpoch, *pgxpool.Conn) (k8s.DurableHandoffPlan, bool, error)
+}
+
 // PostgresHandoffPlanResolver turns an exact 0079/0083 observation intent into
 // a durable-plan prerequisite. It never changes the active connector or pool
 // generation: CreateOrResume and CommitK8sConnectorHandoffCAS remain the only
@@ -157,6 +165,11 @@ func (r *PostgresHandoffPlanResolver) resolveHandoffPlanWithLeadership(ctx conte
 			return k8s.DurableHandoffPlan{}, false, err
 		}
 		plan, available, err = bound.ResolveFreshHandoffPlanWithLeadership(ctx, intent, epoch, conn)
+		if err == nil && !available {
+			if claims, ok := r.provenance.(HandoffLeaderBoundFreshPlanClaimSource); ok {
+				plan, available, err = claims.BuildAndClaimFreshHandoffPlanWithLeadership(ctx, intent, epoch, conn)
+			}
+		}
 	} else {
 		plan, available, err = r.provenance.ResolveFreshHandoffPlan(ctx, intent)
 	}

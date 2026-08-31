@@ -196,14 +196,19 @@ func loadPoolVIPOwnershipHandoffEnvelope(ctx context.Context, q *sqlc.Queries, a
 }
 
 func clonePoolVIPOwnershipDeliveryEnvelopeV3(envelope PoolVIPOwnershipDeliveryEnvelopeV3) PoolVIPOwnershipDeliveryEnvelopeV3 {
-	copy := envelope
-	copy.Manifest.WGPeers = append([]PoolVIPOwnershipWGPeerV3(nil), envelope.Manifest.WGPeers...)
-	for i := range copy.Manifest.WGPeers {
-		copy.Manifest.WGPeers[i].AllowedIPs = append([]string(nil), envelope.Manifest.WGPeers[i].AllowedIPs...)
+	out := envelope
+	if envelope.Manifest.WGPeers == nil {
+		out.Manifest.WGPeers = nil
+	} else {
+		out.Manifest.WGPeers = make([]PoolVIPOwnershipWGPeerV3, len(envelope.Manifest.WGPeers))
+		copy(out.Manifest.WGPeers, envelope.Manifest.WGPeers)
 	}
-	copy.Manifest.Routes = append([]string(nil), envelope.Manifest.Routes...)
-	copy.Manifest.Services = append([]PoolVIPOwnershipServiceV3(nil), envelope.Manifest.Services...)
-	return copy
+	for i := range out.Manifest.WGPeers {
+		out.Manifest.WGPeers[i].AllowedIPs = append([]string(nil), envelope.Manifest.WGPeers[i].AllowedIPs...)
+	}
+	out.Manifest.Routes = append([]string(nil), envelope.Manifest.Routes...)
+	out.Manifest.Services = append([]PoolVIPOwnershipServiceV3(nil), envelope.Manifest.Services...)
+	return out
 }
 
 // ValidateHandoffOperationProvenance is called only from P1's exact
@@ -577,22 +582,22 @@ func poolVIPOwnershipFreshEnvelopeMatchesP2Identity(envelope PoolVIPOwnershipDel
 func persistPoolVIPOwnershipFreshHandoffClaim(ctx context.Context, tx pgx.Tx, prepared preparedPoolVIPOwnershipFreshHandoffClaim) error {
 	claim, p := prepared.claim, prepared.claim.Plan.Plan
 	if !lockPoolVIPOwnershipFreshHandoffSnapshot(ctx, tx, p, claim.MembershipSnapshot) {
-		return ErrPoolVIPOwnershipFreshHandoffProvenanceRefused
+		return fmt.Errorf("persist snapshot fence: %w", ErrPoolVIPOwnershipFreshHandoffProvenanceRefused)
 	}
 	serviceUIDs, err := loadPoolVIPOwnershipFreshHandoffServiceUIDs(ctx, tx, p)
 	if err != nil {
-		return err
+		return fmt.Errorf("persist service UID load: %w", err)
 	}
 	// Service-UID authority is derived from the locked CP exposure set and the
 	// cluster ledger. The caller may carry a copy for an exact retry, but can
 	// never omit a live Service or select a different incarnation.
 	if !reflect.DeepEqual(canonicalPoolVIPOwnershipFreshServiceUIDs(claim.ServiceUIDs), serviceUIDs) {
-		return ErrPoolVIPOwnershipFreshHandoffProvenanceRefused
+		return fmt.Errorf("persist service UID comparison: %w", ErrPoolVIPOwnershipFreshHandoffProvenanceRefused)
 	}
 	prepared.serviceUIDs = serviceUIDs
 	capabilities, err := loadPoolVIPOwnershipFreshHandoffCapabilities(ctx, tx, p)
 	if err != nil {
-		return err
+		return fmt.Errorf("persist capability load: %w", err)
 	}
 	prepared.capabilities = capabilities
 	for _, capability := range prepared.capabilities {

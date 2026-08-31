@@ -8,6 +8,7 @@ package nodepush
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -19,24 +20,39 @@ import (
 // is between long-polls (mid-fetch) is not dropped; the next watch sees the
 // version advanced and returns at once instead of blocking to the interval.
 type Hub struct {
-	mu   sync.Mutex
-	subs map[uuid.UUID]map[chan struct{}]struct{}
-	ver  map[uuid.UUID]uint64
+	mu      sync.Mutex
+	subs    map[uuid.UUID]map[chan struct{}]struct{}
+	ver     map[uuid.UUID]uint64
+	initial uint64
 }
 
 // New builds an empty hub.
 func New() *Hub {
+	return newWithInitialVersion(uint64(time.Now().UnixNano()))
+}
+
+func newWithInitialVersion(initial uint64) *Hub {
+	if initial == 0 {
+		initial = 1
+	}
 	return &Hub{
-		subs: make(map[uuid.UUID]map[chan struct{}]struct{}),
-		ver:  make(map[uuid.UUID]uint64),
+		subs:    make(map[uuid.UUID]map[chan struct{}]struct{}),
+		ver:     make(map[uuid.UUID]uint64),
+		initial: initial,
 	}
 }
 
-// Version returns the node's current change version (0 if never changed).
+// Version returns the node's current change version. A node with no in-process
+// notification yet has the stable initial version rather than the zero absence
+// sentinel, so the ordinary desired state and a fenced-HA base authority agree
+// after an API restart.
 func (h *Hub) Version(nodeID uuid.UUID) uint64 {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.ver[nodeID]
+	if version := h.ver[nodeID]; version != 0 {
+		return version
+	}
+	return h.initial
 }
 
 // Subscribe registers interest in a node's changes. It returns a receive channel
@@ -71,6 +87,9 @@ func (h *Hub) Subscribe(nodeID uuid.UUID) (<-chan struct{}, func()) {
 func (h *Hub) Notify(nodeID uuid.UUID) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.ver[nodeID] < h.initial {
+		h.ver[nodeID] = h.initial
+	}
 	h.ver[nodeID]++ // bump under the lock, before signalling, so a watcher that
 	// reads the version after subscribing never misses this change.
 	for ch := range h.subs[nodeID] {

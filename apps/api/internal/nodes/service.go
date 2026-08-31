@@ -1106,6 +1106,23 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 	for _, g := range gws {
 		gatewayByID[g.ID] = g
 	}
+	// Fenced HA keeps every eligible pool member as a warm handoff peer. This
+	// identity set is deliberately wider than resolution ownership: during the
+	// post-CAS nonterminal interval the new active connector is not yet eligible
+	// for VIP programming, but its serving overlay still requires the edge peer
+	// to exist in the ordinary base. Empty vips keep the edge side warm-only.
+	handoffMembers, hmerr := s.q.ListK8sHandoffGraphPoolMembersForOrg(ctx, orgID)
+	if hmerr != nil {
+		return siteTopology{}, hmerr
+	}
+	for _, member := range handoffMembers {
+		connectors[member.NodeID] = k8sConnector{
+			nodeID:    member.NodeID,
+			siteID:    member.SiteID,
+			publicKey: member.WgPublicKey,
+			endpoint:  member.Endpoint,
+		}
+	}
 	dnsSeen := map[uuid.UUID]map[string]bool{} // connector node_id -> zone -> present (dedup one listen entry per cluster)
 	exposed, kerr := s.q.ListActiveK8sServicesForOrg(ctx, orgID)
 	if kerr != nil {

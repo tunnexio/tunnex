@@ -1120,6 +1120,13 @@ type Querier interface {
 	// membership evidence stable through the active-state CAS and audit append.
 	ListK8sConnectorPoolMembersForPromotion(ctx context.Context, arg ListK8sConnectorPoolMembersForPromotionParams) ([]K8sConnectorPoolMember, error)
 	ListK8sConnectorPoolStatusMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sConnectorPoolStatusMembersForOrgRow, error)
+	// ListK8sHandoffGraphPoolMembersForOrg keeps every eligible fenced-HA pool
+	// member in the private handoff graph. VIP ownership remains a separate,
+	// single-valued decision in ListActiveK8sServicesForOrg: these rows supply only
+	// the member identities needed for a warm WireGuard peer. The nonterminal
+	// operation branch preserves that peer through the post-CAS interval where the
+	// new active member is intentionally not yet resolution-eligible.
+	ListK8sHandoffGraphPoolMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sHandoffGraphPoolMembersForOrgRow, error)
 	// ListK8sServedZonesForOrg is the zones a connector ACTUALLY answers: a cluster with >=1 LIVE exposed Service
 	// AND a resolved connector. A pool-bound cluster resolves only through its
 	// exact org/site/cluster-owned pool and a positive generation; it never falls

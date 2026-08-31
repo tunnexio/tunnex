@@ -103,9 +103,23 @@ func (s *PostgresKubernetesOwnershipBaseAuthorityStore) IssueKubernetesOwnership
 }
 
 func issueKubernetesOwnershipBaseAuthorityTx(ctx context.Context, tx pgx.Tx, issue KubernetesOwnershipBaseAuthorityIssue) (KubernetesOwnershipBaseAuthorityIssueResult, error) {
-	if issue.Authority.AuthorityRevision != 0 || issue.TransitionRevision == 0 || issue.TransitionRevision > math.MaxInt64 ||
+	if issue.Authority.AuthorityRevision != 0 || issue.TransitionRevision > math.MaxInt64 ||
 		issue.Authority.BaseVersion == 0 || issue.Authority.BaseVersion > math.MaxInt64 ||
 		issue.ExpiresAt.IsZero() || issue.ExpiresAt.Location() != time.UTC {
+		return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityInvalid
+	}
+	if issue.OrdinaryBaseUpdate {
+		if issue.TransitionRevision != 0 || len(issue.Authority.Classifications) == 0 || len(issue.Authority.UnfencedPools) != 0 {
+			return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityInvalid
+		}
+		for _, classification := range issue.Authority.Classifications {
+			if classification.Disposition != KubernetesOwnershipPoolDispositionMaintainFence {
+				return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityInvalid
+			}
+		}
+	} else if issue.TransitionRevision == 0 || len(issue.Pools) != 1 {
+		// A transition revision belongs to one exact pool. Scope-complete
+		// ordinary batches use their separate durable replay namespace below.
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityInvalid
 	}
 	// PostgreSQL timestamptz persists microseconds. Canonicalize before both
@@ -120,6 +134,14 @@ func issueKubernetesOwnershipBaseAuthorityTx(ctx context.Context, tx pgx.Tx, iss
 	siteID, siteErr := uuid.Parse(issue.Authority.SiteID)
 	if nodeErr != nil || orgErr != nil || siteErr != nil || nodeID == uuid.Nil || orgID == uuid.Nil || siteID == uuid.Nil {
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityInvalid
+	}
+	// ACK takes the exact current delivery before serializing accepted state.
+	// Take that row before the node-state allocator too, so issue/maintenance can
+	// never form delivery -> state / state -> delivery deadlocks with a concurrent
+	// agent receipt. Older delivery/pool/receipt rows are append-only evidence and
+	// are deliberately read without row locks below.
+	if err := lockLatestKubernetesOwnershipAuthorityDeliveryForNode(ctx, tx, orgID, siteID, nodeID); err != nil {
+		return KubernetesOwnershipBaseAuthorityIssueResult{}, err
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -139,7 +161,21 @@ func issueKubernetesOwnershipBaseAuthorityTx(ctx context.Context, tx pgx.Tx, iss
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityConflict
 	}
 
-	existing, found, err := loadKubernetesOwnershipBaseAuthorityIssueReplay(ctx, tx, orgID, siteID, nodeID, issue.TransitionRevision, issue.Pools)
+	var existing loadedKubernetesOwnershipIssueReplay
+	var found bool
+	var err error
+	if issue.OrdinaryBaseUpdate {
+		pendingTransition, err := latestKubernetesOwnershipAuthorityIsUnacknowledgedTransition(ctx, tx, orgID, siteID, nodeID)
+		if err != nil {
+			return KubernetesOwnershipBaseAuthorityIssueResult{}, err
+		}
+		if pendingTransition {
+			return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityConflict
+		}
+		existing, found, err = loadLatestKubernetesOwnershipBaseAuthorityIssue(ctx, tx, orgID, siteID, nodeID)
+	} else {
+		existing, found, err = loadKubernetesOwnershipBaseAuthorityIssueReplay(ctx, tx, orgID, siteID, nodeID, issue.TransitionRevision, issue.Pools)
+	}
 	if err != nil {
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, err
 	}
@@ -147,12 +183,23 @@ func issueKubernetesOwnershipBaseAuthorityTx(ctx context.Context, tx pgx.Tx, iss
 		candidate := issue.Authority
 		candidate.AuthorityRevision = existing.Authority.AuthorityRevision
 		candidate, _, err = CanonicalKubernetesOwnershipBaseAuthority(candidate)
-		if err != nil || !sameKubernetesOwnershipBaseAuthority(existing.Authority, candidate) || !existing.ExpiresAt.Equal(issue.ExpiresAt) ||
-			!sameKubernetesOwnershipIssuePools(existing.Pools, issue.Pools) {
-			return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityConflict
+		sameCandidate := err == nil && sameKubernetesOwnershipBaseAuthority(existing.Authority, candidate) &&
+			sameKubernetesOwnershipIssuePools(existing.Pools, issue.Pools)
+		if issue.OrdinaryBaseUpdate {
+			// A current ACK is durable proof that this exact full base was already
+			// accepted. An unacknowledged delivery is replayable only while it can
+			// still be fetched; an expired one receives a fresh authority revision.
+			if sameCandidate && (existing.Acknowledged || existing.ExpiresAt.After(time.Now().UTC())) {
+				existing.Duplicate = true
+				return existing.KubernetesOwnershipBaseAuthorityIssueResult, nil
+			}
+		} else {
+			if !sameCandidate || !existing.ExpiresAt.Equal(issue.ExpiresAt) {
+				return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityConflict
+			}
+			existing.Duplicate = true
+			return existing.KubernetesOwnershipBaseAuthorityIssueResult, nil
 		}
-		existing.Duplicate = true
-		return existing.KubernetesOwnershipBaseAuthorityIssueResult, nil
 	}
 	if nextRevision > math.MaxInt64-1 {
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, ErrKubernetesOwnershipBaseAuthorityConflict
@@ -169,12 +216,18 @@ func issueKubernetesOwnershipBaseAuthorityTx(ctx context.Context, tx pgx.Tx, iss
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, err
 	}
 	var deliveryID uuid.UUID
+	authorityKind := "transition"
+	var transitionRevision any = int64(issue.TransitionRevision)
+	if issue.OrdinaryBaseUpdate {
+		authorityKind = "ordinary_base"
+		transitionRevision = nil
+	}
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO k8s_base_authority_deliveries
-			(org_id,site_id,node_id,authority_revision,wire_version,base_version,base_hash,payload_digest,payload,transition_revision,expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			(org_id,site_id,node_id,authority_revision,wire_version,base_version,base_hash,payload_digest,payload,transition_revision,expires_at,authority_kind)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING id`, orgID, siteID, nodeID, nextRevision, authority.WireVersion, int64(authority.BaseVersion), authority.BaseHash,
-		digest, authority, int64(issue.TransitionRevision), issue.ExpiresAt).Scan(&deliveryID); err != nil {
+		digest, authority, transitionRevision, issue.ExpiresAt, authorityKind).Scan(&deliveryID); err != nil {
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, err
 	}
 	classifications := make(map[string]KubernetesOwnershipPoolClassification, len(authority.Classifications))
@@ -216,6 +269,19 @@ func issueKubernetesOwnershipBaseAuthorityTx(ctx context.Context, tx pgx.Tx, iss
 		return KubernetesOwnershipBaseAuthorityIssueResult{}, err
 	}
 	return KubernetesOwnershipBaseAuthorityIssueResult{DeliveryID: deliveryID, Authority: authority, PayloadDigest: digest}, nil
+}
+
+func lockLatestKubernetesOwnershipAuthorityDeliveryForNode(ctx context.Context, tx pgx.Tx, orgID, siteID, nodeID uuid.UUID) error {
+	var deliveryID uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT id
+		FROM k8s_base_authority_deliveries
+		WHERE org_id=$1 AND site_id=$2 AND node_id=$3
+		ORDER BY authority_revision DESC
+		LIMIT 1 FOR UPDATE`, orgID, siteID, nodeID).Scan(&deliveryID)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
+	return err
 }
 
 func (s *PostgresKubernetesOwnershipBaseAuthorityStore) LoadPendingKubernetesOwnershipBaseAuthority(ctx context.Context, agent KubernetesOwnershipBaseAuthorityAgentIdentity) (KubernetesOwnershipBaseAuthority, bool, error) {
@@ -348,8 +414,50 @@ func (s *PostgresKubernetesOwnershipBaseAuthorityStore) AcknowledgeKubernetesOwn
 
 type loadedKubernetesOwnershipIssueReplay struct {
 	KubernetesOwnershipBaseAuthorityIssueResult
-	ExpiresAt time.Time
-	Pools     []KubernetesOwnershipBaseAuthorityPoolGeneration
+	ExpiresAt    time.Time
+	Pools        []KubernetesOwnershipBaseAuthorityPoolGeneration
+	Acknowledged bool
+}
+
+func loadLatestKubernetesOwnershipBaseAuthorityIssue(ctx context.Context, tx pgx.Tx, orgID, siteID, nodeID uuid.UUID) (loadedKubernetesOwnershipIssueReplay, bool, error) {
+	var value loadedKubernetesOwnershipIssueReplay
+	var payload []byte
+	var authorityRevision int64
+	err := tx.QueryRow(ctx, `
+		SELECT d.id,d.payload,d.payload_digest,d.expires_at,d.authority_revision,(r.delivery_id IS NOT NULL)
+		FROM k8s_base_authority_deliveries d
+		LEFT JOIN k8s_base_authority_ack_receipts r ON r.delivery_id=d.id
+		WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3
+		ORDER BY d.authority_revision DESC LIMIT 1`, orgID, siteID, nodeID).
+		Scan(&value.DeliveryID, &payload, &value.PayloadDigest, &value.ExpiresAt, &authorityRevision, &value.Acknowledged)
+	if err == pgx.ErrNoRows {
+		return loadedKubernetesOwnershipIssueReplay{}, false, nil
+	}
+	if err != nil {
+		return loadedKubernetesOwnershipIssueReplay{}, false, err
+	}
+	authority, digest, err := decodeKubernetesOwnershipBaseAuthorityPayload(payload)
+	if err != nil || digest != value.PayloadDigest || authorityRevision <= 0 || authority.AuthorityRevision != uint64(authorityRevision) {
+		return loadedKubernetesOwnershipIssueReplay{}, false, ErrKubernetesOwnershipBaseAuthorityConflict
+	}
+	value.Authority = authority
+	value.Pools, err = loadKubernetesOwnershipIssuePools(ctx, tx, value.DeliveryID)
+	if err != nil {
+		return loadedKubernetesOwnershipIssueReplay{}, false, err
+	}
+	return value, true, nil
+}
+
+func latestKubernetesOwnershipAuthorityIsUnacknowledgedTransition(ctx context.Context, tx pgx.Tx, orgID, siteID, nodeID uuid.UUID) (bool, error) {
+	var pending bool
+	err := tx.QueryRow(ctx, `SELECT COALESCE((
+		SELECT d.authority_kind='transition' AND r.delivery_id IS NULL
+		FROM k8s_base_authority_deliveries d
+		LEFT JOIN k8s_base_authority_ack_receipts r ON r.delivery_id=d.id
+		WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3
+		ORDER BY d.authority_revision DESC LIMIT 1
+	),false)`, orgID, siteID, nodeID).Scan(&pending)
+	return pending, err
 }
 
 func loadKubernetesOwnershipBaseAuthorityIssueReplay(ctx context.Context, tx pgx.Tx, orgID, siteID, nodeID uuid.UUID, transitionRevision uint64, pools []KubernetesOwnershipBaseAuthorityPoolGeneration) (loadedKubernetesOwnershipIssueReplay, bool, error) {
@@ -367,11 +475,11 @@ func loadKubernetesOwnershipBaseAuthorityIssueReplay(ctx context.Context, tx pgx
 	rows, err := tx.Query(ctx, `
 		SELECT d.id,d.payload,d.payload_digest,d.expires_at,d.authority_revision
 		FROM k8s_base_authority_deliveries d
-		WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.transition_revision=$4
+		WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.authority_kind='transition' AND d.transition_revision=$4
 		  AND EXISTS (SELECT 1 FROM k8s_base_authority_delivery_pools p
 		    WHERE p.delivery_id=d.id AND p.org_id=d.org_id AND p.site_id=d.site_id AND p.node_id=d.node_id
 		      AND p.pool_id=ANY($5))
-		ORDER BY d.authority_revision FOR UPDATE OF d`, orgID, siteID, nodeID, int64(transitionRevision), poolIDs)
+		ORDER BY d.authority_revision`, orgID, siteID, nodeID, int64(transitionRevision), poolIDs)
 	if err != nil {
 		return loadedKubernetesOwnershipIssueReplay{}, false, err
 	}

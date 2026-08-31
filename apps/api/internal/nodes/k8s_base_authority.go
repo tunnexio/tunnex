@@ -99,6 +99,12 @@ type KubernetesOwnershipBaseAuthorityIssue struct {
 	Pools              []KubernetesOwnershipBaseAuthorityPoolGeneration
 	TransitionRevision uint64
 	ExpiresAt          time.Time
+	// OrdinaryBaseUpdate is the closed exception to transition-revision replay:
+	// after a pool is fenced, a later full desired-state snapshot must carry a
+	// newer maintain_fence authority even though no operator transition changed.
+	// The store accepts this mode only for maintain_fence classifications and
+	// never for arm_fence or unfence deliveries.
+	OrdinaryBaseUpdate bool
 }
 
 type KubernetesOwnershipBaseAuthorityIssueResult struct {
@@ -168,13 +174,12 @@ func KubernetesOwnershipBaseStateHash(base DesiredState) (string, error) {
 		InterfaceAddress string               `json:"interface_address"`
 		MTU              int                  `json:"mtu"`
 		ListenPort       int                  `json:"listen_port"`
-		Version          uint64               `json:"version"`
 		Peers            []Peer               `json:"peers"`
 		Policy           *policyspec.Compiled `json:"policy,omitempty"`
 		OVPNEnabled      bool                 `json:"ovpn_enabled,omitempty"`
 		OVPNClients      []OVPNClient         `json:"ovpn_clients,omitempty"`
 		OVPNServer       *OVPNServerMaterial  `json:"ovpn_server,omitempty"`
-	}{base.ProtocolVersion, base.NodeID, base.InterfaceAddress, base.MTU, base.ListenPort, base.Version,
+	}{base.ProtocolVersion, base.NodeID, base.InterfaceAddress, base.MTU, base.ListenPort,
 		base.Peers, base.Policy, base.OVPNEnabled, base.OVPNClients, base.OVPNServer}
 	b, err := json.Marshal(view)
 	if err != nil {
