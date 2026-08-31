@@ -283,6 +283,9 @@ func TestDeregisterClusterSweeps(t *testing.T) {
 	svc := NewService(pool)
 	ctx := context.Background()
 	org, site, actor := seedOrgSiteActor(t, pool)
+	if _, err := pool.Exec(ctx, `INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')`, org, actor); err != nil {
+		t.Fatal(err)
+	}
 	c, err := svc.RegisterCluster(ctx, org, site, "gone", pfx("100.64.0.0/24"), pfx("10.96.0.0/12"), "k8s.acme.com", uuid.Nil, uuid.Nil, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -403,7 +406,8 @@ func TestDeregisterClusterSweeps(t *testing.T) {
 	// retain durable fences until an explicit legacy drain supplies the signed
 	// unfence authority; deleting the pool first would strand those fences.
 	if _, err := pool.Exec(ctx, `UPDATE k8s_connector_pool_ha_transitions
-		SET requested_mode='fenced_ha',actual_mode='fenced_ha',reason_code='fenced_ha'
+		SET requested_mode='fenced_ha',actual_mode='fenced_ha',reason_code='fenced_ha',
+			membership_epoch=1,achieved_authority_revision=1
 		WHERE pool_id=$1 AND org_id=$2`, connectorPoolID, org); err != nil {
 		t.Fatal(err)
 	}
