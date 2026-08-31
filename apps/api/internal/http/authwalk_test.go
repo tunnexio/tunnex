@@ -86,6 +86,7 @@ var walkBodies = map[string]string{
 	// S10.3 Kubernetes gated ops (k8s:manage; each still 401s sessionless. deregister/unexpose have no body).
 	"registerk8scluster":              `{"site_id":"00000000-0000-0000-0000-000000000000","name":"walk","vip_range":"100.64.0.0/16","service_cidr":"10.96.0.0/12","dns_zone":"k8s.example.com"}`,
 	"setk8sclusterconnector":          `{"node_id":"00000000-0000-0000-0000-000000000000"}`,
+	"configurek8sconnectorpool":       `{"members":[{"node_id":"00000000-0000-0000-0000-000000000000","admin_priority":100}]}`,
 	"exposek8sservice":                `{"name":"api","namespace":"prod"}`,
 	"setk8sclusterprovidermetadata":   `{"provider":"aws","platform":"eks"}`,
 	"setk8shasettings":                `{"enabled":false,"expected_revision":0}`,

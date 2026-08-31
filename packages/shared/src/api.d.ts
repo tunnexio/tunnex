@@ -2910,6 +2910,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/connector-pool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one cluster's explicit connector-pool configuration (S20.3b; k8s_ha:view)
+         * @description A missing pool is returned as connector_pool_not_found; direct single-connector clusters remain unchanged until an authorized operator explicitly configures a pool.
+         */
+        get: operations["getK8sConnectorPoolConfiguration"];
+        /**
+         * Create or reconcile one cluster's exact connector-pool membership (S20.3b; k8s_ha:manage)
+         * @description Creation retains the cluster's current direct connector as active and preferred. An existing pool changes only when expected_membership_epoch matches its current durable epoch. This request does not promote a member, change ownership generation, or enable fenced HA.
+         */
+        put: operations["configureK8sConnectorPool"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/provider-metadata": {
         parameters: {
             query?: never;
@@ -4995,6 +5022,33 @@ export interface components {
             requested_mode: "legacy" | "fenced_ha";
             /** Format: int64 */
             expected_transition_revision: number;
+        };
+        K8sConnectorPoolMember: {
+            /** Format: uuid */
+            node_id: string;
+            /** Format: int32 */
+            admin_priority: number;
+        };
+        K8sConnectorPoolConfiguration: {
+            /** Format: uuid */
+            pool_id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            /** Format: uuid */
+            preferred_node_id: string;
+            /** Format: uuid */
+            active_node_id: string;
+            /** Format: int64 */
+            generation: number;
+            membership_epoch_known: boolean;
+            /** Format: int64 */
+            membership_epoch: number | null;
+            members: components["schemas"]["K8sConnectorPoolMember"][];
+        };
+        ConfigureK8sConnectorPoolRequest: {
+            members: components["schemas"]["K8sConnectorPoolMember"][];
+            /** Format: int64 */
+            expected_membership_epoch?: number | null;
         };
         K8sClusterScopeSettings: {
             enabled: boolean;
@@ -11356,6 +11410,60 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getK8sConnectorPoolConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact configured membership and its concurrency epoch. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sConnectorPoolConfiguration"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    configureK8sConnectorPool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigureK8sConnectorPoolRequest"];
+            };
+        };
+        responses: {
+            /** @description The committed exact connector-pool configuration. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sConnectorPoolConfiguration"];
+                };
             };
             default: components["responses"]["Error"];
         };

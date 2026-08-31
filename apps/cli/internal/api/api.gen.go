@@ -2098,6 +2098,12 @@ type CliCredentialGrant struct {
 	Token string `json:"token"`
 }
 
+// ConfigureK8sConnectorPoolRequest defines model for ConfigureK8sConnectorPoolRequest.
+type ConfigureK8sConnectorPoolRequest struct {
+	ExpectedMembershipEpoch *int64                   `json:"expected_membership_epoch"`
+	Members                 []K8sConnectorPoolMember `json:"members"`
+}
+
 // CpAdminRequest defines model for CpAdminRequest.
 type CpAdminRequest struct {
 	Granted bool `json:"granted"`
@@ -3161,6 +3167,18 @@ type K8sClusterScopeSource struct {
 // K8sClusterScopeSourceKind agent_group is readable for preserved legacy rows but is not accepted by the v1 create contract.
 type K8sClusterScopeSourceKind string
 
+// K8sConnectorPoolConfiguration defines model for K8sConnectorPoolConfiguration.
+type K8sConnectorPoolConfiguration struct {
+	ActiveNodeId         openapi_types.UUID       `json:"active_node_id"`
+	ClusterId            openapi_types.UUID       `json:"cluster_id"`
+	Generation           int64                    `json:"generation"`
+	Members              []K8sConnectorPoolMember `json:"members"`
+	MembershipEpoch      *int64                   `json:"membership_epoch"`
+	MembershipEpochKnown bool                     `json:"membership_epoch_known"`
+	PoolId               openapi_types.UUID       `json:"pool_id"`
+	PreferredNodeId      openapi_types.UUID       `json:"preferred_node_id"`
+}
+
 // K8sConnectorPoolHAStatus defines model for K8sConnectorPoolHAStatus.
 type K8sConnectorPoolHAStatus struct {
 	AchievedAt           *time.Time                            `json:"achieved_at"`
@@ -3182,6 +3200,12 @@ type K8sConnectorPoolHAStatusActualMode string
 
 // K8sConnectorPoolHAStatusRequestedMode defines model for K8sConnectorPoolHAStatus.RequestedMode.
 type K8sConnectorPoolHAStatusRequestedMode string
+
+// K8sConnectorPoolMember defines model for K8sConnectorPoolMember.
+type K8sConnectorPoolMember struct {
+	AdminPriority int32              `json:"admin_priority"`
+	NodeId        openapi_types.UUID `json:"node_id"`
+}
 
 // K8sHASettings defines model for K8sHASettings.
 type K8sHASettings struct {
@@ -4672,6 +4696,9 @@ type RegisterK8sClusterJSONRequestBody = RegisterK8sClusterRequest
 // SetK8sClusterConnectorJSONRequestBody defines body for SetK8sClusterConnector for application/json ContentType.
 type SetK8sClusterConnectorJSONRequestBody = BindSiteNodeRequest
 
+// ConfigureK8sConnectorPoolJSONRequestBody defines body for ConfigureK8sConnectorPool for application/json ContentType.
+type ConfigureK8sConnectorPoolJSONRequestBody = ConfigureK8sConnectorPoolRequest
+
 // ExposeK8sInventoryServiceJSONRequestBody defines body for ExposeK8sInventoryService for application/json ContentType.
 type ExposeK8sInventoryServiceJSONRequestBody = ExposeK8sInventoryServiceRequest
 
@@ -5540,6 +5567,14 @@ type ClientInterface interface {
 	SetK8sClusterConnectorWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetK8sClusterConnector(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetK8sConnectorPoolConfiguration request
+	GetK8sConnectorPoolConfiguration(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfigureK8sConnectorPoolWithBody request with any body
+	ConfigureK8sConnectorPoolWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ConfigureK8sConnectorPool(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ConfigureK8sConnectorPoolJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListK8sClusterInventory request
 	ListK8sClusterInventory(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8934,6 +8969,42 @@ func (c *Client) SetK8sClusterConnectorWithBody(ctx context.Context, orgId opena
 
 func (c *Client) SetK8sClusterConnector(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetK8sClusterConnectorRequest(c.Server, orgId, clusterId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetK8sConnectorPoolConfiguration(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetK8sConnectorPoolConfigurationRequest(c.Server, orgId, clusterId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureK8sConnectorPoolWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureK8sConnectorPoolRequestWithBody(c.Server, orgId, clusterId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureK8sConnectorPool(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ConfigureK8sConnectorPoolJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureK8sConnectorPoolRequest(c.Server, orgId, clusterId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -18506,6 +18577,101 @@ func NewSetK8sClusterConnectorRequestWithBody(server string, orgId openapi_types
 	return req, nil
 }
 
+// NewGetK8sConnectorPoolConfigurationRequest generates requests for GetK8sConnectorPoolConfiguration
+func NewGetK8sConnectorPoolConfigurationRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/connector-pool", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewConfigureK8sConnectorPoolRequest calls the generic ConfigureK8sConnectorPool builder with application/json body
+func NewConfigureK8sConnectorPoolRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ConfigureK8sConnectorPoolJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfigureK8sConnectorPoolRequestWithBody(server, orgId, clusterId, "application/json", bodyReader)
+}
+
+// NewConfigureK8sConnectorPoolRequestWithBody generates requests for ConfigureK8sConnectorPool with any type of body
+func NewConfigureK8sConnectorPoolRequestWithBody(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/connector-pool", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListK8sClusterInventoryRequest generates requests for ListK8sClusterInventory
 func NewListK8sClusterInventoryRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams) (*http.Request, error) {
 	var err error
@@ -22228,6 +22394,14 @@ type ClientWithResponsesInterface interface {
 	SetK8sClusterConnectorWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterConnectorResponse, error)
 
 	SetK8sClusterConnectorWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterConnectorJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterConnectorResponse, error)
+
+	// GetK8sConnectorPoolConfigurationWithResponse request
+	GetK8sConnectorPoolConfigurationWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sConnectorPoolConfigurationResponse, error)
+
+	// ConfigureK8sConnectorPoolWithBodyWithResponse request with any body
+	ConfigureK8sConnectorPoolWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureK8sConnectorPoolResponse, error)
+
+	ConfigureK8sConnectorPoolWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ConfigureK8sConnectorPoolJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureK8sConnectorPoolResponse, error)
 
 	// ListK8sClusterInventoryWithResponse request
 	ListK8sClusterInventoryWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, params *ListK8sClusterInventoryParams, reqEditors ...RequestEditorFn) (*ListK8sClusterInventoryResponse, error)
@@ -26654,6 +26828,52 @@ func (r SetK8sClusterConnectorResponse) StatusCode() int {
 	return 0
 }
 
+type GetK8sConnectorPoolConfigurationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sConnectorPoolConfiguration
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetK8sConnectorPoolConfigurationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetK8sConnectorPoolConfigurationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConfigureK8sConnectorPoolResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sConnectorPoolConfiguration
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ConfigureK8sConnectorPoolResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConfigureK8sConnectorPoolResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListK8sClusterInventoryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -30429,6 +30649,32 @@ func (c *ClientWithResponses) SetK8sClusterConnectorWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseSetK8sClusterConnectorResponse(rsp)
+}
+
+// GetK8sConnectorPoolConfigurationWithResponse request returning *GetK8sConnectorPoolConfigurationResponse
+func (c *ClientWithResponses) GetK8sConnectorPoolConfigurationWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sConnectorPoolConfigurationResponse, error) {
+	rsp, err := c.GetK8sConnectorPoolConfiguration(ctx, orgId, clusterId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetK8sConnectorPoolConfigurationResponse(rsp)
+}
+
+// ConfigureK8sConnectorPoolWithBodyWithResponse request with arbitrary body returning *ConfigureK8sConnectorPoolResponse
+func (c *ClientWithResponses) ConfigureK8sConnectorPoolWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureK8sConnectorPoolResponse, error) {
+	rsp, err := c.ConfigureK8sConnectorPoolWithBody(ctx, orgId, clusterId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureK8sConnectorPoolResponse(rsp)
+}
+
+func (c *ClientWithResponses) ConfigureK8sConnectorPoolWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body ConfigureK8sConnectorPoolJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureK8sConnectorPoolResponse, error) {
+	rsp, err := c.ConfigureK8sConnectorPool(ctx, orgId, clusterId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureK8sConnectorPoolResponse(rsp)
 }
 
 // ListK8sClusterInventoryWithResponse request returning *ListK8sClusterInventoryResponse
@@ -37119,6 +37365,72 @@ func ParseSetK8sClusterConnectorResponse(rsp *http.Response) (*SetK8sClusterConn
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetK8sConnectorPoolConfigurationResponse parses an HTTP response from a GetK8sConnectorPoolConfigurationWithResponse call
+func ParseGetK8sConnectorPoolConfigurationResponse(rsp *http.Response) (*GetK8sConnectorPoolConfigurationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetK8sConnectorPoolConfigurationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sConnectorPoolConfiguration
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConfigureK8sConnectorPoolResponse parses an HTTP response from a ConfigureK8sConnectorPoolWithResponse call
+func ParseConfigureK8sConnectorPoolResponse(rsp *http.Response) (*ConfigureK8sConnectorPoolResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConfigureK8sConnectorPoolResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sConnectorPoolConfiguration
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
