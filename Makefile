@@ -285,6 +285,14 @@ test-operator: ## Build the GitOps operator + run the no-DB-import census (S10.2
 	docker run --rm -v "$(PWD)/apps/operator":/src -w /src -e GOFLAGS=-mod=readonly \
 	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go test ./..."
 
+.PHONY: test-k8s-charts
+test-k8s-charts: ## Lint and semantically render host posture, gateway, GitOps operator, and monotonic CRD charts.
+	bash deploy/k8s-host-posture-chart-contract_test.sh
+	bash deploy/k8s-gateway-chart-contract_test.sh
+	bash deploy/k8s-operator-crd-chart-contract_test.sh
+	bash deploy/k8s-operator-chart-contract_test.sh
+	bash deploy/k8s-walk-candidate-package-contract_test.sh
+
 .PHONY: web-gate
 web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 20 — works on any host (S11 debt repayment)
 	# The standing web-gate-local-env debt: the repo requires node>=20, hosts are often on 18, so

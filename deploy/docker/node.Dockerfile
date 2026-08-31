@@ -7,7 +7,10 @@ COPY apps/node/go.mod apps/node/go.sum* ./
 ENV GOFLAGS=-mod=readonly
 RUN go mod download
 COPY apps/node/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tunnex-node ./cmd/agent
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X main.buildVersion=${VERSION}" \
+    -o /out/tunnex-node ./cmd/agent
 
 FROM alpine:3.20
 # WireGuard data plane (S3.2): wg/wg-quick + ip (iproute2) drive the kernel

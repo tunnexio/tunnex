@@ -42,6 +42,11 @@ const (
 	k8sNetPrepPollInterval = 2 * time.Second
 )
 
+// buildVersion is stamped at link time (`-X main.buildVersion=<tag-or-sha>`).
+// "dev" is honest for an unstamped local binary; deployment metadata is never
+// accepted as a substitute for provenance embedded in the executable itself.
+var buildVersion = "dev"
+
 func main() {
 	if handled, exitCode := runNodeSubcommand(os.Args[1:], os.Stdout); handled {
 		os.Exit(exitCode)
@@ -1101,7 +1106,15 @@ func startFlowLog(ctx context.Context, group int, client *control.Client, egress
 }
 
 func hostname() string { h, _ := os.Hostname(); return h }
-func version() string  { return getenv("TUNNEX_AGENT_VERSION", "0.1.0") }
+func version() string {
+	if override := strings.TrimSpace(os.Getenv("TUNNEX_AGENT_VERSION")); override != "" {
+		return override
+	}
+	if stamped := strings.TrimSpace(buildVersion); stamped != "" {
+		return stamped
+	}
+	return "dev"
+}
 
 // Re-key retry pacing (S13.1). THE CEILING IS THE LOAD-BEARING NUMBER, not the floor.
 //
