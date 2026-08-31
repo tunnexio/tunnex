@@ -911,12 +911,12 @@ func allowMatchFamily(e nodepolicy.AllowEntry, v6 bool) (string, bool) {
 		switch {
 		case !lowSet && !highSet:
 			// Both unset = any port of this protocol (the "no port range" case).
-			clause = fmt.Sprintf(" ip protocol %s", e.Protocol)
+			clause = fmt.Sprintf(" meta l4proto %s", e.Protocol)
 		case lowSet && highSet && e.PortHigh >= e.PortLow:
 			if e.PortHigh > e.PortLow {
-				clause = fmt.Sprintf(" %s dport %d-%d", e.Protocol, e.PortLow, e.PortHigh)
+				clause = fmt.Sprintf(" meta l4proto %s ct original proto-dst %d-%d", e.Protocol, e.PortLow, e.PortHigh)
 			} else {
-				clause = fmt.Sprintf(" %s dport %d", e.Protocol, e.PortLow)
+				clause = fmt.Sprintf(" meta l4proto %s ct original proto-dst %d", e.Protocol, e.PortLow)
 			}
 		default:
 			// A HALF-SET or inverted range (only low, only high, or high<low) is
