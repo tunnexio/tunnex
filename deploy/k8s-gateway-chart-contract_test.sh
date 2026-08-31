@@ -15,6 +15,7 @@ fi
 DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ORG_ID=11111111-1111-4111-8111-111111111111
 LIFECYCLE_CLAIM=22222222-2222-4222-8222-222222222222
+INSTALL_PROOF=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 BASE=(
   --namespace tunnex-system
   --set acknowledgePrivileged=true
@@ -108,6 +109,25 @@ extract_source "${TMP}/enroll.yaml" pvc.yaml "${TMP}/pvc.yaml"
 
 require "${TMP}/deployment.yaml" '^kind: Deployment$' 'gateway Deployment'
 require "${TMP}/preflight.yaml" '^kind: Job$' 'pre-install/pre-upgrade placement preflight'
+require "${TMP}/preflight.yaml" '^  name: gw-a-tunnex-gateway-preflight$' 'canonical failed preflight hook name'
+require "${TMP}/preflight.yaml" 'app.kubernetes.io/name: tunnex-gateway' 'failed preflight hook product label'
+require "${TMP}/preflight.yaml" 'app.kubernetes.io/instance: gw-a' 'failed preflight hook release label'
+require "${TMP}/preflight.yaml" 'app.kubernetes.io/component: preflight' 'failed preflight hook component label'
+require "${TMP}/preflight.yaml" 'app.kubernetes.io/managed-by: Helm' 'failed preflight hook manager label'
+require "${TMP}/preflight.yaml" '"helm.sh/hook": pre-install,pre-upgrade' 'failed preflight hook lifecycle annotation'
+require "${TMP}/preflight.yaml" '"helm.sh/hook-weight": "-5"' 'failed preflight hook weight'
+require "${TMP}/preflight.yaml" '"helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed' 'failed preflight hook cleanup'
+reject "${TMP}/preflight.yaml" 'tunnex.io/lifecycle-install-proof' 'proof-bearing recovery on a direct/manual Helm render'
+helm template gw-proof "${CHART}" "${ENROLL[@]}" \
+  --set-string lifecycle.installProof="${INSTALL_PROOF}" >"${TMP}/proof.yaml"
+extract_source "${TMP}/proof.yaml" job-preflight.yaml "${TMP}/proof-preflight.yaml"
+require "${TMP}/proof-preflight.yaml" "\"tunnex.io/lifecycle-install-proof\": \"${INSTALL_PROOF}\"" 'exact zero-touch lifecycle install proof'
+# Helm rollback renders the target revision as an upgrade. Revision 1 retains
+# its enrollment values, so that phase must not replay the old holder proof.
+helm template gw-rollback "${CHART}" "${ENROLL[@]}" --is-upgrade \
+  --set-string lifecycle.installProof="${INSTALL_PROOF}" >"${TMP}/rollback.yaml"
+extract_source "${TMP}/rollback.yaml" job-preflight.yaml "${TMP}/rollback-preflight.yaml"
+reject "${TMP}/rollback-preflight.yaml" 'tunnex.io/lifecycle-install-proof' 'rollback replay of an enrollment-only lifecycle install proof'
 require "${TMP}/deployment.yaml" 'tunnex.io/rollout-revision: "contract-r1"' 'non-secret rollout revision'
 require "${TMP}/deployment.yaml" 'image: ghcr.io/tunnexio/tunnex-node-agent@sha256:a{64}' 'digest-pinned gateway and posture-check images'
 require "${ROOT}/deploy/docker/node.Dockerfile" 'ARG VERSION=dev' 'node image build-version input'
@@ -311,6 +331,8 @@ expect_fail mutable-privileged-preflight-image 'image/preflight.*pattern|must ma
   "${ENROLL[@]}" --set-string image.preflight=busybox:1.37.0
 expect_fail hostile-dns-probe 'preflight/dnsProbe.*pattern|must match pattern' \
   "${ENROLL[@]}" --set-string 'preflight.dnsProbe=$$(touch /tmp/tunnex-preflight-pwn)'
+expect_fail malformed-lifecycle-install-proof 'lifecycle/installProof.*pattern|must match pattern|sha256' \
+  "${ENROLL[@]}" --set-string lifecycle.installProof=sha256:SHORT
 expect_fail nodeport-selected-port-mismatch 'NodePort endpoint port.*service\.nodePort' \
   "${ENROLL[@]}" --set service.type=NodePort --set service.nodePort=30183 --set endpoint=198.51.100.10:30182
 expect_fail enroll-without-node-name 'nodeName.*required|length must be >= 1|/nodeName.*minLength' \
@@ -321,6 +343,8 @@ expect_fail reuse-without-claim 'existingClaim.*required|length must be >= 1|/pe
   "${BASE[@]}" --set enrollment.mode=reuse
 expect_fail reuse-with-token 'accepts no join token|length must be <= 0|/enrollment/existingSecret.*maxLength' \
   "${REUSE[@]}" --set enrollment.existingSecret=must-not-be-mounted
+expect_fail reuse-with-lifecycle-install-proof 'installProof.*length must be <= 0|/lifecycle/installProof.*maxLength' \
+  "${REUSE[@]}" --set-string lifecycle.installProof="${INSTALL_PROOF}"
 expect_fail partial-lifecycle-provenance 'lifecycleClaim.*length must be >= 1|/persistence/provenance/lifecycleClaim.*minLength' \
   "${BASE[@]}" --set enrollment.mode=enroll --set nodeName=partial-provenance --set enrollment.existingSecret=tunnex-join \
   --set-string persistence.provenance.organizationID="${ORG_ID}"

@@ -49,6 +49,13 @@ enrollment:
   # the consumed Secret and later pod restarts can reuse the PVC.
   secretOptional: true
 
+# Non-secret binding between a zero-touch install holder and its preflight
+# hook. The lifecycle CLI derives this only after control-plane authority is
+# mirrored in the anchor. Direct/manual Helm installs leave it empty and do not
+# gain proof-bearing orphan-hook recovery.
+lifecycle:
+  installProof: ""
+
 # Backwards-compatible enrollment values. New product flows use
 # enrollment.existingSecret. Raw joinToken is an INSECURE legacy escape hatch:
 # its value is retained by Helm release history.

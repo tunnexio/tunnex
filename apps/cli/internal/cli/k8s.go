@@ -1931,22 +1931,17 @@ func runK8sInstall(ctx context.Context, args []string, deps k8sDeps) (retErr err
 			return fmt.Errorf("final lifecycle install authority proof before Helm: %w", err)
 		}
 	}
-	helmCtx := mutationCtx
-	cancelHelm := func() {}
-	if installAuthority != nil {
-		helmCtx, cancelHelm = context.WithDeadlineCause(mutationCtx, installAuthority.deadlines.helm, errLifecycleInstallHelmDeadline)
-	}
 	installHelmStarted = installAuthority != nil
-	_, helmErr := runCheckedSecrets(helmCtx, deps.runner, "install gateway release", helmCommand, token)
+	// Helm owns its ordinary --timeout and --atomic cleanup. The lifecycle
+	// mutation context remains authoritative for abort, authority loss, and the
+	// separately budgeted hard deadline; an equal-time outer deadline would kill
+	// Helm before it can remove a failed pending-install revision.
+	_, helmErr := runCheckedSecrets(mutationCtx, deps.runner, "install gateway release", helmCommand, token)
 	mutationCause := context.Cause(mutationCtx)
-	helmCause := context.Cause(helmCtx)
-	cancelHelm()
 	if helmErr != nil {
 		installHolderStopped = errors.Is(mutationCause, errLifecycleInstallAbortRequested) || errors.Is(mutationCause, errLifecycleInstallDeadline)
 		if mutationCause != nil {
 			helmErr = errors.Join(helmErr, mutationCause)
-		} else if helmCause != nil {
-			helmErr = errors.Join(helmErr, helmCause)
 		}
 		if secretName != "" {
 			return fmt.Errorf("%w; bootstrap Secret %q was retained for bounded retry", helmErr, secretName)
@@ -2272,6 +2267,13 @@ func installHelmCommand(prepared preparedInstall) (k8sCommand, error) {
 	values, err := gatewayInstallValues(prepared, rolloutRevision(rolloutDigest))
 	if err != nil {
 		return k8sCommand{}, err
+	}
+	if o.mode == "enroll" {
+		installProof, proofErr := lifecycleInstallHookProofForInstallingAnchor(prepared.anchor, o.namespace, o.release)
+		if proofErr != nil {
+			return k8sCommand{}, fmt.Errorf("derive lifecycle install proof for the preflight hook: %w", proofErr)
+		}
+		values["lifecycle"] = map[string]any{"installProof": installProof}
 	}
 	encoded, err := json.Marshal(values)
 	if err != nil {

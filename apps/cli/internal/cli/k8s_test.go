@@ -1885,7 +1885,7 @@ func TestK8sUpgradeIsAtomicWaitsAndUsesNonSecretValuesStdin(t *testing.T) {
 			if !bytes.Contains(command.stdin, []byte(`"digest":"sha256:aaaaaaaa`)) || bytes.Contains(command.stdin, []byte(testJoinToken)) {
 				t.Fatalf("upgrade values are not digest-pinned/non-secret: %s", command.stdin)
 			}
-			for _, want := range []string{`"tag":""`, `"pullSecrets":[]`, `"pullPolicy":"IfNotPresent"`, `"preflight":""`, `"nodeSelector":{}`, `"tolerations":[]`} {
+			for _, want := range []string{`"tag":""`, `"pullSecrets":[]`, `"pullPolicy":"IfNotPresent"`, `"preflight":""`, `"installProof":""`, `"nodeSelector":{}`, `"tolerations":[]`} {
 				if !bytes.Contains(command.stdin, []byte(want)) {
 					t.Fatalf("upgrade values omitted authoritative empty %s: %s", want, command.stdin)
 				}
@@ -1951,7 +1951,7 @@ func TestK8sUpgradeCarriesApprovedRuntimeAndRejectsImageDrift(t *testing.T) {
 			if command.name != "helm" || !strings.HasPrefix(joined, "upgrade tunnex-gateway ") {
 				continue
 			}
-			for _, want := range []string{`"nodeSelector":{"pool":"gateway-a"}`, `"tolerations":[{"key":"dedicated","operator":"Equal","value":"tunnex","effect":"NoSchedule"}]`, `"pullSecrets":[{"name":"acr-pull"}]`, `"pullPolicy":"IfNotPresent"`, `"preflight":""`, `"tag":"v9.8.7"`, `"digest":""`} {
+			for _, want := range []string{`"nodeSelector":{"pool":"gateway-a"}`, `"tolerations":[{"key":"dedicated","operator":"Equal","value":"tunnex","effect":"NoSchedule"}]`, `"pullSecrets":[{"name":"acr-pull"}]`, `"pullPolicy":"IfNotPresent"`, `"preflight":""`, `"installProof":""`, `"tag":"v9.8.7"`, `"digest":""`} {
 				if !bytes.Contains(command.stdin, []byte(want)) {
 					t.Fatalf("upgrade values omitted approved runtime %s: %s", want, command.stdin)
 				}

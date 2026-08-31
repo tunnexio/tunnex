@@ -1175,7 +1175,7 @@ func runK8sAbortInstall(ctx context.Context, args []string, deps k8sDeps) error 
 			if after.pvc != nil {
 				claim = after.pvc.Metadata.Name
 			}
-			if err := reconcileLifecycleAbortRelease(ctx, deps, o, after.anchor, after.release, claim); err != nil {
+			if err := reconcileLifecycleAbortRelease(ctx, deps, o, after.anchor, takeover, after.release, claim); err != nil {
 				return fmt.Errorf("install abort takeover retained recovery metadata because release/workload reconciliation failed: %w", err)
 			}
 			aborted, err = installCP.FinalizeLifecycleInstallAbort(ctx, org.id, lifecycleInstallCASFromStatus(takeover))

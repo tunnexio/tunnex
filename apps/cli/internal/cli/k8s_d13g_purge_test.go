@@ -252,6 +252,14 @@ func TestK8sAbortRefusesForeignPVCOwnershipBeforeFenceOrControlPlaneAbort(t *tes
 }
 
 func TestInstallHelmValuesCarryLifecycleProvenanceOnlyForEnroll(t *testing.T) {
+	installAnchor := testLifecycleAnchor("gateway-a", "gateway-a", "installing")
+	installAnchor.installOperationID = testStateFenceOpID
+	installAnchor.installOperationEpoch = 1
+	installAnchor.installOperationDurationSeconds = 660
+	installAnchor.installOperationNotAfter = time.Date(2099, 1, 2, 3, 4, 5, 0, time.UTC)
+	installAnchor.installIntentDigest = "sha256:" + strings.Repeat("a", 64)
+	installAnchor.releaseNamespace = "tunnex"
+	installAnchor.releaseName = "gateway-a"
 	base := preparedInstall{
 		options: installOptions{release: "gateway-a", namespace: "tunnex", kubeContext: "walk", mode: "enroll", nodeName: "gateway-a", timeout: "10m", serviceType: "LoadBalancer"},
 		plan: lifecyclePlan{
@@ -260,7 +268,7 @@ func TestInstallHelmValuesCarryLifecycleProvenanceOnlyForEnroll(t *testing.T) {
 			InstallIntentDigest: "sha256:" + strings.Repeat("a", 64),
 		},
 		org:             k8sOrganization{id: "11111111-1111-1111-1111-111111111111"},
-		anchor:          lifecycleAnchorMetadata{orgID: "11111111-1111-1111-1111-111111111111", lifecycleClaim: testLifecycleClaim},
+		anchor:          installAnchor,
 		gatewayArtifact: chartArtifact{Path: "/tmp/tunnex-gateway.tgz"}, digest: "sha256:" + strings.Repeat("a", 64), installIntentDigest: "sha256:" + strings.Repeat("a", 64),
 	}
 	command, err := installHelmCommand(base)
@@ -276,6 +284,10 @@ func TestInstallHelmValuesCarryLifecycleProvenanceOnlyForEnroll(t *testing.T) {
 	if provenance["organizationID"] != base.anchor.orgID || provenance["lifecycleClaim"] != base.anchor.lifecycleClaim {
 		t.Fatalf("enroll provenance = %#v", provenance)
 	}
+	lifecycle := values["lifecycle"].(map[string]any)
+	if proof, _ := lifecycle["installProof"].(string); !validCanonicalSHA256Digest(proof) {
+		t.Fatalf("enroll lifecycle install proof = %#v", lifecycle)
+	}
 
 	base.options.mode = "reuse"
 	base.options.existingClaim = "retained-state-a"
@@ -284,12 +296,16 @@ func TestInstallHelmValuesCarryLifecycleProvenanceOnlyForEnroll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	values = nil
 	if err := json.Unmarshal(command.stdin, &values); err != nil {
 		t.Fatal(err)
 	}
 	persistence = values["persistence"].(map[string]any)
 	if _, exists := persistence["provenance"]; exists {
 		t.Fatalf("reuse invented lifecycle provenance: %#v", persistence)
+	}
+	if _, exists := values["lifecycle"]; exists {
+		t.Fatalf("reuse invented lifecycle install proof: %#v", values["lifecycle"])
 	}
 }
 

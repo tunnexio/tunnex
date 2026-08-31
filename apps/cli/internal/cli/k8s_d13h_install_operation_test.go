@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -340,9 +341,6 @@ func TestK8sLifecycleInstallDeadlineUsesServerDeltaNotLocalWallClock(t *testing.
 	if got := deadlines.hard.Sub(requestStart); got != 11*time.Minute-750*time.Millisecond {
 		t.Fatalf("hard deadline delta=%s, want 10m59.25s", got)
 	}
-	if got := deadlines.helm.Sub(requestStart); got != 10*time.Minute {
-		t.Fatalf("Helm deadline delta=%s, want 10m", got)
-	}
 }
 
 func TestK8sLifecycleInstallDeadlineRejectsShortenedAuthority(t *testing.T) {
@@ -651,6 +649,138 @@ func d13hFailureAuthority(cp *fakeK8sControlPlane, anchor lifecycleAnchorMetadat
 	}
 	return lifecycleInstallAuthority{
 		cp: cp, orgID: anchor.orgID, begin: begin, cas: lifecycleInstallCASFromStatus(status), status: status, anchor: anchor,
+	}
+}
+
+type d13hAtomicTimeoutRunner struct {
+	base                   *fakeK8sRunner
+	helmEntered            bool
+	externallyCanceled     bool
+	atomicCleanupCompleted bool
+}
+
+type d13hHardDeadlineRunner struct {
+	base        *fakeK8sRunner
+	helmEntered bool
+	helmCause   error
+}
+
+func (r *d13hHardDeadlineRunner) LookPath(name string) (string, error) {
+	return r.base.LookPath(name)
+}
+
+func (r *d13hHardDeadlineRunner) Run(ctx context.Context, command k8sCommand) (k8sCommandResult, error) {
+	joined := strings.Join(command.args, " ")
+	if command.name == "helm" && strings.HasPrefix(joined, "install tunnex-gateway ") {
+		r.helmEntered = true
+		r.base.commands = append(r.base.commands, k8sCommand{
+			name: command.name, args: append([]string(nil), command.args...), stdin: append([]byte(nil), command.stdin...),
+		})
+		select {
+		case <-ctx.Done():
+			r.helmCause = context.Cause(ctx)
+			return k8sCommandResult{}, ctx.Err()
+		case <-time.After(5 * time.Second):
+			return k8sCommandResult{}, errors.New("test timed out waiting for the lifecycle hard deadline")
+		}
+	}
+	return r.base.Run(ctx, command)
+}
+
+func TestK8sLifecycleHardDeadlineCancelsBlockedHelmAndRetainsRecovery(t *testing.T) {
+	cp := baseK8sControlPlane()
+	baseRunner := &fakeK8sRunner{anchors: map[string]lifecycleAnchorMetadata{}, handler: baseRunnerHandler}
+	runner := &d13hHardDeadlineRunner{base: baseRunner}
+	deps := baseK8sDeps(runner, cp, &bytes.Buffer{}, &bytes.Buffer{}).normalized()
+	// A 100ms Helm timeout requests a 61-second server lease. Model 60 seconds
+	// of conservative request transit so the local monotonic hard deadline is
+	// near while the control-plane tuple remains valid.
+	deps.now = func() time.Time { return time.Now().Add(-60 * time.Second) }
+	err := runK8s(context.Background(), []string{
+		"install", "--node-name", "aks-gateway-a", "--timeout", "100ms", "--yes",
+	}, deps)
+	if err == nil || !strings.Contains(err.Error(), errLifecycleInstallDeadline.Error()) {
+		t.Fatalf("hard-deadline Helm error = %v", err)
+	}
+	if !runner.helmEntered || !errors.Is(runner.helmCause, errLifecycleInstallDeadline) {
+		t.Fatalf("blocked Helm entered/cause=%t/%v", runner.helmEntered, runner.helmCause)
+	}
+	status := cp.installOperations[testStateFenceOpID]
+	if cp.installCompleteCount != 0 || cp.installReleaseCount != 1 || status.state != lifecycleInstallReleased {
+		t.Fatalf("hard deadline complete/release/state=%d/%d/%s", cp.installCompleteCount, cp.installReleaseCount, status.state)
+	}
+	if _, exists := baseRunner.anchors["tunnex-gateway-lifecycle"]; !exists {
+		t.Fatal("hard deadline removed lifecycle recovery anchor")
+	}
+	for _, command := range baseRunner.commands {
+		joined := strings.Join(command.args, " ")
+		if command.name == "kubectl" && strings.Contains(joined, "delete --raw=/api/v1/namespaces/tunnex/") {
+			t.Fatalf("hard deadline deleted recovery metadata: %+v", command)
+		}
+	}
+}
+
+func (r *d13hAtomicTimeoutRunner) LookPath(name string) (string, error) {
+	return r.base.LookPath(name)
+}
+
+func (r *d13hAtomicTimeoutRunner) Run(ctx context.Context, command k8sCommand) (k8sCommandResult, error) {
+	joined := strings.Join(command.args, " ")
+	if command.name == "helm" && strings.HasPrefix(joined, "install tunnex-gateway ") {
+		r.helmEntered = true
+		r.base.commands = append(r.base.commands, k8sCommand{
+			name: command.name, args: append([]string(nil), command.args...), stdin: append([]byte(nil), command.stdin...),
+		})
+		timeout, err := time.ParseDuration(commandArgValue(command.args, "--timeout"))
+		if err != nil {
+			return k8sCommandResult{}, fmt.Errorf("test Helm command lacks a valid internal timeout: %w", err)
+		}
+		if timeout <= 0 {
+			return k8sCommandResult{}, errors.New("test Helm command lacks a positive internal timeout")
+		}
+		timer := time.NewTimer(2 * timeout)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			r.externallyCanceled = true
+			return k8sCommandResult{}, ctx.Err()
+		case <-timer.C:
+			r.atomicCleanupCompleted = true
+			return k8sCommandResult{stderr: []byte("simulated ordinary Helm timeout after atomic cleanup")}, errors.New("exit 1")
+		}
+	}
+	if r.atomicCleanupCompleted && command.name == "kubectl" && strings.Contains(joined, "rollout status deployment/tunnex-gateway") {
+		return k8sCommandResult{stderr: []byte("deployment not found after atomic cleanup")}, errors.New("exit 1")
+	}
+	return r.base.Run(ctx, command)
+}
+
+func TestK8sLifecycleOrdinaryHelmTimeoutAllowsAtomicCleanupBeforeAuthorityRelease(t *testing.T) {
+	cp := baseK8sControlPlane()
+	baseRunner := &fakeK8sRunner{anchors: map[string]lifecycleAnchorMetadata{}, handler: baseRunnerHandler}
+	runner := &d13hAtomicTimeoutRunner{base: baseRunner}
+	err := runK8s(context.Background(), []string{
+		"install", "--node-name", "aks-gateway-a", "--timeout", "40ms", "--yes",
+	}, baseK8sDeps(runner, cp, &bytes.Buffer{}, &bytes.Buffer{}))
+	if err == nil || !strings.Contains(err.Error(), "simulated ordinary Helm timeout after atomic cleanup") ||
+		!strings.Contains(err.Error(), `bootstrap Secret "tunnex-gateway-bootstrap" was retained`) {
+		t.Fatalf("ordinary Helm timeout error = %v", err)
+	}
+	if !runner.helmEntered || runner.externallyCanceled || !runner.atomicCleanupCompleted {
+		t.Fatalf("Helm timeout ownership entered/canceled/cleaned=%t/%t/%t", runner.helmEntered, runner.externallyCanceled, runner.atomicCleanupCompleted)
+	}
+	status := cp.installOperations[testStateFenceOpID]
+	if cp.installCompleteCount != 0 || cp.installReleaseCount != 1 || status.state != lifecycleInstallReleased {
+		t.Fatalf("ordinary timeout complete/release/state=%d/%d/%s", cp.installCompleteCount, cp.installReleaseCount, status.state)
+	}
+	if _, exists := baseRunner.anchors["tunnex-gateway-lifecycle"]; !exists {
+		t.Fatal("ordinary timeout removed lifecycle recovery anchor")
+	}
+	for _, command := range baseRunner.commands {
+		joined := strings.Join(command.args, " ")
+		if command.name == "kubectl" && strings.Contains(joined, "delete --raw=/api/v1/namespaces/tunnex/") {
+			t.Fatalf("ordinary timeout deleted recovery metadata: %+v", command)
+		}
 	}
 }
 

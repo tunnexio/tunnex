@@ -46,6 +46,14 @@
         "secretOptional": { "type": "boolean" }
       }
     },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installProof"],
+      "properties": {
+        "installProof": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" }
+      }
+    },
     "existingJoinTokenSecret": { "type": "string" },
     "joinTokenKey": { "type": "string", "minLength": 1 },
     "joinToken": { "type": "string" },
@@ -166,6 +174,7 @@
     "image",
     "controlPlane",
     "enrollment",
+    "lifecycle",
     "joinTokenKey",
     "wireguard",
     "service",
@@ -236,6 +245,9 @@
           },
           "existingJoinTokenSecret": { "maxLength": 0 },
           "joinToken": { "maxLength": 0 },
+          "lifecycle": {
+            "properties": { "installProof": { "maxLength": 0 } }
+          },
           "persistence": {
             "properties": {
               "enabled": { "const": true },

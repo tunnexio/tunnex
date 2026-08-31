@@ -115,7 +115,6 @@ func lifecycleInstallBudget(timeout string) (time.Duration, int, error) {
 
 type lifecycleInstallDeadlines struct {
 	hard time.Time
-	helm time.Time
 }
 
 type canonicalLifecycleInstallIntent struct {
@@ -172,8 +171,9 @@ func describeFencedLifecycleInstallOperations(operations []string) []string {
 }
 
 // gatewayInstallValues is shared by stable intent hashing and the actual Helm
-// command. The rollout revision is omitted while hashing because it is derived
-// from that hash; production supplies rolloutRevision(installIntentDigest).
+// command. Values derived only after Begin (the rollout revision and lifecycle
+// hook proof) are appended by installHelmCommand and stay outside this stable
+// input so the install-intent digest cannot become circular.
 func gatewayInstallValues(prepared preparedInstall, rollout string) (map[string]any, error) {
 	o := prepared.options
 	if prepared.plan.ControlPlane == nil {
@@ -322,8 +322,7 @@ func deriveLifecycleInstallDeadlines(requestStart time.Time, status lifecycleIns
 		return lifecycleInstallDeadlines{}, fmt.Errorf("control-plane lifecycle authority has only %s remaining; the approved Helm timeout plus minimum completion margin requires %s", remaining, required)
 	}
 	hard := requestStart.Add(remaining)
-	helm := requestStart.Add(helmTimeout)
-	return lifecycleInstallDeadlines{hard: hard, helm: helm}, nil
+	return lifecycleInstallDeadlines{hard: hard}, nil
 }
 
 func lifecycleInstallCASFromStatus(status lifecycleInstallOperationStatus) lifecycleInstallCASRequest {
@@ -408,7 +407,6 @@ type lifecycleInstallAuthority struct {
 	status           lifecycleInstallOperationStatus
 	anchor           lifecycleAnchorMetadata
 	deadlines        lifecycleInstallDeadlines
-	helmTimeout      time.Duration
 	requestedSeconds int
 }
 
@@ -468,8 +466,20 @@ func proveGatewayReleaseAndWorkloadsAbsent(ctx context.Context, deps k8sDeps, o 
 	return validateExactLifecycleAnchorReadback(expectedAnchor, *actual, o.release, false)
 }
 
-func reconcileLifecycleAbortRelease(ctx context.Context, deps k8sDeps, o abortInstallOptions, anchor lifecycleAnchorMetadata, release *helmReleaseSummary, pvcClaim string) error {
+func reconcileLifecycleAbortRelease(ctx context.Context, deps k8sDeps, o abortInstallOptions, anchor lifecycleAnchorMetadata, takeover lifecycleInstallOperationStatus, release *helmReleaseSummary, pvcClaim string) error {
 	install := installOptions{release: o.release, namespace: o.namespace, kubeContext: o.kubeContext}
+	expectedInstallProof, err := validateLifecycleAbortHookBinding(anchor, takeover, o.namespace, o.release)
+	if err != nil {
+		return fmt.Errorf("prove exact lifecycle abort takeover before release reconciliation: %w", err)
+	}
+	// A retained hook is outside Helm's release manifest. Prove its exact
+	// lifecycle binding before uninstalling any live release so a malformed or
+	// foreign Job cannot turn a fail-closed abort into a partial mutation. The
+	// cleanup path deliberately re-reads it after uninstall and re-proves the
+	// anchor immediately before the UID/resourceVersion delete.
+	if _, err := readCanonicalPreflightHookJob(ctx, deps.runner, o.kubeContext, o.namespace, o.release, expectedInstallProof); err != nil {
+		return fmt.Errorf("prove exact failed preflight hook before release reconciliation: %w", err)
+	}
 	if release != nil {
 		revision, err := strconv.Atoi(release.Revision)
 		if err != nil || revision <= 0 {
@@ -483,6 +493,9 @@ func reconcileLifecycleAbortRelease(ctx context.Context, deps k8sDeps, o abortIn
 		if _, err := runChecked(ctx, deps.runner, "reconcile exact gateway release during lifecycle abort takeover", k8sCommand{name: "helm", args: helmArgs}); err != nil {
 			return err
 		}
+	}
+	if err := cleanupCanonicalFailedPreflightHook(ctx, deps.runner, o.kubeContext, o.namespace, o.release, o.timeout, anchor, takeover); err != nil {
+		return fmt.Errorf("reconcile exact failed preflight hook during lifecycle abort takeover: %w", err)
 	}
 	return proveGatewayReleaseAndWorkloadsAbsent(ctx, deps, install, anchor, pvcClaim)
 }
@@ -781,7 +794,7 @@ func prepareLifecycleInstallAuthority(ctx context.Context, deps k8sDeps, prepare
 	}
 	return lifecycleInstallAuthority{
 		cp: cp, orgID: prepared.org.id, begin: begin, cas: cas, status: status, anchor: desired,
-		deadlines: deadlines, helmTimeout: helmTimeout, requestedSeconds: requestedSeconds,
+		deadlines: deadlines, requestedSeconds: requestedSeconds,
 	}, nil
 }
 
@@ -999,7 +1012,6 @@ func completeRecoveredLifecycleInstall(ctx context.Context, deps k8sDeps, prepar
 
 var (
 	errLifecycleInstallDeadline       = errors.New("control-plane lifecycle install authority reached its hard deadline")
-	errLifecycleInstallHelmDeadline   = errors.New("Helm reached its approved lifecycle timeout")
 	errLifecycleInstallAbortRequested = errors.New("control-plane requested lifecycle install abort")
 )
 

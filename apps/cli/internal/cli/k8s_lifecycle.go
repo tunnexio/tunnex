@@ -1352,6 +1352,9 @@ func runK8sUpgrade(ctx context.Context, args []string, deps k8sDeps) (retErr err
 		"nodeSelector":    targetRuntime.NodeSelector,
 		"tolerations":     targetRuntime.Tolerations,
 		"image":           map[string]any{"pullSecrets": pullSecrets},
+		// Never let --reset-then-reuse-values replay the enrollment-only
+		// install-holder proof into an ordinary upgrade hook.
+		"lifecycle": map[string]any{"installProof": ""},
 	}
 	appendGatewayImageValues(values, image)
 	valuesJSON, err := json.Marshal(values)

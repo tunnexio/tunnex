@@ -515,10 +515,6 @@ func TestD13hTwoInvocationsShareOperationButOnlyCASWinnerMutatesHelm(t *testing.
 		anchor: prepared.anchor, bothArrived: make(chan struct{}), winnerDone: make(chan struct{}),
 	}
 	deps := baseK8sDeps(runner, cp, &bytes.Buffer{}, &bytes.Buffer{}).normalized()
-	helmCommand, err := installHelmCommand(prepared)
-	if err != nil {
-		t.Fatalf("build deterministic Helm mutation: %v", err)
-	}
 	results := make(chan error, 2)
 	for i := 0; i < 2; i++ {
 		go func() {
@@ -529,6 +525,13 @@ func TestD13hTwoInvocationsShareOperationButOnlyCASWinnerMutatesHelm(t *testing.
 			}
 			if err := authority.proveAnchor(context.Background(), deps, prepared); err != nil {
 				results <- err
+				return
+			}
+			winnerPrepared := prepared
+			winnerPrepared.anchor = authority.anchor
+			helmCommand, commandErr := installHelmCommand(winnerPrepared)
+			if commandErr != nil {
+				results <- commandErr
 				return
 			}
 			_, runErr := runCheckedSecrets(context.Background(), runner, "deterministic winner Helm install", helmCommand, "")
@@ -670,7 +673,7 @@ func TestD13hContinuationDriftRefusesCompleteAndCancelsHeartbeat(t *testing.T) {
 			authority := lifecycleInstallAuthority{
 				cp: cp, orgID: "11111111-1111-1111-1111-111111111111", begin: begin,
 				cas: lifecycleInstallCASFromStatus(status), status: status,
-				deadlines: lifecycleInstallDeadlines{hard: status.notAfter, helm: now.Add(10 * time.Minute)},
+				deadlines: lifecycleInstallDeadlines{hard: status.notAfter},
 			}
 			monitor, cancel := startLifecycleInstallMonitor(context.Background(), deps, authority)
 			ticker.tick(now.Add(lifecycleInstallHeartbeatInterval))
