@@ -12,6 +12,7 @@ import {
   type Role,
   type Site,
   type K8sCluster,
+  type K8sConnectorPoolConfiguration,
   type K8sService,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -33,6 +34,7 @@ import {
 } from "../components/ui";
 import { LoadRetry } from "../components/LoadRetry";
 import { roleFromMembers } from "../lib/policyview";
+import { can } from "../lib/rbac";
 import {
   assembleClusters,
   clusterConnectorState,
@@ -52,6 +54,7 @@ import {
 } from "../components/K8sEnrollment";
 import { K8sServiceInventoryStatus } from "../components/K8sServiceInventoryStatus";
 import { K8sHAActivationPanel } from "../components/K8sHAActivationPanel";
+import { K8sConnectorPoolPanel } from "../components/K8sConnectorPoolPanel";
 import { ProviderMark } from "../components/ProviderMarks";
 import { providerPlatformEntry } from "../lib/k8senrollment";
 
@@ -72,7 +75,22 @@ interface Raw {
   nodesError: string | null;
   // NULL = the read failed. Distinct from 0, which means "we looked and there are none".
   machineCreds: number | null;
+  connectorPools: Record<string, ConnectorPoolLookup>;
 }
+
+// A pool conversion deliberately clears the legacy connector_node_id. This is
+// an explicit read result, so an unavailable pool read never becomes a false
+// “connector required” claim in the dashboard.
+type ConnectorPoolLookup =
+  | { kind: "configured"; configuration: K8sConnectorPoolConfiguration }
+  | { kind: "unconfigured" }
+  | { kind: "unavailable" };
+
+type ConnectorBinding =
+  | { kind: "direct"; nodeId: string }
+  | { kind: "pool"; nodeId: string }
+  | { kind: "missing"; nodeId: null }
+  | { kind: "unavailable"; nodeId: null };
 
 export default function Kubernetes() {
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
@@ -126,7 +144,8 @@ export default function Kubernetes() {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<Member[]>;
-    setMyRole(roleFromMembers(memRes, myId).role);
+    const role = roleFromMembers(memRes, myId).role;
+    setMyRole(role);
     const cRes = (await loadOne(() =>
       api.GET("/api/v1/organizations/{orgId}/k8s/clusters", {
         params: { path: { orgId: first.id } },
@@ -156,6 +175,21 @@ export default function Kubernetes() {
         params: { path: { orgId: first.id } },
       }),
     )) as Loaded<unknown[]>;
+    const connectorPools: Record<string, ConnectorPoolLookup> = {};
+    // A direct owner is already present in the cluster payload. Only clusters
+    // without it need the pool read, which keeps the common path single-read.
+    if (can(role, "k8s_ha:view")) {
+      await Promise.all(cRes.data.filter((cluster) => cluster.connector_node_id == null).map(async (cluster) => {
+        const { data, error } = await api.GET("/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/connector-pool", {
+          params: { path: { orgId: first.id, clusterId: cluster.id } },
+        });
+        connectorPools[cluster.id] = error
+          ? apiErrorCode(error) === "connector_pool_not_found" ? { kind: "unconfigured" } : { kind: "unavailable" }
+          : data ? { kind: "configured", configuration: data } : { kind: "unavailable" };
+      }));
+    } else {
+      for (const cluster of cRes.data) if (cluster.connector_node_id == null) connectorPools[cluster.id] = { kind: "unavailable" };
+    }
     setRaw({
       clusters: cRes.data,
       services: svcRes.data,
@@ -165,6 +199,7 @@ export default function Kubernetes() {
       nodesError: nRes.ok ? null : nRes.error,
       // NULL, not 0 — "we could not look" is a different fact from "there are none", and the tile says which.
       machineCreds: mcRes.ok ? mcRes.data.length : null,
+      connectorPools,
     });
     // ⚠ currentOrg IS A DEPENDENCY, AND THAT IS THE HALF THAT MAKES THE SWITCHER WORK. Without it the
     // page keeps rendering the org it mounted with — the control moves, the data does not, and the user is
@@ -201,6 +236,13 @@ export default function Kubernetes() {
       })),
     [raw],
   );
+  function connectorBinding(cluster: ClusterCard): ConnectorBinding {
+    if (cluster.connectorNodeId !== null) return { kind: "direct", nodeId: cluster.connectorNodeId };
+    const pool = raw?.connectorPools[cluster.id];
+    if (pool?.kind === "configured") return { kind: "pool", nodeId: pool.configuration.active_node_id };
+    if (pool?.kind === "unconfigured") return { kind: "missing", nodeId: null };
+    return { kind: "unavailable", nodeId: null };
+  }
 
   // ⛔ ONE MODAL OWNER AT PAGE LEVEL. The per-cluster card used to hold its own modal state; the wireframe's
   // layout is a TABLE, and a table row cannot own a modal without one instance per row. Hoisting it here is
@@ -222,7 +264,7 @@ export default function Kubernetes() {
           ...sv,
           clusterId: c.id,
           clusterName: c.name,
-          configured: clusterConnectorState({ connectorNodeId: c.connectorNodeId, gateways })
+          configured: clusterConnectorState({ connectorNodeId: connectorBinding(c).nodeId, gateways })
             .configured,
         })),
       ),
@@ -272,22 +314,24 @@ export default function Kubernetes() {
       header: "Site & connector",
       sortValue: (c: ClusterCard) => siteName.get(c.siteId) ?? "",
       cell: (c: ClusterCard) => {
-        const connector = clusterConnectorState({ connectorNodeId: c.connectorNodeId, gateways });
+        const binding = connectorBinding(c);
+        const connector = clusterConnectorState({ connectorNodeId: binding.nodeId, gateways });
         const name = siteName.get(c.siteId) ?? null;
         return (
           <span className="flex items-center gap-2 whitespace-nowrap text-cell">
             <span className="text-ink-body">{name === null ? "Site unavailable" : name}</span>
             <span aria-hidden className="text-white/20">/</span>
             <span className="text-ink-faint">
-              {c.connectorNodeId === null ? "Connector required" : nodeName.get(c.connectorNodeId) ?? "Connector unavailable"}
+              {binding.kind === "pool" ? `Pool: ${nodeName.get(binding.nodeId) ?? "active connector unavailable"}` : binding.kind === "direct" ? nodeName.get(binding.nodeId) ?? "Connector unavailable" : binding.kind === "missing" ? "Connector required" : "Connector pool state unavailable"}
             </span>
-            {c.connectorNodeId === null && <span className="sr-only">connector: not selected</span>}
+            {binding.kind === "missing" && <span className="sr-only">connector: not selected</span>}
+            {binding.kind === "unavailable" && <span className="sr-only">connector pool state could not be read; no connector state is inferred</span>}
             {/* ⛔ D9 SITS HERE, ON THE THING IT IS ABOUT. The claim is about the GATEWAY fronting the site, so
                 it belongs in this column and not on the Service rows, which would read as a fact about them. */}
-            {!connector.configured && connector.why !== null && (
+            {binding.kind !== "unavailable" && !connector.configured && connector.why !== null && (
               <Badge tone="warn">Needs setup</Badge>
             )}
-            {!connector.configured && connector.why !== null && <span className="sr-only">{connector.why}</span>}
+            {binding.kind !== "unavailable" && !connector.configured && connector.why !== null && <span className="sr-only">{connector.why}</span>}
           </span>
         );
       },
@@ -402,6 +446,7 @@ export default function Kubernetes() {
   const selectedProviderContext = selected
     ? providerPlatformEntry(selected.provider, selected.platform)
     : null;
+  const selectedBinding = selected ? connectorBinding(selected) : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -509,7 +554,7 @@ export default function Kubernetes() {
                   <Button size="sm" variant="ghost" onClick={() => setTrafficPathOpen(true)}>View path</Button>
                 </SettingRow>
                 {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
-                <SettingRow label="Operator and connector setup" description="Install both components with one-time secret references; credentials never belong in chart values.">
+                <SettingRow label="Operator and connector setup" description="Use the version-matched lifecycle CLI for gateways; charts accept Secret references, never raw credentials.">
                   <Button size="sm" variant="ghost" onClick={() => setCommandsOpen(true)}>View commands</Button>
                 </SettingRow>
                 <SettingRow label="Operational visibility" description="Endpoint health is reported on Gateways; removed-service references remain visible on Access Policies.">
@@ -541,7 +586,7 @@ export default function Kubernetes() {
             <dl className="grid gap-x-6 gap-y-4 border-y border-line py-4 text-cell sm:grid-cols-2">
               {[
                 ["Site", siteName.get(selected.siteId) ?? "Site record unavailable"],
-                ["Connector", selected.connectorNodeId ? (nodeName.get(selected.connectorNodeId) ?? "Unavailable") : "Not selected"],
+                ["Connector", selectedBinding?.kind === "pool" ? `Pool active: ${nodeName.get(selectedBinding.nodeId) ?? "Unavailable"}` : selectedBinding?.kind === "direct" ? (nodeName.get(selectedBinding.nodeId) ?? "Unavailable") : selectedBinding?.kind === "missing" ? "Not selected" : "Pool state unavailable"],
                 ["Exposed services", String(selected.services.length)],
                 ["DNS VIP", selected.dnsVip ?? "Not allocated"],
                 ["VIP range", selected.vipRange],
@@ -554,11 +599,20 @@ export default function Kubernetes() {
               </div>)}
             </dl>
 
+            {orgId && <K8sConnectorPoolPanel
+              orgId={orgId}
+              cluster={selected}
+              nodes={raw?.nodes ?? null}
+              role={myRole}
+              emailVerified={emailVerified}
+              onChanged={reload}
+            />}
+
             {objectControls(selected.managedByOperator).withheld ? (
               <p className="text-micro text-ink-tertiary" aria-label={managedEditWarning("cluster")}>Managed by GitOps. Edit its CR to change this cluster.</p>
             ) : gate.canManage ? (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="ghost" onClick={() => { updateQuery({ cluster: null }); setConnectorFor(selected); }}>{selected.connectorNodeId === null ? "Select connector" : "Change connector"}</Button>
+                {selectedBinding?.kind !== "pool" && selectedBinding?.kind !== "unavailable" && <Button size="sm" variant="ghost" onClick={() => { updateQuery({ cluster: null }); setConnectorFor(selected); }}>{selectedBinding?.kind === "missing" ? "Select connector" : "Change connector"}</Button>}
                 <Button size="sm" variant="ghost" onClick={() => { updateQuery({ cluster: null }); setProviderMetadataFor(selected); }}>Correct provider metadata</Button>
                 <Button size="sm" onClick={() => { updateQuery({ cluster: null }); setExposeFor(selected); }}>Expose service</Button>
               </div>
@@ -581,10 +635,47 @@ export default function Kubernetes() {
       )}
       {commandsOpen && (
         <Modal title="Operator and connector setup" onDismiss={() => setCommandsOpen(false)} actions={<Button variant="ghost" onClick={() => setCommandsOpen(false)}>Close</Button>}>
-          <pre className="overflow-x-auto rounded-input border border-line bg-black/30 p-3 text-micro text-ink-body">{`helm install gw tunnex/tunnex-gateway \\
-  --set joinToken.secretRef=tunnex-join
-helm install op tunnex/operator \\
-  --set machineToken.secretRef=tunnex-machine`}</pre>
+          <div className="flex flex-col gap-4">
+            <div>
+              <p className="mb-2 text-cell font-medium text-ink-heading">Gateway lifecycle</p>
+              <p className="mb-2 text-micro text-ink-tertiary">The logged-in CLI prints a redacted plan, streams the single-use token on stdin, and removes the consumed bootstrap Secret after readiness.</p>
+              <pre className="overflow-x-auto rounded-input border border-line bg-black/30 p-3 text-micro text-ink-body">{`tunnex k8s plan --org ${orgId ?? "<organization-id>"} --node-name <gateway-name>
+tunnex k8s install --org ${orgId ?? "<organization-id>"} --node-name <gateway-name> --yes`}</pre>
+            </div>
+            <div>
+              <p className="mb-2 text-cell font-medium text-ink-heading">Optional GitOps operator</p>
+              <p className="mb-2 text-micro text-ink-tertiary">Create the machine credential as Kubernetes Secret <span className="font-mono">tunnex-operator-credential</span> first. Upgrade the retained CRDs before the rollbackable operator. <span className="font-mono">--take-ownership</span> adopts only an exact approved Tunnex legacy schema; unknown ownerless schemas fail before apply. These commands contain no secret values.</p>
+              <pre className="overflow-x-auto rounded-input border border-line bg-black/30 p-3 text-micro text-ink-body">{`CLI_VERSION="$(tunnex version)"
+CHART_VERSION="\${CLI_VERSION#v}"
+TUNNEX_CONTROL_PLANE_URL="${window.location.origin}"
+TUNNEX_ORGANIZATION_ID="${orgId ?? "replace-with-organization-uuid"}"
+
+case "$CHART_VERSION" in dev|unknown|"")
+  echo "Use a released CLI or set CHART_VERSION explicitly." >&2
+  exit 1
+esac
+
+helm upgrade --install tunnex-operator-crds \\
+  oci://ghcr.io/tunnexio/charts/tunnex-operator-crds \\
+  --version "$CHART_VERSION" \\
+  --namespace tunnex-system --create-namespace \\
+  --take-ownership --wait
+
+kubectl wait --for=condition=Established --timeout=120s \\
+  crd/tunnexclusters.tunnex.io \\
+  crd/tunnexexposedservices.tunnex.io \\
+  crd/tunnexgrants.tunnex.io
+
+helm upgrade --install tunnex-operator \\
+  oci://ghcr.io/tunnexio/charts/tunnex-operator \\
+  --version "$CHART_VERSION" \\
+  --namespace tunnex-system --create-namespace \\
+  --set-string controlPlane.url="$TUNNEX_CONTROL_PLANE_URL" \\
+  --set-string controlPlane.organizationID="$TUNNEX_ORGANIZATION_ID" \\
+  --set-string machineToken.existingSecret=tunnex-operator-credential \\
+  --atomic --wait`}</pre>
+            </div>
+          </div>
         </Modal>
       )}
 

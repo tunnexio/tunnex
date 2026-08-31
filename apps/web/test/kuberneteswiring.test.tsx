@@ -23,6 +23,7 @@ let currentRole = "admin";
 let operatorManaged = true;
 let clusterProvider = "unknown";
 let clusterPlatform = "unknown";
+let poolActiveNodeId: string | null = null;
 const CLUSTERS = [
   { id: "c1", name: "prod-cluster", site_id: "s1", provider: "unknown", platform: "unknown", managed_by_operator: false },
 ];
@@ -85,6 +86,10 @@ vi.mock("../src/lib/api", async () => {
               endpoint: "connector.internal:51820",
             }],
           };
+        if (path.includes("/connector-pool"))
+          return poolActiveNodeId === null
+            ? { data: undefined, error: { error: { code: "connector_pool_not_found", message: "not configured" } } }
+            : { data: { id: "pool-1", active_node_id: poolActiveNodeId, preferred_node_id: poolActiveNodeId, generation: 1, membership_epoch: 0, membership_epoch_known: true, members: [{ node_id: poolActiveNodeId, admin_priority: 100 }] } };
         return { data: [] };
       }),
       POST: vi.fn(async () => ({ data: {} })),
@@ -121,6 +126,7 @@ beforeEach(() => {
   operatorManaged = true;
   clusterProvider = "unknown";
   clusterPlatform = "unknown";
+  poolActiveNodeId = null;
   vi.clearAllMocks();
 });
 
@@ -181,6 +187,17 @@ describe("Kubernetes — wiring", () => {
     expect(
       screen.getByText(/no in-cluster connector is selected/i),
     ).toBeTruthy();
+  });
+
+  it("renders a pool's active owner instead of falsely marking a converted cluster unconfigured", async () => {
+    operatorManaged = false;
+    poolActiveNodeId = "n1";
+    withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
+
+    expect(await screen.findByText("Pool: prod-connector")).toBeTruthy();
+    expect(screen.queryByText("Connector required")).toBeNull();
+    expect(screen.getByText("Pool active: prod-connector")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Select connector" })).toBeNull();
   });
 
   // S10.2's WITHHELD DESTRUCTIVE CONTROL. An operator-managed object must NOT offer Deregister/Unexpose: a
@@ -349,5 +366,21 @@ describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
     withAuth(<Kubernetes />, "/kubernetes?section=operations");
     expect(await screen.findByText("Operator and connector setup")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Setup & diagnostics" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("shows only real zero-touch gateway and operator install surfaces", async () => {
+    operatorManaged = false;
+    withAuth(<Kubernetes />, "/kubernetes?section=operations");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Operator and connector setup" }));
+    const dialog = await screen.findByRole("dialog", { name: "Operator and connector setup" });
+    expect(dialog.textContent).toContain("tunnex k8s plan --org org-1 --node-name <gateway-name>");
+    expect(dialog.textContent).toContain("tunnex k8s install --org org-1 --node-name <gateway-name> --yes");
+    expect(dialog.textContent).toContain("oci://ghcr.io/tunnexio/charts/tunnex-operator");
+    expect(dialog.textContent).toContain("machineToken.existingSecret=tunnex-operator-credential");
+    expect(dialog.textContent).toContain("--take-ownership adopts only an exact approved Tunnex legacy schema");
+    expect(dialog.textContent).not.toContain("joinToken.secretRef");
+    expect(dialog.textContent).not.toContain("tunnex/operator");
+    expect(dialog.textContent).not.toMatch(/tnx[jm]_[A-Za-z0-9_-]+/);
   });
 });
