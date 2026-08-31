@@ -2,6 +2,8 @@ package k8s
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"net/netip"
 	"os"
 	"strings"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
 func testPool(t *testing.T) *pgxpool.Pool {
@@ -287,6 +291,101 @@ func TestDeregisterClusterSweeps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// HA transition state is owned by the connector pool, which is itself
+	// cluster-owned. Deregistration must cascade through both rows atomically;
+	// an HA-enabled/settled cluster must not become undeletable.
+	nodeID, standbyNodeID, connectorPoolID, baseDeliveryID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	deliveryStateID, standbyStateID, ownershipDeliveryID, ownershipDeliveryKey := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO nodes(id,org_id,site_id,name,cert_serial,agent_version,status)
+		VALUES($1,$2,$3,$4,$5,'test','active')`, nodeID, org, site,
+		"deregister-ha-"+nodeID.String()[:8], "deregister-ha-"+nodeID.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO nodes(id,org_id,site_id,name,cert_serial,agent_version,status)
+		VALUES($1,$2,$3,$4,$5,'test','active')`, standbyNodeID, org, site,
+		"deregister-standby-"+standbyNodeID.String()[:8], "deregister-standby-"+standbyNodeID.String()); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO k8s_connector_pools(id,org_id,site_id,cluster_id,preferred_node_id,active_node_id,generation)
+		VALUES($1,$2,$3,$4,$5,$5,1)`, connectorPoolID, org, site, c.ID, nodeID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO k8s_connector_pool_members(pool_id,org_id,site_id,node_id)
+		VALUES($1,$2,$3,$4)`, connectorPoolID, org, site, nodeID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO k8s_connector_pool_members(pool_id,org_id,site_id,node_id)
+		VALUES($1,$2,$3,$4)`, connectorPoolID, org, site, standbyNodeID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE k8s_clusters SET connector_pool_id=$1 WHERE id=$2 AND org_id=$3`, connectorPoolID, c.ID, org); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO k8s_connector_pool_ha_transitions
+		(pool_id,org_id,site_id,cluster_id,requested_mode,actual_mode,active_node_id,promotion_generation,
+		 transition_revision,reason_code,actor_user_id,cause,achieved_at)
+		VALUES($1,$2,$3,$4,'legacy','legacy',$5,1,1,'legacy',$6,'deregister cascade fixture',now())`,
+		connectorPoolID, org, site, c.ID, nodeID, actor); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO k8s_base_authority_deliveries
+		(id,org_id,site_id,node_id,authority_revision,wire_version,base_version,base_hash,payload_digest,payload,transition_revision,expires_at)
+		VALUES($1,$2,$3,$4,1,1,1,repeat('a',64),repeat('b',64),'{}'::jsonb,1,now()+interval '1 hour')`,
+		baseDeliveryID, org, site, nodeID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO k8s_base_authority_delivery_pools
+		(delivery_id,org_id,site_id,node_id,cluster_id,pool_id,promotion_generation,kind)
+		VALUES($1,$2,$3,$4,$5,$6,1,'unfence')`, baseDeliveryID, org, site, nodeID, c.ID, connectorPoolID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO pool_vip_ownership_delivery_states
+		(id,org_id,site_id,cluster_id,pool_id,connector_node_id,scope_identity,promotion_generation,manifest_revision,lease_epoch)
+		VALUES($1,$2,$3,$4,$5,$6,'active-scope',1,1,1),
+		      ($7,$2,$3,$4,$5,$8,'standby-scope',1,1,1)`,
+		deliveryStateID, org, site, c.ID, connectorPoolID, nodeID, standbyStateID, standbyNodeID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO pool_vip_ownership_deliveries
+		(id,org_id,site_id,cluster_id,pool_id,connector_node_id,target_node_id,operation_id,wire_version,
+		 manifest_identity,role,promotion_generation,manifest_revision,lease_epoch,delivery_phase,delivery_id,
+		 delivery_nonce,expires_at)
+		VALUES($1,$2,$3,$4,$5,$6,$6,$7,1,'legacy-manifest','serving',1,1,1,'serve',$8,'legacy-nonce',now()+interval '1 hour')`,
+		ownershipDeliveryID, org, site, c.ID, connectorPoolID, nodeID, uuid.New(), ownershipDeliveryKey); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO pool_vip_ownership_delivery_ack_receipts
+		(org_id,delivery_row_id,state_id,fingerprint,receipt_time)
+		VALUES($1,$2,$3,'legacy-fingerprint',now())`, org, ownershipDeliveryID, deliveryStateID); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Deferred NO ACTION remains a refusal for an ordinary standalone member
+	// removal: immutable delivery state may not disappear as a side effect.
+	if _, err := pool.Exec(ctx, `DELETE FROM k8s_connector_pool_members
+		WHERE pool_id=$1 AND org_id=$2 AND site_id=$3 AND node_id=$4`, connectorPoolID, org, site, standbyNodeID); err == nil {
+		t.Fatal("standalone member removal erased dependent ownership state")
+	}
+	var standbyMembers int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_connector_pool_members WHERE pool_id=$1 AND node_id=$2`, connectorPoolID, standbyNodeID).Scan(&standbyMembers); err != nil || standbyMembers != 1 {
+		t.Fatalf("refused member removal did not preserve membership: count=%d err=%v", standbyMembers, err)
+	}
 	// Seed a Zero-Trust grant reaching that Service — the FK cascade must hard-delete it on deregister, and
 	// the audit must record it (grants_deleted). A group source satisfies the exactly-one-src CHECK.
 	grp := uuid.New()
@@ -299,6 +398,31 @@ func TestDeregisterClusterSweeps(t *testing.T) {
 	// A same-range/same-zone re-register is refused WHILE the cluster lives (overlap + would-collide).
 	if _, err := svc.RegisterCluster(ctx, org, site, "gone2", pfx("100.64.0.0/24"), pfx("10.96.0.0/12"), "other.acme.com", uuid.Nil, uuid.Nil, "", ""); err == nil {
 		t.Fatal("a live cluster's VIP range must block a second claim")
+	}
+	// An armed or in-progress HA pool cannot be cascade-deleted. Its gateways
+	// retain durable fences until an explicit legacy drain supplies the signed
+	// unfence authority; deleting the pool first would strand those fences.
+	if _, err := pool.Exec(ctx, `UPDATE k8s_connector_pool_ha_transitions
+		SET requested_mode='fenced_ha',actual_mode='fenced_ha',reason_code='fenced_ha'
+		WHERE pool_id=$1 AND org_id=$2`, connectorPoolID, org); err != nil {
+		t.Fatal(err)
+	}
+	err = svc.DeregisterCluster(ctx, actor, "", "", org, c.ID)
+	var apiErr *apierr.Error
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusConflict || apiErr.Code != "k8s_ha_drain_required" {
+		t.Fatalf("deregister armed HA pool: got %v, want typed drain-required conflict", err)
+	}
+	var preservedClusters, preservedPools int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM k8s_clusters WHERE id=$1 AND org_id=$2),
+		(SELECT count(*) FROM k8s_connector_pools WHERE id=$3 AND org_id=$2)`, c.ID, org, connectorPoolID).
+		Scan(&preservedClusters, &preservedPools); err != nil || preservedClusters != 1 || preservedPools != 1 {
+		t.Fatalf("HA drain refusal mutated cluster/pool: clusters=%d pools=%d err=%v", preservedClusters, preservedPools, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE k8s_connector_pool_ha_transitions
+		SET requested_mode='legacy',actual_mode='legacy',reason_code='legacy'
+		WHERE pool_id=$1 AND org_id=$2`, connectorPoolID, org); err != nil {
+		t.Fatal(err)
 	}
 	// Deregister → services gone, range + zone freed.
 	if err := svc.DeregisterCluster(ctx, actor, "", "", org, c.ID); err != nil {
@@ -326,6 +450,37 @@ func TestDeregisterClusterSweeps(t *testing.T) {
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM policy_rules WHERE org_id=$1`, org).Scan(&rulesLeft)
 	if rulesLeft != 0 {
 		t.Fatalf("the cascaded grant must be hard-deleted, got %d rules left", rulesLeft)
+	}
+	var poolsLeft, transitionsLeft int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM k8s_connector_pools WHERE id=$1),
+		(SELECT count(*) FROM k8s_connector_pool_ha_transitions WHERE pool_id=$1)`, connectorPoolID).
+		Scan(&poolsLeft, &transitionsLeft); err != nil {
+		t.Fatal(err)
+	}
+	if poolsLeft != 0 || transitionsLeft != 0 {
+		t.Fatalf("deregister must cascade connector pool and HA transition: pools=%d transitions=%d", poolsLeft, transitionsLeft)
+	}
+	var deliveryJoinsLeft, retainedDeliveries int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM k8s_base_authority_delivery_pools WHERE delivery_id=$1),
+		(SELECT count(*) FROM k8s_base_authority_deliveries WHERE id=$1)`, baseDeliveryID).
+		Scan(&deliveryJoinsLeft, &retainedDeliveries); err != nil {
+		t.Fatal(err)
+	}
+	if deliveryJoinsLeft != 0 || retainedDeliveries != 1 {
+		t.Fatalf("deregister must remove pool attribution but retain base-authority evidence: joins=%d deliveries=%d", deliveryJoinsLeft, retainedDeliveries)
+	}
+	var ownershipStatesLeft, ownershipDeliveriesLeft, ownershipACKsLeft int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM pool_vip_ownership_delivery_states WHERE pool_id=$1),
+		(SELECT count(*) FROM pool_vip_ownership_deliveries WHERE pool_id=$1),
+		(SELECT count(*) FROM pool_vip_ownership_delivery_ack_receipts WHERE delivery_row_id=$2)`,
+		connectorPoolID, ownershipDeliveryID).Scan(&ownershipStatesLeft, &ownershipDeliveriesLeft, &ownershipACKsLeft); err != nil {
+		t.Fatal(err)
+	}
+	if ownershipStatesLeft != 0 || ownershipDeliveriesLeft != 0 || ownershipACKsLeft != 0 {
+		t.Fatalf("deregister must delete nested ownership state/delivery/ACK graph: states=%d deliveries=%d ACKs=%d", ownershipStatesLeft, ownershipDeliveriesLeft, ownershipACKsLeft)
 	}
 	// The freed range is now reclaimable, AND the freed zone no longer conflicts.
 	if _, err := svc.RegisterCluster(ctx, org, site, "reborn", pfx("100.64.0.0/24"), pfx("10.96.0.0/12"), "k8s.acme.com", uuid.Nil, uuid.Nil, "", ""); err != nil {

@@ -673,6 +673,18 @@ func (s *Service) DeregisterCluster(ctx context.Context, actorUserID uuid.UUID, 
 		if e != nil {
 			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
 		}
+		var undrainedHAPools int
+		if e := tx.QueryRow(ctx, `SELECT count(*)
+			FROM k8s_connector_pools p
+			JOIN k8s_connector_pool_ha_transitions t
+			  ON t.pool_id=p.id AND t.org_id=p.org_id AND t.site_id=p.site_id AND t.cluster_id=p.cluster_id
+			WHERE p.org_id=$1 AND p.cluster_id=$2
+			  AND (t.requested_mode<>'legacy' OR t.actual_mode<>'legacy')`, orgID, clusterID).Scan(&undrainedHAPools); e != nil {
+			return e
+		}
+		if undrainedHAPools != 0 {
+			return apierr.Conflict("k8s_ha_drain_required", "connector HA must complete a safe legacy drain before cluster deregistration")
+		}
 		var scopeCount int
 		if e := tx.QueryRow(ctx, `SELECT count(*) FROM k8s_cluster_scope_grants WHERE org_id=$1 AND cluster_id=$2`, orgID, clusterID).Scan(&scopeCount); e != nil {
 			return e
