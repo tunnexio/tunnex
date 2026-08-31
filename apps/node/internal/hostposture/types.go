@@ -166,20 +166,52 @@ type Heartbeat struct {
 // Both the manager and gateway shutdown use it before mutating shared tables.
 func ValidateNFTMarkerChain(out, marker string) error {
 	marker = `comment "` + marker + `"`
-	markerLines := 0
+	markerToken := strings.TrimPrefix(marker, "comment ")
+	lines := make([][]string, 0, 5)
 	for _, line := range strings.Split(out, "\n") {
-		if !strings.Contains(line, "# handle") {
-			continue
+		fields := strings.Fields(line)
+		if len(fields) != 0 {
+			lines = append(lines, fields)
 		}
-		if !strings.Contains(line, marker) || !strings.Contains(line, "counter") {
-			return fmt.Errorf("nft owner chain contains an unrecognized rule")
-		}
-		markerLines++
 	}
-	if markerLines != 1 || strings.Count(out, marker) != 1 {
+	if len(lines) != 5 || !isNFTMarkerTableHeader(lines[0]) || !isNFTMarkerChainHeader(lines[1]) || !isNFTMarkerRule(lines[2], markerToken) || !isNFTClosingBrace(lines[3]) || !isNFTClosingBrace(lines[4]) {
+		return fmt.Errorf("nft owner chain contains an unrecognized rule")
+	}
+	if strings.Count(out, marker) != 1 {
 		return fmt.Errorf("nft ownership marker is missing or ambiguous")
 	}
 	return nil
+}
+
+func isNFTMarkerTableHeader(fields []string) bool {
+	return len(fields) == 4 && fields[0] == "table" && (fields[1] == "ip" || fields[1] == "ip6") && fields[2] == "tunnex" && fields[3] == "{"
+}
+
+func isNFTMarkerChainHeader(fields []string) bool {
+	return len(fields) == 6 && fields[0] == "chain" && fields[1] == "tunnex_posture_owner" && fields[2] == "{" && fields[3] == "#" && fields[4] == "handle" && isCanonicalNFTDecimal(fields[5], false)
+}
+
+func isNFTMarkerRule(fields []string, marker string) bool {
+	return len(fields) == 10 && fields[0] == "counter" && fields[1] == "packets" && isCanonicalNFTDecimal(fields[2], true) && fields[3] == "bytes" && isCanonicalNFTDecimal(fields[4], true) && fields[5] == "comment" && fields[6] == marker && fields[7] == "#" && fields[8] == "handle" && isCanonicalNFTDecimal(fields[9], false)
+}
+
+func isNFTClosingBrace(fields []string) bool {
+	return len(fields) == 1 && fields[0] == "}"
+}
+
+func isCanonicalNFTDecimal(value string, allowZero bool) bool {
+	if value == "0" {
+		return allowZero
+	}
+	if value == "" || value[0] < '1' || value[0] > '9' {
+		return false
+	}
+	for i := 1; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func desiredSysctls() []SysctlReceipt {

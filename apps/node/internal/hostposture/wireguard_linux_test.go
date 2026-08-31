@@ -101,7 +101,8 @@ func newStagedLinkHarness(t *testing.T) (*LinuxKernel, *stagedLinkHarness, Journ
 
 		case name == "nft" && strings.HasPrefix(joined, "-a list chain "):
 			if strings.HasSuffix(joined, " tunnex_posture_owner") {
-				return "chain tunnex_posture_owner {\n counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" # handle 2\n}\n", nil
+				fields := strings.Fields(joined)
+				return "table " + fields[3] + " tunnex {\n chain tunnex_posture_owner { # handle 1\n  counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" # handle 2\n }\n}\n", nil
 			}
 			return "", fakeLinkCommandError("Error: No such file or directory")
 

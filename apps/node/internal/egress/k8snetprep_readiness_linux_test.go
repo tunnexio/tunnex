@@ -227,7 +227,7 @@ func TestKubernetesGatewayRolloutShutdownPreservesManagerOwnedNFTMarkers(t *test
 	m.nftRun = func(_ context.Context, args ...string) (string, error) {
 		joined := strings.Join(args, " ")
 		if strings.Contains(joined, "tunnex_posture_owner") {
-			return `chain tunnex_posture_owner { counter packets 0 bytes 0 comment "tunnex_host_posture_v1" # handle 1 }`, nil
+			return "table ip tunnex {\n chain tunnex_posture_owner { # handle 1\n  counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" # handle 2\n }\n}\n", nil
 		}
 		return "", errors.New("DOCKER-USER absent")
 	}

@@ -77,7 +77,8 @@ func TestDockerCleanupParserFailsClosedOnUnknownMarkedShape(t *testing.T) {
 }
 
 func TestNFTMarkerRequiresExactlyOneRecognizedOwnerRule(t *testing.T) {
-	listing := "chain tunnex_posture_owner {\n  counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" # handle 2\n}\n"
+	const validListing = "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" # handle 2\n  }\n}\n"
+	listing := validListing
 	runner := runnerFunc(func(_ context.Context, name string, _ []byte, args ...string) (string, error) {
 		if name == "nft" && strings.HasPrefix(strings.Join(args, " "), "-a list chain") {
 			return listing, nil
@@ -88,8 +89,43 @@ func TestNFTMarkerRequiresExactlyOneRecognizedOwnerRule(t *testing.T) {
 	if err := kernel.verifyNFTMarker(t.Context(), fixedArtifacts().NFTables[0]); err != nil {
 		t.Fatal(err)
 	}
-	listing += "  counter comment \"tunnex_host_posture_v1\" # handle 3\n"
+	listing = strings.Replace(listing, "  }\n", "    counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" # handle 3\n  }\n", 1)
 	if err := kernel.verifyNFTMarker(t.Context(), fixedArtifacts().NFTables[0]); err == nil {
 		t.Fatal("duplicate marker must be ambiguous")
+	}
+	if err := ValidateNFTMarkerChain(strings.Replace(validListing, "table ip ", "table ip6 ", 1), NFTMarkerComment); err != nil {
+		t.Fatalf("ip6 listing rejected: %v", err)
+	}
+}
+
+func TestNFTMarkerRejectsForeignRulesAndMalformedHeaderTricks(t *testing.T) {
+	const markerRule = `counter packets 0 bytes 0 comment "tunnex_host_posture_v1" # handle 2`
+	tests := map[string]string{
+		"missing table wrapper":   "chain tunnex_posture_owner { # handle 1\n  " + markerRule + "\n}\n",
+		"missing chain header":    "table ip tunnex {\n  " + markerRule + "\n}\n",
+		"duplicate table header":  "table ip tunnex {\n  table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    " + markerRule + "\n  }\n}\n",
+		"extra closing brace":     "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    " + markerRule + "\n  }\n}\n}\n",
+		"foreign rule":            "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    " + markerRule + "\n    ip saddr 192.0.2.1 drop # handle 3\n  }\n}\n",
+		"marker rule prefix":      "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    drop " + markerRule + "\n  }\n}\n",
+		"marker rule suffix":      "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    " + markerRule + " accept\n  }\n}\n",
+		"duplicate chain header":  "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n  chain tunnex_posture_owner { # handle 4\n    " + markerRule + "\n  }\n}\n",
+		"wrong chain header":      "table ip tunnex {\n  chain foreign { # handle 1\n    " + markerRule + "\n  }\n}\n",
+		"header suffix":           "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1 accept\n    " + markerRule + "\n  }\n}\n",
+		"header fused comment":    "table ip tunnex {\n  chain tunnex_posture_owner { #handle 1\n    " + markerRule + "\n  }\n}\n",
+		"zero header handle":      "table ip tunnex {\n  chain tunnex_posture_owner { # handle 0\n    " + markerRule + "\n  }\n}\n",
+		"multiple header handles": "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1 # handle 4\n    " + markerRule + "\n  }\n}\n",
+		"zero rule handle":        "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" # handle 0\n  }\n}\n",
+		"multiple rule handles":   "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    " + markerRule + " # handle 3\n  }\n}\n",
+		"non-decimal counter":     "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    counter packets nope bytes 0 comment \"tunnex_host_posture_v1\" # handle 2\n  }\n}\n",
+		"marker substring":        "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    counter packets 0 bytes 0 comment \"prefix_tunnex_host_posture_v1\" # handle 2\n  }\n}\n",
+		"duplicate marker token":  "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    counter packets 0 bytes 0 comment \"tunnex_host_posture_v1\" comment \"tunnex_host_posture_v1\" # handle 2\n  }\n}\n",
+		"extra unhandled marker":  "table ip tunnex {\n  chain tunnex_posture_owner { # handle 1\n    " + markerRule + "\n    comment \"tunnex_host_posture_v1\"\n  }\n}\n",
+	}
+	for name, listing := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateNFTMarkerChain(listing, NFTMarkerComment); err == nil {
+				t.Fatal("ambiguous or foreign nft listing must be rejected")
+			}
+		})
 	}
 }
