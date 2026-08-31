@@ -121,6 +121,19 @@ test "$(grep -Ec '^[[:space:]]+privileged: true$' "${TMP}/deployment.yaml")" -eq
   echo 'gateway Deployment must contain no privileged container; privilege belongs to the shared manager' >&2
   exit 1
 }
+reject "${TMP}/deployment.yaml" 'path: /proc/sys|mountPath: /host/proc/sys|name: TUNNEX_HOST_POSTURE_PROC_SYS' 'host sysctl write surface in gateway Deployment'
+test "$(grep -Ec '^[[:space:]]+hostPath:$' "${TMP}/deployment.yaml")" -eq 2 || {
+  echo 'gateway Deployment hostPath sources must be exactly the posture state directory and /dev/net/tun' >&2
+  exit 1
+}
+test "$(grep -Ec '^[[:space:]]+path: /var/lib/tunnex/host-posture/v1$' "${TMP}/deployment.yaml")" -eq 1 || {
+  echo 'gateway Deployment must mount exactly one allowed host-posture state hostPath' >&2
+  exit 1
+}
+test "$(grep -Ec '^[[:space:]]+path: /dev/net/tun$' "${TMP}/deployment.yaml")" -eq 1 || {
+  echo 'gateway Deployment must mount exactly one allowed /dev/net/tun hostPath' >&2
+  exit 1
+}
 require "${TMP}/deployment.yaml" 'automountServiceAccountToken: false' 'pod-wide service-account token automount disabled'
 require "${TMP}/deployment.yaml" 'name: health' 'health port'
 require "${TMP}/deployment.yaml" 'containerPort: 9091' 'health server port 9091'

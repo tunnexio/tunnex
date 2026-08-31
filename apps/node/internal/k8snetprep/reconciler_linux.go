@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -37,8 +38,8 @@ var (
 // state and mutation can be proven without root/kernel access in unit tests.
 type NFTRunner func(context.Context, ...string) (string, error)
 
-// Reconciler continuously verifies the WireGuard rp_filter posture and owns
-// only Tunnex-commented rules in registered CNI mechanisms.
+// Reconciler continuously verifies the manager-owned WireGuard rp_filter
+// posture and owns only Tunnex-commented rules in registered CNI mechanisms.
 type Reconciler struct {
 	mu      sync.Mutex
 	iface   string
@@ -80,7 +81,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, tunnelCIDR string) (Reconcil
 	tunnelCIDR = prefix.Masked().String()
 
 	host := ComponentStatus{Name: "wireguard_rp_filter", State: StateReady}
-	if err := applyAndReadSysctl(r.procSys, filepath.Join("net/ipv4/conf", r.iface, "rp_filter"), "0"); err != nil {
+	if err := readAndVerifySysctl(r.procSys, filepath.Join("net/ipv4/conf", r.iface, "rp_filter"), "0"); err != nil {
 		host.State = StateBlocked
 		host.Reason = bounded(err.Error(), maxReasonBytes)
 		status := ReconcileStatus{Host: host, Adapters: []ComponentStatus{{Name: ipMasqAdapterName, State: StateBlocked, Reason: "host posture blocked"}}}
@@ -93,6 +94,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, tunnelCIDR string) (Reconcil
 		return status, err
 	}
 	return status, nil
+}
+
+func readAndVerifySysctl(procSys, key, desired string) error {
+	path := filepath.Join(procSys, filepath.FromSlash(key))
+	value, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read back %s: %w", key, err)
+	}
+	live := strings.TrimSpace(string(value))
+	if live != desired {
+		return fmt.Errorf("%s readback=%q desired=%q", key, live, desired)
+	}
+	return nil
 }
 
 // Withdraw removes every Tunnex-owned CNI adapter rule and preserves all

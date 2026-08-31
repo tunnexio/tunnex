@@ -46,9 +46,12 @@ continuously verifies
 `/dev/net/tun`, IPv4 forwarding, reverse-path filtering, WireGuard, and its
 marked nft/CNI artifacts. On last-owner removal it restores only values that
 still equal the Tunnex-owned setting and removes only exact journaled
-artifacts. A credentialless, non-privileged gateway init waits for two
-advancing manager heartbeats containing its exact Pod UID; it has no Kubernetes
-or Tunnex credential, join token, or gateway state volume.
+artifacts. The manager is the sole sysctl writer, including continuous healing
+of the exact manager-owned `wg0` reverse-path filter; the gateway only verifies
+that value and has no host `/proc/sys` mount. A credentialless,
+non-privileged gateway init waits for two advancing manager heartbeats
+containing its exact Pod UID; it has no Kubernetes or Tunnex credential, join
+token, or gateway state volume.
 
 ## 1. Review the plan
 

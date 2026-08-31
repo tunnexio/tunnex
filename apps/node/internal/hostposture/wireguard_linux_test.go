@@ -23,6 +23,7 @@ type stagedLinkHarness struct {
 	links          map[string]wireGuardLink
 	nextIfIndex    int
 	nftPresent     map[string]bool
+	procSys        string
 	mutations      []string
 	durablePhase   string
 	mutationChecks bool
@@ -38,8 +39,10 @@ func newStagedLinkHarness(t *testing.T) (*LinuxKernel, *stagedLinkHarness, Journ
 		links:        map[string]wireGuardLink{},
 		nextIfIndex:  77,
 		nftPresent:   map[string]bool{},
+		procSys:      procSys,
 		durablePhase: WireGuardPhaseStagingPlanned,
 	}
+	writeSysctlFixture(t, procSys, "net/ipv4/conf/wg0/rp_filter", "1")
 	runner := runnerFunc(func(_ context.Context, name string, input []byte, args ...string) (string, error) {
 		joined := strings.Join(args, " ")
 		switch {
@@ -205,6 +208,34 @@ func TestPrepareStagedWireGuardCheckpointsBeforeEveryOwnershipMutation(t *testin
 	if final := h.links[DefaultWireGuardIface]; !exactWireGuardLink(final, DefaultWireGuardIface, WireGuardAlias, 77) {
 		t.Fatalf("final link=%+v", final)
 	}
+	if got, err := kernel.readSysctl("net/ipv4/conf/wg0/rp_filter"); err != nil || got != "0" {
+		t.Fatalf("prepared wg0 rp_filter=%q err=%v, want 0", got, err)
+	}
+}
+
+func TestEnforceHealsWireGuardRPFilterOnlyAfterExactIdentity(t *testing.T) {
+	kernel, h, journal := newStagedLinkHarness(t)
+	journal.State = StateActive
+	journal.Artifacts.WireGuard.Phase = WireGuardPhaseCommitted
+	journal.Artifacts.WireGuard.StagingIfIndex = 77
+	journal.Artifacts.WireGuard.IfIndex = 77
+	h.links[DefaultWireGuardIface] = wireGuardLink{Name: DefaultWireGuardIface, Alias: WireGuardAlias, Kind: "wireguard", IfIndex: 77}
+
+	if err := kernel.Enforce(t.Context(), journal); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := kernel.readSysctl("net/ipv4/conf/wg0/rp_filter"); err != nil || got != "0" {
+		t.Fatalf("healed wg0 rp_filter=%q err=%v, want 0", got, err)
+	}
+
+	writeSysctlFixture(t, h.procSys, "net/ipv4/conf/wg0/rp_filter", "1")
+	h.links[DefaultWireGuardIface] = wireGuardLink{Name: DefaultWireGuardIface, Alias: WireGuardAlias, Kind: "wireguard", IfIndex: 78}
+	if err := kernel.Enforce(t.Context(), journal); err == nil {
+		t.Fatal("wrong-ifindex WireGuard link was accepted")
+	}
+	if got, err := kernel.readSysctl("net/ipv4/conf/wg0/rp_filter"); err != nil || got != "1" {
+		t.Fatalf("identity mismatch mutated wg0 rp_filter=%q err=%v", got, err)
+	}
 }
 
 func TestPrepareStagedWireGuardResumesEveryCrashCut(t *testing.T) {
@@ -327,7 +358,7 @@ func TestPrepareRejectsSchemaV1PreparingJournalWithoutMutation(t *testing.T) {
 	}
 }
 
-func TestPrepareSchemaV1ActiveOnlyValidatesExactFinalLink(t *testing.T) {
+func TestPrepareSchemaV1ActiveHealsExactFinalLinkAndRejectsIdentityMismatch(t *testing.T) {
 	kernel, h, journal := newStagedLinkHarness(t)
 	journal.SchemaVersion = LegacyJournalSchemaVersion
 	journal.State = StateActive
@@ -342,9 +373,16 @@ func TestPrepareSchemaV1ActiveOnlyValidatesExactFinalLink(t *testing.T) {
 	if len(h.mutations) != 0 {
 		t.Fatalf("schema-v1 active validation mutated links: %v", h.mutations)
 	}
+	if got, err := kernel.readSysctl("net/ipv4/conf/wg0/rp_filter"); err != nil || got != "0" {
+		t.Fatalf("schema-v1 active wg0 rp_filter=%q err=%v, want 0", got, err)
+	}
+	writeSysctlFixture(t, h.procSys, "net/ipv4/conf/wg0/rp_filter", "1")
 	h.links[DefaultWireGuardIface] = wireGuardLink{Name: DefaultWireGuardIface, Kind: "wireguard", IfIndex: 77}
 	if err := kernel.Prepare(t.Context(), &journal, func(*Journal) error { return nil }); err == nil {
 		t.Fatal("schema-v1 active alias-empty link was accepted")
+	}
+	if got, err := kernel.readSysctl("net/ipv4/conf/wg0/rp_filter"); err != nil || got != "1" {
+		t.Fatalf("schema-v1 identity mismatch mutated wg0 rp_filter=%q err=%v", got, err)
 	}
 }
 

@@ -103,6 +103,14 @@ require "${TMP}/rendered.yaml" 'hostNetwork: true' 'host network namespace owner
 require "${TMP}/rendered.yaml" 'path: /var/lib/tunnex/host-posture/v1' 'versioned Tunnex host journal path'
 require "${TMP}/rendered.yaml" 'path: /proc/sys' 'explicit host sysctl source mount'
 require "${TMP}/rendered.yaml" 'mountPath: /host/proc/sys' 'closed host sysctl target mount'
+test "$(grep -Fc 'path: /proc/sys' "${TMP}/daemonset.yaml")" -eq 1 || {
+  echo 'host-posture manager must render exactly one host /proc/sys source' >&2
+  exit 1
+}
+test "$(grep -Fc 'mountPath: /host/proc/sys' "${TMP}/daemonset.yaml")" -eq 1 || {
+  echo 'host-posture manager must render exactly one writable host /proc/sys mount' >&2
+  exit 1
+}
 require "${TMP}/rendered.yaml" 'type: DirectoryOrCreate' 'node-local journal directory creation'
 require "${TMP}/rendered.yaml" 'fieldPath: spec.nodeName' 'exact manager node identity'
 require "${TMP}/rendered.yaml" 'fieldPath: metadata.uid' 'exact manager Pod identity'

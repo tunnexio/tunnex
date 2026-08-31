@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeChainRule struct {
@@ -102,7 +103,7 @@ func newTestReconciler(t *testing.T, chain *fakeIPMasqChain, iface string) *Reco
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("1"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("0"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	r := New(iface, chain.run)
@@ -264,17 +265,68 @@ func TestIPMasqWithdrawalSweepsOnlyOwnedRules(t *testing.T) {
 	}
 }
 
-func TestWireGuardRPFilterIsAppliedAndReadBack(t *testing.T) {
+func TestWireGuardRPFilterReadyIsReadOnly(t *testing.T) {
 	chain := &fakeIPMasqChain{present: true}
 	r := newTestReconciler(t, chain, "wg0")
+	path := filepath.Join(r.procSys, "net/ipv4/conf/wg0/rp_filter")
+	sentinel := time.Date(2000, time.January, 2, 3, 4, 5, 0, time.UTC)
+	if err := os.Chtimes(path, sentinel, sentinel); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := r.Reconcile(t.Context(), "10.99.0.0/24"); err != nil {
 		t.Fatal(err)
 	}
-	value, err := os.ReadFile(filepath.Join(r.procSys, "net/ipv4/conf/wg0/rp_filter"))
+	value, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(value) != "0" {
 		t.Fatalf("wg0 rp_filter=%q, want 0", value)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(sentinel) {
+		t.Fatalf("read-only verification changed modtime from %s to %s", sentinel, info.ModTime())
+	}
+}
+
+func TestWireGuardRPFilterMismatchBlocksWithoutMutation(t *testing.T) {
+	chain := &fakeIPMasqChain{present: true}
+	r := newTestReconciler(t, chain, "wg0")
+	path := filepath.Join(r.procSys, "net/ipv4/conf/wg0/rp_filter")
+	if err := os.WriteFile(path, []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Reconcile(t.Context(), "10.99.0.0/24")
+	if err == nil || status.Host.State != StateBlocked || status.Adapters[0].State != StateBlocked {
+		t.Fatalf("strict rp_filter must block: status=%+v err=%v", status, err)
+	}
+	value, readErr := os.ReadFile(path)
+	if readErr != nil || string(value) != "1" {
+		t.Fatalf("blocked readback mutated value=%q err=%v", value, readErr)
+	}
+	if chain.insertCalls != 0 || chain.deleteCalls != 0 {
+		t.Fatalf("blocked host readback mutated CNI: insert=%d delete=%d", chain.insertCalls, chain.deleteCalls)
+	}
+}
+
+func TestWireGuardRPFilterMissingBlocksWithoutCreation(t *testing.T) {
+	chain := &fakeIPMasqChain{present: true}
+	r := newTestReconciler(t, chain, "wg0")
+	path := filepath.Join(r.procSys, "net/ipv4/conf/wg0/rp_filter")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	status, err := r.Reconcile(t.Context(), "10.99.0.0/24")
+	if err == nil || status.Host.State != StateBlocked || status.Adapters[0].State != StateBlocked {
+		t.Fatalf("missing rp_filter must block: status=%+v err=%v", status, err)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("missing rp_filter was created: %v", statErr)
+	}
+	if chain.insertCalls != 0 || chain.deleteCalls != 0 {
+		t.Fatalf("missing host readback mutated CNI: insert=%d delete=%d", chain.insertCalls, chain.deleteCalls)
 	}
 }

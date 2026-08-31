@@ -167,9 +167,10 @@ func (k *LinuxKernel) Prepare(ctx context.Context, journal *Journal, checkpoint 
 		if !present || !exactWireGuardLink(link, want.Name, want.Alias, want.IfIndex) {
 			return fmt.Errorf("schema-v1 active WireGuard readback is ambiguous")
 		}
-		// Active schema-v1 is compatibility readback only. Enforce performs the
-		// exact existing-artifact checks; this path never creates or marks state.
-		return nil
+		// Schema-v1 compatibility never creates or adopts a link, but the exact
+		// journal-owned interface is still eligible for the manager-owned
+		// per-interface posture reconcile.
+		return k.enforceWireGuardRPFilter()
 	} else {
 		if checkpoint == nil {
 			return fmt.Errorf("durable WireGuard preparation checkpoint is required")
@@ -177,6 +178,9 @@ func (k *LinuxKernel) Prepare(ctx context.Context, journal *Journal, checkpoint 
 		if err := k.prepareStagedWireGuard(ctx, journal, checkpoint); err != nil {
 			return err
 		}
+	}
+	if err := k.enforceWireGuardRPFilter(); err != nil {
+		return err
 	}
 	for _, table := range journal.Artifacts.NFTables {
 		present, err := k.nftTablePresent(ctx, table)
@@ -400,8 +404,11 @@ func (k *LinuxKernel) Enforce(ctx context.Context, journal Journal) error {
 	if err != nil {
 		return err
 	}
-	if !present || link.Name != journal.Artifacts.WireGuard.Name || link.Kind != "wireguard" || link.Alias != journal.Artifacts.WireGuard.Alias || link.IfIndex != journal.Artifacts.WireGuard.IfIndex {
+	if !present || !exactWireGuardLink(link, journal.Artifacts.WireGuard.Name, journal.Artifacts.WireGuard.Alias, journal.Artifacts.WireGuard.IfIndex) {
 		return fmt.Errorf("journal-owned WireGuard interface readback is ambiguous")
+	}
+	if err := k.enforceWireGuardRPFilter(); err != nil {
+		return err
 	}
 	for _, table := range journal.Artifacts.NFTables {
 		if err := k.verifyNFTMarker(ctx, table); err != nil {
@@ -580,6 +587,14 @@ func (k *LinuxKernel) enforceSysctls(receipts []SysctlReceipt) error {
 		if err := k.writeAndReadSysctl(receipt.Key, receipt.Desired); err != nil {
 			return fmt.Errorf("enforce %s: %w", receipt.Key, err)
 		}
+	}
+	return nil
+}
+
+func (k *LinuxKernel) enforceWireGuardRPFilter() error {
+	const key = "net/ipv4/conf/wg0/rp_filter"
+	if err := k.writeAndReadSysctl(key, "0"); err != nil {
+		return fmt.Errorf("enforce journal-owned WireGuard rp_filter: %w", err)
 	}
 	return nil
 }
