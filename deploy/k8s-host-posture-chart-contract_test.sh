@@ -5,6 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CHART="${ROOT}/deploy/helm/tunnex-host-posture"
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP}"' EXIT
+. "${ROOT}/deploy/helm-label-contract-lib.sh"
 
 if ! command -v helm >/dev/null 2>&1; then
   echo 'FAIL: helm is required for the host-posture chart contract' >&2
@@ -60,6 +61,30 @@ expect_fail() {
 }
 
 helm template tunnex-host-posture "${CHART}" "${BASE[@]}" >"${TMP}/rendered.yaml"
+
+# Private qualification versions include the full committed SHA. Kubernetes
+# label values are capped at 63 bytes even though Helm SemVer is not.
+LONG_VERSION=0.0.0-walk.shaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+mkdir "${TMP}/long-version"
+helm package "${CHART}" --version "${LONG_VERSION}" --app-version "${LONG_VERSION}" \
+  --destination "${TMP}/long-version" >/dev/null
+helm template tunnex-host-posture \
+  "${TMP}/long-version/tunnex-host-posture-${LONG_VERSION}.tgz" "${BASE[@]}" \
+  >"${TMP}/long-version.yaml"
+assert_helm_chart_labels "${TMP}/long-version.yaml" \
+  "$(helm_chart_label_expected tunnex-host-posture "${LONG_VERSION}")" \
+  'host-posture long-version chart'
+
+METADATA_VERSION=1.2.3+private.1
+mkdir "${TMP}/metadata-version"
+helm package "${CHART}" --version "${METADATA_VERSION}" --app-version "${METADATA_VERSION}" \
+  --destination "${TMP}/metadata-version" >/dev/null
+helm template tunnex-host-posture \
+  "${TMP}/metadata-version/tunnex-host-posture-${METADATA_VERSION}.tgz" "${BASE[@]}" \
+  >"${TMP}/metadata-version.yaml"
+assert_helm_chart_labels "${TMP}/metadata-version.yaml" \
+  "$(helm_chart_label_expected tunnex-host-posture "${METADATA_VERSION}")" \
+  'host-posture build-metadata chart'
 extract_source daemonset.yaml "${TMP}/daemonset.yaml"
 extract_source serviceaccount.yaml "${TMP}/serviceaccount.yaml"
 extract_source rbac.yaml "${TMP}/rbac-first.yaml"

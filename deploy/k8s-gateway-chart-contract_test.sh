@@ -5,6 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CHART="${ROOT}/deploy/helm/tunnex-gateway"
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP}"' EXIT
+. "${ROOT}/deploy/helm-label-contract-lib.sh"
 
 if ! command -v helm >/dev/null 2>&1; then
   echo 'FAIL: helm is required for the gateway chart contract' >&2
@@ -79,6 +80,28 @@ expect_fail() {
 # Canonical enrollment: the one-time token body must stay entirely outside Helm.
 helm lint "${CHART}" "${ENROLL[@]}"
 helm template gw-a "${CHART}" "${ENROLL[@]}" >"${TMP}/enroll.yaml"
+
+# Full-SHA private qualification versions must remain valid Kubernetes label
+# values after the chart name is added.
+LONG_VERSION=0.0.0-walk.shaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+mkdir "${TMP}/long-version"
+helm package "${CHART}" --version "${LONG_VERSION}" --app-version "${LONG_VERSION}" \
+  --destination "${TMP}/long-version" >/dev/null
+helm template gw-long "${TMP}/long-version/tunnex-gateway-${LONG_VERSION}.tgz" \
+  "${ENROLL[@]}" >"${TMP}/long-version.yaml"
+assert_helm_chart_labels "${TMP}/long-version.yaml" \
+  "$(helm_chart_label_expected tunnex-gateway "${LONG_VERSION}")" \
+  'gateway long-version chart'
+
+METADATA_VERSION=1.2.3+private.1
+mkdir "${TMP}/metadata-version"
+helm package "${CHART}" --version "${METADATA_VERSION}" --app-version "${METADATA_VERSION}" \
+  --destination "${TMP}/metadata-version" >/dev/null
+helm template gw-metadata "${TMP}/metadata-version/tunnex-gateway-${METADATA_VERSION}.tgz" \
+  "${ENROLL[@]}" >"${TMP}/metadata-version.yaml"
+assert_helm_chart_labels "${TMP}/metadata-version.yaml" \
+  "$(helm_chart_label_expected tunnex-gateway "${METADATA_VERSION}")" \
+  'gateway build-metadata chart'
 extract_source "${TMP}/enroll.yaml" deployment.yaml "${TMP}/deployment.yaml"
 extract_source "${TMP}/enroll.yaml" job-preflight.yaml "${TMP}/preflight.yaml"
 extract_source "${TMP}/enroll.yaml" pvc.yaml "${TMP}/pvc.yaml"

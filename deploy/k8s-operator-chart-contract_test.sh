@@ -5,6 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CHART="${ROOT}/deploy/helm/tunnex-operator"
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP}"' EXIT
+. "${ROOT}/deploy/helm-label-contract-lib.sh"
 
 VALUES=(
   --namespace tunnex-system
@@ -16,6 +17,28 @@ VALUES=(
 
 helm lint "${CHART}" "${VALUES[@]}"
 helm template op "${CHART}" "${VALUES[@]}" >"${TMP}/rendered.yaml"
+
+# Full-SHA private qualification versions must remain valid Kubernetes label
+# values after the chart name is added.
+LONG_VERSION=0.0.0-walk.shaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+mkdir "${TMP}/long-version"
+helm package "${CHART}" --version "${LONG_VERSION}" --app-version "${LONG_VERSION}" \
+  --destination "${TMP}/long-version" >/dev/null
+helm template op-long "${TMP}/long-version/tunnex-operator-${LONG_VERSION}.tgz" \
+  "${VALUES[@]}" >"${TMP}/long-version.yaml"
+assert_helm_chart_labels "${TMP}/long-version.yaml" \
+  "$(helm_chart_label_expected tunnex-operator "${LONG_VERSION}")" \
+  'operator long-version chart'
+
+METADATA_VERSION=1.2.3+private.1
+mkdir "${TMP}/metadata-version"
+helm package "${CHART}" --version "${METADATA_VERSION}" --app-version "${METADATA_VERSION}" \
+  --destination "${TMP}/metadata-version" >/dev/null
+helm template op-metadata "${TMP}/metadata-version/tunnex-operator-${METADATA_VERSION}.tgz" \
+  "${VALUES[@]}" >"${TMP}/metadata-version.yaml"
+assert_helm_chart_labels "${TMP}/metadata-version.yaml" \
+  "$(helm_chart_label_expected tunnex-operator "${METADATA_VERSION}")" \
+  'operator build-metadata chart'
 
 require() {
   local pattern=$1 description=$2
