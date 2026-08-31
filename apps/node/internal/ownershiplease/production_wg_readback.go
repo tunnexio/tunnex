@@ -201,7 +201,12 @@ func validateStructuredRouteReadback(wg reconcile.WGBackendReadback) error {
 		}
 		destinations[i] = route.Destination
 	}
-	canonicalRoutes := append([]string(nil), wg.Routes...)
+	// Keep an empty owned-route enumeration as an empty slice on both sides.
+	// A cold/non-serving gateway legitimately has no owned routes; comparing a
+	// nil copy against make([]string, 0) would otherwise turn that valid proof
+	// into a false route-ownership mismatch.
+	canonicalRoutes := make([]string, len(wg.Routes))
+	copy(canonicalRoutes, wg.Routes)
 	sort.Strings(canonicalRoutes)
 	sort.Strings(destinations)
 	if !reflect.DeepEqual(canonicalRoutes, destinations) {

@@ -488,6 +488,16 @@ func main() {
 		commandLane.run(ctx)
 		close(laneDone)
 	}()
+	// Seed the ordinary base before replaying a durable HA lease. The ownership
+	// overlay cannot be reconstructed safely without that base; doing the
+	// lifecycle check first converts a valid unexpired restart checkpoint into
+	// a fail-closed withdrawal and discards it.
+	if err := submitDesiredStateCommand(ctx, commandLane, r, client, ownershipCoordinator, 5*time.Second, logger, "desired_state_startup_base"); err != nil {
+		logger.Error("desired_state_startup_base_failed", slog.String("error", err.Error()))
+		stop()
+		<-laneDone
+		return
+	}
 	if err := commandLane.submitAndWait(ctx, "ownership_startup_withdraw", ownershipLifecycle.StartupReconcile); err != nil && ctx.Err() == nil {
 		logger.Error("ownership_startup_reconcile_failed", slog.String("error", err.Error()))
 		stop()

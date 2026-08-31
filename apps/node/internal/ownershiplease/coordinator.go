@@ -212,7 +212,10 @@ func (c *Coordinator) UpdateBase(ctx context.Context, base reconcile.DesiredStat
 		}
 		classified, ok := byPool[fence.Scope.PoolID]
 		if !ok {
-			if fence.ArmedAtBaseHash == baseHash && fence.ArmedAtBaseVersion == base.Version {
+			// Version is only the node-push watch cursor. The exact content hash
+			// remains the authority boundary: a changed hash still requires a
+			// new scope-complete classification before this fence can move.
+			if fence.ArmedAtBaseHash == baseHash {
 				continue
 			}
 			return fmt.Errorf("scope-complete ownership classification is required for fenced pool %s", fence.Scope.PoolID)
@@ -434,9 +437,75 @@ func (c *Coordinator) VerifyCurrent(ctx context.Context, expected EffectiveOwner
 		return err
 	}
 	if !reflect.DeepEqual(canonicalDomainState(actual), expectedDomainState(effective)) {
-		return ErrDomainReadbackMismatch
+		return fmt.Errorf("%w: %s", ErrDomainReadbackMismatch, domainReadbackDifference(canonicalDomainState(actual), expectedDomainState(effective)))
 	}
 	return nil
+}
+
+// ReconcileCurrent converges every substrate to the projector's current
+// effective snapshot without changing the active ownership overlay. Ordinary
+// desired-state apply owns WireGuard and routes directly, but a base-authority
+// receipt also covers DNS, DNAT, and OVPN; those owners must be converged on
+// the same serialized lane before PrepareBaseAuthorityAck proves the receipt.
+func (c *Coordinator) ReconcileCurrent(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.configured(); err != nil {
+		return err
+	}
+	if err := c.ensureLoaded(ctx); err != nil {
+		return err
+	}
+	effective, found, err := c.projector.Snapshot()
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrBaseDesiredUnavailable
+	}
+	active, err := c.projector.ActiveOwnership()
+	if err != nil {
+		return err
+	}
+	order := activationOrder
+	if isZeroEffective(active) {
+		order = withdrawalOrder
+	}
+	if err := c.apply(ctx, order, effective); err != nil {
+		if !isZeroEffective(active) {
+			return errors.Join(err, c.compensate(ctx))
+		}
+		return c.withdrawAll(ctx, effective, err)
+	}
+	actual, err := c.domain.Readback(ctx)
+	if err != nil {
+		return err
+	}
+	want := expectedDomainState(effective)
+	if !reflect.DeepEqual(canonicalDomainState(actual), want) {
+		return fmt.Errorf("%w: %s", ErrDomainReadbackMismatch, domainReadbackDifference(canonicalDomainState(actual), want))
+	}
+	return nil
+}
+
+func domainReadbackDifference(actual, expected AppliedDomainState) string {
+	for _, field := range []struct {
+		name string
+		got  any
+		want any
+	}{
+		{"wg_peers", actual.WGPeers, expected.WGPeers}, {"routes", actual.Routes, expected.Routes}, {"return_rules", actual.ReturnRules, expected.ReturnRules},
+		{"vip_mappings", actual.VIPMappings, expected.VIPMappings}, {"dns_zones", actual.DNSZones, expected.DNSZones}, {"dns_answers", actual.DNSAnswers, expected.DNSAnswers},
+		{"dns_vips", actual.DNSVIPs, expected.DNSVIPs}, {"dns_listeners", actual.DNSListeners, expected.DNSListeners}, {"ovpn", actual.OVPN, expected.OVPN},
+	} {
+		if !reflect.DeepEqual(field.got, field.want) {
+			if field.name == "dns_listeners" {
+				return fmt.Sprintf("%s got=%v want=%v", field.name, field.got, field.want)
+			}
+			return field.name
+		}
+	}
+	return "unknown"
 }
 
 // PrepareBaseAuthorityAck proves the exact projected base against live owners
@@ -704,6 +773,9 @@ func canonicalDomainState(state AppliedDomainState) AppliedDomainState {
 	state = cloneDomainState(state)
 	for i := range state.WGPeers {
 		sort.Strings(state.WGPeers[i].AllowedIPs)
+		if len(state.WGPeers[i].AllowedIPs) == 0 {
+			state.WGPeers[i].AllowedIPs = nil
+		}
 	}
 	sort.Slice(state.WGPeers, func(i, j int) bool { return state.WGPeers[i].PublicKey < state.WGPeers[j].PublicKey })
 	sort.Strings(state.Routes)

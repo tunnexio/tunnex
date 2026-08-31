@@ -71,6 +71,20 @@ func TestProductionWGReadbackSurfaceRejectsDestinationOnlyRouteProof(t *testing.
 	}
 }
 
+func TestProductionWGReadbackSurfaceAcceptsEmptyOwnedRouteProof(t *testing.T) {
+	wg := &fakeWGReadbackOwner{value: reconcile.WGBackendReadback{
+		Routes:       []string{},
+		RouteDetails: []reconcile.OwnedRoute{},
+	}}
+	surface, err := NewProductionWGReadbackSurface(&fakeDomainSurface{}, wg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := surface.Readback(t.Context()); err != nil {
+		t.Fatalf("a non-serving gateway with no owned routes must read back cleanly: %v", err)
+	}
+}
+
 func TestProductionWGReadbackSurfaceFailsClosedOnBackendReadError(t *testing.T) {
 	readErr := errors.New("WG enumeration failed")
 	wg := &fakeWGReadbackOwner{err: readErr}
