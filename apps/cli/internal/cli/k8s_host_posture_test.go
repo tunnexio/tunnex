@@ -84,6 +84,108 @@ func TestK8sHostPostureCleanInstallCompletesBeforeGatewayTokenMint(t *testing.T)
 	}
 }
 
+func TestK8sHostPostureCleanInstallWaitsForTransientDaemonSetConvergenceBeforeMint(t *testing.T) {
+	installed, rolloutComplete := false, false
+	cp := baseK8sControlPlane()
+	unready := strings.Replace(readyHostPostureDaemonSetJSON(nil), `"numberReady":2`, `"numberReady":1`, 1)
+	unready = strings.Replace(unready, `"numberUnavailable":0`, `"numberUnavailable":1`, 1)
+	runner := &fakeK8sRunner{handler: func(command k8sCommand) (k8sCommandResult, error) {
+		joined := strings.Join(command.args, " ")
+		switch {
+		case command.name == "helm" && strings.HasPrefix(joined, "list --all-namespaces"):
+			if !installed {
+				return stdout(`[]`), nil
+			}
+			return stdout(`[{"name":"tunnex-host-posture","namespace":"tunnex-system","revision":"1","status":"deployed","chart":"tunnex-host-posture-0.2.0","app_version":"v0.2.0"}]`), nil
+		case command.name == "kubectl" && strings.Contains(joined, "get daemonset tunnex-host-posture"):
+			if !installed {
+				return stdout(""), nil
+			}
+			if !rolloutComplete {
+				return stdout(unready), nil
+			}
+			return stdout(readyHostPostureDaemonSetJSON(nil)), nil
+		case command.name == "kubectl" && (strings.Contains(joined, "get sa tunnex-host-posture") || strings.Contains(joined, "get clusterrole tunnex-host-posture-gateway-owner-reader") || strings.Contains(joined, "get clusterrolebinding tunnex-host-posture-gateway-owner-reader")):
+			if !installed {
+				return stdout(""), nil
+			}
+			return baseRunnerHandler(command)
+		case command.name == "helm" && strings.HasPrefix(joined, "upgrade --install tunnex-host-posture "):
+			installed = true
+			return stdout("Release upgraded\n"), nil
+		case command.name == "kubectl" && strings.Contains(joined, "rollout status daemonset/tunnex-host-posture"):
+			if !installed || cp.issueCount != 0 {
+				t.Fatalf("host posture rollout wait ran outside the pre-mint post-Helm window: installed=%t mints=%d", installed, cp.issueCount)
+			}
+			for _, want := range []string{"--namespace tunnex-system", "--timeout 10m", "--context walk-context"} {
+				if !strings.Contains(joined, want) {
+					t.Fatalf("host posture rollout wait missing %q: %s", want, joined)
+				}
+			}
+			rolloutComplete = true
+			return stdout("daemon set successfully rolled out\n"), nil
+		default:
+			return baseRunnerHandler(command)
+		}
+	}}
+	deps := baseK8sDeps(runner, cp, &bytes.Buffer{}, &bytes.Buffer{})
+	if err := runK8s(context.Background(), []string{"install", "--node-name", "aks-gateway-a", "--yes"}, deps); err != nil {
+		t.Fatalf("transient host posture convergence: %v", err)
+	}
+	if !rolloutComplete || cp.issueCount != 1 {
+		t.Fatalf("rollout complete=%t gateway token mints=%d", rolloutComplete, cp.issueCount)
+	}
+}
+
+func TestK8sHostPostureRolloutWaitFailureBlocksGatewayMint(t *testing.T) {
+	installed := false
+	cp := baseK8sControlPlane()
+	runner := &fakeK8sRunner{handler: func(command k8sCommand) (k8sCommandResult, error) {
+		joined := strings.Join(command.args, " ")
+		switch {
+		case command.name == "helm" && strings.HasPrefix(joined, "list --all-namespaces"):
+			if !installed {
+				return stdout(`[]`), nil
+			}
+			return stdout(`[{"name":"tunnex-host-posture","namespace":"tunnex-system","revision":"1","status":"deployed","chart":"tunnex-host-posture-0.2.0","app_version":"v0.2.0"}]`), nil
+		case command.name == "kubectl" && strings.Contains(joined, "get daemonset tunnex-host-posture"):
+			if !installed {
+				return stdout(""), nil
+			}
+			return stdout(readyHostPostureDaemonSetJSON(nil)), nil
+		case command.name == "kubectl" && (strings.Contains(joined, "get sa tunnex-host-posture") || strings.Contains(joined, "get clusterrole tunnex-host-posture-gateway-owner-reader") || strings.Contains(joined, "get clusterrolebinding tunnex-host-posture-gateway-owner-reader")):
+			if !installed {
+				return stdout(""), nil
+			}
+			return baseRunnerHandler(command)
+		case command.name == "helm" && strings.HasPrefix(joined, "upgrade --install tunnex-host-posture "):
+			installed = true
+			return stdout("Release upgraded\n"), nil
+		case command.name == "kubectl" && strings.Contains(joined, "rollout status daemonset/tunnex-host-posture"):
+			return k8sCommandResult{}, fmt.Errorf("simulated host posture rollout timeout")
+		default:
+			return baseRunnerHandler(command)
+		}
+	}}
+	deps := baseK8sDeps(runner, cp, &bytes.Buffer{}, &bytes.Buffer{})
+	err := runK8s(context.Background(), []string{"install", "--node-name", "aks-gateway-a", "--yes"}, deps)
+	if err == nil || !strings.Contains(err.Error(), "wait for cluster-wide host posture manager rollout failed") {
+		t.Fatalf("host posture rollout wait error = %v", err)
+	}
+	if cp.issueCount != 0 {
+		t.Fatalf("failed host posture rollout minted %d gateway tokens", cp.issueCount)
+	}
+	for _, command := range runner.commands {
+		joined := strings.Join(command.args, " ")
+		if command.name == "helm" && strings.HasPrefix(joined, "install tunnex-gateway ") {
+			t.Fatalf("failed host posture rollout reached gateway Helm: %+v", command)
+		}
+		if command.name == "kubectl" && bytes.Contains(command.stdin, []byte(`"kind":"ConfigMap"`)) {
+			t.Fatalf("failed host posture rollout created lifecycle anchor: %+v", command)
+		}
+	}
+}
+
 func TestK8sHostPostureUnreadyAfterUpgradeBlocksGatewayMint(t *testing.T) {
 	cp := baseK8sControlPlane()
 	unready := strings.Replace(readyHostPostureDaemonSetJSON(nil), `"numberReady":2`, `"numberReady":1`, 1)

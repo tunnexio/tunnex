@@ -82,6 +82,50 @@ func TestProveZeroTouchRevision(t *testing.T) {
 	}
 }
 
+func TestExactHelmInitialInstallIsAbortOnly(t *testing.T) {
+	o := releaseOptions{release: "gateway-a", namespace: "tunnex"}
+	release := helmReleaseSummary{
+		Name: "gateway-a", Namespace: "tunnex", Revision: "1", Status: "pending-install",
+		Chart: "tunnex-gateway-0.2.0", AppVersion: "v0.2.0",
+	}
+	history := []historyEntry{{
+		Revision: 1, Status: "pending-install", Chart: release.Chart, AppVersion: release.AppVersion,
+		Description: helmInitialInstallDescription,
+	}}
+	if err := proveZeroTouchRevision(history, 1); err == nil {
+		t.Fatal("generic zero-touch provenance accepted Helm's initial pending marker")
+	}
+	if !isExactHelmInitialInstall(history, o, release, 1) {
+		t.Fatal("abort-only proof rejected the exact Helm-native first-install tuple")
+	}
+
+	tests := []struct {
+		name     string
+		release  helmReleaseSummary
+		history  []historyEntry
+		revision int
+	}{
+		{name: "deployed status", release: func() helmReleaseSummary { value := release; value.Status = "deployed"; return value }(), history: history, revision: 1},
+		{name: "second revision", release: func() helmReleaseSummary { value := release; value.Revision = "2"; return value }(), history: history, revision: 2},
+		{name: "extra history", release: release, history: append(history, historyEntry{Revision: 2, Status: "pending-upgrade", Description: "Preparing upgrade"}), revision: 1},
+		{name: "description spelling", release: release, history: []historyEntry{{Revision: 1, Status: "pending-install", Chart: release.Chart, AppVersion: release.AppVersion, Description: "initial install underway"}}, revision: 1},
+		{name: "history status", release: release, history: []historyEntry{{Revision: 1, Status: "failed", Chart: release.Chart, AppVersion: release.AppVersion, Description: helmInitialInstallDescription}}, revision: 1},
+		{name: "foreign chart", release: func() helmReleaseSummary { value := release; value.Chart = "other-0.2.0"; return value }(), history: history, revision: 1},
+		{name: "chart mismatch", release: release, history: []historyEntry{{Revision: 1, Status: "pending-install", Chart: "tunnex-gateway-0.3.0", AppVersion: release.AppVersion, Description: helmInitialInstallDescription}}, revision: 1},
+		{name: "app version mismatch", release: release, history: []historyEntry{{Revision: 1, Status: "pending-install", Chart: release.Chart, AppVersion: "v0.3.0", Description: helmInitialInstallDescription}}, revision: 1},
+		{name: "blank app version", release: func() helmReleaseSummary { value := release; value.AppVersion = ""; return value }(), history: history, revision: 1},
+		{name: "release mismatch", release: func() helmReleaseSummary { value := release; value.Name = "gateway-b"; return value }(), history: history, revision: 1},
+		{name: "namespace mismatch", release: func() helmReleaseSummary { value := release; value.Namespace = "other"; return value }(), history: history, revision: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if isExactHelmInitialInstall(tt.history, o, tt.release, tt.revision) {
+				t.Fatal("abort-only proof accepted an inexact Helm initial-install tuple")
+			}
+		})
+	}
+}
+
 func TestProveZeroTouchRevisionRejectsBoundExhaustion(t *testing.T) {
 	history := make([]historyEntry, maxZeroTouchHistoryDepth+1)
 	history[0] = historyEntry{Revision: 1, Description: zeroTouchContract}

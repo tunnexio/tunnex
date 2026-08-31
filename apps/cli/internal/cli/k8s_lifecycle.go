@@ -23,6 +23,7 @@ import (
 const (
 	zeroTouchContract               = "tunnex-zero-touch/v1"
 	zeroTouchContractAnnotationKey  = "tunnex.io/zero-touch-contract"
+	helmInitialInstallDescription   = "Initial install underway"
 	lifecycleOrganizationAnnotation = "tunnex.io/organization-id"
 	lifecycleClaimAnnotation        = "tunnex.io/lifecycle-claim"
 	maxZeroTouchHistoryDepth        = 256
@@ -1556,6 +1557,36 @@ func requireZeroTouchRevision(ctx context.Context, runner k8sRunner, o releaseOp
 		return fmt.Errorf("refusing unproven Kubernetes gateway lifecycle: %w", err)
 	}
 	return nil
+}
+
+// requireAbortableZeroTouchRevision keeps the normal upgrade/rollback proof
+// strict while recognizing Helm's own first-install journal entry. Helm stores
+// a release as pending-install with "Initial install underway" before it can
+// apply the caller-supplied --description. An interrupted install therefore
+// needs this exact, abort-only proof so its fenced lifecycle operation can be
+// reconciled to absence.
+func requireAbortableZeroTouchRevision(ctx context.Context, runner k8sRunner, o releaseOptions, release helmReleaseSummary, revision int) error {
+	history, err := readHelmHistory(ctx, runner, o)
+	if err != nil {
+		return err
+	}
+	if err := proveZeroTouchRevision(history, revision); err == nil {
+		return nil
+	} else if !isExactHelmInitialInstall(history, o, release, revision) {
+		return fmt.Errorf("refusing unproven Kubernetes gateway lifecycle: %w", err)
+	}
+	return nil
+}
+
+func isExactHelmInitialInstall(history []historyEntry, o releaseOptions, release helmReleaseSummary, revision int) bool {
+	if revision != 1 || release.Revision != "1" || release.Name != o.release || release.Namespace != o.namespace ||
+		release.Status != "pending-install" || strings.TrimSpace(release.AppVersion) == "" ||
+		!strings.HasPrefix(release.Chart, "tunnex-gateway-") || !versionRE.MatchString(strings.TrimPrefix(release.Chart, "tunnex-gateway-")) || len(history) != 1 {
+		return false
+	}
+	entry := history[0]
+	return entry.Revision == 1 && entry.Status == "pending-install" && entry.Chart == release.Chart &&
+		entry.AppVersion == release.AppVersion && entry.Description == helmInitialInstallDescription
 }
 
 func requireCurrentZeroTouchProvenance(ctx context.Context, runner k8sRunner, o releaseOptions, state gatewayMutationSnapshot) error {

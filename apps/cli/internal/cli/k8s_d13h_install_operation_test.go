@@ -381,7 +381,7 @@ func TestK8sLifecycleInstallAnchorRejectsMalformedIntentDigest(t *testing.T) {
 	}
 }
 
-func TestK8sLifecycleInstallAbortTakesOverUninstallsFinalizesAndReruns(t *testing.T) {
+func TestK8sLifecycleInstallAbortTakesOverNativePendingInstallUninstallsFinalizesAndReruns(t *testing.T) {
 	release := "tunnex-gateway"
 	anchor := testLifecycleAnchor(release, "aks-gateway-a", "installing")
 	now := time.Now().UTC()
@@ -416,11 +416,11 @@ func TestK8sLifecycleInstallAbortTakesOverUninstallsFinalizesAndReruns(t *testin
 		switch {
 		case command.name == "helm" && strings.HasPrefix(joined, "list --all "):
 			if releaseExists {
-				return stdout(`[ {"name":"tunnex-gateway","namespace":"tunnex","revision":"3","status":"deployed","chart":"tunnex-gateway-0.2.0","app_version":"v0.2.0"} ]`), nil
+				return stdout(`[ {"name":"tunnex-gateway","namespace":"tunnex","revision":"1","status":"pending-install","chart":"tunnex-gateway-0.2.0","app_version":"v0.2.0"} ]`), nil
 			}
 			return stdout(`[]`), nil
 		case command.name == "helm" && strings.HasPrefix(joined, "history "):
-			return baseRunnerHandler(command)
+			return stdout(`[{"revision":1,"updated":"now","status":"pending-install","chart":"tunnex-gateway-0.2.0","app_version":"v0.2.0","description":"Initial install underway"}]`), nil
 		case command.name == "helm" && strings.HasPrefix(joined, "uninstall "):
 			uninstallCount++
 			releaseExists = false
@@ -488,6 +488,57 @@ func TestK8sLifecycleInstallAbortTakesOverUninstallsFinalizesAndReruns(t *testin
 	}
 	if !strings.Contains(out.String(), "already aborted") {
 		t.Fatalf("idempotent rerun output omitted completion truth:\n%s", out.String())
+	}
+}
+
+func TestK8sLifecycleInstallAbortRefusesInexactNativePendingInstallBeforeMutation(t *testing.T) {
+	release := "tunnex-gateway"
+	anchor := testLifecycleAnchor(release, "aks-gateway-a", "installing")
+	now := time.Now().UTC()
+	anchor.installOperationID = testStateFenceOpID
+	anchor.installOperationEpoch = 1
+	anchor.installOperationDurationSeconds = 660
+	anchor.installOperationNotAfter = now.Add(10 * time.Minute)
+	anchor.installIntentDigest = "sha256:" + strings.Repeat("c", 64)
+	anchor.releaseNamespace = defaultK8sNamespace
+	anchor.releaseName = release
+	cp := baseK8sControlPlane()
+	cp.claims[anchor.lifecycleClaim] = k8sLifecycleClaimStatus{
+		claim: anchor.lifecycleClaim, state: "issued", nodeName: anchor.nodeName, generation: anchor.generation,
+		requestID: anchor.requestID, expiresAt: anchor.expiresAt,
+	}
+	runner := &fakeK8sRunner{anchors: map[string]lifecycleAnchorMetadata{anchor.name: anchor}}
+	runner.handler = func(command k8sCommand) (k8sCommandResult, error) {
+		joined := strings.Join(command.args, " ")
+		switch {
+		case command.name == "helm" && strings.HasPrefix(joined, "list --all "):
+			return stdout(`[{"name":"tunnex-gateway","namespace":"tunnex","revision":"1","status":"pending-install","chart":"tunnex-gateway-0.2.0","app_version":"v0.2.0"}]`), nil
+		case command.name == "helm" && strings.HasPrefix(joined, "history "):
+			return stdout(`[{"revision":1,"status":"pending-install","chart":"tunnex-gateway-0.2.0","app_version":"v0.2.0","description":"initial install underway"}]`), nil
+		default:
+			return baseRunnerHandler(command)
+		}
+	}
+	deps := baseK8sDeps(runner, cp, &bytes.Buffer{}, &bytes.Buffer{})
+	args := []string{"abort-install", "--release", release, "--claim", anchor.lifecycleClaim, "--confirm", "ABORT " + anchor.lifecycleClaim}
+	err := runK8s(context.Background(), args, deps)
+	if err == nil || !strings.Contains(err.Error(), "unproven lifecycle description") {
+		t.Fatalf("inexact pending-install provenance error = %v", err)
+	}
+	if got := runner.anchors[anchor.name]; got.state != "installing" || got.resourceVersion != anchor.resourceVersion {
+		t.Fatalf("provenance refusal changed lifecycle anchor: %+v", got)
+	}
+	if cp.installBeginCount != 0 || cp.installAbortCount != 0 || cp.installFinalizeAbortCount != 0 {
+		t.Fatalf("provenance refusal reached control-plane mutation: begin/abort/finalize=%d/%d/%d", cp.installBeginCount, cp.installAbortCount, cp.installFinalizeAbortCount)
+	}
+	for _, command := range runner.commands {
+		joined := strings.Join(command.args, " ")
+		if command.name == "helm" && strings.HasPrefix(joined, "uninstall ") {
+			t.Fatalf("provenance refusal uninstalled Helm release: %+v", command)
+		}
+		if command.name == "kubectl" && strings.Contains(joined, "replace --raw=") {
+			t.Fatalf("provenance refusal fenced lifecycle anchor: %+v", command)
+		}
 	}
 }
 

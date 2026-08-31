@@ -886,6 +886,11 @@ func ensureHostPostureManager(ctx context.Context, deps k8sDeps, prepared prepar
 		if onHelmMutation != nil {
 			onHelmMutation()
 		}
+		if _, err := runChecked(ctx, deps.runner, "wait for cluster-wide host posture manager rollout", k8sCommand{
+			name: "kubectl", args: kubectlArgs(prepared.options.kubeContext, "rollout", "status", "daemonset/"+hostPostureDaemonSetName, "--namespace", defaultHostPostureNamespace, "--timeout", prepared.options.timeout),
+		}); err != nil {
+			return err
+		}
 	}
 	after, err := discoverHostPostureState(ctx, deps.runner, prepared.options.kubeContext)
 	if err != nil {

@@ -475,7 +475,7 @@ func reconcileLifecycleAbortRelease(ctx context.Context, deps k8sDeps, o abortIn
 		if err != nil || revision <= 0 {
 			return fmt.Errorf("current Helm revision %q is invalid", release.Revision)
 		}
-		if err := requireZeroTouchRevision(ctx, deps.runner, releaseOptions{release: o.release, namespace: o.namespace, kubeContext: o.kubeContext, timeout: o.timeout}, revision); err != nil {
+		if err := requireAbortableZeroTouchRevision(ctx, deps.runner, releaseOptions{release: o.release, namespace: o.namespace, kubeContext: o.kubeContext, timeout: o.timeout}, *release, revision); err != nil {
 			return err
 		}
 		helmArgs := []string{"uninstall", o.release, "--namespace", o.namespace, "--wait", "--timeout", o.timeout}

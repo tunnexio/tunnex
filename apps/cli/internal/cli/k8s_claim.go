@@ -653,7 +653,7 @@ func inspectAbortInstall(ctx context.Context, deps k8sDeps, cp k8sControlPlane, 
 		if revisionErr != nil || revision <= 0 {
 			return abortInstallSnapshot{}, fmt.Errorf("current Helm revision %q is invalid", releases[0].Revision)
 		}
-		if provenanceErr := requireZeroTouchRevision(ctx, deps.runner, releaseOptions{release: o.release, namespace: o.namespace, kubeContext: o.kubeContext, timeout: o.timeout}, revision); provenanceErr != nil {
+		if provenanceErr := requireAbortableZeroTouchRevision(ctx, deps.runner, releaseOptions{release: o.release, namespace: o.namespace, kubeContext: o.kubeContext, timeout: o.timeout}, releases[0], revision); provenanceErr != nil {
 			return abortInstallSnapshot{}, provenanceErr
 		}
 		release = &releases[0]
