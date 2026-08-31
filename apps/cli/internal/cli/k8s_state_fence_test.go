@@ -97,6 +97,12 @@ func (r *stateFenceTestRunner) Run(ctx context.Context, command k8sCommand) (k8s
 		if err := json.Unmarshal(command.stdin, &lease); err != nil {
 			return k8sCommandResult{}, err
 		}
+		if _, err := time.Parse(kubernetesMicroTimeLayout, lease.Spec.AcquireTime); err != nil {
+			return k8sCommandResult{stderr: []byte("BadRequest")}, err
+		}
+		if _, err := time.Parse(kubernetesMicroTimeLayout, lease.Spec.RenewTime); err != nil {
+			return k8sCommandResult{stderr: []byte("BadRequest")}, err
+		}
 		lease.Metadata.UID = "lease-uid-1"
 		lease.Metadata.ResourceVersion = "1"
 		r.lease = &lease
@@ -108,6 +114,12 @@ func (r *stateFenceTestRunner) Run(ctx context.Context, command k8sCommand) (k8s
 		var lease stateFenceLease
 		if err := json.Unmarshal(command.stdin, &lease); err != nil {
 			return k8sCommandResult{}, err
+		}
+		if _, err := time.Parse(kubernetesMicroTimeLayout, lease.Spec.AcquireTime); err != nil {
+			return k8sCommandResult{stderr: []byte("BadRequest")}, err
+		}
+		if _, err := time.Parse(kubernetesMicroTimeLayout, lease.Spec.RenewTime); err != nil {
+			return k8sCommandResult{stderr: []byte("BadRequest")}, err
 		}
 		if r.lease == nil || lease.Metadata.UID != r.lease.Metadata.UID || lease.Metadata.ResourceVersion != r.lease.Metadata.ResourceVersion {
 			return k8sCommandResult{stderr: []byte("Conflict")}, errors.New("Conflict")
@@ -513,7 +525,7 @@ func TestRetainedStateFenceRenewsWithFakeTickerAndCancelsOnLoss(t *testing.T) {
 			t.Fatalf("stop renewed fence: %v", err)
 		}
 		lease, exists, _ := runner.snapshot()
-		if !exists || lease.Metadata.ResourceVersion != "2" || lease.Spec.RenewTime != now.Format(time.RFC3339Nano) {
+		if !exists || lease.Metadata.ResourceVersion != "2" || lease.Spec.RenewTime != formatKubernetesMicroTime(now) {
 			t.Fatalf("renewed lease = exists:%v rv:%q renew:%q", exists, lease.Metadata.ResourceVersion, lease.Spec.RenewTime)
 		}
 	})
@@ -546,6 +558,18 @@ func TestRetainedStateFenceRenewsWithFakeTickerAndCancelsOnLoss(t *testing.T) {
 			t.Fatalf("renewal loss deleted %d leases", runner.deleteCount)
 		}
 	})
+}
+
+func TestStateFenceLeaseUsesKubernetesMicroTime(t *testing.T) {
+	now := time.Date(2026, 8, 31, 9, 47, 35, 980818952, time.UTC)
+	lease := newStateFenceLease(stateFenceTestBinding(), retainedStateFenceOperationReuse, testStateFenceReuseID, now)
+	const want = "2026-08-31T09:47:35.980818Z"
+	if lease.Spec.AcquireTime != want || lease.Spec.RenewTime != want {
+		t.Fatalf("Lease MicroTime = acquire:%q renew:%q, want %q", lease.Spec.AcquireTime, lease.Spec.RenewTime, want)
+	}
+	if _, err := time.Parse(kubernetesMicroTimeLayout, lease.Spec.AcquireTime); err != nil {
+		t.Fatalf("Lease acquireTime is not Kubernetes MicroTime: %v", err)
+	}
 }
 
 func TestRetainedStateFenceManifestAndReleaseUseExactUIDResourceVersion(t *testing.T) {

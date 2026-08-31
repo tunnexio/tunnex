@@ -18,6 +18,7 @@ const (
 	retainedStateFenceLeaseDuration  = 30 * time.Second
 	retainedStateFenceRenewInterval  = 10 * time.Second
 	retainedStateFenceCleanupTimeout = 10 * time.Second
+	kubernetesMicroTimeLayout        = "2006-01-02T15:04:05.000000Z07:00"
 
 	retainedStateFenceOperationReuse = "reuse"
 	retainedStateFenceOperationPurge = "purge"
@@ -120,6 +121,10 @@ type validatedStateFenceLease struct {
 	expiresAt  time.Time
 }
 
+func formatKubernetesMicroTime(value time.Time) string {
+	return value.UTC().Truncate(time.Microsecond).Format(kubernetesMicroTimeLayout)
+}
+
 func newStateFenceLease(binding retainedStateFenceBinding, operation, operationID string, now time.Time) stateFenceLease {
 	lease := stateFenceLease{APIVersion: "coordination.k8s.io/v1", Kind: "Lease"}
 	lease.Metadata.Name = binding.leaseName()
@@ -142,7 +147,10 @@ func newStateFenceLease(binding retainedStateFenceBinding, operation, operationI
 	}}
 	lease.Spec.HolderIdentity = operationID
 	lease.Spec.LeaseDurationSeconds = int32(retainedStateFenceLeaseDuration / time.Second)
-	lease.Spec.AcquireTime = now.UTC().Format(time.RFC3339Nano)
+	// coordination.k8s.io/v1 Lease uses metav1.MicroTime. The API server's
+	// decoder requires exactly six fractional digits; RFC3339Nano may emit nine
+	// and is rejected before the fence can be created.
+	lease.Spec.AcquireTime = formatKubernetesMicroTime(now)
 	lease.Spec.RenewTime = lease.Spec.AcquireTime
 	return lease
 }
