@@ -42,7 +42,11 @@ import (
 var ifaceRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,15}$`)
 
 var (
-	nativeForwardReadbackRE = regexp.MustCompile(`^\s*iifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+oifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+counter(?:\s+packets\s+\d+\s+bytes\s+\d+)?\s+accept\s+comment\s+"tunnex_native_forward_passthrough"\s*$`)
+	// IPv4 rules may carry the renderer's synthetic-VIP exclusion between the
+	// interface boundary and the terminal counter. That exclusion only makes the
+	// native path narrower; accept it while keeping the tunnel-boundary and
+	// terminal verdict checks exact.
+	nativeForwardReadbackRE = regexp.MustCompile(`^\s*iifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+oifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")(?:\s+ct\s+original\s+ip\s+daddr\s+!=\s+(?:\d{1,3}\.){3}\d{1,3}|\s+ct\s+original\s+ip\s+daddr\s+!=\s+\{\s*(?:\d{1,3}\.){3}\d{1,3}(?:\s*,\s*(?:\d{1,3}\.){3}\d{1,3})*\s*\})?\s+counter(?:\s+packets\s+\d+\s+bytes\s+\d+)?\s+accept\s+comment\s+"tunnex_native_forward_passthrough"\s*$`)
 	quotedIfaceRE           = regexp.MustCompile(`"([A-Za-z0-9._-]{1,15})"`)
 )
 
