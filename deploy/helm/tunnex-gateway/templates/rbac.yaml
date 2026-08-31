@@ -1,4 +1,4 @@
-{{- if .Values.serviceAccount.create }}
+{{- if .Values.rbac.create }}
 {{- include "tunnex-gateway.ackGuard" . -}}
 # WF-K5: the gateway DNATs each exposed Service's synthetic VIP straight to a READY pod ENDPOINT — a
 # VIP->ClusterIP DNAT can NOT complete (netfilter applies one dst-NAT per prerouting pass, so kube-proxy's

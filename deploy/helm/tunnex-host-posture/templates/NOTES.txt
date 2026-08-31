@@ -1,0 +1,12 @@
+The cluster-singleton Tunnex host-posture manager is installed.
+
+Contract: tunnex-host-posture/v1
+Helm release: tunnex-host-posture (fixed)
+Namespace: tunnex-system (fixed)
+DaemonSet: {{ include "tunnex-host-posture.fullname" . }}
+Journal: /var/lib/tunnex/host-posture/v1 (node-local hostPath)
+
+Install gateway releases only after every eligible DaemonSet pod is Ready.
+Individual gateway uninstall must not remove this shared release. Remove it only
+through the guarded cluster lifecycle after a cluster-wide readback proves that
+no live Pod carries tunnex.io/host-posture-owner=true.

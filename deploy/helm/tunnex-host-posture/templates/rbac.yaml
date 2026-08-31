@@ -1,0 +1,30 @@
+{{- include "tunnex-host-posture.validate" . -}}
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "tunnex-host-posture.fullname" . }}-gateway-owner-reader
+  labels:
+    {{- include "tunnex-host-posture.labels" . | nindent 4 }}
+rules:
+  # Exact-node LIST readback is the lifecycle authority. No Secret, Node,
+  # workload-controller, write, impersonate, or escalation verb is granted.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "tunnex-host-posture.fullname" . }}-gateway-owner-reader
+  labels:
+    {{- include "tunnex-host-posture.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "tunnex-host-posture.fullname" . }}-gateway-owner-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "tunnex-host-posture.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

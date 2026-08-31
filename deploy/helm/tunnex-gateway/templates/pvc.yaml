@@ -1,10 +1,20 @@
-{{- if .Values.persistence.enabled }}
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "tunnex-gateway.fullname" . }}-state
   labels:
     {{- include "tunnex-gateway.labels" . | nindent 4 }}
+  annotations:
+    meta.helm.sh/release-name: {{ .Release.Name | quote }}
+    meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
+  {{- if .Values.persistence.retain }}
+    "helm.sh/resource-policy": keep
+  {{- end }}
+  {{- if and .Values.persistence.provenance.organizationID .Values.persistence.provenance.lifecycleClaim }}
+    tunnex.io/organization-id: {{ .Values.persistence.provenance.organizationID | quote }}
+    tunnex.io/lifecycle-claim: {{ .Values.persistence.provenance.lifecycleClaim | quote }}
+  {{- end }}
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:
