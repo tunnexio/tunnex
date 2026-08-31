@@ -5,6 +5,8 @@
 package hostposture
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"reflect"
@@ -27,7 +29,8 @@ const (
 	RouteMetric                   = 8021
 	ReturnRulePriority            = 100
 	ReturnRuleLookup              = "main"
-	JournalSchemaVersion          = 1
+	LegacyJournalSchemaVersion    = 1
+	JournalSchemaVersion          = 2
 	HeartbeatSchemaVersion        = 1
 	DefaultMaxOwners              = 32
 	// Invalid label-selected Pods do not consume the valid-owner limit, but the
@@ -49,6 +52,13 @@ const (
 	HeartbeatIdle    = "idle"
 	HeartbeatActive  = "active"
 	HeartbeatBlocked = "blocked"
+)
+
+const (
+	WireGuardPhaseStagingPlanned = "staging_planned"
+	WireGuardPhaseStagingCreated = "staging_created"
+	WireGuardPhaseStagingMarked  = "staging_marked"
+	WireGuardPhaseCommitted      = "committed"
 )
 
 var ErrNoJournal = errors.New("host-posture journal does not exist")
@@ -83,9 +93,12 @@ type ArtifactJournal struct {
 }
 
 type WireGuardReceipt struct {
-	Name    string `json:"name"`
-	Alias   string `json:"alias"`
-	IfIndex int    `json:"ifindex,omitempty"`
+	Name           string `json:"name"`
+	Alias          string `json:"alias"`
+	IfIndex        int    `json:"ifindex,omitempty"`
+	StagingName    string `json:"staging_name,omitempty"`
+	StagingIfIndex int    `json:"staging_ifindex,omitempty"`
+	Phase          string `json:"phase,omitempty"`
 }
 
 type NFTTableReceipt struct {
@@ -190,7 +203,13 @@ func fixedArtifacts() ArtifactJournal {
 	}
 }
 
-func newJournal(node string, epoch uint64, originals []SysctlReceipt, owners []Owner, now time.Time) Journal {
+func newJournal(node string, epoch uint64, originals []SysctlReceipt, owners []Owner, stagingName string, now time.Time) (Journal, error) {
+	if !validWireGuardStagingName(stagingName) {
+		return Journal{}, fmt.Errorf("WireGuard staging identity is invalid")
+	}
+	artifacts := fixedArtifacts()
+	artifacts.WireGuard.StagingName = stagingName
+	artifacts.WireGuard.Phase = WireGuardPhaseStagingPlanned
 	return Journal{
 		SchemaVersion: JournalSchemaVersion,
 		Contract:      Contract,
@@ -199,13 +218,13 @@ func newJournal(node string, epoch uint64, originals []SysctlReceipt, owners []O
 		State:         StatePreparing,
 		Sysctls:       originals,
 		Owners:        canonicalOwners(owners),
-		Artifacts:     fixedArtifacts(),
+		Artifacts:     artifacts,
 		UpdatedAt:     now.UTC(),
-	}
+	}, nil
 }
 
 func (j Journal) validate(node string) error {
-	if j.SchemaVersion != JournalSchemaVersion || j.Contract != Contract || j.NodeName != node || j.Epoch == 0 {
+	if (j.SchemaVersion != LegacyJournalSchemaVersion && j.SchemaVersion != JournalSchemaVersion) || j.Contract != Contract || j.NodeName != node || j.Epoch == 0 {
 		return fmt.Errorf("journal identity does not match %s on node %q", Contract, node)
 	}
 	if j.State != StatePreparing && j.State != StateActive && j.State != StateRestored {
@@ -221,14 +240,71 @@ func (j Journal) validate(node string) error {
 			return fmt.Errorf("journal sysctl receipt %d is invalid", i)
 		}
 	}
-	if !reflect.DeepEqual(j.Artifacts, fixedArtifactsWithIfIndex(j.Artifacts.WireGuard.IfIndex)) {
+	wg := j.Artifacts.WireGuard
+	baseArtifacts := j.Artifacts
+	baseArtifacts.WireGuard.StagingName = ""
+	baseArtifacts.WireGuard.StagingIfIndex = 0
+	baseArtifacts.WireGuard.Phase = ""
+	if !reflect.DeepEqual(baseArtifacts, fixedArtifactsWithIfIndex(wg.IfIndex)) {
 		return fmt.Errorf("journal artifact ownership contract is invalid")
+	}
+	if j.SchemaVersion == LegacyJournalSchemaVersion {
+		if wg.StagingName != "" || wg.StagingIfIndex != 0 || wg.Phase != "" {
+			return fmt.Errorf("legacy journal contains unsupported staged WireGuard state")
+		}
+	} else if err := validateStagedWireGuardReceipt(wg, j.State); err != nil {
+		return err
 	}
 	if len(j.Owners) > DefaultMaxOwners {
 		return fmt.Errorf("journal owner set is unbounded")
 	}
 	if !ownersEqual(j.Owners, canonicalOwners(j.Owners)) {
 		return fmt.Errorf("journal owner set is not canonical")
+	}
+	return nil
+}
+
+func newWireGuardStagingName() (string, error) {
+	var entropy [6]byte
+	if _, err := rand.Read(entropy[:]); err != nil {
+		return "", fmt.Errorf("generate WireGuard staging identity: %w", err)
+	}
+	// Linux IFNAMSIZ includes the trailing NUL, so the visible name must remain
+	// at most 15 bytes. The persisted 48-bit suffix binds an otherwise inert
+	// staging link to this exact journal before any kernel mutation occurs.
+	return "tnx" + hex.EncodeToString(entropy[:]), nil
+}
+
+func validWireGuardStagingName(name string) bool {
+	if len(name) != 15 || !strings.HasPrefix(name, "tnx") {
+		return false
+	}
+	decoded, err := hex.DecodeString(name[3:])
+	return err == nil && len(decoded) == 6
+}
+
+func validateStagedWireGuardReceipt(wg WireGuardReceipt, journalState string) error {
+	if !validWireGuardStagingName(wg.StagingName) {
+		return fmt.Errorf("journal WireGuard staging identity is invalid")
+	}
+	switch wg.Phase {
+	case WireGuardPhaseStagingPlanned:
+		if wg.StagingIfIndex != 0 || wg.IfIndex != 0 {
+			return fmt.Errorf("planned WireGuard staging receipt contains live indices")
+		}
+	case WireGuardPhaseStagingCreated, WireGuardPhaseStagingMarked:
+		if wg.StagingIfIndex < 1 || wg.IfIndex != 0 {
+			return fmt.Errorf("staged WireGuard receipt has invalid indices")
+		}
+	case WireGuardPhaseCommitted:
+		if wg.StagingIfIndex < 1 || wg.IfIndex != wg.StagingIfIndex {
+			return fmt.Errorf("final WireGuard receipt has invalid indices")
+		}
+	default:
+		return fmt.Errorf("journal WireGuard phase %q is unsupported", wg.Phase)
+	}
+	if journalState == StateActive && wg.Phase != WireGuardPhaseCommitted {
+		return fmt.Errorf("active journal does not contain a final WireGuard receipt")
 	}
 	return nil
 }

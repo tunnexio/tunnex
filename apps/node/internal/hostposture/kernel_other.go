@@ -13,10 +13,10 @@ type LinuxKernel struct{}
 func NewLinuxKernel(string, CommandRunner) (*LinuxKernel, error) {
 	return nil, fmt.Errorf("host-posture manager requires Linux")
 }
-func (*LinuxKernel) CaptureBaseline(context.Context) ([]SysctlReceipt, error) {
+func (*LinuxKernel) CaptureBaseline(context.Context, string) ([]SysctlReceipt, error) {
 	return nil, fmt.Errorf("host-posture manager requires Linux")
 }
-func (*LinuxKernel) Prepare(context.Context, *Journal) error {
+func (*LinuxKernel) Prepare(context.Context, *Journal, func(*Journal) error) error {
 	return fmt.Errorf("host-posture manager requires Linux")
 }
 func (*LinuxKernel) Enforce(context.Context, Journal) error {

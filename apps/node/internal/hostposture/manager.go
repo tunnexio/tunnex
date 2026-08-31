@@ -11,8 +11,8 @@ import (
 )
 
 type Kernel interface {
-	CaptureBaseline(context.Context) ([]SysctlReceipt, error)
-	Prepare(context.Context, *Journal) error
+	CaptureBaseline(context.Context, string) ([]SysctlReceipt, error)
+	Prepare(context.Context, *Journal, func(*Journal) error) error
 	Enforce(context.Context, Journal) error
 	RestoreAndCleanup(context.Context, *Journal) error
 }
@@ -107,7 +107,7 @@ func (m *Manager) ReconcileOnce(ctx context.Context) error {
 		// exact-node list proves otherwise.
 		if haveJournal && journal.State != StateRestored && len(journal.Owners) > 0 {
 			if journal.State == StatePreparing {
-				if err := m.kernel.Prepare(ctx, &journal); err != nil {
+				if err := m.prepare(ctx, &journal, now); err != nil {
 					return m.block(now, journal.Owners, fmt.Errorf("resume preparation during API fault: %w", err))
 				}
 				journal.State = StateActive
@@ -129,11 +129,18 @@ func (m *Manager) ReconcileOnce(ctx context.Context) error {
 			if haveJournal {
 				epoch = journal.Epoch + 1
 			}
-			originals, err := m.kernel.CaptureBaseline(ctx)
+			stagingName, err := newWireGuardStagingName()
+			if err != nil {
+				return m.block(now, owners, fmt.Errorf("create WireGuard staging identity: %w", err))
+			}
+			originals, err := m.kernel.CaptureBaseline(ctx, stagingName)
 			if err != nil {
 				return m.block(now, owners, fmt.Errorf("capture pre-Tunnex host baseline: %w", err))
 			}
-			journal = newJournal(m.config.NodeName, epoch, originals, owners, now)
+			journal, err = newJournal(m.config.NodeName, epoch, originals, owners, stagingName, now)
+			if err != nil {
+				return m.block(now, owners, fmt.Errorf("create pre-mutation journal: %w", err))
+			}
 			// This durable write is the admission boundary. No kernel mutation may
 			// occur before the exact originals and fixed ownership signatures exist.
 			if err := m.store.SaveJournal(journal); err != nil {
@@ -149,7 +156,7 @@ func (m *Manager) ReconcileOnce(ctx context.Context) error {
 		}
 		wasPreparing := journal.State == StatePreparing
 		oldIfIndex := journal.Artifacts.WireGuard.IfIndex
-		if err := m.kernel.Prepare(ctx, &journal); err != nil {
+		if err := m.prepare(ctx, &journal, now); err != nil {
 			journal.LastError = boundedReason(err.Error())
 			journal.UpdatedAt = now
 			_ = m.store.SaveJournal(journal)
@@ -192,6 +199,16 @@ func (m *Manager) ReconcileOnce(ctx context.Context) error {
 		return m.block(now, nil, fmt.Errorf("persist restored host posture: %w", err))
 	}
 	return m.heartbeat(now, HeartbeatIdle, nil, "")
+}
+
+func (m *Manager) prepare(ctx context.Context, journal *Journal, now time.Time) error {
+	return m.kernel.Prepare(ctx, journal, func(checkpoint *Journal) error {
+		checkpoint.UpdatedAt = now
+		if err := m.store.SaveJournal(*checkpoint); err != nil {
+			return fmt.Errorf("persist WireGuard preparation checkpoint: %w", err)
+		}
+		return nil
+	})
 }
 
 func ownerFallback(journal Journal, have bool) []Owner {

@@ -47,25 +47,30 @@ func (f *fakePostureStore) SaveHeartbeat(heartbeat Heartbeat) error {
 }
 
 type fakeKernel struct {
-	store      *fakePostureStore
-	capture    int
-	prepare    int
-	enforce    int
-	restore    int
-	prepareErr error
-	enforceErr error
-	restoreErr error
+	store              *fakePostureStore
+	capture            int
+	captureStagingName string
+	prepare            int
+	enforce            int
+	restore            int
+	prepareErr         error
+	enforceErr         error
+	restoreErr         error
 }
 
-func (f *fakeKernel) CaptureBaseline(context.Context) ([]SysctlReceipt, error) {
+func (f *fakeKernel) CaptureBaseline(_ context.Context, stagingName string) ([]SysctlReceipt, error) {
 	f.capture++
+	f.captureStagingName = stagingName
+	if !validWireGuardStagingName(stagingName) {
+		return nil, fmt.Errorf("invalid staging identity")
+	}
 	out := desiredSysctls()
 	for i := range out {
 		out[i].Original = fmt.Sprintf("original-%d", i)
 	}
 	return out, nil
 }
-func (f *fakeKernel) Prepare(_ context.Context, journal *Journal) error {
+func (f *fakeKernel) Prepare(_ context.Context, journal *Journal, _ func(*Journal) error) error {
 	f.prepare++
 	if !f.store.haveJournal || f.store.journal.State != StatePreparing || len(f.store.journal.Sysctls) != 3 {
 		return fmt.Errorf("kernel mutation occurred before durable preparing journal")
@@ -73,7 +78,9 @@ func (f *fakeKernel) Prepare(_ context.Context, journal *Journal) error {
 	if f.prepareErr != nil {
 		return f.prepareErr
 	}
+	journal.Artifacts.WireGuard.StagingIfIndex = 41
 	journal.Artifacts.WireGuard.IfIndex = 41
+	journal.Artifacts.WireGuard.Phase = WireGuardPhaseCommitted
 	return nil
 }
 func (f *fakeKernel) Enforce(context.Context, Journal) error {
@@ -125,6 +132,9 @@ func TestManagerJournalsBeforeMutationAndRestoresOnlyAfterDurableLastOwner(t *te
 	}
 	if store.journal.State != StateActive || store.journal.Artifacts.WireGuard.IfIndex != 41 || store.heartbeat.State != HeartbeatActive || !heartbeatHasOwner(store.heartbeat, testOwner().UID) {
 		t.Fatalf("active journal=%+v heartbeat=%+v", store.journal, store.heartbeat)
+	}
+	if kernel.captureStagingName == "" || store.journal.Artifacts.WireGuard.StagingName != kernel.captureStagingName {
+		t.Fatalf("baseline staging identity=%q journal=%q", kernel.captureStagingName, store.journal.Artifacts.WireGuard.StagingName)
 	}
 	if len(store.saveStates) < 2 || store.saveStates[0] != StatePreparing || store.saveStates[1] != StateActive {
 		t.Fatalf("journal ordering=%v, want preparing before active", store.saveStates)
