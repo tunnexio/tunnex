@@ -121,7 +121,7 @@ func TestClusterReconcileAccepted(t *testing.T) {
 	})
 	cr := &tunnexv1.TunnexCluster{
 		ObjectMeta: managedMeta("ns", "c"),
-		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
+		Spec:       tunnexv1.TunnexClusterSpec{Site: "edge", Connector: "edge-gw", Provider: "azure", Platform: "aks", Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com"},
 	}
 	k := fakeK8s(t, cr)
 	r := &TunnexClusterReconciler{Client: k, CP: cp}
@@ -136,8 +136,101 @@ func TestClusterReconcileAccepted(t *testing.T) {
 	if posted.ConnectorNodeID != "node-1" {
 		t.Fatalf("registration must carry the resolved connector ID, got %+v", posted)
 	}
+	if posted.Provider != "azure" || posted.Platform != "aks" {
+		t.Fatalf("explicit provider metadata must pass through unchanged, got %+v", posted)
+	}
 	if c := readyCond(t, got.Status.Conditions); c == nil || c.Status != metav1.ConditionTrue || c.Reason != "Accepted" {
 		t.Fatalf("want Ready=True/Accepted, got %+v", c)
+	}
+}
+
+func TestClusterReconcileCorrectsExplicitProviderMetadata(t *testing.T) {
+	var corrected cp.ProviderMetadataRequest
+	var cause string
+	putCalls := 0
+	cpClient := testCP(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/sites"):
+			json.NewEncoder(w).Encode([]map[string]string{{"id": "site-1", "name": "edge"}})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/k8s/clusters"):
+			json.NewEncoder(w).Encode([]map[string]string{{
+				"id": "clu-1", "name": "prod", "dns_vip": "100.64.0.53",
+				"provider": "unknown", "platform": "unknown",
+			}})
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/k8s/clusters/clu-1/provider-metadata"):
+			putCalls++
+			cause = r.Header.Get("X-Tunnex-Cause")
+			if err := json.NewDecoder(r.Body).Decode(&corrected); err != nil {
+				t.Fatal(err)
+			}
+			json.NewEncoder(w).Encode(map[string]string{
+				"id": "clu-1", "name": "prod", "dns_vip": "100.64.0.53",
+				"provider": corrected.Provider, "platform": corrected.Platform,
+			})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	cr := &tunnexv1.TunnexCluster{
+		ObjectMeta: managedMeta("ns", "c"),
+		Spec: tunnexv1.TunnexClusterSpec{
+			Site: "edge", Connector: "edge-gw", Provider: "azure", Platform: "aks",
+			Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com",
+		},
+	}
+	k := fakeK8s(t, cr)
+	r := &TunnexClusterReconciler{Client: k, CP: cpClient}
+	if _, err := r.Reconcile(context.Background(), req("ns", "c")); err != nil {
+		t.Fatal(err)
+	}
+	if putCalls != 1 || corrected.Provider != "azure" || corrected.Platform != "aks" {
+		t.Fatalf("explicit provider metadata was not reconciled once: calls=%d body=%+v", putCalls, corrected)
+	}
+	if cause != "tunnexcluster:ns/c" {
+		t.Fatalf("metadata correction must name its CR audit cause, got %q", cause)
+	}
+	var got tunnexv1.TunnexCluster
+	if err := k.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "c"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if c := readyCond(t, got.Status.Conditions); c == nil || c.Status != metav1.ConditionTrue || c.ObservedGeneration != got.Generation {
+		t.Fatalf("corrected metadata must be Ready for this generation, got %+v", c)
+	}
+}
+
+func TestClusterReconcileProviderMetadataRejectionIsNotReady(t *testing.T) {
+	cpClient := testCP(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/sites"):
+			json.NewEncoder(w).Encode([]map[string]string{{"id": "site-1", "name": "edge"}})
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/k8s/clusters"):
+			json.NewEncoder(w).Encode([]map[string]string{{"id": "clu-1", "name": "prod", "provider": "unknown", "platform": "unknown"}})
+		case r.Method == http.MethodPut:
+			w.WriteHeader(http.StatusConflict)
+			io.WriteString(w, `{"error":{"code":"provider_metadata_conflict","message":"metadata correction refused"}}`)
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	cr := &tunnexv1.TunnexCluster{
+		ObjectMeta: managedMeta("ns", "c"),
+		Spec: tunnexv1.TunnexClusterSpec{
+			Site: "edge", Connector: "edge-gw", Provider: "azure", Platform: "aks",
+			Name: "prod", VIPRange: "100.64.0.0/16", ServiceCIDR: "10.96.0.0/12", DNSZone: "k8s.acme.com",
+		},
+	}
+	k := fakeK8s(t, cr)
+	r := &TunnexClusterReconciler{Client: k, CP: cpClient}
+	res, err := r.Reconcile(context.Background(), req("ns", "c"))
+	if err != nil || res.RequeueAfter != clientErrRequeue {
+		t.Fatalf("CP rejection must be surfaced and slow-requeued, res=%+v err=%v", res, err)
+	}
+	var got tunnexv1.TunnexCluster
+	if err := k.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "c"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if c := readyCond(t, got.Status.Conditions); c == nil || c.Status != metav1.ConditionFalse || c.Reason != "provider_metadata_conflict" {
+		t.Fatalf("rejected metadata must not report Ready=True, got %+v", c)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -80,5 +81,65 @@ func TestClientAuthAndOrgPath(t *testing.T) {
 	}
 	if gotPath != "/api/v1/organizations/org-42/k8s/clusters" {
 		t.Fatalf("call must be org-scoped in the path, got %q", gotPath)
+	}
+}
+
+func TestClientRefusesRedirectBeforeForwardingMachineBearer(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		location  func(source, target string) string
+		tlsSource bool
+	}{
+		{
+			name: "same-host HTTPS downgrade",
+			location: func(_, target string) string {
+				return target
+			},
+			tlsSource: true,
+		},
+		{
+			name: "cross-origin redirect",
+			location: func(_, target string) string {
+				return strings.Replace(target, "127.0.0.1", "localhost", 1)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var targetCalls atomic.Int32
+			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				targetCalls.Add(1)
+				if got := r.Header.Get("Authorization"); got != "" {
+					t.Errorf("redirect target received machine bearer %q", got)
+				}
+				io.WriteString(w, `[]`)
+			}))
+			defer target.Close()
+
+			var sourceURL string
+			sourceHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", tc.location(sourceURL, target.URL))
+				w.WriteHeader(http.StatusTemporaryRedirect)
+			})
+			var source *httptest.Server
+			if tc.tlsSource {
+				source = httptest.NewTLSServer(sourceHandler)
+			} else {
+				source = httptest.NewServer(sourceHandler)
+			}
+			defer source.Close()
+			sourceURL = source.URL
+
+			client := New(source.URL, "tnxm_redirect_secret", "org-42")
+			if tc.tlsSource {
+				client.http.Transport = source.Client().Transport
+			}
+			_, err := client.ListClusters(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "cp 307") {
+				t.Fatalf("redirect error = %v, want fail-closed 307", err)
+			}
+			if got := targetCalls.Load(); got != 0 {
+				t.Fatalf("redirect target called %d times, want zero", got)
+			}
+		})
 	}
 }

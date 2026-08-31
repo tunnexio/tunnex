@@ -1,0 +1,11 @@
+The retained Tunnex operator CRDs are installed at schema generation 1.
+
+This release is monotonic infrastructure. Upgrade it before the operator.
+Do not run `helm rollback` on it. Versioned install/upgrade refuses a detected
+schema-generation downgrade; Helm rollback replays stored manifests instead.
+
+Check establishment:
+  kubectl wait --for=condition=Established --timeout=120s \
+    crd/tunnexclusters.tunnex.io \
+    crd/tunnexexposedservices.tunnex.io \
+    crd/tunnexgrants.tunnex.io

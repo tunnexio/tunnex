@@ -1,0 +1,12 @@
+apiVersion: v2
+name: tunnex-operator
+description: GitOps operator for Tunnex Kubernetes resources
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+home: https://tunnex.io
+sources:
+  - https://github.com/tunnexio/tunnex
+annotations:
+  artifacthub.io/license: Apache-2.0

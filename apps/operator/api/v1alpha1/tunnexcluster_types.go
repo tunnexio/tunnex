@@ -5,6 +5,8 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // TunnexClusterSpec declares a Kubernetes cluster registered on the Tunnex fabric (mirrors the CP's
 // RegisterCluster verb). The org is IMPLICIT — it is the org of the operator's machine credential (D3),
 // never a spec field. The fronting site is referenced by its name.
+// +kubebuilder:validation:XValidation:rule="has(self.provider) == has(self.platform)",message="provider and platform must be supplied together"
+// +kubebuilder:validation:XValidation:rule="!has(self.provider) || (self.provider == 'aws' && self.platform == 'eks') || (self.provider == 'azure' && self.platform == 'aks') || (self.provider == 'gcp' && self.platform == 'gke_standard') || (self.provider == 'self_managed' && self.platform == 'kubernetes')",message="provider and platform must be one supported pair"
 type TunnexClusterSpec struct {
 	// Site is the name of the site whose gateway fronts this cluster. Required.
 	// +kubebuilder:validation:Required
@@ -13,6 +15,16 @@ type TunnexClusterSpec struct {
 	// to the control-plane node ID within Site before registration. Required.
 	// +kubebuilder:validation:Required
 	Connector string `json:"connector"`
+	// Provider is optional presentation metadata. It never selects networking or
+	// cloud behavior. Provider and Platform must be supplied together as one of
+	// the supported exact pairs.
+	// +optional
+	// +kubebuilder:validation:Enum=aws;azure;gcp;self_managed
+	Provider string `json:"provider,omitempty"`
+	// Platform is optional presentation metadata paired with Provider.
+	// +optional
+	// +kubebuilder:validation:Enum=eks;aks;gke_standard;kubernetes
+	Platform string `json:"platform,omitempty"`
 	// Name is the cluster's name — a DNS label that becomes part of every exposed Service's FQDN. Required.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`

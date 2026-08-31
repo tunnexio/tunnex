@@ -4,19 +4,24 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: tunnexclusters.tunnex.io
+    helm.sh/resource-policy: keep
+    tunnex.io/schema-generation: "1"
+  name: tunnexgrants.tunnex.io
 spec:
   group: tunnex.io
   names:
-    kind: TunnexCluster
-    listKind: TunnexClusterList
-    plural: tunnexclusters
-    singular: tunnexcluster
+    kind: TunnexGrant
+    listKind: TunnexGrantList
+    plural: tunnexgrants
+    singular: tunnexgrant
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.name
-      name: Cluster
+    - jsonPath: .spec.subject
+      name: Subject
+      type: string
+    - jsonPath: .spec.service
+      name: Service
       type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
@@ -24,8 +29,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TunnexCluster is a Kubernetes cluster registered on the Tunnex
-          fabric.
+        description: TunnexGrant is an access grant reaching an exposed Service (enterprise).
         properties:
           apiVersion:
             description: |-
@@ -46,80 +50,47 @@ spec:
             type: object
           spec:
             description: |-
-              TunnexClusterSpec declares a Kubernetes cluster registered on the Tunnex fabric (mirrors the CP's
-              RegisterCluster verb). The org is IMPLICIT — it is the org of the operator's machine credential (D3),
-              never a spec field. The fronting site is referenced by its name.
+              TunnexGrantSpec declares an access grant that reaches an exposed Service (mirrors the CP's policy rule with
+              dst_kind=k8s_service). ENTERPRISE — the CP gates it edition_required (403) in the open build; the operator
+              surfaces that verbatim in status (never a silent no-op). The subject is a user/group/site/cidr — NEVER a
+              workload (a pod is not a policy SUBJECT; workload-identity was ruled out of the epic, D4), which is why
+              there is no TunnexPeer. The destination is referenced by its TunnexExposedService resource name.
             properties:
-              connector:
-                description: Connector is the active in-cluster gateway name. The
-                  operator resolves it to the control-plane node ID within Site before
-                  registration. Required.
-                type: string
-              dnsZone:
-                description: DNSZone is the customer zone suffix of every exposed
-                  Service's FQDN (e.g. k8s.acme.com). Required.
-                type: string
-              name:
-                description: Name is the cluster's name — a DNS label that becomes
-                  part of every exposed Service's FQDN. Required.
-                type: string
-              platform:
-                description: Platform is optional presentation metadata paired with
-                  Provider.
-                enum:
-                - eks
-                - aks
-                - gke_standard
-                - kubernetes
-                type: string
-              provider:
+              expiresAt:
                 description: |-
-                  Provider is optional presentation metadata. It never selects networking or
-                  cloud behavior. Provider and Platform must be supplied together as one of
-                  the supported exact pairs.
+                  ExpiresAt makes this a TEMPORARY grant — the CP deletes it (audited) when it lapses. Omit for a
+                  permanent grant.
+                format: date-time
+                type: string
+              service:
+                description: Service is the name of the TunnexExposedService this
+                  grant reaches. Required.
+                type: string
+              subject:
+                description: 'Subject identifies the principal: a user email / group
+                  name / site name / CIDR, per SubjectKind.'
+                type: string
+              subjectKind:
+                description: SubjectKind is the kind of principal being granted access.
                 enum:
-                - aws
-                - azure
-                - gcp
-                - self_managed
-                type: string
-              serviceCIDR:
-                description: ServiceCIDR is the cluster's real Kubernetes Service
-                  CIDR (e.g. 10.96.0.0/12). Required.
-                type: string
-              site:
-                description: Site is the name of the site whose gateway fronts this
-                  cluster. Required.
-                type: string
-              vipRange:
-                description: |-
-                  VIPRange is the cluster's synthetic VIP CIDR (must be disjoint from the device pool, site subnets, and
-                  other clusters' ranges — the CP's Collect/OrgRanges validator enforces it). Required.
+                - user
+                - group
+                - site
+                - cidr
                 type: string
             required:
-            - connector
-            - dnsZone
-            - name
-            - serviceCIDR
-            - site
-            - vipRange
-            x-kubernetes-validations:
-            - message: provider and platform must be supplied together
-              rule: has(self.provider) == has(self.platform)
-            - message: provider and platform must be one supported pair
-              rule: '!has(self.provider) || (self.provider == ''aws'' && self.platform == ''eks'') || (self.provider == ''azure'' && self.platform == ''aks'') || (self.provider == ''gcp'' && self.platform == ''gke_standard'') || (self.provider == ''self_managed'' && self.platform == ''kubernetes'')'
+            - service
+            - subject
+            - subjectKind
             type: object
           status:
-            description: TunnexClusterStatus reflects the control plane's accepted
-              state — DERIVED truth, never spec.
+            description: TunnexGrantStatus reflects the CP's accepted state — DERIVED
+              truth, never spec.
             properties:
-              clusterId:
-                description: ClusterID is the control-plane id assigned at registration.
-                type: string
               conditions:
                 description: |-
-                  Conditions carry Ready + any CP refusal verbatim (e.g. a VIP-range overlap). HONEST status: a CR is
-                  Ready ONLY when the CP ACCEPTED it, never merely "applied".
+                  Conditions carry Ready + any CP refusal verbatim — notably edition_required when the org is open-edition
+                  (governance is enterprise). HONEST status: never a silent no-op.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -175,9 +146,9 @@ spec:
                   - type
                   type: object
                 type: array
-              dnsVip:
-                description: DNSVIP is the cluster's reserved DNS VIP (derived at
-                  registration).
+              ruleId:
+                description: RuleID is the control-plane policy-rule id assigned on
+                  creation.
                 type: string
             type: object
         type: object

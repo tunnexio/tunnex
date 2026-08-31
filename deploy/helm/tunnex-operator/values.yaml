@@ -1,0 +1,41 @@
+replicaCount: 1
+
+image:
+  registry: ghcr.io
+  repository: tunnexio/tunnex-operator
+  # Empty means the chart appVersion. Prefer digest for immutable production installs.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+controlPlane:
+  url: ""
+  organizationID: ""
+
+machineToken:
+  # Create this Secret out-of-band. The chart never accepts a raw token value.
+  existingSecret: ""
+  key: token
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: true
+
+rolloutRevision: ""
+podAnnotations: {}
+podLabels: {}
+imagePullSecrets: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
