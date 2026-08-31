@@ -452,7 +452,7 @@ func (m *Manager) ReadK8sDNATReceiptDigests(ctx context.Context) ([]string, erro
 func (m *Manager) EmergencyWithdrawK8s(ctx context.Context, candidates []string) error {
 	m.SetPolicy(nil)
 	var errs []error
-	if err := m.ReconcileDNSVIPsWithCandidates(ctx, candidates); err != nil {
+	if err := m.ReconcileDNSVIPsWithCandidates(ctx, candidates); err != nil && !m.interfaceAlreadyAbsent(err) {
 		errs = append(errs, err)
 	}
 	observed, err := m.ReadK8sDNATReceiptDigests(ctx)
@@ -468,6 +468,17 @@ func (m *Manager) EmergencyWithdrawK8s(ctx context.Context, candidates []string)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// interfaceAlreadyAbsent is a successful cold-start withdrawal: no address can
+// remain on a kernel interface that does not exist. Emergency cleanup continues
+// with the independent nft readback/sweep, so this never turns a present
+// interface or retained DNAT state into a false success.
+func (m *Manager) interfaceAlreadyAbsent(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, strings.ToLower(m.wgIface)) &&
+		strings.Contains(message, "device") &&
+		(strings.Contains(message, "does not exist") || strings.Contains(message, "cannot find device"))
 }
 
 // EndpointsUnavailable reports the k8s_endpoints_unavailable health kind (this gateway fronts exposed

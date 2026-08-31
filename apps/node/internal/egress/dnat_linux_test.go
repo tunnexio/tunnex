@@ -46,6 +46,22 @@ func TestReconcileDNSVIPsWithCandidatesRejectsSuccessfulCommandWithoutExactKerne
 	}
 }
 
+func TestEmergencyWithdrawK8sTreatsAbsentWGInterfaceAsAlreadyWithdrawn(t *testing.T) {
+	m := New("wg0")
+	m.runIPOutput = func(context.Context, ...string) (string, error) {
+		return "", errors.New(`ip -o -4 addr show dev wg0: exit status 1: Device "wg0" does not exist`)
+	}
+	m.nftRun = func(_ context.Context, args ...string) (string, error) {
+		if strings.Join(args, " ") != "list table ip tunnex" {
+			t.Fatalf("unexpected nft operation: %v", args)
+		}
+		return "table ip tunnex {}", nil
+	}
+	if err := m.EmergencyWithdrawK8s(t.Context(), nil); err != nil {
+		t.Fatalf("absent WireGuard interface is already withdrawn: %v", err)
+	}
+}
+
 func (f *fakeSource) Targets(ns, svc, _ string, _ int) ([]k8sTarget, bool) {
 	e, found := f.m[ns+"/"+svc]
 	if !found {
