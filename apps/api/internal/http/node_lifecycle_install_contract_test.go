@@ -241,7 +241,7 @@ func lifecycleInstallRouteTestPool(t *testing.T) (*pgxpool.Pool, context.Context
 	})
 	fresh := *base
 	fresh.Path = "/" + databaseName
-	if err := db.MigrateTo(fresh.String(), 131); err != nil {
+	if err := db.MigrateTo(fresh.String(), 132); err != nil {
 		t.Fatalf("migrate disposable D13k route database: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, fresh.String())
@@ -254,8 +254,8 @@ func lifecycleInstallRouteTestPool(t *testing.T) (*pgxpool.Pool, context.Context
 	if err := pool.QueryRow(ctx, `SELECT version, dirty FROM schema_migrations`).Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 131 || dirty {
-		t.Fatalf("disposable D13k route migration state version=%d dirty=%t, want 131/false", version, dirty)
+	if version != 132 || dirty {
+		t.Fatalf("disposable D13k route migration state version=%d dirty=%t, want 132/false", version, dirty)
 	}
 	return pool, ctx
 }

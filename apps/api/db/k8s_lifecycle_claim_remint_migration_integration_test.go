@@ -17,7 +17,7 @@ import (
 )
 
 // These are the exact SQL result shapes compiled into the N-1 control plane.
-// Running them after 0130 proves the rolling bridge instead of merely testing a
+// Running them after 0131 proves the rolling bridge instead of merely testing a
 // lifecycle-aware writer that already knows about the new columns.
 const nMinusOneConsumeJoinToken = `
 UPDATE node_join_tokens
@@ -41,7 +41,7 @@ RETURNING id, org_id, name, status, cert_serial, agent_version, enrolled_at,
 func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 	adminURL := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if adminURL == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0130 PostgreSQL mixed-version proof")
+		t.Skip("set TUNNEX_TEST_DATABASE_URL for 0131 PostgreSQL mixed-version proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -66,8 +66,8 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 	testURL.Path = "/" + databaseName
 	dsn := testURL.String()
 
-	if err := db.MigrateTo(dsn, 129); err != nil {
-		t.Fatalf("migrate prerequisite chain through 0129: %v", err)
+	if err := db.MigrateTo(dsn, 130); err != nil {
+		t.Fatalf("migrate prerequisite chain through 0130: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -85,12 +85,12 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 			INSERT INTO node_join_tokens
 				(id,org_id,node_name,token_hash,expires_at,issued_by,enrols_kind)
 			VALUES($1,$2,'gateway-up-lock',$3,now()+interval '1 hour',NULL,'gateway')`, tokenID, orgID, tokenHash); err != nil {
-			t.Fatalf("seed 0129 join token: %v", err)
+			t.Fatalf("seed 0130 join token: %v", err)
 		}
 		consumeNMinusOneLifecycleToken(t, ctx, tx, tokenHash)
 
 		migrationDone := make(chan error, 1)
-		go func() { migrationDone <- db.MigrateTo(dsn, 130) }()
+		go func() { migrationDone <- db.MigrateTo(dsn, 131) }()
 		deadline := time.Now().Add(5 * time.Second)
 		for {
 			var waitType string
@@ -106,10 +106,10 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 				break
 			}
 			if queryErr != nil && !errors.Is(queryErr, pgx.ErrNoRows) {
-				t.Fatalf("observe blocked 0130 up: %v", queryErr)
+				t.Fatalf("observe blocked 0131 up: %v", queryErr)
 			}
 			if time.Now().After(deadline) {
-				t.Fatal("0130 up did not wait behind the in-flight token consumption")
+				t.Fatal("0131 up did not wait behind the in-flight token consumption")
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -122,18 +122,18 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 		select {
 		case migrationErr := <-migrationDone:
 			if migrationErr != nil {
-				t.Fatalf("0130 up after N-1 enrollment: %v", migrationErr)
+				t.Fatalf("0131 up after N-1 enrollment: %v", migrationErr)
 			}
 		case <-time.After(10 * time.Second):
-			t.Fatal("0130 up did not finish after the N-1 enrollment committed")
+			t.Fatal("0131 up did not finish after the N-1 enrollment committed")
 		}
 
 		var nodeClaim *uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT lifecycle_claim FROM nodes WHERE cert_serial=$1`, certSerial).Scan(&nodeClaim); err != nil {
-			t.Fatalf("read pre-0130 enrolled node: %v", err)
+			t.Fatalf("read pre-0131 enrolled node: %v", err)
 		}
 		if nodeClaim != nil {
-			t.Fatalf("pre-0130 legacy enrollment unexpectedly gained claim %s", *nodeClaim)
+			t.Fatalf("pre-0131 legacy enrollment unexpectedly gained claim %s", *nodeClaim)
 		}
 		if _, err := pool.Exec(ctx, `DELETE FROM nodes WHERE cert_serial=$1`, certSerial); err != nil {
 			t.Fatalf("clean up-lock node: %v", err)
@@ -145,14 +145,14 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 			t.Fatalf("clean up-lock organization: %v", err)
 		}
 	})
-	if err := db.MigrateTo(dsn, 129); err != nil {
-		t.Fatalf("empty 0130 down: %v", err)
-	}
 	if err := db.MigrateTo(dsn, 130); err != nil {
-		t.Fatalf("0130 re-up: %v", err)
+		t.Fatalf("empty 0131 down: %v", err)
 	}
-	if version, dirty, ok, err := db.Version(dsn); err != nil || !ok || dirty || version != 130 {
-		t.Fatalf("0130 version=%d dirty=%v ok=%v err=%v", version, dirty, ok, err)
+	if err := db.MigrateTo(dsn, 131); err != nil {
+		t.Fatalf("0131 re-up: %v", err)
+	}
+	if version, dirty, ok, err := db.Version(dsn); err != nil || !ok || dirty || version != 131 {
+		t.Fatalf("0131 version=%d dirty=%v ok=%v err=%v", version, dirty, ok, err)
 	}
 
 	t.Run("N-1 inherits exact claim and clears sealed response", func(t *testing.T) {
@@ -374,7 +374,7 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 			t.Fatalf("after lifecycle row deletion live_claims=%d usage=%d; want 0/1", liveClaims, usage)
 		}
 
-		downSQL, err := os.ReadFile("migrations/0130_k8s_lifecycle_claim_remint.down.sql")
+		downSQL, err := os.ReadFile("migrations/0131_k8s_lifecycle_claim_remint.down.sql")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -384,7 +384,7 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 		}
 		defer downConn.Release()
 		if _, downErr := downConn.Conn().PgConn().Exec(ctx, string(downSQL)).ReadAll(); downErr == nil || !strings.Contains(downErr.Error(), "database lifecycle is forward-only") {
-			t.Fatalf("0130 down after lifecycle row deletion = %v", downErr)
+			t.Fatalf("0131 down after lifecycle row deletion = %v", downErr)
 		}
 		if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_lifecycle_claim_usage`).Scan(&usage); err != nil || usage != 1 {
 			t.Fatalf("refused down lost durable lifecycle usage: count=%d err=%v", usage, err)
@@ -396,7 +396,7 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 		defer tx.Rollback(ctx) //nolint:errcheck
 		orgID, tokenID, claim, _ := seedLifecycleMigrationToken(t, ctx, tx, "gateway-concurrent-down")
 
-		downSQL, err := os.ReadFile("migrations/0130_k8s_lifecycle_claim_remint.down.sql")
+		downSQL, err := os.ReadFile("migrations/0131_k8s_lifecycle_claim_remint.down.sql")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -405,7 +405,7 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer downConn.Release()
-		const applicationName = "tnx_0130_down_lock_test"
+		const applicationName = "tnx_0131_down_lock_test"
 		if _, err := downConn.Exec(ctx, "SET application_name = '"+applicationName+"'"); err != nil {
 			t.Fatal(err)
 		}
@@ -429,7 +429,7 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 				t.Fatalf("observe blocked down migration: %v", queryErr)
 			}
 			if time.Now().After(deadline) {
-				t.Fatal("0130 down did not block behind the in-flight lifecycle writer")
+				t.Fatal("0131 down did not block behind the in-flight lifecycle writer")
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -440,10 +440,10 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 		select {
 		case downErr := <-downDone:
 			if downErr == nil || !strings.Contains(downErr.Error(), "database lifecycle is forward-only") {
-				t.Fatalf("concurrent 0130 down error = %v", downErr)
+				t.Fatalf("concurrent 0131 down error = %v", downErr)
 			}
 		case <-time.After(5 * time.Second):
-			t.Fatal("0130 down did not recheck the guard after the writer committed")
+			t.Fatal("0131 down did not recheck the guard after the writer committed")
 		}
 
 		var storedClaim uuid.UUID
@@ -474,12 +474,12 @@ func TestK8sLifecycleClaimRemintMigrationPostgres(t *testing.T) {
 			t.Fatalf("commit populated lifecycle state: %v", err)
 		}
 
-		err := db.MigrateTo(dsn, 129)
+		err := db.MigrateTo(dsn, 130)
 		if err == nil || !strings.Contains(err.Error(), "database lifecycle is forward-only") {
-			t.Fatalf("populated 0130 down error = %v", err)
+			t.Fatalf("populated 0131 down error = %v", err)
 		}
-		if version, dirty, ok, err := db.Version(dsn); err != nil || !ok || !dirty || version != 129 {
-			t.Fatalf("refused 0130 down version=%d dirty=%v ok=%v err=%v; want 129/true/true", version, dirty, ok, err)
+		if version, dirty, ok, err := db.Version(dsn); err != nil || !ok || !dirty || version != 130 {
+			t.Fatalf("refused 0131 down version=%d dirty=%v ok=%v err=%v; want 130/true/true", version, dirty, ok, err)
 		}
 		var tokenClaim, nodeClaim, consumedNode uuid.UUID
 		if err := pool.QueryRow(ctx, `SELECT lifecycle_claim,consumed_node_id FROM node_join_tokens WHERE id=$1`, tokenID).Scan(&tokenClaim, &consumedNode); err != nil {

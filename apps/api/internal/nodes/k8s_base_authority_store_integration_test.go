@@ -21,8 +21,8 @@ func TestKubernetesOwnershipAuthorityMaintenanceAndAckLockOrder(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	dsn := newOwnershipDeliveryIntegrationDatabase(t, ctx, admin)
-	if err := db.MigrateTo(dsn, 129); err != nil {
-		t.Fatalf("migrate through 0129: %v", err)
+	if err := db.MigrateTo(dsn, 130); err != nil {
+		t.Fatalf("migrate through 0130: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -136,8 +136,8 @@ func TestPostgresKubernetesOwnershipBaseAuthorityStore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dsn := newOwnershipDeliveryIntegrationDatabase(t, ctx, admin)
-	if err := db.MigrateTo(dsn, 129); err != nil {
-		t.Fatalf("migrate through 0129: %v", err)
+	if err := db.MigrateTo(dsn, 130); err != nil {
+		t.Fatalf("migrate through 0130: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {

@@ -7,11 +7,11 @@ import (
 )
 
 func TestK8sLifecycleInstallOperationMigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0131_k8s_lifecycle_install_operations.up.sql")
+	up, err := os.ReadFile("migrations/0132_k8s_lifecycle_install_operations.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0131_k8s_lifecycle_install_operations.down.sql")
+	down, err := os.ReadFile("migrations/0132_k8s_lifecycle_install_operations.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestK8sLifecycleInstallOperationMigrationContract(t *testing.T) {
 		"SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp",
 	} {
 		if !strings.Contains(upSQL, want) {
-			t.Fatalf("0131 up missing %q", want)
+			t.Fatalf("0132 up missing %q", want)
 		}
 	}
 	querySQL := string(queries)
@@ -59,7 +59,7 @@ func TestK8sLifecycleInstallOperationMigrationContract(t *testing.T) {
 	guardName := "node_join_tokens_aa_lifecycle_install_consume_guard_before_update"
 	captureName := "node_join_tokens_lifecycle_capture_before_update"
 	if !(guardName < captureName) || !strings.Contains(upSQL, "CREATE TRIGGER "+guardName) {
-		t.Fatal("0131 consumption guard must sort before the 0130 authorization-capture trigger")
+		t.Fatal("0132 consumption guard must sort before the 0131 authorization-capture trigger")
 	}
 	downSQL := string(down)
 	for _, want := range []string{
@@ -67,13 +67,13 @@ func TestK8sLifecycleInstallOperationMigrationContract(t *testing.T) {
 		"LOCK TABLE node_lifecycle_install_operations IN ACCESS EXCLUSIVE MODE",
 		"LOCK TABLE k8s_lifecycle_install_operation_usage IN ACCESS EXCLUSIVE MODE",
 		"database lifecycle is forward-only",
-		"restore a verified pre-0131 backup",
+		"restore a verified pre-0132 backup",
 		"DROP FUNCTION IF EXISTS node_lifecycle_guard_token_abort()",
 		"DROP FUNCTION IF EXISTS node_lifecycle_guard_token_remint()",
 		"DROP FUNCTION IF EXISTS node_lifecycle_guard_token_consumption()",
 	} {
 		if !strings.Contains(downSQL, want) {
-			t.Fatalf("0131 down missing %q", want)
+			t.Fatalf("0132 down missing %q", want)
 		}
 	}
 }

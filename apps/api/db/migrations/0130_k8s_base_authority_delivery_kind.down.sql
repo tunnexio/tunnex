@@ -6,7 +6,7 @@ BEGIN
         SELECT 1 FROM k8s_base_authority_deliveries
         WHERE authority_kind = 'ordinary_base'
     ) THEN
-        RAISE EXCEPTION 'cannot roll back 0129: ordinary-base authority deliveries exist';
+        RAISE EXCEPTION 'cannot roll back 0130: ordinary-base authority deliveries exist';
     END IF;
 END $$;
 

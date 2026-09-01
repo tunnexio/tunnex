@@ -7,7 +7,7 @@ import (
 )
 
 func TestK8sLifecycleClaimGenerationZeroTombstoneContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0130_k8s_lifecycle_claim_remint.up.sql")
+	up, err := os.ReadFile("migrations/0131_k8s_lifecycle_claim_remint.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestK8sLifecycleClaimGenerationZeroTombstoneContract(t *testing.T) {
 		"btrim(node_name) <> ''",
 	} {
 		if !strings.Contains(string(up), want) {
-			t.Fatalf("0130 generation-zero shape missing %q", want)
+			t.Fatalf("0131 generation-zero shape missing %q", want)
 		}
 	}
 	for _, want := range []string{

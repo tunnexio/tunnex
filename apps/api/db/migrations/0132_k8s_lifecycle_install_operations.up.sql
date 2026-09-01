@@ -67,7 +67,7 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON node_lifecycle_install_operations
 
 REVOKE ALL ON node_lifecycle_install_operations FROM PUBLIC;
 
--- Like migration 0130, operation use makes rollback to an unaware application
+-- Like migration 0131, operation use makes rollback to an unaware application
 -- unsafe even if the claim is later cascade-deleted. Persist that fact.
 CREATE TABLE k8s_lifecycle_install_operation_usage (
     singleton          boolean PRIMARY KEY DEFAULT true CHECK (singleton),
@@ -163,7 +163,7 @@ FOR EACH ROW EXECUTE FUNCTION node_lifecycle_guard_token_remint();
 -- Enrollment is itself part of the install authority. A stale gateway pod must
 -- not consume the token after holder release, abort request, or hard deadline.
 -- PostgreSQL runs same-kind triggers in name order: the `aa_` name is
--- intentionally before 0130's `...lifecycle_capture...` trigger so a refused
+-- intentionally before 0131's `...lifecycle_capture...` trigger so a refused
 -- UPDATE cannot create a transaction-scoped enrollment authorization.
 CREATE FUNCTION node_lifecycle_guard_token_consumption() RETURNS trigger AS $$
 DECLARE

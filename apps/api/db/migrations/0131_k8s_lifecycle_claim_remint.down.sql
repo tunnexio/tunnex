@@ -11,7 +11,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM k8s_lifecycle_claim_usage)
        OR EXISTS (SELECT 1 FROM node_join_tokens WHERE lifecycle_claim IS NOT NULL)
        OR EXISTS (SELECT 1 FROM nodes WHERE lifecycle_claim IS NOT NULL) THEN
-        RAISE EXCEPTION 'cannot roll back 0130 after Kubernetes lifecycle claim data exists: this database lifecycle is forward-only; restore a verified pre-0130 backup to run an N-1 control plane';
+        RAISE EXCEPTION 'cannot roll back 0131 after Kubernetes lifecycle claim data exists: this database lifecycle is forward-only; restore a verified pre-0131 backup to run an N-1 control plane';
     END IF;
 END $$;
 

@@ -7,11 +7,11 @@ import (
 )
 
 func TestK8sLifecycleClaimRemintMigrationContract(t *testing.T) {
-	up, err := os.ReadFile("migrations/0130_k8s_lifecycle_claim_remint.up.sql")
+	up, err := os.ReadFile("migrations/0131_k8s_lifecycle_claim_remint.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	down, err := os.ReadFile("migrations/0130_k8s_lifecycle_claim_remint.down.sql")
+	down, err := os.ReadFile("migrations/0131_k8s_lifecycle_claim_remint.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestK8sLifecycleClaimRemintMigrationContract(t *testing.T) {
 		"SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp",
 	} {
 		if !strings.Contains(string(up), want) {
-			t.Fatalf("0130 up missing %q", want)
+			t.Fatalf("0131 up missing %q", want)
 		}
 	}
 	upSQL := string(up)
@@ -47,7 +47,7 @@ func TestK8sLifecycleClaimRemintMigrationContract(t *testing.T) {
 	upNodeLock := strings.Index(upSQL, "LOCK TABLE nodes IN ACCESS EXCLUSIVE MODE")
 	firstAlter := strings.Index(upSQL, "ALTER TABLE nodes")
 	if upTokenLock < 0 || upNodeLock <= upTokenLock || firstAlter <= upNodeLock {
-		t.Fatal("0130 up must lock token then node writers before changing either table")
+		t.Fatal("0131 up must lock token then node writers before changing either table")
 	}
 	for _, want := range []string{
 		"LOCK TABLE node_join_tokens IN ACCESS EXCLUSIVE MODE",
@@ -57,7 +57,7 @@ func TestK8sLifecycleClaimRemintMigrationContract(t *testing.T) {
 		"EXISTS (SELECT 1 FROM node_join_tokens WHERE lifecycle_claim IS NOT NULL)",
 		"OR EXISTS (SELECT 1 FROM nodes WHERE lifecycle_claim IS NOT NULL)",
 		"database lifecycle is forward-only",
-		"restore a verified pre-0130 backup",
+		"restore a verified pre-0131 backup",
 		"DROP TRIGGER IF EXISTS node_lifecycle_consumption_must_bind",
 		"DROP FUNCTION IF EXISTS node_lifecycle_capture_consumption()",
 		"DROP TABLE IF EXISTS node_lifecycle_enrollment_authorizations",
@@ -66,7 +66,7 @@ func TestK8sLifecycleClaimRemintMigrationContract(t *testing.T) {
 		"DROP COLUMN IF EXISTS lifecycle_claim",
 	} {
 		if !strings.Contains(string(down), want) {
-			t.Fatalf("0130 down missing populated-state refusal %q", want)
+			t.Fatalf("0131 down missing populated-state refusal %q", want)
 		}
 	}
 	downSQL := string(down)
@@ -75,6 +75,6 @@ func TestK8sLifecycleClaimRemintMigrationContract(t *testing.T) {
 	usageLock := strings.Index(downSQL, "LOCK TABLE k8s_lifecycle_claim_usage IN ACCESS EXCLUSIVE MODE")
 	guard := strings.Index(downSQL, "EXISTS (SELECT 1 FROM node_join_tokens WHERE lifecycle_claim IS NOT NULL)")
 	if tokenLock < 0 || nodeLock <= tokenLock || usageLock <= nodeLock || guard <= usageLock {
-		t.Fatal("0130 down must lock token, node, then usage-sentinel writers before checking the forward-only data guard")
+		t.Fatal("0131 down must lock token, node, then usage-sentinel writers before checking the forward-only data guard")
 	}
 }

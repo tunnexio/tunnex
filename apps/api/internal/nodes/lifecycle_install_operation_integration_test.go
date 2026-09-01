@@ -116,7 +116,7 @@ func lifecycleInstallTestPool(t *testing.T) (*pgxpool.Pool, context.Context) {
 	})
 	testURL := *base
 	testURL.Path = "/" + databaseName
-	if err := db.MigrateTo(testURL.String(), 131); err != nil {
+	if err := db.MigrateTo(testURL.String(), 132); err != nil {
 		t.Fatalf("migrate disposable D13h database: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -129,8 +129,8 @@ func lifecycleInstallTestPool(t *testing.T) (*pgxpool.Pool, context.Context) {
 	if err := pool.QueryRow(ctx, `SELECT version, dirty FROM schema_migrations`).Scan(&version, &dirty); err != nil {
 		t.Fatalf("read disposable D13h migration state: %v", err)
 	}
-	if version != 131 || dirty {
-		t.Fatalf("disposable D13h migration state version=%d dirty=%t, want 131/false", version, dirty)
+	if version != 132 || dirty {
+		t.Fatalf("disposable D13h migration state version=%d dirty=%t, want 132/false", version, dirty)
 	}
 	return pool, ctx
 }

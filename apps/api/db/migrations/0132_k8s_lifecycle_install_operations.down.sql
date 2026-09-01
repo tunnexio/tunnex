@@ -1,5 +1,5 @@
 -- A database that has exercised the install-operation protocol cannot safely
--- run an N-1 control plane. Restore a verified pre-0131 backup instead.
+-- run an N-1 control plane. Restore a verified pre-0132 backup instead.
 LOCK TABLE node_join_tokens IN ACCESS EXCLUSIVE MODE;
 LOCK TABLE node_lifecycle_install_operations IN ACCESS EXCLUSIVE MODE;
 LOCK TABLE k8s_lifecycle_install_operation_usage IN ACCESS EXCLUSIVE MODE;
@@ -8,7 +8,7 @@ DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM k8s_lifecycle_install_operation_usage)
        OR EXISTS (SELECT 1 FROM node_lifecycle_install_operations) THEN
-        RAISE EXCEPTION 'cannot roll back 0131 after Kubernetes lifecycle install-operation data exists: this database lifecycle is forward-only; restore a verified pre-0131 backup to run an N-1 control plane';
+        RAISE EXCEPTION 'cannot roll back 0132 after Kubernetes lifecycle install-operation data exists: this database lifecycle is forward-only; restore a verified pre-0132 backup to run an N-1 control plane';
     END IF;
 END $$;
 
