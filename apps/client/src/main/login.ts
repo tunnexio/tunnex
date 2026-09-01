@@ -2,9 +2,18 @@ import { shell } from "electron";
 import { generatePkce, randomState, startLoopback } from "./loopback";
 import { consentUrl, exchangeCode, Poster } from "./exchange";
 import { CredentialStore } from "./credential";
+import { controlPlaneRequest } from "./controlplanerequest";
 
 const post: Poster = (url, body) =>
-  fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  controlPlaneRequest(
+    url,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+    async (response) => new Response(await response.arrayBuffer(), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    }),
+  );
 
 // runLogin drives the desktop reuse of the S5.1 flow: PKCE + state, a single-shot
 // loopback listener, the SYSTEM browser opened to /cli-auth (the human
@@ -37,14 +46,21 @@ export async function runLogout(store: CredentialStore): Promise<void> {
   const cred = store.load();
   if (cred) {
     try {
-      const list = await fetch(`${cred.server}/api/v1/auth/cli/credentials`, { headers: { Authorization: `Bearer ${cred.token}` } });
-      if (list.ok) {
-        const rows: Array<{ id: string; fingerprint: string }> = await list.json();
-        const mine = rows.find((r) => r.fingerprint === cred.fingerprint);
-        if (mine) {
-          await fetch(`${cred.server}/api/v1/auth/cli/credentials/${mine.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${cred.token}` } });
-        }
-      }
+      await controlPlaneRequest(
+        `${cred.server}/api/v1/auth/cli/credentials`,
+        { headers: { Authorization: `Bearer ${cred.token}` } },
+        async (list) => {
+          if (!list.ok) return;
+          const rows: Array<{ id: string; fingerprint: string }> = await list.json();
+          const mine = rows.find((row) => row.fingerprint === cred.fingerprint);
+          if (!mine) return;
+          await controlPlaneRequest(
+            `${cred.server}/api/v1/auth/cli/credentials/${encodeURIComponent(mine.id)}`,
+            { method: "DELETE", headers: { Authorization: `Bearer ${cred.token}` } },
+            async () => undefined,
+          );
+        },
+      );
     } catch {
       /* server unreachable — still clear locally */
     }

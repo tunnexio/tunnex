@@ -1,7 +1,65 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { CLIENT_ENTRY, postServerUrlAction } from "../src/main/entry";
+import { startSingleInstance } from "../src/main/singleinstance";
+
+test("single-instance loser exits before primary initialization has any effect", () => {
+  const effects = { stores: 0, ipc: 0, windows: 0 };
+  let listeners = 0;
+  let quits = 0;
+  const won = startSingleInstance({
+    requestSingleInstanceLock: () => false,
+    quit: () => { quits += 1; },
+    on: () => { listeners += 1; },
+  }, () => {
+    effects.stores += 1;
+    effects.ipc += 1;
+    effects.windows += 1;
+  }, () => { effects.windows += 1; });
+  assert.equal(won, false);
+  assert.deepEqual(effects, { stores: 0, ipc: 0, windows: 0 });
+  assert.deepEqual({ listeners, quits }, { listeners: 0, quits: 1 });
+});
+
+test("single-instance primary initializes once and focuses on a second launch", () => {
+  let secondInstance: (() => void) | null = null;
+  let initialized = 0;
+  let focused = 0;
+  const won = startSingleInstance({
+    requestSingleInstanceLock: () => true,
+    quit: () => { throw new Error("primary must not quit"); },
+    on: (_event, listener) => { secondInstance = listener; },
+  }, () => { initialized += 1; }, () => { focused += 1; });
+  assert.equal(won, true);
+  assert.equal(initialized, 1);
+  assert.ok(secondInstance);
+  (secondInstance as () => void)();
+  assert.equal(focused, 1);
+});
+
+test("desktop main puts readiness, durable stores, IPC, and windows behind the singleton gate", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/main/index.ts"), "utf8");
+  const initializer = source.indexOf("function initializePrimary(): void {");
+  const gate = source.lastIndexOf("startSingleInstance(app, initializePrimary, focusPrimaryWindow);");
+  assert.ok(initializer > 0 && gate > initializer);
+  const beforeInitializer = source.slice(0, initializer);
+  const primaryBody = source.slice(initializer, gate);
+  for (const effect of [
+    "app.whenReady()",
+    "protocol.registerSchemesAsPrivileged(",
+    "buildCredentialStore(",
+    "buildTunnelConfigStore(",
+    "buildEnrollmentAnchorStore(",
+    "registerIpc(",
+  ]) {
+    assert.equal(beforeInitializer.includes(effect), false, `${effect} escaped the singleton initializer`);
+    assert.equal(primaryBody.includes(effect), true, `${effect} is no longer owned by primary initialization`);
+  }
+  assert.match(primaryBody, /createWindow\(config\)/);
+});
 
 // ⛔ THIS FILE EXISTS BECAUSE A SOURCE CENSUS FOUND A BUG A SOURCE CENSUS HAD MISSED.
 //

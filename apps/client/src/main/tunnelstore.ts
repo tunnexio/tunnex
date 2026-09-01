@@ -1,5 +1,6 @@
 import { InsecureStorageError, type Persistence, type SafeStorageLike } from "./credential";
 import type { TunnelConfig } from "./helperclient";
+import { isCanonicalUuid } from "./uuid";
 
 // A device's config is ORIGIN-KEYED (like the bearer) and NEVER used cross-origin:
 // a stored config belongs to exactly the server it was minted against. The map is
@@ -9,6 +10,11 @@ export interface StoredTunnelConfig {
   origin: string; // the server origin this config/device belongs to
   deviceId: string; // for best-effort revoke (against THIS origin only)
   orgId: string; // the device's OWN org — the monitors query it directly (S7.3 finding #4)
+  // D14: the authenticated human who owns this managed device. Optional only so
+  // encrypted records written by older clients remain readable long enough for
+  // the live owner-binding migration. Every newly minted managed record sets it;
+  // imported profiles intentionally do not have a control-plane owner.
+  ownerUserId?: string;
   config: TunnelConfig;
   // pending (S7.3) = the device is AWAITING admin approval: the config is valid but the
   // gateway won't serve the peer yet, so resolveTunnelConfig refuses to arm the helper and
@@ -73,6 +79,54 @@ export function importedProfileId(origin: string): string | null {
 
 type ConfigMap = Record<string, StoredTunnelConfig>;
 
+export class TunnelConfigStoreCorruptError extends Error {
+  constructor() {
+    super("tunnel_config_store_corrupt");
+    this.name = "TunnelConfigStoreCorruptError";
+  }
+}
+
+function validStoredRecordEnvelope(key: string, value: unknown): value is StoredTunnelConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const imported = record.imported === true;
+  const validControlPlaneIdentities = imported
+    ? record.deviceId === ""
+      && (record.orgId === undefined || record.orgId === "")
+      && record.ownerUserId === undefined
+    : isCanonicalUuid(record.deviceId)
+      // Compatibility records written before org/owner binding remain readable
+      // only while those fields are absent/empty. Any present identity is UUID.
+      && (record.orgId === undefined || record.orgId === "" || isCanonicalUuid(record.orgId))
+      && (record.ownerUserId === undefined || isCanonicalUuid(record.ownerUserId));
+  return typeof record.origin === "string"
+    && record.origin === key
+    && validControlPlaneIdentities
+    && record.config !== null
+    && typeof record.config === "object"
+    && !Array.isArray(record.config)
+    && (record.pending === undefined || typeof record.pending === "boolean")
+    && (record.revoked === undefined || typeof record.revoked === "boolean")
+    && (record.imported === undefined || typeof record.imported === "boolean")
+    && (record.importedName === undefined || typeof record.importedName === "string");
+}
+
+function parseConfigMap(json: string): ConfigMap {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new TunnelConfigStoreCorruptError();
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new TunnelConfigStoreCorruptError();
+  }
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!validStoredRecordEnvelope(key, value)) throw new TunnelConfigStoreCorruptError();
+  }
+  return parsed as ConfigMap;
+}
+
 // TunnelConfigStore refuses-by-default when there is no keychain (same posture as
 // CredentialStore) — a plaintext WG private key on disk is exactly the mistake D2
 // called out about the browser flow.
@@ -88,24 +142,43 @@ export class TunnelConfigStore {
   }
 
   private readMap(): ConfigMap {
-    const raw = this.persist.read();
-    if (!raw) return {};
-    const json = this.safe.isEncryptionAvailable() ? this.safe.decryptString(raw) : raw.toString("utf8");
+    let raw: Buffer | null;
     try {
-      return JSON.parse(json) as ConfigMap;
+      raw = this.persist.read();
     } catch {
-      return {};
+      throw new TunnelConfigStoreCorruptError();
     }
+    if (!raw) return {};
+    let json: string;
+    try {
+      json = this.safe.isEncryptionAvailable() ? this.safe.decryptString(raw) : raw.toString("utf8");
+    } catch {
+      // Never expose ciphertext, decrypted bytes, or the storage provider's
+      // exception. Presence plus unreadability is corruption, not absence.
+      throw new TunnelConfigStoreCorruptError();
+    }
+    return parseConfigMap(json);
   }
 
   private writeMap(m: ConfigMap): void {
     const json = JSON.stringify(m);
-    if (this.safe.isEncryptionAvailable()) {
-      this.persist.write(this.safe.encryptString(json));
-      return;
+    let bytes: Buffer;
+    try {
+      if (this.safe.isEncryptionAvailable()) {
+        bytes = this.safe.encryptString(json);
+      } else {
+        if (!this.allowInsecure) throw new InsecureStorageError();
+        bytes = Buffer.from(json, "utf8");
+      }
+      this.persist.write(bytes);
+      // A managed private key becomes helper-authoritative only after an exact
+      // decrypted readback of the atomically published record. Storage
+      // ambiguity remains corruption, never permission to enroll again.
+      if (JSON.stringify(this.readMap()) !== json) throw new TunnelConfigStoreCorruptError();
+    } catch (error) {
+      if (error instanceof InsecureStorageError || error instanceof TunnelConfigStoreCorruptError) throw error;
+      throw new TunnelConfigStoreCorruptError();
     }
-    if (!this.allowInsecure) throw new InsecureStorageError();
-    this.persist.write(Buffer.from(json, "utf8"));
   }
 
   get(origin: string): StoredTunnelConfig | null {
@@ -113,6 +186,7 @@ export class TunnelConfigStore {
   }
 
   put(sc: StoredTunnelConfig): void {
+    if (!validStoredRecordEnvelope(sc.origin, sc)) throw new TunnelConfigStoreCorruptError();
     const m = this.readMap();
     m[sc.origin] = sc;
     this.writeMap(m);

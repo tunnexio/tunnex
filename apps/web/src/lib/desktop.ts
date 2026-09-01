@@ -35,11 +35,25 @@ export interface ImportedProfile {
   active: boolean;
 }
 
+/** A managed account choice reported by main. Never contains a bearer or tunnel config. */
+export interface ManagedOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  selected: boolean;
+}
+
+export interface ManagedOrganizationEnvelope {
+  organizations: ManagedOrganization[];
+  enrollmentLocked: boolean;
+  enrollmentRecoveryRequired?: boolean;
+}
+
 export interface TunnexBridge {
   auth: {
     login(): Promise<{ fingerprint: string; expiresAt: string }>;
     logout(): Promise<void>;
-    removeDevice(): Promise<void>;
+    removeDevice(): Promise<boolean>;
     status(): Promise<AuthStatus>;
   };
   // Troubleshooting. `openLogs` reveals the file in the OS file manager — the log is never read
@@ -66,6 +80,9 @@ export interface TunnexBridge {
     down(): Promise<void>;
     status(): Promise<TunnelStatus>;
     onStatusChanged(cb: (s: TunnelStatus) => void): () => void;
+    managedOrganizations(): Promise<ManagedOrganizationEnvelope>;
+    selectManagedOrganization(id: string): Promise<ManagedOrganizationEnvelope>;
+    onOrganizationSelectionRequired(cb: () => void): () => void;
     importConfig(): Promise<ImportedProfile | null>;
     importedInfo(): Promise<ImportedProfile | null>;
     importedProfiles(): Promise<ImportedProfile[]>;

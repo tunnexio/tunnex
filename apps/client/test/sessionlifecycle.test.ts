@@ -6,23 +6,27 @@ import { signOutPreservingDevice } from "../src/main/sessionlifecycle";
 test("normal sign-out ends the session and never needs a device revoke action", async () => {
   const events: string[] = [];
   await signOutPreservingDevice({
+    retireLifecycle: () => events.push("retire"),
     stopMonitors: () => events.push("stop"),
     clearSynthesizedState: () => events.push("clear-synth"),
     downTunnel: async () => { events.push("down"); },
     emitDisconnected: () => events.push("disconnected"),
     logoutSession: async () => { events.push("logout"); },
   });
-  assert.deepEqual(events, ["stop", "clear-synth", "down", "disconnected", "logout"]);
+  assert.deepEqual(events, ["down", "retire", "stop", "clear-synth", "disconnected", "logout"]);
 });
 
-test("normal sign-out still logs out when tunnel teardown fails", async () => {
+test("tunnel teardown refusal aborts sign-out before lifecycle, monitor, or credential effects", async () => {
   let loggedOut = false;
-  await signOutPreservingDevice({
-    stopMonitors: () => {},
-    clearSynthesizedState: () => {},
+  const events: string[] = [];
+  await assert.rejects(signOutPreservingDevice({
+    retireLifecycle: () => events.push("retire"),
+    stopMonitors: () => events.push("stop"),
+    clearSynthesizedState: () => events.push("clear-synth"),
     downTunnel: async () => { throw new Error("helper unavailable"); },
-    emitDisconnected: () => {},
+    emitDisconnected: () => events.push("disconnected"),
     logoutSession: async () => { loggedOut = true; },
-  });
-  assert.equal(loggedOut, true);
+  }), /helper unavailable/);
+  assert.equal(loggedOut, false);
+  assert.deepEqual(events, []);
 });

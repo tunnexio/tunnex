@@ -1,10 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { ClientApp } from "../src/client/ClientApp";
 
@@ -33,7 +35,7 @@ function fakeBridge(over: {
     auth: {
       login: vi.fn().mockResolvedValue({ fingerprint: "fp", expiresAt: "" }),
       logout: vi.fn().mockResolvedValue(undefined),
-      removeDevice: vi.fn().mockResolvedValue(undefined),
+      removeDevice: vi.fn().mockResolvedValue(true),
       status: vi.fn().mockResolvedValue({
         loggedIn: over.loggedIn ?? true,
         expired: over.expired ?? false,
@@ -66,6 +68,9 @@ function fakeBridge(over: {
       down: vi.fn().mockResolvedValue(undefined),
       status: vi.fn().mockResolvedValue({ state: "down" }),
       onStatusChanged: vi.fn().mockReturnValue(() => {}),
+      managedOrganizations: vi.fn().mockResolvedValue({ organizations: [], enrollmentLocked: false }),
+      selectManagedOrganization: vi.fn().mockResolvedValue({ organizations: [], enrollmentLocked: false }),
+      onOrganizationSelectionRequired: vi.fn().mockReturnValue(() => {}),
       importConfig: vi
         .fn()
         .mockResolvedValue({ id: "profile-a", name: "profile-a", address: "10.99.0.7/32", endpoint: "vpn.example.com:51820", fullTunnel: false, active: true }),
@@ -81,6 +86,25 @@ function fakeBridge(over: {
 async function openDrawerPage(name: "Home" | "Profiles" | "Settings" | "Logs" | "Help") {
   fireEvent.click(await screen.findByRole("button", { name: "Open navigation" }));
   fireEvent.click(await screen.findByRole("button", { name }));
+}
+
+function mutableTunnelStatus(
+  bridge: Bridge,
+  initial: "up" | "down",
+): { push(state: "up" | "down"): void } {
+  let state = initial;
+  let listener: Parameters<Bridge["tunnel"]["onStatusChanged"]>[0] = () => {};
+  bridge.tunnel.status = vi.fn(async () => ({ state }));
+  bridge.tunnel.onStatusChanged = vi.fn((next) => {
+    listener = next;
+    return () => {};
+  });
+  return {
+    push(next) {
+      state = next;
+      listener({ state: next });
+    },
+  };
 }
 
 beforeEach(() => {
@@ -124,7 +148,10 @@ describe("the client asks the SESSION, not only the tunnel", () => {
   });
 
   it("an EXPIRED session is the design's own state, not signed-out", async () => {
-    window.tunnex = fakeBridge({ loggedIn: true, expired: true });
+    // Main reports an expired credential as not logged in plus the more
+    // specific expired flag. Keep this fixture wire-accurate so the renderer
+    // cannot pass against an impossible status combination.
+    window.tunnex = fakeBridge({ loggedIn: false, expired: true });
     render(<ClientApp />);
     await waitFor(() =>
       expect(screen.getByRole("heading").textContent).toContain(
@@ -132,6 +159,37 @@ describe("the client asks the SESSION, not only the tunnel", () => {
       ),
     );
   });
+
+  it.each([
+    { loggedIn: false, expired: false, heading: "Not signed in" },
+    { loggedIn: false, expired: true, heading: "Session expired" },
+  ])(
+    "a failed login refreshes tunnel truth before restoring $heading auth truth",
+    async ({ loggedIn, expired, heading }) => {
+      const b = fakeBridge({ loggedIn, expired });
+      const transport = mutableTunnelStatus(b, "down");
+      b.auth.login = vi.fn(async () => {
+        // Main may truthfully publish Down before a later PKCE or credential
+        // replacement failure. The renderer must still apply auth truth last.
+        transport.push("down");
+        throw new Error("login_cancelled");
+      });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      window.tunnex = b;
+      render(<ClientApp />);
+
+      expect(await screen.findByRole("heading", { name: heading })).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole("button", { name: /sign in with your browser/i }),
+      );
+
+      expect((await screen.findByRole("alert")).textContent).toContain(
+        "That action did not complete. Try again or check Logs.",
+      );
+      expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    },
+  );
 
   it("⛔ a not_authenticated rejection becomes a STATE — the exact error that reached the log", async () => {
     // Reproduces the founder's terminal output:
@@ -162,8 +220,8 @@ describe("the client asks the SESSION, not only the tunnel", () => {
       ).toBe(false),
     );
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-    await waitFor(() =>
-      expect(screen.getByText(/That action did not complete. Try again or check Logs./)).toBeTruthy(),
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "That action did not complete. Try again or check Logs.",
     );
   });
 
@@ -180,10 +238,109 @@ describe("the client asks the SESSION, not only the tunnel", () => {
     fireEvent.click(out);
     await waitFor(() => expect(b.auth.logout).toHaveBeenCalled());
   });
+
+  it("keeps Connected and signed in when logout teardown is refused", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    mutableTunnelStatus(b, "up");
+    b.auth.logout = vi.fn().mockRejectedValue(new Error("helper_teardown_refused"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Connected" })).toBeTruthy(),
+    );
+    await openDrawerPage("Settings");
+    fireEvent.click(await screen.findByRole("button", { name: /sign out/i }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeTruthy();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Connected" })).toBeTruthy();
+  });
+
+  it("shows Disconnected but remains honestly signed in when credential clear fails after down", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    const transport = mutableTunnelStatus(b, "up");
+    b.auth.logout = vi.fn(async () => {
+      transport.push("down");
+      throw new Error("insecure_storage");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Connected" })).toBeTruthy(),
+    );
+    await openDrawerPage("Settings");
+    fireEvent.click(await screen.findByRole("button", { name: /sign out/i }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeTruthy();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Disconnected" })).toBeTruthy();
+  });
+
+  it.each([
+    "helper_asset_missing",
+    "create_device_failed: 500",
+    "tunnel_up_failed",
+  ])("keeps a failed reconnect Disconnected after %s", async (failure) => {
+    const b = fakeBridge({ loggedIn: true });
+    const transport = mutableTunnelStatus(b, "up");
+    b.tunnel.down = vi.fn(async () => {
+      transport.push("down");
+    });
+    b.tunnel.up = vi.fn(async () => {
+      transport.push("down");
+      throw new Error(failure);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Disconnected" })).toBeTruthy();
+  });
+
+  it("keeps Connected when plain Disconnect is refused", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    mutableTunnelStatus(b, "up");
+    b.tunnel.down = vi.fn().mockRejectedValue(new Error("helper_teardown_refused"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Connected" })).toBeTruthy();
+  });
 });
 
 describe("managed device lifecycle", () => {
-  it("removes a device only by the explicit confirmed action, never by sign-out", async () => {
+  it("reports a completed explicit removal as success and never signs out", async () => {
     const b = fakeBridge({ loggedIn: true });
     window.tunnex = b;
     vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -192,6 +349,319 @@ describe("managed device lifecycle", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Remove device" }));
     await waitFor(() => expect(b.auth.removeDevice).toHaveBeenCalledTimes(1));
     expect(b.auth.logout).not.toHaveBeenCalled();
+
+    await openDrawerPage("Profiles");
+    expect(
+      await screen.findByText(
+        "Device removed. Choose an organization for the next enrollment.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("surfaces explicit abandon and re-enroll for an unresolved recovery anchor", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi
+      .fn()
+      .mockResolvedValueOnce({
+        organizations: [
+          { id: "org-recovery", name: "Recovery org", slug: "recovery", selected: true },
+          { id: "org-other", name: "Other org", slug: "other", selected: false },
+        ],
+        enrollmentLocked: true,
+        enrollmentRecoveryRequired: true,
+      })
+      .mockResolvedValue({
+        organizations: [
+          { id: "org-recovery", name: "Recovery org", slug: "recovery", selected: false },
+          { id: "org-other", name: "Other org", slug: "other", selected: false },
+        ],
+        enrollmentLocked: false,
+        enrollmentRecoveryRequired: false,
+      });
+    window.tunnex = b;
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ClientApp />);
+    await openDrawerPage("Settings");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Abandon and re-enroll" }));
+    await waitFor(() => expect(b.auth.removeDevice).toHaveBeenCalledTimes(1));
+    expect(confirm).toHaveBeenCalledWith(
+      "Abandon this unfinished enrollment and enroll again? Any same-owner active or pending device will be revoked first.",
+    );
+
+    await openDrawerPage("Profiles");
+    expect(
+      await screen.findByText(
+        "Unfinished enrollment cleared. The next connection will create a new device key.",
+      ),
+    ).toBeTruthy();
+    expect(b.auth.logout).not.toHaveBeenCalled();
+  });
+
+  it("keeps the live state and never claims success when main reports no device", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.auth.removeDevice = vi.fn().mockResolvedValue(false);
+    b.tunnel.status = vi.fn().mockResolvedValue({ state: "up" });
+    window.tunnex = b;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading").textContent).toContain("Connected"),
+    );
+    await openDrawerPage("Settings");
+    fireEvent.click(await screen.findByRole("button", { name: "Remove device" }));
+
+    expect(
+      await screen.findByText(
+        "No enrolled managed device was found. Nothing was removed.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Device removed. Choose an organization for the next enrollment.",
+      ),
+    ).toBeNull();
+
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading").textContent).toContain("Connected");
+  });
+
+  it("keeps the live state and reports an error when device removal is refused", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.auth.removeDevice = vi.fn().mockRejectedValue(new Error("helper_teardown_refused"));
+    b.tunnel.status = vi.fn().mockResolvedValue({ state: "up" });
+    window.tunnex = b;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading").textContent).toContain("Connected"),
+    );
+    await openDrawerPage("Settings");
+    fireEvent.click(await screen.findByRole("button", { name: "Remove device" }));
+
+    expect(
+      await screen.findByText(
+        "Device removal did not finish. The saved enrollment was kept; try Remove device again or check Logs.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Device removed. Choose an organization for the next enrollment.",
+      ),
+    ).toBeNull();
+
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading").textContent).toContain("Connected");
+  });
+
+  it.each([
+    ["server revoke", "revoke_device_failed: 503"],
+    ["local clear", "insecure_storage"],
+  ])("keeps confirmed-down truth and retryable enrollment when %s fails", async (_stage, failure) => {
+    const b = fakeBridge({ loggedIn: true });
+    const transport = mutableTunnelStatus(b, "up");
+    b.auth.removeDevice = vi.fn(async () => {
+      transport.push("down");
+      throw new Error(failure);
+    });
+    window.tunnex = b;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Connected" })).toBeTruthy(),
+    );
+    await openDrawerPage("Settings");
+    fireEvent.click(await screen.findByRole("button", { name: "Remove device" }));
+
+    expect(
+      await screen.findByText(
+        "Device removal did not finish. The saved enrollment was kept; try Remove device again or check Logs.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Disconnect it/i)).toBeNull();
+    expect(
+      screen.queryByText(
+        "Device removed. Choose an organization for the next enrollment.",
+      ),
+    ).toBeNull();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Disconnected" })).toBeTruthy();
+  });
+});
+
+describe("managed organization selection", () => {
+  it("shows every organization when a multi-organization account has no selection", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [
+        { id: "org-old", name: "Older organization", slug: "older", selected: false },
+        { id: "org-clean", name: "Clean test org", slug: "clean-test", selected: false },
+      ],
+      enrollmentLocked: false,
+    });
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await openDrawerPage("Profiles");
+
+    expect(await screen.findByText("Older organization")).toBeTruthy();
+    expect(screen.getByText("Clean test org")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use Older organization" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use Clean test org" })).toBeTruthy();
+  });
+
+  it("selects an organization through main and renders the returned selection", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [
+        { id: "org-old", name: "Older organization", slug: "older", selected: false },
+        { id: "org-clean", name: "Clean test org", slug: "clean-test", selected: false },
+      ],
+      enrollmentLocked: false,
+    });
+    b.tunnel.selectManagedOrganization = vi.fn().mockResolvedValue({
+      organizations: [
+        { id: "org-old", name: "Older organization", slug: "older", selected: false },
+        { id: "org-clean", name: "Clean test org", slug: "clean-test", selected: true },
+      ],
+      enrollmentLocked: false,
+    });
+    window.tunnex = b;
+    render(<ClientApp />);
+    await openDrawerPage("Profiles");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Use Clean test org" }));
+
+    await waitFor(() =>
+      expect(b.tunnel.selectManagedOrganization).toHaveBeenCalledWith("org-clean"),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Use Clean test org" })).toBeNull(),
+    );
+  });
+
+  it("keeps an enrolled organization read-only until Remove device reloads the choices", async () => {
+    const enrolled = {
+      organizations: [
+        { id: "org-old", name: "Older organization", slug: "older", selected: true },
+        { id: "org-clean", name: "Clean test org", slug: "clean-test", selected: false },
+      ],
+      enrollmentLocked: true,
+    };
+    const unlocked = {
+      organizations: enrolled.organizations.map((organization) => ({
+        ...organization,
+        selected: false,
+      })),
+      enrollmentLocked: false,
+    };
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi
+      .fn()
+      .mockResolvedValueOnce(enrolled)
+      .mockResolvedValueOnce(unlocked);
+    window.tunnex = b;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ClientApp />);
+    await openDrawerPage("Profiles");
+
+    expect(await screen.findByText("Enrolled device")).toBeTruthy();
+    expect(screen.getByText("Remove device first")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use Clean test org" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove device" }));
+
+    await waitFor(() => expect(b.auth.removeDevice).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: "Use Clean test org" })).toBeTruthy();
+    expect(b.tunnel.managedOrganizations).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps selection locked even when the enrolled organization is absent from live memberships", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [
+        { id: "org-clean", name: "Clean test org", slug: "clean-test", selected: false },
+      ],
+      enrollmentLocked: true,
+    });
+    window.tunnex = b;
+    render(<ClientApp />);
+    await openDrawerPage("Profiles");
+
+    expect(await screen.findByRole("button", { name: "Remove device" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use Clean test org" })).toBeNull();
+    expect(screen.getByText("Remove device first")).toBeTruthy();
+    expect(screen.queryByText("Enrolled device")).toBeNull();
+    expect(b.tunnel.selectManagedOrganization).not.toHaveBeenCalled();
+  });
+
+  it("states that a sole organization is automatic without asking for a decision", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [
+        { id: "org-only", name: "Only org", slug: "only", selected: false },
+      ],
+      enrollmentLocked: false,
+    });
+    window.tunnex = b;
+    render(<ClientApp />);
+    await openDrawerPage("Profiles");
+
+    expect(await screen.findByText("Only organization")).toBeTruthy();
+    expect(screen.getByText(/No selection is needed/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use Only org" })).toBeNull();
+    expect(b.tunnel.selectManagedOrganization).not.toHaveBeenCalled();
+  });
+
+  it("opens Profiles with friendly copy when main refuses a missing selection", async () => {
+    const listeners: Array<() => void> = [];
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [
+        { id: "org-old", name: "Older organization", slug: "older", selected: false },
+        { id: "org-clean", name: "Clean test org", slug: "clean-test", selected: false },
+      ],
+      enrollmentLocked: false,
+    });
+    b.tunnel.onOrganizationSelectionRequired = vi.fn((listener) => {
+      listeners.push(listener);
+      return () => {};
+    });
+    window.tunnex = b;
+    render(<ClientApp />);
+    await waitFor(() =>
+      expect(b.tunnel.onOrganizationSelectionRequired).toHaveBeenCalledTimes(1),
+    );
+
+    act(() => listeners[0]?.());
+
+    expect(await screen.findByRole("heading", { name: "Organizations" })).toBeTruthy();
+    expect(screen.getByText(/will not guess/i)).toBeTruthy();
+  });
+
+  it("distinguishes no organizations from an organization load failure", async () => {
+    const empty = fakeBridge({ loggedIn: true });
+    window.tunnex = empty;
+    const first = render(<ClientApp />);
+    await openDrawerPage("Profiles");
+    expect(await screen.findByText(/No organizations are available/i)).toBeTruthy();
+    first.unmount();
+
+    const failed = fakeBridge({ loggedIn: true });
+    failed.tunnel.managedOrganizations = vi
+      .fn()
+      .mockRejectedValue(new Error("control plane unavailable"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = failed;
+    render(<ClientApp />);
+    await openDrawerPage("Profiles");
+    expect(await screen.findByText(/Organizations could not be loaded/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 });
 
@@ -306,6 +776,75 @@ describe("routing mode and the server, both reachable and both unambiguous", () 
         "https://b.example.com",
       ),
     );
+  });
+
+  it("reconciles server, profiles, tunnel, and auth after a failed server change", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    const oldProfiles = [
+      { id: "old", name: "Old gateway", address: "10.99.0.7/32", fullTunnel: false, active: true },
+    ];
+    const actualProfiles = [
+      { id: "actual", name: "Actual gateway", address: "10.99.1.7/32", fullTunnel: false, active: false },
+    ];
+    b.config.getServerUrl = vi
+      .fn()
+      .mockResolvedValueOnce("https://old.example.com")
+      .mockResolvedValue("https://actual.example.com");
+    b.auth.status = vi
+      .fn()
+      .mockResolvedValueOnce({
+        loggedIn: true,
+        expired: false,
+        fingerprint: "abcdef0123",
+        secureStorage: true,
+      })
+      .mockResolvedValue({
+        loggedIn: false,
+        expired: false,
+        secureStorage: true,
+      });
+    b.tunnel.importedProfiles = vi
+      .fn()
+      .mockResolvedValueOnce(oldProfiles)
+      .mockResolvedValue(actualProfiles);
+    const transport = mutableTunnelStatus(b, "up");
+    b.config.setServerUrl = vi.fn(async () => {
+      transport.push("down");
+      throw new Error("server_persist_failed");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    expect(await screen.findByRole("heading", { name: "Connected" })).toBeTruthy();
+    await waitFor(() => {
+      expect(b.config.getServerUrl).toHaveBeenCalledTimes(1);
+      expect(b.tunnel.importedProfiles).toHaveBeenCalledTimes(1);
+    });
+    await openDrawerPage("Settings");
+    expect(await screen.findByText("https://old.example.com")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /change server/i }));
+    fireEvent.change(screen.getByLabelText(/control-plane url/i), {
+      target: { value: "https://requested.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /switch server/i }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "That action did not complete. Try again or check Logs.",
+    );
+    expect(screen.getByText("https://actual.example.com")).toBeTruthy();
+    await waitFor(() => {
+      expect(b.config.getServerUrl).toHaveBeenCalledTimes(2);
+      expect(b.tunnel.importedProfiles).toHaveBeenCalledTimes(2);
+      expect(b.auth.status).toHaveBeenCalledTimes(2);
+    });
+
+    await openDrawerPage("Profiles");
+    expect(await screen.findByText("Actual gateway")).toBeTruthy();
+    expect(screen.queryByText("Old gateway")).toBeNull();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Not signed in" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
   });
 
   it("⛔ the sign-out cost is stated BEFORE the switch, not discovered after", async () => {
@@ -624,6 +1163,151 @@ describe("an imported .conf connects, and says what it gives up", () => {
     fireEvent.click(screen.getByRole("button", { name: /use this profile/i }));
     await waitFor(() => expect(b.tunnel.selectImportedProfile).toHaveBeenCalledWith("profile-b"));
     expect(screen.getAllByRole("button", { name: "Selected" }).length).toBe(1);
+  });
+
+  it("refreshes profiles after selection failure and clears the banner on a successful retry", async () => {
+    const profiles = [
+      { id: "profile-a", name: "Mumbai gateway", endpoint: "in1.example.com:51820", address: "10.99.0.7/32", fullTunnel: false, active: true },
+      { id: "profile-b", name: "London gateway", endpoint: "uk1.example.com:51820", address: "10.99.1.7/32", fullTunnel: true, active: false },
+    ];
+    const selectedProfiles = [
+      { ...profiles[0], active: false },
+      { ...profiles[1], active: true },
+    ];
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.importedProfiles = vi.fn().mockResolvedValue(profiles);
+    const transport = mutableTunnelStatus(b, "up");
+    let attempts = 0;
+    b.tunnel.selectImportedProfile = vi.fn(async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        transport.push("down");
+        throw new Error("profile_selection_persist_failed");
+      }
+      return selectedProfiles;
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await openDrawerPage("Profiles");
+    const london = (await screen.findByText("London gateway")).closest("li");
+    expect(london).not.toBeNull();
+    fireEvent.click(within(london as HTMLElement).getByRole("button", { name: "Use this profile" }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    await waitFor(() => expect(b.tunnel.importedProfiles).toHaveBeenCalledTimes(2));
+    const mumbai = screen.getByText("Mumbai gateway").closest("li");
+    expect(within(mumbai as HTMLElement).getByRole("button", { name: "Selected" })).toBeTruthy();
+
+    const retryLondon = screen.getByText("London gateway").closest("li");
+    fireEvent.click(within(retryLondon as HTMLElement).getByRole("button", { name: "Use this profile" }));
+    await waitFor(() => expect(b.tunnel.selectImportedProfile).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).toBeNull();
+    const selectedLondon = screen.getByText("London gateway").closest("li");
+    expect(within(selectedLondon as HTMLElement).getByRole("button", { name: "Selected" })).toBeTruthy();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Disconnected" })).toBeTruthy();
+  });
+
+  it("refreshes profiles and stays Disconnected when Use account persistence fails", async () => {
+    const profiles = [
+      { id: "profile-a", name: "Gateway A", address: "10.99.0.7/32", fullTunnel: false, active: true },
+    ];
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.importedProfiles = vi.fn().mockResolvedValue(profiles);
+    const transport = mutableTunnelStatus(b, "up");
+    b.tunnel.useManagedProfile = vi.fn(async () => {
+      transport.push("down");
+      throw new Error("profile_selection_persist_failed");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await openDrawerPage("Profiles");
+    fireEvent.click(await screen.findByRole("button", { name: "Use account" }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    await waitFor(() => expect(b.tunnel.importedProfiles).toHaveBeenCalledTimes(2));
+    const gateway = screen.getByText("Gateway A").closest("li");
+    expect(within(gateway as HTMLElement).getByRole("button", { name: "Selected" })).toBeTruthy();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Disconnected" })).toBeTruthy();
+  });
+
+  it("refreshes profiles after active deletion failure and clears the banner on a successful retry", async () => {
+    const profiles = [
+      { id: "profile-a", name: "Gateway A", address: "10.99.0.7/32", fullTunnel: false, active: true },
+    ];
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.importedProfiles = vi.fn().mockResolvedValue(profiles);
+    const transport = mutableTunnelStatus(b, "up");
+    let attempts = 0;
+    b.tunnel.forgetImported = vi.fn(async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        transport.push("down");
+        throw new Error("profile_delete_persist_failed");
+      }
+      return [];
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await openDrawerPage("Profiles");
+    const gateway = (await screen.findByText("Gateway A")).closest("li");
+    fireEvent.click(within(gateway as HTMLElement).getByRole("button", { name: "Remove" }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    await waitFor(() => expect(b.tunnel.importedProfiles).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Gateway A")).toBeTruthy();
+
+    const retryGateway = screen.getByText("Gateway A").closest("li");
+    fireEvent.click(within(retryGateway as HTMLElement).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(b.tunnel.forgetImported).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("Gateway A")).toBeNull();
+    expect(screen.getByText("No imported profiles yet.")).toBeTruthy();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Disconnected" })).toBeTruthy();
+  });
+
+  it("refreshes an inactive delete failure without changing the live connection", async () => {
+    const profiles = [
+      { id: "profile-a", name: "Gateway A", address: "10.99.0.7/32", fullTunnel: false, active: true },
+      { id: "profile-b", name: "Gateway B", address: "10.99.1.7/32", fullTunnel: false, active: false },
+    ];
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.importedProfiles = vi.fn().mockResolvedValue(profiles);
+    mutableTunnelStatus(b, "up");
+    b.tunnel.forgetImported = vi.fn().mockRejectedValue(new Error("profile_delete_persist_failed"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    window.tunnex = b;
+    render(<ClientApp />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Connected" })).toBeTruthy(),
+    );
+    await openDrawerPage("Profiles");
+    const inactive = (await screen.findByText("Gateway B")).closest("li");
+    fireEvent.click(within(inactive as HTMLElement).getByRole("button", { name: "Remove" }));
+
+    expect(
+      await screen.findByText("That action did not complete. Try again or check Logs."),
+    ).toBeTruthy();
+    await waitFor(() => expect(b.tunnel.importedProfiles).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Gateway A")).toBeTruthy();
+    expect(screen.getByText("Gateway B")).toBeTruthy();
+    await openDrawerPage("Home");
+    expect(screen.getByRole("heading", { name: "Connected" })).toBeTruthy();
   });
 });
 
