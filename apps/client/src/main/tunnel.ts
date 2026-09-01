@@ -36,7 +36,6 @@ const CLEAN_PREARM_UP_CODES = new Set([
   "bad_keepalive",
   "bad_control_plane_endpoint",
   "endpoint_unresolved",
-  "helper_uninstalling",
   "full_tunnel_requires_dns",
   "wfp_arm_failed",
   "pf_arm_failed",

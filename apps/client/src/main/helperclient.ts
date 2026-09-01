@@ -7,7 +7,7 @@ export const PROTOCOL_VERSION = 1;
 export const MAX_MESSAGE_BYTES = 64 * 1024;
 
 export type AuthMode = "path_check" | "code_signing";
-export type Verb = "tunnel_up" | "tunnel_down" | "status" | "begin_uninstall" | "posture_status" | "set_resolvers" | "set_allowed_ips" | "set_gateway_peer";
+export type Verb = "tunnel_up" | "tunnel_down" | "status" | "posture_status" | "set_resolvers" | "set_allowed_ips" | "set_gateway_peer";
 
 // ResolverForward mirrors apps/helper ResolverForward (S8.4): a domain whose names
 // resolve via a remote site's internal DNS (ResolverIP) over the tunnel.

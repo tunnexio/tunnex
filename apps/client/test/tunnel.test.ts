@@ -551,7 +551,6 @@ test("TunnelController keeps a partial tunnel_up failure cleanup-required until 
 test("TunnelController returns typed clean pre-arm refusals to inactive and clears provisional caches", async (t) => {
   for (const scenario of [
     { slug: "endpoint", code: "endpoint_unresolved", error: "pre-arm resolution" },
-    { slug: "uninstall", code: "helper_uninstalling", error: "helper terminal fence" },
   ]) {
     await t.test(scenario.code, async () => {
       const sockPath = testEndpoint(`clean-refusal-${scenario.slug}`);
