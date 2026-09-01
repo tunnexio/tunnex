@@ -864,6 +864,71 @@ func (q *Queries) ListCascadeRevokedDevicesForNode(ctx context.Context, nodeID u
 	return items, nil
 }
 
+const listDevicePublicKeyHistoryForOrg = `-- name: ListDevicePublicKeyHistoryForOrg :many
+SELECT id, org_id, user_id, node_id, name, platform, public_key, assigned_ip, status, created_at, updated_at, revoked_at, deleted_at, full_tunnel, approved_by, health_blocked, transport, provisioning_mode, provisioned_ranges, revoked_cause, provisioned_ip, revoked_prev_status, provisioned_node_id, kind FROM devices
+WHERE org_id = $1
+  AND public_key = $2
+  AND public_key <> ''
+ORDER BY created_at, id
+`
+
+type ListDevicePublicKeyHistoryForOrgParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	PublicKey string    `json:"public_key"`
+}
+
+// D14o desktop create recovery. This deliberately reads FULL history: pending
+// rows are outside the legacy active-only uniqueness index, and revoked / soft-
+// deleted rows are the durable proof that a retired credential must never be
+// recreated by an ambiguous-response retry. The caller holds the org advisory
+// lock, so this read and a following create are one serialized decision.
+// lint:allow-deleted — DELIBERATELY includes deleted history as refusal evidence;
+// filtering it would let a response-loss retry recreate a retired credential.
+func (q *Queries) ListDevicePublicKeyHistoryForOrg(ctx context.Context, arg ListDevicePublicKeyHistoryForOrgParams) ([]Device, error) {
+	rows, err := q.db.Query(ctx, listDevicePublicKeyHistoryForOrg, arg.OrgID, arg.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Device{}
+	for rows.Next() {
+		var i Device
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.UserID,
+			&i.NodeID,
+			&i.Name,
+			&i.Platform,
+			&i.PublicKey,
+			&i.AssignedIp,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RevokedAt,
+			&i.DeletedAt,
+			&i.FullTunnel,
+			&i.ApprovedBy,
+			&i.HealthBlocked,
+			&i.Transport,
+			&i.ProvisioningMode,
+			&i.ProvisionedRanges,
+			&i.RevokedCause,
+			&i.ProvisionedIp,
+			&i.RevokedPrevStatus,
+			&i.ProvisionedNodeID,
+			&i.Kind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDevicesByOrg = `-- name: ListDevicesByOrg :many
 SELECT d.id, d.org_id, d.user_id, d.node_id, d.name, d.platform, d.public_key, d.assigned_ip, d.status, d.created_at, d.updated_at, d.revoked_at, d.deleted_at, d.full_tunnel, d.approved_by, d.health_blocked, d.transport, d.provisioning_mode, d.provisioned_ranges, d.revoked_cause, d.provisioned_ip, d.revoked_prev_status, d.provisioned_node_id, d.kind, ds.last_handshake_at, ds.rx_bytes, ds.tx_bytes,
        dh.evaluated_state, dh.failed_checks, dh.os_version, dh.disk_encrypted, dh.reported_at

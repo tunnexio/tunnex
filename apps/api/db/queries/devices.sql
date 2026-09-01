@@ -1,3 +1,17 @@
+-- name: ListDevicePublicKeyHistoryForOrg :many
+-- D14o desktop create recovery. This deliberately reads FULL history: pending
+-- rows are outside the legacy active-only uniqueness index, and revoked / soft-
+-- deleted rows are the durable proof that a retired credential must never be
+-- recreated by an ambiguous-response retry. The caller holds the org advisory
+-- lock, so this read and a following create are one serialized decision.
+-- lint:allow-deleted — DELIBERATELY includes deleted history as refusal evidence;
+-- filtering it would let a response-loss retry recreate a retired credential.
+SELECT * FROM devices
+WHERE org_id = sqlc.arg(org_id)
+  AND public_key = sqlc.arg(public_key)
+  AND public_key <> ''
+ORDER BY created_at, id;
+
 -- name: CreateDevice :one
 -- status is 'active' normally, or 'pending' when the org requires device approval
 -- (S7.3). A pending device holds its assigned_ip from creation (excluded from every

@@ -1031,6 +1031,14 @@ type Querier interface {
 	// (D4): on enabling a check, count how many devices' LAST report would fail it
 	// (best-effort, post-commit; the config write itself never blocks anything).
 	ListDeviceHealthForOrg(ctx context.Context, orgID uuid.UUID) ([]DeviceHealth, error)
+	// D14o desktop create recovery. This deliberately reads FULL history: pending
+	// rows are outside the legacy active-only uniqueness index, and revoked / soft-
+	// deleted rows are the durable proof that a retired credential must never be
+	// recreated by an ambiguous-response retry. The caller holds the org advisory
+	// lock, so this read and a following create are one serialized decision.
+	// lint:allow-deleted — DELIBERATELY includes deleted history as refusal evidence;
+	// filtering it would let a response-loss retry recreate a retired credential.
+	ListDevicePublicKeyHistoryForOrg(ctx context.Context, arg ListDevicePublicKeyHistoryForOrgParams) ([]Device, error)
 	// ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
 	// WireGuard peer — the peer set, the pool allocation, the revocation sweep and the liveness upsert all read
 	// this table and MUST keep seeing it. What it is not is a user endpoint: it has no owner carrying it, no
