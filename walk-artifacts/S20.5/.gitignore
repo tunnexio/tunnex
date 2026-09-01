@@ -1,0 +1,8 @@
+# Walk-time credentials and private material must never become evidence.
+*.kubeconfig
+*.wg.conf
+*join-token*
+*machine-token*
+*private-key*
+*certificate-body*
+*service-account-token*
