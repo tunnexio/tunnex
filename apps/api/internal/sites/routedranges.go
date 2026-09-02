@@ -144,8 +144,17 @@ func (s *Service) ListRoutedForwards(ctx context.Context, orgID uuid.UUID, range
 		seen[nd] = true
 		out = append(out, DNSForward{Domain: nd, ResolverIP: ip.String()})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Domain < out[j].Domain })
-	return out, nil
+	// S21 desktop handoff: FQDN resolver profiles are the product's private-DNS
+	// configuration surface, but before this projection they were consumed only
+	// by the Gateway DNS RPC. The desktop therefore received an empty `forwards`
+	// list unless an operator duplicated the profile under the advanced Site DNS
+	// Forwarding surface. Reuse the existing routed-resolver channel so current
+	// clients install the selected suffixes without a second client-side inventory.
+	profileForwards, err := s.listFQDNProfileForwards(ctx, orgID, prefixes)
+	if err != nil {
+		return nil, err
+	}
+	return mergeResolverForwardsFailClosed(out, profileForwards), nil
 }
 
 // RouteLAN is the S8.5 D1 ONE-SCREEN affordance's backend: it routes a LAN CIDR through a gateway in a
