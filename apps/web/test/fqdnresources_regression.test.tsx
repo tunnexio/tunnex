@@ -16,6 +16,7 @@ vi.mock("../src/lib/api", async () => {
   return { ...actual, api: {
     GET: vi.fn(async (path: string, options?: { params?: { path?: { orgId?: string; resourceId?: string } } }) => {
       if (path.endsWith("/members")) return membershipError ? { error: { error: { message: membershipError } } } : { data: [{ user_id: "user-a", role }] };
+      if (path.endsWith("/fqdn-resources/setting")) return { data: { enabled: false } };
       if (path.endsWith("/impact")) return await impacts[options?.params?.path?.resourceId ?? ""];
       if (path.endsWith("/fqdn-resources")) return inventoryError ? { error: { error: { message: inventoryError } } } : { data: rows.filter((row) => row.org_id === undefined || row.org_id === options?.params?.path?.orgId) };
       if (path.endsWith("/sites")) return { data: [{ id: "site-a", name: "Site A" }] };
@@ -115,13 +116,14 @@ describe("FQDN resource regressions", () => {
     expect((await screen.findAllByText("Other")).length).toBeGreaterThan(0); expect(screen.queryByText("Stale")).toBeNull();
   });
 
-  it("uses bounded resolver-bound POSTs and never calls setting endpoints", async () => {
+  it("uses bounded resolver-bound POSTs without changing the organization setting", async () => {
     page(); fireEvent.click(await screen.findByRole("button", { name: "Create resource" })); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create FQDN resource" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Range" } }); fireEvent.change(screen.getByLabelText("Exact hostname"), { target: { value: "range.example.com" } }); fireEvent.change(screen.getByLabelText("Protocol"), { target: { value: "udp" } }); fireEvent.change(screen.getByLabelText("Port scope"), { target: { value: "range" } }); fireEvent.change(screen.getByLabelText("Port"), { target: { value: "1" } }); fireEvent.change(screen.getByLabelText("Through"), { target: { value: "65535" } });
     await screen.findByText(/AWS resolver selected automatically/);
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create resource" })); await waitFor(() => expect(vi.mocked(api.POST)).toHaveBeenCalled());
     expect(vi.mocked(api.POST).mock.calls[0][1]).toMatchObject({ body: { port_low: 1, port_high: 65535, resolver_context: { site_id: "site-a", gateway_id: "gw-a" } } });
     expect(vi.mocked(api.PATCH)).not.toHaveBeenCalled(); expect(vi.mocked(api.PUT)).not.toHaveBeenCalled();
-    expect((vi.mocked(api.GET).mock.calls as unknown[][]).some((call) => String(call[0]).includes("/setting"))).toBe(false);
+    expect((vi.mocked(api.GET).mock.calls as unknown[][]).some((call) => String(call[0]).endsWith("/fqdn-resources/setting"))).toBe(true);
+    expect((vi.mocked(api.GET).mock.calls as unknown[][]).some((call) => String(call[0]).endsWith("/fqdn-resources/setting/impact"))).toBe(false);
   });
 });

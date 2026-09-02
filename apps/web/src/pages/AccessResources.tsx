@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AccessTabRail } from "../components/AccessTabRail";
+import { FQDNEnforcementSetting } from "../components/FQDNEnforcementSetting";
 import { LoadRetry } from "../components/LoadRetry";
 import { matchResolverProfile, PrivateDNSResolvers, ProviderMark, providerName } from "../components/PrivateDNSResolvers";
 import { Button, Card, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
@@ -97,7 +98,7 @@ export default function AccessResources() {
   if (!org || authorized === null) return <div className="space-y-5">{header}{resourceTypeTabs}<Card><Loading label="Checking resource permissions…" /></Card></div>;
   const indexControls = type === "cidr" ? <Input aria-label="Search resources" className="min-w-[14rem] flex-1 sm:max-w-md" value={query} placeholder="Search resources" onChange={(event) => updateIndex({ q: event.target.value })} /> : null;
   const createChooser = dialog === "choose" && <Modal title="Create resource" onDismiss={() => setDialog(null)} actions={<Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button>}><p className="mb-4 text-cell text-ink-tertiary">Choose the destination shape. CIDR is a static network range; FQDN is one exact hostname saved as an unbound draft.</p><div className="grid gap-3 sm:grid-cols-2"><Button onClick={() => { setDialog(null); updateIndex({ type: "cidr" }); openCreate(); }}>Create CIDR resource</Button><Button onClick={() => { setDialog(null); updateIndex({ type: "fqdn" }); setFqdnCreateToken((token) => token + 1); }}>Create FQDN resource</Button></div></Modal>;
-  if (type === "fqdn") return <div className="space-y-5">{header}{resourceTypeTabs}<PrivateDNSResolvers key={"resolver-" + org.id} orgId={org.id} role={role} /><FQDNResources key={org.id} orgId={org.id} role={role} createToken={fqdnCreateToken} />{createChooser}</div>;
+  if (type === "fqdn") return <div className="space-y-5">{header}{resourceTypeTabs}<FQDNEnforcementSetting key={"setting-" + org.id} orgId={org.id} role={role} /><PrivateDNSResolvers key={"resolver-" + org.id} orgId={org.id} role={role} /><FQDNResources key={org.id} orgId={org.id} role={role} createToken={fqdnCreateToken} />{createChooser}</div>;
   if (!authorized) return <div className="space-y-5">{header}{resourceTypeTabs}{indexControls}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage CIDR resources.</p><ErrorText>{error}</ErrorText></Card></div>;
   if (!resources) return <div className="space-y-5">{header}{resourceTypeTabs}{indexControls}<Card><Loading label="Loading resources…" /><ErrorText>{error}</ErrorText></Card></div>;
   const cidrSort = ["name", "cidr", "protocol"].includes(searchParams.get("sort") ?? "") ? searchParams.get("sort")! : "name";

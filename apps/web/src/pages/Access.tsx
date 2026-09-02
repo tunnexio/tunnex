@@ -1787,14 +1787,22 @@ function RulesSection({
                             VANISHED
                           </span>
                         )}
-                        {fqdn && (
+                        {fqdn && (row.fqdnDestinationStatus === "opt_in_disabled" ? (
+                          <Link
+                            to="/access/resources?type=fqdn#fqdn-enforcement-heading"
+                            className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${fqdnDestinationBadgeClass(fqdn.tone)}`}
+                            title={`${fqdn.title} Open the organization setting.`}
+                          >
+                            {fqdn.label}
+                          </Link>
+                        ) : (
                           <span
                             className={`rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${fqdnDestinationBadgeClass(fqdn.tone)}`}
                             title={fqdn.title}
                           >
                             {fqdn.label}
                           </span>
-                        )}
+                        ))}
                         {/* ⛔ src_group_empty (S14.12) — measured at compiler.go:399: a group with zero
                             members matches NO device, so this rule COMPILES TO NOTHING while rendering
                             ACTIVE. Derived from the member COUNT, never from group existence, and it does
