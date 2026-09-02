@@ -46,6 +46,34 @@ func TestReconcileDNSVIPsWithCandidatesRejectsSuccessfulCommandWithoutExactKerne
 	}
 }
 
+func TestReconcileDNSVIPsEmptyStartupSweepDoesNotRequireWGInterface(t *testing.T) {
+	m := New("wg0")
+	readbackCalled := false
+	m.runIPOutput = func(context.Context, ...string) (string, error) {
+		readbackCalled = true
+		return "", errors.New(`ip addr show: Device "wg0" does not exist`)
+	}
+	if err := m.ReconcileDNSVIPsWithCandidates(t.Context(), nil); err != nil {
+		t.Fatalf("empty startup withdrawal is already converged: %v", err)
+	}
+	if readbackCalled {
+		t.Fatal("zero desired and zero fenced candidates must not enumerate an interface that has not been created")
+	}
+	if got := m.RequestedDNSVIPs(); len(got) != 0 {
+		t.Fatalf("empty startup withdrawal receipt = %v", got)
+	}
+}
+
+func TestReconcileDNSVIPsCandidatesStillRequireKernelReadback(t *testing.T) {
+	m := New("wg0")
+	m.runIPOutput = func(context.Context, ...string) (string, error) {
+		return "", errors.New(`ip addr show: Device "wg0" does not exist`)
+	}
+	if err := m.ReconcileDNSVIPsWithCandidates(t.Context(), []string{"100.64.0.2"}); err == nil {
+		t.Fatal("a durable candidate must not be declared withdrawn without kernel readback")
+	}
+}
+
 func (f *fakeSource) Targets(ns, svc, _ string, _ int) ([]k8sTarget, bool) {
 	e, found := f.m[ns+"/"+svc]
 	if !found {

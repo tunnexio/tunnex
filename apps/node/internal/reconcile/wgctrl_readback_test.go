@@ -123,6 +123,62 @@ func TestWGCtrlReadbackSurfacesIncompleteIPv4Enumeration(t *testing.T) {
 	}
 }
 
+func TestWGCtrlMissingInterfaceIsAlreadyWithdrawn(t *testing.T) {
+	ctx := context.Background()
+	var calls []string
+	backend := &wgctrlBackend{iface: "wg0", runFn: func(_ context.Context, name string, args ...string) (string, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		switch call {
+		case "wg show wg0 dump":
+			return "Unable to access interface: No such device", errors.New("wg show wg0 dump: exit status 1: Unable to access interface: No such device")
+		case "ip -4 route show dev wg0 proto static metric 8021",
+			"ip -6 route show dev wg0 proto static metric 8021":
+			return `Error: Device "wg0" does not exist.`, errors.New(`ip route show: exit status 1: Error: Device "wg0" does not exist.`)
+		case "ip -4 rule show pref 100":
+			return "100: from all to 10.99.0.0/24 lookup main\n", nil
+		case "ip -6 rule show pref 100":
+			return "", nil
+		case "ip -4 rule del pref 100 to 10.99.0.0/24 lookup main":
+			return "", nil
+		default:
+			return "", nil
+		}
+	}}
+
+	got, err := backend.Readback(ctx)
+	if err != nil {
+		t.Fatalf("absent interface must be a valid zero WireGuard readback: %v", err)
+	}
+	if len(got.Peers) != 0 || len(got.Routes) != 0 || len(got.RouteDetails) != 0 || len(got.ReturnRules) != 1 {
+		t.Fatalf("unexpected absent-interface readback: %+v", got)
+	}
+	if err := backend.ApplyPeers(ctx, nil); err != nil {
+		t.Fatalf("withdrawing peers from an absent interface must be idempotent: %v", err)
+	}
+	if err := backend.ApplyRoutes(ctx, nil, ""); err != nil {
+		t.Fatalf("withdrawing routes from an absent interface must be idempotent: %v", err)
+	}
+	if !containsString(calls, "ip -4 rule del pref 100 to 10.99.0.0/24 lookup main") {
+		t.Fatalf("absent interface must not hide an owned return rule: calls=%v", calls)
+	}
+}
+
+func TestWGCtrlMissingInterfaceDoesNotHideOtherFailures(t *testing.T) {
+	backend := &wgctrlBackend{iface: "wg0", runFn: func(_ context.Context, name string, args ...string) (string, error) {
+		if name == "wg" {
+			return "permission denied", errors.New("exit status 1")
+		}
+		return "", nil
+	}}
+	if _, err := backend.Readback(t.Context()); err == nil {
+		t.Fatal("an unproven readback failure must remain fatal")
+	}
+	if err := backend.ApplyPeers(t.Context(), nil); err == nil {
+		t.Fatal("an unproven empty-peer apply failure must remain fatal")
+	}
+}
+
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

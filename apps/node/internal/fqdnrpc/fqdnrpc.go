@@ -97,9 +97,9 @@ type Record struct {
 type Status string
 
 const (
-	StatusNoError  Status = "noerror"
-	StatusNXDomain Status = "nxdomain"
-	StatusServFail Status = "servfail"
+	StatusNoError  Status = "NOERROR"
+	StatusNXDomain Status = "NXDOMAIN"
+	StatusServFail Status = "SERVFAIL"
 )
 
 // Response deliberately echoes the complete request binding. ObservedAt is a
