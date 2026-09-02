@@ -147,6 +147,35 @@ func TestDirectResolverUsesOnlyBoundEndpointsAndFailsClosed(t *testing.T) {
 	}
 }
 
+func TestDirectResolverAcceptsTTLDriftAndUsesMinimum(t *testing.T) {
+	config := ResolverConfig{
+		ID: "66666666-6666-6666-6666-666666666666", Version: 4,
+		ProfileID: "77777777-7777-7777-7777-777777777777", MatchedSuffix: "example.test",
+		Endpoints: []ResolverEndpoint{
+			{Address: "10.20.0.53", Port: 53, Transport: "udp"},
+			{Address: "10.20.0.53", Port: 53, Transport: "tcp"},
+		},
+	}
+	direct := DirectResolver{exchange: func(_ context.Context, endpoint ResolverEndpoint, hostname string, typ RecordType) ([]Record, error) {
+		ttl := 60
+		if endpoint.Transport == "tcp" {
+			ttl = 17
+		}
+		if typ == RecordA {
+			return []Record{{Name: hostname, Type: RecordA, Address: "10.20.0.8", TTLSeconds: ttl}}, nil
+		}
+		return nil, nil
+	}}
+
+	got, err := direct.ResolveBound(context.Background(), "api.example.test", []RecordType{RecordA, RecordAAAA, RecordCNAME}, config)
+	if err != nil {
+		t.Fatalf("TTL drift for identical answers must not break resolver consensus: %v", err)
+	}
+	if len(got) != 1 || got[0].Address != "10.20.0.8" || got[0].TTLSeconds != 17 {
+		t.Fatalf("resolver must keep the shared answer with minimum TTL, got %+v", got)
+	}
+}
+
 func TestResponderDirectResolverRefusesMissingBoundConfig(t *testing.T) {
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	r := NewResponder(DirectResolver{})
