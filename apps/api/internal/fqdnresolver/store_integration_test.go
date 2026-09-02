@@ -143,12 +143,14 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	}
 	// Selected-profile suffix provenance is part of the compiler boundary. A
 	// stale/mismatched suffix must disappear rather than borrowing another
-	// profile or falling back to the compatibility endpoint table.
-	exec(`UPDATE fqdn_resource_answer_generations SET resolver_match_suffix='other.internal' WHERE resource_id=$1 AND state='active'`, resource)
+	// profile or falling back to the compatibility endpoint table. Published
+	// generations are immutable, so make the active profile stop claiming the
+	// stored suffix instead of corrupting the generation row for this proof.
+	exec(`DELETE FROM fqdn_resolver_context_profile_suffixes WHERE profile_id=$1 AND suffix='internal'`, profile)
 	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
 		t.Fatalf("mismatched selected-profile suffix must fail closed: rows=%#v err=%v", projection, err)
 	}
-	exec(`UPDATE fqdn_resource_answer_generations SET resolver_match_suffix='internal' WHERE resource_id=$1 AND state='active'`, resource)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, profile, config, org)
 	// The stored suffix is provenance, not a permanent override. If the active
 	// config later contains a more-specific matching profile, the old generation
 	// is no longer the selected authority and must disappear immediately.

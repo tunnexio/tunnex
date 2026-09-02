@@ -147,7 +147,7 @@ func (s *Service) ListRoutedForwards(ctx context.Context, orgID uuid.UUID, range
 	// FQDN resolver profiles are intentionally absent here. They are policy
 	// intent, not organization-wide DNS inventory, and are projected per-device
 	// by the HTTP policy seam only after active ownership is validated.
-	return out, nil
+	return MergeResolverForwardsFailClosed(out), nil
 }
 
 // RouteLAN is the S8.5 D1 ONE-SCREEN affordance's backend: it routes a LAN CIDR through a gateway in a
