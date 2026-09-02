@@ -858,6 +858,12 @@ type Querier interface {
 	// itself was never revoked. NOT health_blocked (S7.5.3): a health-blocked device's
 	// /32 leaves the compiled allow-sets (source AND destination) the same way.
 	ListActiveDevicesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListActiveDevicesForOrgRow, error)
+	// lint:cross-org — every joined row is pinned to the requested config org. S21 desktop DNS handoff:
+	// profile-native private-DNS suffixes share the existing routed-ranges forwards channel. Native macOS
+	// scoped resolvers and Windows NRPT cannot preserve an arbitrary resolver port/transport, so only UDP/53
+	// candidates are projected. The service still gates addresses against the device's routed ranges and
+	// resolves exact-suffix authority conflicts fail-closed.
+	ListActiveFQDNProfileForwardCandidates(ctx context.Context, orgID uuid.UUID) ([]ListActiveFQDNProfileForwardCandidatesRow, error)
 	// S7.2 decision 2a: the devices whose internet egress is governed by policy once the
 	// org enters enforcing mode -- enumerated (count + names) in the mode-enable response
 	// so the warn-and-confirm shows real blast radius. Owner must be a CURRENT org member

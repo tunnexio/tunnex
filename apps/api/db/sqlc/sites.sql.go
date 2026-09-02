@@ -236,6 +236,63 @@ func (q *Queries) GetSiteSubnetForOrg(ctx context.Context, arg GetSiteSubnetForO
 	return i, err
 }
 
+const listActiveFQDNProfileForwardCandidates = `-- name: ListActiveFQDNProfileForwardCandidates :many
+SELECT p.id AS profile_id,
+       profile_suffix.suffix AS domain,
+       host(endpoint.address)::text AS resolver_ip
+FROM fqdn_resolver_context_configs config
+JOIN fqdn_resolver_context_profiles p
+  ON p.config_id = config.id AND p.org_id = config.org_id
+JOIN fqdn_resolver_context_profile_suffixes profile_suffix
+  ON profile_suffix.profile_id = p.id
+ AND profile_suffix.config_id = p.config_id
+ AND profile_suffix.org_id = p.org_id
+JOIN fqdn_resolver_context_profile_endpoints endpoint
+  ON endpoint.profile_id = p.id AND endpoint.org_id = p.org_id
+JOIN nodes gateway
+  ON gateway.id = config.gateway_id
+ AND gateway.org_id = config.org_id
+ AND gateway.site_id = config.site_id
+ AND gateway.status = 'active'
+WHERE config.org_id = $1
+  AND config.state = 'active'
+  AND NOT p.legacy_default
+  AND endpoint.port = 53
+  AND endpoint.transport = 'udp'
+ORDER BY profile_suffix.suffix, config.site_id, config.gateway_id, p.ordinal, endpoint.ordinal, host(endpoint.address)::text
+`
+
+type ListActiveFQDNProfileForwardCandidatesRow struct {
+	ProfileID  uuid.UUID `json:"profile_id"`
+	Domain     string    `json:"domain"`
+	ResolverIp string    `json:"resolver_ip"`
+}
+
+// lint:cross-org — every joined row is pinned to the requested config org. S21 desktop DNS handoff:
+// profile-native private-DNS suffixes share the existing routed-ranges forwards channel. Native macOS
+// scoped resolvers and Windows NRPT cannot preserve an arbitrary resolver port/transport, so only UDP/53
+// candidates are projected. The service still gates addresses against the device's routed ranges and
+// resolves exact-suffix authority conflicts fail-closed.
+func (q *Queries) ListActiveFQDNProfileForwardCandidates(ctx context.Context, orgID uuid.UUID) ([]ListActiveFQDNProfileForwardCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listActiveFQDNProfileForwardCandidates, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveFQDNProfileForwardCandidatesRow{}
+	for rows.Next() {
+		var i ListActiveFQDNProfileForwardCandidatesRow
+		if err := rows.Scan(&i.ProfileID, &i.Domain, &i.ResolverIp); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNodeIDsForSite = `-- name: ListNodeIDsForSite :many
 SELECT id FROM nodes WHERE site_id = $1 AND org_id = $2
 `
