@@ -777,13 +777,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download desktop installers
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/download-artifact@v4
-        with:
-          pattern: tunnex-*-installer
-          path: desktop-artifacts
-          merge-multiple: false
       - name: Download Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/download-artifact@v4
@@ -886,18 +879,6 @@ jobs:
             deploy/install.sh
             deploy/install.ps1
             release.json
-      - name: Attach desktop installers + combined checksum to tagged release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          mac="desktop-artifacts/tunnex-macos-installer/Tunnex-macOS-universal.pkg"
-          win="desktop-artifacts/tunnex-windows-installer/Tunnex-Windows-x64.exe"
-          test -f "$mac"
-          test -f "$win"
-          sha256sum "$mac" "$win" > desktop-artifacts/Tunnex-desktop-SHA256SUMS
-          gh release upload "$GITHUB_REF_NAME" "$mac" "$win" desktop-artifacts/Tunnex-desktop-SHA256SUMS --clobber
       - name: Attach Linux CLI binaries + checksum to tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         env:

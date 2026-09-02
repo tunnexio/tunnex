@@ -15,6 +15,17 @@ grep -Fq 'run: sh deploy/signed-main-release-contract_test.sh' "$CI"
 grep -Fq 'gh release create tunnex-updates release.json release.json.sha256' "$CI"
 grep -Fq 'gh release upload tunnex-updates release.json release.json.sha256 --clobber' "$CI"
 
+# Desktop installers have their own source and release pipeline in
+# tunnexio/tunnex-client. The server release must not silently republish a stale
+# copy from this monorepo, even though the client build remains a useful gate.
+release_assets=$(sed -n '/^  release-assets:/,$p' "$CI")
+for forbidden in 'desktop-artifacts' 'tunnex-*-installer' 'Tunnex-desktop-SHA256SUMS'; do
+  if printf '%s\n' "$release_assets" | grep -Fq "$forbidden"; then
+    echo "signed successful-main release contract: FAIL: server release publishes desktop artifact marker: $forbidden" >&2
+    exit 1
+  fi
+done
+
 grep -Fq "CANONICAL_INSTALLER_URL='https://raw.githubusercontent.com/tunnexio/tunnex/main/deploy/install.sh'" "$ROOT/deploy/get.sh"
 
 installer="$ROOT/deploy/install.sh"
