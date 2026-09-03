@@ -12,6 +12,7 @@ vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return { ...actual, api: { GET: vi.fn(async (path: string) => {
     if (path.endsWith("/members")) return { data: [{ user_id: "user-a", role }] };
+    if (path.endsWith("/fqdn-resources/setting")) return { data: { enabled: false } };
     if (path.endsWith("/fqdn-resources")) return { data: rows };
     if (path.endsWith("/sites")) return { data: [{ id: "site-a", name: "Site A" }] };
     if (path.endsWith("/nodes")) return { data: [{ id: "gw-a", name: "Gateway A", site_id: "site-a", status: "active" }] };

@@ -37,6 +37,7 @@ export type Resource = components["schemas"]["Resource"];
 export type FQDNResource = components["schemas"]["FQDNResource"];
 export type FQDNResourceImpact = components["schemas"]["FQDNResourceImpact"];
 export type FQDNResourceSetting = components["schemas"]["FQDNResourceSetting"];
+export type FQDNResourceSettingImpact = components["schemas"]["FQDNResourceSettingImpact"];
 export type PolicyRule = components["schemas"]["PolicyRule"];
 export type AgentAccessDiagnostic =
   components["schemas"]["AgentAccessDiagnostic"];
