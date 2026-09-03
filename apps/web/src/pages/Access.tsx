@@ -248,6 +248,9 @@ export default function Access() {
               orgId={org.id}
               canManage={gate.canManagePolicy}
               canManageAgentTemplates={gate.canManageAgentTemplates}
+              agentGroupsEnabled={Boolean(
+                org.agent_policy_templates_enabled,
+              )}
               canViewFQDNResources={can(myRole, "fqdn_resource:view")}
               subjectsRev={subjectsRev}
             />
@@ -874,12 +877,14 @@ function RulesSection({
   orgId,
   canManage,
   canManageAgentTemplates,
+  agentGroupsEnabled,
   canViewFQDNResources,
   subjectsRev,
 }: {
   orgId: string;
   canManage: boolean;
   canManageAgentTemplates: boolean;
+  agentGroupsEnabled: boolean;
   canViewFQDNResources: boolean;
   subjectsRev: number;
 }) {
@@ -1003,13 +1008,16 @@ function RulesSection({
           params: { path: { orgId } },
         }),
       ),
-      canManageAgentTemplates
+      canManageAgentTemplates && agentGroupsEnabled
         ? loadOne(() =>
             api.GET("/api/v1/organizations/{orgId}/agent-groups", {
               params: { path: { orgId } },
             }),
           )
-        : Promise.resolve({ ok: true as const, data: [] as AgentGroup[] }),
+        : Promise.resolve({
+            ok: false as const,
+            error: "Agent groups are disabled or unavailable for this role.",
+          }),
     ]);
     // Summary inputs — set from the SAME results (a rules-load failure → summary shows "failed", never 0).
     setRulesResult(
@@ -1075,14 +1083,26 @@ function RulesSection({
       agentGroups: agr.ok ? (agr.data as AgentGroup[]) : [],
     }); // sitesLoaded → WF-8; k8sServicesLoaded → S10.3
     setErr(
-      gr.ok && resr.ok && fr.ok && mr.ok && sr.ok && ksr.ok && ar.ok && agr.ok
+      gr.ok &&
+        resr.ok &&
+        fr.ok &&
+        mr.ok &&
+        sr.ok &&
+        ksr.ok &&
+        ar.ok &&
+        (!(canManageAgentTemplates && agentGroupsEnabled) || agr.ok)
         ? null
         : "Some groups/resources/FQDN resources/members/sites/services/agents failed to load. names may show as unavailable. Refresh.",
     ); // ksr.ok: a services-load failure must raise the banner too
     // The ONLY clear path (amendment A: gated on this successful load): drop stale ids no
     // longer present, keep the rest (B).
     setStaleRuleIds((prev) => pruneStaleRuleIds(prev, true, freshRules));
-  }, [canManageAgentTemplates, canViewFQDNResources, orgId]);
+  }, [
+    agentGroupsEnabled,
+    canManageAgentTemplates,
+    canViewFQDNResources,
+    orgId,
+  ]);
   useEffect(() => {
     load();
   }, [load, subjectsRev]); // S8.5: re-load when a sibling section mutates groups/resources (stale-button fix)

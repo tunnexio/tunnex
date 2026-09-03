@@ -32,6 +32,7 @@ vi.mock("../src/lib/api", async () => {
         if (path === "/api/v1/organizations/{orgId}/members") return { data: [{ user_id: "user-a", role, email_verified: true }] };
         if (path.endsWith("/agent-groups")) {
           f09Reads.push(`${orgId}:groups`);
+          if (!currentOrg.agent_policy_templates_enabled) return { error: { error: { code: "opt_in_required", message: "enable agent groups and policy templates in organization settings first" } } };
           if (groupInventoryFail) return { error: { error: { code: "boom", message: "unavailable" } } };
           return { data: orgId === "org-a" ? groups : [] };
         }
@@ -107,6 +108,18 @@ afterEach(() => {
 });
 
 describe("released F09 agent group and template workflow", () => {
+  it("keeps people groups usable when agent groups are not enabled", async () => {
+    currentOrg = { id: "org-a", name: "Organization A", agent_policy_templates_enabled: false };
+    peopleGroups = [{ id: "people-one", name: "Operators", member_count: 1 }];
+
+    render(<MemoryRouter><AccessGroups /></MemoryRouter>);
+
+    expect(await screen.findByText("Operators")).toBeTruthy();
+    expect(screen.queryByText("Could not load the group inventory.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Create people group" })).toBeTruthy();
+    expect(f09Reads).toEqual([]);
+  });
+
   it("replaces a failed group load with one retryable error state", async () => {
     groupInventoryFail = true;
     render(<MemoryRouter><AccessGroups /></MemoryRouter>);

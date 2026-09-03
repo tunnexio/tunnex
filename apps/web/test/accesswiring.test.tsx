@@ -80,6 +80,9 @@ let agentsForTest: Array<{
 }> = [];
 let postedBodies: unknown[] = [];
 let agentReads = 0;
+let agentTemplatesEnabled = false;
+let agentGroupReads = 0;
+let agentGroupReadsFail = false;
 
 vi.mock("../src/lib/api", async () => {
   const actual =
@@ -93,7 +96,15 @@ vi.mock("../src/lib/api", async () => {
           return { data: { id: "u1", email: "a@b.c", email_verified: true } };
         if (path === "/api/v1/meta") return { data: { edition: "enterprise" } };
         if (path === "/api/v1/organizations")
-          return { data: [{ id: "org-1", name: "Acme" }] };
+          return {
+            data: [
+              {
+                id: "org-1",
+                name: "Acme",
+                agent_policy_templates_enabled: agentTemplatesEnabled,
+              },
+            ],
+          };
         if (path.endsWith("/members"))
           return {
             data: [{ user_id: "u1", role: "admin", email_verified: true }],
@@ -115,6 +126,19 @@ vi.mock("../src/lib/api", async () => {
               error: { error: { code: "boom", message: "nope" } },
             };
           return { data: rulesForTest };
+        }
+        if (path.endsWith("/agent-groups")) {
+          agentGroupReads += 1;
+          if (agentGroupReadsFail)
+            return {
+              error: {
+                error: {
+                  code: "agent_templates_unavailable",
+                  message: "agent groups unavailable",
+                },
+              },
+            };
+          return { data: [] };
         }
         if (path.endsWith("/groups")) return { data: groupsForTest };
         if (path.endsWith("/resources")) return { data: resourcesForTest };
@@ -170,6 +194,9 @@ beforeEach(() => {
   agentsForTest = [];
   postedBodies = [];
   agentReads = 0;
+  agentTemplatesEnabled = false;
+  agentGroupReads = 0;
+  agentGroupReadsFail = false;
 });
 
 function setDistinctFlowRules() {
@@ -360,6 +387,31 @@ describe("Access — dedicated Kubernetes scope mutation boundary", () => {
 });
 
 describe("Access — wiring: the screen must not claim enforcement it does not have", () => {
+  it("does not report disabled agent groups as a failed policy inventory", async () => {
+    withAuth(<Access />);
+
+    await waitFor(() => expect(screen.getByText("Disabled")).toBeTruthy());
+    expect(agentGroupReads).toBe(0);
+    expect(
+      screen.queryByText(
+        /Some groups\/resources\/FQDN resources\/members\/sites\/services\/agents failed to load/,
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps a real enabled agent-group load failure visible", async () => {
+    agentTemplatesEnabled = true;
+    agentGroupReadsFail = true;
+    withAuth(<Access />);
+
+    expect(
+      await screen.findByText(
+        /Some groups\/resources\/FQDN resources\/members\/sites\/services\/agents failed to load/,
+      ),
+    ).toBeTruthy();
+    expect(agentGroupReads).toBeGreaterThan(0);
+  });
+
   it("with mode OFF, the posture says NOT ENFORCED — rules present must not imply they are in force", async () => {
     mode = "off";
     withAuth(<Access />);
