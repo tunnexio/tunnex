@@ -33,6 +33,10 @@ type policyPort interface {
 	UpdateResource(ctx context.Context, orgID, resourceID uuid.UUID, in policyspec.ResourceInput, label *string) (sqlc.Resource, error)
 	DeleteResource(ctx context.Context, orgID, resourceID uuid.UUID) error
 	ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.PolicyRule, error)
+	// DeviceFQDNForwards returns only resolver suffixes derived from active FQDN
+	// parent rules matching this device. The routed-ranges handler validates
+	// device ownership first; older requests without device_id never call it.
+	DeviceFQDNForwards(ctx context.Context, orgID, deviceID uuid.UUID, routedRanges []string) ([]policyspec.DNSForward, error)
 	AgentTemplateManagedRuleIDs(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]bool, error)
 	AgentAccessManagedRules(ctx context.Context, orgID uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 	CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in policyspec.RuleInput, managedByMachine, actorUserID uuid.UUID, actorSystem, cause string) (sqlc.PolicyRule, error)

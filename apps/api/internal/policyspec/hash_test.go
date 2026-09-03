@@ -71,6 +71,25 @@ func TestCanonicalHashGolden(t *testing.T) {
 	if got := policyspec.CanonicalHash(siteSrc); got != "92a15b8df267" {
 		t.Fatalf("v5 site-source golden = %q, want 92a15b8df267 (nodepolicy twin must match)", got)
 	}
+	// S21 v9 twin: selected resolver configuration provenance is part of the
+	// FQDN generation's enforcement identity. Keep this fixture byte-identical
+	// to nodepolicy.TestCanonicalHashGolden so pushed and applied hashes cannot
+	// silently diverge when the provenance fields are non-empty on real wire data.
+	fqdn := policyspec.Compiled{
+		Version: 9, NodeID: "node-fqdn", Mode: "enforcing", Mesh: false,
+		Allow: []policyspec.AllowEntry{{
+			SrcIP: "10.99.0.10", DstCIDR: "10.20.0.8/32", Protocol: policyspec.ProtoTCP,
+			PortLow: 443, PortHigh: 443, FQDNManaged: true,
+		}},
+		FQDNGenerations: []policyspec.FQDNGeneration{{
+			ResourceID: "resource-a", Name: "api.internal.tunnex.io", Generation: "generation-a",
+			ResolverConfigID: "66666666-6666-6666-6666-666666666666", ResolverConfigVersion: 3,
+			Answers: []string{"10.20.0.8/32"},
+		}},
+	}
+	if got := policyspec.CanonicalHash(fqdn); got != "d02a9bd7f2ff" {
+		t.Fatalf("v9 FQDN provenance golden = %q, want d02a9bd7f2ff (nodepolicy twin must match)", got)
+	}
 }
 
 // TestRequiredVersionRoutesTriggerV5 — S8.2 Slice-1 LAW guard (the first customer is Slice 2's Routes[]).

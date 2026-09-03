@@ -208,6 +208,9 @@ func (b *wgctrlBackend) ensureLinkUp(ctx context.Context, mtu int) error {
 func (b *wgctrlBackend) Peers(ctx context.Context) ([]Peer, error) {
 	out, err := b.runCommand(ctx, "wg", "show", b.iface, "dump")
 	if err != nil {
+		if interfaceAbsent(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return parseWGDump(out), nil
@@ -358,6 +361,19 @@ func buildSyncConf(privKey string, listenPort int, peers []Peer) string {
 // ApplyPeers converges the peer set via `wg syncconf` (idempotent; unchanged
 // peers keep their sessions, absent peers are removed).
 func (b *wgctrlBackend) ApplyPeers(ctx context.Context, peers []Peer) error {
+	// A graceful shutdown deletes wg0. On the next process start, the ownership
+	// emergency sweep runs before ordinary desired state recreates it. Applying
+	// an empty peer set to an absent interface is already fully withdrawn; do not
+	// turn that safe zero state into a restart loop. Non-empty desired peers still
+	// fail loudly so an absent data plane can never be mistaken for convergence.
+	if len(peers) == 0 {
+		if _, err := b.runCommand(ctx, "wg", "show", b.iface, "dump"); err != nil {
+			if interfaceAbsent(err) {
+				return nil
+			}
+			return err
+		}
+	}
 	f, err := os.CreateTemp("", "wgconf")
 	if err != nil {
 		return err
@@ -367,8 +383,22 @@ func (b *wgctrlBackend) ApplyPeers(ctx context.Context, peers []Peer) error {
 		return err
 	}
 	_ = f.Close()
-	_, err = run(ctx, "wg", "syncconf", b.iface, f.Name())
+	_, err = b.runCommand(ctx, "wg", "syncconf", b.iface, f.Name())
 	return err
+}
+
+// interfaceAbsent recognizes only the operating-system errors that prove the
+// requested link is not present. Permission failures, missing binaries, and
+// every other readback failure remain fatal because they cannot prove a
+// withdrawn data plane.
+func interfaceAbsent(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such device") ||
+		(strings.Contains(message, "device") && strings.Contains(message, "does not exist")) ||
+		strings.Contains(message, "cannot find device")
 }
 
 // siteRouteMetric tags every S8.2 kernel route we own. The prune enumerates + deletes ONLY routes
@@ -451,6 +481,9 @@ func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRout
 	for _, family := range []string{"-4", "-6"} {
 		listing, err := b.runCommand(ctx, "ip", family, "route", "show", "dev", b.iface, "proto", "static", "metric", metric)
 		if err != nil {
+			if interfaceAbsent(err) {
+				continue
+			}
 			if family == "-6" {
 				slog.Debug("site_route_enumerate_v6_skipped", "iface", b.iface, "error", err.Error())
 				continue
