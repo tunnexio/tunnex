@@ -5,13 +5,16 @@ import { LoadRetry } from "../components/LoadRetry";
 import { Button, Card, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
 import { api, apiErrorMessage, loadOne, type AgentGroup, type AgentPolicyTemplate, type AgentPolicyTemplateAssignment, type AgentPolicyTemplatePreview, type AgentPolicyTemplateVersion, type Resource } from "../lib/api";
 import { relativeAge } from "../lib/format";
+import { useOrg } from "../lib/useOrg";
 import { AgentsManagementGate } from "./AgentsManagementGate";
 
 export default function AgentsPolicyTemplates() {
+  const { org } = useOrg();
+  const enabled = Boolean(org?.agent_policy_templates_enabled);
   return <div className="space-y-5">
     <PageHeader title="Policy templates" subtitle="Build reusable, versioned access intent for agent groups." />
     <AgentsTabRail />
-    <AgentsManagementGate>{(orgId) => <PolicyTemplatesWorkspace key={orgId} orgId={orgId} />}</AgentsManagementGate>
+    <AgentsManagementGate>{(orgId) => enabled ? <PolicyTemplatesWorkspace key={orgId} orgId={orgId} /> : <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">Agent groups and policy templates are turned off</h2><p className="mt-2 text-cell text-ink-tertiary">Enable the organization opt-in before creating reusable policy intent. No policy template inventory is requested while this feature is disabled.</p><Link className="mt-3 inline-flex min-h-10 items-center text-sm font-medium text-accent-400 hover:underline" to="/settings?section=ai-agents">Configure AI Agent settings</Link></Card>}</AgentsManagementGate>
   </div>;
 }
 
