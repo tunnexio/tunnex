@@ -40,8 +40,16 @@ vi.mock("../src/lib/api", async () => {
           if (groupInventoryFail) return { error: { error: { code: "boom", message: "unavailable" } } };
           return { data: orgId === "org-a" ? peopleGroups : [] };
         }
-        if (path.endsWith("/agent-policy-templates")) { f09Reads.push(`${orgId}:templates`); return { data: orgId === "org-a" ? templates : [] }; }
-        if (path.endsWith("/agent-policy-template-assignments")) { f09Reads.push(`${orgId}:assignments`); return { data: orgId === "org-a" ? assignments : [] }; }
+        if (path.endsWith("/agent-policy-templates")) {
+          f09Reads.push(`${orgId}:templates`);
+          if (!currentOrg.agent_policy_templates_enabled) return { error: { error: { code: "opt_in_required", message: "enable agent groups and policy templates in organization settings first" } } };
+          return { data: orgId === "org-a" ? templates : [] };
+        }
+        if (path.endsWith("/agent-policy-template-assignments")) {
+          f09Reads.push(`${orgId}:assignments`);
+          if (!currentOrg.agent_policy_templates_enabled) return { error: { error: { code: "opt_in_required", message: "enable agent groups and policy templates in organization settings first" } } };
+          return { data: orgId === "org-a" ? assignments : [] };
+        }
         if (path.endsWith("/agent-groups/{groupId}/members")) return { data: groupMembers };
         if (path.endsWith("/agent-policy-templates/{templateId}/versions")) return { data: versions };
         if (path.endsWith("/agents")) return { data: [{ device_id: "agent-a", name: "build-agent", gateway_name: "gw-a" }] };
@@ -118,6 +126,32 @@ describe("released F09 agent group and template workflow", () => {
     expect(screen.queryByText("Could not load the group inventory.")).toBeNull();
     expect(screen.getByRole("button", { name: "Create people group" })).toBeTruthy();
     expect(f09Reads).toEqual([]);
+  });
+
+  it("renders the policy-template opt-in state without requesting protected inventory", async () => {
+    currentOrg = { id: "org-a", name: "Organization A", agent_policy_templates_enabled: false };
+
+    render(<MemoryRouter><AgentsPolicyTemplates /></MemoryRouter>);
+
+    expect(await screen.findByRole("heading", { name: "Agent groups and policy templates are turned off" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Configure AI Agent settings" }).getAttribute("href")).toBe("/settings?section=ai-agents");
+    expect(screen.queryByText("Could not load policy templates. Refresh to retry.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create template" })).toBeNull();
+    expect(f09Reads).toEqual([]);
+    expect(api.GET).toHaveBeenCalledTimes(1);
+    expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/members", expect.anything());
+  });
+
+  it("keeps genuine enabled policy-template inventory failures retryable", async () => {
+    groupInventoryFail = true;
+    render(<MemoryRouter><AgentsPolicyTemplates /></MemoryRouter>);
+
+    expect(await screen.findByText("Could not load policy templates. Refresh to retry.")).toBeTruthy();
+    expect(f09Reads).toEqual(expect.arrayContaining(["org-a:groups", "org-a:templates", "org-a:assignments"]));
+
+    groupInventoryFail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("button", { name: "Create template" })).toBeTruthy();
   });
 
   it("replaces a failed group load with one retryable error state", async () => {
