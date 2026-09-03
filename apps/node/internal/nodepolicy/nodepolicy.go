@@ -117,10 +117,12 @@ type Compiled struct {
 // FQDNGeneration mirrors policyspec.FQDNGeneration. It participates in the
 // canonical hash, even though packet matching remains the expanded Allow set.
 type FQDNGeneration struct {
-	ResourceID string   `json:"resource_id"`
-	Name       string   `json:"name"`
-	Generation string   `json:"generation"`
-	Answers    []string `json:"answers"`
+	ResourceID            string   `json:"resource_id"`
+	Name                  string   `json:"name"`
+	Generation            string   `json:"generation"`
+	ResolverConfigID      string   `json:"resolver_config_id"`
+	ResolverConfigVersion int64    `json:"resolver_config_version"`
+	Answers               []string `json:"answers"`
 }
 
 // VIPMapping mirrors policyspec.VIPMapping — one exposed K8s Service (VIP -> Service identity the agent

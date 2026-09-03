@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,15 @@ type fakeNotifier struct{ calls [][]uuid.UUID }
 
 func (f *fakeNotifier) NotifyMany(ids []uuid.UUID) { f.calls = append(f.calls, ids) }
 func (f *fakeNotifier) fired() bool                { return len(f.calls) > 0 }
+
+func hasCompiledAllow(entries []policyspec.AllowEntry, dst string, proto policyspec.Protocol, fqdnManaged bool) bool {
+	for _, entry := range entries {
+		if entry.DstCIDR == dst && entry.Protocol == proto && entry.FQDNManaged == fqdnManaged {
+			return true
+		}
+	}
+	return false
+}
 
 // fixture seeds an org + verified owner + active node + one active FULL-TUNNEL device,
 // returning the ids. Raw inserts keep the test independent of the higher services.
@@ -103,14 +113,18 @@ func TestBuildSnapshotConsumesOnlyActiveSelectedFQDNGeneration(t *testing.T) {
 			t.Fatalf("seed %q: %v", sql, err)
 		}
 	}
-	site, resource, generation, rule, resolverConfig := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	site, resource, generation, rule, resolverConfig, resolverProfile := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	exec(`INSERT INTO sites(id,org_id,name) VALUES($1,$2,'selected')`, site, f.org)
+	exec(`INSERT INTO site_subnets(site_id,cidr,status) VALUES($1,'10.20.0.0/16','approved')`, site)
 	exec(`UPDATE nodes SET site_id=$2 WHERE id=$1`, f.node, site)
 	exec(`UPDATE organizations SET fqdn_resources_enabled=true,zero_trust_mode='enforcing' WHERE id=$1`, f.org)
 	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,protocol,port_low,port_high,resolver_site_id,resolver_node_id) VALUES($1,$2,'api','api.example.test','tcp',443,443,$3,$4)`, resource, f.org, site, f.node)
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, resolverConfig, f.org, site, f.node)
 	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.20.0.53'::inet,53,'udp')`, resolverConfig, f.org)
-	exec(`INSERT INTO fqdn_resource_answer_generations(id,org_id,resource_id,generation,resolver_site_id,resolver_node_id,resolver_config_id,state,effective_ttl,resolved_at) VALUES($1,$2,$3,1,$4,$5,$6,'pending','1 minute',now())`, generation, f.org, resource, site, f.node, resolverConfig)
+	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,0,'Example private DNS','on_premises')`, resolverProfile, resolverConfig, f.org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'example.test')`, resolverProfile, resolverConfig, f.org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.20.0.53'::inet,53,'udp')`, resolverProfile, f.org)
+	exec(`INSERT INTO fqdn_resource_answer_generations(id,org_id,resource_id,generation,resolver_site_id,resolver_node_id,resolver_config_id,resolver_profile_id,resolver_match_suffix,state,effective_ttl,resolved_at) VALUES($1,$2,$3,1,$4,$5,$6,$7,'example.test','pending','1 minute',now())`, generation, f.org, resource, site, f.node, resolverConfig, resolverProfile)
 	exec(`INSERT INTO fqdn_resource_generation_answers(generation_id,org_id,address) VALUES($1,$2,'10.20.30.40/32')`, generation, f.org)
 	exec(`UPDATE fqdn_resource_answer_generations SET state='active',activated_at=now(),last_good_at=now() WHERE id=$1`, generation)
 	exec(`INSERT INTO policy_rules(id,org_id,src_kind,src_user_id,dst_kind,dst_fqdn_resource_id) VALUES($1,$2,'user',$3,'fqdn_resource',$4)`, rule, f.org, f.user, resource)
@@ -120,12 +134,17 @@ func TestBuildSnapshotConsumesOnlyActiveSelectedFQDNGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !snap.FQDNResourcesEnabled || !snap.FQDNResourcesLicensed || len(snap.FQDNResources) != 1 || len(snap.FQDNRuleReferences) != 1 || snap.FQDNResources[0].Active == nil || snap.FQDNResources[0].Active.ResolverConfigID != resolverConfig || snap.FQDNResources[0].Active.ResolverConfigVersion != 1 {
+	if !snap.FQDNResourcesEnabled || !snap.FQDNResourcesLicensed || len(snap.FQDNResources) != 1 || len(snap.FQDNRuleReferences) != 1 || snap.FQDNResources[0].Active == nil || snap.FQDNResources[0].Active.ResolverConfigID != resolverConfig || snap.FQDNResources[0].Active.ResolverProfileID != resolverProfile || snap.FQDNResources[0].Active.ResolverMatchSuffix != "example.test" || snap.FQDNResources[0].Active.ResolverConfigVersion != 1 || !reflect.DeepEqual(snap.FQDNResources[0].Active.ResolverAddresses, []string{"10.20.0.53/32"}) {
 		t.Fatalf("active FQDN snapshot missing or not gated correctly: %#v", snap)
 	}
 	compiled, exists := policy.Compile(snap)[f.node]
-	if !exists || len(compiled.Allow) != 1 || compiled.Allow[0].DstCIDR != "10.20.30.40/32" || !compiled.Allow[0].FQDNManaged || compiled.Version != 9 {
+	if !exists || len(compiled.Allow) != 3 || !hasCompiledAllow(compiled.Allow, "10.20.30.40/32", policyspec.ProtoTCP, true) || !hasCompiledAllow(compiled.Allow, "10.20.0.53/32", policyspec.ProtoUDP, false) || !hasCompiledAllow(compiled.Allow, "10.20.0.53/32", policyspec.ProtoTCP, false) || compiled.Version != 9 {
 		t.Fatalf("active selected FQDN generation did not compile: %#v", compiled)
+	}
+	for _, allow := range compiled.Allow {
+		if allow.RuleID != rule.String() {
+			t.Fatalf("derived allow lost FQDN parent provenance: %+v", allow)
+		}
 	}
 
 	exec(`UPDATE fqdn_resource_answer_generations SET state='withdrawn',ended_at=now(),failure_code='timeout' WHERE id=$1`, generation)

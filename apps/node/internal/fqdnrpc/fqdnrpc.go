@@ -97,9 +97,9 @@ type Record struct {
 type Status string
 
 const (
-	StatusNoError  Status = "noerror"
-	StatusNXDomain Status = "nxdomain"
-	StatusServFail Status = "servfail"
+	StatusNoError  Status = "NOERROR"
+	StatusNXDomain Status = "NXDOMAIN"
+	StatusServFail Status = "SERVFAIL"
 )
 
 // Response deliberately echoes the complete request binding. ObservedAt is a
@@ -179,6 +179,16 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 		}
 		if !sameRecords(canonical, records) {
 			return nil, errResolverConfig
+		}
+		// TTL is a cache observation, not record identity. Sequential queries to
+		// equally authoritative endpoints (especially UDP followed by TCP to the
+		// same resolver) can legitimately return different remaining TTLs. Keep
+		// endpoint consensus fail-closed for names/types/values, while publishing
+		// the most conservative TTL observed across every configured endpoint.
+		for i := range canonical {
+			if records[i].TTLSeconds < canonical[i].TTLSeconds {
+				canonical[i].TTLSeconds = records[i].TTLSeconds
+			}
 		}
 	}
 	addresses := 0
@@ -295,7 +305,7 @@ func sameRecords(a, b []Record) bool {
 		return false
 	}
 	for i := range a {
-		if a[i] != b[i] {
+		if a[i].Name != b[i].Name || a[i].Type != b[i].Type || a[i].Address != b[i].Address || a[i].Target != b[i].Target {
 			return false
 		}
 	}

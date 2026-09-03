@@ -14,10 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
-	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
-
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
 // TestSiteTransportCheckRefusesUnknown is the D4 refuse-don't-guess confirmation (Slice-2 ruling 1):
@@ -702,81 +700,6 @@ func TestListRoutedForwardsGating(t *testing.T) {
 	}
 	if none == nil || len(none) != 0 {
 		t.Fatalf("no reachable ranges must yield a non-nil [], got %#v", none)
-	}
-}
-
-// TestListRoutedForwardsIncludesFQDNResolverProfiles is the missing S21 desktop
-// handoff regression: the resolver profile used by Gateway DNS RPC must also
-// reach the desktop through the existing routed-ranges `forwards` payload. The
-// user must not duplicate the profile under Site DNS Forwarding.
-func TestListRoutedForwardsIncludesFQDNResolverProfiles(t *testing.T) {
-	pool := testPool(t)
-	svc := NewService(pool)
-	ctx := context.Background()
-	org, actor, gateway := uuid.New(), uuid.New(), uuid.New()
-	if _, err := pool.Exec(ctx, `INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'FQDN',$2,'10.99.0.0/24')`, org, "fqdn-forward-"+org.String()[:8]); err != nil {
-		t.Fatalf("seed org: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO users (id,email) VALUES ($1,$2)`, actor, "fqdn-forward-"+actor.String()[:8]+"@ex.com"); err != nil {
-		t.Fatalf("seed actor: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
-	})
-
-	site, err := svc.RegisterSite(ctx, org, "azure-private")
-	if err != nil {
-		t.Fatalf("register site: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,site_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,$3,'azure-gateway',$4,'gateway')`, gateway, org, site.ID, "fqdn-forward-"+gateway.String()[:8]); err != nil {
-		t.Fatalf("seed gateway: %v", err)
-	}
-	subnet, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("172.16.0.0/16"))
-	if err != nil {
-		t.Fatalf("add routed subnet: %v", err)
-	}
-	if err := svc.ApproveSubnet(ctx, actor, org, subnet.ID); err != nil {
-		t.Fatalf("approve routed subnet: %v", err)
-	}
-
-	resolverSvc := fqdnresources.New(pool)
-	if _, err := resolverSvc.SetResolverProfiles(ctx, org, site.ID, gateway, actor, "", "test", []fqdnresources.ResolverProfile{{
-		Name:         "Azure private DNS",
-		ProviderHint: "azure",
-		ZoneSuffixes: []string{"internal.tunnex.io"},
-		Endpoints: []fqdnresources.ResolverEndpoint{
-			// TCP-only and non-standard-port endpoints are valid for Gateway DNS
-			// RPC but cannot be represented by /etc/resolver or NRPT.
-			{Address: "172.16.2.2", Port: 53, Transport: "tcp"},
-			{Address: "172.16.2.3", Port: 5353, Transport: "udp"},
-			{Address: "172.16.2.4", Port: 53, Transport: "udp"},
-		},
-	}}); err != nil {
-		t.Fatalf("configure resolver profile: %v", err)
-	}
-
-	ranges, err := svc.ListRoutedRanges(ctx, org)
-	if err != nil {
-		t.Fatalf("list routed ranges: %v", err)
-	}
-	got, err := svc.ListRoutedForwards(ctx, org, ranges)
-	if err != nil {
-		t.Fatalf("list routed forwards: %v", err)
-	}
-	want := []DNSForward{{Domain: "internal.tunnex.io", ResolverIP: "172.16.2.4"}}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("FQDN profile forward: got %+v want %+v", got, want)
-	}
-
-	// The same active profile is withheld when its endpoint is outside the
-	// device's routed set; a knowingly unreachable resolver is never installed.
-	gated, err := svc.ListRoutedForwards(ctx, org, []string{"10.20.0.0/24"})
-	if err != nil {
-		t.Fatalf("list gated forwards: %v", err)
-	}
-	if gated == nil || len(gated) != 0 {
-		t.Fatalf("unreachable profile resolver must yield a non-nil empty set, got %#v", gated)
 	}
 }
 

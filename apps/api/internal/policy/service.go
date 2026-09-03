@@ -1000,8 +1000,14 @@ func appendActiveFQDNGenerations(ctx context.Context, snap *Snapshot, reader fqd
 		// persisted snapshot cannot be read.
 		return err
 	}
+	routedPrefixes := make([]netip.Prefix, 0, len(snap.SiteSubnets))
+	for _, subnet := range snap.SiteSubnets {
+		if prefix, parseErr := netip.ParsePrefix(subnet.CIDR); parseErr == nil {
+			routedPrefixes = append(routedPrefixes, prefix.Masked())
+		}
+	}
 	for _, generation := range generations {
-		resource, err := fqdnResourceFromActiveGeneration(generation)
+		resource, err := fqdnResourceFromActiveGeneration(generation, routedPrefixes)
 		if err != nil {
 			return err
 		}
@@ -1453,7 +1459,7 @@ func derefI64(p *int64) int64 {
 // fqdnResourceFromActiveGeneration is the only adapter from Lane 2's durable
 // resolver snapshot to compiler input. It rejects malformed context rather
 // than treating an answer set as portable across Sites or gateways.
-func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration) (FQDNResource, error) {
+func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPrefixes []netip.Prefix) (FQDNResource, error) {
 	site, err := uuid.Parse(g.Context.ResolverID)
 	if err != nil || site == uuid.Nil {
 		return FQDNResource{}, fmt.Errorf("invalid selected Site in active FQDN generation %s", g.ResourceID)
@@ -1469,10 +1475,27 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration) (FQDNReso
 	if err != nil || configID == uuid.Nil || g.ResolverConfig.Version < 1 || len(g.ResolverConfig.Endpoints) == 0 || len(g.ResolverConfig.Endpoints) > 8 {
 		return FQDNResource{}, fmt.Errorf("invalid resolver configuration snapshot for active FQDN generation %s", g.ResourceID)
 	}
+	profileID, err := uuid.Parse(g.ResolverConfig.ProfileID)
+	if err != nil || profileID == uuid.Nil {
+		return FQDNResource{}, fmt.Errorf("invalid selected resolver profile for active FQDN generation %s", g.ResourceID)
+	}
+	resolverCandidates := make([]string, 0, len(g.ResolverConfig.Endpoints))
 	for _, endpoint := range g.ResolverConfig.Endpoints {
-		if !endpoint.Address.IsValid() || endpoint.Address.IsUnspecified() || endpoint.Address.IsLoopback() || endpoint.Address.IsMulticast() || endpoint.Address.IsLinkLocalUnicast() || endpoint.Port == 0 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
+		if !endpoint.Address.IsValid() || endpoint.Address.Zone() != "" || endpoint.Address.IsUnspecified() || endpoint.Address.IsLoopback() || endpoint.Address.IsMulticast() || endpoint.Address.IsLinkLocalUnicast() || endpoint.Port == 0 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
 			return FQDNResource{}, fmt.Errorf("invalid resolver endpoint snapshot for active FQDN generation %s", g.ResourceID)
 		}
+		// Desktop scoped resolvers preserve only an address and use standard DNS.
+		// Preserve endpoint ordinal. The first routed UDP/53 endpoint is selected
+		// below, matching the desktop forward projection; TCP/53 is derived later
+		// for truncation/fallback on that same address.
+		if endpoint.Port == 53 && endpoint.Transport == "udp" {
+			prefix := netip.PrefixFrom(endpoint.Address, endpoint.Address.BitLen()).String()
+			resolverCandidates = append(resolverCandidates, prefix)
+		}
+	}
+	resolverAddresses := []string{}
+	if selected, ok := selectFirstReachableResolverAddress(resolverCandidates, routedPrefixes); ok {
+		resolverAddresses = append(resolverAddresses, selected)
 	}
 	answers := make([]string, 0, len(g.Addresses))
 	for _, address := range g.Addresses {
@@ -1492,8 +1515,11 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration) (FQDNReso
 			SelectedSiteID:        site,
 			SelectedGatewayID:     gateway,
 			ResolverConfigID:      configID,
+			ResolverProfileID:     profileID,
+			ResolverMatchSuffix:   g.ResolverConfig.MatchedSuffix,
 			ResolverConfigVersion: g.ResolverConfig.Version,
 			Answers:               answers,
+			ResolverAddresses:     resolverAddresses,
 		},
 	}, nil
 }
