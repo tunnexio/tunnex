@@ -3,6 +3,7 @@ import {
   enrollCommand,
   remoteEnrollCommand,
   cpEndpoints,
+  DEFAULT_FLOW_LOG_GROUP,
   GATEWAY_IMAGE,
 } from "../src/components/Gateways";
 
@@ -54,10 +55,30 @@ describe("remoteEnrollCommand — the one true zero-touch docker run", () => {
       '-e TUNNEX_API_URL="https://cp.example.com"',
       '-e TUNNEX_AGENT_URL="https://cp.example.com:8443"',
       '-e TUNNEX_AGENT_SERVERNAME="tunnex-control"',
+      `-e TUNNEX_FLOWLOG_GROUP=${DEFAULT_FLOW_LOG_GROUP}`,
       GATEWAY_IMAGE,
     ]) {
       expect(cmd, `missing: ${piece}`).toContain(piece);
     }
+  });
+
+  it("defaults flow logging on, accepts explicit zero to disable, and bounds invalid groups", () => {
+    const opts = {
+      token: "T",
+      name: null,
+      endpoint: null,
+      ...base,
+      image: GATEWAY_IMAGE,
+    };
+    expect(remoteEnrollCommand(opts)).toContain(
+      `-e TUNNEX_FLOWLOG_GROUP=${DEFAULT_FLOW_LOG_GROUP}`,
+    );
+    expect(remoteEnrollCommand({ ...opts, flowLogGroup: 0 })).toContain(
+      "-e TUNNEX_FLOWLOG_GROUP=0",
+    );
+    expect(remoteEnrollCommand({ ...opts, flowLogGroup: 65536 })).toContain(
+      `-e TUNNEX_FLOWLOG_GROUP=${DEFAULT_FLOW_LOG_GROUP}`,
+    );
   });
 
   it("endpoint present → TUNNEX_NODE_ENDPOINT set (hub); absent → omitted (NAT'd spoke)", () => {

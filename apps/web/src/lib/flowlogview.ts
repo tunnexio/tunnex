@@ -1,6 +1,7 @@
 // Flow logs — the view-model.
 
 import type { AccessEvent as APIAccessEvent } from "./api";
+import type { components } from "@tunnex/shared";
 //
 // ⛔ THE FOURTH UNREACHABLE-SURFACE INSTANCE. `GET …/access-events` and `…/access-log/health`
 // shipped in S7.5.1 and `apps/web` rendered NEITHER — same class as the five idp-sync endpoints
@@ -13,6 +14,154 @@ import type { AccessEvent as APIAccessEvent } from "./api";
 
 export type AccessEvent = APIAccessEvent;
 export type Decision = AccessEvent["decision"];
+
+export type AccessIdentityKind = "person" | "device" | "agent";
+
+export type AccessIdentityLabels = {
+  person?: string | null;
+  device?: string | null;
+  agent?: string | null;
+};
+
+export type AccessIdentityRef = {
+  kind: AccessIdentityKind;
+  id: string;
+};
+
+export type AccessIdentityQuery = {
+  src_user_id?: string;
+  src_device_id?: string;
+  src_agent_id?: string;
+};
+
+export type CurrentAccessIdentity = {
+  id: string;
+  label: string;
+};
+
+export type CurrentAccessIdentities = {
+  people: readonly CurrentAccessIdentity[];
+  devices: readonly CurrentAccessIdentity[];
+  agents: readonly CurrentAccessIdentity[];
+};
+
+export type AccessIdentityOption = AccessIdentityRef & {
+  value: string;
+  label: string;
+};
+
+export type AccessIdentityOptions = {
+  people: AccessIdentityOption[];
+  devices: AccessIdentityOption[];
+  agents: AccessIdentityOption[];
+};
+
+function idPreview(id: string): string {
+  return id.slice(0, 8);
+}
+
+/** A native select value that cannot confuse a user, device and agent sharing a UUID-shaped id. */
+export function accessIdentityValue(kind: AccessIdentityKind, id: string): string {
+  return `${kind}:${id}`;
+}
+
+export function parseAccessIdentityValue(value: string): AccessIdentityRef | null {
+  const colon = value.indexOf(":");
+  if (colon < 1 || colon === value.length - 1) return null;
+  const kind = value.slice(0, colon);
+  if (kind !== "person" && kind !== "device" && kind !== "agent") return null;
+  return { kind, id: value.slice(colon + 1) };
+}
+
+/** The server parameters are mutually exclusive by construction. */
+export function accessIdentityQuery(value: string): AccessIdentityQuery {
+  const identity = parseAccessIdentityValue(value);
+  if (!identity) return {};
+  switch (identity.kind) {
+    case "person":
+      return { src_user_id: identity.id };
+    case "device":
+      return { src_device_id: identity.id };
+    case "agent":
+      return { src_agent_id: identity.id };
+  }
+}
+
+export function accessIdentityOptionLabel(
+  kind: AccessIdentityKind,
+  id: string,
+  currentLabel?: string | null,
+): string {
+  if (currentLabel) {
+    switch (kind) {
+      case "person":
+        return `${currentLabel} (current member label) · ${idPreview(id)}`;
+      case "device":
+        return `${currentLabel} (current device name) · ${idPreview(id)}`;
+      case "agent":
+        return `${currentLabel} (current agent name) · ${idPreview(id)}`;
+    }
+  }
+  switch (kind) {
+    case "person":
+      return `person ${id} (current member unavailable)`;
+    case "device":
+      return `device ${id} (current name unavailable)`;
+    case "agent":
+      return `AI agent ${id} (current name unavailable)`;
+  }
+}
+
+/** Identity references carried by the event itself; inventory/address matches never add one. */
+export function eventIdentityRefs(e: AccessEvent): AccessIdentityRef[] {
+  const refs: AccessIdentityRef[] = [];
+  if (e.src_user_id) refs.push({ kind: "person", id: e.src_user_id });
+  const agentID = e.src_agent_id ??
+    (e.src_kind === "agent" ? e.src_device_id ?? undefined : undefined);
+  if (agentID) refs.push({ kind: "agent", id: agentID });
+  else if (e.src_device_id) refs.push({ kind: "device", id: e.src_device_id });
+  return refs;
+}
+
+/**
+ * Current inventory supplies labels; immutable events supply historical UUIDs. A selected historical
+ * value is retained even while changing the filter clears the rows for a server refetch.
+ */
+export function accessIdentityOptions(
+  events: readonly AccessEvent[],
+  current: CurrentAccessIdentities,
+  selectedValue = "",
+): AccessIdentityOptions {
+  const maps = {
+    person: new Map<string, string>(),
+    device: new Map<string, string>(),
+    agent: new Map<string, string>(),
+  };
+  for (const identity of current.people) maps.person.set(identity.id, identity.label);
+  for (const identity of current.devices) maps.device.set(identity.id, identity.label);
+  for (const identity of current.agents) maps.agent.set(identity.id, identity.label);
+  for (const event of events) {
+    for (const identity of eventIdentityRefs(event)) {
+      if (!maps[identity.kind].has(identity.id)) maps[identity.kind].set(identity.id, "");
+    }
+  }
+  const selected = parseAccessIdentityValue(selectedValue);
+  if (selected && !maps[selected.kind].has(selected.id)) {
+    maps[selected.kind].set(selected.id, "");
+  }
+  const optionsFor = (kind: AccessIdentityKind): AccessIdentityOption[] =>
+    [...maps[kind]].map(([id, currentLabel]) => ({
+      kind,
+      id,
+      value: accessIdentityValue(kind, id),
+      label: accessIdentityOptionLabel(kind, id, currentLabel),
+    })).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+  return {
+    people: optionsFor("person"),
+    devices: optionsFor("device"),
+    agents: optionsFor("agent"),
+  };
+}
 
 /**
  * ⛔ `gap` IS A FIRST-CLASS VERDICT AND IT IS THE MOST IMPORTANT ONE.
@@ -91,27 +240,56 @@ export function destinationFor(e: AccessEvent): string {
 }
 
 /**
- * Agent identity is artifact-stamped; human identity is never inferred. Names come from the
- * current roster, so the UI labels them current instead of rewriting history.
+ * Device/agent identity is artifact-stamped and the recorded person is resolved by verified id at
+ * ingest. Inventory is display-only: its current labels never replace the event-time UUIDs.
  */
-export function sourceFor(e: AccessEvent, agentName?: string | null): string {
-  if (e.src_agent_id) {
-    const label = agentName
-      ? `${agentName} (current name)`
-      : `agent ${e.src_agent_id.slice(0, 8)} (current name unavailable)`;
-    return `${label} · ${e.src_ip}`;
+export function sourceFor(
+  e: AccessEvent,
+  labels: AccessIdentityLabels = {},
+): string {
+  const parts: string[] = [];
+  const agentID = e.src_agent_id ??
+    (e.src_kind === "agent" ? e.src_device_id ?? undefined : undefined);
+  if (agentID) {
+    parts.push(
+      labels.agent
+        ? `${labels.agent} (current agent name)`
+        : `AI agent ${idPreview(agentID)} (current name unavailable)`,
+    );
+  } else if (e.src_device_id) {
+    parts.push(
+      labels.device
+        ? `${labels.device} (current device name)`
+        : `device ${idPreview(e.src_device_id)} (current name unavailable)`,
+    );
   }
-  return e.src_ip;
+  if (e.src_user_id) {
+    parts.push(
+      labels.person
+        ? `recorded person ${labels.person} (current member label)`
+        : `recorded person ${idPreview(e.src_user_id)} (current member unavailable)`,
+    );
+  }
+  return parts.length > 0 ? `${parts.join(" · ")} · ${e.src_ip}` : e.src_ip;
 }
 
 export const ATTRIBUTION_NOTE =
-  "Agent identity is recorded only when the successfully applied gateway policy stamped it. Human identity is not inferred from an address or from current ownership.";
+  "Source device and AI-agent IDs come from the successfully applied gateway policy; the recorded person comes from org-scoped ownership verified at ingest. Names are current labels only, and a recorded person is accountability — not proof that they initiated the traffic. Identity is never inferred from an IP address.";
 
 export function eventTimeline(e: AccessEvent): string[] {
   const reason = e.decision_reason?.replace(/_/g, " ") ?? "reason unavailable";
-  const source = e.src_agent_id
-    ? `Source agent ${e.src_agent_id} · configuration revision ${e.src_config_revision ?? "not recorded"}`
-    : `Source ${e.src_ip} · agent identity not recorded`;
+  const agentID = e.src_agent_id ??
+    (e.src_kind === "agent" ? e.src_device_id ?? undefined : undefined);
+  const person = e.src_user_id
+    ? `recorded person ${e.src_user_id}`
+    : "recorded person not recorded";
+  const source = agentID
+    ? `Source AI agent ${agentID} · ${person} · configuration revision ${e.src_config_revision ?? "not recorded"}`
+    : e.src_device_id
+      ? `Source device ${e.src_device_id} · source kind ${e.src_kind ?? "not recorded"} · ${person}`
+      : e.src_user_id
+        ? `Recorded person ${e.src_user_id} · source device not recorded`
+        : `Source ${e.src_ip} · source identity not recorded`;
   const applied = e.policy_hash && e.policy_version
     ? `Gateway ${e.node_id ?? "not recorded"} · applied policy v${e.policy_version} · ${e.policy_hash}`
     : `Gateway ${e.node_id ?? "not recorded"} · applied policy version not recorded`;
@@ -153,7 +331,7 @@ export const FLOW_LOG_CUTS: readonly { what: string; why: string }[] = [
   },
   {
     what: "Per-verdict filter chips (allow / deny / deny_aggregate / terminated)",
-    why: "the API has ONE filter, `denies_only`. Filtering a keyset page client-side would hide events on OTHER pages while looking like a complete filter — a feed that under-reports is worse than one that does not filter.",
+    why: "the API has ONE verdict filter, `denies_only`; the source-identity filters are orthogonal. Filtering a keyset page client-side would hide events on OTHER pages while looking like a complete filter — a feed that under-reports is worse than one that does not filter.",
   },
   {
     what: "The verdict timeline and its totals (allow 528 · deny 68 · …)",
@@ -161,7 +339,7 @@ export const FLOW_LOG_CUTS: readonly { what: string; why: string }[] = [
   },
 ] as const;
 
-/** The one filter the server actually has. */
+/** Verdict-state only; source identity is represented separately by AccessIdentityQuery. */
 export type FlowFilter = { deniesOnly: boolean };
 
 /**
@@ -170,24 +348,106 @@ export type FlowFilter = { deniesOnly: boolean };
  * ⛔ `retention_failed` MEANS THE HOT WINDOW MAY BE GROWING — the schema says so. That is a
  * disk-exhaustion warning wearing a housekeeping name, so it renders loud rather than as a stat.
  */
-export type AccessLogHealth = {
-  retention_last_sweep?: string | null;
-  retention_dropped: number;
-  retention_failed: boolean;
-};
+export type AccessEventCollectorStatus =
+  components["schemas"]["AccessEventCollectorStatus"];
+
+export type AccessLogHealth = components["schemas"]["AccessLogHealth"];
 
 export function retentionNote(h: AccessLogHealth): {
   text: string;
   loud: boolean;
+  tone: "muted" | "warn" | "danger";
 } {
   if (h.retention_failed) {
     return {
       text: "The last retention sweep failed — old events may not have been dropped, so the hot window can keep growing. Check the control-plane logs.",
       loud: true,
+      tone: "danger",
+    };
+  }
+  if (!h.retention_last_sweep) {
+    return {
+      text: "Retention pruning has not run yet.",
+      loud: false,
+      tone: "warn",
     };
   }
   return {
     text: `Last sweep dropped ${h.retention_dropped.toLocaleString()} event${h.retention_dropped === 1 ? "" : "s"}.`,
     loud: false,
+    tone: "muted",
   };
+}
+
+export function collectorStateLabel(
+  state: AccessEventCollectorStatus["state"],
+): string {
+  switch (state) {
+    case "active":
+      return "Active";
+    case "disabled":
+      return "Disabled";
+    case "source_error":
+      return "Source error";
+    case "delivery_error":
+      return "Delivery error";
+    case "stale":
+      return "Heartbeat stale";
+    case "unknown":
+      return "Not reported";
+  }
+}
+
+export function collectorStateTone(
+  state: AccessEventCollectorStatus["state"],
+): "ok" | "muted" | "warn" | "danger" {
+  switch (state) {
+    case "active":
+      return "ok";
+    case "disabled":
+      return "muted";
+    case "unknown":
+      return "warn";
+    case "stale":
+    case "source_error":
+    case "delivery_error":
+      return "danger";
+  }
+}
+
+/**
+ * Copy for a successfully loaded empty feed. Collector health is the authority for whether collection is
+ * active; the absence of rows is never treated as evidence that it is.
+ */
+export function emptyAccessEventsNote(
+  health: AccessLogHealth | null,
+  healthFailed: boolean,
+): string {
+  if (healthFailed) {
+    return "No access events are retained. Gateway collector status is unavailable, so this empty feed does not prove collection is active.";
+  }
+  if (!health) {
+    return "No access events are retained. Checking gateway collector status…";
+  }
+  const collectors = health.gateway_collectors;
+  if (!collectors || collectors.length === 0) {
+    return "No access events are retained. No gateway has reported collector status yet.";
+  }
+  if (collectors.every((collector) => collector.state === "disabled")) {
+    return "No access events are retained because collection is disabled on every gateway.";
+  }
+  if (
+    collectors.some(
+      (collector) =>
+        collector.state === "source_error" ||
+        collector.state === "delivery_error" ||
+        collector.state === "stale",
+    )
+  ) {
+    return "No access events are retained. One or more gateway collector heartbeats are stale or report an error.";
+  }
+  if (collectors.every((collector) => collector.state === "unknown")) {
+    return "No access events are retained. Gateway collector state has not been reported yet.";
+  }
+  return "No access events were recorded in the retained window.";
 }

@@ -1,6 +1,15 @@
 # Deploying a Tunnex gateway on a cloud VM (remote gateway)
 
-The dashboard emits the **one true install command** (Devices → Enroll gateway → Generate join token). Paste it on the cloud VM — Docker installed, nothing else. It brings the agent up on real WireGuard with **zero edits** (`--network host`, `wgctrl`, `/dev/net/tun`, the public control-plane URLs, and the token are all baked in). That is the whole gateway-side story — **zero SSH to the gateway after the paste** (the Zero-Touch Gateway Law, `docs/laws.md`).
+The dashboard emits the **one true install command** (Devices → Enroll gateway → Generate join token). Paste it on the cloud VM — Docker installed, nothing else. It brings the agent up on real WireGuard with **zero edits** (`--network host`, `wgctrl`, `/dev/net/tun`, the public control-plane URLs, NFLOG group, and the token are all baked in). Routine operation requires no interactive gateway edits (the Zero-Touch Gateway Law, `docs/laws.md`).
+
+The emitted `docker run` is not a self-updater. Roll out a new gateway image with
+your VM automation, one gateway at a time, using the newly emitted command shape
+and preserving the `tunnex_node_state` volume. Capture the current image digest
+and container configuration first. A replacement briefly interrupts that
+gateway's WireGuard datapath; validate its control heartbeat, collector state,
+and policy hash before moving to the next gateway. To disable only access-event
+observation, recreate it with `TUNNEX_FLOWLOG_GROUP=0`; this does not change the
+allow/drop rules' verdicts.
 
 ## The endpoint field (D4a)
 At token creation, set **Public endpoint (ip:port)** to the VM's public `ip:51820` if this gateway should be **dialable** (a hub, or any reachable gateway). Leave it blank for a **NAT'd spoke** (it dials the hub; peers can't dial it). The emitted command includes `TUNNEX_NODE_ENDPOINT` iff you set it.

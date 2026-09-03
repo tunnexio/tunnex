@@ -7,9 +7,315 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const auditLogRetentionMorePending = `-- name: AuditLogRetentionMorePending :one
+SELECT EXISTS (
+    SELECT 1 FROM audit_logs audit
+    WHERE audit.org_id=$1
+      AND audit.created_at < $2
+      AND NOT EXISTS (
+          SELECT 1 FROM k8s_connector_handoff_operations operation
+          WHERE operation.cas_audit_id=audit.id
+            AND operation.org_id=audit.org_id
+      )
+) AS more_pending
+`
+
+type AuditLogRetentionMorePendingParams struct {
+	OrgID     pgtype.UUID `json:"org_id"`
+	OlderThan time.Time   `json:"older_than"`
+}
+
+func (q *Queries) AuditLogRetentionMorePending(ctx context.Context, arg AuditLogRetentionMorePendingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, auditLogRetentionMorePending, arg.OrgID, arg.OlderThan)
+	var more_pending bool
+	err := row.Scan(&more_pending)
+	return more_pending, err
+}
+
+const expireAuditLogRetentionRun = `-- name: ExpireAuditLogRetentionRun :one
+UPDATE audit_log_retention_runs
+SET status='failed',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+    more_pending=true,error_code='lease_expired'
+WHERE org_id=$1
+  AND status='running'
+  AND lease_expires_at <= statement_timestamp()
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+func (q *Queries) ExpireAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, expireAuditLogRetentionRun, orgID)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const finalizeAuditLogRetentionRunFailure = `-- name: FinalizeAuditLogRetentionRunFailure :one
+UPDATE audit_log_retention_runs
+SET status='failed',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+    more_pending=true,error_code=$1
+WHERE id=$2 AND org_id=$3 AND status='running'
+  AND lease_expires_at > statement_timestamp()
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type FinalizeAuditLogRetentionRunFailureParams struct {
+	ErrorCode *string   `json:"error_code"`
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) FinalizeAuditLogRetentionRunFailure(ctx context.Context, arg FinalizeAuditLogRetentionRunFailureParams) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, finalizeAuditLogRetentionRunFailure, arg.ErrorCode, arg.ID, arg.OrgID)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const finalizeAuditLogRetentionRunSuccess = `-- name: FinalizeAuditLogRetentionRunSuccess :one
+UPDATE audit_log_retention_runs
+SET status='succeeded',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+    more_pending=$1,error_code=NULL
+WHERE id=$2 AND org_id=$3 AND status='running'
+  AND lease_expires_at > statement_timestamp()
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type FinalizeAuditLogRetentionRunSuccessParams struct {
+	MorePending bool      `json:"more_pending"`
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) FinalizeAuditLogRetentionRunSuccess(ctx context.Context, arg FinalizeAuditLogRetentionRunSuccessParams) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, finalizeAuditLogRetentionRunSuccess, arg.MorePending, arg.ID, arg.OrgID)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAuditLogRetentionSettings = `-- name: GetAuditLogRetentionSettings :one
+SELECT org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at FROM audit_log_retention_settings
+WHERE org_id=$1
+`
+
+func (q *Queries) GetAuditLogRetentionSettings(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, getAuditLogRetentionSettings, orgID)
+	var i AuditLogRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAuditLogRetentionSettingsForUpdate = `-- name: GetAuditLogRetentionSettingsForUpdate :one
+SELECT org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at FROM audit_log_retention_settings
+WHERE org_id=$1
+FOR UPDATE
+`
+
+func (q *Queries) GetAuditLogRetentionSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, getAuditLogRetentionSettingsForUpdate, orgID)
+	var i AuditLogRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLatestAuditLogRetentionRun = `-- name: GetLatestAuditLogRetentionRun :one
+SELECT id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at FROM audit_log_retention_runs
+WHERE org_id=$1
+ORDER BY started_at DESC,id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, getLatestAuditLogRetentionRun, orgID)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getManualAuditLogRetentionRun = `-- name: GetManualAuditLogRetentionRun :one
+SELECT id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at FROM audit_log_retention_runs
+WHERE org_id=$1
+  AND manual_idempotency_key=$2
+`
+
+type GetManualAuditLogRetentionRunParams struct {
+	OrgID                uuid.UUID `json:"org_id"`
+	ManualIdempotencyKey *string   `json:"manual_idempotency_key"`
+}
+
+func (q *Queries) GetManualAuditLogRetentionRun(ctx context.Context, arg GetManualAuditLogRetentionRunParams) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, getManualAuditLogRetentionRun, arg.OrgID, arg.ManualIdempotencyKey)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getRunningAuditLogRetentionRun = `-- name: GetRunningAuditLogRetentionRun :one
+SELECT id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at FROM audit_log_retention_runs
+WHERE org_id=$1 AND status='running'
+LIMIT 1
+`
+
+func (q *Queries) GetRunningAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, getRunningAuditLogRetentionRun, orgID)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const insertAuditLog = `-- name: InsertAuditLog :one
 
@@ -27,8 +333,8 @@ type InsertAuditLogParams struct {
 	Metadata    []byte      `json:"metadata"`
 }
 
-// audit_logs is append-only: there are intentionally NO update or delete queries
-// here, and the DB enforces it (see 0002 triggers).
+// audit_logs is append-only for ordinary callers. The only deletion seam is the
+// bounded security-definer retention function introduced in migration 0129.
 func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) (AuditLog, error) {
 	row := q.db.QueryRow(ctx, insertAuditLog,
 		arg.OrgID,
@@ -49,6 +355,168 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 		&i.Metadata,
 		&i.CreatedAt,
 		&i.ActorSystem,
+	)
+	return i, err
+}
+
+const insertAuditLogRetentionSettings = `-- name: InsertAuditLogRetentionSettings :one
+INSERT INTO audit_log_retention_settings (
+    org_id,retention_days,cleanup_interval_minutes,revision,updated_by_user_id
+) VALUES (
+    $1,$2,$3,1,
+    $4
+)
+RETURNING org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at
+`
+
+type InsertAuditLogRetentionSettingsParams struct {
+	OrgID                  uuid.UUID `json:"org_id"`
+	RetentionDays          *int32    `json:"retention_days"`
+	CleanupIntervalMinutes int32     `json:"cleanup_interval_minutes"`
+	UpdatedByUserID        uuid.UUID `json:"updated_by_user_id"`
+}
+
+func (q *Queries) InsertAuditLogRetentionSettings(ctx context.Context, arg InsertAuditLogRetentionSettingsParams) (AuditLogRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, insertAuditLogRetentionSettings,
+		arg.OrgID,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.UpdatedByUserID,
+	)
+	var i AuditLogRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertManualAuditLogRetentionRun = `-- name: InsertManualAuditLogRetentionRun :one
+INSERT INTO audit_log_retention_runs (
+    org_id,trigger_kind,status,manual_idempotency_key,requested_by_user_id,
+    retention_days,cleanup_interval_minutes,settings_revision,batch_size,
+    max_batches,cutoff_at,started_at,lease_expires_at
+) VALUES (
+    $1,'manual','running',$2,
+    $3,$4,
+    $5,$6,
+    $7,$8,
+    statement_timestamp() - $4::integer * interval '24 hours',
+    statement_timestamp(),statement_timestamp() + interval '15 minutes'
+)
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type InsertManualAuditLogRetentionRunParams struct {
+	OrgID                  uuid.UUID   `json:"org_id"`
+	ManualIdempotencyKey   *string     `json:"manual_idempotency_key"`
+	RequestedByUserID      pgtype.UUID `json:"requested_by_user_id"`
+	RetentionDays          int32       `json:"retention_days"`
+	CleanupIntervalMinutes int32       `json:"cleanup_interval_minutes"`
+	SettingsRevision       int64       `json:"settings_revision"`
+	BatchSize              int32       `json:"batch_size"`
+	MaxBatches             int32       `json:"max_batches"`
+}
+
+func (q *Queries) InsertManualAuditLogRetentionRun(ctx context.Context, arg InsertManualAuditLogRetentionRunParams) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, insertManualAuditLogRetentionRun,
+		arg.OrgID,
+		arg.ManualIdempotencyKey,
+		arg.RequestedByUserID,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.SettingsRevision,
+		arg.BatchSize,
+		arg.MaxBatches,
+	)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertScheduledAuditLogRetentionRun = `-- name: InsertScheduledAuditLogRetentionRun :one
+INSERT INTO audit_log_retention_runs (
+    org_id,trigger_kind,status,retention_days,cleanup_interval_minutes,
+    settings_revision,batch_size,max_batches,cutoff_at,started_at,
+    lease_expires_at
+) VALUES (
+    $1,'scheduled','running',$2,
+    $3,$4,
+    $5,$6,
+    statement_timestamp() - $2::integer * interval '24 hours',
+    statement_timestamp(),statement_timestamp() + interval '15 minutes'
+)
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type InsertScheduledAuditLogRetentionRunParams struct {
+	OrgID                  uuid.UUID `json:"org_id"`
+	RetentionDays          int32     `json:"retention_days"`
+	CleanupIntervalMinutes int32     `json:"cleanup_interval_minutes"`
+	SettingsRevision       int64     `json:"settings_revision"`
+	BatchSize              int32     `json:"batch_size"`
+	MaxBatches             int32     `json:"max_batches"`
+}
+
+func (q *Queries) InsertScheduledAuditLogRetentionRun(ctx context.Context, arg InsertScheduledAuditLogRetentionRunParams) (AuditLogRetentionRun, error) {
+	row := q.db.QueryRow(ctx, insertScheduledAuditLogRetentionRun,
+		arg.OrgID,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.SettingsRevision,
+		arg.BatchSize,
+		arg.MaxBatches,
+	)
+	var i AuditLogRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -93,6 +561,52 @@ func (q *Queries) InsertSystemAuditLog(ctx context.Context, arg InsertSystemAudi
 		&i.ActorSystem,
 	)
 	return i, err
+}
+
+const isAuditLogRetentionDue = `-- name: IsAuditLogRetentionDue :one
+SELECT EXISTS (
+    SELECT 1
+    FROM audit_log_retention_settings setting
+    JOIN audit_logs audit ON audit.org_id=setting.org_id
+    WHERE setting.org_id=$1
+      AND setting.retention_days IS NOT NULL
+      AND audit.created_at
+          < statement_timestamp()
+              - setting.retention_days * interval '24 hours'
+      AND NOT EXISTS (
+          SELECT 1 FROM k8s_connector_handoff_operations operation
+          WHERE operation.cas_audit_id=audit.id
+            AND operation.org_id=audit.org_id
+      )
+)
+AND NOT EXISTS (
+    SELECT 1 FROM audit_log_retention_runs active
+    WHERE active.org_id=$1
+      AND active.status='running'
+      AND active.lease_expires_at > statement_timestamp()
+)
+AND COALESCE((
+    SELECT (latest.status='succeeded' AND latest.more_pending)
+       OR latest.completed_at
+          + $2::integer * interval '1 minute'
+          <= statement_timestamp()
+    FROM audit_log_retention_runs latest
+    WHERE latest.org_id=$1 AND latest.status <> 'running'
+    ORDER BY latest.started_at DESC,latest.id DESC
+    LIMIT 1
+),true) AS due
+`
+
+type IsAuditLogRetentionDueParams struct {
+	OrgID                  uuid.UUID `json:"org_id"`
+	CleanupIntervalMinutes int32     `json:"cleanup_interval_minutes"`
+}
+
+func (q *Queries) IsAuditLogRetentionDue(ctx context.Context, arg IsAuditLogRetentionDueParams) (*bool, error) {
+	row := q.db.QueryRow(ctx, isAuditLogRetentionDue, arg.OrgID, arg.CleanupIntervalMinutes)
+	var due *bool
+	err := row.Scan(&due)
+	return due, err
 }
 
 const listAuditLogsByOrg = `-- name: ListAuditLogsByOrg :many
@@ -160,4 +674,218 @@ func (q *Queries) ListAuditLogsByOrg(ctx context.Context, arg ListAuditLogsByOrg
 		return nil, err
 	}
 	return items, nil
+}
+
+const listDueAuditLogRetentionOrganizations = `-- name: ListDueAuditLogRetentionOrganizations :many
+SELECT setting.org_id
+FROM audit_log_retention_settings setting
+WHERE NOT EXISTS (
+      SELECT 1 FROM audit_log_retention_runs active
+      WHERE active.org_id=setting.org_id
+        AND active.status='running'
+        AND active.lease_expires_at > statement_timestamp()
+  )
+  AND (
+      -- Expired claims must be reclaimed even after their final batch removed
+      -- the last eligible row or the policy switched back to Forever.
+      EXISTS (
+          SELECT 1 FROM audit_log_retention_runs expired
+          WHERE expired.org_id=setting.org_id
+            AND expired.status='running'
+            AND expired.lease_expires_at <= statement_timestamp()
+      )
+      OR (
+          setting.retention_days IS NOT NULL
+          AND EXISTS (
+              SELECT 1
+              FROM audit_logs audit
+              WHERE audit.org_id=setting.org_id
+                AND audit.created_at
+                    < statement_timestamp()
+                        - setting.retention_days * interval '24 hours'
+                AND NOT EXISTS (
+                    SELECT 1 FROM k8s_connector_handoff_operations operation
+                    WHERE operation.cas_audit_id=audit.id
+                      AND operation.org_id=audit.org_id
+                )
+          )
+          AND COALESCE((
+              SELECT (latest.status='succeeded' AND latest.more_pending)
+                 OR latest.completed_at
+                    + setting.cleanup_interval_minutes * interval '1 minute'
+                    <= statement_timestamp()
+              FROM audit_log_retention_runs latest
+              WHERE latest.org_id=setting.org_id AND latest.status <> 'running'
+              ORDER BY latest.started_at DESC,latest.id DESC
+              LIMIT 1
+          ),true)
+      )
+  )
+ORDER BY (
+    SELECT latest.completed_at
+    FROM audit_log_retention_runs latest
+    WHERE latest.org_id=setting.org_id AND latest.status <> 'running'
+    ORDER BY latest.started_at DESC,latest.id DESC
+    LIMIT 1
+) NULLS FIRST,setting.org_id
+LIMIT $1
+`
+
+// lint:cross-org — new claims require an explicitly persisted bounded policy
+// and eligible evidence. Expired claims are still enumerated for recovery even
+// after the final eligible row is gone or the policy returns to Forever.
+func (q *Queries) ListDueAuditLogRetentionOrganizations(ctx context.Context, orgLimit int32) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listDueAuditLogRetentionOrganizations, orgLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var org_id uuid.UUID
+		if err := rows.Scan(&org_id); err != nil {
+			return nil, err
+		}
+		items = append(items, org_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAuditLogRetentionOrganization = `-- name: LockAuditLogRetentionOrganization :one
+SELECT id FROM organizations
+WHERE id=$1
+FOR UPDATE
+`
+
+// lint:allow-deleted — a persisted bounded policy keeps draining evidence for
+// a soft-deleted tenant. The row lock serializes scheduled/manual claims.
+func (q *Queries) LockAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAuditLogRetentionOrganization, orgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockLiveAuditLogRetentionOrganization = `-- name: LockLiveAuditLogRetentionOrganization :one
+SELECT id FROM organizations
+WHERE id=$1 AND deleted_at IS NULL
+FOR UPDATE
+`
+
+// Settings are user-facing configuration and may only change for a live tenant.
+func (q *Queries) LockLiveAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockLiveAuditLogRetentionOrganization, orgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const pruneAuditLogRetentionRunHistory = `-- name: PruneAuditLogRetentionRunHistory :execrows
+WITH obsolete AS (
+    SELECT run.id
+    FROM audit_log_retention_runs run
+    WHERE run.org_id=$1
+      AND run.trigger_kind='scheduled'
+      AND run.status <> 'running'
+    ORDER BY run.started_at DESC,run.id DESC
+    LIMIT $3::integer
+    OFFSET $2::integer
+    FOR UPDATE SKIP LOCKED
+)
+DELETE FROM audit_log_retention_runs target
+USING obsolete
+WHERE target.org_id=$1 AND target.id=obsolete.id
+`
+
+type PruneAuditLogRetentionRunHistoryParams struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	KeepTerminal int32     `json:"keep_terminal"`
+	DeleteLimit  int32     `json:"delete_limit"`
+}
+
+// Bound automatic scheduler history without weakening manual idempotency:
+// manual runs and running claims are never candidates.
+func (q *Queries) PruneAuditLogRetentionRunHistory(ctx context.Context, arg PruneAuditLogRetentionRunHistoryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneAuditLogRetentionRunHistory, arg.OrgID, arg.KeepTerminal, arg.DeleteLimit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const pruneAuditLogsByAgeBatch = `-- name: PruneAuditLogsByAgeBatch :one
+SELECT audit_log_retention_prune_batch(
+    $1
+)
+`
+
+// This security-definer function is the only authorized DELETE path. Its SQL
+// body locks the exact unexpired durable run and derives tenant/cutoff from it.
+func (q *Queries) PruneAuditLogsByAgeBatch(ctx context.Context, runID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, pruneAuditLogsByAgeBatch, runID)
+	var audit_log_retention_prune_batch int64
+	err := row.Scan(&audit_log_retention_prune_batch)
+	return audit_log_retention_prune_batch, err
+}
+
+const renewAuditLogRetentionRunLease = `-- name: RenewAuditLogRetentionRunLease :execrows
+UPDATE audit_log_retention_runs
+SET lease_expires_at=statement_timestamp() + interval '15 minutes'
+WHERE id=$1 AND org_id=$2 AND status='running'
+  AND lease_expires_at > statement_timestamp()
+`
+
+type RenewAuditLogRetentionRunLeaseParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) RenewAuditLogRetentionRunLease(ctx context.Context, arg RenewAuditLogRetentionRunLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewAuditLogRetentionRunLease, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateAuditLogRetentionSettings = `-- name: UpdateAuditLogRetentionSettings :one
+UPDATE audit_log_retention_settings
+SET retention_days=$1,
+    cleanup_interval_minutes=$2,
+    revision=$3,
+    updated_by_user_id=$4
+WHERE org_id=$5
+RETURNING org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at
+`
+
+type UpdateAuditLogRetentionSettingsParams struct {
+	RetentionDays          *int32    `json:"retention_days"`
+	CleanupIntervalMinutes int32     `json:"cleanup_interval_minutes"`
+	Revision               int64     `json:"revision"`
+	UpdatedByUserID        uuid.UUID `json:"updated_by_user_id"`
+	OrgID                  uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) UpdateAuditLogRetentionSettings(ctx context.Context, arg UpdateAuditLogRetentionSettingsParams) (AuditLogRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, updateAuditLogRetentionSettings,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.Revision,
+		arg.UpdatedByUserID,
+		arg.OrgID,
+	)
+	var i AuditLogRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

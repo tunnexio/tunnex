@@ -10,15 +10,43 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
+
+type accessEventIdentityKind uint8
+
+const (
+	accessEventIdentityAgent accessEventIdentityKind = iota + 1
+	accessEventIdentityDevice
+	accessEventIdentityUser
+)
+
+// accessEventIdentityFilter is deliberately discriminated instead of carrying
+// three nullable IDs. Once the handler validates the public parameters, the
+// store cannot accidentally combine or choose precedence between identities.
+type accessEventIdentityFilter struct {
+	Kind accessEventIdentityKind
+	ID   uuid.UUID
+}
 
 // accessLogPort is the S7.5.1 Zero Trust access/flow-log query surface. nil in the open
 // build → the endpoints return 403 edition_required (the established precedent). The query
 // itself is DB-neutral; the gate is the product boundary (visibility = enterprise).
 type accessLogPort interface {
-	List(ctx context.Context, orgID uuid.UUID, agentID *uuid.UUID, deniesOnly bool, cursorTS time.Time, cursorID uuid.UUID, limit int32) ([]accesslog.Event, error)
+	List(ctx context.Context, orgID uuid.UUID, identity *accessEventIdentityFilter, deniesOnly bool, cursorTS time.Time, cursorID uuid.UUID, limit int32) ([]accesslog.Event, error)
 	Health() accesslog.Snapshot
+	Collectors(ctx context.Context, orgID uuid.UUID) ([]accessLogCollectorStatus, error)
+}
+
+type accessLogCollectorStatus struct {
+	NodeID          uuid.UUID
+	Name            string
+	State           string
+	LastReportedAt  *time.Time
+	LastObservedAt  *time.Time
+	LastDeliveredAt *time.Time
+	LastEventAt     *time.Time
 }
 
 // maxUUID is the keyset first-page id sentinel (everything sorts < it at equal created_at).
@@ -46,12 +74,24 @@ func (s apiServer) ListAccessEvents(ctx context.Context, req api.ListAccessEvent
 	if req.Params.Limit != nil {
 		limit = int32(*req.Params.Limit)
 	}
-	var agentID *uuid.UUID
+	var identity *accessEventIdentityFilter
+	identityCount := 0
 	if req.Params.SrcAgentId != nil {
-		id := uuid.UUID(*req.Params.SrcAgentId)
-		agentID = &id
+		identityCount++
+		identity = &accessEventIdentityFilter{Kind: accessEventIdentityAgent, ID: uuid.UUID(*req.Params.SrcAgentId)}
 	}
-	events, err := s.accessLog.List(ctx, req.OrgId, agentID, deniesOnly, cursorTS, cursorID, limit)
+	if req.Params.SrcDeviceId != nil {
+		identityCount++
+		identity = &accessEventIdentityFilter{Kind: accessEventIdentityDevice, ID: uuid.UUID(*req.Params.SrcDeviceId)}
+	}
+	if req.Params.SrcUserId != nil {
+		identityCount++
+		identity = &accessEventIdentityFilter{Kind: accessEventIdentityUser, ID: uuid.UUID(*req.Params.SrcUserId)}
+	}
+	if identityCount > 1 {
+		return nil, apierr.BadRequest("invalid_access_event_identity_filter", "provide at most one of src_agent_id, src_device_id, or src_user_id")
+	}
+	events, err := s.accessLog.List(ctx, req.OrgId, identity, deniesOnly, cursorTS, cursorID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -74,9 +114,44 @@ func (s apiServer) GetAccessLogHealth(ctx context.Context, req api.GetAccessLogH
 		return nil, editionRequired()
 	}
 	snap := s.accessLog.Health()
+	// Prefer the tenant-scoped durable run over the legacy process-local
+	// snapshot. This prevents one organization's sweep result from appearing in
+	// another organization's health response and survives API restarts.
+	if s.accessEventRetention != nil {
+		latest, latestErr := s.accessEventRetention.GetLatestRun(ctx, req.OrgId)
+		if latestErr != nil {
+			return nil, latestErr
+		}
+		snap.RetentionDropped = 0
+		snap.RetentionFailed = false
+		snap.RetentionLastSweep = time.Time{}
+		if latest != nil {
+			snap.RetentionDropped = latest.DeletedRows
+			snap.RetentionFailed = latest.Status == accesslog.RetentionRunFailed
+			if latest.CompletedAt != nil {
+				snap.RetentionLastSweep = *latest.CompletedAt
+			}
+		}
+	}
+	collectors, err := s.accessLog.Collectors(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
 	body := api.AccessLogHealth{
-		RetentionDropped: snap.RetentionDropped,
-		RetentionFailed:  snap.RetentionFailed,
+		RetentionDropped:  snap.RetentionDropped,
+		RetentionFailed:   snap.RetentionFailed,
+		GatewayCollectors: make([]api.AccessEventCollectorStatus, len(collectors)),
+	}
+	for idx, collector := range collectors {
+		body.GatewayCollectors[idx] = api.AccessEventCollectorStatus{
+			NodeId:          collector.NodeID,
+			Name:            collector.Name,
+			State:           api.AccessEventCollectorStatusState(collector.State),
+			LastReportedAt:  collector.LastReportedAt,
+			LastObservedAt:  collector.LastObservedAt,
+			LastDeliveredAt: collector.LastDeliveredAt,
+			LastEventAt:     collector.LastEventAt,
+		}
 	}
 	if !snap.RetentionLastSweep.IsZero() {
 		t := snap.RetentionLastSweep
@@ -100,8 +175,14 @@ func toAPIAccessEvent(e accesslog.Event) api.AccessEvent {
 		Protocol:      e.Protocol,
 		RuleId:        optUUID(e.RuleID),
 		NodeId:        optUUID(e.NodeID),
+		SrcDeviceId:   optUUID(e.SrcDeviceID),
+		SrcUserId:     optUUID(e.SrcUserID),
 		DstResourceId: optUUID(e.DstResourceID),
 		DstGroupId:    optUUID(e.DstGroupID),
+	}
+	if e.SrcKind == "human" || e.SrcKind == "agent" {
+		kind := api.AccessEventSrcKind(e.SrcKind)
+		out.SrcKind = &kind
 	}
 	if e.SrcKind == "agent" {
 		out.SrcAgentId = optUUID(e.SrcDeviceID)

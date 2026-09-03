@@ -401,16 +401,26 @@ change with its own blast radius across every principal kind, and this walk chan
 
 ---
 
-## ⛔ 8 — FLOW LOGGING IS OFF BY DEFAULT, AND THE SCREEN CANNOT SAY SO
+## ⛔ 8 — FLOW LOGGING WAS OFF BY DEFAULT, AND THE SCREEN COULD NOT SAY SO
 
-**Status: OPEN. Found at EPIC 15 walk Leg 3, 2026-08-04. Not EPIC 15's — S7.5.1's surface, measured here.**
+**Status: REMEDIATION IMPLEMENTED on `codex/fix-access-event-ingestion-retention`, PENDING MERGE/RELEASE.
+Found at EPIC 15 walk Leg 3, 2026-08-04; traced again on a production-like rig on 2026-09-03.
+Not EPIC 15's — S7.5.1's surface, measured there.**
 
-**Two halves, and the second is the defect:**
+**At discovery, 2026-08-04, there were two halves, and the second was the defect:**
 
 | half | measured |
 | --- | --- |
-| **the default** | `TUNNEX_FLOWLOG_GROUP` defaults to **0 = OFF** (`apps/node/cmd/agent/main.go:213`). Flow logging is opt-in per gateway. **Unset on both gateways on this rig — including the compose stack's `node-agent`** |
-| ⛔ **the absent signal** | Access Events renders an **empty page**, and **nothing anywhere says the gateway is not reporting** |
+| **the default** | `TUNNEX_FLOWLOG_GROUP` defaulted to **0 = OFF**. Flow logging was opt-in per gateway and unset on both gateways on the walk rig, including its compose `node-agent`. |
+| ⛔ **the absent signal** | Access Events rendered an **empty page**, and **nothing anywhere said the gateway was not reporting**. |
+
+Those rows are the original evidence. The repair changes both halves:
+
+| repaired surface | current behaviour |
+| --- | --- |
+| **collector default** | The agent and every supported deployment surface default to NFLOG group **100**. Exactly `TUNNEX_FLOWLOG_GROUP=0` remains an explicit disable control. Invalid values fall back to 100 instead of silently darkening the gateway. |
+| **operator signal** | The authenticated heartbeat reports `active`, `disabled`, `source_error`, or `delivery_error`, plus observed/delivered timestamps. The organization-scoped health API derives stale heartbeats and adds receipt/latest-retained-event times; Access Events renders loading, API failure, quiet-active, disabled, stale, legacy-unknown, and collector-error states separately. |
+| **protocol coverage** | The NFLOG parser accepts IPv4 and IPv6, including a bounded IPv6 extension-header walk; truncated or unsupported packets are skipped rather than guessed. |
 
 > ## **AN OPERATOR READING AN EMPTY ACCESS EVENTS PAGE CONCLUDES "NO ACCESS EVENTS". THE TRUE STATEMENT IS
 > ## "THIS GATEWAY HAS NEVER REPORTED ONE."** Those are opposite claims about a security surface, and the
@@ -434,8 +444,9 @@ the walk's own traffic, despite an ALLOW whose kernel counter read `packets 1` a
 > ## appearance. Without instrument-first, the walk would have reported *"attribution does not work"* about a
 > ## subsystem that was never switched on — a confident, specific, wrong finding.
 
-**Not fixed.** The shape of a fix is a per-gateway *reporting* state on the screen ("this gateway is not
-reporting flows") — which is a health signal, not a log entry, and belongs to whoever owns that surface.
+**The implemented repair is at the health seam, not by manufacturing log rows.** A quiet active gateway still has an empty
+event list, but it now says that collection is active. A disabled, legacy, source-failed, delivery-failed,
+or unreachable collector cannot borrow that reassuring empty state.
 
 ---
 

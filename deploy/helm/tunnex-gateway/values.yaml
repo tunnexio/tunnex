@@ -57,6 +57,15 @@ nodeName: ""
 wireguard:
   port: 51820
 
+# ─── ACCESS-EVENT COLLECTION ──────────────────────────────────────────────────
+# NFLOG group used by the gateway's nft rules and userspace observer. Collection
+# defaults on as best-effort observation of eligible new enforcing-mode Tunnex
+# policy decisions. Because the pod uses hostNetwork, choose another unused
+# group (1-65535) if 100 conflicts on that Kubernetes node; 0 explicitly disables
+# observation without changing verdicts or deleting retained rows.
+flowLog:
+  group: 100
+
 # ─── WG-EXPOSURE SERVICE ─────────────────────────────────────────────────────────
 # How the WG :51820 datapath is reached from outside the cluster.
 service:

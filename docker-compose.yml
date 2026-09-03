@@ -114,6 +114,10 @@ services:
       # Real WireGuard data plane (S3.2). "mem" for an in-memory dev backend.
       TUNNEX_WG_BACKEND: ${TUNNEX_WG_BACKEND:-wgctrl}
       TUNNEX_WG_INTERFACE: ${TUNNEX_WG_INTERFACE:-wg0}
+      # Access-event collection is on by default. Pick another NFLOG group when
+      # 100 conflicts inside this gateway container's network namespace, or set
+      # exactly 0 to disable observation.
+      TUNNEX_FLOWLOG_GROUP: ${TUNNEX_FLOWLOG_GROUP:-100}
       # Public WireGuard endpoint (host:port) peer configs dial. MUST be reachable
       # by clients — set to your gateway's public address in production. The
       # compose default (service name) works for containers on this network.

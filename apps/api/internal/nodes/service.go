@@ -2005,6 +2005,12 @@ type AppliedPolicy struct {
 	// capabilities projection so known older gateways are refused before a DNS
 	// request is queued, rather than being misclassified as a resolver timeout.
 	DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
+	// FlowLogState is the gateway's bounded collector heartbeat. It describes
+	// instrumentation, not traffic: an active collector may legitimately have no
+	// events. Empty is an older agent and is persisted as unknown.
+	FlowLogState           string     `json:"flow_log_state"`
+	FlowLogLastObservedAt  *time.Time `json:"flow_log_last_observed_at,omitempty"`
+	FlowLogLastDeliveredAt *time.Time `json:"flow_log_last_delivered_at,omitempty"`
 }
 
 // ReportWGInfo records the agent's locally-generated WireGuard public key and
@@ -2036,6 +2042,14 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if len(applied.FailingSince) > 40 {
 		applied.FailingSince = applied.FailingSince[:40]
 	}
+	switch applied.FlowLogState {
+	case "active", "disabled", "source_error", "delivery_error":
+		// Bounded protocol vocabulary; keep the reported state.
+	default:
+		// Older agents omit the field. A compromised/newer agent cannot write an
+		// arbitrary string into the operator-facing capabilities document.
+		applied.FlowLogState = "unknown"
+	}
 	// Gateway capabilities the agent probes + re-reports every reconcile (S3.7 +
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
@@ -2055,6 +2069,9 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"max_policy_version":          applied.MaxSupportedVersion,
 		"ovpn_health":                 applied.OVPNHealth, // S9.1 4d
 		"dns_resolve_rpc_version":     applied.DNSResolveRPCVersion,
+		"flow_log_state":              applied.FlowLogState,
+		"flow_log_last_observed_at":   applied.FlowLogLastObservedAt,
+		"flow_log_last_delivered_at":  applied.FlowLogLastDeliveredAt,
 	})
 	if err != nil {
 		return err
@@ -2163,6 +2180,12 @@ type NodeCapabilities struct {
 	// ovpn_binary_absent). Surfaced on the gateway so an operator sees WHY an OVPN-enabled gateway is
 	// not serving.
 	OVPNHealth string `json:"ovpn_health"`
+	// FlowLogState is active/disabled/source_error/delivery_error. Empty means
+	// the stored document predates the collector heartbeat and is treated as
+	// unknown by operator surfaces.
+	FlowLogState           string     `json:"flow_log_state"`
+	FlowLogLastObservedAt  *time.Time `json:"flow_log_last_observed_at"`
+	FlowLogLastDeliveredAt *time.Time `json:"flow_log_last_delivered_at"`
 	// DNSResolveRPCVersion is the highest authenticated selected-gateway DNS
 	// RPC version the node reports. Zero is semantically an unsupported legacy
 	// node, not an unknown/optimistic capability: FQDN enforcement must refuse

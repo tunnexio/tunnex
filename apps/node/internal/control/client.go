@@ -207,6 +207,15 @@ type PolicyStatus struct {
 	// selected-gateway DNS RPC version. Zero/missing means an older agent and is
 	// a compatibility refusal for FQDN enforcement, never a public-DNS fallback.
 	DNSResolveRPCVersion int
+	// FlowLogState reports whether the NFLOG observer is active, explicitly
+	// disabled, failed to read its source, or failed to deliver. It is a closed
+	// catalogue on the wire so the server can distinguish an idle gateway from
+	// a silent collector.
+	FlowLogState flowlog.State
+	// These are agent-observed operational timestamps, not access-event facts.
+	// They are omitted until the first observation/report respectively.
+	FlowLogLastObservedAt  time.Time
+	FlowLogLastDeliveredAt time.Time
 }
 
 // ReportInfo reports the node's locally-generated WireGuard public key, its public
@@ -214,7 +223,7 @@ type PolicyStatus struct {
 // the gateway can source-NAT IPv4/IPv6 full-tunnel traffic — S3.7/S15),
 // and the applied Zero Trust policy status (S7.2 staleness).
 func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egressNAT, egressIPv6 bool, ps PolicyStatus) error {
-	body, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"public_key": publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
 		"policy_version": ps.Version, "policy_hash": ps.Hash, "policy_error": ps.Error,
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
@@ -222,7 +231,15 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"conntrack_flush_unavailable": ps.ConntrackFlushUnavailable, "k8s_endpoints_unavailable": ps.K8sEndpointsUnavailable, "max_policy_version": ps.MaxSupportedVersion,
 		"ovpn_health":             ps.OVPNHealth,
 		"dns_resolve_rpc_version": ps.DNSResolveRPCVersion,
-	})
+		"flow_log_state":          ps.FlowLogState.Bounded(),
+	}
+	if !ps.FlowLogLastObservedAt.IsZero() {
+		payload["flow_log_last_observed_at"] = ps.FlowLogLastObservedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !ps.FlowLogLastDeliveredAt.IsZero() {
+		payload["flow_log_last_delivered_at"] = ps.FlowLogLastDeliveredAt.UTC().Format(time.RFC3339Nano)
+	}
+	body, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/agent/report", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)

@@ -56,14 +56,15 @@ var expectedNamedErrorHelpers = map[string]string{
 	"requireK8sClusterScopesEntitled": "named feature: k8s_cluster_scopes",
 }
 
-// expectedEntitlementHandlers is the current one-binary inventory. The first
-// fourteen are the retained legacy named-plan handlers; the remaining eleven
-// include the Scale JIT feature gates that the old edition-only scanner missed.
+// expectedEntitlementHandlers is the current one-binary inventory. It includes
+// the retained legacy named-plan handlers, post-historical named-plan handlers,
+// and Scale feature gates that the old edition-only scanner missed.
 var expectedEntitlementHandlers = map[string]string{
 	"PutIdpSyncConfig": "named plan", "GetIdpSyncHealth": "named plan", "TriggerIdpSync": "named plan", "MapIdpGroup": "named plan", "UnmapIdpGroup": "named plan",
 	"GetMfaEnforce": "named plan", "SetMfaEnforce": "named plan", "AdminResetMfa": "named plan",
 	"StartSsoLogin": "named plan", "SsoCallback": "named plan", "SetSsoConfig": "named plan", "GetSsoConfig": "named plan",
 	"ListAccessEvents": "named plan", "GetAccessLogHealth": "named plan",
+	"GetAccessEventRetention": "named plan", "UpdateAccessEventRetention": "named plan", "RunAccessEventPrune": "named plan",
 	"ListAgents":                  "named feature: agent_jit_access filter",
 	"ListAgentAccessDestinations": "named feature: agent_jit_access", "GetOrganizationAgentJITAccessSetting": "named feature: agent_jit_access", "SetOrganizationAgentJITAccessEnabled": "named feature: agent_jit_access",
 	"CreateAgentAccessRequest": "named feature: agent_jit_access", "ListAgentAccessRequests": "named feature: agent_jit_access", "GetAgentAccessRequest": "named feature: agent_jit_access",
@@ -96,6 +97,9 @@ var historicalEntitlementHandlers = []historicalEntitlementHandler{
 var postHistoricalEntitlementHandlers = map[string]string{
 	"CreateK8sClusterScope":           "named feature: k8s_cluster_scopes",
 	"DecideK8sClusterScopeMembership": "named feature: k8s_cluster_scopes",
+	"GetAccessEventRetention":         "named plan",
+	"UpdateAccessEventRetention":      "named plan",
+	"RunAccessEventPrune":             "named plan",
 }
 
 var (
@@ -203,12 +207,16 @@ func TestHistoricalEntitlementLedgerReconcilesToOneBinaryInventory(t *testing.T)
 			if !addedLater || postHistorical != classification {
 				t.Fatalf("current scanned handler %s is missing from both the historical 43-handler ledger and post-historical inventory", name)
 			}
-			historical = "post-historical named-feature"
+			if strings.HasPrefix(classification, "named plan") {
+				historical = "post-historical named-plan"
+			} else {
+				historical = "post-historical named-feature"
+			}
 		}
 		switch {
 		case strings.HasPrefix(classification, "named plan"):
 			legacy++
-			if historical != "retained named-plan" && historical != "pre-session exception" {
+			if historical != "retained named-plan" && historical != "pre-session exception" && historical != "post-historical named-plan" {
 				t.Fatalf("current named-plan handler %s is classified %q", name, historical)
 			}
 		case strings.HasPrefix(classification, "named feature"):
@@ -218,8 +226,8 @@ func TestHistoricalEntitlementLedgerReconcilesToOneBinaryInventory(t *testing.T)
 			}
 		}
 	}
-	if legacy != 14 || features != 13 {
-		t.Fatalf("entitlement reconciliation is %d legacy + %d feature; expected 14 legacy + 13 feature", legacy, features)
+	if legacy != 17 || features != 13 {
+		t.Fatalf("entitlement reconciliation is %d named-plan + %d feature; expected 17 named-plan + 13 feature", legacy, features)
 	}
 	for name, classification := range seen {
 		if classification == "Community-core" {

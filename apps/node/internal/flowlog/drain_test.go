@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -43,7 +44,8 @@ func TestRunDrainCarriesLossAsGap(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		buf.Add(Event{SrcIP: "10.99.0.10"})
 	}
-	pump := NewPump(&fakeSource{}, buf, nil)
+	status := NewStatus(StateActive)
+	pump := NewPump(&fakeSource{}, buf, nil).WithStatus(status)
 	rep := &fakeReporter{failNext: 1} // first report fails
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -67,4 +69,77 @@ func TestRunDrainCarriesLossAsGap(t *testing.T) {
 	if calls[1].events != 0 || calls[1].dropped != 3 {
 		t.Fatalf("call 2 = %+v, want {0,3} (lost batch carried as a gap)", calls[1])
 	}
+	if got := status.Snapshot(); got.LastDeliveredAt.IsZero() {
+		t.Fatal("successful gap report must advance last-delivered status")
+	}
+}
+
+func TestStatusBoundsUnknownStateAsSourceError(t *testing.T) {
+	status := NewStatus(State("future-unbounded-state"))
+	if got := status.Snapshot().State; got != StateSourceError {
+		t.Fatalf("unknown state = %q, want %q", got, StateSourceError)
+	}
+}
+
+func TestStatusSourceErrorIsNotMaskedByDeliveryRecovery(t *testing.T) {
+	status := NewStatus(StateActive)
+	status.RecordDeliveryFailure()
+	if got := status.Snapshot().State; got != StateDeliveryError {
+		t.Fatalf("failed delivery state = %q, want %q", got, StateDeliveryError)
+	}
+	status.SetState(StateSourceError)
+	status.RecordDelivered(time.Now())
+	if got := status.Snapshot().State; got != StateSourceError {
+		t.Fatalf("successful delivery masked dead source: state=%q", got)
+	}
+}
+
+type recoveryReporter struct {
+	calls         atomic.Int32
+	secondStarted chan struct{}
+	releaseSecond chan struct{}
+}
+
+func (r *recoveryReporter) ReportFlows(context.Context, []Event, int64) error {
+	switch r.calls.Add(1) {
+	case 1:
+		return errors.New("cp down")
+	case 2:
+		close(r.secondStarted)
+		<-r.releaseSecond
+	}
+	return nil
+}
+
+func TestRunDrainReportsDeliveryErrorAndRecoversToActive(t *testing.T) {
+	buf := NewBuffer(8)
+	buf.Add(Event{SrcIP: "10.99.0.10"})
+	status := NewStatus(StateActive)
+	pump := NewPump(&fakeSource{}, buf, nil).WithStatus(status)
+	reporter := &recoveryReporter{
+		secondStarted: make(chan struct{}),
+		releaseSecond: make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go RunDrain(ctx, pump, reporter, 5*time.Millisecond, nil)
+
+	select {
+	case <-reporter.secondStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for recovery report")
+	}
+	if got := status.Snapshot().State; got != StateDeliveryError {
+		t.Fatalf("state after failed delivery = %q, want %q", got, StateDeliveryError)
+	}
+	close(reporter.releaseSecond)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got := status.Snapshot()
+		if got.State == StateActive && !got.LastDeliveredAt.IsZero() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("status did not recover after successful delivery: %+v", status.Snapshot())
 }

@@ -31,6 +31,7 @@ export function enrollCommand(
 
 // The published gateway image (S6.6 zero-build deploy). Pulled by the emitted docker run — nothing builds.
 export const GATEWAY_IMAGE = "ghcr.io/tunnexio/tunnex-node-agent:latest";
+export const DEFAULT_FLOW_LOG_GROUP = 100;
 
 export interface RemoteEnrollOpts {
   token: string;
@@ -40,6 +41,7 @@ export interface RemoteEnrollOpts {
   agentURL: string; // public CP agent TLS channel, e.g. https://cp.example.com:8443
   serverName: string; // CP cert SAN the agent pins, e.g. tunnex-control
   image: string; // WF-2: the agent image (CP-configured, digest-pinnable). One-truth over the artifact version.
+  flowLogGroup?: number; // NFLOG group. Omit for the production default (100); set exactly 0 to disable.
 }
 
 // remoteEnrollCommand builds the ONE true `docker run` for a REMOTE cloud gateway (S8.2c D4) — a SINGLE
@@ -47,7 +49,8 @@ export interface RemoteEnrollOpts {
 // one-line docker run with every env inline cannot be). It bakes in EVERYTHING the demo needed by hand:
 // `--network host` (so wg0 lives on the host + reaches real host LANs, not the bridge), `wgctrl` (real
 // WireGuard, not the mem fake), `/dev/net/tun` + NET_ADMIN, the public CP URLs + servername, the token,
-// the optional public endpoint. Pasted verbatim on a clean VM it reaches agent_ready with ZERO edits.
+// the NFLOG collection group, and the optional public endpoint. Pasted verbatim on a clean VM it reaches
+// agent_ready with ZERO edits.
 // q shell-quotes an env VALUE (single charset, one rule for the whole command — review: an unquoted
 // space/metachar in ANY operator-supplied value corrupts the zero-touch command). Applied uniformly to the
 // name, endpoint AND the CP urls (the urls now come from operator config, not the browser origin).
@@ -58,12 +61,21 @@ export function remoteEnrollCommand(o: RemoteEnrollOpts): string {
   const endpointEnv = o.endpoint
     ? ` -e TUNNEX_NODE_ENDPOINT=${q(o.endpoint)}`
     : "";
+  const requestedFlowLogGroup = o.flowLogGroup;
+  const flowLogGroup =
+    requestedFlowLogGroup !== undefined &&
+    Number.isInteger(requestedFlowLogGroup) &&
+    requestedFlowLogGroup >= 0 &&
+    requestedFlowLogGroup <= 65535
+      ? requestedFlowLogGroup
+      : DEFAULT_FLOW_LOG_GROUP;
   return (
     `docker run -d --name tunnex-node --restart unless-stopped --network host ` +
     `--cap-add NET_ADMIN --device /dev/net/tun -v tunnex_node_state:/var/lib/tunnex-node ` +
     `-e TUNNEX_JOIN_TOKEN=${o.token}${nameEnv}${endpointEnv} ` +
     `-e TUNNEX_API_URL=${q(o.apiURL)} -e TUNNEX_AGENT_URL=${q(o.agentURL)} ` +
-    `-e TUNNEX_AGENT_SERVERNAME=${q(o.serverName)} -e TUNNEX_WG_BACKEND=wgctrl ${o.image}`
+    `-e TUNNEX_AGENT_SERVERNAME=${q(o.serverName)} -e TUNNEX_WG_BACKEND=wgctrl ` +
+    `-e TUNNEX_FLOWLOG_GROUP=${flowLogGroup} ${o.image}`
   );
 }
 

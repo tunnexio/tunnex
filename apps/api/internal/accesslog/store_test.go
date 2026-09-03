@@ -38,13 +38,15 @@ func TestStoreInsertListSweep(t *testing.T) {
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM organizations WHERE id=$1`, org) })
 
 	rule := uuid.New()
+	srcDevice, srcUser := uuid.New(), uuid.New()
 	// A fixed OLD created_at so the CROSS-ORG age sweep below can target ONLY this test's
 	// rows (packages test-run in parallel; other tests insert access_events at ~now, which a
 	// mid-cutoff excludes). created_at is the sweep/keyset clock — not the agent OccurredAt.
 	oldTime := time.Unix(1_000_000, 0).UTC() // ~1970
 	mk := func(seq int64, d Decision) Event {
 		return Event{ID: uuid.New(), CreatedAt: oldTime, Seq: seq, OrgID: org, OccurredAt: time.Now().UTC(), Decision: d,
-			RuleID: &rule, SrcIP: "10.99.0.10", DstIP: "10.0.5.5", Protocol: "tcp", DstPort: 5432}
+			RuleID: &rule, SrcDeviceID: &srcDevice, SrcUserID: &srcUser, SrcKind: "human",
+			SrcIP: "10.99.0.10", DstIP: "10.0.5.5", Protocol: "tcp", DstPort: 5432}
 	}
 	// Insert 5 events. seq now comes from the per-org counter and is unique by construction,
 	// so InsertAccessEvent is a PLAIN insert (review #1): a duplicate (org,seq) FAILS LOUD (a
@@ -68,7 +70,7 @@ func TestStoreInsertListSweep(t *testing.T) {
 	if len(rows) != 5 {
 		t.Fatalf("want 5 rows, got %d", len(rows))
 	}
-	if e := FromRow(rows[0]); e.RuleID == nil || *e.RuleID != rule || e.DstPort != 5432 || e.Decision != DecisionDeny {
+	if e := FromRow(rows[0]); e.RuleID == nil || *e.RuleID != rule || e.SrcDeviceID == nil || *e.SrcDeviceID != srcDevice || e.SrcUserID == nil || *e.SrcUserID != srcUser || e.SrcKind != "human" || e.DstPort != 5432 || e.Decision != DecisionDeny {
 		t.Fatalf("FromRow round-trip wrong: %+v", e)
 	}
 
@@ -76,13 +78,13 @@ func TestStoreInsertListSweep(t *testing.T) {
 	// IngestBatch in the ingest tests + the concurrency test — not derivable from a direct
 	// insert here, which doesn't bump the counter.)
 
-	// Cap sweep: keep newest 2 → deletes 3.
-	if n, err := q.SweepAccessEventsOverCap(ctx, sqlc.SweepAccessEventsOverCapParams{OrgID: org, KeepNewest: 2}); err != nil || n != 3 {
+	// Cap sweep: keep newest 2 → deletes 3, bounded to one requested batch.
+	if n, err := q.PruneAccessEventsOverCapBatch(ctx, sqlc.PruneAccessEventsOverCapBatchParams{OrgID: org, KeepNewest: 2, BatchLimit: RetentionBatchSize}); err != nil || n != 3 {
 		t.Fatalf("cap sweep deleted %d (err %v), want 3", n, err)
 	}
-	// Age sweep (CROSS-ORG): a cutoff just after this test's OLD rows deletes only them (the
-	// remaining 2), never concurrent packages' ~now rows.
-	if n, err := q.SweepAccessEventsByAge(ctx, oldTime.Add(time.Hour)); err != nil || n != 2 {
+	// Age sweep is explicitly tenant-scoped: a cutoff just after this test's OLD rows
+	// deletes its remaining 2 and cannot touch another organization's rows.
+	if n, err := q.PruneAccessEventsByAgeBatch(ctx, sqlc.PruneAccessEventsByAgeBatchParams{OrgID: org, OlderThan: oldTime.Add(time.Hour), BatchLimit: RetentionBatchSize}); err != nil || n != 2 {
 		t.Fatalf("age sweep deleted %d (err %v), want 2", n, err)
 	}
 }

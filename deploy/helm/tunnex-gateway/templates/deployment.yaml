@@ -114,6 +114,11 @@ spec:
             # A real WireGuard datapath (kernel via netlink), not the in-memory test backend.
             - name: TUNNEX_WG_BACKEND
               value: "wgctrl"
+            # NFLOG access-event collection. 0 is the explicit disable value.
+            # Because this pod uses hostNetwork, positive groups share the
+            # Kubernetes node's host network namespace.
+            - name: TUNNEX_FLOWLOG_GROUP
+              value: {{ .Values.flowLog.group | quote }}
             - name: TUNNEX_NODE_STATE_DIR
               value: /var/lib/tunnex-node
             {{- if or .Values.existingJoinTokenSecret .Values.joinToken }}

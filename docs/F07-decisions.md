@@ -149,16 +149,24 @@ destination resource/group IDs, and observing gateway. It does not invent a
 DNS name, network path, matched site, or reachability explanation. F08 owns the
 non-mutating reachability evaluator and step-by-step blocker analysis.
 
-### D7 — One server-side agent filter; no client-side partial-feed filtering
+### D7 — Server-side historical identity filters; no client-side partial-feed filtering
 
-OpenAPI adds optional `src_agent_id` to the existing keyset list endpoint. The
-query combines it with `denies_only` and the existing cursor while preserving
-organization scope and ordering. The supplied UUID must resolve to an agent in
-the requested organization before it is used; missing/foreign values follow
-the existing normalized authorization/no-oracle boundary.
+OpenAPI originally added optional `src_agent_id` to the existing keyset list
+endpoint. The additive identity follow-up also exposes `src_device_id`,
+`src_user_id`, and `src_kind`, and accepts mutually exclusive `src_device_id`
+or `src_user_id` filters. Each query combines with `denies_only` and the
+existing cursor while preserving organization scope and ordering.
 
-The released page fetches the basic agent roster for a selector and sends the
-selected ID to the server. It never filters only the rows already loaded.
+Filters match the immutable attribution already stored on the event; they do
+not join or validate against the live device/member roster. That keeps a
+deleted identity's history queryable and makes a missing or foreign UUID an
+empty result rather than an identity oracle. `src_agent_id` remains a
+compatibility alias constrained to events whose persisted kind is `agent`.
+
+The released page fetches current rosters only for selector labels and sends
+the selected persisted identity ID to the server. It never filters only the
+rows already loaded, and an unavailable current label never rewrites the
+historical UUID.
 Selecting another organization synchronously clears rows, agent options,
 labels, filters and open details before the next request can commit.
 

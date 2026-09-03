@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 )
 
@@ -61,6 +62,50 @@ func TestClientReportDNSResolutionUsesAuthenticatedControlChannel(t *testing.T) 
 	}
 	if got.RequestID != response.RequestID || got.GatewayID != response.GatewayID || got.Status != fqdnrpc.StatusNoError {
 		t.Fatalf("bound response not delivered: %+v", got)
+	}
+}
+
+func TestClientReportInfoCarriesBoundedFlowLogHeartbeat(t *testing.T) {
+	ca := newTestCA(t)
+	var got map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/agent/report", func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) != 1 {
+			t.Fatal("node report must use the mTLS agent channel")
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode report: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srvKeyPEM, srvCSR, _ := GenerateKeyAndCSR("tunnex-control")
+	blk, _ := pem.Decode(srvCSR)
+	srvCertPEM, _ := ca.sign(t, blk.Bytes, x509.ExtKeyUsageServerAuth)
+	srvCert, _ := tls.X509KeyPair([]byte(srvCertPEM), srvKeyPEM)
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(ca.pem)
+	srv := httptest.NewUnstartedServer(mux)
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{srvCert}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool}
+	srv.StartTLS()
+	defer srv.Close()
+
+	certPEM, keyPEM := ca.clientCert(t, "gw-1")
+	client, err := NewClient(srv.URL, "tunnex-control", "gw-1", certPEM, keyPEM, ca.pem)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	observed := time.Date(2026, 9, 3, 6, 1, 2, 3, time.UTC)
+	delivered := observed.Add(time.Second)
+	status := PolicyStatus{
+		FlowLogState:           flowlog.StateActive,
+		FlowLogLastObservedAt:  observed,
+		FlowLogLastDeliveredAt: delivered,
+	}
+	if err := client.ReportInfo(t.Context(), "public-key", "", false, false, status); err != nil {
+		t.Fatalf("report info: %v", err)
+	}
+	if got["flow_log_state"] != "active" || got["flow_log_last_observed_at"] != observed.Format(time.RFC3339Nano) || got["flow_log_last_delivered_at"] != delivered.Format(time.RFC3339Nano) {
+		t.Fatalf("flow-log heartbeat missing or changed: %#v", got)
 	}
 }
 

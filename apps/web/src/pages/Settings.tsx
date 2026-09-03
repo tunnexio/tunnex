@@ -67,6 +67,8 @@ import {
   AgentQuotaCard,
   AgentRuntimeSettingCard,
 } from "../components/AgentOrganizationSettings";
+import { AccessEventRetentionSettings } from "../components/AccessEventRetentionSettings";
+import { AuditLogRetentionSettings } from "../components/AuditLogRetentionSettings";
 
 const PROVIDERS = ["google", "microsoft"] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -156,6 +158,9 @@ export default function Settings() {
   }, [myId, currentOrg, orgFailed, orgLoading]);
 
   const isAdmin = can(myRole, "org:update");
+  const canManageDataRetention =
+    can(myRole, "access_event_retention:manage") ||
+    can(myRole, "audit_log_retention:manage");
   // ⛔ A TAB WHOSE PANEL WOULD BE EMPTY IS NOT RENDERED. "CUT MEANS ABSENT, NOT HIDDEN" (S14.4): a member who
   // clicks Network and gets a blank card learns only that the product is broken. Each rail entry names the
   // exact generated server permission its panel requires, so navigation and controls cannot drift by role.
@@ -164,6 +169,8 @@ export default function Settings() {
       RAIL.filter(
         (r) =>
           (!r.requiredPermission || can(myRole, r.requiredPermission)) &&
+          (!r.requiredAnyPermission ||
+            r.requiredAnyPermission.some((permission) => can(myRole, permission))) &&
           (!r.needsOrg || org !== null),
       ),
     [myRole, org],
@@ -354,6 +361,25 @@ export default function Settings() {
         {org && isAdmin && active === "access-security" && (
           <SettingGroup id="access-security" title="Access & security" tabpanel>
             <AccessSecuritySettings key={org.id} orgId={org.id} canEdit={emailVerified} />
+          </SettingGroup>
+        )}
+
+        {org && canManageDataRetention && active === "data-retention" && (
+          <SettingGroup id="data-retention" title="Data retention" tabpanel>
+            {can(myRole, "access_event_retention:manage") && (
+              <AccessEventRetentionSettings
+                key={`access-${org.id}`}
+                orgId={org.id}
+                canEdit={emailVerified}
+              />
+            )}
+            {can(myRole, "audit_log_retention:manage") && (
+              <AuditLogRetentionSettings
+                key={`audit-${org.id}`}
+                orgId={org.id}
+                canEdit={emailVerified}
+              />
+            )}
           </SettingGroup>
         )}
 
@@ -1562,6 +1588,8 @@ const RAIL: ReadonlyArray<{
   hint: string;
   /** The server-backed permission required for this section's controls. */
   requiredPermission?: string;
+  /** Render when the role holds at least one permission in this set. */
+  requiredAnyPermission?: readonly string[];
   /**
    * Panel renders only with a loaded org.
    *
@@ -1605,6 +1633,16 @@ const RAIL: ReadonlyArray<{
     label: "Access & security",
     hint: "Control organization-wide access safeguards and capability opt-ins.",
     requiredPermission: "org:update",
+  },
+  {
+    id: "data-retention",
+    needsOrg: true,
+    label: "Data retention",
+    hint: "Manage access-event and audit-log retention, pruning cadence, and maintenance status.",
+    requiredAnyPermission: [
+      "access_event_retention:manage",
+      "audit_log_retention:manage",
+    ],
   },
   {
     id: "features",

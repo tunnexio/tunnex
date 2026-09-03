@@ -38,6 +38,7 @@ type Pump struct {
 	src           Source
 	buf           *Buffer
 	attributionFn func(srcIP string) Attribution
+	status        *Status
 	lastOverrun   int64
 }
 
@@ -48,6 +49,14 @@ func NewPump(src Source, buf *Buffer, attributionFn func(srcIP string) Attributi
 	return &Pump{src: src, buf: buf, attributionFn: attributionFn}
 }
 
+// WithStatus attaches the optional operational heartbeat updated by the pump
+// and drain loop. Kept separate from NewPump so existing embedders that do not
+// publish reporter health need no synthetic status object.
+func (p *Pump) WithStatus(status *Status) *Pump {
+	p.status = status
+	return p
+}
+
 // Run pumps records into the buffer until ctx is cancelled or the source closes.
 func (p *Pump) Run(ctx context.Context) {
 	for {
@@ -56,12 +65,26 @@ func (p *Pump) Run(ctx context.Context) {
 			return
 		case rec, ok := <-p.src.Records():
 			if !ok {
+				p.status.SetState(StateSourceError)
 				return
 			}
 			if e, ok := p.stamp(rec); ok {
 				p.buf.Add(e)
+				p.status.RecordObserved(rec.At)
 			}
 		}
+	}
+}
+
+func (p *Pump) recordDelivered(at time.Time) {
+	if p != nil {
+		p.status.RecordDelivered(at)
+	}
+}
+
+func (p *Pump) recordDeliveryFailure() {
+	if p != nil {
+		p.status.RecordDeliveryFailure()
 	}
 }
 

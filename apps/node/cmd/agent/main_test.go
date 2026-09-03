@@ -62,6 +62,30 @@ func TestLoadOrCreateWGKey(t *testing.T) {
 	}
 }
 
+func TestFlowLogGroupDefaultsOnAndZeroExplicitlyDisables(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      string
+		configured bool
+		want       int
+	}{
+		{name: "unset defaults on", want: defaultFlowLogGroup},
+		{name: "blank defaults on", value: "  ", configured: true, want: defaultFlowLogGroup},
+		{name: "zero explicitly disables", value: "0", configured: true, want: 0},
+		{name: "custom group", value: "321", configured: true, want: 321},
+		{name: "negative cannot silently disable", value: "-1", configured: true, want: defaultFlowLogGroup},
+		{name: "out of range uses default", value: "65536", configured: true, want: defaultFlowLogGroup},
+		{name: "malformed uses default", value: "off", configured: true, want: defaultFlowLogGroup},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := parseFlowLogGroup(test.value, test.configured); got != test.want {
+				t.Fatalf("parseFlowLogGroup(%q, %v) = %d, want %d", test.value, test.configured, got, test.want)
+			}
+		})
+	}
+}
+
 // TestPendingKeyIsPersistedBeforeAnySubmit — the half of D10 that lives on the agent, and the half that makes the
 // fingerprint identifier usable at all.
 //

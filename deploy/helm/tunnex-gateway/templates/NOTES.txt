@@ -23,6 +23,13 @@ Security posture (for your security team's review):
     CANNOT read Secrets, CANNOT write anything, CANNOT escalate. It talks to the control
     plane over mTLS. (A VIP→ClusterIP DNAT cannot complete — kube-proxy will not re-DNAT it
     — so the gateway resolves ready pod IPs itself; hence the minimal read grant.)
+  - Access-event collection uses NFLOG group {{ .Values.flowLog.group }} in the
+    Kubernetes node's HOST network namespace. Confirm it does not collide with
+    another host workload's NFLOG consumer before rollout. Canary one gateway/node
+    at a time: the required pod restart briefly interrupts that gateway's datapath.
+    `helm upgrade ... --set flowLog.group=0 --wait` is the observation-only rollback;
+    it removes future Tunnex log clauses without changing allow/drop policy semantics
+    or deleting access events already retained by the control plane.
 
 1. FABRIC ENDPOINT (F6). Peers dial `{{ .Values.endpoint }}` to reach this gateway.
    It must be the PUBLIC address of the WG Service:

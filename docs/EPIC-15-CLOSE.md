@@ -30,6 +30,12 @@ The cause was **off by design** (`TUNNEX_FLOWLOG_GROUP=0`), not broken. **Withou
 would have reported *"attribution does not work"* about a subsystem that was never switched on** — a
 confident, specific, wrong finding. Registered as **row 8**.
 
+> **CURRENT REMEDIATION (2026-09-03, pending merge/release):** this paragraph records the historical walk accurately, but the
+> product default is now NFLOG group `100`; exactly `0` explicitly disables collection. Gateways also
+> heartbeat collector state and observation/delivery timestamps, and Access Events distinguishes a quiet
+> active collector from disabled, unknown, failed, and health-unavailable states. Register row 8 has an
+> implemented remediation but remains a shipped-product item until release.
+
 ---
 
 ## 2. ⛔ TWO WITHDRAWN CRITERIA — BOTH MINE, AND THE REASON IS ONE FACT
@@ -105,7 +111,7 @@ about the rest is indistinguishable from approval.**
 
 ---
 
-## 5. CARRIED FORWARD — every item open, none started
+## 5. CARRIED FORWARD — status at the 2026-08-04 close; later resolutions are annotated
 
 | item | state |
 | --- | --- |
@@ -117,7 +123,7 @@ about the rest is indistinguishable from approval.**
 | **`users.deleted_at`** | **18 pre-armed predicates, 5 data-plane**, on a column nothing writes |
 | **register row 6** — "Talking:" | corrected: sighted, unlocatable, cause undetermined |
 | **register row 7** — `GET /organizations` returns `[]` for a machine principal | open. D4's separation producing a hole nobody chose |
-| **register row 8** — flow logging off by default, no signal | open. **The walk's most product-facing finding** |
+| **register row 8** — flow logging off by default, no signal | remediation implemented 2026-09-03, pending merge/release: default-on group 100 + per-gateway collector heartbeat and UI state |
 
 ---
 

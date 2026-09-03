@@ -178,9 +178,9 @@ type Manager struct {
 	failingSince time.Time
 	now          func() time.Time
 	// flowLogGroup is the nflog group the forward-chain accept/deny rules log to (S7.5.1
-	// flow observation). 0 = flow logging OFF: the forward chain renders EXACTLY as before
-	// (no log clauses) — the safety default, so enabling observation is opt-in and its
-	// absence is byte-for-byte the pre-S7.5.1 enforcement ruleset.
+	// flow observation). The agent defaults this to a positive group; 0 is the
+	// explicit OFF value and renders no log clauses, byte-for-byte preserving
+	// enforcement verdicts while disabling observation.
 	flowLogGroup int
 	// appliedAllow is the Allow set of the last SUCCESSFUL enforcing apply (under mu). S8.7 Slice 2: the
 	// conntrack flush diffs the NEW allow set against this to find REMOVED grants (expired/deleted); a
