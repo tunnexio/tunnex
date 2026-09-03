@@ -76,13 +76,13 @@ func TestStoreInsertListSweep(t *testing.T) {
 	// IngestBatch in the ingest tests + the concurrency test — not derivable from a direct
 	// insert here, which doesn't bump the counter.)
 
-	// Cap sweep: keep newest 2 → deletes 3.
-	if n, err := q.SweepAccessEventsOverCap(ctx, sqlc.SweepAccessEventsOverCapParams{OrgID: org, KeepNewest: 2}); err != nil || n != 3 {
+	// Cap sweep: keep newest 2 → deletes 3, bounded to one requested batch.
+	if n, err := q.PruneAccessEventsOverCapBatch(ctx, sqlc.PruneAccessEventsOverCapBatchParams{OrgID: org, KeepNewest: 2, BatchLimit: RetentionBatchSize}); err != nil || n != 3 {
 		t.Fatalf("cap sweep deleted %d (err %v), want 3", n, err)
 	}
-	// Age sweep (CROSS-ORG): a cutoff just after this test's OLD rows deletes only them (the
-	// remaining 2), never concurrent packages' ~now rows.
-	if n, err := q.SweepAccessEventsByAge(ctx, oldTime.Add(time.Hour)); err != nil || n != 2 {
+	// Age sweep is explicitly tenant-scoped: a cutoff just after this test's OLD rows
+	// deletes its remaining 2 and cannot touch another organization's rows.
+	if n, err := q.PruneAccessEventsByAgeBatch(ctx, sqlc.PruneAccessEventsByAgeBatchParams{OrgID: org, OlderThan: oldTime.Add(time.Hour), BatchLimit: RetentionBatchSize}); err != nil || n != 2 {
 		t.Fatalf("age sweep deleted %d (err %v), want 2", n, err)
 	}
 }

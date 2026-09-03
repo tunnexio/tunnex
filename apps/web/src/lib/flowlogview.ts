@@ -1,6 +1,7 @@
 // Flow logs — the view-model.
 
 import type { AccessEvent as APIAccessEvent } from "./api";
+import type { components } from "@tunnex/shared";
 //
 // ⛔ THE FOURTH UNREACHABLE-SURFACE INSTANCE. `GET …/access-events` and `…/access-log/health`
 // shipped in S7.5.1 and `apps/web` rendered NEITHER — same class as the five idp-sync endpoints
@@ -170,24 +171,106 @@ export type FlowFilter = { deniesOnly: boolean };
  * ⛔ `retention_failed` MEANS THE HOT WINDOW MAY BE GROWING — the schema says so. That is a
  * disk-exhaustion warning wearing a housekeeping name, so it renders loud rather than as a stat.
  */
-export type AccessLogHealth = {
-  retention_last_sweep?: string | null;
-  retention_dropped: number;
-  retention_failed: boolean;
-};
+export type AccessEventCollectorStatus =
+  components["schemas"]["AccessEventCollectorStatus"];
+
+export type AccessLogHealth = components["schemas"]["AccessLogHealth"];
 
 export function retentionNote(h: AccessLogHealth): {
   text: string;
   loud: boolean;
+  tone: "muted" | "warn" | "danger";
 } {
   if (h.retention_failed) {
     return {
       text: "The last retention sweep failed — old events may not have been dropped, so the hot window can keep growing. Check the control-plane logs.",
       loud: true,
+      tone: "danger",
+    };
+  }
+  if (!h.retention_last_sweep) {
+    return {
+      text: "Retention pruning has not run yet.",
+      loud: false,
+      tone: "warn",
     };
   }
   return {
     text: `Last sweep dropped ${h.retention_dropped.toLocaleString()} event${h.retention_dropped === 1 ? "" : "s"}.`,
     loud: false,
+    tone: "muted",
   };
+}
+
+export function collectorStateLabel(
+  state: AccessEventCollectorStatus["state"],
+): string {
+  switch (state) {
+    case "active":
+      return "Active";
+    case "disabled":
+      return "Disabled";
+    case "source_error":
+      return "Source error";
+    case "delivery_error":
+      return "Delivery error";
+    case "stale":
+      return "Heartbeat stale";
+    case "unknown":
+      return "Not reported";
+  }
+}
+
+export function collectorStateTone(
+  state: AccessEventCollectorStatus["state"],
+): "ok" | "muted" | "warn" | "danger" {
+  switch (state) {
+    case "active":
+      return "ok";
+    case "disabled":
+      return "muted";
+    case "unknown":
+      return "warn";
+    case "stale":
+    case "source_error":
+    case "delivery_error":
+      return "danger";
+  }
+}
+
+/**
+ * Copy for a successfully loaded empty feed. Collector health is the authority for whether collection is
+ * active; the absence of rows is never treated as evidence that it is.
+ */
+export function emptyAccessEventsNote(
+  health: AccessLogHealth | null,
+  healthFailed: boolean,
+): string {
+  if (healthFailed) {
+    return "No access events are retained. Gateway collector status is unavailable, so this empty feed does not prove collection is active.";
+  }
+  if (!health) {
+    return "No access events are retained. Checking gateway collector status…";
+  }
+  const collectors = health.gateway_collectors;
+  if (!collectors || collectors.length === 0) {
+    return "No access events are retained. No gateway has reported collector status yet.";
+  }
+  if (collectors.every((collector) => collector.state === "disabled")) {
+    return "No access events are retained because collection is disabled on every gateway.";
+  }
+  if (
+    collectors.some(
+      (collector) =>
+        collector.state === "source_error" ||
+        collector.state === "delivery_error" ||
+        collector.state === "stale",
+    )
+  ) {
+    return "No access events are retained. One or more gateway collector heartbeats are stale or report an error.";
+  }
+  if (collectors.every((collector) => collector.state === "unknown")) {
+    return "No access events are retained. Gateway collector state has not been reported yet.";
+  }
+  return "No access events were recorded in the retained window.";
 }

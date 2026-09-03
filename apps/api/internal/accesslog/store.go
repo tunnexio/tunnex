@@ -1,7 +1,6 @@
 package accesslog
 
 import (
-	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,37 +56,6 @@ func FromRow(r sqlc.AccessEvent) Event {
 		e.WindowEnd = &t
 	}
 	return e
-}
-
-// Retain runs the PG hot-window sweep (D3): delete by INGEST age, then trim each org to the
-// row cap. (S7.5.1b) v1 is PG-only, so this delete is the retention boundary — the beyond-
-// hot-window JSONL record defers with the JSONL writer. Returns the total rows deleted and
-// records the result on health (the LEGIBLE alarm surface — an operator sees the drop count
-// where they'd look, not just in a log). `orgs` is the set to cap; health may be nil.
-func Retain(ctx context.Context, q *sqlc.Queries, health *Health, now time.Time, retention time.Duration, rowCap int32, orgs []uuid.UUID) (int64, error) {
-	if retention <= 0 {
-		retention = DefaultRetention
-	}
-	if rowCap <= 0 {
-		rowCap = DefaultPGRowCap
-	}
-	var deleted int64
-	n, err := q.SweepAccessEventsByAge(ctx, now.Add(-retention))
-	deleted += n
-	if err != nil {
-		health.recordSweep(now, deleted, err) // record the FAILURE (review [3] — never leave a stale-healthy surface)
-		return deleted, err
-	}
-	for _, org := range orgs {
-		n, err := q.SweepAccessEventsOverCap(ctx, sqlc.SweepAccessEventsOverCapParams{OrgID: org, KeepNewest: rowCap})
-		deleted += n
-		if err != nil {
-			health.recordSweep(now, deleted, err)
-			return deleted, err
-		}
-	}
-	health.recordSweep(now, deleted, nil)
-	return deleted, nil
 }
 
 func pgUUID(p *uuid.UUID) pgtype.UUID {

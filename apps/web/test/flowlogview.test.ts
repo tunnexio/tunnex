@@ -3,9 +3,12 @@ import {
   ATTRIBUTION_NOTE,
   FLOW_LOG_CUTS,
   causeFor,
+  collectorStateLabel,
+  collectorStateTone,
   decisionLabel,
   decisionTone,
   destinationFor,
+  emptyAccessEventsNote,
   eventTimeline,
   isLastPage,
   nextCursor,
@@ -170,18 +173,92 @@ describe("isLastPage", () => {
 // ⛔ `retention_failed` IS A DISK WARNING WEARING A HOUSEKEEPING NAME.
 describe("retentionNote", () => {
   it("is LOUD on failure and says what it means", () => {
-    const r = retentionNote({ retention_dropped: 0, retention_failed: true });
+    const r = retentionNote({
+      retention_dropped: 0,
+      retention_failed: true,
+      gateway_collectors: [],
+    });
     expect(r.loud).toBe(true);
     expect(r.text).toMatch(/keep growing/i);
   });
 
   it("is quiet and factual on success", () => {
     const r = retentionNote({
+      retention_last_sweep: "2026-08-03T12:00:00Z",
       retention_dropped: 1234,
       retention_failed: false,
+      gateway_collectors: [],
     });
     expect(r.loud).toBe(false);
     expect(r.text).toMatch(/1,?234/);
+  });
+
+  it("does not invent a successful zero-row sweep before the first run", () => {
+    const r = retentionNote({
+      retention_dropped: 0,
+      retention_failed: false,
+      gateway_collectors: [],
+    });
+    expect(r.text).toMatch(/has not run yet/i);
+    expect(r.text).not.toMatch(/dropped 0/i);
+    expect(r.tone).toBe("warn");
+  });
+});
+
+describe("gateway collector health", () => {
+  it("labels and tones every server collector state", () => {
+    expect(collectorStateLabel("active")).toBe("Active");
+    expect(collectorStateTone("active")).toBe("ok");
+    expect(collectorStateLabel("disabled")).toBe("Disabled");
+    expect(collectorStateTone("disabled")).toBe("muted");
+    expect(collectorStateLabel("source_error")).toBe("Source error");
+    expect(collectorStateTone("source_error")).toBe("danger");
+    expect(collectorStateLabel("delivery_error")).toBe("Delivery error");
+    expect(collectorStateTone("delivery_error")).toBe("danger");
+    expect(collectorStateLabel("stale")).toBe("Heartbeat stale");
+    expect(collectorStateTone("stale")).toBe("danger");
+    expect(collectorStateLabel("unknown")).toBe("Not reported");
+    expect(collectorStateTone("unknown")).toBe("warn");
+  });
+
+  it("never treats an empty feed as proof that collection is active", () => {
+    expect(emptyAccessEventsNote(null, true)).toMatch(/status is unavailable/i);
+    expect(
+      emptyAccessEventsNote(
+        {
+          retention_dropped: 0,
+          retention_failed: false,
+          gateway_collectors: [
+            { node_id: "gateway-1", name: "edge-1", state: "disabled" },
+          ],
+        },
+        false,
+      ),
+    ).toMatch(/disabled on every gateway/i);
+    expect(
+      emptyAccessEventsNote(
+        {
+          retention_dropped: 0,
+          retention_failed: false,
+          gateway_collectors: [
+            { node_id: "gateway-1", name: "edge-1", state: "delivery_error" },
+          ],
+        },
+        false,
+      ),
+    ).toMatch(/report an error/i);
+    expect(
+      emptyAccessEventsNote(
+        {
+          retention_dropped: 0,
+          retention_failed: false,
+          gateway_collectors: [
+            { node_id: "gateway-1", name: "edge-1", state: "stale" },
+          ],
+        },
+        false,
+      ),
+    ).toMatch(/report an error/i);
   });
 });
 

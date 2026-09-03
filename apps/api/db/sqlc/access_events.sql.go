@@ -13,6 +13,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const accessEventRetentionMorePending = `-- name: AccessEventRetentionMorePending :one
+SELECT EXISTS (
+    SELECT 1 FROM access_events AS event
+    WHERE event.org_id=$1
+      AND event.created_at < $2
+) OR EXISTS (
+    SELECT 1 FROM access_events AS event
+    WHERE event.org_id=$1
+    ORDER BY event.created_at DESC,event.id DESC
+    OFFSET $3
+    LIMIT 1
+) AS more_pending
+`
+
+type AccessEventRetentionMorePendingParams struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	OlderThan  time.Time `json:"older_than"`
+	KeepNewest int32     `json:"keep_newest"`
+}
+
+func (q *Queries) AccessEventRetentionMorePending(ctx context.Context, arg AccessEventRetentionMorePendingParams) (*bool, error) {
+	row := q.db.QueryRow(ctx, accessEventRetentionMorePending, arg.OrgID, arg.OlderThan, arg.KeepNewest)
+	var more_pending *bool
+	err := row.Scan(&more_pending)
+	return more_pending, err
+}
+
 const bumpOrgFlowSeq = `-- name: BumpOrgFlowSeq :one
 UPDATE organizations SET flow_seq = flow_seq + $1::bigint
 WHERE id = $2 AND deleted_at IS NULL
@@ -35,35 +62,314 @@ func (q *Queries) BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) 
 	return flow_seq, err
 }
 
-const distinctAccessEventOrgs = `-- name: DistinctAccessEventOrgs :many
-SELECT DISTINCT org_id FROM access_events
+const expireAccessEventRetentionRun = `-- name: ExpireAccessEventRetentionRun :one
+UPDATE access_event_retention_runs
+SET status='failed',completed_at=$1,lease_expires_at=NULL,
+    more_pending=true,error_code='lease_expired'
+WHERE org_id=$2
+  AND status='running'
+  AND lease_expires_at <= $1
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
 `
 
-// lint:cross-org — retention housekeeping enumerates the orgs that actually HOLD events so the
-// per-org row-cap sweep bounds every such org's hot-window disk use. This MUST include
-// SOFT-DELETED orgs: a deleted org's event flood is exactly what the disk-guard cap must bound
-// (fold-3 #3 reverted the fold-2 organizations-table enumeration, which excluded deleted orgs).
-// PERF LEDGER: this is a DISTINCT scan of access_events every RetentionSweepInterval; if
-// access_events scale makes the 10-min scan measurable, add a supporting index / cheaper
-// enumeration (trigger, not a silent now-do-it).
-func (q *Queries) DistinctAccessEventOrgs(ctx context.Context) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, distinctAccessEventOrgs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []uuid.UUID{}
-	for rows.Next() {
-		var org_id uuid.UUID
-		if err := rows.Scan(&org_id); err != nil {
-			return nil, err
-		}
-		items = append(items, org_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type ExpireAccessEventRetentionRunParams struct {
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	OrgID       uuid.UUID          `json:"org_id"`
+}
+
+func (q *Queries) ExpireAccessEventRetentionRun(ctx context.Context, arg ExpireAccessEventRetentionRunParams) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, expireAccessEventRetentionRun, arg.CompletedAt, arg.OrgID)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const finalizeAccessEventRetentionRunFailure = `-- name: FinalizeAccessEventRetentionRunFailure :one
+UPDATE access_event_retention_runs
+SET status='failed',completed_at=$1,lease_expires_at=NULL,
+    deleted_rows=$2,batches=$3,
+    more_pending=true,error_code=$4
+WHERE id=$5 AND org_id=$6 AND status='running'
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type FinalizeAccessEventRetentionRunFailureParams struct {
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	DeletedRows int64              `json:"deleted_rows"`
+	Batches     int32              `json:"batches"`
+	ErrorCode   *string            `json:"error_code"`
+	ID          uuid.UUID          `json:"id"`
+	OrgID       uuid.UUID          `json:"org_id"`
+}
+
+func (q *Queries) FinalizeAccessEventRetentionRunFailure(ctx context.Context, arg FinalizeAccessEventRetentionRunFailureParams) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, finalizeAccessEventRetentionRunFailure,
+		arg.CompletedAt,
+		arg.DeletedRows,
+		arg.Batches,
+		arg.ErrorCode,
+		arg.ID,
+		arg.OrgID,
+	)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const finalizeAccessEventRetentionRunSuccess = `-- name: FinalizeAccessEventRetentionRunSuccess :one
+UPDATE access_event_retention_runs
+SET status='succeeded',completed_at=$1,lease_expires_at=NULL,
+    deleted_rows=$2,batches=$3,
+    more_pending=$4,error_code=NULL
+WHERE id=$5 AND org_id=$6 AND status='running'
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type FinalizeAccessEventRetentionRunSuccessParams struct {
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	DeletedRows int64              `json:"deleted_rows"`
+	Batches     int32              `json:"batches"`
+	MorePending bool               `json:"more_pending"`
+	ID          uuid.UUID          `json:"id"`
+	OrgID       uuid.UUID          `json:"org_id"`
+}
+
+func (q *Queries) FinalizeAccessEventRetentionRunSuccess(ctx context.Context, arg FinalizeAccessEventRetentionRunSuccessParams) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, finalizeAccessEventRetentionRunSuccess,
+		arg.CompletedAt,
+		arg.DeletedRows,
+		arg.Batches,
+		arg.MorePending,
+		arg.ID,
+		arg.OrgID,
+	)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAccessEventRetentionSettings = `-- name: GetAccessEventRetentionSettings :one
+SELECT org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at FROM access_event_retention_settings
+WHERE org_id=$1
+`
+
+func (q *Queries) GetAccessEventRetentionSettings(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, getAccessEventRetentionSettings, orgID)
+	var i AccessEventRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAccessEventRetentionSettingsForUpdate = `-- name: GetAccessEventRetentionSettingsForUpdate :one
+SELECT org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at FROM access_event_retention_settings
+WHERE org_id=$1
+FOR UPDATE
+`
+
+func (q *Queries) GetAccessEventRetentionSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, getAccessEventRetentionSettingsForUpdate, orgID)
+	var i AccessEventRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLatestAccessEventRetentionRun = `-- name: GetLatestAccessEventRetentionRun :one
+SELECT id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at FROM access_event_retention_runs
+WHERE org_id=$1
+ORDER BY started_at DESC,id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, getLatestAccessEventRetentionRun, orgID)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getManualAccessEventRetentionRun = `-- name: GetManualAccessEventRetentionRun :one
+SELECT id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at FROM access_event_retention_runs
+WHERE org_id=$1
+  AND manual_idempotency_key=$2
+`
+
+type GetManualAccessEventRetentionRunParams struct {
+	OrgID                uuid.UUID `json:"org_id"`
+	ManualIdempotencyKey *string   `json:"manual_idempotency_key"`
+}
+
+func (q *Queries) GetManualAccessEventRetentionRun(ctx context.Context, arg GetManualAccessEventRetentionRunParams) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, getManualAccessEventRetentionRun, arg.OrgID, arg.ManualIdempotencyKey)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getRunningAccessEventRetentionRun = `-- name: GetRunningAccessEventRetentionRun :one
+SELECT id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at FROM access_event_retention_runs
+WHERE org_id=$1 AND status='running'
+LIMIT 1
+`
+
+func (q *Queries) GetRunningAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, getRunningAccessEventRetentionRun, orgID)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const insertAccessEvent = `-- name: InsertAccessEvent :exec
@@ -106,9 +412,8 @@ type InsertAccessEventParams struct {
 	DecisionReason    *string            `json:"decision_reason"`
 }
 
-// The id is app-generated (uuid v7) so the SAME id identifies the row in BOTH the PG
-// hot-window and the JSONL source-of-truth stream. seq comes from BumpOrgFlowSeq (a per-org
-// locked counter), so it is unique by construction — this is a PLAIN insert (NO
+// The id is app-generated (uuid v7), and seq comes from BumpOrgFlowSeq (a per-org
+// locked counter), so it is unique by construction. This is a PLAIN insert (NO
 // `ON CONFLICT DO NOTHING`): the (org_id, seq) unique index is a FAIL-LOUD backstop, so an
 // impossible collision errors the batch (agent -> next-report gap) rather than SILENTLY
 // dropping audit rows (review #1). No replay path re-inserts: a failed batch rolls the tx
@@ -140,6 +445,220 @@ func (q *Queries) InsertAccessEvent(ctx context.Context, arg InsertAccessEventPa
 		arg.DecisionReason,
 	)
 	return err
+}
+
+const insertAccessEventRetentionSettings = `-- name: InsertAccessEventRetentionSettings :one
+INSERT INTO access_event_retention_settings (
+    org_id,retention_days,cleanup_interval_minutes,revision,updated_by_user_id
+) VALUES (
+    $1,$2,$3,1,
+    $4
+)
+RETURNING org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at
+`
+
+type InsertAccessEventRetentionSettingsParams struct {
+	OrgID                  uuid.UUID `json:"org_id"`
+	RetentionDays          int32     `json:"retention_days"`
+	CleanupIntervalMinutes int32     `json:"cleanup_interval_minutes"`
+	UpdatedByUserID        uuid.UUID `json:"updated_by_user_id"`
+}
+
+func (q *Queries) InsertAccessEventRetentionSettings(ctx context.Context, arg InsertAccessEventRetentionSettingsParams) (AccessEventRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, insertAccessEventRetentionSettings,
+		arg.OrgID,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.UpdatedByUserID,
+	)
+	var i AccessEventRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertManualAccessEventRetentionRun = `-- name: InsertManualAccessEventRetentionRun :one
+INSERT INTO access_event_retention_runs (
+    org_id,trigger_kind,status,manual_idempotency_key,requested_by_user_id,
+    retention_days,cleanup_interval_minutes,settings_revision,row_cap,
+    batch_size,max_batches,cutoff_at,started_at,lease_expires_at
+) VALUES (
+    $1,'manual','running',$2,
+    $3,$4,
+    $5,$6,
+    $7,$8,$9,
+    $10,$11,$12
+)
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type InsertManualAccessEventRetentionRunParams struct {
+	OrgID                  uuid.UUID          `json:"org_id"`
+	ManualIdempotencyKey   *string            `json:"manual_idempotency_key"`
+	RequestedByUserID      pgtype.UUID        `json:"requested_by_user_id"`
+	RetentionDays          int32              `json:"retention_days"`
+	CleanupIntervalMinutes int32              `json:"cleanup_interval_minutes"`
+	SettingsRevision       int64              `json:"settings_revision"`
+	RowCap                 int32              `json:"row_cap"`
+	BatchSize              int32              `json:"batch_size"`
+	MaxBatches             int32              `json:"max_batches"`
+	CutoffAt               time.Time          `json:"cutoff_at"`
+	StartedAt              time.Time          `json:"started_at"`
+	LeaseExpiresAt         pgtype.Timestamptz `json:"lease_expires_at"`
+}
+
+func (q *Queries) InsertManualAccessEventRetentionRun(ctx context.Context, arg InsertManualAccessEventRetentionRunParams) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, insertManualAccessEventRetentionRun,
+		arg.OrgID,
+		arg.ManualIdempotencyKey,
+		arg.RequestedByUserID,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.SettingsRevision,
+		arg.RowCap,
+		arg.BatchSize,
+		arg.MaxBatches,
+		arg.CutoffAt,
+		arg.StartedAt,
+		arg.LeaseExpiresAt,
+	)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertScheduledAccessEventRetentionRun = `-- name: InsertScheduledAccessEventRetentionRun :one
+INSERT INTO access_event_retention_runs (
+    org_id,trigger_kind,status,retention_days,cleanup_interval_minutes,
+    settings_revision,row_cap,batch_size,max_batches,cutoff_at,started_at,
+    lease_expires_at
+) VALUES (
+    $1,'scheduled','running',$2,
+    $3,$4,
+    $5,$6,$7,
+    $8,$9,$10
+)
+RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, row_cap, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
+`
+
+type InsertScheduledAccessEventRetentionRunParams struct {
+	OrgID                  uuid.UUID          `json:"org_id"`
+	RetentionDays          int32              `json:"retention_days"`
+	CleanupIntervalMinutes int32              `json:"cleanup_interval_minutes"`
+	SettingsRevision       int64              `json:"settings_revision"`
+	RowCap                 int32              `json:"row_cap"`
+	BatchSize              int32              `json:"batch_size"`
+	MaxBatches             int32              `json:"max_batches"`
+	CutoffAt               time.Time          `json:"cutoff_at"`
+	StartedAt              time.Time          `json:"started_at"`
+	LeaseExpiresAt         pgtype.Timestamptz `json:"lease_expires_at"`
+}
+
+func (q *Queries) InsertScheduledAccessEventRetentionRun(ctx context.Context, arg InsertScheduledAccessEventRetentionRunParams) (AccessEventRetentionRun, error) {
+	row := q.db.QueryRow(ctx, insertScheduledAccessEventRetentionRun,
+		arg.OrgID,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.SettingsRevision,
+		arg.RowCap,
+		arg.BatchSize,
+		arg.MaxBatches,
+		arg.CutoffAt,
+		arg.StartedAt,
+		arg.LeaseExpiresAt,
+	)
+	var i AccessEventRetentionRun
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.TriggerKind,
+		&i.Status,
+		&i.ManualIdempotencyKey,
+		&i.RequestedByUserID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.SettingsRevision,
+		&i.RowCap,
+		&i.BatchSize,
+		&i.MaxBatches,
+		&i.CutoffAt,
+		&i.StartedAt,
+		&i.LeaseExpiresAt,
+		&i.CompletedAt,
+		&i.DeletedRows,
+		&i.Batches,
+		&i.MorePending,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const isAccessEventRetentionDue = `-- name: IsAccessEventRetentionDue :one
+SELECT EXISTS (
+    SELECT 1 FROM access_events AS event
+    WHERE event.org_id=$1
+)
+AND NOT EXISTS (
+    SELECT 1 FROM access_event_retention_runs AS active
+    WHERE active.org_id=$1
+      AND active.status='running'
+      AND active.lease_expires_at > $2
+)
+AND COALESCE((
+    SELECT (latest.status='succeeded' AND latest.more_pending)
+       OR latest.completed_at
+          + $3::integer * interval '1 minute'
+          <= $2
+    FROM access_event_retention_runs AS latest
+    WHERE latest.org_id=$1 AND latest.status <> 'running'
+    ORDER BY latest.started_at DESC,latest.id DESC
+    LIMIT 1
+),true) AS due
+`
+
+type IsAccessEventRetentionDueParams struct {
+	OrgID                  uuid.UUID          `json:"org_id"`
+	NowAt                  pgtype.Timestamptz `json:"now_at"`
+	CleanupIntervalMinutes int32              `json:"cleanup_interval_minutes"`
+}
+
+func (q *Queries) IsAccessEventRetentionDue(ctx context.Context, arg IsAccessEventRetentionDueParams) (*bool, error) {
+	row := q.db.QueryRow(ctx, isAccessEventRetentionDue, arg.OrgID, arg.NowAt, arg.CleanupIntervalMinutes)
+	var due *bool
+	err := row.Scan(&due)
+	return due, err
 }
 
 const listAccessDenies = `-- name: ListAccessDenies :many
@@ -417,43 +936,228 @@ func (q *Queries) ListAccessEventsByAgent(ctx context.Context, arg ListAccessEve
 	return items, nil
 }
 
-const sweepAccessEventsByAge = `-- name: SweepAccessEventsByAge :execrows
-DELETE FROM access_events WHERE created_at < $1
+const listDueAccessEventRetentionOrganizations = `-- name: ListDueAccessEventRetentionOrganizations :many
+SELECT event_org.org_id
+FROM (SELECT DISTINCT org_id FROM access_events) AS event_org
+LEFT JOIN access_event_retention_settings AS setting
+       ON setting.org_id=event_org.org_id
+LEFT JOIN LATERAL (
+    SELECT run.status,run.completed_at,run.more_pending
+    FROM access_event_retention_runs AS run
+    WHERE run.org_id=event_org.org_id AND run.status <> 'running'
+    ORDER BY run.started_at DESC,run.id DESC
+    LIMIT 1
+) AS latest ON true
+WHERE NOT EXISTS (
+    SELECT 1 FROM access_event_retention_runs AS active
+    WHERE active.org_id=event_org.org_id
+      AND active.status='running'
+      AND active.lease_expires_at > $1
+)
+  AND (
+    latest.completed_at IS NULL
+    OR (latest.status='succeeded' AND latest.more_pending)
+    OR EXISTS (
+        SELECT 1 FROM access_event_retention_runs AS expired
+        WHERE expired.org_id=event_org.org_id
+          AND expired.status='running'
+          AND expired.lease_expires_at <= $1
+    )
+    OR latest.completed_at
+       + COALESCE(setting.cleanup_interval_minutes,
+                  $2::integer) * interval '1 minute'
+       <= $1
+  )
+ORDER BY latest.completed_at NULLS FIRST,event_org.org_id
+LIMIT $3
 `
 
-// lint:cross-org — retention housekeeping runs across ALL orgs by INGEST age (created_at,
-// not the agent-clock occurred_at, so agent skew can't extend retention). The JSONL stream
-// keeps the full record; PG is a bounded cache, so this delete is lossless for export.
-func (q *Queries) SweepAccessEventsByAge(ctx context.Context, olderThan time.Time) (int64, error) {
-	result, err := q.db.Exec(ctx, sweepAccessEventsByAge, olderThan)
+type ListDueAccessEventRetentionOrganizationsParams struct {
+	NowAt                  pgtype.Timestamptz `json:"now_at"`
+	DefaultIntervalMinutes int32              `json:"default_interval_minutes"`
+	OrgLimit               int32              `json:"org_limit"`
+}
+
+// lint:cross-org — the elected retention scheduler enumerates only tenants
+// holding events. Soft-deleted tenants remain eligible so their event history
+// cannot strand disk indefinitely. A latest successful run with more_pending
+// is immediately eligible for the next bounded continuation.
+func (q *Queries) ListDueAccessEventRetentionOrganizations(ctx context.Context, arg ListDueAccessEventRetentionOrganizationsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listDueAccessEventRetentionOrganizations, arg.NowAt, arg.DefaultIntervalMinutes, arg.OrgLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var org_id uuid.UUID
+		if err := rows.Scan(&org_id); err != nil {
+			return nil, err
+		}
+		items = append(items, org_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAccessEventRetentionOrganization = `-- name: LockAccessEventRetentionOrganization :one
+SELECT id FROM organizations
+WHERE id=$1
+FOR UPDATE
+`
+
+// lint:allow-deleted — retention must continue draining events for a soft-deleted
+// tenant. The row lock serializes scheduled/manual claims for that tenant.
+func (q *Queries) LockAccessEventRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAccessEventRetentionOrganization, orgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const lockLiveAccessEventRetentionOrganization = `-- name: LockLiveAccessEventRetentionOrganization :one
+SELECT id FROM organizations
+WHERE id=$1 AND deleted_at IS NULL
+FOR UPDATE
+`
+
+// Settings are user-facing configuration and may only change for a live tenant.
+func (q *Queries) LockLiveAccessEventRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockLiveAccessEventRetentionOrganization, orgID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const pruneAccessEventsByAgeBatch = `-- name: PruneAccessEventsByAgeBatch :execrows
+WITH doomed AS (
+    SELECT event.id
+    FROM access_events AS event
+    WHERE event.org_id=$1
+      AND event.created_at < $2
+    ORDER BY event.created_at,event.id
+    LIMIT $3
+    FOR UPDATE SKIP LOCKED
+)
+DELETE FROM access_events AS target
+USING doomed
+WHERE target.org_id=$1 AND target.id=doomed.id
+`
+
+type PruneAccessEventsByAgeBatchParams struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	OlderThan  time.Time `json:"older_than"`
+	BatchLimit int32     `json:"batch_limit"`
+}
+
+// Tenant-scoped, oldest-first and bounded. created_at is trusted control-plane
+// ingest time; agent occurred_at can never extend retention.
+func (q *Queries) PruneAccessEventsByAgeBatch(ctx context.Context, arg PruneAccessEventsByAgeBatchParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneAccessEventsByAgeBatch, arg.OrgID, arg.OlderThan, arg.BatchLimit)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const sweepAccessEventsOverCap = `-- name: SweepAccessEventsOverCap :execrows
+const pruneAccessEventsOverCapBatch = `-- name: PruneAccessEventsOverCapBatch :execrows
+WITH boundary AS (
+    SELECT event.created_at,event.id
+    FROM access_events AS event
+    WHERE event.org_id=$1
+    ORDER BY event.created_at DESC,event.id DESC
+    OFFSET $2
+    LIMIT 1
+), doomed AS (
+    SELECT event.id
+    FROM access_events AS event
+    CROSS JOIN boundary
+    WHERE event.org_id=$1
+      AND (event.created_at < boundary.created_at
+        OR (event.created_at=boundary.created_at AND event.id <= boundary.id))
+    ORDER BY event.created_at,event.id
+    LIMIT $3
+    FOR UPDATE OF event SKIP LOCKED
+)
 DELETE FROM access_events AS target
-WHERE target.org_id = $1
-  AND target.id NOT IN (
-    SELECT ae.id FROM access_events ae
-    WHERE ae.org_id = $1
-    ORDER BY ae.created_at DESC, ae.id DESC
-    LIMIT $2
-  )
+USING doomed
+WHERE target.org_id=$1 AND target.id=doomed.id
 `
 
-type SweepAccessEventsOverCapParams struct {
+type PruneAccessEventsOverCapBatchParams struct {
 	OrgID      uuid.UUID `json:"org_id"`
 	KeepNewest int32     `json:"keep_newest"`
+	BatchLimit int32     `json:"batch_limit"`
 }
 
-// Per-org row cap: keep the newest keep_newest rows for the org, delete the rest. Protects
-// the disk when one org is noisy without touching quiet orgs.
-func (q *Queries) SweepAccessEventsOverCap(ctx context.Context, arg SweepAccessEventsOverCapParams) (int64, error) {
-	result, err := q.db.Exec(ctx, sweepAccessEventsOverCap, arg.OrgID, arg.KeepNewest)
+// Find the first row beyond the protected newest window, then remove at most
+// one oldest batch through that boundary. Recomputing the boundary each batch
+// stays correct while ingestion remains append-only and concurrent.
+func (q *Queries) PruneAccessEventsOverCapBatch(ctx context.Context, arg PruneAccessEventsOverCapBatchParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneAccessEventsOverCapBatch, arg.OrgID, arg.KeepNewest, arg.BatchLimit)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const renewAccessEventRetentionRunLease = `-- name: RenewAccessEventRetentionRunLease :execrows
+UPDATE access_event_retention_runs
+SET lease_expires_at=$1
+WHERE id=$2 AND org_id=$3 AND status='running'
+`
+
+type RenewAccessEventRetentionRunLeaseParams struct {
+	LeaseExpiresAt pgtype.Timestamptz `json:"lease_expires_at"`
+	ID             uuid.UUID          `json:"id"`
+	OrgID          uuid.UUID          `json:"org_id"`
+}
+
+func (q *Queries) RenewAccessEventRetentionRunLease(ctx context.Context, arg RenewAccessEventRetentionRunLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewAccessEventRetentionRunLease, arg.LeaseExpiresAt, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateAccessEventRetentionSettings = `-- name: UpdateAccessEventRetentionSettings :one
+UPDATE access_event_retention_settings
+SET retention_days=$1,
+    cleanup_interval_minutes=$2,
+    revision=$3,
+    updated_by_user_id=$4
+WHERE org_id=$5
+RETURNING org_id, retention_days, cleanup_interval_minutes, revision, updated_by_user_id, created_at, updated_at
+`
+
+type UpdateAccessEventRetentionSettingsParams struct {
+	RetentionDays          int32     `json:"retention_days"`
+	CleanupIntervalMinutes int32     `json:"cleanup_interval_minutes"`
+	Revision               int64     `json:"revision"`
+	UpdatedByUserID        uuid.UUID `json:"updated_by_user_id"`
+	OrgID                  uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) UpdateAccessEventRetentionSettings(ctx context.Context, arg UpdateAccessEventRetentionSettingsParams) (AccessEventRetentionSetting, error) {
+	row := q.db.QueryRow(ctx, updateAccessEventRetentionSettings,
+		arg.RetentionDays,
+		arg.CleanupIntervalMinutes,
+		arg.Revision,
+		arg.UpdatedByUserID,
+		arg.OrgID,
+	)
+	var i AccessEventRetentionSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.RetentionDays,
+		&i.CleanupIntervalMinutes,
+		&i.Revision,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

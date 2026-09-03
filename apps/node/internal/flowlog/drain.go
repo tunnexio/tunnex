@@ -37,6 +37,7 @@ func RunDrain(ctx context.Context, pump *Pump, reporter FlowReporter, interval t
 				continue
 			}
 			if err := reporter.ReportFlows(ctx, events, dropped); err != nil {
+				pump.recordDeliveryFailure()
 				// The batch is lost; carry its size + the drop-count so the CP still writes a
 				// gap next time. Do NOT re-buffer (would duplicate against a partially-ingested CP).
 				carried = int64(len(events)) + dropped
@@ -45,6 +46,7 @@ func RunDrain(ctx context.Context, pump *Pump, reporter FlowReporter, interval t
 				}
 				continue
 			}
+			pump.recordDelivered(time.Now())
 			carried = 0
 		}
 	}

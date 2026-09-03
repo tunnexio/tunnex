@@ -23,6 +23,11 @@ const (
 	// (owner/admin) capability, deliberately not a members-level read.
 	PermPolicyView   Permission = "policy:view"
 	PermPolicyManage Permission = "policy:manage"
+	// PermAccessEventRetentionManage governs the organization-wide lifecycle of
+	// access-event records. It is deliberately separate from policy:manage: an
+	// automated policy operator may author grants, but may not shorten audit-data
+	// retention or trigger maintenance that deletes expired records.
+	PermAccessEventRetentionManage Permission = "access_event_retention:manage"
 	// FQDN resources are a separate, resolver-backed destination capability. They
 	// must never inherit policy permissions implicitly: callers need an explicit
 	// FQDN read or manage grant before the later entitlement and organization
@@ -192,6 +197,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberManage:                true,
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
+		PermAccessEventRetentionManage:  true,
 		PermFQDNResourceView:            true,
 		PermFQDNResourceManage:          true,
 		PermDeviceApprove:               true,
@@ -229,6 +235,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberManage:                true,
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
+		PermAccessEventRetentionManage:  true,
 		PermFQDNResourceView:            true,
 		PermFQDNResourceManage:          true,
 		PermDeviceApprove:               true,

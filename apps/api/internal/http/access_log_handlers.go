@@ -19,6 +19,17 @@ import (
 type accessLogPort interface {
 	List(ctx context.Context, orgID uuid.UUID, agentID *uuid.UUID, deniesOnly bool, cursorTS time.Time, cursorID uuid.UUID, limit int32) ([]accesslog.Event, error)
 	Health() accesslog.Snapshot
+	Collectors(ctx context.Context, orgID uuid.UUID) ([]accessLogCollectorStatus, error)
+}
+
+type accessLogCollectorStatus struct {
+	NodeID          uuid.UUID
+	Name            string
+	State           string
+	LastReportedAt  *time.Time
+	LastObservedAt  *time.Time
+	LastDeliveredAt *time.Time
+	LastEventAt     *time.Time
 }
 
 // maxUUID is the keyset first-page id sentinel (everything sorts < it at equal created_at).
@@ -74,9 +85,44 @@ func (s apiServer) GetAccessLogHealth(ctx context.Context, req api.GetAccessLogH
 		return nil, editionRequired()
 	}
 	snap := s.accessLog.Health()
+	// Prefer the tenant-scoped durable run over the legacy process-local
+	// snapshot. This prevents one organization's sweep result from appearing in
+	// another organization's health response and survives API restarts.
+	if s.accessEventRetention != nil {
+		latest, latestErr := s.accessEventRetention.GetLatestRun(ctx, req.OrgId)
+		if latestErr != nil {
+			return nil, latestErr
+		}
+		snap.RetentionDropped = 0
+		snap.RetentionFailed = false
+		snap.RetentionLastSweep = time.Time{}
+		if latest != nil {
+			snap.RetentionDropped = latest.DeletedRows
+			snap.RetentionFailed = latest.Status == accesslog.RetentionRunFailed
+			if latest.CompletedAt != nil {
+				snap.RetentionLastSweep = *latest.CompletedAt
+			}
+		}
+	}
+	collectors, err := s.accessLog.Collectors(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
 	body := api.AccessLogHealth{
-		RetentionDropped: snap.RetentionDropped,
-		RetentionFailed:  snap.RetentionFailed,
+		RetentionDropped:  snap.RetentionDropped,
+		RetentionFailed:   snap.RetentionFailed,
+		GatewayCollectors: make([]api.AccessEventCollectorStatus, len(collectors)),
+	}
+	for idx, collector := range collectors {
+		body.GatewayCollectors[idx] = api.AccessEventCollectorStatus{
+			NodeId:          collector.NodeID,
+			Name:            collector.Name,
+			State:           api.AccessEventCollectorStatusState(collector.State),
+			LastReportedAt:  collector.LastReportedAt,
+			LastObservedAt:  collector.LastObservedAt,
+			LastDeliveredAt: collector.LastDeliveredAt,
+			LastEventAt:     collector.LastEventAt,
+		}
 	}
 	if !snap.RetentionLastSweep.IsZero() {
 		t := snap.RetentionLastSweep

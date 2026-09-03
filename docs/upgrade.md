@@ -132,8 +132,9 @@ migrate up
 kubectl -n tunnex set image deploy/tunnex-api api=ghcr.io/tunnexio/tunnex-api:vX.Y.Z
 kubectl -n tunnex rollout status deploy/tunnex-api
 
-# 5. Gateways reconcile on their own. No action, no re-enrolment.
-#    Upgrade them at your convenience, one at a time — they are within the support window.
+# 5. Gateways reconcile supported policy on their own; no re-enrolment is needed.
+#    Upgrade binaries one at a time. An old binary does not gain a new collector
+#    default or heartbeat field merely by talking to the upgraded control plane.
 ```
 
 **Running tunnels are not interrupted by any of this.** Agents forward traffic from their applied state and

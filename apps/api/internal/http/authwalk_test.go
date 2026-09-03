@@ -57,6 +57,10 @@ var walkBodies = map[string]string{
 	// S7.5.5 MFA: enroll/confirm is session-gated (mfaVerify is public; enroll-start/disenroll have no body).
 	"mfaenrollconfirm": `{"code":"123456"}`,
 	"setmfaenforce":    `{"enforce":false}`,
+	// S7.5.1 access-event retention: inert, structurally valid requests keep
+	// the spec walk focused on authentication rather than body validation.
+	"updateaccesseventretention": `{"retention_days":30,"cleanup_interval_minutes":60,"expected_revision":0}`,
+	"runaccesseventprune":        `{"idempotency_key":"walk-prune"}`,
 	// S10.2 machine credentials (machine:manage-gated; a valid body so the POST reaches auth, not the validator).
 	"mintmachinecredential": `{"name":"walk-op"}`,
 	// S15.1 owner assignment (machine:manage-gated). ⛔ WITHOUT THIS THE WALK CAUGHT A REAL NO-ORACLE

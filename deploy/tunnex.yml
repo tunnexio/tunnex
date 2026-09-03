@@ -143,6 +143,10 @@ services:
       TUNNEX_NODE_STATE_DIR: /var/lib/tunnex-node
       TUNNEX_WG_BACKEND: ${TUNNEX_WG_BACKEND:-wgctrl}
       TUNNEX_WG_INTERFACE: ${TUNNEX_WG_INTERFACE:-wg0}
+      # Access-event collection is on by default. Set a different NFLOG group if
+      # 100 conflicts inside this gateway container's network namespace, or set
+      # exactly 0 to disable observation.
+      TUNNEX_FLOWLOG_GROUP: ${TUNNEX_FLOWLOG_GROUP:-100}
       # The public WireGuard endpoint clients dial — install.sh derives it from the public address.
       TUNNEX_NODE_ENDPOINT: ${TUNNEX_NODE_ENDPOINT:?set by install.sh}
     volumes:

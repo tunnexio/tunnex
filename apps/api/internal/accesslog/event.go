@@ -1,8 +1,7 @@
-// Package accesslog is the storage layer for S7.5.1 flow/access events — the
-// VISIBILITY half of Zero Trust. Two stores share the Event contract: a bounded,
-// queryable PG hot-window (the dashboard + keyset pull-API) and an append-only,
-// rotating JSONL stream (the SIEM source-of-truth + retention record). The ingest +
-// enrichment path (slice 4) produces Events; this package persists them.
+// Package accesslog is the PostgreSQL storage layer for S7.5.1 flow/access events —
+// the VISIBILITY half of Zero Trust. The ingest and enrichment path produces Events;
+// this package persists and prunes the queryable dashboard/API window. The proposed
+// JSONL archive/export remains deferred and is not a durability claim of this store.
 package accesslog
 
 import (
@@ -40,26 +39,31 @@ const (
 	ReasonEventsDropped   DecisionReason = "events_dropped"
 )
 
-// Retention + rotation defaults (D3/D4) — NAMED so a POC never silently fills the
-// customer's disk. The PG hot-window is trimmed to whichever of age/row-cap hits first;
-// the JSONL stream (the source-of-truth) rotates by size and is the retention record.
+// Retention defaults (D3) — NAMED so a POC never silently fills the customer's
+// disk. The PG window is pruned toward whichever of age/row target hits first.
 const (
-	DefaultRetention = 30 * 24 * time.Hour // PG hot-window: max INGEST age kept
-	DefaultPGRowCap  = 100_000             // PG hot-window: max rows per org
-	// RetentionSweepInterval is how often the CP runs the hot-window sweep (wired in main).
-	// Frequent enough to bound growth between runs, cheap enough to be idle.
-	RetentionSweepInterval = 10 * time.Minute
+	DefaultRetentionDays           int32 = 30
+	MinRetentionDays               int32 = 1
+	MaxRetentionDays               int32 = 3650
+	DefaultCleanupIntervalMinutes  int32 = 60
+	MinCleanupIntervalMinutes      int32 = 5
+	MaxCleanupIntervalMinutes      int32 = 1440
+	DefaultPGRowCap                int32 = 100_000 // fixed per-org asynchronous pruning target
+	RetentionBatchSize             int32 = 1_000   // maximum rows in one delete transaction
+	RetentionMaxBatches            int32 = 100     // maximum deletes in one claimed run
+	DefaultRetention                     = time.Duration(DefaultRetentionDays) * 24 * time.Hour
+	RetentionRunLease                    = 15 * time.Minute
+	RetentionSchedulerPollInterval       = time.Minute
 )
 
-// Event is ONE identity-level access event — a flow the gateway allowed or denied (or a
-// flow a policy change terminated). It is the SHARED contract: the PG row and the JSONL
-// line both marshal from this. Enriched identity fields are pointers (nil = unresolved or
-// not applicable); Seq is the per-org monotonic tamper-evidence sequence assigned at
-// ingest (slice 4), carried into BOTH stores so the same event cross-references.
+// Event is one identity-level access event — an eligible new packet the gateway
+// allowed or denied (or a flow a policy change terminated). Enriched identity
+// fields are pointers (nil = unresolved or not applicable); Seq is the
+// per-organization monotonic sequence assigned at ingest.
 type Event struct {
 	ID uuid.UUID `json:"id"`
 	// CreatedAt is the CP INGEST time — the keyset-pagination + retention clock (NOT the
-	// agent-clock OccurredAt). Set at ingest so PG and the JSONL line agree.
+	// agent-clock OccurredAt).
 	CreatedAt         time.Time      `json:"created_at"`
 	Seq               int64          `json:"seq"`
 	OrgID             uuid.UUID      `json:"org_id"`

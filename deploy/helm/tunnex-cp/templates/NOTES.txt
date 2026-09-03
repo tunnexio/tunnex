@@ -32,11 +32,12 @@ replicas). The api pods run with TUNNEX_AUTO_MIGRATE=false. Check:
   kubectl -n {{ .Release.Namespace }} logs job/{{ include "tunnex-cp.fullname" . }}-migrate
 
 ────────────────────────────────────────────────────────────────────────────────
-4. CONTROL PLANE RUNS AT api.replicas=1 (DELIBERATE)
+4. CONTROL PLANE DEFAULTS TO api.replicas=1 (DELIBERATE)
 ────────────────────────────────────────────────────────────────────────────────
-The CP runs in-process schedulers (failover tick, CRL rebuild, retention sweep).
-Do NOT raise api.replicas above 1 — N replicas = N controllers (duplicate audit
-rows + sweeps). HA control plane is registered for a future leader-election story.
+The CP's failover, CRL, and access-event retention schedulers use a PostgreSQL
+advisory-lock leader, so extra serving replicas do not duplicate those ticks.
+This chart still defaults to one replica because a complete HA deployment remains
+a separate operational wire proof; do not treat scheduler election alone as that proof.
 
 ────────────────────────────────────────────────────────────────────────────────
 5. NEXT: add a gateway

@@ -214,11 +214,12 @@ type apiServer struct {
 	// opt-in transaction commits. It is deliberately separate from the resource
 	// service: HTTP owns the post-commit side effect while storage owns the
 	// audited organization setting mutation.
-	fqdnSettingNotify fqdnSettingNotifier
-	agentTemplates    agentTemplatePort // nil in the open build (F09)
-	agentAccess       agentAccessPort   // licence-gated (F10)
-	accessLog         accessLogPort     // nil in the open build (Zero Trust visibility, S7.5.1)
-	idpSync           idpSyncPort       // nil in the open build (IdP-group sync, S7.5.2)
+	fqdnSettingNotify    fqdnSettingNotifier
+	agentTemplates       agentTemplatePort        // nil in the open build (F09)
+	agentAccess          agentAccessPort          // licence-gated (F10)
+	accessLog            accessLogPort            // nil in the open build (Zero Trust visibility, S7.5.1)
+	accessEventRetention accessEventRetentionPort // nil in the open build (S7.5.1 retention control)
+	idpSync              idpSyncPort              // nil in the open build (IdP-group sync, S7.5.2)
 	// ⛔ smtpConfigured — whether this deployment can send mail AT ALL. Served by /meta so the screens that
 	// send mail can say so BEFORE the operator acts. Invitations are the only way anyone joins, so a
 	// deployment without it is unusable while every screen reports success.

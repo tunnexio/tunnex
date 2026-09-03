@@ -41,6 +41,29 @@ const (
 	NoMatchingGrant AccessEventDecisionReason = "no_matching_grant"
 )
 
+// Defines values for AccessEventCollectorStatusState.
+const (
+	AccessEventCollectorStatusStateActive        AccessEventCollectorStatusState = "active"
+	AccessEventCollectorStatusStateDeliveryError AccessEventCollectorStatusState = "delivery_error"
+	AccessEventCollectorStatusStateDisabled      AccessEventCollectorStatusState = "disabled"
+	AccessEventCollectorStatusStateSourceError   AccessEventCollectorStatusState = "source_error"
+	AccessEventCollectorStatusStateStale         AccessEventCollectorStatusState = "stale"
+	AccessEventCollectorStatusStateUnknown       AccessEventCollectorStatusState = "unknown"
+)
+
+// Defines values for AccessEventRetentionRunStatus.
+const (
+	AccessEventRetentionRunStatusFailed    AccessEventRetentionRunStatus = "failed"
+	AccessEventRetentionRunStatusRunning   AccessEventRetentionRunStatus = "running"
+	AccessEventRetentionRunStatusSucceeded AccessEventRetentionRunStatus = "succeeded"
+)
+
+// Defines values for AccessEventRetentionRunTrigger.
+const (
+	AccessEventRetentionRunTriggerManual    AccessEventRetentionRunTrigger = "manual"
+	AccessEventRetentionRunTriggerScheduled AccessEventRetentionRunTrigger = "scheduled"
+)
+
 // Defines values for AgentAccessCheckStatus.
 const (
 	AgentAccessCheckStatusFail         AgentAccessCheckStatus = "fail"
@@ -1153,8 +1176,83 @@ type AccessEventDecision string
 // AccessEventDecisionReason defines model for AccessEvent.DecisionReason.
 type AccessEventDecisionReason string
 
+// AccessEventCollectorStatus defines model for AccessEventCollectorStatus.
+type AccessEventCollectorStatus struct {
+	// LastDeliveredAt Gateway clock time of the latest batch successfully delivered to the control plane
+	LastDeliveredAt *time.Time `json:"last_delivered_at,omitempty"`
+
+	// LastEventAt Most recent retained event ingested from this gateway
+	LastEventAt *time.Time `json:"last_event_at,omitempty"`
+
+	// LastObservedAt Gateway clock time of the latest packet accepted by the collector
+	LastObservedAt *time.Time `json:"last_observed_at,omitempty"`
+
+	// LastReportedAt Control-plane receipt time for the gateway capability heartbeat.
+	LastReportedAt *time.Time         `json:"last_reported_at,omitempty"`
+	Name           string             `json:"name"`
+	NodeId         openapi_types.UUID `json:"node_id"`
+
+	// State Agent-reported collector state with server-derived heartbeat freshness; stale means the gateway stopped reporting, while unknown means a fresh legacy gateway has never reported this capability.
+	State AccessEventCollectorStatusState `json:"state"`
+}
+
+// AccessEventCollectorStatusState Agent-reported collector state with server-derived heartbeat freshness; stale means the gateway stopped reporting, while unknown means a fresh legacy gateway has never reported this capability.
+type AccessEventCollectorStatusState string
+
+// AccessEventPruneResponse defines model for AccessEventPruneResponse.
+type AccessEventPruneResponse struct {
+	// Replayed True when this idempotency key already named the returned durable run; no second prune or audit mutation was performed.
+	Replayed  bool                    `json:"replayed"`
+	Retention AccessEventRetention    `json:"retention"`
+	Run       AccessEventRetentionRun `json:"run"`
+}
+
+// AccessEventRetention defines model for AccessEventRetention.
+type AccessEventRetention struct {
+	// CleanupIntervalMinutes Target interval between scheduled bounded pruning runs.
+	CleanupIntervalMinutes int                      `json:"cleanup_interval_minutes"`
+	LastRun                *AccessEventRetentionRun `json:"last_run,omitempty"`
+	NextRunAt              *time.Time               `json:"next_run_at,omitempty"`
+
+	// RetentionDays Maximum access-event ingest age retained for this organization.
+	RetentionDays int `json:"retention_days"`
+
+	// Revision Optimistic-concurrency revision; 0 is the effective default before an override is persisted.
+	Revision int64 `json:"revision"`
+
+	// RowCap Non-configurable per-organization asynchronous pruning target. Counts can temporarily exceed it between bounded runs; whichever of age or row target is reached first is pruned.
+	RowCap    int        `json:"row_cap"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// AccessEventRetentionRun defines model for AccessEventRetentionRun.
+type AccessEventRetentionRun struct {
+	Batches     int        `json:"batches"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	DeletedRows int64      `json:"deleted_rows"`
+
+	// ErrorCode Bounded operator-safe failure code; raw database errors are never exposed.
+	ErrorCode *string            `json:"error_code,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// MorePending True when the bounded run stopped with additional eligible rows left for a later run.
+	MorePending bool                           `json:"more_pending"`
+	StartedAt   time.Time                      `json:"started_at"`
+	Status      AccessEventRetentionRunStatus  `json:"status"`
+	Trigger     AccessEventRetentionRunTrigger `json:"trigger"`
+}
+
+// AccessEventRetentionRunStatus defines model for AccessEventRetentionRun.Status.
+type AccessEventRetentionRunStatus string
+
+// AccessEventRetentionRunTrigger defines model for AccessEventRetentionRun.Trigger.
+type AccessEventRetentionRunTrigger string
+
 // AccessLogHealth defines model for AccessLogHealth.
 type AccessLogHealth struct {
+	// GatewayCollectors Per-gateway collector truth. An empty event feed must not be used to infer whether collection is active.
+	GatewayCollectors []AccessEventCollectorStatus `json:"gateway_collectors"`
+
 	// RetentionDropped Rows deleted by the last retention sweep (age + cap).
 	RetentionDropped int64 `json:"retention_dropped"`
 
@@ -3893,6 +3991,12 @@ type RoutedRanges struct {
 	Ranges []string `json:"ranges"`
 }
 
+// RunAccessEventPruneRequest defines model for RunAccessEventPruneRequest.
+type RunAccessEventPruneRequest struct {
+	// IdempotencyKey Caller-generated key scoped to this organization; an exact replay returns the original run.
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
 // RuntimeMCPOAuthLease defines model for RuntimeMCPOAuthLease.
 type RuntimeMCPOAuthLease struct {
 	// AccessToken Runtime-only transient credential. Never returned by a human/session endpoint.
@@ -4096,6 +4200,13 @@ type TransferNodeDevicesResponseDevicesReissueCause string
 // UnbindSiteNodeRequest defines model for UnbindSiteNodeRequest.
 type UnbindSiteNodeRequest struct {
 	NodeId *openapi_types.UUID `json:"node_id,omitempty"`
+}
+
+// UpdateAccessEventRetentionRequest defines model for UpdateAccessEventRetentionRequest.
+type UpdateAccessEventRetentionRequest struct {
+	CleanupIntervalMinutes int   `json:"cleanup_interval_minutes"`
+	ExpectedRevision       int64 `json:"expected_revision"`
+	RetentionDays          int   `json:"retention_days"`
 }
 
 // UpdateAgentGroupRequest defines model for UpdateAgentGroupRequest.
@@ -4518,6 +4629,12 @@ type CreateOrganizationJSONRequestBody = CreateOrganizationRequest
 
 // UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
 type UpdateOrganizationJSONRequestBody = UpdateOrganizationRequest
+
+// UpdateAccessEventRetentionJSONRequestBody defines body for UpdateAccessEventRetention for application/json ContentType.
+type UpdateAccessEventRetentionJSONRequestBody = UpdateAccessEventRetentionRequest
+
+// RunAccessEventPruneJSONRequestBody defines body for RunAccessEventPrune for application/json ContentType.
+type RunAccessEventPruneJSONRequestBody = RunAccessEventPruneRequest
 
 // CreateAgentAccessRequestJSONRequestBody defines body for CreateAgentAccessRequest for application/json ContentType.
 type CreateAgentAccessRequestJSONRequestBody = CreateAgentAccessRequest
@@ -5045,6 +5162,19 @@ type ClientInterface interface {
 	UpdateOrganizationWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateOrganization(ctx context.Context, orgId openapi_types.UUID, body UpdateOrganizationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAccessEventRetention request
+	GetAccessEventRetention(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAccessEventRetentionWithBody request with any body
+	UpdateAccessEventRetentionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAccessEventRetention(ctx context.Context, orgId openapi_types.UUID, body UpdateAccessEventRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunAccessEventPruneWithBody request with any body
+	RunAccessEventPruneWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RunAccessEventPrune(ctx context.Context, orgId openapi_types.UUID, body RunAccessEventPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAccessEvents request
 	ListAccessEvents(ctx context.Context, orgId openapi_types.UUID, params *ListAccessEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6750,6 +6880,66 @@ func (c *Client) UpdateOrganizationWithBody(ctx context.Context, orgId openapi_t
 
 func (c *Client) UpdateOrganization(ctx context.Context, orgId openapi_types.UUID, body UpdateOrganizationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateOrganizationRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAccessEventRetention(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAccessEventRetentionRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAccessEventRetentionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAccessEventRetentionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAccessEventRetention(ctx context.Context, orgId openapi_types.UUID, body UpdateAccessEventRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAccessEventRetentionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RunAccessEventPruneWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunAccessEventPruneRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RunAccessEventPrune(ctx context.Context, orgId openapi_types.UUID, body RunAccessEventPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunAccessEventPruneRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12066,6 +12256,134 @@ func NewUpdateOrganizationRequestWithBody(server string, orgId openapi_types.UUI
 	}
 
 	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAccessEventRetentionRequest generates requests for GetAccessEventRetention
+func NewGetAccessEventRetentionRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/access-event-retention", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAccessEventRetentionRequest calls the generic UpdateAccessEventRetention builder with application/json body
+func NewUpdateAccessEventRetentionRequest(server string, orgId openapi_types.UUID, body UpdateAccessEventRetentionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAccessEventRetentionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateAccessEventRetentionRequestWithBody generates requests for UpdateAccessEventRetention with any type of body
+func NewUpdateAccessEventRetentionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/access-event-retention", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRunAccessEventPruneRequest calls the generic RunAccessEventPrune builder with application/json body
+func NewRunAccessEventPruneRequest(server string, orgId openapi_types.UUID, body RunAccessEventPruneJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRunAccessEventPruneRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewRunAccessEventPruneRequestWithBody generates requests for RunAccessEventPrune with any type of body
+func NewRunAccessEventPruneRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/access-event-retention/actions/prune", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -21734,6 +22052,19 @@ type ClientWithResponsesInterface interface {
 
 	UpdateOrganizationWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateOrganizationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateOrganizationResponse, error)
 
+	// GetAccessEventRetentionWithResponse request
+	GetAccessEventRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAccessEventRetentionResponse, error)
+
+	// UpdateAccessEventRetentionWithBodyWithResponse request with any body
+	UpdateAccessEventRetentionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAccessEventRetentionResponse, error)
+
+	UpdateAccessEventRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateAccessEventRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAccessEventRetentionResponse, error)
+
+	// RunAccessEventPruneWithBodyWithResponse request with any body
+	RunAccessEventPruneWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunAccessEventPruneResponse, error)
+
+	RunAccessEventPruneWithResponse(ctx context.Context, orgId openapi_types.UUID, body RunAccessEventPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*RunAccessEventPruneResponse, error)
+
 	// ListAccessEventsWithResponse request
 	ListAccessEventsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAccessEventsParams, reqEditors ...RequestEditorFn) (*ListAccessEventsResponse, error)
 
@@ -23652,6 +23983,75 @@ func (r UpdateOrganizationResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpdateOrganizationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAccessEventRetentionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AccessEventRetention
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAccessEventRetentionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAccessEventRetentionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAccessEventRetentionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AccessEventRetention
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAccessEventRetentionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAccessEventRetentionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RunAccessEventPruneResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AccessEventPruneResponse
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RunAccessEventPruneResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunAccessEventPruneResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -28844,6 +29244,49 @@ func (c *ClientWithResponses) UpdateOrganizationWithResponse(ctx context.Context
 	return ParseUpdateOrganizationResponse(rsp)
 }
 
+// GetAccessEventRetentionWithResponse request returning *GetAccessEventRetentionResponse
+func (c *ClientWithResponses) GetAccessEventRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAccessEventRetentionResponse, error) {
+	rsp, err := c.GetAccessEventRetention(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAccessEventRetentionResponse(rsp)
+}
+
+// UpdateAccessEventRetentionWithBodyWithResponse request with arbitrary body returning *UpdateAccessEventRetentionResponse
+func (c *ClientWithResponses) UpdateAccessEventRetentionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAccessEventRetentionResponse, error) {
+	rsp, err := c.UpdateAccessEventRetentionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAccessEventRetentionResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAccessEventRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateAccessEventRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAccessEventRetentionResponse, error) {
+	rsp, err := c.UpdateAccessEventRetention(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAccessEventRetentionResponse(rsp)
+}
+
+// RunAccessEventPruneWithBodyWithResponse request with arbitrary body returning *RunAccessEventPruneResponse
+func (c *ClientWithResponses) RunAccessEventPruneWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunAccessEventPruneResponse, error) {
+	rsp, err := c.RunAccessEventPruneWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunAccessEventPruneResponse(rsp)
+}
+
+func (c *ClientWithResponses) RunAccessEventPruneWithResponse(ctx context.Context, orgId openapi_types.UUID, body RunAccessEventPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*RunAccessEventPruneResponse, error) {
+	rsp, err := c.RunAccessEventPrune(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunAccessEventPruneResponse(rsp)
+}
+
 // ListAccessEventsWithResponse request returning *ListAccessEventsResponse
 func (c *ClientWithResponses) ListAccessEventsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAccessEventsParams, reqEditors ...RequestEditorFn) (*ListAccessEventsResponse, error) {
 	rsp, err := c.ListAccessEvents(ctx, orgId, params, reqEditors...)
@@ -32910,6 +33353,105 @@ func ParseUpdateOrganizationResponse(rsp *http.Response) (*UpdateOrganizationRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Organization
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAccessEventRetentionResponse parses an HTTP response from a GetAccessEventRetentionWithResponse call
+func ParseGetAccessEventRetentionResponse(rsp *http.Response) (*GetAccessEventRetentionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAccessEventRetentionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccessEventRetention
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAccessEventRetentionResponse parses an HTTP response from a UpdateAccessEventRetentionWithResponse call
+func ParseUpdateAccessEventRetentionResponse(rsp *http.Response) (*UpdateAccessEventRetentionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAccessEventRetentionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccessEventRetention
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunAccessEventPruneResponse parses an HTTP response from a RunAccessEventPruneWithResponse call
+func ParseRunAccessEventPruneResponse(rsp *http.Response) (*RunAccessEventPruneResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunAccessEventPruneResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AccessEventPruneResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "../lib/useOrg";
-import { api, apiErrorMessage, type Org } from "../lib/api";
+import { api, loadOne, type Org } from "../lib/api";
 
 function agentListItems<T>(value: T[] | { items?: T[] } | undefined): T[] {
   return Array.isArray(value) ? value : value?.items ?? [];
@@ -9,17 +9,21 @@ import { relativeAge } from "../lib/format";
 import {
   Button,
   DataTable,
-  ErrorText,
+  EmptyState,
   Loading,
   Modal,
   PageHeader,
 } from "../components/ui";
+import { LoadRetry } from "../components/LoadRetry";
 import {
   ATTRIBUTION_NOTE,
   causeFor,
+  collectorStateLabel,
+  collectorStateTone,
   decisionLabel,
   decisionTone,
   destinationFor,
+  emptyAccessEventsNote,
   eventTimeline,
   isLastPage,
   nextCursor,
@@ -41,47 +45,109 @@ const PAGE = 100;
  */
 export default function AccessEvents() {
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5).
-  const { org: currentOrg } = useOrg();
+  const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
   const [org, setOrg] = useState<Org | null>(null);
   const [rows, setRows] = useState<AccessEvent[] | null>(null);
   const [health, setHealth] = useState<AccessLogHealth | null>(null);
+  const [healthBusy, setHealthBusy] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
   const [deniesOnly, setDeniesOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentRow[]>([]);
+  const [agentsBusy, setAgentsBusy] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
   const [agentId, setAgentId] = useState("");
   const [selected, setSelected] = useState<AccessEvent | null>(null);
-  const loadEpoch = useRef(0);
   const queryEpoch = useRef(0);
+  const healthEpoch = useRef(0);
+  const agentsEpoch = useRef(0);
+
+  const loadAgents = useCallback(async (target: Org) => {
+    const epoch = ++agentsEpoch.current;
+    setAgentsBusy(true);
+    setAgentsError(null);
+    const result = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/agents", {
+        params: { path: { orgId: target.id } },
+      }),
+    );
+    if (epoch !== agentsEpoch.current) return;
+    setAgentsBusy(false);
+    if (!result.ok) {
+      setAgentsError(
+        result.error === "Could not load."
+          ? "Could not load the source-agent filter."
+          : result.error,
+      );
+      return;
+    }
+    setAgents(
+      agentListItems(
+        result.data as AgentRow[] | { items?: AgentRow[] } | undefined,
+      ),
+    );
+  }, []);
+
+  const loadHealth = useCallback(async (target: Org) => {
+    const epoch = ++healthEpoch.current;
+    setHealthBusy(true);
+    setHealthError(null);
+    const result = await loadOne(() =>
+      api.GET("/api/v1/organizations/{orgId}/access-log/health", {
+        params: { path: { orgId: target.id } },
+      }),
+    );
+    if (epoch !== healthEpoch.current) return;
+    setHealthBusy(false);
+    if (!result.ok) {
+      setHealthError(
+        result.error === "Could not load."
+          ? "Could not load access-event collection and retention status."
+          : result.error,
+      );
+      return;
+    }
+    setHealth(result.data as AccessLogHealth);
+  }, []);
 
   useEffect(() => {
-    const epoch = ++loadEpoch.current;
     queryEpoch.current++;
+    healthEpoch.current++;
+    agentsEpoch.current++;
     setOrg(null);
     setRows(null);
     setHealth(null);
+    setHealthBusy(false);
+    setHealthError(null);
     setAgents([]);
+    setAgentsBusy(false);
+    setAgentsError(null);
     setAgentId("");
     setSelected(null);
     setError(null);
-    (async () => {
-      setOrg(currentOrg);
-      if (!currentOrg) return;
-      // Base agent inventory is available on Community and higher plans. The
-      // access-event filter is populated from the same source without using
-      // legacy edition metadata as an entitlement oracle.
-      const { data } = await api.GET("/api/v1/organizations/{orgId}/agents", {
-        params: { path: { orgId: currentOrg.id } },
-      });
-      if (epoch === loadEpoch.current) {
-        setAgents(agentListItems(data) as AgentRow[]);
-      }
-    })();
+    setBusy(false);
+    setDone(false);
+    if (!orgLoading && currentOrg) setOrg(currentOrg);
     return () => {
-      loadEpoch.current++;
+      queryEpoch.current++;
+      healthEpoch.current++;
+      agentsEpoch.current++;
     };
-  }, [currentOrg]);
+  }, [currentOrg, orgFailed, orgLoading]);
+
+  useEffect(() => {
+    if (!org) return;
+    // Base agent inventory is available on Community and higher plans. The access-event filter is
+    // populated from the same source without using legacy edition metadata as an entitlement oracle.
+    void loadAgents(org);
+    void loadHealth(org);
+    return () => {
+      healthEpoch.current++;
+      agentsEpoch.current++;
+    };
+  }, [loadAgents, loadHealth, org]);
 
   const load = useCallback(
     async (reset: boolean) => {
@@ -89,26 +155,38 @@ export default function AccessEvents() {
       const epoch = reset ? ++queryEpoch.current : queryEpoch.current;
       setBusy(true);
       setError(null);
+      if (reset) {
+        setRows(null);
+        setDone(false);
+      }
       const cursor = reset ? null : nextCursor(rows ?? []);
-      const { data, error: err } = await api.GET(
-        "/api/v1/organizations/{orgId}/access-events",
-        {
-          params: {
-            path: { orgId: org.id },
-            query: {
-              limit: PAGE,
-              denies_only: deniesOnly || undefined,
-              src_agent_id: agentId || undefined,
-              ...(cursor ?? {}),
+      const result = await loadOne(() =>
+        api.GET(
+          "/api/v1/organizations/{orgId}/access-events",
+          {
+            params: {
+              path: { orgId: org.id },
+              query: {
+                limit: PAGE,
+                denies_only: deniesOnly || undefined,
+                src_agent_id: agentId || undefined,
+                ...(cursor ?? {}),
+              },
             },
           },
-        },
+        ),
       );
       if (epoch !== queryEpoch.current) return;
       setBusy(false);
-      if (err)
-        return setError(apiErrorMessage(err, "Could not load access events."));
-      const page = (data as AccessEvent[] | undefined) ?? [];
+      if (!result.ok) {
+        setError(
+          result.error === "Could not load."
+            ? "Could not load access events."
+            : result.error,
+        );
+        return;
+      }
+      const page = (result.data as AccessEvent[] | undefined) ?? [];
       setRows(reset ? page : [...(rows ?? []), ...page]);
       // The API documents that a short page IS the last page — so stop asking.
       setDone(isLastPage(page, PAGE));
@@ -119,19 +197,56 @@ export default function AccessEvents() {
   useEffect(() => {
     if (!org) return;
     void load(true);
-    void (async () => {
-      const epoch = loadEpoch.current;
-      const { data } = await api.GET(
-        "/api/v1/organizations/{orgId}/access-log/health",
-        { params: { path: { orgId: org.id } } },
-      );
-      if (epoch === loadEpoch.current && data) setHealth(data as AccessLogHealth);
-    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [org, deniesOnly, agentId]);
 
-  if (currentOrg && (!org || currentOrg.id !== org.id)) {
-    return <Loading label="Loading access events…" />;
+  if (orgLoading) {
+    return <Loading size="page" label="Loading access events…" />;
+  }
+
+  if (orgFailed && !currentOrg) {
+    return (
+      <div>
+        <PageHeader title="Access events" subtitle="Policy decisions and audit evidence" />
+        <LoadRetry
+          error="Could not load your organizations."
+          onRetry={() => window.location.reload()}
+        />
+      </div>
+    );
+  }
+
+  if (!currentOrg) {
+    return (
+      <div>
+        <PageHeader title="Access events" subtitle="Policy decisions and audit evidence" />
+        <section className="tnx-card-surface mt-5 px-5">
+          <EmptyState>You are not a member of any organization yet.</EmptyState>
+        </section>
+      </div>
+    );
+  }
+
+  if (!org || currentOrg.id !== org.id) {
+    return <Loading size="page" label="Loading access events…" />;
+  }
+
+  if (rows === null && !error) {
+    return (
+      <div>
+        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} />
+        <Loading label="Loading access events…" />
+      </div>
+    );
+  }
+
+  if (rows === null && error) {
+    return (
+      <div>
+        <PageHeader title="Access events" subtitle={`${org.name} · policy decisions and audit evidence`} />
+        <LoadRetry error={error} onRetry={() => void load(true)} />
+      </div>
+    );
   }
 
   const events = rows ?? [];
@@ -159,7 +274,7 @@ export default function AccessEvents() {
         title="Access events"
         subtitle={org ? `${org.name} · policy decisions and audit evidence` : "…"}
       />
-      <ErrorText>{error}</ErrorText>
+      {error && <LoadRetry error={error} onRetry={() => void load(false)} />}
 
       <section className="tnx-card-surface mt-5 overflow-hidden">
         <div className="grid grid-cols-2 border-b border-line-row sm:grid-cols-4">
@@ -184,8 +299,11 @@ export default function AccessEvents() {
               type="button"
               aria-pressed={!deniesOnly}
               onClick={() => {
+                if (!deniesOnly) return;
                 setDeniesOnly(false);
                 setSelected(null);
+                setRows(null);
+                setError(null);
               }}
               className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${!deniesOnly ? "bg-white/[.10] text-white" : "text-ink-tertiary hover:text-white"}`}
             >
@@ -195,8 +313,11 @@ export default function AccessEvents() {
               type="button"
               aria-pressed={deniesOnly}
               onClick={() => {
+                if (deniesOnly) return;
                 setDeniesOnly(true);
                 setSelected(null);
+                setRows(null);
+                setError(null);
               }}
               className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${deniesOnly ? "bg-white/[.10] text-white" : "text-ink-tertiary hover:text-white"}`}
             >
@@ -209,22 +330,76 @@ export default function AccessEvents() {
             <select
               aria-label="Agent"
               value={agentId}
+              disabled={agentsBusy}
               onChange={(e) => {
+                if (e.target.value === agentId) return;
                 setAgentId(e.target.value);
                 setSelected(null);
+                setRows(null);
+                setError(null);
               }}
               className="min-h-9 min-w-0 rounded-md border border-line bg-ink-950 px-3 text-sm text-white focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 sm:min-w-56"
             >
-              <option value="">All sources</option>
+              <option value="">{agentsBusy ? "Loading sources…" : "All sources"}</option>
               {agents.map((a) => <option key={a.device_id} value={a.device_id}>{a.name}</option>)}
             </select>
           </label>
 
           {rn && (
-            <span className={`text-micro ${rn.loud ? "text-danger" : "text-ink-faint"}`}>
-              {rn.text}
+            <span className={`text-micro ${rn.tone === "danger" ? "text-danger" : rn.tone === "warn" ? "text-warn" : "text-ink-faint"}`}>
+              {rn.text}{health?.retention_last_sweep ? ` · ${relativeAge(health.retention_last_sweep)}` : ""}
             </span>
           )}
+        </div>
+
+        {agentsError && (
+          <div className="border-b border-line-row px-4 pb-3">
+            <LoadRetry error={agentsError} onRetry={() => void loadAgents(org)} />
+          </div>
+        )}
+
+        <div className="border-b border-line-row px-4 py-3" aria-label="Gateway collector status">
+          <div className="text-micro font-medium uppercase tracking-[0.12em] text-ink-faint">
+            Gateway collectors
+          </div>
+          {healthBusy && !health ? (
+            <Loading size="inline" label="Loading collector status…" />
+          ) : healthError ? (
+            <LoadRetry error={healthError} onRetry={() => void loadHealth(org)} />
+          ) : health?.gateway_collectors?.length ? (
+            <ul className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {health.gateway_collectors.map((collector) => {
+                const tone = collectorStateTone(collector.state);
+                return (
+                  <li key={collector.node_id} className="rounded-md border border-line bg-ink-950 px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-xs font-medium text-ink-body">{collector.name}</span>
+                      <span className={`shrink-0 font-mono text-micro ${tone === "ok" ? "text-accent-400" : tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : "text-ink-faint"}`}>
+                        {collectorStateLabel(collector.state)}
+                      </span>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-micro text-ink-faint">
+                      {[
+                        ["Heartbeat", collector.last_reported_at],
+                        ["Observed", collector.last_observed_at],
+                        ["Delivered", collector.last_delivered_at],
+                        ["Retained", collector.last_event_at],
+                      ].map(([label, timestamp]) => (
+                        <div key={label}>
+                          <dt className="inline">{label}: </dt>
+                          <dd className="inline text-ink-tertiary">
+                            {timestamp ? relativeAge(timestamp) : "not reported"}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : health ? (
+            <p className="mt-2 text-xs text-warn">No gateway has reported collector status yet.</p>
+          ) : null}
         </div>
 
         <div className="px-4 py-3">
@@ -240,8 +415,8 @@ export default function AccessEvents() {
           caption="Access events"
           rows={events}
           rowKey={(e) => e.id}
-          empty="No access events recorded yet."
-          failed={error !== null}
+          empty={emptyAccessEventsNote(health, healthError !== null)}
+          failed={false}
           columns={[
             {
               key: "event",

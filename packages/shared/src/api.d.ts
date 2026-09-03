@@ -1272,10 +1272,52 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Access-log subsystem health — retention sweep (enterprise) */
+        /** Access-event collector and durable retention health (enterprise) */
         get: operations["getAccessLogHealth"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/access-event-retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read the organization's effective access-event retention policy and latest pruning status */
+        get: operations["getAccessEventRetention"];
+        /** Update the organization's access-event retention policy (organization admin) */
+        put: operations["updateAccessEventRetention"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/access-event-retention/actions/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run bounded access-event pruning now using the persisted organization policy
+         * @description This action never accepts an arbitrary cutoff and never flushes the table. Reusing an idempotency key returns the original run.
+         */
+        post: operations["runAccessEventPrune"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6492,6 +6534,97 @@ export interface components {
             retention_dropped: number;
             /** @description The last retention sweep errored (partial/failed) — the PG hot-window may be growing. */
             retention_failed: boolean;
+            /** @description Per-gateway collector truth. An empty event feed must not be used to infer whether collection is active. */
+            gateway_collectors: components["schemas"]["AccessEventCollectorStatus"][];
+        };
+        AccessEventCollectorStatus: {
+            /** Format: uuid */
+            node_id: string;
+            name: string;
+            /**
+             * @description Agent-reported collector state with server-derived heartbeat freshness; stale means the gateway stopped reporting, while unknown means a fresh legacy gateway has never reported this capability.
+             * @enum {string}
+             */
+            state: "active" | "disabled" | "source_error" | "delivery_error" | "stale" | "unknown";
+            /**
+             * Format: date-time
+             * @description Control-plane receipt time for the gateway capability heartbeat.
+             */
+            last_reported_at?: string;
+            /**
+             * Format: date-time
+             * @description Gateway clock time of the latest packet accepted by the collector
+             */
+            last_observed_at?: string;
+            /**
+             * Format: date-time
+             * @description Gateway clock time of the latest batch successfully delivered to the control plane
+             */
+            last_delivered_at?: string;
+            /**
+             * Format: date-time
+             * @description Most recent retained event ingested from this gateway
+             */
+            last_event_at?: string;
+        };
+        AccessEventRetention: {
+            /**
+             * @description Maximum access-event ingest age retained for this organization.
+             * @default 30
+             */
+            retention_days: number;
+            /**
+             * @description Target interval between scheduled bounded pruning runs.
+             * @default 60
+             */
+            cleanup_interval_minutes: number;
+            /** @description Non-configurable per-organization asynchronous pruning target. Counts can temporarily exceed it between bounded runs; whichever of age or row target is reached first is pruned. */
+            row_cap: number;
+            /**
+             * Format: int64
+             * @description Optimistic-concurrency revision; 0 is the effective default before an override is persisted.
+             */
+            revision: number;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            next_run_at?: string;
+            last_run?: components["schemas"]["AccessEventRetentionRun"];
+        };
+        AccessEventRetentionRun: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            trigger: "scheduled" | "manual";
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed";
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            completed_at?: string;
+            /** Format: int64 */
+            deleted_rows: number;
+            batches: number;
+            /** @description True when the bounded run stopped with additional eligible rows left for a later run. */
+            more_pending: boolean;
+            /** @description Bounded operator-safe failure code; raw database errors are never exposed. */
+            error_code?: string;
+        };
+        AccessEventPruneResponse: {
+            retention: components["schemas"]["AccessEventRetention"];
+            run: components["schemas"]["AccessEventRetentionRun"];
+            /** @description True when this idempotency key already named the returned durable run; no second prune or audit mutation was performed. */
+            replayed: boolean;
+        };
+        UpdateAccessEventRetentionRequest: {
+            retention_days: number;
+            cleanup_interval_minutes: number;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        RunAccessEventPruneRequest: {
+            /** @description Caller-generated key scoped to this organization; an exact replay returns the original run. */
+            idempotency_key: string;
         };
         OrgOverview: {
             members: number;
@@ -8457,6 +8590,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccessLogHealth"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAccessEventRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective retention settings. A missing persisted override is returned as revision 0 with the documented defaults. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessEventRetention"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAccessEventRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAccessEventRetentionRequest"];
+            };
+        };
+        responses: {
+            /** @description Persisted retention settings. Exact retries are idempotent and return the current resource. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessEventRetention"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    runAccessEventPrune: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunAccessEventPruneRequest"];
+            };
+        };
+        responses: {
+            /** @description The exact idempotency-key-bound run, whether it was replayed, and the current effective settings/latest pruning status. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessEventPruneResponse"];
                 };
             };
             default: components["responses"]["Error"];

@@ -67,6 +67,7 @@ import {
   AgentQuotaCard,
   AgentRuntimeSettingCard,
 } from "../components/AgentOrganizationSettings";
+import { AccessEventRetentionSettings } from "../components/AccessEventRetentionSettings";
 
 const PROVIDERS = ["google", "microsoft"] as const;
 type Provider = (typeof PROVIDERS)[number];
@@ -354,6 +355,16 @@ export default function Settings() {
         {org && isAdmin && active === "access-security" && (
           <SettingGroup id="access-security" title="Access & security" tabpanel>
             <AccessSecuritySettings key={org.id} orgId={org.id} canEdit={emailVerified} />
+          </SettingGroup>
+        )}
+
+        {org && can(myRole, "access_event_retention:manage") && active === "data-retention" && (
+          <SettingGroup id="data-retention" title="Data retention" tabpanel>
+            <AccessEventRetentionSettings
+              key={org.id}
+              orgId={org.id}
+              canEdit={emailVerified}
+            />
           </SettingGroup>
         )}
 
@@ -1605,6 +1616,13 @@ const RAIL: ReadonlyArray<{
     label: "Access & security",
     hint: "Control organization-wide access safeguards and capability opt-ins.",
     requiredPermission: "org:update",
+  },
+  {
+    id: "data-retention",
+    needsOrg: true,
+    label: "Data retention",
+    hint: "Manage access-event retention, pruning cadence, and maintenance status.",
+    requiredPermission: "access_event_retention:manage",
   },
   {
     id: "features",

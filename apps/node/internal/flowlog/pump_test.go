@@ -61,12 +61,14 @@ func TestPumpStampSrcDevice(t *testing.T) {
 // Run pumps records into the buffer; Drain returns them.
 func TestPumpRunBuffers(t *testing.T) {
 	src := &fakeSource{ch: make(chan Record, 4)}
-	p := NewPump(src, NewBuffer(16), nil)
+	status := NewStatus(StateActive)
+	p := NewPump(src, NewBuffer(16), nil).WithStatus(status)
 	ctx, cancel := context.WithCancel(context.Background())
 	go p.Run(ctx)
 
+	observedAt := time.Now().UTC().Truncate(time.Microsecond)
 	for i := 0; i < 3; i++ {
-		src.ch <- Record{Prefix: EncodePrefix("r"), SrcIP: "10.99.0.10", DstIP: "10.0.5.5", Protocol: "tcp"}
+		src.ch <- Record{Prefix: EncodePrefix("r"), SrcIP: "10.99.0.10", DstIP: "10.0.5.5", Protocol: "tcp", At: observedAt}
 	}
 	// Give the pump a moment to drain the channel.
 	deadline := time.Now().Add(2 * time.Second)
@@ -77,6 +79,20 @@ func TestPumpRunBuffers(t *testing.T) {
 	events, dropped := p.Drain()
 	if len(events) != 3 || dropped != 0 {
 		t.Fatalf("drain = %d events, %d dropped; want 3, 0", len(events), dropped)
+	}
+	if got := status.Snapshot(); got.State != StateActive || !got.LastObservedAt.Equal(observedAt) {
+		t.Fatalf("status after observation = %+v, want active at %s", got, observedAt)
+	}
+}
+
+func TestPumpClosedSourceReportsSourceError(t *testing.T) {
+	src := &fakeSource{ch: make(chan Record)}
+	status := NewStatus(StateActive)
+	p := NewPump(src, NewBuffer(1), nil).WithStatus(status)
+	close(src.ch)
+	p.Run(context.Background())
+	if got := status.Snapshot().State; got != StateSourceError {
+		t.Fatalf("state after source closes = %q, want %q", got, StateSourceError)
 	}
 }
 

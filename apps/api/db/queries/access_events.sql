@@ -1,7 +1,6 @@
 -- name: InsertAccessEvent :exec
--- The id is app-generated (uuid v7) so the SAME id identifies the row in BOTH the PG
--- hot-window and the JSONL source-of-truth stream. seq comes from BumpOrgFlowSeq (a per-org
--- locked counter), so it is unique by construction — this is a PLAIN insert (NO
+-- The id is app-generated (uuid v7), and seq comes from BumpOrgFlowSeq (a per-org
+-- locked counter), so it is unique by construction. This is a PLAIN insert (NO
 -- `ON CONFLICT DO NOTHING`): the (org_id, seq) unique index is a FAIL-LOUD backstop, so an
 -- impossible collision errors the batch (agent -> next-report gap) rather than SILENTLY
 -- dropping audit rows (review #1). No replay path re-inserts: a failed batch rolls the tx
@@ -43,16 +42,6 @@ INSERT INTO access_events (
 UPDATE organizations SET flow_seq = flow_seq + sqlc.arg(n)::bigint
 WHERE id = sqlc.arg(org_id) AND deleted_at IS NULL
 RETURNING flow_seq;
-
--- name: DistinctAccessEventOrgs :many
--- lint:cross-org — retention housekeeping enumerates the orgs that actually HOLD events so the
--- per-org row-cap sweep bounds every such org's hot-window disk use. This MUST include
--- SOFT-DELETED orgs: a deleted org's event flood is exactly what the disk-guard cap must bound
--- (fold-3 #3 reverted the fold-2 organizations-table enumeration, which excluded deleted orgs).
--- PERF LEDGER: this is a DISTINCT scan of access_events every RetentionSweepInterval; if
--- access_events scale makes the 10-min scan measurable, add a supporting index / cheaper
--- enumeration (trigger, not a silent now-do-it).
-SELECT DISTINCT org_id FROM access_events;
 
 -- name: ListAccessEvents :many
 -- Keyset page, newest-first, scoped by org. Expanded (created_at, id) < (cursor) predicate
@@ -97,20 +86,231 @@ WHERE org_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit);
 
--- name: SweepAccessEventsByAge :execrows
--- lint:cross-org — retention housekeeping runs across ALL orgs by INGEST age (created_at,
--- not the agent-clock occurred_at, so agent skew can't extend retention). The JSONL stream
--- keeps the full record; PG is a bounded cache, so this delete is lossless for export.
-DELETE FROM access_events WHERE created_at < sqlc.arg(older_than);
+-- name: LockLiveAccessEventRetentionOrganization :one
+-- Settings are user-facing configuration and may only change for a live tenant.
+SELECT id FROM organizations
+WHERE id=sqlc.arg(org_id) AND deleted_at IS NULL
+FOR UPDATE;
 
--- name: SweepAccessEventsOverCap :execrows
--- Per-org row cap: keep the newest keep_newest rows for the org, delete the rest. Protects
--- the disk when one org is noisy without touching quiet orgs.
+-- name: LockAccessEventRetentionOrganization :one
+-- lint:allow-deleted — retention must continue draining events for a soft-deleted
+-- tenant. The row lock serializes scheduled/manual claims for that tenant.
+SELECT id FROM organizations
+WHERE id=sqlc.arg(org_id)
+FOR UPDATE;
+
+-- name: GetAccessEventRetentionSettings :one
+SELECT * FROM access_event_retention_settings
+WHERE org_id=sqlc.arg(org_id);
+
+-- name: GetAccessEventRetentionSettingsForUpdate :one
+SELECT * FROM access_event_retention_settings
+WHERE org_id=sqlc.arg(org_id)
+FOR UPDATE;
+
+-- name: InsertAccessEventRetentionSettings :one
+INSERT INTO access_event_retention_settings (
+    org_id,retention_days,cleanup_interval_minutes,revision,updated_by_user_id
+) VALUES (
+    sqlc.arg(org_id),sqlc.arg(retention_days),sqlc.arg(cleanup_interval_minutes),1,
+    sqlc.arg(updated_by_user_id)
+)
+RETURNING *;
+
+-- name: UpdateAccessEventRetentionSettings :one
+UPDATE access_event_retention_settings
+SET retention_days=sqlc.arg(retention_days),
+    cleanup_interval_minutes=sqlc.arg(cleanup_interval_minutes),
+    revision=sqlc.arg(revision),
+    updated_by_user_id=sqlc.arg(updated_by_user_id)
+WHERE org_id=sqlc.arg(org_id)
+RETURNING *;
+
+-- name: ListDueAccessEventRetentionOrganizations :many
+-- lint:cross-org — the elected retention scheduler enumerates only tenants
+-- holding events. Soft-deleted tenants remain eligible so their event history
+-- cannot strand disk indefinitely. A latest successful run with more_pending
+-- is immediately eligible for the next bounded continuation.
+SELECT event_org.org_id
+FROM (SELECT DISTINCT org_id FROM access_events) AS event_org
+LEFT JOIN access_event_retention_settings AS setting
+       ON setting.org_id=event_org.org_id
+LEFT JOIN LATERAL (
+    SELECT run.status,run.completed_at,run.more_pending
+    FROM access_event_retention_runs AS run
+    WHERE run.org_id=event_org.org_id AND run.status <> 'running'
+    ORDER BY run.started_at DESC,run.id DESC
+    LIMIT 1
+) AS latest ON true
+WHERE NOT EXISTS (
+    SELECT 1 FROM access_event_retention_runs AS active
+    WHERE active.org_id=event_org.org_id
+      AND active.status='running'
+      AND active.lease_expires_at > sqlc.arg(now_at)
+)
+  AND (
+    latest.completed_at IS NULL
+    OR (latest.status='succeeded' AND latest.more_pending)
+    OR EXISTS (
+        SELECT 1 FROM access_event_retention_runs AS expired
+        WHERE expired.org_id=event_org.org_id
+          AND expired.status='running'
+          AND expired.lease_expires_at <= sqlc.arg(now_at)
+    )
+    OR latest.completed_at
+       + COALESCE(setting.cleanup_interval_minutes,
+                  sqlc.arg(default_interval_minutes)::integer) * interval '1 minute'
+       <= sqlc.arg(now_at)
+  )
+ORDER BY latest.completed_at NULLS FIRST,event_org.org_id
+LIMIT sqlc.arg(org_limit);
+
+-- name: IsAccessEventRetentionDue :one
+SELECT EXISTS (
+    SELECT 1 FROM access_events AS event
+    WHERE event.org_id=sqlc.arg(org_id)
+)
+AND NOT EXISTS (
+    SELECT 1 FROM access_event_retention_runs AS active
+    WHERE active.org_id=sqlc.arg(org_id)
+      AND active.status='running'
+      AND active.lease_expires_at > sqlc.arg(now_at)
+)
+AND COALESCE((
+    SELECT (latest.status='succeeded' AND latest.more_pending)
+       OR latest.completed_at
+          + sqlc.arg(cleanup_interval_minutes)::integer * interval '1 minute'
+          <= sqlc.arg(now_at)
+    FROM access_event_retention_runs AS latest
+    WHERE latest.org_id=sqlc.arg(org_id) AND latest.status <> 'running'
+    ORDER BY latest.started_at DESC,latest.id DESC
+    LIMIT 1
+),true) AS due;
+
+-- name: ExpireAccessEventRetentionRun :one
+UPDATE access_event_retention_runs
+SET status='failed',completed_at=sqlc.arg(completed_at),lease_expires_at=NULL,
+    more_pending=true,error_code='lease_expired'
+WHERE org_id=sqlc.arg(org_id)
+  AND status='running'
+  AND lease_expires_at <= sqlc.arg(completed_at)
+RETURNING *;
+
+-- name: InsertScheduledAccessEventRetentionRun :one
+INSERT INTO access_event_retention_runs (
+    org_id,trigger_kind,status,retention_days,cleanup_interval_minutes,
+    settings_revision,row_cap,batch_size,max_batches,cutoff_at,started_at,
+    lease_expires_at
+) VALUES (
+    sqlc.arg(org_id),'scheduled','running',sqlc.arg(retention_days),
+    sqlc.arg(cleanup_interval_minutes),sqlc.arg(settings_revision),
+    sqlc.arg(row_cap),sqlc.arg(batch_size),sqlc.arg(max_batches),
+    sqlc.arg(cutoff_at),sqlc.arg(started_at),sqlc.arg(lease_expires_at)
+)
+RETURNING *;
+
+-- name: InsertManualAccessEventRetentionRun :one
+INSERT INTO access_event_retention_runs (
+    org_id,trigger_kind,status,manual_idempotency_key,requested_by_user_id,
+    retention_days,cleanup_interval_minutes,settings_revision,row_cap,
+    batch_size,max_batches,cutoff_at,started_at,lease_expires_at
+) VALUES (
+    sqlc.arg(org_id),'manual','running',sqlc.arg(manual_idempotency_key),
+    sqlc.arg(requested_by_user_id),sqlc.arg(retention_days),
+    sqlc.arg(cleanup_interval_minutes),sqlc.arg(settings_revision),
+    sqlc.arg(row_cap),sqlc.arg(batch_size),sqlc.arg(max_batches),
+    sqlc.arg(cutoff_at),sqlc.arg(started_at),sqlc.arg(lease_expires_at)
+)
+RETURNING *;
+
+-- name: GetManualAccessEventRetentionRun :one
+SELECT * FROM access_event_retention_runs
+WHERE org_id=sqlc.arg(org_id)
+  AND manual_idempotency_key=sqlc.arg(manual_idempotency_key);
+
+-- name: GetRunningAccessEventRetentionRun :one
+SELECT * FROM access_event_retention_runs
+WHERE org_id=sqlc.arg(org_id) AND status='running'
+LIMIT 1;
+
+-- name: GetLatestAccessEventRetentionRun :one
+SELECT * FROM access_event_retention_runs
+WHERE org_id=sqlc.arg(org_id)
+ORDER BY started_at DESC,id DESC
+LIMIT 1;
+
+-- name: RenewAccessEventRetentionRunLease :execrows
+UPDATE access_event_retention_runs
+SET lease_expires_at=sqlc.arg(lease_expires_at)
+WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND status='running';
+
+-- name: FinalizeAccessEventRetentionRunSuccess :one
+UPDATE access_event_retention_runs
+SET status='succeeded',completed_at=sqlc.arg(completed_at),lease_expires_at=NULL,
+    deleted_rows=sqlc.arg(deleted_rows),batches=sqlc.arg(batches),
+    more_pending=sqlc.arg(more_pending),error_code=NULL
+WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND status='running'
+RETURNING *;
+
+-- name: FinalizeAccessEventRetentionRunFailure :one
+UPDATE access_event_retention_runs
+SET status='failed',completed_at=sqlc.arg(completed_at),lease_expires_at=NULL,
+    deleted_rows=sqlc.arg(deleted_rows),batches=sqlc.arg(batches),
+    more_pending=true,error_code=sqlc.arg(error_code)
+WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND status='running'
+RETURNING *;
+
+-- name: PruneAccessEventsByAgeBatch :execrows
+-- Tenant-scoped, oldest-first and bounded. created_at is trusted control-plane
+-- ingest time; agent occurred_at can never extend retention.
+WITH doomed AS (
+    SELECT event.id
+    FROM access_events AS event
+    WHERE event.org_id=sqlc.arg(org_id)
+      AND event.created_at < sqlc.arg(older_than)
+    ORDER BY event.created_at,event.id
+    LIMIT sqlc.arg(batch_limit)
+    FOR UPDATE SKIP LOCKED
+)
 DELETE FROM access_events AS target
-WHERE target.org_id = sqlc.arg(org_id)
-  AND target.id NOT IN (
-    SELECT ae.id FROM access_events ae
-    WHERE ae.org_id = sqlc.arg(org_id)
-    ORDER BY ae.created_at DESC, ae.id DESC
-    LIMIT sqlc.arg(keep_newest)
-  );
+USING doomed
+WHERE target.org_id=sqlc.arg(org_id) AND target.id=doomed.id;
+
+-- name: PruneAccessEventsOverCapBatch :execrows
+-- Find the first row beyond the protected newest window, then remove at most
+-- one oldest batch through that boundary. Recomputing the boundary each batch
+-- stays correct while ingestion remains append-only and concurrent.
+WITH boundary AS (
+    SELECT event.created_at,event.id
+    FROM access_events AS event
+    WHERE event.org_id=sqlc.arg(org_id)
+    ORDER BY event.created_at DESC,event.id DESC
+    OFFSET sqlc.arg(keep_newest)
+    LIMIT 1
+), doomed AS (
+    SELECT event.id
+    FROM access_events AS event
+    CROSS JOIN boundary
+    WHERE event.org_id=sqlc.arg(org_id)
+      AND (event.created_at < boundary.created_at
+        OR (event.created_at=boundary.created_at AND event.id <= boundary.id))
+    ORDER BY event.created_at,event.id
+    LIMIT sqlc.arg(batch_limit)
+    FOR UPDATE OF event SKIP LOCKED
+)
+DELETE FROM access_events AS target
+USING doomed
+WHERE target.org_id=sqlc.arg(org_id) AND target.id=doomed.id;
+
+-- name: AccessEventRetentionMorePending :one
+SELECT EXISTS (
+    SELECT 1 FROM access_events AS event
+    WHERE event.org_id=sqlc.arg(org_id)
+      AND event.created_at < sqlc.arg(older_than)
+) OR EXISTS (
+    SELECT 1 FROM access_events AS event
+    WHERE event.org_id=sqlc.arg(org_id)
+    ORDER BY event.created_at DESC,event.id DESC
+    OFFSET sqlc.arg(keep_newest)
+    LIMIT 1
+) AS more_pending;

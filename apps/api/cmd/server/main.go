@@ -355,9 +355,11 @@ func main() {
 	machineAuthSvc := machineauth.NewService(pool, sealer) // S10.2: machine credentials (GitOps operator)
 	mfaSvc := mfa.NewService(pool, sealer, mailer, logger)
 
-	// S7.5.1 access-log health is SHARED: the flow-event Ingester (mTLS channel) records
-	// JSONL-degraded + retention on it; the enterprise query port surfaces it. One instance.
+	// S7.5.1 access-log health is SHARED between the flow-event ingester and
+	// query adapter. Durable tenant retention state supersedes its legacy
+	// process-local sweep fields on the HTTP surface.
 	flowHealth := accesslog.NewHealth()
+	retentionSvc := accesslog.NewRetentionService(pool, nil)
 
 	// ⛔ THE CRL REBUILD IS WIRED HERE OR DEACTIVATION'S CERT REVOCATION NEVER REACHES A GATEWAY. The certs
 	// are marked revoked in the transaction either way; without this the org's published CRL stays stale
@@ -481,6 +483,7 @@ func main() {
 		AgentTemplates:        apphttp.NewAgentTemplatePort(pool, deviceSvc),
 		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),
+		AccessEventRetention:  retentionSvc,
 		IdpSync:               idpSyncPort,
 		DeviceApprovalEnabled: apphttp.NewDeviceApprovalEdition(),
 		DeviceHealthEnabled:   apphttp.NewDeviceHealthEdition(),
@@ -536,8 +539,8 @@ func main() {
 	fq := sqlc.New(pool)
 	agentCh.SetFlowIngester(accesslog.NewIngester(pool, accesslog.SQLGrantResolver{Q: fq}, accesslog.SQLDeviceResolver{Q: fq}, flowHealth, nil))
 	// D3 retention sweep: without this loop access_events grows unbounded and exhausts the DB
-	// disk. Run it on an interval: delete by ingest age + trim each org to the row cap. Drop-count
-	// + failure land on flowHealth.
+	// disk. The elected scheduler polls for tenants whose own cleanup interval is due; each
+	// claimed run snapshots its policy, records durable progress, and deletes in bounded batches.
 	// S11 D4: scheduler leadership. N replicas all SERVE; exactly one TICKS. The election is a Postgres
 	// session-scoped advisory lock, so a dead leader's lock is released by the database itself — no TTL, no
 	// clock comparison, and two leaders are impossible by construction (the safe failure direction: a gap
@@ -613,7 +616,7 @@ func main() {
 	fqdnScheduler.Start(fqdnCtx, nil)
 
 	go func() {
-		t := time.NewTicker(accesslog.RetentionSweepInterval)
+		t := time.NewTicker(accesslog.RetentionSchedulerPollInterval)
 		defer t.Stop()
 		for {
 			select {
@@ -627,12 +630,21 @@ func main() {
 					continue
 				}
 				sctx, scancel := context.WithTimeout(electorCtx, 2*time.Minute)
-				orgs, err := fq.DistinctAccessEventOrgs(sctx)
-				if err == nil {
-					_, err = accesslog.Retain(sctx, fq, flowHealth, time.Now(), 0, 0, orgs)
-				}
+				orgs, err := retentionSvc.ListDueOrganizations(sctx, 100)
 				if err != nil {
-					logger.Error("flowlog_retention_sweep_failed", slog.String("error", err.Error()))
+					logger.Error("flowlog_retention_due_list_failed", slog.String("error", err.Error()))
+					scancel()
+					continue
+				}
+				for _, orgID := range orgs {
+					run, claimed, runErr := retentionSvc.RunScheduled(sctx, orgID)
+					if runErr != nil {
+						logger.Error("flowlog_retention_run_failed", slog.String("org_id", orgID.String()), slog.String("error", runErr.Error()))
+						continue
+					}
+					if claimed {
+						logger.Info("flowlog_retention_run", slog.String("org_id", orgID.String()), slog.Int64("deleted", run.DeletedRows), slog.Int("batches", int(run.Batches)), slog.Bool("more_pending", run.MorePending))
+					}
 				}
 				scancel()
 			}

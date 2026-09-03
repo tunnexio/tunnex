@@ -1,5 +1,6 @@
 {
   "admin": [
+    "access_event_retention:manage",
     "agent:enroll",
     "agent:grant_access",
     "agent:manage",
@@ -52,6 +53,7 @@
     "policy:view"
   ],
   "owner": [
+    "access_event_retention:manage",
     "agent:enroll",
     "agent:grant_access",
     "agent:manage",

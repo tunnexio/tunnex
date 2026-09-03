@@ -143,6 +143,15 @@ vi.mock("../src/lib/api", async () => {
           return zeroTrustFailure
             ? { error: { error: { code: "policy_service_unavailable", message: "mode unavailable" } } }
             : { data: { mode: zeroTrustMode } };
+        if (path.endsWith("/access-event-retention"))
+          return {
+            data: {
+              retention_days: 30,
+              cleanup_interval_minutes: 60,
+              row_cap: 500_000,
+              revision: 0,
+            },
+          };
         if (path.endsWith("/alerting-settings"))
           return { data: { enabled: alertingEnabled } };
         if (path.endsWith("/alert-destinations"))
@@ -348,6 +357,16 @@ describe("Settings — F10 unlock then explicit opt-in", () => {
 });
 
 describe("Settings — URL-backed section rail", () => {
+  it("places permission-gated Data retention after Access & security", async () => {
+    withAuth(<Settings />);
+    await screen.findByRole("tab", { name: "Data retention" });
+    const labels = screen.getAllByRole("tab").map((tab) =>
+      tab.getAttribute("aria-label"),
+    );
+    expect(labels.indexOf("Data retention")).toBe(labels.indexOf("Access & security") + 1);
+    expect(labels.indexOf("Features")).toBe(labels.indexOf("Data retention") + 1);
+  });
+
   it("shows members only personal settings and plan details", async () => {
     currentRole = "member";
     withAuth(<Settings />);

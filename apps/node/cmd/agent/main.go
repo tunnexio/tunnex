@@ -35,7 +35,10 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
 )
 
-const protocolVersion = 1
+const (
+	protocolVersion     = 1
+	defaultFlowLogGroup = 100
+)
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -210,12 +213,18 @@ func main() {
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
 	// affect the tunnel (DNS-down ≠ tunnel-down, D2/D5). The table is (re)programmed from every policy.
 	dnsFwd := dnsforward.New(logger, nil)
-	// S7.5.1 flow logging is OPT-IN per gateway: TUNNEX_FLOWLOG_GROUP>0 arms the forward-chain
-	// nflog rules (set BEFORE the first Reconcile so the log clauses render from the start) and
-	// the reader+drain below. 0 = OFF (the forward chain is byte-identical to pre-S7.5.1).
-	flowGroup := getint("TUNNEX_FLOWLOG_GROUP", 0)
+	// Flow observations are on by default so an ordinarily enrolled gateway actually feeds the
+	// Access Events surface. TUNNEX_FLOWLOG_GROUP=0 is the explicit operational escape hatch;
+	// a positive value selects another local NFLOG group. Set the group BEFORE the first
+	// Reconcile so the observation clauses are present in the first enforcing ruleset.
+	flowGroup := configuredFlowLogGroup()
+	flowLogStatus := flowlog.NewStatus(flowlog.StateDisabled)
 	if flowGroup > 0 {
 		egressMgr.SetFlowLogGroup(flowGroup)
+		// Subscribe before installing any rules that can emit into the group. This
+		// closes the startup window where nft could log a new flow before userspace
+		// had opened the NFLOG socket.
+		startFlowLog(ctx, flowGroup, client, egressMgr, flowLogStatus, logger)
 	}
 	if ok, ok6, err := egressMgr.Reconcile(ctx); err != nil {
 		logger.Warn("egress_initial_degraded", slog.String("error", err.Error()))
@@ -267,7 +276,7 @@ func main() {
 	// S9.1 4d: the OVPN server's refuse-loudly health kind, written by the OnOVPN handler each tick and
 	// read by the report loop — same shared-sink pattern (the report loop predates the OVPN manager).
 	var ovpnHealth atomic.Pointer[string]
-	go reportKeyLoop(ctx, client, wgPub, wgEndpoint, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, &keyReported, reportEvery, logger)
+	go reportKeyLoop(ctx, client, wgPub, wgEndpoint, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, &keyReported, reportEvery, logger)
 
 	backend, err := reconcile.SelectBackend(wgBackend, wgIface, logger)
 	if err != nil {
@@ -439,13 +448,6 @@ func main() {
 		hk := ovpnMgr.Health()
 		ovpnHealth.Store(&hk)
 	})
-
-	// S7.5.1 flow-log drive: read the nflog group the forward chain logs to, buffer the
-	// flow-start records, and drain them to the CP on an interval (best-effort observability;
-	// NEVER on the enforcement path). Enabled only when TUNNEX_FLOWLOG_GROUP>0.
-	if flowGroup > 0 {
-		startFlowLog(ctx, flowGroup, client, egressMgr, logger)
-	}
 
 	// Renew the cert at half-life (default 24h; the cert lives 48h) and hot-swap
 	// it. Persist the rotated cert so a restart uses the current one. If renewal
@@ -765,7 +767,7 @@ func identityWatchLoop(ctx context.Context, client *control.Client, apiURL, cert
 // with backoff until it succeeds (then sets reported and returns). The report is
 // idempotent server-side, so retrying is safe. Until it succeeds the agent stays
 // not-ready, so no orchestrator routes to a node the control plane can't peer.
-func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint string, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
+func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint string, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
 	const maxBackoff = 30 * time.Second
 	report := func() bool {
 		// Applied-policy status rides the capability report (S7.2 staleness): version +
@@ -776,7 +778,22 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint
 		if hp := ovpnHealth.Load(); hp != nil {
 			ovpnH = *hp
 		}
-		ps := control.PolicyStatus{Version: v, Hash: h, RefusedVersion: egressMgr.RefusedVersion(), SiteLinkStale: siteLinkStale.Load(), SiteSubnetUnreachable: siteSubnetUnreachable.Load(), ConntrackFlushUnavailable: egressMgr.ConntrackFlushFailing(), K8sEndpointsUnavailable: egressMgr.EndpointsUnavailable(), MaxSupportedVersion: nodepolicy.MaxSupportedVersion, OVPNHealth: ovpnH, DNSResolveRPCVersion: fqdnrpc.Version}
+		flow := flowStatus.Snapshot()
+		ps := control.PolicyStatus{
+			Version:                   v,
+			Hash:                      h,
+			RefusedVersion:            egressMgr.RefusedVersion(),
+			SiteLinkStale:             siteLinkStale.Load(),
+			SiteSubnetUnreachable:     siteSubnetUnreachable.Load(),
+			ConntrackFlushUnavailable: egressMgr.ConntrackFlushFailing(),
+			K8sEndpointsUnavailable:   egressMgr.EndpointsUnavailable(),
+			MaxSupportedVersion:       nodepolicy.MaxSupportedVersion,
+			OVPNHealth:                ovpnH,
+			DNSResolveRPCVersion:      fqdnrpc.Version,
+			FlowLogState:              flow.State,
+			FlowLogLastObservedAt:     flow.LastObservedAt,
+			FlowLogLastDeliveredAt:    flow.LastDeliveredAt,
+		}
 		if applyErr != nil {
 			ps.Error = applyErr.Error()
 			if len(ps.Error) > 300 { // bound so a verbose nft error can't overflow the report body (finding #4)
@@ -985,14 +1002,35 @@ func getint(k string, def int) int {
 	return def
 }
 
+// configuredFlowLogGroup defaults collection on and reserves exactly zero as
+// the explicit disable value. Invalid/out-of-range configuration falls back to
+// the safe product default instead of silently recreating the original dark
+// gateway failure.
+func configuredFlowLogGroup() int {
+	v, ok := os.LookupEnv("TUNNEX_FLOWLOG_GROUP")
+	return parseFlowLogGroup(v, ok)
+}
+
+func parseFlowLogGroup(v string, configured bool) int {
+	if !configured || strings.TrimSpace(v) == "" {
+		return defaultFlowLogGroup
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 || n > 0xffff {
+		return defaultFlowLogGroup
+	}
+	return n
+}
+
 // startFlowLog wires the nflog reader → pump → periodic drain → ReportFlows (S7.5.1 7/n).
 // Best-effort + isolated: a source-open failure logs and returns (enforcement + the rest of
 // the agent are unaffected); the pump/drain run until ctx is cancelled. Each event is stamped
 // with the APPLIED policy hash so the CP can detect a ruleset-swap-window skew.
-func startFlowLog(ctx context.Context, group int, client *control.Client, egressMgr *egress.Manager, logger *slog.Logger) {
+func startFlowLog(ctx context.Context, group int, client *control.Client, egressMgr *egress.Manager, status *flowlog.Status, logger *slog.Logger) {
 	sockBuf := getint("TUNNEX_FLOWLOG_SOCKBUF", flowlog.DefaultNflogSockBuf)
 	src, err := flowlog.NewNflogSource(ctx, group, sockBuf)
 	if err != nil {
+		status.SetState(flowlog.StateSourceError)
 		logger.Error("flowlog_source_failed", slog.Int("group", group), slog.String("error", err.Error()))
 		return
 	}
@@ -1001,7 +1039,8 @@ func startFlowLog(ctx context.Context, group int, client *control.Client, egress
 		// policy and its complete subject map. Never mix desired identity with
 		// a last-good hash after an apply failure.
 		return egressMgr.FlowAttribution(srcIP)
-	})
+	}).WithStatus(status)
+	status.SetState(flowlog.StateActive)
 	go pump.Run(ctx)
 	go flowlog.RunDrain(ctx, pump, client, getdur("TUNNEX_FLOWLOG_INTERVAL", flowlog.DefaultDrainInterval), logger)
 	logger.Info("flowlog_started", slog.Int("group", group), slog.Int("sock_buf_bytes", sockBuf))
