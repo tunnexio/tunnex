@@ -219,6 +219,7 @@ type apiServer struct {
 	agentAccess          agentAccessPort          // licence-gated (F10)
 	accessLog            accessLogPort            // nil in the open build (Zero Trust visibility, S7.5.1)
 	accessEventRetention accessEventRetentionPort // nil in the open build (S7.5.1 retention control)
+	auditLogRetention    auditLogRetentionPort    // open in every edition
 	idpSync              idpSyncPort              // nil in the open build (IdP-group sync, S7.5.2)
 	// ⛔ smtpConfigured — whether this deployment can send mail AT ALL. Served by /meta so the screens that
 	// send mail can say so BEFORE the operator acts. Invitations are the only way anyone joins, so a

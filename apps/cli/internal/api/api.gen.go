@@ -41,6 +41,12 @@ const (
 	NoMatchingGrant AccessEventDecisionReason = "no_matching_grant"
 )
 
+// Defines values for AccessEventSrcKind.
+const (
+	AccessEventSrcKindAgent AccessEventSrcKind = "agent"
+	AccessEventSrcKindHuman AccessEventSrcKind = "human"
+)
+
 // Defines values for AccessEventCollectorStatusState.
 const (
 	AccessEventCollectorStatusStateActive        AccessEventCollectorStatusState = "active"
@@ -330,6 +336,19 @@ const (
 	AlertTestResultFailureCodeNetwork       AlertTestResultFailureCode = "network"
 	AlertTestResultFailureCodeResponse      AlertTestResultFailureCode = "response"
 	AlertTestResultFailureCodeTimeout       AlertTestResultFailureCode = "timeout"
+)
+
+// Defines values for AuditLogRetentionRunStatus.
+const (
+	AuditLogRetentionRunStatusFailed    AuditLogRetentionRunStatus = "failed"
+	AuditLogRetentionRunStatusRunning   AuditLogRetentionRunStatus = "running"
+	AuditLogRetentionRunStatusSucceeded AuditLogRetentionRunStatus = "succeeded"
+)
+
+// Defines values for AuditLogRetentionRunTrigger.
+const (
+	AuditLogRetentionRunTriggerManual    AuditLogRetentionRunTrigger = "manual"
+	AuditLogRetentionRunTriggerScheduled AuditLogRetentionRunTrigger = "scheduled"
 )
 
 // Defines values for ChangeRoleRequestRole.
@@ -1164,7 +1183,16 @@ type AccessEvent struct {
 
 	// SrcConfigRevision Applied managed-agent configuration revision at observation time.
 	SrcConfigRevision *int64 `json:"src_config_revision,omitempty"`
-	SrcIp             string `json:"src_ip"`
+
+	// SrcDeviceId Verified source device ID captured from the applied gateway artifact and preserved on the event. It may no longer resolve in the live device roster.
+	SrcDeviceId *openapi_types.UUID `json:"src_device_id,omitempty"`
+	SrcIp       string              `json:"src_ip"`
+
+	// SrcKind Verified device kind persisted with the event.
+	SrcKind *AccessEventSrcKind `json:"src_kind,omitempty"`
+
+	// SrcUserId Source device owner resolved and persisted at ingest. It is neither current-ownership data nor proof that the human initiated the traffic.
+	SrcUserId *openapi_types.UUID `json:"src_user_id,omitempty"`
 
 	// WindowEnd deny_aggregate window end.
 	WindowEnd *time.Time `json:"window_end,omitempty"`
@@ -1175,6 +1203,9 @@ type AccessEventDecision string
 
 // AccessEventDecisionReason defines model for AccessEvent.DecisionReason.
 type AccessEventDecisionReason string
+
+// AccessEventSrcKind Verified device kind persisted with the event.
+type AccessEventSrcKind string
 
 // AccessEventCollectorStatus defines model for AccessEventCollectorStatus.
 type AccessEventCollectorStatus struct {
@@ -2092,6 +2123,55 @@ type AuditLogEntry struct {
 	TargetId    *string                `json:"target_id,omitempty"`
 	TargetType  *string                `json:"target_type,omitempty"`
 }
+
+// AuditLogPruneResponse defines model for AuditLogPruneResponse.
+type AuditLogPruneResponse struct {
+	// Replayed True when this idempotency key already named the returned durable run; no second prune or audit mutation was performed.
+	Replayed  bool                 `json:"replayed"`
+	Retention AuditLogRetention    `json:"retention"`
+	Run       AuditLogRetentionRun `json:"run"`
+}
+
+// AuditLogRetention defines model for AuditLogRetention.
+type AuditLogRetention struct {
+	// BatchSize Non-configurable maximum rows deleted in one transaction. A run may execute multiple server-bounded batches.
+	BatchSize int `json:"batch_size"`
+
+	// CleanupIntervalMinutes Target interval between scheduled bounded pruning runs when retention_days is set.
+	CleanupIntervalMinutes int                   `json:"cleanup_interval_minutes"`
+	LastRun                *AuditLogRetentionRun `json:"last_run,omitempty"`
+	NextRunAt              *time.Time            `json:"next_run_at,omitempty"`
+
+	// RetentionDays Age cutoff in days for retention-eligible audit rows, measured from control-plane creation time. Protected provenance referenced by durable operations may outlive this window. Null means retain forever and disables pruning.
+	RetentionDays *int `json:"retention_days"`
+
+	// Revision Optimistic-concurrency revision; 0 is the effective Forever default before a policy is persisted.
+	Revision  int64      `json:"revision"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// AuditLogRetentionRun defines model for AuditLogRetentionRun.
+type AuditLogRetentionRun struct {
+	Batches     int        `json:"batches"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	DeletedRows int64      `json:"deleted_rows"`
+
+	// ErrorCode Bounded operator-safe failure code; raw database errors are never exposed.
+	ErrorCode *string            `json:"error_code,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// MorePending True when a bounded run stopped with additional expired, retention-eligible rows left for a later continuation. Protected provenance is excluded.
+	MorePending bool                        `json:"more_pending"`
+	StartedAt   time.Time                   `json:"started_at"`
+	Status      AuditLogRetentionRunStatus  `json:"status"`
+	Trigger     AuditLogRetentionRunTrigger `json:"trigger"`
+}
+
+// AuditLogRetentionRunStatus defines model for AuditLogRetentionRun.Status.
+type AuditLogRetentionRunStatus string
+
+// AuditLogRetentionRunTrigger defines model for AuditLogRetentionRun.Trigger.
+type AuditLogRetentionRunTrigger string
 
 // AuthUser defines model for AuthUser.
 type AuthUser struct {
@@ -3997,6 +4077,12 @@ type RunAccessEventPruneRequest struct {
 	IdempotencyKey string `json:"idempotency_key"`
 }
 
+// RunAuditLogPruneRequest defines model for RunAuditLogPruneRequest.
+type RunAuditLogPruneRequest struct {
+	// IdempotencyKey Caller-generated key scoped to this organization; an exact replay returns the original run.
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
 // RuntimeMCPOAuthLease defines model for RuntimeMCPOAuthLease.
 type RuntimeMCPOAuthLease struct {
 	// AccessToken Runtime-only transient credential. Never returned by a human/session endpoint.
@@ -4234,6 +4320,13 @@ type UpdateAgentProfileRequest struct {
 // UpdateAgentProfileRequestStatus defines model for UpdateAgentProfileRequest.Status.
 type UpdateAgentProfileRequestStatus string
 
+// UpdateAuditLogRetentionRequest defines model for UpdateAuditLogRetentionRequest.
+type UpdateAuditLogRetentionRequest struct {
+	CleanupIntervalMinutes int   `json:"cleanup_interval_minutes"`
+	ExpectedRevision       int64 `json:"expected_revision"`
+	RetentionDays          *int  `json:"retention_days"`
+}
+
 // UpdateDeviceModeResult defines model for UpdateDeviceModeResponse.
 type UpdateDeviceModeResult struct {
 	Config struct {
@@ -4392,14 +4485,20 @@ type McpOAuthCallbackParams struct {
 
 // ListAccessEventsParams defines parameters for ListAccessEvents.
 type ListAccessEventsParams struct {
-	// DeniesOnly Only deny/deny_aggregate/terminated events (the security feed).
+	// DeniesOnly Only deny/deny_aggregate/terminated/gap events (the security feed).
 	DeniesOnly *bool `form:"denies_only,omitempty" json:"denies_only,omitempty"`
 
-	// SrcAgentId Only events attributed by the applied gateway artifact to this verified agent device.
+	// SrcAgentId Only events attributed to this verified agent device. Mutually exclusive with src_device_id and src_user_id.
 	SrcAgentId *openapi_types.UUID `form:"src_agent_id,omitempty" json:"src_agent_id,omitempty"`
-	CursorTs   *time.Time          `form:"cursor_ts,omitempty" json:"cursor_ts,omitempty"`
-	CursorId   *openapi_types.UUID `form:"cursor_id,omitempty" json:"cursor_id,omitempty"`
-	Limit      *int                `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// SrcDeviceId Only events carrying this verified source device ID, for either a human or agent device. Mutually exclusive with the other source identity filters.
+	SrcDeviceId *openapi_types.UUID `form:"src_device_id,omitempty" json:"src_device_id,omitempty"`
+
+	// SrcUserId Only events carrying this device-owner ID as resolved and persisted at ingest. This does not assert that the human initiated the traffic. Mutually exclusive with the other source identity filters.
+	SrcUserId *openapi_types.UUID `form:"src_user_id,omitempty" json:"src_user_id,omitempty"`
+	CursorTs  *time.Time          `form:"cursor_ts,omitempty" json:"cursor_ts,omitempty"`
+	CursorId  *openapi_types.UUID `form:"cursor_id,omitempty" json:"cursor_id,omitempty"`
+	Limit     *int                `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListAgentAccessRequestsParams defines parameters for ListAgentAccessRequests.
@@ -4719,6 +4818,12 @@ type AddAlertDestinationSubscriptionJSONRequestBody = AddAlertSubscriptionReques
 
 // SetOrganizationAlertingEnabledJSONRequestBody defines body for SetOrganizationAlertingEnabled for application/json ContentType.
 type SetOrganizationAlertingEnabledJSONRequestBody = AlertingSetting
+
+// UpdateAuditLogRetentionJSONRequestBody defines body for UpdateAuditLogRetention for application/json ContentType.
+type UpdateAuditLogRetentionJSONRequestBody = UpdateAuditLogRetentionRequest
+
+// RunAuditLogPruneJSONRequestBody defines body for RunAuditLogPrune for application/json ContentType.
+type RunAuditLogPruneJSONRequestBody = RunAuditLogPruneRequest
 
 // SetDeviceApprovalJSONRequestBody defines body for SetDeviceApproval for application/json ContentType.
 type SetDeviceApprovalJSONRequestBody = DeviceApproval
@@ -5438,6 +5543,19 @@ type ClientInterface interface {
 	SetOrganizationAlertingEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetOrganizationAlertingEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAuditLogRetention request
+	GetAuditLogRetention(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAuditLogRetentionWithBody request with any body
+	UpdateAuditLogRetentionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAuditLogRetention(ctx context.Context, orgId openapi_types.UUID, body UpdateAuditLogRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunAuditLogPruneWithBody request with any body
+	RunAuditLogPruneWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RunAuditLogPrune(ctx context.Context, orgId openapi_types.UUID, body RunAuditLogPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAuditLogs request
 	ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8104,6 +8222,66 @@ func (c *Client) SetOrganizationAlertingEnabledWithBody(ctx context.Context, org
 
 func (c *Client) SetOrganizationAlertingEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetOrganizationAlertingEnabledRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAuditLogRetention(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAuditLogRetentionRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAuditLogRetentionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAuditLogRetentionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAuditLogRetention(ctx context.Context, orgId openapi_types.UUID, body UpdateAuditLogRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAuditLogRetentionRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RunAuditLogPruneWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunAuditLogPruneRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RunAuditLogPrune(ctx context.Context, orgId openapi_types.UUID, body RunAuditLogPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunAuditLogPruneRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12454,6 +12632,38 @@ func NewListAccessEventsRequest(server string, orgId openapi_types.UUID, params 
 
 		}
 
+		if params.SrcDeviceId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "src_device_id", runtime.ParamLocationQuery, *params.SrcDeviceId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SrcUserId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "src_user_id", runtime.ParamLocationQuery, *params.SrcUserId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		if params.CursorTs != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor_ts", runtime.ParamLocationQuery, *params.CursorTs); err != nil {
@@ -15849,6 +16059,134 @@ func NewSetOrganizationAlertingEnabledRequestWithBody(server string, orgId opena
 	}
 
 	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAuditLogRetentionRequest generates requests for GetAuditLogRetention
+func NewGetAuditLogRetentionRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/audit-log-retention", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateAuditLogRetentionRequest calls the generic UpdateAuditLogRetention builder with application/json body
+func NewUpdateAuditLogRetentionRequest(server string, orgId openapi_types.UUID, body UpdateAuditLogRetentionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAuditLogRetentionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewUpdateAuditLogRetentionRequestWithBody generates requests for UpdateAuditLogRetention with any type of body
+func NewUpdateAuditLogRetentionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/audit-log-retention", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRunAuditLogPruneRequest calls the generic RunAuditLogPrune builder with application/json body
+func NewRunAuditLogPruneRequest(server string, orgId openapi_types.UUID, body RunAuditLogPruneJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRunAuditLogPruneRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewRunAuditLogPruneRequestWithBody generates requests for RunAuditLogPrune with any type of body
+func NewRunAuditLogPruneRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/audit-log-retention/actions/prune", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -22328,6 +22666,19 @@ type ClientWithResponsesInterface interface {
 
 	SetOrganizationAlertingEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationAlertingEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationAlertingEnabledResponse, error)
 
+	// GetAuditLogRetentionWithResponse request
+	GetAuditLogRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAuditLogRetentionResponse, error)
+
+	// UpdateAuditLogRetentionWithBodyWithResponse request with any body
+	UpdateAuditLogRetentionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAuditLogRetentionResponse, error)
+
+	UpdateAuditLogRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateAuditLogRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAuditLogRetentionResponse, error)
+
+	// RunAuditLogPruneWithBodyWithResponse request with any body
+	RunAuditLogPruneWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunAuditLogPruneResponse, error)
+
+	RunAuditLogPruneWithResponse(ctx context.Context, orgId openapi_types.UUID, body RunAuditLogPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*RunAuditLogPruneResponse, error)
+
 	// ListAuditLogsWithResponse request
 	ListAuditLogsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error)
 
@@ -25636,6 +25987,75 @@ func (r SetOrganizationAlertingEnabledResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetOrganizationAlertingEnabledResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAuditLogRetentionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AuditLogRetention
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAuditLogRetentionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAuditLogRetentionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAuditLogRetentionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AuditLogRetention
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAuditLogRetentionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAuditLogRetentionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RunAuditLogPruneResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AuditLogPruneResponse
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RunAuditLogPruneResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunAuditLogPruneResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -30130,6 +30550,49 @@ func (c *ClientWithResponses) SetOrganizationAlertingEnabledWithResponse(ctx con
 		return nil, err
 	}
 	return ParseSetOrganizationAlertingEnabledResponse(rsp)
+}
+
+// GetAuditLogRetentionWithResponse request returning *GetAuditLogRetentionResponse
+func (c *ClientWithResponses) GetAuditLogRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAuditLogRetentionResponse, error) {
+	rsp, err := c.GetAuditLogRetention(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAuditLogRetentionResponse(rsp)
+}
+
+// UpdateAuditLogRetentionWithBodyWithResponse request with arbitrary body returning *UpdateAuditLogRetentionResponse
+func (c *ClientWithResponses) UpdateAuditLogRetentionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAuditLogRetentionResponse, error) {
+	rsp, err := c.UpdateAuditLogRetentionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAuditLogRetentionResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAuditLogRetentionWithResponse(ctx context.Context, orgId openapi_types.UUID, body UpdateAuditLogRetentionJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAuditLogRetentionResponse, error) {
+	rsp, err := c.UpdateAuditLogRetention(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAuditLogRetentionResponse(rsp)
+}
+
+// RunAuditLogPruneWithBodyWithResponse request with arbitrary body returning *RunAuditLogPruneResponse
+func (c *ClientWithResponses) RunAuditLogPruneWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RunAuditLogPruneResponse, error) {
+	rsp, err := c.RunAuditLogPruneWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunAuditLogPruneResponse(rsp)
+}
+
+func (c *ClientWithResponses) RunAuditLogPruneWithResponse(ctx context.Context, orgId openapi_types.UUID, body RunAuditLogPruneJSONRequestBody, reqEditors ...RequestEditorFn) (*RunAuditLogPruneResponse, error) {
+	rsp, err := c.RunAuditLogPrune(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunAuditLogPruneResponse(rsp)
 }
 
 // ListAuditLogsWithResponse request returning *ListAuditLogsResponse
@@ -35708,6 +36171,105 @@ func ParseSetOrganizationAlertingEnabledResponse(rsp *http.Response) (*SetOrgani
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AlertingSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAuditLogRetentionResponse parses an HTTP response from a GetAuditLogRetentionWithResponse call
+func ParseGetAuditLogRetentionResponse(rsp *http.Response) (*GetAuditLogRetentionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAuditLogRetentionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditLogRetention
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAuditLogRetentionResponse parses an HTTP response from a UpdateAuditLogRetentionWithResponse call
+func ParseUpdateAuditLogRetentionResponse(rsp *http.Response) (*UpdateAuditLogRetentionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAuditLogRetentionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditLogRetention
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunAuditLogPruneResponse parses an HTTP response from a RunAuditLogPruneWithResponse call
+func ParseRunAuditLogPruneResponse(rsp *http.Response) (*RunAuditLogPruneResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunAuditLogPruneResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditLogPruneResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

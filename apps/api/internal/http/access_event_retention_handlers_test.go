@@ -102,6 +102,26 @@ func TestAccessEventRetentionHandlersMapPolicyAndActor(t *testing.T) {
 	}
 }
 
+func TestAccessEventRetentionRejectsIntegerOverflowBeforeNarrowing(t *testing.T) {
+	org, actor := uuid.New(), uuid.New()
+	ctx := authctx.WithPrincipal(context.Background(), &authctx.Principal{
+		UserID: actor, EmailVerified: true, Roles: map[uuid.UUID]string{org: rbac.RoleAdmin},
+	})
+	port := &fakeAccessEventRetention{}
+	_, err := (apiServer{accessEventRetention: port}).UpdateAccessEventRetention(ctx, api.UpdateAccessEventRetentionRequestObject{
+		OrgId: org,
+		Body: &api.UpdateAccessEventRetentionRequest{
+			RetentionDays: 1<<32 + 1, CleanupIntervalMinutes: 60,
+		},
+	})
+	if !hasCode(err, 400, "invalid_access_event_retention_days") {
+		t.Fatalf("overflowing retention_days = %v, want bounded 400", err)
+	}
+	if port.input.RetentionDays != 0 {
+		t.Fatal("overflowing value reached the int32 service boundary")
+	}
+}
+
 func TestAccessEventPruneReturnsDurableFailedOutcome(t *testing.T) {
 	org, actor := uuid.New(), uuid.New()
 	ctx := authctx.WithPrincipal(context.Background(), &authctx.Principal{

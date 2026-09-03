@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
+import { BrowserRouter } from "react-router-dom";
 
 // SLICE 6 — Settings. Second SHEDDER, and the consequence here is different in kind from every screen before it.
 //
@@ -152,6 +153,15 @@ vi.mock("../src/lib/api", async () => {
               revision: 0,
             },
           };
+        if (path.endsWith("/audit-log-retention"))
+          return {
+            data: {
+              retention_days: null,
+              cleanup_interval_minutes: 60,
+              batch_size: 1_000,
+              revision: 0,
+            },
+          };
         if (path.endsWith("/alerting-settings"))
           return { data: { enabled: alertingEnabled } };
         if (path.endsWith("/alert-destinations"))
@@ -235,6 +245,15 @@ const withAuth = (ui: React.ReactElement) =>
     <AuthProvider>
       <OrgProvider>{ui}</OrgProvider>
     </AuthProvider>,
+  );
+
+const withAuthAndRouter = (ui: React.ReactElement) =>
+  render(
+    <BrowserRouter>
+      <AuthProvider>
+        <OrgProvider>{ui}</OrgProvider>
+      </AuthProvider>
+    </BrowserRouter>,
   );
 
 function SwitchOrganization() {
@@ -365,6 +384,28 @@ describe("Settings — URL-backed section rail", () => {
     );
     expect(labels.indexOf("Data retention")).toBe(labels.indexOf("Access & security") + 1);
     expect(labels.indexOf("Features")).toBe(labels.indexOf("Data retention") + 1);
+  });
+
+  it("wires both access-event and audit-log policies into Data retention", async () => {
+    withAuthAndRouter(<Settings />);
+    await openSection(/Data retention/);
+
+    expect(await screen.findByRole("button", { name: "Edit policy" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Edit audit-log policy" }),
+    ).toBeTruthy();
+    expect(screen.getByText("500,000 rows")).toBeTruthy();
+    expect(screen.getByText("No deletion")).toBeTruthy();
+
+    const paths = (
+      vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>
+    ).map(([path]) => path);
+    expect(paths).toContain(
+      "/api/v1/organizations/{orgId}/access-event-retention",
+    );
+    expect(paths).toContain(
+      "/api/v1/organizations/{orgId}/audit-log-retention",
+    );
   });
 
   it("shows members only personal settings and plan details", async () => {

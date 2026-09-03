@@ -65,8 +65,30 @@ WHERE org_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit);
 
+-- name: ListAccessEventsByDevice :many
+-- src_device_id is the verified, immutable event-row attribution. Do not join
+-- the live device roster: deleted devices remain valid historical filters.
+SELECT * FROM access_events
+WHERE org_id = $1
+  AND src_device_id = sqlc.arg(src_device_id)
+  AND (created_at < sqlc.arg(before_created_at)
+       OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListAccessEventsByUser :many
+-- src_user_id is the owner resolved and persisted at ingest, not a live
+-- ownership join and not proof that the human initiated the traffic.
+SELECT * FROM access_events
+WHERE org_id = $1
+  AND src_user_id = sqlc.arg(src_user_id)
+  AND (created_at < sqlc.arg(before_created_at)
+       OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_limit);
+
 -- name: ListAccessDenies :many
--- The security-focused feed: deny + deny_aggregate + terminated only, same keyset shape.
+-- The security-focused feed: deny + deny_aggregate + terminated + gap, same keyset shape.
 SELECT * FROM access_events
 WHERE org_id = $1
   AND decision <> 'allow'
@@ -80,6 +102,26 @@ SELECT * FROM access_events
 WHERE org_id = $1
   AND src_kind = 'agent'
   AND src_device_id = sqlc.arg(src_agent_id)
+  AND decision <> 'allow'
+  AND (created_at < sqlc.arg(before_created_at)
+       OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListAccessDeniesByDevice :many
+SELECT * FROM access_events
+WHERE org_id = $1
+  AND src_device_id = sqlc.arg(src_device_id)
+  AND decision <> 'allow'
+  AND (created_at < sqlc.arg(before_created_at)
+       OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListAccessDeniesByUser :many
+SELECT * FROM access_events
+WHERE org_id = $1
+  AND src_user_id = sqlc.arg(src_user_id)
   AND decision <> 'allow'
   AND (created_at < sqlc.arg(before_created_at)
        OR (created_at = sqlc.arg(before_created_at) AND id < sqlc.arg(before_id)))

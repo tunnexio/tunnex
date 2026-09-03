@@ -17,7 +17,8 @@ one an operator must not meet for the first time on the day it happens.
 
 **Community is the whole product on one gateway** — WireGuard and OpenVPN, the desktop client and CLI,
 full-tunnel with kill-switch, the complete Zero Trust policy engine, device posture, device approval, AI
-agents, Kubernetes, local auth with MFA, Access Events, the audit log at full retention, backup/restore.
+agents, Kubernetes, local auth with MFA, Access Events, the audit log with a
+retain-Forever default and optional organization-admin retention controls, backup/restore.
 
 **Enterprise adds:** more gateways · more organizations · SSO (Google, Microsoft Entra) · IdP directory
 sync (Microsoft Entra) · support with an SLA.

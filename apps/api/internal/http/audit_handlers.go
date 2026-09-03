@@ -33,8 +33,9 @@ func auditActorScope(p *authctx.Principal, orgID uuid.UUID) *uuid.UUID {
 }
 
 // ListAuditLogs GET /api/v1/organizations/{orgId}/audit-logs — the org's audit
-// feed, filterable + keyset-paginated. READ-ONLY: audit rows are append-only (DB
-// triggers reject UPDATE/DELETE) and there is deliberately no mutation endpoint.
+// feed, filterable + keyset-paginated. READ-ONLY: there is no per-row mutation
+// endpoint and DB triggers reject ordinary UPDATE/DELETE. The separate retention
+// surface can authorize only expired rows through an exact durable run.
 // Gated on PermOrgView — the same read the dashboard's activity slice uses; every
 // read is org-scoped (query-lint), so the actor filter can't probe other orgs.
 func (s apiServer) ListAuditLogs(ctx context.Context, req api.ListAuditLogsRequestObject) (api.ListAuditLogsResponseObject, error) {

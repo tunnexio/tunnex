@@ -29,6 +29,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
+	"github.com/tunnexio/tunnex/apps/api/internal/auditretention"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
 	"github.com/tunnexio/tunnex/apps/api/internal/bootstrap"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
@@ -360,6 +361,7 @@ func main() {
 	// process-local sweep fields on the HTTP surface.
 	flowHealth := accesslog.NewHealth()
 	retentionSvc := accesslog.NewRetentionService(pool, nil)
+	auditRetentionSvc := auditretention.NewService(pool)
 
 	// ⛔ THE CRL REBUILD IS WIRED HERE OR DEACTIVATION'S CERT REVOCATION NEVER REACHES A GATEWAY. The certs
 	// are marked revoked in the transaction either way; without this the org's published CRL stays stale
@@ -484,6 +486,7 @@ func main() {
 		AgentAccess:           apphttp.NewAgentAccessPort(pool, deviceSvc),
 		AccessLog:             apphttp.NewAccessLogPort(pool, flowHealth),
 		AccessEventRetention:  retentionSvc,
+		AuditLogRetention:     auditRetentionSvc,
 		IdpSync:               idpSyncPort,
 		DeviceApprovalEnabled: apphttp.NewDeviceApprovalEdition(),
 		DeviceHealthEnabled:   apphttp.NewDeviceHealthEdition(),
@@ -644,6 +647,41 @@ func main() {
 					}
 					if claimed {
 						logger.Info("flowlog_retention_run", slog.String("org_id", orgID.String()), slog.Int64("deleted", run.DeletedRows), slog.Int("batches", int(run.Batches)), slog.Bool("more_pending", run.MorePending))
+					}
+				}
+				scancel()
+			}
+		}
+	}()
+	// Audit logs keep their original retain-forever behavior until an
+	// organization explicitly saves a bounded policy. The same leader fence as
+	// the access-event scheduler ensures exactly one replica claims durable runs.
+	go func() {
+		t := time.NewTicker(auditretention.RetentionSchedulerPollInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-retentionStop:
+				return
+			case <-t.C:
+				if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+					continue
+				}
+				sctx, scancel := context.WithTimeout(electorCtx, 2*time.Minute)
+				orgs, err := auditRetentionSvc.ListDueOrganizations(sctx, 100)
+				if err != nil {
+					logger.Error("audit_log_retention_due_list_failed", slog.String("error", err.Error()))
+					scancel()
+					continue
+				}
+				for _, orgID := range orgs {
+					run, claimed, runErr := auditRetentionSvc.RunScheduled(sctx, orgID)
+					if runErr != nil {
+						logger.Error("audit_log_retention_run_failed", slog.String("org_id", orgID.String()), slog.String("error", runErr.Error()))
+						continue
+					}
+					if claimed {
+						logger.Info("audit_log_retention_run", slog.String("org_id", orgID.String()), slog.Int64("deleted", run.DeletedRows), slog.Int("batches", int(run.Batches)), slog.Bool("more_pending", run.MorePending))
 					}
 				}
 				scancel()

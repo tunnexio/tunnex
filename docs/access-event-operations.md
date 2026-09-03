@@ -19,12 +19,35 @@ healthy.
    delivery succeeds. A restart before that success loses the in-memory loss
    count; durable gateway spooling is not part of v1.
 4. The API derives the node and organization from the client certificate,
-   enriches only through organization-scoped lookups, reserves a monotonic
-   organization sequence, and inserts the batch transactionally into
-   `access_events`.
+   accepts a stamped source device only after an organization-scoped lookup,
+   resolves that device's owner at ingest, reserves a monotonic organization
+   sequence, and inserts the batch transactionally into `access_events`. It
+   never infers a device or person from `src_ip`.
 5. `GET /organizations/{orgId}/access-events` reads the retained PostgreSQL
    window with an organization-scoped keyset cursor. `/access-events` renders
    that response directly.
+
+The event response preserves optional `src_device_id`, `src_user_id`, and
+`src_kind`. For an agent row, the compatibility field `src_agent_id` is the
+same persisted device ID. The user ID is the accountable device owner resolved
+at ingest; it is not evidence that the human initiated the traffic, and it is
+not rewritten if the device is later reassigned. Device and user labels are
+live display data and may be unavailable after rename, removal, or deletion.
+
+The list endpoint accepts `src_device_id`, `src_user_id`, or the compatible
+`src_agent_id` filter. At most one source identity filter may be present. Each
+matches the immutable event row inside the requested organization and composes
+with `denies_only` and the keyset cursor. Deletion from the current roster does
+not hide retained matches. An ID with no matching retained row—including an
+unknown or foreign UUID—returns an empty page without probing the live device
+or member roster. Supplying multiple identity filters returns HTTP `400` with
+the stable code `invalid_access_event_identity_filter`.
+
+Migration `0128_access_event_identity_filters` atomically swaps the partial
+agent lookup index for a general device index and adds the equivalent user
+index. These are plain transactional index builds, so apply the migration in a
+controlled window: the per-organization retention cap does not bound total
+table size, and index construction can briefly block event writes.
 
 Collection uses NFLOG group `100` by default. Set
 `TUNNEX_FLOWLOG_GROUP=0` only when collection is intentionally disabled. The

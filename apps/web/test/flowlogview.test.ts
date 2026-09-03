@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   ATTRIBUTION_NOTE,
   FLOW_LOG_CUTS,
+  accessIdentityOptions,
+  accessIdentityQuery,
+  accessIdentityValue,
   causeFor,
   collectorStateLabel,
   collectorStateTone,
@@ -9,6 +12,7 @@ import {
   decisionTone,
   destinationFor,
   emptyAccessEventsNote,
+  eventIdentityRefs,
   eventTimeline,
   isLastPage,
   nextCursor,
@@ -95,16 +99,42 @@ describe("causeFor", () => {
 });
 
 describe("sourceFor + ATTRIBUTION_NOTE", () => {
-  it("renders a stamped agent name and address, but never invents human identity", () => {
+  it("renders a stamped agent and recorded person with explicitly current labels", () => {
     expect(sourceFor(ev())).toBe("100.90.4.11");
-    expect(sourceFor(ev({ src_agent_id: "agent-12345678" }), "build-bot")).toBe(
-      "build-bot (current name) · 100.90.4.11",
+    expect(sourceFor(
+      ev({
+        src_agent_id: "agent-12345678",
+        src_device_id: "agent-12345678",
+        src_user_id: "user-12345678",
+        src_kind: "agent",
+      }),
+      { agent: "build-bot", person: "Ada · ada@example.com" },
+    )).toBe(
+      "build-bot (current agent name) · recorded person Ada · ada@example.com (current member label) · 100.90.4.11",
     );
+  });
+
+  it("renders event-time human device and owner IDs with UUID fallbacks", () => {
+    expect(sourceFor(ev({
+      src_device_id: "device-12345678",
+      src_user_id: "user-12345678",
+      src_kind: "human",
+    }))).toBe(
+      "device device-1 (current name unavailable) · recorded person user-123 (current member unavailable) · 100.90.4.11",
+    );
+  });
+
+  it("never derives identity from an address or current inventory labels", () => {
+    expect(sourceFor(ev(), {
+      agent: "same-address-agent",
+      device: "same-address-laptop",
+      person: "same-address-owner",
+    })).toBe("100.90.4.11");
   });
 
   it("explains the applied-artifact boundary", () => {
     expect(ATTRIBUTION_NOTE).toMatch(/successfully applied gateway policy/i);
-    expect(ATTRIBUTION_NOTE).toMatch(/not inferred/i);
+    expect(ATTRIBUTION_NOTE).toMatch(/never inferred/i);
   });
 
   it("builds a truthful policy/config/reason timeline", () => {
@@ -112,15 +142,77 @@ describe("sourceFor + ATTRIBUTION_NOTE", () => {
       decision: "deny",
       decision_reason: "no_matching_grant",
       src_agent_id: "a",
+      src_user_id: "u",
       policy_hash: "abcdef123456",
       policy_version: 7,
       src_config_revision: 4,
     }))).toEqual([
-      "Source agent a · configuration revision 4",
+      "Source AI agent a · recorded person u · configuration revision 4",
       "Gateway not recorded · applied policy v7 · abcdef123456",
       "100.90.4.11 → 10.2.0.9 · TCP · rule no matching grant",
       "DENY · no matching grant · ingest sequence 1 at 2026-08-03T14:22:41.208Z",
     ]);
+  });
+});
+
+describe("access identity filter", () => {
+  it("emits exactly one server-side identity parameter for each grouped value", () => {
+    expect(accessIdentityQuery(accessIdentityValue("person", "user-a"))).toEqual({
+      src_user_id: "user-a",
+    });
+    expect(accessIdentityQuery(accessIdentityValue("device", "device-a"))).toEqual({
+      src_device_id: "device-a",
+    });
+    expect(accessIdentityQuery(accessIdentityValue("agent", "agent-a"))).toEqual({
+      src_agent_id: "agent-a",
+    });
+    expect(accessIdentityQuery("not-an-identity")).toEqual({});
+  });
+
+  it("takes historical identities only from recorded event fields", () => {
+    expect(eventIdentityRefs(ev({
+      src_ip: "100.90.4.11",
+      src_device_id: "device-a",
+      src_user_id: "user-a",
+      src_kind: "human",
+    }))).toEqual([
+      { kind: "person", id: "user-a" },
+      { kind: "device", id: "device-a" },
+    ]);
+    expect(eventIdentityRefs(ev({ src_ip: "100.90.4.11" }))).toEqual([]);
+  });
+
+  it("groups current labels with loaded and selected historical UUID fallbacks", () => {
+    const options = accessIdentityOptions(
+      [ev({
+        src_device_id: "deleted-device-1234",
+        src_user_id: "deleted-user-1234",
+        src_kind: "human",
+      })],
+      {
+        people: [{ id: "current-user-1234", label: "Ada · ada@example.com" }],
+        devices: [{ id: "current-device-1234", label: "Ada's laptop" }],
+        agents: [{ id: "current-agent-1234", label: "build-bot" }],
+      },
+      accessIdentityValue("agent", "deleted-agent-1234"),
+    );
+
+    expect(options.people.map((option) => option.value)).toEqual([
+      "person:current-user-1234",
+      "person:deleted-user-1234",
+    ]);
+    expect(options.people.map((option) => option.label)).toContain(
+      "person deleted-user-1234 (current member unavailable)",
+    );
+    expect(options.devices.map((option) => option.label)).toContain(
+      "device deleted-device-1234 (current name unavailable)",
+    );
+    expect(options.agents.map((option) => option.label)).toContain(
+      "AI agent deleted-agent-1234 (current name unavailable)",
+    );
+    expect(options.agents.map((option) => option.label)).toContain(
+      "build-bot (current agent name) · current-",
+    );
   });
 });
 

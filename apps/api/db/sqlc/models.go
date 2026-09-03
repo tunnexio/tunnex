@@ -487,6 +487,47 @@ type AuditLog struct {
 	ActorSystem *string     `json:"actor_system"`
 }
 
+type AuditLogRetentionAuthorization struct {
+	BackendPid    int32     `json:"backend_pid"`
+	TransactionID int64     `json:"transaction_id"`
+	AuditLogID    uuid.UUID `json:"audit_log_id"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type AuditLogRetentionRun struct {
+	ID                     uuid.UUID          `json:"id"`
+	OrgID                  uuid.UUID          `json:"org_id"`
+	TriggerKind            string             `json:"trigger_kind"`
+	Status                 string             `json:"status"`
+	ManualIdempotencyKey   *string            `json:"manual_idempotency_key"`
+	RequestedByUserID      pgtype.UUID        `json:"requested_by_user_id"`
+	RetentionDays          int32              `json:"retention_days"`
+	CleanupIntervalMinutes int32              `json:"cleanup_interval_minutes"`
+	SettingsRevision       int64              `json:"settings_revision"`
+	BatchSize              int32              `json:"batch_size"`
+	MaxBatches             int32              `json:"max_batches"`
+	CutoffAt               time.Time          `json:"cutoff_at"`
+	StartedAt              time.Time          `json:"started_at"`
+	LeaseExpiresAt         pgtype.Timestamptz `json:"lease_expires_at"`
+	CompletedAt            pgtype.Timestamptz `json:"completed_at"`
+	DeletedRows            int64              `json:"deleted_rows"`
+	Batches                int32              `json:"batches"`
+	MorePending            bool               `json:"more_pending"`
+	ErrorCode              *string            `json:"error_code"`
+	CreatedAt              time.Time          `json:"created_at"`
+	UpdatedAt              time.Time          `json:"updated_at"`
+}
+
+type AuditLogRetentionSetting struct {
+	OrgID                  uuid.UUID `json:"org_id"`
+	RetentionDays          *int32    `json:"retention_days"`
+	CleanupIntervalMinutes int32     `json:"cleanup_interval_minutes"`
+	Revision               int64     `json:"revision"`
+	UpdatedByUserID        uuid.UUID `json:"updated_by_user_id"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
+}
+
 type AuthToken struct {
 	ID         uuid.UUID          `json:"id"`
 	UserID     uuid.UUID          `json:"user_id"`

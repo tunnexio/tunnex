@@ -28,7 +28,7 @@ func TestAccessLogPortKeysetAndDeniesFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pool: %v", err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	org := uuid.New()
 	if _, err := pool.Exec(ctx, `INSERT INTO organizations (id,name,slug) VALUES ($1,'al',$2)`, org, "al-"+org.String()[:8]); err != nil {
 		t.Fatalf("org: %v", err)
@@ -79,17 +79,86 @@ func TestAccessLogPortKeysetAndDeniesFilter(t *testing.T) {
 		t.Fatalf("keyset page2 overlapped page1: %v", page2[0].ID)
 	}
 
+	// These historical IDs are deliberately absent from the live device and
+	// membership rosters. The query contract is an exact event-row match, not
+	// live validation or an identity lookup.
 	target, other := uuid.New(), uuid.New()
+	ownerA, ownerB := uuid.New(), uuid.New()
 	q := sqlc.New(pool)
-	for n, id := range []uuid.UUID{target, other} {
-		e := accesslog.Event{ID: uuid.New(), CreatedAt: time.Now().UTC(), Seq: int64(4 + n), OrgID: org, OccurredAt: time.Now().UTC(), Decision: accesslog.DecisionDeny, DecisionReason: accesslog.ReasonNoMatchingGrant, SrcDeviceID: &id, SrcKind: "agent", SrcIP: "10.99.0.20", DstIP: "10.0.0.1", Protocol: "tcp"}
+	identityEvents := []struct {
+		deviceID uuid.UUID
+		userID   uuid.UUID
+		kind     string
+		decision accesslog.Decision
+	}{
+		{target, ownerA, "agent", accesslog.DecisionDeny},
+		{other, ownerB, "agent", accesslog.DecisionDeny},
+		// Device filtering is intentionally not narrowed by kind. This also
+		// proves that the compatibility src_agent_id filter stays agent-only.
+		{target, ownerA, "human", accesslog.DecisionAllow},
+	}
+	for n, seed := range identityEvents {
+		reason := accesslog.ReasonNoMatchingGrant
+		if seed.decision == accesslog.DecisionAllow {
+			reason = accesslog.ReasonMatchedGrant
+		}
+		e := accesslog.Event{ID: uuid.New(), CreatedAt: time.Now().UTC(), Seq: int64(4 + n), OrgID: org, OccurredAt: time.Now().UTC(), Decision: seed.decision, DecisionReason: reason, SrcDeviceID: &seed.deviceID, SrcUserID: &seed.userID, SrcKind: seed.kind, SrcIP: "10.99.0.20", DstIP: "10.0.0.1", Protocol: "tcp"}
 		if err := q.InsertAccessEvent(ctx, accesslog.InsertParams(e)); err != nil {
-			t.Fatalf("agent event: %v", err)
+			t.Fatalf("identity event: %v", err)
 		}
 	}
-	filtered, err := port.List(ctx, org, &target, false, time.Now().Add(time.Hour), maxUUID, 100)
-	if err != nil || len(filtered) != 1 || filtered[0].SrcDeviceID == nil || *filtered[0].SrcDeviceID != target {
-		t.Fatalf("agent filter must be server-scoped: %+v err=%v", filtered, err)
+
+	// Use the same persisted identities in another tenant. Every identity query
+	// must retain its org predicate, even though identity IDs are globally shaped UUIDs.
+	otherOrg := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO organizations (id,name,slug) VALUES ($1,'al-other',$2)`, otherOrg, "al-other-"+otherOrg.String()[:8]); err != nil {
+		t.Fatalf("other org: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM organizations WHERE id=$1`, otherOrg) })
+	foreign := accesslog.Event{ID: uuid.New(), CreatedAt: time.Now().UTC(), Seq: 1, OrgID: otherOrg, OccurredAt: time.Now().UTC(), Decision: accesslog.DecisionDeny, DecisionReason: accesslog.ReasonNoMatchingGrant, SrcDeviceID: &target, SrcUserID: &ownerA, SrcKind: "human", SrcIP: "10.99.0.20", DstIP: "10.0.0.1", Protocol: "tcp"}
+	if err := q.InsertAccessEvent(ctx, accesslog.InsertParams(foreign)); err != nil {
+		t.Fatalf("foreign identity event: %v", err)
+	}
+
+	list := func(identity *accessEventIdentityFilter, deniesOnly bool) []accesslog.Event {
+		t.Helper()
+		got, err := port.List(ctx, org, identity, deniesOnly, time.Now().Add(time.Hour), maxUUID, 100)
+		if err != nil {
+			t.Fatalf("identity list: %v", err)
+		}
+		return got
+	}
+	agent := list(&accessEventIdentityFilter{Kind: accessEventIdentityAgent, ID: target}, false)
+	if len(agent) != 1 || agent[0].SrcKind != "agent" {
+		t.Fatalf("agent compatibility filter = %+v, want only the agent event", agent)
+	}
+	device := list(&accessEventIdentityFilter{Kind: accessEventIdentityDevice, ID: target}, false)
+	if len(device) != 2 {
+		t.Fatalf("device filter = %+v, want historical human and agent rows", device)
+	}
+	user := list(&accessEventIdentityFilter{Kind: accessEventIdentityUser, ID: ownerA}, false)
+	if len(user) != 2 {
+		t.Fatalf("user filter = %+v, want two tenant rows", user)
+	}
+	userDenies := list(&accessEventIdentityFilter{Kind: accessEventIdentityUser, ID: ownerA}, true)
+	if len(userDenies) != 1 || userDenies[0].Decision != accesslog.DecisionDeny {
+		t.Fatalf("user denies filter = %+v, want one deny", userDenies)
+	}
+	deviceDenies := list(&accessEventIdentityFilter{Kind: accessEventIdentityDevice, ID: target}, true)
+	if len(deviceDenies) != 1 || deviceDenies[0].Decision != accesslog.DecisionDeny {
+		t.Fatalf("device denies filter = %+v, want one deny", deviceDenies)
+	}
+	filter := &accessEventIdentityFilter{Kind: accessEventIdentityUser, ID: ownerA}
+	identityPage1, err := port.List(ctx, org, filter, false, time.Now().Add(time.Hour), maxUUID, 1)
+	if err != nil || len(identityPage1) != 1 {
+		t.Fatalf("identity page1 = %+v err=%v, want one", identityPage1, err)
+	}
+	identityPage2, err := port.List(ctx, org, filter, false, identityPage1[0].CreatedAt, identityPage1[0].ID, 1)
+	if err != nil || len(identityPage2) != 1 || identityPage2[0].ID == identityPage1[0].ID {
+		t.Fatalf("identity page2 = %+v err=%v, want distinct continuation", identityPage2, err)
+	}
+	if unknown := list(&accessEventIdentityFilter{Kind: accessEventIdentityDevice, ID: uuid.New()}, false); len(unknown) != 0 {
+		t.Fatalf("unknown historical identity must return an empty page, got %+v", unknown)
 	}
 }
 
@@ -103,7 +172,7 @@ func TestAccessLogCollectorsAreTenantScopedAndIndependentOfTraffic(t *testing.T)
 	if err != nil {
 		t.Fatalf("pool: %v", err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 
 	org, otherOrg := uuid.New(), uuid.New()
 	for _, item := range []struct {

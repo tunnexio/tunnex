@@ -57,6 +57,15 @@ func (s apiServer) UpdateAccessEventRetention(ctx context.Context, req api.Updat
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
+	// Generated API integers use the platform int width. Check before narrowing
+	// to the storage/service int32 types so a value such as 2^32+1 cannot wrap
+	// into a valid one-day policy.
+	if req.Body.RetentionDays < int(accesslog.MinRetentionDays) || req.Body.RetentionDays > int(accesslog.MaxRetentionDays) {
+		return nil, apierr.BadRequest("invalid_access_event_retention_days", "retention_days must be between 1 and 3650")
+	}
+	if req.Body.CleanupIntervalMinutes < int(accesslog.MinCleanupIntervalMinutes) || req.Body.CleanupIntervalMinutes > int(accesslog.MaxCleanupIntervalMinutes) {
+		return nil, apierr.BadRequest("invalid_access_event_cleanup_interval", "cleanup_interval_minutes must be between 5 and 1440")
+	}
 	p, ok := authctx.PrincipalFrom(ctx)
 	if !ok || p == nil {
 		return nil, apierr.New(http.StatusUnauthorized, "unauthenticated", "authentication required")

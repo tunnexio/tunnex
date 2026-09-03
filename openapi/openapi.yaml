@@ -1645,6 +1645,67 @@ paths:
                 items: { $ref: "#/components/schemas/AuditLogEntry" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/audit-log-retention:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAuditLogRetention
+      summary: Read the organization's effective audit-log retention policy and latest pruning status
+      tags: [organizations]
+      responses:
+        "200":
+          description: Effective retention settings. A missing persisted policy is returned as revision 0 with retention_days null (Forever).
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditLogRetention" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateAuditLogRetention
+      summary: Update the organization's audit-log retention policy (organization admin)
+      tags: [organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateAuditLogRetentionRequest" }
+      responses:
+        "200":
+          description: Persisted retention settings. Exact retries are idempotent and return the current resource.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditLogRetention" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/audit-log-retention/actions/prune:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: runAuditLogPrune
+      summary: Run bounded audit-log pruning now using the saved organization policy
+      description: Disabled while retention is Forever. This action never accepts an arbitrary cutoff or flushes the table; replaying an idempotency key returns the original run.
+      tags: [organizations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RunAuditLogPruneRequest" }
+      responses:
+        "200":
+          description: The idempotency-key-bound run, replay state, and current effective policy/latest pruning status.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditLogPruneResponse" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/access-events:
     parameters:
       - name: orgId
@@ -1656,8 +1717,12 @@ paths:
       summary: The org's Zero Trust access/flow events — keyset-paginated (enterprise, read-only)
       tags: [organizations]
       parameters:
-        - { name: denies_only, in: query, required: false, schema: { type: boolean, default: false }, description: Only deny/deny_aggregate/terminated events (the security feed). }
-        - { name: src_agent_id, in: query, required: false, schema: { type: string, format: uuid }, description: Only events attributed by the applied gateway artifact to this verified agent device. }
+        - { name: denies_only, in: query, required: false, schema: { type: boolean, default: false }, description: Only deny/deny_aggregate/terminated/gap events (the security feed). }
+        # Source identity filters are mutually exclusive. They match immutable event-row
+        # attribution and never require the identity to remain in the live roster.
+        - { name: src_agent_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Only events attributed to this verified agent device. Mutually exclusive with src_device_id and src_user_id." }
+        - { name: src_device_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Only events carrying this verified source device ID, for either a human or agent device. Mutually exclusive with the other source identity filters." }
+        - { name: src_user_id, in: query, required: false, schema: { type: string, format: uuid }, description: "Only events carrying this device-owner ID as resolved and persisted at ingest. This does not assert that the human initiated the traffic. Mutually exclusive with the other source identity filters." }
         # Keyset cursor: pass the last entry's created_at + id to fetch the next page.
         - { name: cursor_ts, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: cursor_id, in: query, required: false, schema: { type: string, format: uuid } }
@@ -8267,6 +8332,91 @@ components:
         target_id: { type: string }
         details: { type: object, additionalProperties: true }
 
+    AuditLogRetention:
+      type: object
+      required: [retention_days, cleanup_interval_minutes, batch_size, revision]
+      additionalProperties: false
+      properties:
+        retention_days:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 3650
+          description: Age cutoff in days for retention-eligible audit rows, measured from control-plane creation time. Protected provenance referenced by durable operations may outlive this window. Null means retain forever and disables pruning.
+        cleanup_interval_minutes:
+          type: integer
+          minimum: 5
+          maximum: 1440
+          default: 60
+          description: Target interval between scheduled bounded pruning runs when retention_days is set.
+        batch_size:
+          type: integer
+          minimum: 1
+          description: Non-configurable maximum rows deleted in one transaction. A run may execute multiple server-bounded batches.
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optimistic-concurrency revision; 0 is the effective Forever default before a policy is persisted.
+        updated_at: { type: string, format: date-time }
+        next_run_at: { type: string, format: date-time }
+        last_run: { $ref: "#/components/schemas/AuditLogRetentionRun" }
+
+    AuditLogRetentionRun:
+      type: object
+      required: [id, trigger, status, started_at, deleted_rows, batches, more_pending]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        trigger:
+          type: string
+          enum: [scheduled, manual]
+          x-enum-varnames: [AuditLogRetentionRunTriggerScheduled, AuditLogRetentionRunTriggerManual]
+        status:
+          type: string
+          enum: [running, succeeded, failed]
+          x-enum-varnames: [AuditLogRetentionRunStatusRunning, AuditLogRetentionRunStatusSucceeded, AuditLogRetentionRunStatusFailed]
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        deleted_rows: { type: integer, format: int64, minimum: 0 }
+        batches: { type: integer, minimum: 0 }
+        more_pending:
+          type: boolean
+          description: "True when a bounded run stopped with additional expired, retention-eligible rows left for a later continuation. Protected provenance is excluded."
+        error_code: { type: string, maxLength: 128, description: Bounded operator-safe failure code; raw database errors are never exposed. }
+
+    AuditLogPruneResponse:
+      type: object
+      required: [retention, run, replayed]
+      additionalProperties: false
+      properties:
+        retention: { $ref: "#/components/schemas/AuditLogRetention" }
+        run: { $ref: "#/components/schemas/AuditLogRetentionRun" }
+        replayed:
+          type: boolean
+          description: True when this idempotency key already named the returned durable run; no second prune or audit mutation was performed.
+
+    UpdateAuditLogRetentionRequest:
+      type: object
+      required: [retention_days, cleanup_interval_minutes, expected_revision]
+      additionalProperties: false
+      properties:
+        retention_days: { type: integer, nullable: true, minimum: 1, maximum: 3650 }
+        cleanup_interval_minutes: { type: integer, minimum: 5, maximum: 1440 }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+
+    RunAuditLogPruneRequest:
+      type: object
+      required: [idempotency_key]
+      additionalProperties: false
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: Caller-generated key scoped to this organization; an exact replay returns the original run.
+
     AccessEvent:
       type: object
       required: [id, created_at, seq, occurred_at, decision, src_ip, dst_ip, protocol]
@@ -8284,6 +8434,9 @@ components:
         rule_id: { type: string, format: uuid }
         node_id: { type: string, format: uuid }
         src_agent_id: { type: string, format: uuid, description: Present only when the verified source device kind is agent. }
+        src_device_id: { type: string, format: uuid, description: Verified source device ID captured from the applied gateway artifact and preserved on the event. It may no longer resolve in the live device roster. }
+        src_user_id: { type: string, format: uuid, description: Source device owner resolved and persisted at ingest. It is neither current-ownership data nor proof that the human initiated the traffic. }
+        src_kind: { type: string, enum: [human, agent], description: Verified device kind persisted with the event. }
         src_ip: { type: string }
         dst_ip: { type: string }
         dst_resource_id: { type: string, format: uuid }

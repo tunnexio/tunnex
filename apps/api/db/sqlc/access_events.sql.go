@@ -678,7 +678,7 @@ type ListAccessDeniesParams struct {
 	PageLimit       int32     `json:"page_limit"`
 }
 
-// The security-focused feed: deny + deny_aggregate + terminated only, same keyset shape.
+// The security-focused feed: deny + deny_aggregate + terminated + gap, same keyset shape.
 func (q *Queries) ListAccessDenies(ctx context.Context, arg ListAccessDeniesParams) ([]AccessEvent, error) {
 	rows, err := q.db.Query(ctx, listAccessDenies,
 		arg.OrgID,
@@ -752,6 +752,144 @@ func (q *Queries) ListAccessDeniesByAgent(ctx context.Context, arg ListAccessDen
 	rows, err := q.db.Query(ctx, listAccessDeniesByAgent,
 		arg.OrgID,
 		arg.SrcAgentID,
+		arg.BeforeCreatedAt,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccessEvent{}
+	for rows.Next() {
+		var i AccessEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Seq,
+			&i.NodeID,
+			&i.OccurredAt,
+			&i.Decision,
+			&i.RuleID,
+			&i.SrcDeviceID,
+			&i.SrcUserID,
+			&i.SrcIp,
+			&i.DstIp,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.Protocol,
+			&i.DstPort,
+			&i.DenyCount,
+			&i.WindowEnd,
+			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccessDeniesByDevice = `-- name: ListAccessDeniesByDevice :many
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
+WHERE org_id = $1
+  AND src_device_id = $2
+  AND decision <> 'allow'
+  AND (created_at < $3
+       OR (created_at = $3 AND id < $4))
+ORDER BY created_at DESC, id DESC
+LIMIT $5
+`
+
+type ListAccessDeniesByDeviceParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	SrcDeviceID     pgtype.UUID `json:"src_device_id"`
+	BeforeCreatedAt time.Time   `json:"before_created_at"`
+	BeforeID        uuid.UUID   `json:"before_id"`
+	PageLimit       int32       `json:"page_limit"`
+}
+
+func (q *Queries) ListAccessDeniesByDevice(ctx context.Context, arg ListAccessDeniesByDeviceParams) ([]AccessEvent, error) {
+	rows, err := q.db.Query(ctx, listAccessDeniesByDevice,
+		arg.OrgID,
+		arg.SrcDeviceID,
+		arg.BeforeCreatedAt,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccessEvent{}
+	for rows.Next() {
+		var i AccessEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Seq,
+			&i.NodeID,
+			&i.OccurredAt,
+			&i.Decision,
+			&i.RuleID,
+			&i.SrcDeviceID,
+			&i.SrcUserID,
+			&i.SrcIp,
+			&i.DstIp,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.Protocol,
+			&i.DstPort,
+			&i.DenyCount,
+			&i.WindowEnd,
+			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccessDeniesByUser = `-- name: ListAccessDeniesByUser :many
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
+WHERE org_id = $1
+  AND src_user_id = $2
+  AND decision <> 'allow'
+  AND (created_at < $3
+       OR (created_at = $3 AND id < $4))
+ORDER BY created_at DESC, id DESC
+LIMIT $5
+`
+
+type ListAccessDeniesByUserParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	SrcUserID       pgtype.UUID `json:"src_user_id"`
+	BeforeCreatedAt time.Time   `json:"before_created_at"`
+	BeforeID        uuid.UUID   `json:"before_id"`
+	PageLimit       int32       `json:"page_limit"`
+}
+
+func (q *Queries) ListAccessDeniesByUser(ctx context.Context, arg ListAccessDeniesByUserParams) ([]AccessEvent, error) {
+	rows, err := q.db.Query(ctx, listAccessDeniesByUser,
+		arg.OrgID,
+		arg.SrcUserID,
 		arg.BeforeCreatedAt,
 		arg.BeforeID,
 		arg.PageLimit,
@@ -890,6 +1028,146 @@ func (q *Queries) ListAccessEventsByAgent(ctx context.Context, arg ListAccessEve
 	rows, err := q.db.Query(ctx, listAccessEventsByAgent,
 		arg.OrgID,
 		arg.SrcAgentID,
+		arg.BeforeCreatedAt,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccessEvent{}
+	for rows.Next() {
+		var i AccessEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Seq,
+			&i.NodeID,
+			&i.OccurredAt,
+			&i.Decision,
+			&i.RuleID,
+			&i.SrcDeviceID,
+			&i.SrcUserID,
+			&i.SrcIp,
+			&i.DstIp,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.Protocol,
+			&i.DstPort,
+			&i.DenyCount,
+			&i.WindowEnd,
+			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccessEventsByDevice = `-- name: ListAccessEventsByDevice :many
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
+WHERE org_id = $1
+  AND src_device_id = $2
+  AND (created_at < $3
+       OR (created_at = $3 AND id < $4))
+ORDER BY created_at DESC, id DESC
+LIMIT $5
+`
+
+type ListAccessEventsByDeviceParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	SrcDeviceID     pgtype.UUID `json:"src_device_id"`
+	BeforeCreatedAt time.Time   `json:"before_created_at"`
+	BeforeID        uuid.UUID   `json:"before_id"`
+	PageLimit       int32       `json:"page_limit"`
+}
+
+// src_device_id is the verified, immutable event-row attribution. Do not join
+// the live device roster: deleted devices remain valid historical filters.
+func (q *Queries) ListAccessEventsByDevice(ctx context.Context, arg ListAccessEventsByDeviceParams) ([]AccessEvent, error) {
+	rows, err := q.db.Query(ctx, listAccessEventsByDevice,
+		arg.OrgID,
+		arg.SrcDeviceID,
+		arg.BeforeCreatedAt,
+		arg.BeforeID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AccessEvent{}
+	for rows.Next() {
+		var i AccessEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Seq,
+			&i.NodeID,
+			&i.OccurredAt,
+			&i.Decision,
+			&i.RuleID,
+			&i.SrcDeviceID,
+			&i.SrcUserID,
+			&i.SrcIp,
+			&i.DstIp,
+			&i.DstResourceID,
+			&i.DstGroupID,
+			&i.Protocol,
+			&i.DstPort,
+			&i.DenyCount,
+			&i.WindowEnd,
+			&i.CreatedAt,
+			&i.PolicyHash,
+			&i.PolicyVersion,
+			&i.SrcConfigRevision,
+			&i.SrcKind,
+			&i.DecisionReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccessEventsByUser = `-- name: ListAccessEventsByUser :many
+SELECT id, org_id, seq, node_id, occurred_at, decision, rule_id, src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id, protocol, dst_port, deny_count, window_end, created_at, policy_hash, policy_version, src_config_revision, src_kind, decision_reason FROM access_events
+WHERE org_id = $1
+  AND src_user_id = $2
+  AND (created_at < $3
+       OR (created_at = $3 AND id < $4))
+ORDER BY created_at DESC, id DESC
+LIMIT $5
+`
+
+type ListAccessEventsByUserParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	SrcUserID       pgtype.UUID `json:"src_user_id"`
+	BeforeCreatedAt time.Time   `json:"before_created_at"`
+	BeforeID        uuid.UUID   `json:"before_id"`
+	PageLimit       int32       `json:"page_limit"`
+}
+
+// src_user_id is the owner resolved and persisted at ingest, not a live
+// ownership join and not proof that the human initiated the traffic.
+func (q *Queries) ListAccessEventsByUser(ctx context.Context, arg ListAccessEventsByUserParams) ([]AccessEvent, error) {
+	rows, err := q.db.Query(ctx, listAccessEventsByUser,
+		arg.OrgID,
+		arg.SrcUserID,
 		arg.BeforeCreatedAt,
 		arg.BeforeID,
 		arg.PageLimit,

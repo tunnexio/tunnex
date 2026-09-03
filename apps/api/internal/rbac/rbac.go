@@ -28,6 +28,12 @@ const (
 	// automated policy operator may author grants, but may not shorten audit-data
 	// retention or trigger maintenance that deletes expired records.
 	PermAccessEventRetentionManage Permission = "access_event_retention:manage"
+	// Audit-log retention has a dedicated read permission as well as management:
+	// its latest deletion counts and failure state are control-plane evidence,
+	// not organization-wide member metadata. Both are owner/admin-grained, while
+	// only management requires a verified mutating principal.
+	PermAuditLogRetentionView   Permission = "audit_log_retention:view"
+	PermAuditLogRetentionManage Permission = "audit_log_retention:manage"
 	// FQDN resources are a separate, resolver-backed destination capability. They
 	// must never inherit policy permissions implicitly: callers need an explicit
 	// FQDN read or manage grant before the later entitlement and organization
@@ -198,6 +204,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
 		PermAccessEventRetentionManage:  true,
+		PermAuditLogRetentionView:       true,
+		PermAuditLogRetentionManage:     true,
 		PermFQDNResourceView:            true,
 		PermFQDNResourceManage:          true,
 		PermDeviceApprove:               true,
@@ -236,6 +244,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
 		PermAccessEventRetentionManage:  true,
+		PermAuditLogRetentionView:       true,
+		PermAuditLogRetentionManage:     true,
 		PermFQDNResourceView:            true,
 		PermFQDNResourceManage:          true,
 		PermDeviceApprove:               true,
@@ -331,7 +341,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermOrgView, PermMemberList, PermPolicyView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true
