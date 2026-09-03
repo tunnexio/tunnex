@@ -282,6 +282,17 @@ func (m *Manager) ReconcileDNSVIPsWithCandidates(ctx context.Context, candidates
 	for vip := range want {
 		all = append(all, vip)
 	}
+	// A clean shutdown removes wg0 before the next process starts. During the
+	// startup emergency sweep, no desired policy plus no durable candidate means
+	// there is provably no DNS VIP this process can own or withdraw. Record the
+	// exact empty receipt and return without trying to enumerate an interface
+	// that ordinary desired-state reconciliation has not created yet. Any
+	// desired or fenced candidate still requires kernel readback below.
+	if len(all) == 0 {
+		empty := []string{}
+		m.dnsVIPs.Store(&empty)
+		return nil
+	}
 	observed, err := m.ReadDNSVIPs(ctx, all)
 	if err != nil {
 		return err

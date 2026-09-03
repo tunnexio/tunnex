@@ -12,6 +12,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	sitessvc "github.com/tunnexio/tunnex/apps/api/internal/sites"
 )
 
 // S8.1 site-to-site handlers (EPIC 8). All are site:manage-gated (owner/admin) — site registration,
@@ -63,11 +64,7 @@ func (s apiServer) ListRoutedRanges(ctx context.Context, req api.ListRoutedRange
 	if err != nil {
 		return nil, err
 	}
-	apiFwds := make([]api.DNSForward, 0, len(fwds))
-	for _, f := range fwds {
-		apiFwds = append(apiFwds, api.DNSForward{Domain: f.Domain, ResolverIp: f.ResolverIP})
-	}
-	body := api.RoutedRanges{Ranges: ranges, Forwards: apiFwds}
+	body := api.RoutedRanges{Ranges: ranges}
 	// WF-A D-WFA-6: when a device_id is passed, ALSO carry that device's dial (endpoint + gateway pubkey)
 	// derived from the ACTIVE HUB, so a running device re-homes on promotion via THIS poll. DeviceDial does
 	// the cross-org (org-scoped GetDevice) + cross-device (owner) guard — a device fetches only its OWN dial.
@@ -79,11 +76,32 @@ func (s apiServer) ListRoutedRanges(ctx context.Context, req api.ListRoutedRange
 		if derr != nil {
 			return nil, derr
 		}
+		// FQDN profiles are policy intent, not org-wide resolver inventory. Only
+		// after DeviceDial proves this caller owns this ACTIVE device do we derive
+		// the suffixes authorized by that device's matching FQDN parent rules.
+		// A nil policy port (open build) and older requests without device_id both
+		// receive no FQDN-derived forwards.
+		if s.policy != nil {
+			policyForwards, policyErr := s.policy.DeviceFQDNForwards(ctx, req.OrgId, *req.Params.DeviceId, ranges)
+			if policyErr != nil {
+				return nil, policyErr
+			}
+			derivedForwards := make([]sitessvc.DNSForward, 0, len(policyForwards))
+			for _, forward := range policyForwards {
+				derivedForwards = append(derivedForwards, sitessvc.DNSForward{Domain: forward.Domain, ResolverIP: forward.ResolverIP})
+			}
+			fwds = sitessvc.MergeResolverForwardsFailClosed(fwds, derivedForwards)
+		}
 		if derived {
 			body.DialEndpoint = &ep
 			body.DialPubkey = &pk
 		}
 	}
+	apiFwds := make([]api.DNSForward, 0, len(fwds))
+	for _, f := range fwds {
+		apiFwds = append(apiFwds, api.DNSForward{Domain: f.Domain, ResolverIp: f.ResolverIP})
+	}
+	body.Forwards = apiFwds
 	return api.ListRoutedRanges200JSONResponse{
 		Body:    body,
 		Headers: api.ListRoutedRanges200ResponseHeaders{XRequestId: reqID(ctx)},

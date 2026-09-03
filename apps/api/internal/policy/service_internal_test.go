@@ -40,18 +40,25 @@ func (f *fakeFQDNGenerationReader) ActiveGenerations(_ context.Context, org uuid
 }
 
 func TestAppendActiveFQDNGenerationsFailsClosed(t *testing.T) {
-	org, resource, site, gateway, config := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	org, resource, site, gateway, config, profile := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	reader := &fakeFQDNGenerationReader{rows: []fqdnresolver.ActiveGeneration{{
 		OrgID: org, ResourceID: resource, Hostname: "api.example.test", Protocol: "tcp",
 		Sequence: 7, Context: fqdnresolver.Context{ResolverID: site.String(), GatewayID: gateway.String()},
-		ResolverConfig: fqdnresolver.ResolverConfig{ID: config.String(), Version: 1, Endpoints: []fqdnresolver.ResolverEndpoint{{Address: netip.MustParseAddr("10.20.0.53"), Port: 53, Transport: "udp"}}},
-		Addresses:      []netip.Addr{netip.MustParseAddr("10.1.2.3"), netip.MustParseAddr("fd00::3")},
+		ResolverConfig: fqdnresolver.ResolverConfig{ID: config.String(), Version: 1, ProfileID: profile.String(), MatchedSuffix: "example.test", Endpoints: []fqdnresolver.ResolverEndpoint{
+			{Address: netip.MustParseAddr("10.30.0.53"), Port: 53, Transport: "udp"},
+			{Address: netip.MustParseAddr("10.20.0.54"), Port: 53, Transport: "udp"},
+			{Address: netip.MustParseAddr("10.20.0.53"), Port: 53, Transport: "udp"},
+			{Address: netip.MustParseAddr("10.20.0.53"), Port: 53, Transport: "tcp"},
+			{Address: netip.MustParseAddr("10.20.0.54"), Port: 5353, Transport: "udp"},
+			{Address: netip.MustParseAddr("10.20.0.55"), Port: 53, Transport: "tcp"},
+		}},
+		Addresses: []netip.Addr{netip.MustParseAddr("10.1.2.3"), netip.MustParseAddr("fd00::3")},
 	}}}
-	snap := Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}
+	snap := Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true, SiteSubnets: []SiteSubnet{{SiteID: site, CIDR: "10.20.0.0/24"}}}
 	if err := appendActiveFQDNGenerations(context.Background(), &snap, reader, org); err != nil {
 		t.Fatal(err)
 	}
-	if reader.org != org || len(snap.FQDNResources) != 1 || snap.FQDNResources[0].ID != resource || snap.FQDNResources[0].Active == nil || snap.FQDNResources[0].Active.SelectedSiteID != site || snap.FQDNResources[0].Active.ResolverConfigID != config || snap.FQDNResources[0].Active.ResolverConfigVersion != 1 || len(snap.FQDNResources[0].Active.Answers) != 2 {
+	if reader.org != org || len(snap.FQDNResources) != 1 || snap.FQDNResources[0].ID != resource || snap.FQDNResources[0].Active == nil || snap.FQDNResources[0].Active.SelectedSiteID != site || snap.FQDNResources[0].Active.ResolverConfigID != config || snap.FQDNResources[0].Active.ResolverProfileID != profile || snap.FQDNResources[0].Active.ResolverMatchSuffix != "example.test" || snap.FQDNResources[0].Active.ResolverConfigVersion != 1 || len(snap.FQDNResources[0].Active.Answers) != 2 || len(snap.FQDNResources[0].Active.ResolverAddresses) != 1 || snap.FQDNResources[0].Active.ResolverAddresses[0] != "10.20.0.54/32" {
 		t.Fatalf("active resolver generation was not projected exactly: %#v", snap)
 	}
 
@@ -79,6 +86,11 @@ func TestAppendActiveFQDNGenerationsFailsClosed(t *testing.T) {
 		t.Fatal("malformed selected context must fail closed")
 	}
 	reader.rows[0].Context.GatewayID = gateway.String()
+	reader.rows[0].ResolverConfig.ProfileID = ""
+	if err := appendActiveFQDNGenerations(context.Background(), &Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}, reader, org); err == nil {
+		t.Fatal("active generation without selected resolver profile provenance must fail closed")
+	}
+	reader.rows[0].ResolverConfig.ProfileID = profile.String()
 	reader.rows[0].ResolverConfig.Version = 0
 	if err := appendActiveFQDNGenerations(context.Background(), &Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}, reader, org); err == nil {
 		t.Fatal("active generation without an immutable resolver config revision must fail closed")
@@ -87,5 +99,13 @@ func TestAppendActiveFQDNGenerationsFailsClosed(t *testing.T) {
 	reader.rows[0].ResolverConfig.Endpoints = nil
 	if err := appendActiveFQDNGenerations(context.Background(), &Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}, reader, org); err == nil {
 		t.Fatal("active generation without direct resolver endpoints must fail closed")
+	}
+	reader.rows[0].ResolverConfig.Endpoints = []fqdnresolver.ResolverEndpoint{{Address: netip.MustParseAddr("10.20.0.55"), Port: 53, Transport: "tcp"}}
+	withoutDesktopResolver := Snapshot{FQDNResourcesLicensed: true, FQDNResourcesEnabled: true}
+	if err := appendActiveFQDNGenerations(context.Background(), &withoutDesktopResolver, reader, org); err != nil {
+		t.Fatalf("a valid TCP-only profile remains a valid answer generation: %v", err)
+	}
+	if got := withoutDesktopResolver.FQDNResources[0].Active.ResolverAddresses; len(got) != 0 {
+		t.Fatalf("unsupported desktop endpoints must be excluded, got %v", got)
 	}
 }

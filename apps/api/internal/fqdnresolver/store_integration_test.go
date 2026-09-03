@@ -88,10 +88,16 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	config := uuid.New()
 	profile := uuid.New()
 	exec(`INSERT INTO fqdn_resolver_context_configs(id,org_id,site_id,gateway_id,version,state) VALUES($1,$2,$3,$4,1,'active')`, config, org, site, gateway)
-	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, config, org)
+	// The compatibility projection deliberately differs from the selected
+	// profile. Lane 3 must never read this first-profile/legacy table by mistake.
+	exec(`INSERT INTO fqdn_resolver_context_endpoints(config_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.250'::inet,53,'udp')`, config, org)
 	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,0,'Private internal','aws')`, profile, config, org)
 	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, profile, config, org)
 	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.53'::inet,53,'udp')`, profile, org)
+	otherProfile := uuid.New()
+	exec(`INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint) VALUES($1,$2,$3,1,'Other private DNS','azure')`, otherProfile, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'other.internal')`, otherProfile, config, org)
+	exec(`INSERT INTO fqdn_resolver_context_profile_endpoints(profile_id,org_id,ordinal,address,port,transport) VALUES($1,$2,0,'10.53.0.99'::inet,53,'udp')`, otherProfile, org)
 
 	hook := &committedHook{t: t, pool: pool, resource: resource}
 	store := NewPostgresStore(pool).WithAfterCommit(hook)
@@ -129,8 +135,39 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if got.ResourceID != resource || got.Sequence != 1 || got.Context.ResolverID != site.String() || got.Context.GatewayID != gateway.String() || len(got.Addresses) != 2 || got.Addresses[0] != addr("10.2.3.4") || got.Addresses[1] != addr("fd00::4") {
 		t.Fatalf("unexpected active projection: %#v", got)
 	}
+	if got.ResolverConfig.ProfileID != profile.String() || got.ResolverConfig.MatchedSuffix != "internal" || len(got.ResolverConfig.Endpoints) != 1 || got.ResolverConfig.Endpoints[0].Address != addr("10.53.0.53") {
+		t.Fatalf("active projection mixed resolver profiles or compatibility endpoints: %#v", got.ResolverConfig)
+	}
 	if other, err := store.ActiveGenerations(ctx, uuid.New()); err != nil || len(other) != 0 {
 		t.Fatalf("cross-org active projection leaked: rows=%#v err=%v", other, err)
+	}
+	// Selected-profile suffix provenance is part of the compiler boundary. A
+	// stale/mismatched suffix must disappear rather than borrowing another
+	// profile or falling back to the compatibility endpoint table. Published
+	// generations are immutable, so make the active profile stop claiming the
+	// stored suffix instead of corrupting the generation row for this proof.
+	exec(`DELETE FROM fqdn_resolver_context_profile_suffixes WHERE profile_id=$1 AND suffix='internal'`, profile)
+	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
+		t.Fatalf("mismatched selected-profile suffix must fail closed: rows=%#v err=%v", projection, err)
+	}
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'internal')`, profile, config, org)
+	// The stored suffix is provenance, not a permanent override. If the active
+	// config later contains a more-specific matching profile, the old generation
+	// is no longer the selected authority and must disappear immediately.
+	exec(`INSERT INTO fqdn_resolver_context_profile_suffixes(profile_id,config_id,org_id,suffix) VALUES($1,$2,$3,'orders.internal')`, otherProfile, config, org)
+	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
+		t.Fatalf("more-specific active profile must supersede stored provenance: rows=%#v err=%v", projection, err)
+	}
+	exec(`DELETE FROM fqdn_resolver_context_profile_suffixes WHERE profile_id=$1 AND suffix='orders.internal'`, otherProfile)
+	// A selected context whose node is revoked is no longer compiler authority,
+	// even if its config/generation rows still say active.
+	exec(`UPDATE nodes SET status='revoked',revoked_at=now() WHERE id=$1`, gateway)
+	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
+		t.Fatalf("revoked selected gateway must not project: rows=%#v err=%v", projection, err)
+	}
+	exec(`UPDATE nodes SET status='active',revoked_at=NULL WHERE id=$1`, gateway)
+	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 1 {
+		t.Fatalf("restored exact selected context must project again: rows=%#v err=%v", projection, err)
 	}
 	// A resolver endpoint revision is a new authority, not a harmless display
 	// edit. Its predecessor is excluded from compiler input immediately, before

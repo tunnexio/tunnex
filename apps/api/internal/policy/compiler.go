@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdn"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -138,8 +139,16 @@ type FQDNGeneration struct {
 	SelectedSiteID        uuid.UUID
 	SelectedGatewayID     uuid.UUID
 	ResolverConfigID      uuid.UUID
+	ResolverProfileID     uuid.UUID
+	ResolverMatchSuffix   string
 	ResolverConfigVersion int64
 	Answers               []string
+	// ResolverAddresses contains zero or one canonical host prefix: the first
+	// selected-profile UDP/53 endpoint reachable through an approved routed
+	// prefix, preserving profile endpoint order. The compiler derives both DNS
+	// transports for that address; it never invents a user-editable resource or
+	// child policy rule.
+	ResolverAddresses []string
 }
 
 // FQDNRuleReference is the owned compiler seam for Lane 1's separate
@@ -275,11 +284,17 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		nodeSet[d.NodeID] = true
 	}
 	siteNode := map[uuid.UUID]uuid.UUID{} // site_id -> its bound gateway node (S8.2 src placement)
+	type siteGateway struct{ siteID, gatewayID uuid.UUID }
+	// FQDN selected-context validation must not reduce a multi-gateway site to
+	// one last-write-wins entry.  The generation names an exact Site/Gateway
+	// authority, so retain the exact active membership supplied by SiteNodes.
+	siteGateways := map[siteGateway]bool{}
 	for _, sn := range s.SiteNodes {
-		if sn.NodeID == uuid.Nil {
+		if sn.SiteID == uuid.Nil || sn.NodeID == uuid.Nil {
 			continue
 		}
 		siteNode[sn.SiteID] = sn.NodeID
+		siteGateways[siteGateway{siteID: sn.SiteID, gatewayID: sn.NodeID}] = true
 		nodeSet[sn.NodeID] = true
 	}
 	for _, svc := range s.ExposedServices {
@@ -435,32 +450,48 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		PortLow, PortHigh int
 	}
 	type nodeAcc struct {
-		set         map[allowKey]int
-		list        []policyspec.AllowEntry
-		generations map[string]policyspec.FQDNGeneration
+		set                  map[allowKey]int
+		list                 []policyspec.AllowEntry
+		fqdnResolverCarriage map[allowKey]bool
+		generations          map[string]policyspec.FQDNGeneration
 	}
 	acc := map[uuid.UUID]*nodeAcc{}
 	for nodeID := range nodeSet {
-		acc[nodeID] = &nodeAcc{set: map[allowKey]int{}, generations: map[string]policyspec.FQDNGeneration{}}
+		acc[nodeID] = &nodeAcc{set: map[allowKey]int{}, fqdnResolverCarriage: map[allowKey]bool{}, generations: map[string]policyspec.FQDNGeneration{}}
 	}
-	add := func(nodeID uuid.UUID, e policyspec.AllowEntry) {
+	addWithProvenance := func(nodeID uuid.UUID, e policyspec.AllowEntry, resolverCarriage bool) {
 		// Every caller's target is in nodeSet by construction (devices + SiteNodes + the seeded hub) —
 		// see the F1 seed above; no lazy admit exists, so an unknown node here would be a programming
 		// error the acc lookup surfaces immediately, never a silent artifact for an unvetted node.
 		a := acc[nodeID]
 		k := allowKey{e.SrcIP, e.DstCIDR, e.Protocol, e.PortLow, e.PortHigh}
 		if index, exists := a.set[k]; exists {
-			// Preserve the first rule's observability metadata, but retain FQDN
-			// provenance when any current grant for this tuple came from an active
-			// FQDN generation. Otherwise a v9 gateway could treat it as an
-			// ordinary CIDR tuple during retirement recovery.
-			if e.FQDNManaged {
+			// An active-generation-derived tuple wins observability provenance over
+			// a redundant manual CIDR tuple regardless of rule order. Concrete
+			// answers additionally carry the S21 conntrack ownership bit. Resolver
+			// carriage deliberately does not: it is a normal derived policy tuple,
+			// but still cites the FQDN parent while that parent is active. A fresh
+			// compile after withdrawal naturally leaves only the manual provenance.
+			if e.FQDNManaged && !a.list[index].FQDNManaged {
 				a.list[index].FQDNManaged = true
+				a.list[index].RuleID = e.RuleID
+				a.list[index].SrcDeviceID = e.SrcDeviceID
+			} else if resolverCarriage && !a.list[index].FQDNManaged && !a.fqdnResolverCarriage[k] {
+				a.list[index].RuleID = e.RuleID
+				a.list[index].SrcDeviceID = e.SrcDeviceID
+				a.fqdnResolverCarriage[k] = true
 			}
 			return
 		}
 		a.set[k] = len(a.list)
 		a.list = append(a.list, e)
+		if resolverCarriage {
+			a.fqdnResolverCarriage[k] = true
+		}
+	}
+	add := func(nodeID uuid.UUID, e policyspec.AllowEntry) { addWithProvenance(nodeID, e, false) }
+	addResolverCarriage := func(nodeID uuid.UUID, e policyspec.AllowEntry) {
+		addWithProvenance(nodeID, e, true)
 	}
 	addGeneration := func(nodeID uuid.UUID, g policyspec.FQDNGeneration) {
 		acc[nodeID].generations[g.ResourceID] = g
@@ -478,9 +509,11 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		pfx  netip.Prefix
 	}
 	var sitePfxs []sitePfx
+	var routedPrefixes []netip.Prefix
 	for _, ss := range s.SiteSubnets {
 		if p, err := netip.ParsePrefix(ss.CIDR); err == nil {
 			sitePfxs = append(sitePfxs, sitePfx{ss.SiteID, p})
+			routedPrefixes = append(routedPrefixes, p.Masked())
 		}
 	}
 	// siteOwning resolves a destination CIDR to the site whose approved subnet contains it (uuid.Nil =
@@ -525,6 +558,10 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		}
 		owner := userGroups[d.UserID]
 		deviceAgentGroups := agentGroups[d.ID]
+		resolverForSuffix := make(map[string]string)
+		for _, forward := range deviceFQDNForwardsFromSnapshot(s, d.ID, routedPrefixes) {
+			resolverForSuffix[forward.Domain] = forward.ResolverIP
+		}
 		for _, r := range s.Rules {
 			if r.Disabled { // F3: withdrawn allow — contributes no grant (as-if-absent under default-deny)
 				continue
@@ -532,20 +569,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			// Source-subject match (S7.5.4): a "user" rule matches iff this device's
 			// owner IS that user; a "group" rule matches iff the owner is in the group
 			// (the pre-S7.5.4 path, and the default for legacy blank src_kind).
-			var matched bool
-			if r.SrcKind == "agent_group" {
-				matched = deviceAgentGroups[r.SrcAgentGroupID]
-			} else if r.SrcKind == "agent" {
-				// ⛔ EXACTLY ONE DEVICE. An agent IS a peer, so the grant names it directly — naming its
-				// gateway would grant every device homed there, a grant to one agent silently becoming a
-				// grant to everything behind it.
-				matched = r.SrcDeviceID == d.ID
-			} else if r.SrcKind == "user" {
-				matched = r.SrcUserID == d.UserID
-			} else {
-				matched = owner[r.SrcGroupID]
-			}
-			if !matched {
+			if !ruleMatchesDevice(r, d, owner, deviceAgentGroups) {
 				continue
 			}
 			switch r.DstKind {
@@ -571,14 +595,33 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			case "fqdn_resource":
 				resourceID, referenced := fqdnReferenceForRule[r.ID]
 				res, found := fqdnResourceByID[resourceID]
-				generation, answers, active := activeFQDNGeneration(res)
-				if !fqdnEnabled || !referenced || fqdnAmbiguousRule[r.ID] || !found || !active {
+				generation, answers, _, active := activeFQDNGeneration(res)
+				if !fqdnEnabled || !referenced || fqdnAmbiguousRule[r.ID] || !found || !active || !siteGateways[siteGateway{siteID: res.Active.SelectedSiteID, gatewayID: res.Active.SelectedGatewayID}] {
 					continue // missing, ambiguous, inactive, or withdrawn: default deny
 				}
-				for _, node := range devGrantNodes(d.NodeID, uuid.Nil) {
+				// The selected resolver gateway is also the destination-path authority
+				// for both the concrete answer and the DNS query. Both-enforce on the
+				// source edge, active hub, and exact selected gateway.
+				enforceNodes := map[uuid.UUID]bool{d.NodeID: true, res.Active.SelectedGatewayID: true}
+				if hubNode != uuid.Nil {
+					enforceNodes[hubNode] = true
+				}
+				for node := range enforceNodes {
 					addGeneration(node, generation)
 					for _, answer := range answers {
 						add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String(), FQDNManaged: true})
+					}
+					matchedSuffix, _ := normalizeResolverMatchSuffix(res.Active.ResolverMatchSuffix)
+					resolver := ""
+					if resolverIP := resolverForSuffix[matchedSuffix]; resolverIP != "" {
+						if addr, err := netip.ParseAddr(resolverIP); err == nil {
+							resolver = netip.PrefixFrom(addr, addr.BitLen()).String()
+						}
+					}
+					if resolver != "" {
+						for _, proto := range []policyspec.Protocol{policyspec.ProtoUDP, policyspec.ProtoTCP} {
+							addResolverCarriage(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: resolver, Protocol: proto, PortLow: 53, PortHigh: 53, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()})
+						}
 					}
 				}
 			case "group":
@@ -730,10 +773,19 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		case "fqdn_resource":
 			resourceID, referenced := fqdnReferenceForRule[r.ID]
 			res, found := fqdnResourceByID[resourceID]
-			generation, answers, active := activeFQDNGeneration(res)
-			if fqdnEnabled && referenced && !fqdnAmbiguousRule[r.ID] && found && active {
+			generation, answers, resolvers, active := activeFQDNGeneration(res)
+			if fqdnEnabled && referenced && !fqdnAmbiguousRule[r.ID] && found && active && siteGateways[siteGateway{siteID: res.Active.SelectedSiteID, gatewayID: res.Active.SelectedGatewayID}] {
 				for _, answer := range answers {
 					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, FQDNManaged: true})
+				}
+				if resolver, ok := selectFirstReachableResolverAddress(resolvers, routedPrefixes); ok {
+					for _, proto := range []policyspec.Protocol{policyspec.ProtoUDP, policyspec.ProtoTCP} {
+						dsts = append(dsts, policyspec.AllowEntry{DstCIDR: resolver, Protocol: proto, PortLow: 53, PortHigh: 53})
+					}
+				}
+				enforceNodes[res.Active.SelectedGatewayID] = true
+				if hubNode != uuid.Nil {
+					enforceNodes[hubNode] = true
 				}
 				for node := range enforceNodes {
 					addGeneration(node, generation)
@@ -760,7 +812,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		for node := range enforceNodes {
 			for _, sc := range srcCIDRs {
 				for _, d := range dsts {
-					add(node, policyspec.AllowEntry{
+					entry := policyspec.AllowEntry{
 						SrcIP:       sc, // a CIDR — the site LAN source (the v5 content trigger, RequiredVersion)
 						DstCIDR:     d.DstCIDR,
 						Protocol:    d.Protocol,
@@ -768,7 +820,12 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 						PortHigh:    d.PortHigh,
 						RuleID:      r.ID.String(),
 						FQDNManaged: d.FQDNManaged,
-					})
+					}
+					if r.DstKind == "fqdn_resource" && !d.FQDNManaged && d.PortLow == 53 && d.PortHigh == 53 && (d.Protocol == policyspec.ProtoUDP || d.Protocol == policyspec.ProtoTCP) {
+						addResolverCarriage(node, entry)
+					} else {
+						add(node, entry)
+					}
 				}
 			}
 		}
@@ -793,20 +850,20 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 // lifecycle code supplies only selected-context, last-known-good generations; a
 // partial DB read or bad fixture must still withdraw rather than accidentally
 // turn a hostname into a broad CIDR allow.
-func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, bool) {
-	if r.ID == uuid.Nil || r.FQDN == "" || r.Active == nil || r.Active.ResourceID != r.ID || r.Active.SelectedSiteID == uuid.Nil || r.Active.SelectedGatewayID == uuid.Nil || r.Active.ResolverConfigID == uuid.Nil || r.Active.ResolverConfigVersion < 1 || len(r.Active.Answers) == 0 || len(r.Active.Answers) > 32 || !validFQDNL4Scope(r) {
-		return policyspec.FQDNGeneration{}, nil, false
+func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, []string, bool) {
+	if r.ID == uuid.Nil || r.FQDN == "" || r.Active == nil || r.Active.ResourceID != r.ID || r.Active.SelectedSiteID == uuid.Nil || r.Active.SelectedGatewayID == uuid.Nil || r.Active.ResolverConfigID == uuid.Nil || r.Active.ResolverProfileID == uuid.Nil || r.Active.ResolverConfigVersion < 1 || len(r.Active.Answers) == 0 || len(r.Active.Answers) > 32 || len(r.Active.ResolverAddresses) > 1 || !validFQDNL4Scope(r) {
+		return policyspec.FQDNGeneration{}, nil, nil, false
 	}
 	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(r.FQDN), "."))
 	if name == "" || r.FQDN != name {
-		return policyspec.FQDNGeneration{}, nil, false // Lane 1 publishes normalized names only.
+		return policyspec.FQDNGeneration{}, nil, nil, false // Lane 1 publishes normalized names only.
 	}
 	seen := map[string]bool{}
 	answers := make([]string, 0, len(r.Active.Answers))
 	for _, raw := range r.Active.Answers {
 		addr, err := netip.ParseAddr(raw)
 		if err != nil || !usableFQDNAnswer(addr) {
-			return policyspec.FQDNGeneration{}, nil, false
+			return policyspec.FQDNGeneration{}, nil, nil, false
 		}
 		prefix := netip.PrefixFrom(addr, addr.BitLen()).String()
 		if !seen[prefix] {
@@ -815,8 +872,37 @@ func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, 
 		}
 	}
 	sort.Strings(answers)
-	identity := FQDNGenerationIdentityWithResolverConfig(r.ID, name, r.Active.SelectedSiteID, r.Active.SelectedGatewayID, r.Active.ResolverConfigID, r.Active.ResolverConfigVersion, answers)
-	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, ResolverConfigID: r.Active.ResolverConfigID.String(), ResolverConfigVersion: r.Active.ResolverConfigVersion, Answers: answers}, answers, true
+	resolvers := make([]string, 0, len(r.Active.ResolverAddresses))
+	for _, raw := range r.Active.ResolverAddresses {
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil || prefix.Bits() != prefix.Addr().BitLen() || prefix.String() != raw || !usableResolverAddress(prefix.Addr()) {
+			return policyspec.FQDNGeneration{}, nil, nil, false
+		}
+		resolvers = append(resolvers, raw)
+	}
+	matchedSuffix, validSuffix := normalizeResolverMatchSuffix(r.Active.ResolverMatchSuffix)
+	if !validSuffix || (matchedSuffix != "" && name != matchedSuffix && !strings.HasSuffix(name, "."+matchedSuffix)) {
+		return policyspec.FQDNGeneration{}, nil, nil, false
+	}
+	identity := FQDNGenerationIdentityWithResolverConfig(r.ID, name, r.Active.SelectedSiteID, r.Active.SelectedGatewayID, r.Active.ResolverConfigID, r.Active.ResolverProfileID, matchedSuffix, r.Active.ResolverConfigVersion, answers)
+	if identity == "" {
+		return policyspec.FQDNGeneration{}, nil, nil, false
+	}
+	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, ResolverConfigID: r.Active.ResolverConfigID.String(), ResolverConfigVersion: r.Active.ResolverConfigVersion, Answers: answers}, answers, resolvers, true
+}
+
+// normalizeResolverMatchSuffix applies the same IDNA DNS-label normalization as
+// FQDN resources while allowing the one-label private suffixes supported by the
+// resolver profile schema. Empty is the legacy-default provenance marker.
+func normalizeResolverMatchSuffix(raw string) (string, bool) {
+	if raw == "" {
+		return "", true
+	}
+	normalized, err := fqdn.Normalize("resolver-root." + raw)
+	if err != nil || !strings.HasPrefix(normalized, "resolver-root.") {
+		return "", false
+	}
+	return strings.TrimPrefix(normalized, "resolver-root."), true
 }
 
 // FQDNGenerationIdentity binds an immutable generation to its FQDN resource,
@@ -856,9 +942,10 @@ func fqdnGenerationIdentity(resourceID uuid.UUID, fqdn string, siteID, gatewayID
 // active answer generation. This means a configuration revision change cannot
 // be treated as an identical FQDN policy even if its current answers happen to
 // match; old generations are rejected by the snapshot reader until re-resolved.
-func FQDNGenerationIdentityWithResolverConfig(resourceID uuid.UUID, fqdn string, siteID, gatewayID, configID uuid.UUID, configVersion int64, answers []string) string {
+func FQDNGenerationIdentityWithResolverConfig(resourceID uuid.UUID, fqdn string, siteID, gatewayID, configID, profileID uuid.UUID, matchedSuffix string, configVersion int64, answers []string) string {
 	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(fqdn), "."))
-	if resourceID == uuid.Nil || siteID == uuid.Nil || gatewayID == uuid.Nil || configID == uuid.Nil || configVersion < 1 || name == "" || fqdn != name || len(answers) == 0 || len(answers) > 32 {
+	normalizedSuffix, validSuffix := normalizeResolverMatchSuffix(matchedSuffix)
+	if resourceID == uuid.Nil || siteID == uuid.Nil || gatewayID == uuid.Nil || configID == uuid.Nil || profileID == uuid.Nil || configVersion < 1 || name == "" || fqdn != name || !validSuffix || (normalizedSuffix != "" && name != normalizedSuffix && !strings.HasSuffix(name, "."+normalizedSuffix)) || len(answers) == 0 || len(answers) > 32 {
 		return ""
 	}
 	canonical := make([]string, 0, len(answers))
@@ -882,7 +969,7 @@ func FQDNGenerationIdentityWithResolverConfig(resourceID uuid.UUID, fqdn string,
 		}
 	}
 	sort.Strings(canonical)
-	parts := append([]string{resourceID.String(), name, siteID.String(), gatewayID.String(), configID.String(), strconv.FormatInt(configVersion, 10)}, canonical...)
+	parts := append([]string{resourceID.String(), name, siteID.String(), gatewayID.String(), configID.String(), profileID.String(), normalizedSuffix, strconv.FormatInt(configVersion, 10)}, canonical...)
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
 }
@@ -917,6 +1004,13 @@ func usableFQDNAnswer(addr netip.Addr) bool {
 		}
 	}
 	return true
+}
+
+// usableResolverAddress mirrors the persisted direct-endpoint safety boundary.
+// Unlike answer validation, private/documentation ranges are valid here: resolver
+// endpoints are tenant-selected infrastructure, not DNS-derived authorization.
+func usableResolverAddress(addr netip.Addr) bool {
+	return addr.IsValid() && addr.Zone() == "" && !addr.IsLoopback() && !addr.IsLinkLocalUnicast() && !addr.IsMulticast() && !addr.IsUnspecified()
 }
 
 // AgentRouteCIDRs returns canonical destination prefixes present in compiled

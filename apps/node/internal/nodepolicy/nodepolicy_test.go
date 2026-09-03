@@ -36,6 +36,24 @@ func TestCanonicalHashGolden(t *testing.T) {
 	if got := nodepolicy.CanonicalHash(siteSrc); got != "92a15b8df267" {
 		t.Fatalf("v5 site-source golden = %q, want 92a15b8df267 (policyspec twin must match)", got)
 	}
+	// S21 v9 twin: selected resolver configuration provenance is part of the
+	// FQDN generation's enforcement identity. Keep this fixture byte-identical
+	// to policyspec.TestCanonicalHashGolden.
+	fqdn := &nodepolicy.Compiled{
+		Version: 9, NodeID: "node-fqdn", Mode: nodepolicy.ModeEnforcing, Mesh: false,
+		Allow: []nodepolicy.AllowEntry{{
+			SrcIP: "10.99.0.10", DstCIDR: "10.20.0.8/32", Protocol: "tcp",
+			PortLow: 443, PortHigh: 443, FQDNManaged: true,
+		}},
+		FQDNGenerations: []nodepolicy.FQDNGeneration{{
+			ResourceID: "resource-a", Name: "api.internal.tunnex.io", Generation: "generation-a",
+			ResolverConfigID: "66666666-6666-6666-6666-666666666666", ResolverConfigVersion: 3,
+			Answers: []string{"10.20.0.8/32"},
+		}},
+	}
+	if got := nodepolicy.CanonicalHash(fqdn); got != "d02a9bd7f2ff" {
+		t.Fatalf("v9 FQDN provenance golden = %q, want d02a9bd7f2ff (policyspec twin must match)", got)
+	}
 	if nodepolicy.CanonicalHash(nil) != "" {
 		t.Fatal("nil policy must hash to empty (mesh/none)")
 	}
@@ -53,6 +71,20 @@ func TestCanonicalHashSurvivesWireRoundTrip(t *testing.T) {
 	}
 	if got := nodepolicy.CanonicalHash(&c); got != "56814207daee" {
 		t.Fatalf("round-trip hash = %q, want 56814207daee", got)
+	}
+}
+
+func TestFQDNGenerationResolverProvenanceSurvivesWireRoundTrip(t *testing.T) {
+	wire := `{"version":9,"node_id":"node-fqdn","mode":"enforcing","mesh":false,"allow":[{"src_ip":"10.99.0.10","dst_cidr":"10.20.0.8/32","protocol":"tcp","port_low":443,"port_high":443,"fqdn_managed":true}],"fqdn_generations":[{"resource_id":"resource-a","name":"api.internal.tunnex.io","generation":"generation-a","resolver_config_id":"66666666-6666-6666-6666-666666666666","resolver_config_version":3,"answers":["10.20.0.8/32"]}]}`
+	var c nodepolicy.Compiled
+	if err := json.Unmarshal([]byte(wire), &c); err != nil {
+		t.Fatalf("decode FQDN artifact: %v", err)
+	}
+	if len(c.FQDNGenerations) != 1 || c.FQDNGenerations[0].ResolverConfigID != "66666666-6666-6666-6666-666666666666" || c.FQDNGenerations[0].ResolverConfigVersion != 3 {
+		t.Fatalf("agent dropped selected resolver configuration provenance: %+v", c.FQDNGenerations)
+	}
+	if got := nodepolicy.CanonicalHash(&c); got != "d02a9bd7f2ff" {
+		t.Fatalf("FQDN wire round-trip hash = %q, want d02a9bd7f2ff", got)
 	}
 }
 
