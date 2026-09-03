@@ -283,7 +283,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { persist-credentials: false }
-      - uses: ossf/scorecard-action@v2.4.0
+      # v2.4.0 points at gcr.io, whose anonymous pulls now fail with a Google
+      # Cloud billing error. v2.4.4 publishes the action image from GHCR.
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         continue-on-error: true # ADVISORY: the SCORE doesn't block; the job still has to run (O-1)
         with: { results_file: scorecard.sarif, results_format: sarif, publish_results: false }
       - name: Assert the scan actually produced results
