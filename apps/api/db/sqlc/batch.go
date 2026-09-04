@@ -8,7 +8,6 @@ package sqlc
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,111 +17,6 @@ import (
 var (
 	ErrBatchAlreadyClosed = errors.New("batch already closed")
 )
-
-const insertAccessEventBatch = `-- name: InsertAccessEventBatch :batchexec
-INSERT INTO access_events (
-    id, org_id, seq, node_id, occurred_at, decision, rule_id,
-    src_device_id, src_user_id, src_ip, dst_ip, dst_resource_id, dst_group_id,
-    protocol, dst_port, deny_count, window_end, created_at,
-    policy_hash, policy_version, src_config_revision, src_kind, decision_reason
-) VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11, $12, $13,
-    $14, $15, $16, $17, $18,
-    $19, $20, $21, $22, $23
-)
-`
-
-type InsertAccessEventBatchBatchResults struct {
-	br     pgx.BatchResults
-	tot    int
-	closed bool
-}
-
-type InsertAccessEventBatchParams struct {
-	ID                uuid.UUID          `json:"id"`
-	OrgID             uuid.UUID          `json:"org_id"`
-	Seq               int64              `json:"seq"`
-	NodeID            pgtype.UUID        `json:"node_id"`
-	OccurredAt        time.Time          `json:"occurred_at"`
-	Decision          string             `json:"decision"`
-	RuleID            pgtype.UUID        `json:"rule_id"`
-	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
-	SrcUserID         pgtype.UUID        `json:"src_user_id"`
-	SrcIp             string             `json:"src_ip"`
-	DstIp             string             `json:"dst_ip"`
-	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
-	Protocol          string             `json:"protocol"`
-	DstPort           *int32             `json:"dst_port"`
-	DenyCount         int32              `json:"deny_count"`
-	WindowEnd         pgtype.Timestamptz `json:"window_end"`
-	CreatedAt         time.Time          `json:"created_at"`
-	PolicyHash        *string            `json:"policy_hash"`
-	PolicyVersion     *int32             `json:"policy_version"`
-	SrcConfigRevision *int64             `json:"src_config_revision"`
-	SrcKind           *string            `json:"src_kind"`
-	DecisionReason    *string            `json:"decision_reason"`
-}
-
-// The hot ingest path (review fold-2 #6): pipeline a whole batch's inserts in ONE round trip
-// instead of N sequential Execs, so the process-global ingest mutex is held for far less time.
-// Same plain insert as InsertAccessEvent (seq is unique via the counter; the unique index is
-// the fail-LOUD backstop).
-func (q *Queries) InsertAccessEventBatch(ctx context.Context, arg []InsertAccessEventBatchParams) *InsertAccessEventBatchBatchResults {
-	batch := &pgx.Batch{}
-	for _, a := range arg {
-		vals := []interface{}{
-			a.ID,
-			a.OrgID,
-			a.Seq,
-			a.NodeID,
-			a.OccurredAt,
-			a.Decision,
-			a.RuleID,
-			a.SrcDeviceID,
-			a.SrcUserID,
-			a.SrcIp,
-			a.DstIp,
-			a.DstResourceID,
-			a.DstGroupID,
-			a.Protocol,
-			a.DstPort,
-			a.DenyCount,
-			a.WindowEnd,
-			a.CreatedAt,
-			a.PolicyHash,
-			a.PolicyVersion,
-			a.SrcConfigRevision,
-			a.SrcKind,
-			a.DecisionReason,
-		}
-		batch.Queue(insertAccessEventBatch, vals...)
-	}
-	br := q.db.SendBatch(ctx, batch)
-	return &InsertAccessEventBatchBatchResults{br, len(arg), false}
-}
-
-func (b *InsertAccessEventBatchBatchResults) Exec(f func(int, error)) {
-	defer b.br.Close()
-	for t := 0; t < b.tot; t++ {
-		if b.closed {
-			if f != nil {
-				f(t, ErrBatchAlreadyClosed)
-			}
-			continue
-		}
-		_, err := b.br.Exec()
-		if f != nil {
-			f(t, err)
-		}
-	}
-}
-
-func (b *InsertAccessEventBatchBatchResults) Close() error {
-	b.closed = true
-	return b.br.Close()
-}
 
 const upsertDeviceStatus = `-- name: UpsertDeviceStatus :batchexec
 INSERT INTO device_status (device_id, last_handshake_at, rx_bytes, tx_bytes, updated_at)

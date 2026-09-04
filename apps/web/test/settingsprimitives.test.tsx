@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import { Link, MemoryRouter } from "react-router-dom";
 import {
+  Button,
   PageHeader,
   Section,
   SettingRow,
@@ -54,6 +56,81 @@ describe("SettingRow", () => {
     );
     expect(screen.getByRole("switch", { name: "Its own name" })).toBeTruthy();
     expect(screen.queryByRole("switch", { name: "Row label" })).toBeNull();
+  });
+
+  it("keeps a visible action name and associates the row as its description", () => {
+    render(
+      <SettingRow label="Run pruning now">
+        <Button variant="ghost">Review manual prune</Button>
+      </SettingRow>,
+    );
+
+    const action = screen.getByRole("button", { name: "Review manual prune" });
+    const descriptionId = action.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    expect(document.getElementById(descriptionId ?? "")?.textContent).toBe(
+      "Run pruning now",
+    );
+    expect(screen.queryByRole("button", { name: "Run pruning now" })).toBeNull();
+  });
+
+  it("keeps a direct Link's visible name and describes it with the row", () => {
+    render(
+      <MemoryRouter>
+        <SettingRow label="Access-event evidence">
+          <Link to="/access-events">View Access Events</Link>
+        </SettingRow>
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", { name: "View Access Events" });
+    expect(link.getAttribute("href")).toBe("/access-events");
+    expect(
+      document.getElementById(link.getAttribute("aria-describedby") ?? "")
+        ?.textContent,
+    ).toBe("Access-event evidence");
+  });
+
+  it("does not replace the names of actions nested in a wrapper", () => {
+    render(
+      <SettingRow label="Access-event retention">
+        <div data-testid="row-actions">
+          <span>30 days</span>
+          <Button variant="ghost">Edit policy</Button>
+        </div>
+      </SettingRow>,
+    );
+
+    expect(screen.getByRole("button", { name: "Edit policy" })).toBeTruthy();
+    const wrapperLabelId = screen
+      .getByTestId("row-actions")
+      .getAttribute("aria-labelledby");
+    expect(document.getElementById(wrapperLabelId ?? "")?.textContent).toBe(
+      "Access-event retention",
+    );
+  });
+
+  it("preserves an action's existing descriptions when adding the row", () => {
+    render(
+      <>
+        <p id="request-warning">Deletes eligible evidence.</p>
+        <SettingRow label="Run pruning now">
+          <Button variant="ghost" aria-describedby="request-warning">
+            Review manual prune
+          </Button>
+        </SettingRow>
+      </>,
+    );
+
+    const action = screen.getByRole("button", { name: "Review manual prune" });
+    const descriptionIds =
+      action.getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(descriptionIds).toContain("request-warning");
+    expect(
+      descriptionIds.some(
+        (id) => document.getElementById(id)?.textContent === "Run pruning now",
+      ),
+    ).toBe(true);
   });
 
   it("carries non-element children through untouched", () => {

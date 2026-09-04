@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 
@@ -11,7 +11,6 @@ import {
   Input,
   Loading,
   Modal,
-  SettingDialogRow,
   SettingRow,
   SettingValue,
 } from "./ui";
@@ -23,6 +22,12 @@ export const CLEANUP_INTERVAL_MINUTES_MAX = 1440;
 
 type RetentionRun = components["schemas"]["AccessEventRetentionRun"];
 type Notice = { text: string; tone: "success" | "danger" };
+type PruneRequestState = {
+  key: string;
+  inFlight: boolean;
+  outcomeUnknown: boolean;
+  error: string | null;
+};
 
 export type AccessEventRetentionResource =
   components["schemas"]["AccessEventRetention"];
@@ -81,22 +86,6 @@ function integerInRange(
   return Number.isSafeInteger(value) && value >= minimum && value <= maximum
     ? value
     : null;
-}
-
-function validationMessage(days: string, interval: string): string | null {
-  if (integerInRange(days, RETENTION_DAYS_MIN, RETENTION_DAYS_MAX) === null) {
-    return `Retention must be a whole number from ${RETENTION_DAYS_MIN} to ${RETENTION_DAYS_MAX} days.`;
-  }
-  if (
-    integerInRange(
-      interval,
-      CLEANUP_INTERVAL_MINUTES_MIN,
-      CLEANUP_INTERVAL_MINUTES_MAX,
-    ) === null
-  ) {
-    return `Cleanup interval must be a whole number from ${CLEANUP_INTERVAL_MINUTES_MIN} to ${CLEANUP_INTERVAL_MINUTES_MAX} minutes.`;
-  }
-  return null;
 }
 
 function formatInterval(minutes: number): string {
@@ -164,6 +153,7 @@ export function AccessEventRetentionSettings({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retentionDays, setRetentionDays] = useState("");
   const [cleanupInterval, setCleanupInterval] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveConflict, setSaveConflict] = useState(false);
@@ -171,11 +161,29 @@ export function AccessEventRetentionSettings({
   const [confirmPrune, setConfirmPrune] = useState(false);
   const [pruneBusy, setPruneBusy] = useState(false);
   const [pruneError, setPruneError] = useState<string | null>(null);
+  const [pruneOutcomeUnknown, setPruneOutcomeUnknown] = useState(false);
   const loadRequest = useRef(0);
   const activeOrgId = useRef(orgId);
   activeOrgId.current = orgId;
-  const pruneInFlight = useRef(false);
-  const pruneKey = useRef<string | null>(null);
+  const pruneRequests = useRef(new Map<string, PruneRequestState>());
+  const retentionDaysErrorId = useId();
+  const cleanupIntervalErrorId = useId();
+
+  function showPruneRequest(next: PruneRequestState | undefined) {
+    setPruneBusy(next?.inFlight ?? false);
+    setPruneError(next?.error ?? null);
+    setPruneOutcomeUnknown(next?.outcomeUnknown ?? false);
+  }
+
+  function storePruneRequest(targetOrgId: string, next: PruneRequestState) {
+    pruneRequests.current.set(targetOrgId, next);
+    if (activeOrgId.current === targetOrgId) showPruneRequest(next);
+  }
+
+  function clearPruneRequest(targetOrgId: string) {
+    pruneRequests.current.delete(targetOrgId);
+    if (activeOrgId.current === targetOrgId) showPruneRequest(undefined);
+  }
 
   const applyResource = useCallback((next: AccessEventRetentionResource) => {
     setResource(next);
@@ -185,6 +193,7 @@ export function AccessEventRetentionSettings({
 
   const load = useCallback(async () => {
     const request = ++loadRequest.current;
+    setEditorOpen(false);
     setLoading(true);
     setLoadError(null);
     setResource(null);
@@ -214,20 +223,16 @@ export function AccessEventRetentionSettings({
   }, [applyResource, orgId]);
 
   useEffect(() => {
+    setEditorOpen(false);
     setSaveBusy(false);
     setConfirmPrune(false);
-    setPruneBusy(false);
-    setPruneError(null);
-    pruneInFlight.current = false;
-    pruneKey.current = null;
+    showPruneRequest(pruneRequests.current.get(orgId));
     void load();
     return () => {
       loadRequest.current += 1;
-      pruneInFlight.current = false;
     };
   }, [load]);
 
-  const draftError = validationMessage(retentionDays, cleanupInterval);
   const parsedDays = integerInRange(
     retentionDays,
     RETENTION_DAYS_MIN,
@@ -238,12 +243,38 @@ export function AccessEventRetentionSettings({
     CLEANUP_INTERVAL_MINUTES_MIN,
     CLEANUP_INTERVAL_MINUTES_MAX,
   );
+  const retentionDaysError =
+    parsedDays === null
+      ? `Retention must be a whole number from ${RETENTION_DAYS_MIN} to ${RETENTION_DAYS_MAX} days.`
+      : null;
+  const cleanupIntervalError =
+    parsedInterval === null
+      ? `Cleanup interval must be a whole number from ${CLEANUP_INTERVAL_MINUTES_MIN} to ${CLEANUP_INTERVAL_MINUTES_MAX} minutes.`
+      : null;
+  const draftError = retentionDaysError ?? cleanupIntervalError;
   const changed =
     resource !== null &&
     (parsedDays !== resource.retention_days ||
       parsedInterval !== resource.cleanup_interval_minutes);
 
-  async function save(onDone: () => void) {
+  function resetDraft() {
+    if (resource) applyResource(resource);
+    setSaveError(null);
+    setSaveConflict(false);
+  }
+
+  function openEditor() {
+    resetDraft();
+    setEditorOpen(true);
+  }
+
+  function dismissEditor() {
+    if (saveBusy) return;
+    resetDraft();
+    setEditorOpen(false);
+  }
+
+  async function save() {
     if (!resource || parsedDays === null || parsedInterval === null) return;
     const requestedOrgId = orgId;
     setSaveBusy(true);
@@ -276,7 +307,7 @@ export function AccessEventRetentionSettings({
         text: "Access-event retention policy saved.",
         tone: "success",
       });
-      onDone();
+      setEditorOpen(false);
     } catch {
       if (activeOrgId.current === requestedOrgId) {
         setSaveError("Could not reach the API. The retention policy was not confirmed.");
@@ -287,36 +318,65 @@ export function AccessEventRetentionSettings({
   }
 
   function openPruneConfirmation() {
-    if (!pruneKey.current) pruneKey.current = newIdempotencyKey();
-    setPruneError(null);
+    const existing = pruneRequests.current.get(orgId);
+    const next =
+      existing ?? {
+        key: newIdempotencyKey(),
+        inFlight: false,
+        outcomeUnknown: false,
+        error: null,
+      };
+    storePruneRequest(orgId, next);
     setConfirmPrune(true);
   }
 
   function dismissPrune() {
     if (pruneBusy) return;
     setConfirmPrune(false);
-    setPruneError(null);
-    pruneKey.current = null;
+    const request = pruneRequests.current.get(orgId);
+    if (!request?.outcomeUnknown) {
+      clearPruneRequest(orgId);
+    }
+  }
+
+  function startNewPruneRequest() {
+    if (pruneBusy) return;
+    storePruneRequest(orgId, {
+      key: newIdempotencyKey(),
+      inFlight: false,
+      outcomeUnknown: false,
+      error: null,
+    });
   }
 
   async function runPrune() {
-    if (pruneInFlight.current) return;
-    const idempotencyKey = pruneKey.current ?? newIdempotencyKey();
     const requestedOrgId = orgId;
-    pruneKey.current = idempotencyKey;
-    pruneInFlight.current = true;
-    setPruneBusy(true);
-    setPruneError(null);
+    const existing = pruneRequests.current.get(requestedOrgId);
+    if (existing?.inFlight) return;
+    const idempotencyKey = existing?.key ?? newIdempotencyKey();
+    storePruneRequest(requestedOrgId, {
+      key: idempotencyKey,
+      inFlight: true,
+      outcomeUnknown: false,
+      error: null,
+    });
     setNotice(null);
     try {
       const result = await pruneRetention(requestedOrgId, idempotencyKey);
-      if (activeOrgId.current !== requestedOrgId) return;
       if (result.error || !result.data) {
-        setPruneError(
-          apiErrorMessage(result.error, "Could not run access-event pruning."),
-        );
+        storePruneRequest(requestedOrgId, {
+          key: idempotencyKey,
+          inFlight: false,
+          outcomeUnknown: true,
+          error: apiErrorMessage(
+            result.error,
+            "Could not run access-event pruning.",
+          ),
+        });
         return;
       }
+      clearPruneRequest(requestedOrgId);
+      if (activeOrgId.current !== requestedOrgId) return;
       applyResource(result.data.retention);
       const lastRun = result.data.run;
       if (lastRun.status === "failed") {
@@ -335,16 +395,14 @@ export function AccessEventRetentionSettings({
         });
       }
       setConfirmPrune(false);
-      pruneKey.current = null;
     } catch {
-      if (activeOrgId.current === requestedOrgId) {
-        setPruneError("Could not reach the API. The pruning outcome is unknown; retry uses the same request key.");
-      }
-    } finally {
-      if (activeOrgId.current === requestedOrgId) {
-        pruneInFlight.current = false;
-        setPruneBusy(false);
-      }
+      storePruneRequest(requestedOrgId, {
+        key: idempotencyKey,
+        inFlight: false,
+        outcomeUnknown: true,
+        error:
+          "Could not reach the API. The pruning outcome is unknown; retry uses the same request key.",
+      });
     }
   }
 
@@ -372,71 +430,112 @@ export function AccessEventRetentionSettings({
 
   return (
     <>
-      <SettingDialogRow
+      <SettingRow
         label="Access-event retention"
         description="Events older than this ingest-time window become eligible for pruning. The row target is an independent bounded-cleanup threshold."
-        value={
+      >
+        <div className="flex items-center gap-3">
           <SettingValue>
             {resource.retention_days} days · every {formatInterval(resource.cleanup_interval_minutes)}
           </SettingValue>
-        }
-        actionLabel="Edit policy"
-        dialogTitle="Edit access-event retention"
-        disabled={!canEdit || saveBusy}
-        actions={(close) => (
-          <>
-            <Button variant="ghost" disabled={saveBusy} onClick={close}>
-              Cancel
-            </Button>
-            <Button
-              disabled={saveBusy || Boolean(draftError) || !changed}
-              onClick={() => void save(close)}
-            >
-              {saveBusy ? "Saving…" : "Save retention policy"}
-            </Button>
-          </>
-        )}
-      >
-        {() => (
+          <Button
+            variant="ghost"
+            disabled={!canEdit || saveBusy}
+            onClick={openEditor}
+          >
+            Edit policy
+          </Button>
+        </div>
+      </SettingRow>
+
+      {editorOpen && (
+        <Modal
+          title="Edit access-event retention"
+          onDismiss={dismissEditor}
+          actions={
+            <>
+              <Button variant="ghost" disabled={saveBusy} onClick={dismissEditor}>
+                Cancel
+              </Button>
+              <Button
+                disabled={saveBusy || Boolean(draftError) || !changed}
+                onClick={() => void save()}
+              >
+                {saveBusy ? "Saving…" : "Save retention policy"}
+              </Button>
+            </>
+          }
+        >
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Retention duration (days)">
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={RETENTION_DAYS_MIN}
-                  max={RETENTION_DAYS_MAX}
-                  step={1}
-                  value={retentionDays}
-                  disabled={saveBusy}
-                  onChange={(event) => {
-                    setRetentionDays(event.target.value);
-                    setSaveError(null);
-                    setSaveConflict(false);
-                  }}
-                />
-              </Field>
-              <Field label="Cleanup interval (minutes)">
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={CLEANUP_INTERVAL_MINUTES_MIN}
-                  max={CLEANUP_INTERVAL_MINUTES_MAX}
-                  step={1}
-                  value={cleanupInterval}
-                  disabled={saveBusy}
-                  onChange={(event) => {
-                    setCleanupInterval(event.target.value);
-                    setSaveError(null);
-                    setSaveConflict(false);
-                  }}
-                />
-              </Field>
+              <div>
+                <Field label="Retention duration (days)">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={RETENTION_DAYS_MIN}
+                    max={RETENTION_DAYS_MAX}
+                    step={1}
+                    value={retentionDays}
+                    disabled={saveBusy}
+                    aria-invalid={Boolean(retentionDaysError)}
+                    aria-describedby={
+                      retentionDaysError ? retentionDaysErrorId : undefined
+                    }
+                    onChange={(event) => {
+                      setRetentionDays(event.target.value);
+                      setSaveError(null);
+                      setSaveConflict(false);
+                    }}
+                  />
+                </Field>
+                {retentionDaysError && (
+                  <p
+                    id={retentionDaysErrorId}
+                    role="alert"
+                    className="mt-1 text-xs text-danger"
+                  >
+                    {retentionDaysError}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Field label="Cleanup interval (minutes)">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={CLEANUP_INTERVAL_MINUTES_MIN}
+                    max={CLEANUP_INTERVAL_MINUTES_MAX}
+                    step={1}
+                    value={cleanupInterval}
+                    disabled={saveBusy}
+                    aria-invalid={Boolean(cleanupIntervalError)}
+                    aria-describedby={
+                      cleanupIntervalError
+                        ? cleanupIntervalErrorId
+                        : undefined
+                    }
+                    onChange={(event) => {
+                      setCleanupInterval(event.target.value);
+                      setSaveError(null);
+                      setSaveConflict(false);
+                    }}
+                  />
+                </Field>
+                {cleanupIntervalError && (
+                  <p
+                    id={cleanupIntervalErrorId}
+                    role="alert"
+                    className="mt-1 text-xs text-danger"
+                  >
+                    {cleanupIntervalError}
+                  </p>
+                )}
+              </div>
             </div>
             <p className="text-xs text-ink-tertiary">
               Shortening retention does not flush the table immediately. It makes older rows eligible for the next scheduled or manual policy-bound prune.
             </p>
-            <ErrorText>{draftError}</ErrorText>
             <ErrorText>{saveError}</ErrorText>
             {saveConflict && (
               <Button size="sm" variant="ghost" disabled={saveBusy} onClick={() => void load()}>
@@ -444,8 +543,8 @@ export function AccessEventRetentionSettings({
               </Button>
             )}
           </div>
-        )}
-      </SettingDialogRow>
+        </Modal>
+      )}
 
       <SettingRow
         label="Database pruning target"
@@ -521,6 +620,15 @@ export function AccessEventRetentionSettings({
               <Button variant="ghost" disabled={pruneBusy} onClick={dismissPrune}>
                 Cancel
               </Button>
+              {pruneOutcomeUnknown && (
+                <Button
+                  variant="ghost"
+                  disabled={pruneBusy}
+                  onClick={startNewPruneRequest}
+                >
+                  Start new prune request
+                </Button>
+              )}
               <Button variant="danger" disabled={pruneBusy} onClick={() => void runPrune()}>
                 {pruneBusy ? "Pruning…" : pruneError ? "Retry pruning" : "Run policy-bound prune"}
               </Button>
@@ -532,6 +640,11 @@ export function AccessEventRetentionSettings({
               The server will delete only this organization’s events that are older than {resource.retention_days} days or exceed its {resource.row_cap.toLocaleString()}-row cap. Work is limited to server-controlled batches.
             </p>
             <p>This action cannot choose a different cutoff and cannot flush every event.</p>
+            {pruneOutcomeUnknown && (
+              <p role="status">
+                Retrying reuses the previous request key so the server cannot start a duplicate run. Starting a new request explicitly abandons that protection.
+              </p>
+            )}
             <ErrorText>{pruneError}</ErrorText>
           </div>
         </Modal>

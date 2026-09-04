@@ -215,6 +215,40 @@ func TestScheduledPruneRequiresExplicitBoundedPolicy(t *testing.T) {
 	}
 }
 
+func TestExpiredAuditRetentionLeaseCannotBeRenewed(t *testing.T) {
+	pool, service, org, actor := retentionFixture(t)
+	ctx := context.Background()
+	if _, err := service.SetSettings(ctx, org, actor, SettingsInput{
+		RetentionDays: days(30), CleanupIntervalMinutes: 60, ExpectedRevision: 0,
+	}); err != nil {
+		t.Fatalf("save bounded audit retention policy: %v", err)
+	}
+	q := sqlc.New(pool)
+	run, err := q.InsertScheduledAuditLogRetentionRun(ctx, sqlc.InsertScheduledAuditLogRetentionRunParams{
+		OrgID: org, RetentionDays: 30, CleanupIntervalMinutes: 60,
+		SettingsRevision: 1, BatchSize: RetentionBatchSize, MaxBatches: RetentionMaxBatches,
+	})
+	if err != nil {
+		t.Fatalf("create audit retention claim: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		WITH db_clock AS MATERIALIZED (SELECT clock_timestamp() AS now_at)
+		UPDATE audit_log_retention_runs
+		SET started_at=db_clock.now_at - interval '1 hour',
+		    cutoff_at=db_clock.now_at - interval '1 hour'
+		        - retention_days * interval '24 hours',
+		    lease_expires_at=db_clock.now_at - interval '1 second'
+		FROM db_clock
+		WHERE id=$1`, run.ID); err != nil {
+		t.Fatalf("expire audit retention claim: %v", err)
+	}
+	if renewed, err := q.RenewAuditLogRetentionRunLease(ctx, sqlc.RenewAuditLogRetentionRunLeaseParams{
+		ID: run.ID, OrgID: org,
+	}); err != nil || renewed != 0 {
+		t.Fatalf("expired audit retention renewal affected %d rows: %v", renewed, err)
+	}
+}
+
 func TestScheduledRunHistoryIsBoundedWithoutEvictingManualIdempotency(t *testing.T) {
 	pool, _, org, actor := retentionFixture(t)
 	ctx := context.Background()

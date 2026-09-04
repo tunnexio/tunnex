@@ -27,14 +27,17 @@ let current = retention();
 let getMode: "success" | "error" | "reject" = "success";
 let conflictOnce = false;
 let postFailures = 0;
+let postRejects = 0;
 let postRunStatus: "succeeded" | "failed" = "succeeded";
 let postOutcomeRun: RetentionRun | null = null;
 let postReplayed = false;
 let deferGets = false;
+let deferPosts = false;
 const deferredGets = new Map<
   string,
   (result: { data: AccessEventRetentionResource }) => void
 >();
+const deferredPosts = new Map<string, () => void>();
 
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>(
@@ -106,9 +109,17 @@ vi.mock("../src/lib/api", async () => {
       POST: vi.fn(
         async (
           path: string,
-          _request: { body?: { idempotency_key?: string } },
+          request: {
+            params?: { path?: { orgId?: string } };
+            body?: { idempotency_key?: string };
+          },
         ) => {
           expect(path).toBe(PRUNE_PATH);
+          const orgId = request.params?.path?.orgId ?? "";
+          if (postRejects > 0) {
+            postRejects -= 1;
+            throw new Error("offline");
+          }
           if (postFailures > 0) {
             postFailures -= 1;
             return {
@@ -120,26 +131,34 @@ vi.mock("../src/lib/api", async () => {
               },
             };
           }
-          const run: RetentionRun =
-            postOutcomeRun ?? {
-              id: "run-1",
-              trigger: "manual",
-              status: postRunStatus,
-              started_at: "2026-09-03T00:00:00Z",
-              completed_at: "2026-09-03T00:00:02Z",
-              deleted_rows: postRunStatus === "failed" ? 12 : 42,
-              batches: 2,
-              more_pending: false,
-              ...(postRunStatus === "failed"
-                ? { error_code: "database_timeout" }
-                : {}),
+          const complete = () => {
+            const run: RetentionRun =
+              postOutcomeRun ?? {
+                id: `run-${orgId}`,
+                trigger: "manual",
+                status: postRunStatus,
+                started_at: "2026-09-03T00:00:00Z",
+                completed_at: "2026-09-03T00:00:02Z",
+                deleted_rows: postRunStatus === "failed" ? 12 : 42,
+                batches: 2,
+                more_pending: false,
+                ...(postRunStatus === "failed"
+                  ? { error_code: "database_timeout" }
+                  : {}),
+              };
+            if (!postOutcomeRun) {
+              current = retention({ ...current, last_run: run });
+            }
+            return {
+              data: { retention: current, run, replayed: postReplayed },
             };
-          if (!postOutcomeRun) {
-            current = retention({ ...current, last_run: run });
-          }
-          return {
-            data: { retention: current, run, replayed: postReplayed },
           };
+          if (deferPosts) {
+            return new Promise<ReturnType<typeof complete>>((resolve) => {
+              deferredPosts.set(orgId, () => resolve(complete()));
+            });
+          }
+          return complete();
         },
       ),
     },
@@ -162,11 +181,14 @@ beforeEach(() => {
   getMode = "success";
   conflictOnce = false;
   postFailures = 0;
+  postRejects = 0;
   postRunStatus = "succeeded";
   postOutcomeRun = null;
   postReplayed = false;
   deferGets = false;
+  deferPosts = false;
   deferredGets.clear();
+  deferredPosts.clear();
   vi.mocked(api.GET).mockClear();
   vi.mocked(api.PUT).mockClear();
   vi.mocked(api.POST).mockClear();
@@ -180,7 +202,7 @@ describe("access-event retention settings", () => {
 
     expect(await screen.findByText(/30 days · every 1 hour/i)).toBeTruthy();
     expect(screen.getByText("500,000 rows")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Access-event evidence" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: "View Access Events" }).getAttribute("href")).toBe(
       "/access-events",
     );
 
@@ -216,7 +238,10 @@ describe("access-event retention settings", () => {
     fireEvent.change(screen.getByLabelText("Retention duration (days)"), {
       target: { value: "0" },
     });
-    expect(screen.getByText(/whole number from 1 to 3650 days/i)).toBeTruthy();
+    const daysInput = screen.getByLabelText("Retention duration (days)");
+    const daysError = screen.getByText(/whole number from 1 to 3650 days/i);
+    expect(daysInput.getAttribute("aria-invalid")).toBe("true");
+    expect(daysInput.getAttribute("aria-describedby")).toBe(daysError.id);
     expect(
       screen.getByRole("button", { name: "Save retention policy" }).hasAttribute("disabled"),
     ).toBe(true);
@@ -227,7 +252,61 @@ describe("access-event retention settings", () => {
     fireEvent.change(screen.getByLabelText("Cleanup interval (minutes)"), {
       target: { value: "1441" },
     });
-    expect(screen.getByText(/whole number from 5 to 1440 minutes/i)).toBeTruthy();
+    const intervalInput = screen.getByLabelText("Cleanup interval (minutes)");
+    const intervalError = screen.getByText(/whole number from 5 to 1440 minutes/i);
+    expect(intervalInput.getAttribute("aria-invalid")).toBe("true");
+    expect(intervalInput.getAttribute("aria-describedby")).toBe(intervalError.id);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("resets canceled, escaped, and backdrop-dismissed drafts and validation", async () => {
+    render(view());
+    await screen.findByText(/30 days · every 1 hour/i);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    fireEvent.change(screen.getByLabelText("Retention duration (days)"), {
+      target: { value: "45" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.queryByRole("dialog", { name: "Edit access-event retention" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    expect(
+      (screen.getByLabelText("Retention duration (days)") as HTMLInputElement)
+        .value,
+    ).toBe("30");
+    fireEvent.change(screen.getByLabelText("Retention duration (days)"), {
+      target: { value: "0" },
+    });
+    fireEvent.keyDown(screen.getByLabelText("Retention duration (days)"), {
+      key: "Escape",
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Edit access-event retention" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    const daysInput = screen.getByLabelText(
+      "Retention duration (days)",
+    ) as HTMLInputElement;
+    expect(daysInput.value).toBe("30");
+    expect(daysInput.getAttribute("aria-invalid")).toBe("false");
+    expect(screen.queryByText(/whole number from 1 to 3650 days/i)).toBeNull();
+    fireEvent.change(daysInput, { target: { value: "60" } });
+    fireEvent.click(
+      screen.getByRole("dialog", { name: "Edit access-event retention" }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Edit access-event retention" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
+    expect(
+      (screen.getByLabelText("Retention duration (days)") as HTMLInputElement)
+        .value,
+    ).toBe("30");
     expect(api.PUT).not.toHaveBeenCalled();
   });
 
@@ -262,16 +341,20 @@ describe("access-event retention settings", () => {
     expect(requests.map((request) => request.expected_revision)).toEqual([7, 8]);
   });
 
-  it("retries manual policy-only pruning with the same idempotency key", async () => {
+  it("keeps the same request key across dismissal after a resolved API error", async () => {
     postFailures = 1;
     render(view());
     await screen.findByText(/30 days · every 1 hour/i);
-    fireEvent.click(screen.getByRole("button", { name: "Run pruning now" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
 
     expect(screen.getByRole("dialog", { name: "Run access-event pruning now?" })).toBeTruthy();
     expect(screen.getByText(/older than 30 days or exceed its 500,000-row cap/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
     expect(await screen.findByText("Prune unavailable")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    expect(screen.getByText(/retrying reuses the previous request key/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry pruning" }));
     expect(await screen.findByText(/42 rows deleted in 2 batches/i)).toBeTruthy();
 
@@ -284,11 +367,190 @@ describe("access-event retention settings", () => {
     expect(calls[1][1].body).toEqual(calls[0][1].body);
   });
 
+  it("keeps an unknown-outcome request key across dismiss and reopen", async () => {
+    postRejects = 1;
+    render(view());
+    await screen.findByText(/30 days · every 1 hour/i);
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
+
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    const firstBody = (vi.mocked(api.POST).mock.calls[0][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    expect(screen.getByText(/retrying reuses the previous request key/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry pruning" }));
+    expect(await screen.findByText(/42 rows deleted in 2 batches/i)).toBeTruthy();
+    const secondBody = (vi.mocked(api.POST).mock.calls[1][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(secondBody).toEqual(firstBody);
+  });
+
+  it("changes an unknown-outcome key only through the explicit new-request action", async () => {
+    postRejects = 1;
+    render(view());
+    await screen.findByText(/30 days · every 1 hour/i);
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    const firstBody = (vi.mocked(api.POST).mock.calls[0][1] as {
+      body: { idempotency_key: string };
+    }).body;
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start new prune request" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
+    await screen.findByText(/42 rows deleted in 2 batches/i);
+    const secondBody = (vi.mocked(api.POST).mock.calls[1][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(secondBody.idempotency_key).not.toBe(firstBody.idempotency_key);
+  });
+
+  it("keeps in-flight request keys and locks isolated across organization switches", async () => {
+    deferPosts = true;
+    const rendered = render(view("org-a"));
+    await screen.findByText(/30 days · every 1 hour/i);
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(1));
+    const firstBody = (vi.mocked(api.POST).mock.calls[0][1] as {
+      body: { idempotency_key: string };
+    }).body;
+
+    rendered.rerender(view("org-b"));
+    await waitFor(() => {
+      const calls = vi.mocked(api.GET).mock.calls;
+      expect(
+        (calls[calls.length - 1][1] as { params: { path: { orgId: string } } })
+          .params.path.orgId,
+      ).toBe("org-b");
+      expect(
+        screen
+          .getByRole("button", { name: "Review manual prune" })
+          .hasAttribute("disabled"),
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(2));
+    const secondBody = (vi.mocked(api.POST).mock.calls[1][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(secondBody.idempotency_key).not.toBe(firstBody.idempotency_key);
+
+    rendered.rerender(view("org-a"));
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole("button", { name: "Review manual prune" })
+          .hasAttribute("disabled"),
+      ).toBe(true);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    expect(api.POST).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      deferredPosts.get("org-a")?.();
+    });
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Review manual prune" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
+
+    rendered.rerender(view("org-b"));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Review manual prune" })
+          .hasAttribute("disabled"),
+      ).toBe(true),
+    );
+    await act(async () => {
+      deferredPosts.get("org-b")?.();
+    });
+  });
+
+  it("restores each organization's unknown-outcome key after A to B to A switches", async () => {
+    postRejects = 2;
+    const rendered = render(view("org-a"));
+    await screen.findByText(/30 days · every 1 hour/i);
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    rendered.rerender(view("org-b"));
+    await waitFor(() => {
+      const calls = vi.mocked(api.GET).mock.calls;
+      expect(
+        (calls[calls.length - 1][1] as { params: { path: { orgId: string } } })
+          .params.path.orgId,
+      ).toBe("org-b");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    const firstBody = (vi.mocked(api.POST).mock.calls[0][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    const secondBody = (vi.mocked(api.POST).mock.calls[1][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(secondBody.idempotency_key).not.toBe(firstBody.idempotency_key);
+
+    rendered.rerender(view("org-a"));
+    await waitFor(() => {
+      const calls = vi.mocked(api.GET).mock.calls;
+      expect(
+        (calls[calls.length - 1][1] as { params: { path: { orgId: string } } })
+          .params.path.orgId,
+      ).toBe("org-a");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    expect(screen.getByRole("button", { name: "Retry pruning" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry pruning" }));
+    await screen.findByText(/42 rows deleted in 2 batches/i);
+    const thirdBody = (vi.mocked(api.POST).mock.calls[2][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(thirdBody).toEqual(firstBody);
+
+    rendered.rerender(view("org-b"));
+    await waitFor(() => {
+      const calls = vi.mocked(api.GET).mock.calls;
+      expect(
+        (calls[calls.length - 1][1] as { params: { path: { orgId: string } } })
+          .params.path.orgId,
+      ).toBe("org-b");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
+    expect(screen.getByRole("button", { name: "Retry pruning" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry pruning" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const fourthBody = (vi.mocked(api.POST).mock.calls[3][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(fourthBody).toEqual(secondBody);
+  });
+
   it("treats a confirmed failed run as failure and starts its retry with a new key", async () => {
     postRunStatus = "failed";
     render(view());
     await screen.findByText(/30 days · every 1 hour/i);
-    fireEvent.click(screen.getByRole("button", { name: "Run pruning now" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
     fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
 
     const failure = await screen.findByRole("alert");
@@ -300,7 +562,7 @@ describe("access-event retention settings", () => {
       body: { idempotency_key: string };
     }).body;
     postRunStatus = "succeeded";
-    fireEvent.click(screen.getByRole("button", { name: "Run pruning now" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
     fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
     await screen.findByText(/42 rows deleted in 2 batches/i);
     const secondBody = (vi.mocked(api.POST).mock.calls[1][1] as {
@@ -336,7 +598,7 @@ describe("access-event retention settings", () => {
 
     render(view());
     await screen.findByText(/99 rows deleted in 1 batch/i);
-    fireEvent.click(screen.getByRole("button", { name: "Run pruning now" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review manual prune" }));
     fireEvent.click(screen.getByRole("button", { name: "Run policy-bound prune" }));
 
     expect(await screen.findByText(/pruning completed\. 3 rows deleted/i)).toBeTruthy();

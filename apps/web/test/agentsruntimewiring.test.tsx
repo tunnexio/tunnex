@@ -57,7 +57,7 @@ describe("active Agent detail mutation ownership", () => {
   it("owns metadata, managing-group assignment, lifecycle and revoke-then-remove on Overview", async () => {
     seed(); renderDetail();
     await screen.findByText("Profile and lifecycle");
-    fireEvent.click(screen.getByRole("button", { name: "Profile and lifecycle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit profile" }));
     fireEvent.change(screen.getByLabelText("Environment"), { target: { value: "staging" } });
     fireEvent.click(screen.getByRole("button", { name: "Save metadata" }));
     await waitFor(() => expect(patch).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agents/{deviceId}", expect.objectContaining({ params: { path: { orgId: "org-a", deviceId: "agent-a" } } })));

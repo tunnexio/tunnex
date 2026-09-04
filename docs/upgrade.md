@@ -121,12 +121,13 @@ docker compose exec -T api backupctl verify < pre-upgrade.manifest.json   # must
 # 2. Preflight.  Refuses if anything would strand the roll.
 docker compose exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight
 
-# 3. Migrate the database. Migrations are backward-compatible for one version (enforced by
-#    TestMigrationsAreBackwardCompatibleForOneVersion), so the OLD control plane keeps working
-#    against the NEW schema while replicas roll.
+# 3. Migrate the database. Migrations remain request-compatible for one version (enforced by
+#    TestMigrationsAreBackwardCompatibleForOneVersion). A new database fence may deliberately
+#    stop an OLD destructive scheduler that cannot honor the new policy; see the note below.
 migrate up
 
-# 4. Roll the control-plane replicas. Any mix of old and new runs correctly during the roll.
+# 4. Roll the control-plane replicas. Any mix of old and new continues serving requests during
+#    the roll. A fenced legacy scheduler fails closed until leadership reaches a new replica.
 #    Scheduler leadership moves on its own: the leader releases its lock as it shuts down and a
 #    replica picks it up (see the HA note below).
 kubectl -n tunnex set image deploy/tunnex-api api=ghcr.io/tunnexio/tunnex-api:vX.Y.Z
@@ -141,13 +142,35 @@ kubectl -n tunnex rollout status deploy/tunnex-api
 reconcile against the control plane periodically; a control plane that is restarting, migrating, or briefly
 absent does not touch the data plane. An upgrade is a management-plane event.
 
+### Access-event retention across the v0.1.19 boundary
+
+Do not run v0.1.19 and the original v0.1.20 control-plane images concurrently after applying the v0.1.20
+retention schema. The v0.1.19 leader has only the former fixed 30-day sweeper; it cannot see a longer
+per-organization policy saved by v0.1.20 and can delete rows that policy was meant to preserve. If the exact
+target must be v0.1.20, use a brief management-plane maintenance window: stop every v0.1.19 API replica,
+apply the migrations, and then start v0.1.20. Running tunnels continue forwarding during that window.
+
+Prefer upgrading directly to a release that contains migration 0130 or later. Migration 0130 installs the
+database deletion fence before replicas roll. A v0.1.19 or original v0.1.20 retention scheduler may report
+`access_events_delete_not_authorized` while it still holds leadership; this is the intended fail-closed
+result, and no access events are deleted by that attempt. Once a new replica becomes scheduler leader, it
+prunes through an exact, live retention run under the current organization policy.
+
+If migration 0130 is being applied to an already mixed v0.1.19/original-v0.1.20 fleet after a non-default
+retention policy has been saved, quiesce those legacy API replicas (or at least their retention scheduler)
+before migrating. A legacy `DELETE` that acquired the `access_events` table lock before migration reached
+its fence can finish first. Once migration acquires that lock, later legacy deletes wait for migration to
+commit and then fail closed at the new database guard.
+
 ### Why step 3 is safe
 
-Migrations must be backward-compatible for one version, and that is a **build-enforced rule**, not a
+Migrations must be request-compatible for one version, and that is a **build-enforced rule**, not a
 convention: a census of the shipped migrations found two historical exceptions (a dropped column and a renamed
 column), so the property was holding by luck. A guard now fails the build on `DROP COLUMN`, `DROP TABLE`,
 `RENAME COLUMN`, `ALTER TABLE … RENAME TO`, narrowing `ALTER COLUMN … TYPE`, and `SET NOT NULL` in any new
-migration.
+migration. A destructive background writer that cannot understand a newly configurable safety policy is the
+narrow exception: the schema must reject it before mutation, the old process must fail closed, and the release
+must identify that expected scheduler error here.
 
 Removing a column therefore takes two releases — **expand, migrate, contract**: drop the last *reader* of the
 column in release N, drop the *column* in N+1. If a release ever genuinely must break compatibility, it will

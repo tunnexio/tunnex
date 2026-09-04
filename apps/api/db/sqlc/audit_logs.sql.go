@@ -40,11 +40,11 @@ func (q *Queries) AuditLogRetentionMorePending(ctx context.Context, arg AuditLog
 
 const expireAuditLogRetentionRun = `-- name: ExpireAuditLogRetentionRun :one
 UPDATE audit_log_retention_runs
-SET status='failed',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+SET status='failed',completed_at=GREATEST(clock_timestamp(),started_at),lease_expires_at=NULL,
     more_pending=true,error_code='lease_expired'
 WHERE org_id=$1
   AND status='running'
-  AND lease_expires_at <= statement_timestamp()
+  AND lease_expires_at <= clock_timestamp()
 RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
 `
 
@@ -79,10 +79,10 @@ func (q *Queries) ExpireAuditLogRetentionRun(ctx context.Context, orgID uuid.UUI
 
 const finalizeAuditLogRetentionRunFailure = `-- name: FinalizeAuditLogRetentionRunFailure :one
 UPDATE audit_log_retention_runs
-SET status='failed',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+SET status='failed',completed_at=GREATEST(clock_timestamp(),started_at),lease_expires_at=NULL,
     more_pending=true,error_code=$1
 WHERE id=$2 AND org_id=$3 AND status='running'
-  AND lease_expires_at > statement_timestamp()
+  AND lease_expires_at > clock_timestamp()
 RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
 `
 
@@ -123,10 +123,10 @@ func (q *Queries) FinalizeAuditLogRetentionRunFailure(ctx context.Context, arg F
 
 const finalizeAuditLogRetentionRunSuccess = `-- name: FinalizeAuditLogRetentionRunSuccess :one
 UPDATE audit_log_retention_runs
-SET status='succeeded',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+SET status='succeeded',completed_at=GREATEST(clock_timestamp(),started_at),lease_expires_at=NULL,
     more_pending=$1,error_code=NULL
 WHERE id=$2 AND org_id=$3 AND status='running'
-  AND lease_expires_at > statement_timestamp()
+  AND lease_expires_at > clock_timestamp()
 RETURNING id, org_id, trigger_kind, status, manual_idempotency_key, requested_by_user_id, retention_days, cleanup_interval_minutes, settings_revision, batch_size, max_batches, cutoff_at, started_at, lease_expires_at, completed_at, deleted_rows, batches, more_pending, error_code, created_at, updated_at
 `
 
@@ -833,9 +833,9 @@ func (q *Queries) PruneAuditLogsByAgeBatch(ctx context.Context, runID uuid.UUID)
 
 const renewAuditLogRetentionRunLease = `-- name: RenewAuditLogRetentionRunLease :execrows
 UPDATE audit_log_retention_runs
-SET lease_expires_at=statement_timestamp() + interval '15 minutes'
+SET lease_expires_at=clock_timestamp() + interval '15 minutes'
 WHERE id=$1 AND org_id=$2 AND status='running'
-  AND lease_expires_at > statement_timestamp()
+  AND lease_expires_at > clock_timestamp()
 `
 
 type RenewAuditLogRetentionRunLeaseParams struct {

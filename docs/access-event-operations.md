@@ -113,6 +113,23 @@ When more eligible rows remain, status reports `more_pending` and the next tick
 continues the backlog. A unique running-run constraint prevents scheduled and
 manual work from pruning the same organization concurrently.
 
+Every irreversible batch is fenced at the database boundary. The pruning
+function accepts only an exact retention-run ID, locks the organization and
+run, verifies a live lease and the current effective policy, derives both the
+age cutoff and row-cap boundary from durable state, and records the deleted-row
+and batch counters in the same transaction as the delete. Direct deletion and
+truncate operations fail with `access_events_delete_not_authorized`; hard
+organization deletion remains able to cascade its historical events. This also
+makes pre-fence control-plane schedulers fail closed during a rolling upgrade
+instead of applying their fixed legacy policy. See [upgrade.md](upgrade.md) for
+the version-boundary procedure.
+
+The scheduler creates a new run only when at least one event is currently
+eligible by age or row cap. Expired claims are still recovered even if their
+last committed batch removed every eligible event. Automatic terminal history
+is capped at the newest 1,000 scheduled runs per organization; manual runs are
+retained so an old idempotency key continues returning its original result.
+
 ## Operational checks
 
 For a gateway that shows no events:

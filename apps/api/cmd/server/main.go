@@ -360,7 +360,7 @@ func main() {
 	// query adapter. Durable tenant retention state supersedes its legacy
 	// process-local sweep fields on the HTTP surface.
 	flowHealth := accesslog.NewHealth()
-	retentionSvc := accesslog.NewRetentionService(pool, nil)
+	retentionSvc := accesslog.NewRetentionService(pool)
 	auditRetentionSvc := auditretention.NewService(pool)
 
 	// ⛔ THE CRL REBUILD IS WIRED HERE OR DEACTIVATION'S CERT REVOCATION NEVER REACHES A GATEWAY. The certs
