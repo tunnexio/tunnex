@@ -501,7 +501,7 @@ type Querier interface {
 	// The org join is the tenant boundary; device ids are globally unique, but a
 	// runtime bootstrap must never turn knowledge of another org's UUID into state.
 	EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRuntimeStateParams) (EnsureAgentRuntimeStateRow, error)
-	ExpireAccessEventRetentionRun(ctx context.Context, arg ExpireAccessEventRetentionRunParams) (AccessEventRetentionRun, error)
+	ExpireAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
 	ExpireAgentAccessRequest(ctx context.Context, arg ExpireAgentAccessRequestParams) (AgentAccessRequest, error)
 	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
 	ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAgentWireGuardRotationParams) error
@@ -804,11 +804,12 @@ type Querier interface {
 	// dropping audit rows (review #1). No replay path re-inserts: a failed batch rolls the tx
 	// (and the counter bump) back, so a retry re-reserves a fresh range.
 	InsertAccessEvent(ctx context.Context, arg InsertAccessEventParams) error
-	// The hot ingest path (review fold-2 #6): pipeline a whole batch's inserts in ONE round trip
-	// instead of N sequential Execs, so the process-global ingest mutex is held for far less time.
+	// COPY the whole report as one PostgreSQL statement. Besides avoiding one round trip per
+	// row, this is important to retention accounting: the statement-level transition-table
+	// trigger advances access_event_retention_state once for the complete logical batch.
 	// Same plain insert as InsertAccessEvent (seq is unique via the counter; the unique index is
 	// the fail-LOUD backstop).
-	InsertAccessEventBatch(ctx context.Context, arg []InsertAccessEventBatchParams) *InsertAccessEventBatchBatchResults
+	InsertAccessEventBatch(ctx context.Context, arg []InsertAccessEventBatchParams) (int64, error)
 	InsertAccessEventRetentionSettings(ctx context.Context, arg InsertAccessEventRetentionSettingsParams) (AccessEventRetentionSetting, error)
 	InsertAgentAccessOperation(ctx context.Context, arg InsertAgentAccessOperationParams) (int64, error)
 	InsertAgentAccessRequestEvent(ctx context.Context, arg InsertAgentAccessRequestEventParams) (AgentAccessRequestEvent, error)
@@ -1054,9 +1055,11 @@ type Querier interface {
 	ListDevicesByUser(ctx context.Context, arg ListDevicesByUserParams) ([]ListDevicesByUserRow, error)
 	ListDomainClaims(ctx context.Context, orgID uuid.UUID) ([]DomainClaim, error)
 	// lint:cross-org — the elected retention scheduler enumerates only tenants
-	// holding events. Soft-deleted tenants remain eligible so their event history
-	// cannot strand disk indefinitely. A latest successful run with more_pending
-	// is immediately eligible for the next bounded continuation.
+	// lint:allow-deleted — retention intentionally drains evidence for soft-deleted tenants.
+	// with policy-eligible events. Soft-deleted tenants remain eligible so their
+	// event history cannot strand disk indefinitely. Expired claims are still
+	// enumerated after their final eligible row disappears so they can be durably
+	// failed before a successor is considered.
 	ListDueAccessEventRetentionOrganizations(ctx context.Context, arg ListDueAccessEventRetentionOrganizationsParams) ([]uuid.UUID, error)
 	// lint:cross-org — the scheduler-leader expiry sweep intentionally scans every
 	// organization; each returned row still carries org_id for same-tx mutation,
@@ -1404,13 +1407,13 @@ type Querier interface {
 	PeekJoinToken(ctx context.Context, tokenHash []byte) (NodeJoinToken, error)
 	PrepareAgentRuntimeCredentialCandidate(ctx context.Context, arg PrepareAgentRuntimeCredentialCandidateParams) (PrepareAgentRuntimeCredentialCandidateRow, error)
 	PrepareAgentWireGuardCandidate(ctx context.Context, arg PrepareAgentWireGuardCandidateParams) (AgentWireguardRotation, error)
-	// Tenant-scoped, oldest-first and bounded. created_at is trusted control-plane
-	// ingest time; agent occurred_at can never extend retention.
-	PruneAccessEventsByAgeBatch(ctx context.Context, arg PruneAccessEventsByAgeBatchParams) (int64, error)
-	// Find the first row beyond the protected newest window, then remove at most
-	// one oldest batch through that boundary. Recomputing the boundary each batch
-	// stays correct while ingestion remains append-only and concurrent.
-	PruneAccessEventsOverCapBatch(ctx context.Context, arg PruneAccessEventsOverCapBatchParams) (int64, error)
+	// The security-definer function is the only authorized DELETE path. It locks
+	// the exact live run, verifies its snapshot against the current effective
+	// policy, derives age/cap eligibility, and commits deletion counters atomically.
+	PruneAccessEventRetentionBatch(ctx context.Context, runID uuid.UUID) (int64, error)
+	// Bound automatic scheduler history without weakening manual idempotency:
+	// manual runs and running claims are never candidates.
+	PruneAccessEventRetentionRunHistory(ctx context.Context, arg PruneAccessEventRetentionRunHistoryParams) (int64, error)
 	// Bound automatic scheduler history without weakening manual idempotency:
 	// manual runs and running claims are never candidates.
 	PruneAuditLogRetentionRunHistory(ctx context.Context, arg PruneAuditLogRetentionRunHistoryParams) (int64, error)

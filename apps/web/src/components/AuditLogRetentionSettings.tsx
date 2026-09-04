@@ -26,6 +26,12 @@ export type AuditLogRetentionResource =
 type AuditLogRetentionRun = components["schemas"]["AuditLogRetentionRun"];
 type Notice = { text: string; tone: "success" | "danger" };
 type RetentionMode = "forever" | "bounded";
+type PruneRequestState = {
+  key: string;
+  inFlight: boolean;
+  outcomeUnknown: boolean;
+  error: string | null;
+};
 
 const RETENTION_PATH =
   "/api/v1/organizations/{orgId}/audit-log-retention";
@@ -140,13 +146,29 @@ export function AuditLogRetentionSettings({
   const [confirmPrune, setConfirmPrune] = useState(false);
   const [pruneBusy, setPruneBusy] = useState(false);
   const [pruneError, setPruneError] = useState<string | null>(null);
+  const [pruneOutcomeUnknown, setPruneOutcomeUnknown] = useState(false);
   const loadRequest = useRef(0);
   const activeOrgId = useRef(orgId);
   activeOrgId.current = orgId;
-  const pruneInFlight = useRef(false);
-  const pruneKey = useRef<string | null>(null);
+  const pruneRequests = useRef(new Map<string, PruneRequestState>());
   const retentionDaysErrorId = useId();
   const cleanupIntervalErrorId = useId();
+
+  function showPruneRequest(next: PruneRequestState | undefined) {
+    setPruneBusy(next?.inFlight ?? false);
+    setPruneError(next?.error ?? null);
+    setPruneOutcomeUnknown(next?.outcomeUnknown ?? false);
+  }
+
+  function storePruneRequest(targetOrgId: string, next: PruneRequestState) {
+    pruneRequests.current.set(targetOrgId, next);
+    if (activeOrgId.current === targetOrgId) showPruneRequest(next);
+  }
+
+  function clearPruneRequest(targetOrgId: string) {
+    pruneRequests.current.delete(targetOrgId);
+    if (activeOrgId.current === targetOrgId) showPruneRequest(undefined);
+  }
 
   const applyResource = useCallback((next: AuditLogRetentionResource) => {
     setResource(next);
@@ -190,14 +212,10 @@ export function AuditLogRetentionSettings({
     setConfirmSave(false);
     setSaveBusy(false);
     setConfirmPrune(false);
-    setPruneBusy(false);
-    setPruneError(null);
-    pruneInFlight.current = false;
-    pruneKey.current = null;
+    showPruneRequest(pruneRequests.current.get(orgId));
     void load();
     return () => {
       loadRequest.current += 1;
-      pruneInFlight.current = false;
     };
   }, [load]);
 
@@ -306,36 +324,65 @@ export function AuditLogRetentionSettings({
 
   function openPruneConfirmation() {
     if (!resource || resource.retention_days == null) return;
-    if (!pruneKey.current) pruneKey.current = newIdempotencyKey();
-    setPruneError(null);
+    const existing = pruneRequests.current.get(orgId);
+    const next =
+      existing ?? {
+        key: newIdempotencyKey(),
+        inFlight: false,
+        outcomeUnknown: false,
+        error: null,
+      };
+    storePruneRequest(orgId, next);
     setConfirmPrune(true);
   }
 
   function dismissPrune() {
     if (pruneBusy) return;
     setConfirmPrune(false);
-    setPruneError(null);
-    pruneKey.current = null;
+    const request = pruneRequests.current.get(orgId);
+    if (!request?.outcomeUnknown) {
+      clearPruneRequest(orgId);
+    }
+  }
+
+  function startNewPruneRequest() {
+    if (pruneBusy) return;
+    storePruneRequest(orgId, {
+      key: newIdempotencyKey(),
+      inFlight: false,
+      outcomeUnknown: false,
+      error: null,
+    });
   }
 
   async function runPrune() {
-    if (pruneInFlight.current) return;
-    const idempotencyKey = pruneKey.current ?? newIdempotencyKey();
     const requestedOrgId = orgId;
-    pruneKey.current = idempotencyKey;
-    pruneInFlight.current = true;
-    setPruneBusy(true);
-    setPruneError(null);
+    const existing = pruneRequests.current.get(requestedOrgId);
+    if (existing?.inFlight) return;
+    const idempotencyKey = existing?.key ?? newIdempotencyKey();
+    storePruneRequest(requestedOrgId, {
+      key: idempotencyKey,
+      inFlight: true,
+      outcomeUnknown: false,
+      error: null,
+    });
     setNotice(null);
     try {
       const result = await pruneRetention(requestedOrgId, idempotencyKey);
-      if (activeOrgId.current !== requestedOrgId) return;
       if (result.error || !result.data) {
-        setPruneError(
-          apiErrorMessage(result.error, "Could not run audit-log pruning."),
-        );
+        storePruneRequest(requestedOrgId, {
+          key: idempotencyKey,
+          inFlight: false,
+          outcomeUnknown: true,
+          error: apiErrorMessage(
+            result.error,
+            "Could not run audit-log pruning.",
+          ),
+        });
         return;
       }
+      clearPruneRequest(requestedOrgId);
+      if (activeOrgId.current !== requestedOrgId) return;
       applyResource(result.data.retention);
       const run = result.data.run;
       if (run.status === "failed") {
@@ -354,16 +401,14 @@ export function AuditLogRetentionSettings({
         });
       }
       setConfirmPrune(false);
-      pruneKey.current = null;
     } catch {
-      if (activeOrgId.current === requestedOrgId) {
-        setPruneError("Could not reach the API. The pruning outcome is unknown; retry uses the same request key.");
-      }
-    } finally {
-      if (activeOrgId.current === requestedOrgId) {
-        pruneInFlight.current = false;
-        setPruneBusy(false);
-      }
+      storePruneRequest(requestedOrgId, {
+        key: idempotencyKey,
+        inFlight: false,
+        outcomeUnknown: true,
+        error:
+          "Could not reach the API. The pruning outcome is unknown; retry uses the same request key.",
+      });
     }
   }
 
@@ -681,6 +726,15 @@ export function AuditLogRetentionSettings({
               <Button variant="ghost" disabled={pruneBusy} onClick={dismissPrune}>
                 Cancel
               </Button>
+              {pruneOutcomeUnknown && (
+                <Button
+                  variant="ghost"
+                  disabled={pruneBusy}
+                  onClick={startNewPruneRequest}
+                >
+                  Start new audit prune request
+                </Button>
+              )}
               <Button variant="danger" disabled={pruneBusy} onClick={() => void runPrune()}>
                 {pruneBusy ? "Pruning…" : pruneError ? "Retry audit-log pruning" : "Run audit-log policy prune"}
               </Button>
@@ -692,6 +746,11 @@ export function AuditLogRetentionSettings({
               The server will permanently delete only this organization’s retention-eligible audit rows older than {resource.retention_days} days, in batches of at most {resource.batch_size.toLocaleString()} rows.
             </p>
             <p>Audit evidence pinned as durable operation provenance is protected and may outlive the window. There is no flush-all control and no caller-selected cutoff. Deleted audit evidence cannot be restored.</p>
+            {pruneOutcomeUnknown && (
+              <p role="status">
+                Retrying reuses the previous request key so the server cannot start a duplicate run. Starting a new request explicitly abandons that protection.
+              </p>
+            )}
             <ErrorText>{pruneError}</ErrorText>
           </div>
         </Modal>

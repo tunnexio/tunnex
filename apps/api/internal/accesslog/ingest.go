@@ -3,6 +3,7 @@ package accesslog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"sort"
@@ -187,21 +188,16 @@ func (i *Ingester) IngestBatch(ctx context.Context, orgID, nodeID uuid.UUID, wir
 		events[idx].Seq = base + int64(idx) + 1
 		params[idx] = sqlc.InsertAccessEventBatchParams(InsertParams(events[idx]))
 	}
-	// Pipeline the whole batch's inserts in ONE round trip (fold-2 #6) so the process-global
-	// ingest mutex is held for far less time. A (org_id, seq) collision is IMPOSSIBLE under the
-	// counter, so any error here fails LOUD (never a silent drop).
-	var insErr error
-	br := q.InsertAccessEventBatch(ctx, params)
-	br.Exec(func(_ int, err error) {
-		if err != nil && insErr == nil {
-			insErr = err
-		}
-	})
-	if err := br.Close(); err != nil {
+	// COPY the whole report in one PostgreSQL statement. A (org_id, seq) collision is
+	// impossible under the counter, so any error fails loud and rolls the reservation back.
+	// One statement also lets the retention transition-table trigger account for the logical
+	// batch with a single state-row update instead of one update per event.
+	inserted, err := q.InsertAccessEventBatch(ctx, params)
+	if err != nil {
 		return err
 	}
-	if insErr != nil {
-		return insErr
+	if inserted != int64(len(params)) {
+		return fmt.Errorf("access-event COPY inserted %d rows, want %d", inserted, len(params))
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err

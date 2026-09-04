@@ -38,6 +38,13 @@ type AccessEvent struct {
 	DecisionReason    *string            `json:"decision_reason"`
 }
 
+type AccessEventRetentionAuthorization struct {
+	BackendPid    int32     `json:"backend_pid"`
+	TransactionID int64     `json:"transaction_id"`
+	AccessEventID uuid.UUID `json:"access_event_id"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type AccessEventRetentionRun struct {
 	ID                     uuid.UUID          `json:"id"`
 	OrgID                  uuid.UUID          `json:"org_id"`
@@ -71,6 +78,13 @@ type AccessEventRetentionSetting struct {
 	UpdatedByUserID        uuid.UUID `json:"updated_by_user_id"`
 	CreatedAt              time.Time `json:"created_at"`
 	UpdatedAt              time.Time `json:"updated_at"`
+}
+
+type AccessEventRetentionState struct {
+	OrgID        uuid.UUID `json:"org_id"`
+	RetainedRows int64     `json:"retained_rows"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type AgentAccessRequest struct {

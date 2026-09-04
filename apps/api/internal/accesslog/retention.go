@@ -23,6 +23,9 @@ const (
 	RetentionRunRunning   = "running"
 	RetentionRunSucceeded = "succeeded"
 	RetentionRunFailed    = "failed"
+
+	RetentionScheduledHistoryLimit int32 = 1_000
+	retentionHistoryDeleteBatch    int32 = 1_000
 )
 
 var ErrRetentionRunOwnershipLost = errors.New("access-event retention run ownership lost")
@@ -79,18 +82,12 @@ type RetentionOverview struct {
 }
 
 // RetentionService owns effective settings, durable claims and bounded pruning.
-// now is injectable so cutoff, due and idempotency tests never race wall time.
+// PostgreSQL is the sole clock authority for due, claim and lease decisions.
 type RetentionService struct {
 	pool *pgxpool.Pool
-	now  func() time.Time
 }
 
-func NewRetentionService(pool *pgxpool.Pool, now func() time.Time) *RetentionService {
-	if now == nil {
-		now = time.Now
-	}
-	return &RetentionService{pool: pool, now: now}
-}
+func NewRetentionService(pool *pgxpool.Pool) *RetentionService { return &RetentionService{pool: pool} }
 
 func defaultRetentionSettings(orgID uuid.UUID) RetentionSettings {
 	return RetentionSettings{
@@ -321,8 +318,9 @@ func (s *RetentionService) ListDueOrganizations(ctx context.Context, limit int32
 		limit = 1000
 	}
 	return sqlc.New(s.pool).ListDueAccessEventRetentionOrganizations(ctx, sqlc.ListDueAccessEventRetentionOrganizationsParams{
-		NowAt: pgTimestamp(s.now().UTC()), DefaultIntervalMinutes: DefaultCleanupIntervalMinutes,
-		OrgLimit: limit,
+		DefaultRetentionDays: DefaultRetentionDays, DefaultRowCap: DefaultPGRowCap,
+		DefaultIntervalMinutes: DefaultCleanupIntervalMinutes,
+		OrgLimit:               limit,
 	})
 }
 
@@ -343,7 +341,6 @@ func (s *RetentionService) RunManual(ctx context.Context, orgID, actorUserID uui
 	if err := validateManualRetention(actorUserID, idempotencyKey); err != nil {
 		return RetentionRun{}, false, err
 	}
-	now := s.now().UTC()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return RetentionRun{}, false, err
@@ -360,7 +357,7 @@ func (s *RetentionService) RunManual(ctx context.Context, orgID, actorUserID uui
 	} else if err != nil {
 		return RetentionRun{}, false, err
 	}
-	if err := expireRetentionRun(ctx, q, orgID, now); err != nil {
+	if err := expireRetentionRun(ctx, q, orgID); err != nil {
 		return RetentionRun{}, false, err
 	}
 	prior, err := q.GetManualAccessEventRetentionRun(ctx, sqlc.GetManualAccessEventRetentionRunParams{
@@ -375,6 +372,9 @@ func (s *RetentionService) RunManual(ctx context.Context, orgID, actorUserID uui
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return RetentionRun{}, false, err
 	}
+	if err := pruneScheduledRetentionRunHistory(ctx, q, orgID); err != nil {
+		return RetentionRun{}, false, err
+	}
 	if _, err := q.GetRunningAccessEventRetentionRun(ctx, orgID); err == nil {
 		return RetentionRun{}, false, apierr.Conflict("access_event_retention_run_in_progress", "a retention run is already in progress")
 	} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -384,7 +384,7 @@ func (s *RetentionService) RunManual(ctx context.Context, orgID, actorUserID uui
 	if err != nil {
 		return RetentionRun{}, false, err
 	}
-	raw, err := q.InsertManualAccessEventRetentionRun(ctx, manualRunParams(orgID, actorUserID, idempotencyKey, settings, now))
+	raw, err := q.InsertManualAccessEventRetentionRun(ctx, manualRunParams(orgID, actorUserID, idempotencyKey, settings))
 	if err != nil {
 		return RetentionRun{}, false, err
 	}
@@ -412,16 +412,13 @@ func (s *RetentionService) RunManual(ctx context.Context, orgID, actorUserID uui
 	return retentionRunFromRow(finished), true, runErr
 }
 
-func manualRunParams(orgID, actor uuid.UUID, key string, settings RetentionSettings, now time.Time) sqlc.InsertManualAccessEventRetentionRunParams {
-	lease := now.Add(RetentionRunLease)
+func manualRunParams(orgID, actor uuid.UUID, key string, settings RetentionSettings) sqlc.InsertManualAccessEventRetentionRunParams {
 	return sqlc.InsertManualAccessEventRetentionRunParams{
 		OrgID: orgID, ManualIdempotencyKey: &key,
 		RequestedByUserID: pgtype.UUID{Bytes: actor, Valid: true},
 		RetentionDays:     settings.RetentionDays, CleanupIntervalMinutes: settings.CleanupIntervalMinutes,
 		SettingsRevision: settings.Revision, RowCap: DefaultPGRowCap,
 		BatchSize: RetentionBatchSize, MaxBatches: RetentionMaxBatches,
-		CutoffAt:  now.Add(-time.Duration(settings.RetentionDays) * 24 * time.Hour),
-		StartedAt: now, LeaseExpiresAt: pgTimestamp(lease),
 	}
 }
 
@@ -429,7 +426,6 @@ func manualRunParams(orgID, actor uuid.UUID, key string, settings RetentionSetti
 // The returned bool is false when another worker owns the org or its interval
 // has not elapsed.
 func (s *RetentionService) RunScheduled(ctx context.Context, orgID uuid.UUID) (RetentionRun, bool, error) {
-	now := s.now().UTC()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return RetentionRun{}, false, err
@@ -441,7 +437,10 @@ func (s *RetentionService) RunScheduled(ctx context.Context, orgID uuid.UUID) (R
 	} else if err != nil {
 		return RetentionRun{}, false, err
 	}
-	if err := expireRetentionRun(ctx, q, orgID, now); err != nil {
+	if err := expireRetentionRun(ctx, q, orgID); err != nil {
+		return RetentionRun{}, false, err
+	}
+	if err := pruneScheduledRetentionRunHistory(ctx, q, orgID); err != nil {
 		return RetentionRun{}, false, err
 	}
 	settings, err := loadEffectiveRetentionSettings(ctx, q, orgID, false)
@@ -449,7 +448,8 @@ func (s *RetentionService) RunScheduled(ctx context.Context, orgID uuid.UUID) (R
 		return RetentionRun{}, false, err
 	}
 	due, err := q.IsAccessEventRetentionDue(ctx, sqlc.IsAccessEventRetentionDueParams{
-		OrgID: orgID, NowAt: pgTimestamp(now), CleanupIntervalMinutes: settings.CleanupIntervalMinutes,
+		OrgID: orgID, RetentionDays: settings.RetentionDays,
+		RowCap: DefaultPGRowCap, CleanupIntervalMinutes: settings.CleanupIntervalMinutes,
 	})
 	if err != nil {
 		return RetentionRun{}, false, err
@@ -460,14 +460,11 @@ func (s *RetentionService) RunScheduled(ctx context.Context, orgID uuid.UUID) (R
 		}
 		return RetentionRun{}, false, nil
 	}
-	lease := now.Add(RetentionRunLease)
 	raw, err := q.InsertScheduledAccessEventRetentionRun(ctx, sqlc.InsertScheduledAccessEventRetentionRunParams{
 		OrgID: orgID, RetentionDays: settings.RetentionDays,
 		CleanupIntervalMinutes: settings.CleanupIntervalMinutes,
 		SettingsRevision:       settings.Revision, RowCap: DefaultPGRowCap,
 		BatchSize: RetentionBatchSize, MaxBatches: RetentionMaxBatches,
-		CutoffAt:  now.Add(-time.Duration(settings.RetentionDays) * 24 * time.Hour),
-		StartedAt: now, LeaseExpiresAt: pgTimestamp(lease),
 	})
 	if err != nil {
 		return RetentionRun{}, false, err
@@ -479,68 +476,55 @@ func (s *RetentionService) RunScheduled(ctx context.Context, orgID uuid.UUID) (R
 	return retentionRunFromRow(finished), true, runErr
 }
 
-func expireRetentionRun(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, now time.Time) error {
-	_, err := q.ExpireAccessEventRetentionRun(ctx, sqlc.ExpireAccessEventRetentionRunParams{
-		CompletedAt: pgTimestamp(now), OrgID: orgID,
-	})
+func expireRetentionRun(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID) error {
+	_, err := q.ExpireAccessEventRetentionRun(ctx, orgID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	return err
 }
 
+func pruneScheduledRetentionRunHistory(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID) error {
+	_, err := q.PruneAccessEventRetentionRunHistory(ctx, sqlc.PruneAccessEventRetentionRunHistoryParams{
+		OrgID: orgID, KeepTerminal: RetentionScheduledHistoryLimit - 1,
+		DeleteLimit: retentionHistoryDeleteBatch,
+	})
+	return err
+}
+
 func (s *RetentionService) executeClaimedRun(ctx context.Context, run sqlc.AccessEventRetentionRun) (sqlc.AccessEventRetentionRun, error) {
 	q := sqlc.New(s.pool)
-	var deleted int64
-	var batches int32
+	batches := run.Batches
 	for batches < run.MaxBatches {
-		leaseAt := s.now().UTC().Add(RetentionRunLease)
-		if !leaseAt.After(run.StartedAt) {
-			leaseAt = run.StartedAt.Add(RetentionRunLease)
-		}
 		renewed, err := q.RenewAccessEventRetentionRunLease(ctx, sqlc.RenewAccessEventRetentionRunLeaseParams{
-			LeaseExpiresAt: pgTimestamp(leaseAt), ID: run.ID, OrgID: run.OrgID,
+			ID: run.ID, OrgID: run.OrgID,
 		})
 		if err != nil {
-			return s.failClaimedRun(ctx, run, deleted, batches, err)
+			return s.failClaimedRun(ctx, run, err)
 		}
 		if renewed != 1 {
 			return run, ErrRetentionRunOwnershipLost
 		}
 
-		n, err := q.PruneAccessEventsByAgeBatch(ctx, sqlc.PruneAccessEventsByAgeBatchParams{
-			OrgID: run.OrgID, OlderThan: run.CutoffAt, BatchLimit: run.BatchSize,
-		})
+		// The database function validates the exact live lease and current
+		// effective policy in the same transaction as this irreversible delete,
+		// then persists deletion counters before committing.
+		n, err := q.PruneAccessEventRetentionBatch(ctx, run.ID)
 		if err != nil {
-			return s.failClaimedRun(ctx, run, deleted, batches, err)
-		}
-		if n > 0 {
-			deleted, batches = deleted+n, batches+1
-			continue
-		}
-		n, err = q.PruneAccessEventsOverCapBatch(ctx, sqlc.PruneAccessEventsOverCapBatchParams{
-			OrgID: run.OrgID, KeepNewest: run.RowCap, BatchLimit: run.BatchSize,
-		})
-		if err != nil {
-			return s.failClaimedRun(ctx, run, deleted, batches, err)
+			return s.failClaimedRun(ctx, run, err)
 		}
 		if n == 0 {
 			break
 		}
-		deleted, batches = deleted+n, batches+1
+		batches++
 	}
 	pending, err := q.AccessEventRetentionMorePending(ctx, sqlc.AccessEventRetentionMorePendingParams{
 		OrgID: run.OrgID, OlderThan: run.CutoffAt, KeepNewest: run.RowCap,
 	})
 	if err != nil {
-		return s.failClaimedRun(ctx, run, deleted, batches, err)
-	}
-	completed := s.now().UTC()
-	if completed.Before(run.StartedAt) {
-		completed = run.StartedAt
+		return s.failClaimedRun(ctx, run, err)
 	}
 	finished, err := q.FinalizeAccessEventRetentionRunSuccess(ctx, sqlc.FinalizeAccessEventRetentionRunSuccessParams{
-		CompletedAt: pgTimestamp(completed), DeletedRows: deleted, Batches: batches,
 		MorePending: pending != nil && *pending, ID: run.ID, OrgID: run.OrgID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -549,14 +533,10 @@ func (s *RetentionService) executeClaimedRun(ctx context.Context, run sqlc.Acces
 	return finished, err
 }
 
-func (s *RetentionService) failClaimedRun(ctx context.Context, run sqlc.AccessEventRetentionRun, deleted int64, batches int32, cause error) (sqlc.AccessEventRetentionRun, error) {
+func (s *RetentionService) failClaimedRun(ctx context.Context, run sqlc.AccessEventRetentionRun, cause error) (sqlc.AccessEventRetentionRun, error) {
 	// A canceled request must not strand a durable running row until lease expiry.
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	completed := s.now().UTC()
-	if completed.Before(run.StartedAt) {
-		completed = run.StartedAt
-	}
 	code := "prune_failed"
 	if errors.Is(cause, context.Canceled) {
 		code = "context_canceled"
@@ -564,7 +544,6 @@ func (s *RetentionService) failClaimedRun(ctx context.Context, run sqlc.AccessEv
 		code = "deadline_exceeded"
 	}
 	finished, finishErr := sqlc.New(s.pool).FinalizeAccessEventRetentionRunFailure(finishCtx, sqlc.FinalizeAccessEventRetentionRunFailureParams{
-		CompletedAt: pgTimestamp(completed), DeletedRows: deleted, Batches: batches,
 		ErrorCode: &code, ID: run.ID, OrgID: run.OrgID,
 	})
 	if errors.Is(finishErr, pgx.ErrNoRows) {
@@ -574,8 +553,4 @@ func (s *RetentionService) failClaimedRun(ctx context.Context, run sqlc.AccessEv
 		return run, errors.Join(cause, finishErr)
 	}
 	return finished, cause
-}
-
-func pgTimestamp(value time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: value, Valid: true}
 }

@@ -162,11 +162,11 @@ AND COALESCE((
 
 -- name: ExpireAuditLogRetentionRun :one
 UPDATE audit_log_retention_runs
-SET status='failed',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+SET status='failed',completed_at=GREATEST(clock_timestamp(),started_at),lease_expires_at=NULL,
     more_pending=true,error_code='lease_expired'
 WHERE org_id=sqlc.arg(org_id)
   AND status='running'
-  AND lease_expires_at <= statement_timestamp()
+  AND lease_expires_at <= clock_timestamp()
 RETURNING *;
 
 -- name: InsertScheduledAuditLogRetentionRun :one
@@ -234,24 +234,24 @@ LIMIT 1;
 
 -- name: RenewAuditLogRetentionRunLease :execrows
 UPDATE audit_log_retention_runs
-SET lease_expires_at=statement_timestamp() + interval '15 minutes'
+SET lease_expires_at=clock_timestamp() + interval '15 minutes'
 WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND status='running'
-  AND lease_expires_at > statement_timestamp();
+  AND lease_expires_at > clock_timestamp();
 
 -- name: FinalizeAuditLogRetentionRunSuccess :one
 UPDATE audit_log_retention_runs
-SET status='succeeded',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+SET status='succeeded',completed_at=GREATEST(clock_timestamp(),started_at),lease_expires_at=NULL,
     more_pending=sqlc.arg(more_pending),error_code=NULL
 WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND status='running'
-  AND lease_expires_at > statement_timestamp()
+  AND lease_expires_at > clock_timestamp()
 RETURNING *;
 
 -- name: FinalizeAuditLogRetentionRunFailure :one
 UPDATE audit_log_retention_runs
-SET status='failed',completed_at=GREATEST(statement_timestamp(),started_at),lease_expires_at=NULL,
+SET status='failed',completed_at=GREATEST(clock_timestamp(),started_at),lease_expires_at=NULL,
     more_pending=true,error_code=sqlc.arg(error_code)
 WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND status='running'
-  AND lease_expires_at > statement_timestamp()
+  AND lease_expires_at > clock_timestamp()
 RETURNING *;
 
 -- name: PruneAuditLogsByAgeBatch :one

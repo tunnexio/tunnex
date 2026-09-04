@@ -26,6 +26,7 @@ type RetentionRun = NonNullable<AuditLogRetentionResource["last_run"]>;
 let current = retention();
 let conflictOnce = false;
 let postFailures = 0;
+let postRejects = 0;
 
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>(
@@ -40,7 +41,7 @@ vi.mock("../src/lib/api", async () => {
           request: { params?: { path?: { orgId?: string } } },
         ) => {
           expect(path).toBe(RETENTION_PATH);
-          expect(request.params?.path?.orgId).toBe("org-a");
+          expect(request.params?.path?.orgId).toMatch(/^org-[ab]$/);
           return { data: current };
         },
       ),
@@ -92,7 +93,11 @@ vi.mock("../src/lib/api", async () => {
           },
         ) => {
           expect(path).toBe(PRUNE_PATH);
-          expect(request.params?.path?.orgId).toBe("org-a");
+          expect(request.params?.path?.orgId).toMatch(/^org-[ab]$/);
+          if (postRejects > 0) {
+            postRejects -= 1;
+            throw new Error("offline");
+          }
           if (postFailures > 0) {
             postFailures -= 1;
             return {
@@ -127,10 +132,10 @@ vi.mock("../src/lib/api", async () => {
 import { AuditLogRetentionSettings } from "../src/components/AuditLogRetentionSettings";
 import { api } from "../src/lib/api";
 
-function view(canEdit = true) {
+function view(canEdit = true, orgId = "org-a") {
   return (
     <MemoryRouter>
-      <AuditLogRetentionSettings orgId="org-a" canEdit={canEdit} />
+      <AuditLogRetentionSettings orgId={orgId} canEdit={canEdit} />
     </MemoryRouter>
   );
 }
@@ -139,6 +144,7 @@ beforeEach(() => {
   current = retention();
   conflictOnce = false;
   postFailures = 0;
+  postRejects = 0;
   vi.mocked(api.GET).mockClear();
   vi.mocked(api.PUT).mockClear();
   vi.mocked(api.POST).mockClear();
@@ -156,10 +162,10 @@ describe("audit-log retention settings", () => {
       screen.getByText("Disabled while retention is Forever"),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Run audit-log pruning now" }).hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Review audit-log prune" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(
-      screen.getByRole("link", { name: "Control-plane audit evidence" }).getAttribute("href"),
+      screen.getByRole("link", { name: "View Audit Log" }).getAttribute("href"),
     ).toBe("/audit");
     expect(api.POST).not.toHaveBeenCalled();
   });
@@ -222,7 +228,7 @@ describe("audit-log retention settings", () => {
     await waitFor(() => {
       expect(screen.getByText("No deletion")).toBeTruthy();
       expect(
-        screen.getByRole("button", { name: "Run audit-log pruning now" }).hasAttribute("disabled"),
+        screen.getByRole("button", { name: "Review audit-log prune" }).hasAttribute("disabled"),
       ).toBe(true);
     });
     expect(
@@ -320,6 +326,9 @@ describe("audit-log retention settings", () => {
       target: { value: "30" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.queryByRole("dialog", { name: "Edit audit-log retention" }),
+    ).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Edit audit-log policy" }),
@@ -335,6 +344,9 @@ describe("audit-log retention settings", () => {
     fireEvent.keyDown(screen.getByLabelText("Retention duration (days)"), {
       key: "Escape",
     });
+    expect(
+      screen.queryByRole("dialog", { name: "Edit audit-log retention" }),
+    ).toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Edit audit-log policy" }),
@@ -387,14 +399,14 @@ describe("audit-log retention settings", () => {
     expect(revisions).toEqual([7, 8]);
   });
 
-  it("requires confirmation and reuses the same idempotency key after an unknown prune outcome", async () => {
+  it("keeps an unknown-outcome request key across dismiss and reopen", async () => {
     current = retention({ retention_days: 30, revision: 7 });
-    postFailures = 1;
+    postRejects = 1;
     render(view());
     await screen.findByText(/30 days · every 1 hour/i);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Run audit-log pruning now" }),
+      screen.getByRole("button", { name: "Review audit-log prune" }),
     );
     expect(api.POST).not.toHaveBeenCalled();
     expect(
@@ -406,7 +418,15 @@ describe("audit-log retention settings", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Run audit-log policy prune" }),
     );
-    expect(await screen.findByText("Prune unavailable")).toBeTruthy();
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review audit-log prune" }),
+    );
+    expect(
+      screen.getByText(/retrying reuses the previous request key/i),
+    ).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Retry audit-log pruning" }),
     );
@@ -423,6 +443,131 @@ describe("audit-log retention settings", () => {
     expect(calls[1][1].body).toEqual(calls[0][1].body);
   });
 
+  it("keeps the same request key across dismissal after a resolved API error", async () => {
+    current = retention({ retention_days: 30, revision: 7 });
+    postFailures = 1;
+    render(view());
+    await screen.findByText(/30 days · every 1 hour/i);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review audit-log prune" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run audit-log policy prune" }),
+    );
+    expect(await screen.findByText("Prune unavailable")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review audit-log prune" }),
+    );
+    expect(
+      screen.getByText(/retrying reuses the previous request key/i),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry audit-log pruning" }),
+    );
+    expect(
+      await screen.findByText(/Audit-log pruning completed\. 42 rows deleted/i),
+    ).toBeTruthy();
+
+    const calls = vi.mocked(api.POST).mock.calls as unknown as Array<[
+      string,
+      { body: { idempotency_key: string } },
+    ]>;
+    expect(calls).toHaveLength(2);
+    expect(calls[1][1].body).toEqual(calls[0][1].body);
+  });
+
+  it("changes an unknown-outcome key only through the explicit new-request action", async () => {
+    current = retention({ retention_days: 30, revision: 7 });
+    postRejects = 1;
+    render(view());
+    await screen.findByText(/30 days · every 1 hour/i);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review audit-log prune" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run audit-log policy prune" }),
+    );
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    const firstBody = (vi.mocked(api.POST).mock.calls[0][1] as {
+      body: { idempotency_key: string };
+    }).body;
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start new audit prune request" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run audit-log policy prune" }),
+    );
+    await screen.findByText(/Audit-log pruning completed\. 42 rows deleted/i);
+    const secondBody = (vi.mocked(api.POST).mock.calls[1][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(secondBody.idempotency_key).not.toBe(firstBody.idempotency_key);
+  });
+
+  it("restores organization-scoped unknown-outcome keys after A to B to A switches", async () => {
+    current = retention({ retention_days: 30, revision: 7 });
+    postRejects = 2;
+    const rendered = render(view(true, "org-a"));
+    await screen.findByText(/30 days · every 1 hour/i);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review audit-log prune" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run audit-log policy prune" }),
+    );
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    rendered.rerender(view(true, "org-b"));
+    await waitFor(() => {
+      const calls = vi.mocked(api.GET).mock.calls;
+      expect(
+        (calls[calls.length - 1][1] as { params: { path: { orgId: string } } })
+          .params.path.orgId,
+      ).toBe("org-b");
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review audit-log prune" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Run audit-log policy prune" }),
+    );
+    expect(await screen.findByText(/outcome is unknown/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    const firstBody = (vi.mocked(api.POST).mock.calls[0][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    const secondBody = (vi.mocked(api.POST).mock.calls[1][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(secondBody.idempotency_key).not.toBe(firstBody.idempotency_key);
+
+    rendered.rerender(view(true, "org-a"));
+    await waitFor(() => {
+      const calls = vi.mocked(api.GET).mock.calls;
+      expect(
+        (calls[calls.length - 1][1] as { params: { path: { orgId: string } } })
+          .params.path.orgId,
+      ).toBe("org-a");
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Review audit-log prune" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry audit-log pruning" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const thirdBody = (vi.mocked(api.POST).mock.calls[2][1] as {
+      body: { idempotency_key: string };
+    }).body;
+    expect(thirdBody).toEqual(firstBody);
+  });
+
   it("disables every retention mutation for an unverified operator", async () => {
     current = retention({ retention_days: 30, revision: 7 });
     render(view(false));
@@ -432,7 +577,7 @@ describe("audit-log retention settings", () => {
       screen.getByRole("button", { name: "Edit audit-log policy" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Run audit-log pruning now" }).hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Review audit-log prune" }).hasAttribute("disabled"),
     ).toBe(true);
     expect(
       screen.getByRole("status").textContent,

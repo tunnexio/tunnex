@@ -28,7 +28,7 @@ func storeQ(t *testing.T) (*sqlc.Queries, *pgxpool.Pool) {
 	return sqlc.New(pool), pool
 }
 
-func TestStoreInsertListSweep(t *testing.T) {
+func TestStoreInsertList(t *testing.T) {
 	q, pool := storeQ(t)
 	ctx := context.Background()
 	org := uuid.New()
@@ -39,12 +39,11 @@ func TestStoreInsertListSweep(t *testing.T) {
 
 	rule := uuid.New()
 	srcDevice, srcUser := uuid.New(), uuid.New()
-	// A fixed OLD created_at so the CROSS-ORG age sweep below can target ONLY this test's
-	// rows (packages test-run in parallel; other tests insert access_events at ~now, which a
-	// mid-cutoff excludes). created_at is the sweep/keyset clock — not the agent OccurredAt.
-	oldTime := time.Unix(1_000_000, 0).UTC() // ~1970
+	// Keep created_at fixed so equal-timestamp keyset ordering is deterministic.
+	// It remains the retention/keyset clock, not the agent-supplied OccurredAt.
+	createdAt := time.Unix(1_000_000, 0).UTC()
 	mk := func(seq int64, d Decision) Event {
-		return Event{ID: uuid.New(), CreatedAt: oldTime, Seq: seq, OrgID: org, OccurredAt: time.Now().UTC(), Decision: d,
+		return Event{ID: uuid.New(), CreatedAt: createdAt, Seq: seq, OrgID: org, OccurredAt: time.Now().UTC(), Decision: d,
 			RuleID: &rule, SrcDeviceID: &srcDevice, SrcUserID: &srcUser, SrcKind: "human",
 			SrcIP: "10.99.0.10", DstIP: "10.0.5.5", Protocol: "tcp", DstPort: 5432}
 	}
@@ -59,6 +58,9 @@ func TestStoreInsertListSweep(t *testing.T) {
 	if err := q.InsertAccessEvent(ctx, InsertParams(mk(5, DecisionDeny))); err == nil {
 		t.Fatal("duplicate (org,seq) must now FAIL LOUD (unique violation), never a silent no-op")
 	}
+	// Separate INSERT statements remain correctly accounted for during a rolling
+	// upgrade while older binaries are still using the pre-COPY ingest shape.
+	assertRetainedRows(t, pool, org, 5)
 
 	// Keyset first page (far-future cursor) → newest-first, FromRow round-trips.
 	rows, err := q.ListAccessEvents(ctx, sqlc.ListAccessEventsParams{
@@ -78,13 +80,4 @@ func TestStoreInsertListSweep(t *testing.T) {
 	// IngestBatch in the ingest tests + the concurrency test — not derivable from a direct
 	// insert here, which doesn't bump the counter.)
 
-	// Cap sweep: keep newest 2 → deletes 3, bounded to one requested batch.
-	if n, err := q.PruneAccessEventsOverCapBatch(ctx, sqlc.PruneAccessEventsOverCapBatchParams{OrgID: org, KeepNewest: 2, BatchLimit: RetentionBatchSize}); err != nil || n != 3 {
-		t.Fatalf("cap sweep deleted %d (err %v), want 3", n, err)
-	}
-	// Age sweep is explicitly tenant-scoped: a cutoff just after this test's OLD rows
-	// deletes its remaining 2 and cannot touch another organization's rows.
-	if n, err := q.PruneAccessEventsByAgeBatch(ctx, sqlc.PruneAccessEventsByAgeBatchParams{OrgID: org, OlderThan: oldTime.Add(time.Hour), BatchLimit: RetentionBatchSize}); err != nil || n != 2 {
-		t.Fatalf("age sweep deleted %d (err %v), want 2", n, err)
-	}
 }

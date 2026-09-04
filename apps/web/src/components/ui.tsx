@@ -468,22 +468,50 @@ export function SettingRow({
   className?: string;
   /** Test seam for callers whose suites already address the setting by id. */
   "data-testid"?: string;
-  /** The control. Borrows the row's label as its accessible name unless it already carries one. */
+  /** The control. Unnamed controls borrow the row label; named actions use it as a description. */
   children: ReactNode;
 }) {
   const labelId = useId();
-  // The same association idea as `Field`, one level up. The ROW owns the visible label, so the control
-  // must borrow it rather than restate it — a switch whose accessible name is "Enabled" tells a screen
-  // reader that something is enabled without ever saying what.
-  const control =
-    isValidElement(children) &&
-    !(children.props as { "aria-label"?: string })["aria-label"] &&
-    !(children.props as { "aria-labelledby"?: string })["aria-labelledby"]
-      ? cloneElement(
-          children as ReactElement<{ "aria-labelledby"?: string }>,
-          { "aria-labelledby": labelId },
-        )
-      : children;
+  // A state control such as a switch has no useful visible name of its own, so it borrows the row label.
+  // An action is different: replacing "Review manual prune" with "Run pruning now" violates label-in-name
+  // and makes speech control need words that are not on screen. Keep the action's visible name and associate
+  // the row label as its accessible description instead.
+  let control = children;
+  if (isValidElement(children)) {
+    const props = children.props as {
+      children?: ReactNode;
+      href?: unknown;
+      to?: unknown;
+      onClick?: unknown;
+      "aria-label"?: string;
+      "aria-labelledby"?: string;
+      "aria-describedby"?: string;
+    };
+    const isNamedAction =
+      props.children != null &&
+      (children.type === Button ||
+        children.type === "button" ||
+        children.type === "a" ||
+        "href" in props ||
+        "to" in props ||
+        "onClick" in props);
+
+    if (isNamedAction) {
+      control = cloneElement(
+        children as ReactElement<{ "aria-describedby"?: string }>,
+        {
+          "aria-describedby": [props["aria-describedby"], labelId]
+            .filter(Boolean)
+            .join(" "),
+        },
+      );
+    } else if (!props["aria-label"] && !props["aria-labelledby"]) {
+      control = cloneElement(
+        children as ReactElement<{ "aria-labelledby"?: string }>,
+        { "aria-labelledby": labelId },
+      );
+    }
+  }
   return (
     // `basis` + `flex-wrap` so a narrow column drops the control under the text instead of crushing both.
     <div
