@@ -796,6 +796,35 @@ function enrollmentAbandonRefused(): Error {
   return new Error("managed_enrollment_abandon_refused");
 }
 
+export class ManagedEnrollmentOwnerMismatchError extends Error {
+  constructor() {
+    super("managed_enrollment_owner_mismatch");
+    this.name = "ManagedEnrollmentOwnerMismatchError";
+  }
+}
+
+// A foreign anchor is an occupancy fact, never the current user's enrollment.
+// Only this boolean may be projected; the originating identity stays in MAIN.
+export function enrollmentAnchorBlocksUser(
+  anchor: EnrollmentAnchor | null,
+  origin: string,
+  ownerUserId: string,
+): boolean {
+  return anchor !== null && anchor.origin === origin && anchor.ownerUserId !== ownerUserId;
+}
+
+// Read-only preflight for connect and removal. Call before lifecycle/helper
+// effects, and keep the later exact context checks as recovery drift guards.
+export function assertManagedEnrollmentOwner(
+  anchor: EnrollmentAnchor | null,
+  origin: string,
+  ownerUserId: string,
+): void {
+  if (enrollmentAnchorBlocksUser(anchor, origin, ownerUserId)) {
+    throw new ManagedEnrollmentOwnerMismatchError();
+  }
+}
+
 function anchorSnapshot(anchor: EnrollmentAnchor): string {
   try {
     const snapshot = JSON.stringify(anchor);

@@ -47,6 +47,7 @@ export interface ManagedOrganizationEnvelope {
   organizations: ManagedOrganization[];
   enrollmentLocked: boolean;
   enrollmentRecoveryRequired?: boolean;
+  enrollmentBlockedByOtherUser?: boolean;
 }
 
 export interface TunnexBridge {

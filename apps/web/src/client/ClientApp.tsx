@@ -35,6 +35,8 @@ import {
 
 const REMOVE_DEVICE_RETRY_MESSAGE =
   "Device removal did not finish. The saved enrollment was kept; try Remove device again or check Logs.";
+const FOREIGN_ENROLLMENT_MESSAGE =
+  "An unfinished enrollment belongs to another account. Sign out, then sign in with the account that started it and use Connect to resume recovery.";
 
 /**
  * ClientApp — the desktop client's whole UI.
@@ -329,6 +331,10 @@ export function ClientApp() {
 
   async function onAction() {
     const d = desktop();
+    if (d && managedConnectBlocked) {
+      setProblem(FOREIGN_ENROLLMENT_MESSAGE);
+      return;
+    }
     if (d) {
       // ⛔ EVERY BRIDGE CALL IS AWAITED INSIDE A try. Before this, a rejected `tunnel.up` became an
       // unhandled rejection in main's log and the window did not move — the user pressed a button
@@ -340,6 +346,7 @@ export function ClientApp() {
         if (attemptedLogin) {
           await d.auth.login();
           await refreshAuth();
+          await loadManagedOrganizations();
         } else if (state === "connected" || state === "posture_warning" || state === "kill_switch") {
           await d.tunnel.down();
         } else {
@@ -403,6 +410,11 @@ export function ClientApp() {
   const enrollmentLocked = managedOrganizationView?.enrollmentLocked === true;
   const enrollmentRecoveryRequired =
     managedOrganizationView?.enrollmentRecoveryRequired === true;
+  const enrollmentBlockedByOtherUser =
+    managedOrganizationView?.enrollmentBlockedByOtherUser === true;
+  const managedConnectBlocked = enrollmentBlockedByOtherUser
+    && !importedProfiles.some((profile) => profile.active)
+    && view.action === "Connect";
   const [managedOrganizationsFailed, setManagedOrganizationsFailed] =
     useState(false);
   const [organizationNotice, setOrganizationNotice] = useState<string | null>(
@@ -661,7 +673,7 @@ export function ClientApp() {
       await reconcileTunnelStateAfterFailure();
       showProblem(
         e,
-        REMOVE_DEVICE_RETRY_MESSAGE,
+        isForeignEnrollmentError(e) ? FOREIGN_ENROLLMENT_MESSAGE : REMOVE_DEVICE_RETRY_MESSAGE,
       );
     } finally {
       setBusy(false);
@@ -884,6 +896,19 @@ export function ClientApp() {
         </div>
       )}
       <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-5 pt-3">
+        {authed === true && enrollmentBlockedByOtherUser && (
+          <div className="rounded-lg border border-warn/40 bg-warn/5 px-3 py-2 text-xs text-warn">
+            <p role="status">{FOREIGN_ENROLLMENT_MESSAGE}</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void onSignOut()}
+              className="mt-2 rounded border border-warn/60 px-2 py-1 disabled:opacity-50"
+            >
+              Sign out to recover enrollment
+            </button>
+          </div>
+        )}
         {problem && (
           <p
             role="alert"
@@ -915,7 +940,7 @@ export function ClientApp() {
                     setShowActionHint(false);
                     void onAction();
                   }}
-                  disabled={busy}
+                  disabled={busy || managedConnectBlocked}
                   className={
                     "tnx-connect-control absolute left-1/2 top-1/2 z-10 flex h-24 w-24 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent-400 disabled:cursor-wait disabled:opacity-60 " +
                     (view.severity === "loud"
@@ -1142,7 +1167,7 @@ export function ClientApp() {
                   {enrollmentLocked && (
                     <button
                       type="button"
-                      disabled={busy}
+                      disabled={busy || enrollmentBlockedByOtherUser}
                       onClick={() => void onRemoveDevice()}
                       className="shrink-0 rounded border border-warn/60 px-2 py-1 text-xs text-warn hover:text-ink-body disabled:opacity-50"
                     >
@@ -1244,7 +1269,7 @@ export function ClientApp() {
                               ) : (
                                 <button
                                   type="button"
-                                  disabled={busy}
+                                  disabled={busy || enrollmentBlockedByOtherUser}
                                   onClick={() => void onSelectManagedOrganization(organization)}
                                   aria-label={`Use ${organization.name}`}
                                   className="shrink-0 rounded border border-line px-2 py-1 text-xs hover:text-ink-body disabled:opacity-50"
@@ -1408,7 +1433,7 @@ export function ClientApp() {
                     <button
                       type="button"
                       data-removedevice
-                      disabled={busy}
+                      disabled={busy || enrollmentBlockedByOtherUser}
                       onClick={() => void onRemoveDevice()}
                       className="rounded border border-warn/60 px-2 py-1 text-xs text-warn hover:text-ink-body disabled:opacity-50"
                     >
@@ -1566,7 +1591,12 @@ function mapStatus(s: { state?: string } | null | undefined): ClientState {
 }
 
 /** Product copy for renderer-visible failures. Raw IPC and HTTP details stay in logs. */
+function isForeignEnrollmentError(error: unknown): boolean {
+  return (error instanceof Error ? error.message : String(error)).includes("managed_enrollment_owner_mismatch");
+}
+
 export function clientErrorMessage(error: unknown): string {
+  if (isForeignEnrollmentError(error)) return FOREIGN_ENROLLMENT_MESSAGE;
   const raw = error instanceof Error ? error.message : String(error);
   if (raw.includes("revoke_device_failed")) {
     return REMOVE_DEVICE_RETRY_MESSAGE;

@@ -398,6 +398,88 @@ describe("managed device lifecycle", () => {
     expect(b.auth.logout).not.toHaveBeenCalled();
   });
 
+  it("shows a foreign-enrollment block, prevents managed actions, and lets the original account return", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [
+        { id: "current-user-org-a", name: "Current user A", slug: "a", selected: true },
+        { id: "current-user-org-b", name: "Current user B", slug: "b", selected: false },
+      ],
+      enrollmentLocked: false,
+      enrollmentRecoveryRequired: false,
+      enrollmentBlockedByOtherUser: true,
+    });
+    window.tunnex = b;
+    const confirm = vi.spyOn(window, "confirm");
+    render(<ClientApp />);
+    expect(await screen.findByText(/An unfinished enrollment belongs to another account/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    expect(b.tunnel.up).not.toHaveBeenCalled();
+
+    await openDrawerPage("Profiles");
+    const select = screen.getByRole("button", { name: "Use Current user B" }) as HTMLButtonElement;
+    expect(select.disabled).toBe(true);
+    fireEvent.click(select);
+    expect(b.tunnel.selectManagedOrganization).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Abandon and re-enroll" })).toBeNull();
+    await openDrawerPage("Settings");
+    const remove = screen.getByRole("button", { name: "Remove device" }) as HTMLButtonElement;
+    expect(remove.disabled).toBe(true);
+    fireEvent.click(remove);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(b.auth.removeDevice).not.toHaveBeenCalled();
+
+    b.auth.status = vi.fn().mockResolvedValue({ loggedIn: false, secureStorage: true });
+    fireEvent.click(screen.getByRole("button", { name: "Sign out to recover enrollment" }));
+    await waitFor(() => expect(b.auth.logout).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText(/An unfinished enrollment belongs to another account/)).toBeNull());
+    await openDrawerPage("Home");
+    b.auth.status = vi.fn().mockResolvedValue({ loggedIn: true, secureStorage: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [], enrollmentLocked: true, enrollmentRecoveryRequired: true, enrollmentBlockedByOtherUser: false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Sign in with your browser/ }));
+    await waitFor(() => expect(b.tunnel.managedOrganizations).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/An unfinished enrollment belongs to another account/)).toBeNull();
+  });
+
+  it("reports a late foreign-enrollment removal refusal honestly without absence or retry copy", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.auth.removeDevice = vi.fn().mockRejectedValue(new Error("managed_enrollment_owner_mismatch"));
+    window.tunnex = b;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ClientApp />);
+    await openDrawerPage("Settings");
+    fireEvent.click(screen.getByRole("button", { name: "Remove device" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Sign out, then sign in with the account that started it");
+    expect(screen.queryByText(/No enrolled managed device was found|The saved enrollment was kept; try Remove device again|Unfinished enrollment cleared/)).toBeNull();
+    expect(b.auth.logout).not.toHaveBeenCalled();
+  });
+
+  it("keeps imported connections and disconnection available while another account owns enrollment", async () => {
+    const b = fakeBridge({ loggedIn: true });
+    b.tunnel.managedOrganizations = vi.fn().mockResolvedValue({
+      organizations: [], enrollmentLocked: false, enrollmentRecoveryRequired: false, enrollmentBlockedByOtherUser: true,
+    });
+    b.tunnel.importedProfiles = vi.fn().mockResolvedValue([
+      { id: "imported", name: "Existing imported profile", fullTunnel: false, active: true },
+    ]);
+    const transport = mutableTunnelStatus(b, "down");
+    window.tunnex = b;
+    render(<ClientApp />);
+    await screen.findByText(/An unfinished enrollment belongs to another account/);
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    expect(connect.disabled).toBe(false);
+    fireEvent.click(connect);
+    await waitFor(() => expect(b.tunnel.up).toHaveBeenCalledTimes(1));
+    await act(async () => transport.push("up"));
+    const disconnect = screen.getByRole("button", { name: "Disconnect" }) as HTMLButtonElement;
+    expect(disconnect.disabled).toBe(false);
+    fireEvent.click(disconnect);
+    await waitFor(() => expect(b.tunnel.down).toHaveBeenCalledTimes(1));
+  });
+
   it("keeps the live state and never claims success when main reports no device", async () => {
     const b = fakeBridge({ loggedIn: true });
     b.auth.removeDevice = vi.fn().mockResolvedValue(false);

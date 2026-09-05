@@ -15,6 +15,8 @@ export interface ManagedOrganizationEnvelope {
   // Present on the desktop bridge when the lock comes from an unresolved
   // pre-create anchor rather than a completed tunnel record.
   enrollmentRecoveryRequired?: boolean;
+  // Occupied by another user; no foreign organization or owner is projected.
+  enrollmentBlockedByOtherUser?: boolean;
 }
 
 export type LiveOrganization = Pick<ManagedOrganization, "id" | "name" | "slug">;

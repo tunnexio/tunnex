@@ -16,6 +16,9 @@ import {
   buildDurableFilePersistence,
 } from "../src/main/durablefile";
 import {
+  assertManagedEnrollmentOwner,
+  enrollmentAnchorBlocksUser,
+  ManagedEnrollmentOwnerMismatchError,
   PendingApprovalError,
   consumeManagedEnrollmentAbandonProof,
   enrollmentAnchorOrganizationForUser,
@@ -30,6 +33,8 @@ import {
   OrganizationSelectionConflictError,
 } from "../src/main/orgselection";
 import { TunnelConfigStore } from "../src/main/tunnelstore";
+import { ManagedLifecycleCoordinator } from "../src/main/managedlifecycle";
+import { runManagedConnectFlow, runManagedRemoveFlow } from "../src/main/managedlifecycleflows";
 
 const ORIGIN = "https://recovery.example";
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000000201";
@@ -795,7 +800,7 @@ test("explicit abandon completes only after re-proving a real unlink whose first
     let unlinkSyncFailures = 0;
     let trustedAbsenceSyncs = 0;
     const persistence = buildDurableFilePersistence(file, {
-      platform: "darwin",
+      platform: process.platform,
       syncDirectory(parent) {
         if (injectUnlinkedFailure && !fs.existsSync(file)) {
           if (failUnlinkedNamespaceOnce) {
@@ -855,7 +860,7 @@ test("explicit abandon refuses when unlink visibility cannot be durably re-prove
     let injectUnlinkedFailure = false;
     let absentNamespaceSyncs = 0;
     const persistence = buildDurableFilePersistence(file, {
-      platform: "darwin",
+      platform: process.platform,
       syncDirectory(parent) {
         if (injectUnlinkedFailure && !fs.existsSync(file)) {
           absentNamespaceSyncs += 1;
@@ -905,7 +910,7 @@ test("explicit abandon never treats a missing post-unlink parent as ordinary fir
   try {
     let removeParentAfterUnlink = false;
     const persistence = buildDurableFilePersistence(file, {
-      platform: "darwin",
+      platform: process.platform,
       syncDirectory(parent) {
         if (removeParentAfterUnlink && !fs.existsSync(file)) {
           fs.rmdirSync(parent);
@@ -955,7 +960,7 @@ test("explicit abandon reports retained enrollment when an after-unlink classifi
     let restored = false;
     let encryptedAnchor: Buffer | null = null;
     const persistence = buildDurableFilePersistence(file, {
-      platform: "darwin",
+      platform: process.platform,
       syncDirectory(parent) {
         if (restoreAfterUnlink && !restored && !fs.existsSync(file)) {
           if (!encryptedAnchor) throw new Error("test anchor was not captured");
@@ -1021,7 +1026,7 @@ test("explicit abandon refuses an encrypted other-origin map after unlink ambigu
     let replaceAfterUnlink = false;
     let replaced = false;
     const persistence = buildDurableFilePersistence(file, {
-      platform: "darwin",
+      platform: process.platform,
       syncDirectory(parent) {
         if (replaceAfterUnlink && !replaced && !fs.existsSync(file)) {
           fs.writeFileSync(file, encryptedReplacement, { mode: 0o600 });
@@ -1193,4 +1198,93 @@ test("an unresolved anchor projects and locks only for its exact current user", 
   assert.equal(foreignProjection, null);
   assert.equal(selector.organizations(ORIGIN, foreignOwner, live, foreignProjection, false).enrollmentLocked, false);
   assert.equal(enrollmentAnchorOrganizationForUser(anchor, "https://other.example", OWNER_ID), null);
+});
+
+test("foreign enrollment refuses connect and removal proof without lifecycle, API, or encrypted-byte effects", async () => {
+  const persistence = memoryPersistence();
+  const { anchors } = stores(persistence);
+  const anchor = seedEnrollmentAnchor(anchors);
+  const before = persistence.bytes();
+  const otherUser = "00000000-0000-4000-8000-000000000102";
+  const credential = {
+    server: ORIGIN, token: "other-user-token", fingerprint: "other-user-fingerprint", expiresAt: "2999-01-01T00:00:00Z",
+  };
+  const coordinator = new ManagedLifecycleCoordinator(() => credential);
+  const lease = await coordinator.capture(async () => otherUser);
+  const effects: string[] = [];
+  const proveOwner = () => {
+    assertManagedEnrollmentOwner(anchors.get(ORIGIN), ORIGIN, lease.userId);
+    effects.push("API owner and organization reads");
+    throw new Error("foreign proof must refuse first");
+  };
+  const expectStaticRefusal = (error: unknown): boolean => {
+    assert.ok(error instanceof ManagedEnrollmentOwnerMismatchError);
+    assert.equal(error.message, "managed_enrollment_owner_mismatch");
+    for (const hidden of Object.values(anchor)) {
+      if (typeof hidden === "string") assert.ok(!error.message.includes(hidden));
+    }
+    return true;
+  };
+  await assert.rejects(coordinator.serial((owner) =>
+    runManagedConnectFlow(owner, {
+      proveAndPrepare: async () => proveOwner(),
+      quiesceExisting: () => { effects.push("helper Down"); },
+      publishQuiesced: () => { effects.push("publish Down"); },
+      prepareRuntime: () => { effects.push("stop monitors"); },
+      installHelper: () => { effects.push("install helper"); },
+      up: async () => { effects.push("config/create/helper Up"); },
+      onUpError: () => { effects.push("runtime error"); },
+      publish: () => { effects.push("publish"); },
+    })), expectStaticRefusal);
+  coordinator.assertCurrent(lease);
+  await assert.rejects(coordinator.serial((owner) =>
+    runManagedRemoveFlow(owner, {
+      proveOwner: async () => proveOwner(),
+      quiesceExisting: () => { effects.push("helper Down"); },
+      stopMonitors: () => { effects.push("stop monitors"); },
+      revokeAndClear: () => { effects.push("revoke and clear"); return true; },
+    })), expectStaticRefusal);
+  coordinator.assertCurrent(lease);
+  assert.deepEqual(effects, []);
+  assert.deepEqual(persistence.bytes(), before);
+  assert.deepEqual(anchors.get(ORIGIN), anchor);
+});
+
+test("foreign enrollment exposes only a boolean and leaves the original owner able to resume its lost response", async () => {
+  const persistence = memoryPersistence();
+  const { anchors, final } = stores(persistence);
+  const { api, state } = apiHarness({ loseCreateResponse: true });
+  await assert.rejects(
+    resolveTunnelConfig(ORIGIN, false, api, final, ORGANIZATION_ID, OWNER_ID, recovery(anchors)),
+    /control_plane_request_timeout/,
+  );
+  const anchor = anchors.get(ORIGIN)!;
+  const before = persistence.bytes();
+  const otherUser = "00000000-0000-4000-8000-000000000102";
+  assert.equal(enrollmentAnchorBlocksUser(anchor, ORIGIN, otherUser), true);
+  assert.equal(enrollmentAnchorOrganizationForUser(anchor, ORIGIN, otherUser), null);
+  assert.throws(() => assertManagedEnrollmentOwner(anchor, ORIGIN, otherUser), ManagedEnrollmentOwnerMismatchError);
+  // The config-provider check remains a second guard if the context drifts
+  // after preflight; it must retain the very same locally generated key.
+  await assert.rejects(
+    resolveTunnelConfig(ORIGIN, false, api, final, ORGANIZATION_ID, otherUser, recovery(anchors, "other-user-fingerprint")),
+    /device_key_recovery_conflict/,
+  );
+  assert.deepEqual(persistence.bytes(), before);
+  assert.equal(state.createCalls, 1);
+  assert.equal(state.listCalls, 1);
+
+  assert.equal(enrollmentAnchorBlocksUser(anchor, ORIGIN, OWNER_ID), false);
+  assert.doesNotThrow(() => assertManagedEnrollmentOwner(anchor, ORIGIN, OWNER_ID));
+  assert.doesNotThrow(() => assertManagedEnrollmentOwner(null, ORIGIN, otherUser));
+  assert.equal(enrollmentAnchorBlocksUser(null, ORIGIN, otherUser), false);
+  assert.equal(enrollmentAnchorBlocksUser(anchor, "https://other.example", otherUser), false);
+  const config = await resolveTunnelConfig(
+    ORIGIN, false, api, final, ORGANIZATION_ID, OWNER_ID, recovery(anchors, "returning-owner-fingerprint"),
+  );
+  assert.equal(config.private_key, anchor.privateKey);
+  assert.equal(final.get(ORIGIN)?.deviceId, DEVICE_ID);
+  assert.equal(final.get(ORIGIN)?.ownerUserId, OWNER_ID);
+  assert.equal(state.createCalls, 1, "original account recovers the sole server identity without a new create");
+  assert.equal(anchors.get(ORIGIN), null);
 });

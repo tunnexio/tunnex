@@ -10,8 +10,10 @@ import { TunnelController, helperSocketPath } from "./tunnel";
 import { TunnelConfigStore, importedProfileOrigin } from "./tunnelstore";
 import { HttpDeviceApi } from "./httpdeviceapi";
 import {
+  assertManagedEnrollmentOwner,
   commitManagedDeviceOwnerProof,
   consumeManagedEnrollmentAbandonProof,
+  enrollmentAnchorBlocksUser,
   enrollmentAnchorOrganizationForUser,
   proveManagedDeviceOwner,
   proveManagedEnrollmentAbandonment,
@@ -123,12 +125,14 @@ export function registerIpc(
     enrolledOrganizationId: string | null;
     hasStoredManagedRecord: boolean;
     enrollmentRecoveryRequired: boolean;
+    enrollmentBlockedByOtherUser: boolean;
   }> => {
     const organizations = await deviceApiFor(lease).organizations();
     lifecycle.assertCurrent(lease);
     const stored = tunnelStore.get(lease.credential.server);
+    const anchor = enrollmentAnchorStore.get(lease.credential.server);
     const anchoredOrganizationId = enrollmentAnchorOrganizationForUser(
-      enrollmentAnchorStore.get(lease.credential.server),
+      anchor,
       lease.credential.server,
       lease.userId,
     );
@@ -138,6 +142,7 @@ export function registerIpc(
       enrolledOrganizationId: stored?.orgId || anchoredOrganizationId,
       hasStoredManagedRecord: (stored !== null && stored.imported !== true) || anchoredOrganizationId !== null,
       enrollmentRecoveryRequired: stored === null && anchoredOrganizationId !== null,
+      enrollmentBlockedByOtherUser: enrollmentAnchorBlocksUser(anchor, lease.credential.server, lease.userId),
     };
   };
 
@@ -506,6 +511,9 @@ export function registerIpc(
 
     const lease = await captureManagedLease();
     const origin = lease.credential.server;
+    // An unresolved foreign identity must refuse before even quiescing the
+    // existing helper session, advancing its epoch, or installing the helper.
+    assertManagedEnrollmentOwner(enrollmentAnchorStore.get(origin), origin, lease.userId);
     const api = deviceApiFor(lease);
     // LEGACY MIGRATION (reduction 2, TERMINAL FORM): a stored config from before
     // orgId cannot be monitored. Prove ownership while the old lifecycle is live;
@@ -853,10 +861,11 @@ export function registerIpc(
         // helper, revoke a peer, or clear another user's encrypted credential.
         const origin = lease.credential.server;
         const stored = tunnelStore.get(origin);
+        const anchor = enrollmentAnchorStore.get(origin);
+        assertManagedEnrollmentOwner(anchor, origin, lease.userId);
         if (!stored) {
           const organizations = await api.organizations();
           lifecycle.assertCurrent(lease);
-          const anchor = enrollmentAnchorStore.get(origin);
           const organizationId = enrollmentAnchorOrganizationForUser(anchor, origin, lease.userId);
           if (!anchor || !organizationId) return null;
           const proof = await proveManagedEnrollmentAbandonment(
@@ -959,7 +968,11 @@ export function registerIpc(
     if (view.organizations.some((organization) => organization.selected)) {
       organizationSelectionRequiredPending = false;
     }
-    return { ...view, enrollmentRecoveryRequired: context.enrollmentRecoveryRequired };
+    return {
+      ...view,
+      enrollmentRecoveryRequired: context.enrollmentRecoveryRequired,
+      enrollmentBlockedByOtherUser: context.enrollmentBlockedByOtherUser,
+    };
   }));
   ipcMain.handle("tunnel:organizationSelectionRequired", () => organizationSelectionRequiredPending);
   ipcMain.handle("tunnel:selectManagedOrganization", (_e, rawId: unknown) => lifecycle.serial(async () => {
@@ -968,6 +981,7 @@ export function registerIpc(
     }
     const lease = await captureManagedLease();
     const context = await organizationContext(lease);
+    assertManagedEnrollmentOwner(enrollmentAnchorStore.get(lease.credential.server), lease.credential.server, lease.userId);
     const organizations = organizationSelector.select(
       lease.credential.server,
       context.userId,
@@ -977,7 +991,11 @@ export function registerIpc(
       context.hasStoredManagedRecord,
     );
     organizationSelectionRequiredPending = false;
-    return { ...organizations, enrollmentRecoveryRequired: context.enrollmentRecoveryRequired };
+    return {
+      ...organizations,
+      enrollmentRecoveryRequired: context.enrollmentRecoveryRequired,
+      enrollmentBlockedByOtherUser: context.enrollmentBlockedByOtherUser,
+    };
   }));
 
   // --- config ------------------------------------------------------------------
