@@ -1,6 +1,6 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
-Status: **isolated EKS provisioning in progress; no working-product proof yet.**
+Status: **EKS control plane ACTIVE; empty-worker recovery in progress; no working-product proof yet.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
 ## Authority and subject
@@ -124,13 +124,67 @@ not prove public resolution. No DNS record or delegation was changed. Establish
 an actually authoritative TLS/DNS path before deploying the later CP; do not
 modify existing domain delegation to make the walk work.
 
+## Live event 3 — eligible-worker correction and scoped recovery
+
+The managed EKS control plane became ACTIVE, platform `eks.21`. A task-only
+kubeconfig outside Git (mode 0600, separate context; default context unchanged)
+successfully reached Kubernetes `v1.35.6-eks-bca9cf6`. The initial node and Pod
+inventories were empty: API access is proven, worker or application readiness
+is not. No credential or certificate contents were collected into evidence.
+
+The initial managed worker failed to launch any EC2 instance. Its Auto Scaling
+activities at 10:13, 10:15, 10:17, 10:21 and 10:29 UTC report
+`InvalidParameterCombination`: `t3.medium` is not eligible under this account's
+Free Tier restriction. This was not a vCPU-quota or Tunnex-runtime error. AWS
+reported `c7i-flex.large` eligible and offered in the selected AZ; it preserves
+2 vCPU, 4 GiB and x86_64. Eligibility is not a free-billing promise.
+
+Paper `3fb5fe9` records the correction, updated cost, and recovery boundaries
+before source commit `832595e05e62c980fde3ebdaf8a1f4966b1b6086`. The template
+changes only the instance type and removes T3-only credit configuration. Local
+YAML/scope assertions and AWS template validation passed. No product code,
+custom bootstrap, CNI rule, account billing plan, or old demo was changed.
+
+The user separately approved deletion/recreation of exactly the failed-empty
+node group `tunnex-s205-aws-20260905a-worker-a` and its managed ASG
+`eks-tunnex-s205-aws-20260905a-worker-a-30d03887-72cd-93c3-8bb5-dcc8253d7be1`.
+Fresh STS, exact original node-group ARN, exact ASG, zero ASG instances and
+zero task-tagged EC2 instances were verified before `delete-nodegroup`.
+AWS accepted deletion at approximately 10:33 UTC and reported DELETING.
+The stack then reported CREATE_FAILED, naming only `DiagnosticNodegroup`;
+successful resources were retained with rollback disabled. A subsequent
+read still reported DELETING; deletion completion is not claimed here.
+
+The same stack's update change set is
+`arn:aws:cloudformation:ap-south-1:735391218823:changeSet/worker-eligible-832595e/edf055d4-7f53-4c5f-8a70-8fa36b5727d4`,
+created at `2026-09-05T10:37:12.108Z`. Its initial coarse preview included
+tag-driven conditional changes across successful resources, so execution was
+held. The subsequent full property-value preview reports exactly three:
+
+- `WorkerLaunchTemplate`: Modify, no replacement; only instance type and
+  credit-specification removal.
+- `DiagnosticNodegroup`: Modify/replacement for the failed resource, without
+  a stable physical ID; this is the explicitly approved empty-worker scope.
+- `CoreDNSAddon`: Add, as already planned after worker creation.
+
+No change set has been executed at this event. Reverify original group/ASG
+absence, account/principal, quota/usage, exact preview and preserved resources
+before proceeding. The preview's node-group launch-template version is a
+pre-execution observation, not proof of the version actually launched.
+
+The user also explicitly approved publishing non-secret AWS identifiers and
+the quota support-case number in this public repository's redacted evidence.
+The branch was successfully pushed through `c02ab84` after that approval;
+this permission does not authorize publication of any credentials or imply
+approval of held product-design decisions. Root checkout remains clean.
+
 ## Acceptance ledger
 
 | Stage/leg | Result | Remaining proof |
 |---|---|---|
 | Account/region/inventory | READ-ONLY VERIFIED | Recheck before mutation |
 | Quota increase | CASE_OPENED; quota still 8 | Actual approved quota; do not infer from request |
-| One-worker EKS infrastructure | CREATE_IN_PROGRESS | Node/CNI/native DNS/kernel readback still pending |
+| One-worker EKS infrastructure | CP ACTIVE; empty-worker retry pending | Actual worker/node/CNI/native DNS/kernel readback still pending |
 | 0. Candidate provenance/clean baseline | NOT RUN | Matching source/CLI/charts/images; no old ownership state |
 | 1. Redacted plan/no writes | NOT RUN | CLI/CP/Kubernetes evidence |
 | 2/3. A and B enrollment | NOT RUN | Host journal, CNI, readiness, identity and Secret consumption |
