@@ -1,5 +1,6 @@
 # Dependencies
-node_modules/
+# Dependency directories and task-local dependency symlinks are both generated.
+node_modules
 .pnpm-store/
 
 # Build output
