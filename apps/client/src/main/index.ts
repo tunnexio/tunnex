@@ -1,12 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { app, BrowserWindow, shell, protocol, session, ipcMain, dialog, nativeImage } from "electron";
+import { app, BrowserWindow, shell, protocol, ipcMain, dialog, nativeImage } from "electron";
 import { resolveBundlePath, looksLikeAsset, contained } from "./bundle";
 import { contentTypeFor } from "./mime";
 import { cspFor } from "./csp";
 import { Config } from "./config";
-import { buildCredentialStore, buildTunnelConfigStore } from "./store";
-import { attachBearer } from "./session";
+import { buildCredentialStore, buildEnrollmentAnchorStore, buildTunnelConfigStore } from "./store";
 import { registerIpc } from "./ipc";
 import { gracefulQuit } from "./quitguard";
 import { TunnelTray } from "./tray";
@@ -18,16 +17,14 @@ import { DESKTOP_DOWNLOAD_PAGE, DESKTOP_RELEASE_ENDPOINT, releaseCheckFor } from
 import { windowChrome } from "./windowchrome";
 import { AUTOUPDATE_ENABLED } from "./flags";
 import { CLIENT_ENTRY } from "./entry";
+import { ManagedLifecycleCoordinator } from "./managedlifecycle";
+import { startSingleInstance } from "./singleinstance";
 
 // The SPA bundle (apps/web build). Overridable for dev; falls back to the
 // packaged resources dir.
 function bundleDir(): string {
   return process.env.TUNNEX_BUNDLE_DIR ?? path.join(process.resourcesPath ?? "", "web");
 }
-
-// app:// is registered standard + secure so the SPA gets a normal, secure
-// origin (fetch/history/etc. behave; not the file:// footgun).
-protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 const allowInsecure = process.argv.includes("--allow-insecure-credential-storage");
 
@@ -40,6 +37,8 @@ const allowInsecure = process.argv.includes("--allow-insecure-credential-storage
 // running with no window — reopening re-attaches and re-reads live status.
 let mainWindow: BrowserWindow | null = null;
 let allowInsecureStorage = false; // captured from the store at setup for the setup page
+let primaryConfig: Config | null = null;
+let focusPending = false;
 
 function createWindow(config: Config): BrowserWindow {
   // ⛔ SIZED TO THE DESIGN'S CARD, NOT TO A DASHBOARD. 1100x760 was inherited from the days this
@@ -108,16 +107,37 @@ function createWindow(config: Config): BrowserWindow {
 
 // showWindow brings the window forward, recreating it if it was closed (macOS). Used
 // by the tray so its "Show Tunnex" always works even after the window was destroyed.
-function showWindow(config: Config): void {
+function showWindow(config: Config): BrowserWindow {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     mainWindow.focus();
-    return;
+    return mainWindow;
   }
-  createWindow(config);
+  return createWindow(config);
 }
 
-app.whenReady().then(() => {
+function focusPrimaryWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    focusPending = false;
+    return;
+  }
+  if (primaryConfig && app.isReady()) {
+    showWindow(primaryConfig);
+    focusPending = false;
+    return;
+  }
+  focusPending = true;
+}
+
+function initializePrimary(): void {
+  // app:// is registered standard + secure so the SPA gets a normal, secure
+  // origin (fetch/history/etc. behave; not the file:// footgun).
+  protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+
+  app.whenReady().then(() => {
   // ⛔ FIRST, BEFORE ANYTHING CAN FAIL. A logger initialised after the code that crashes records
   // everything except the crash.
   initLogging();
@@ -141,14 +161,13 @@ app.whenReady().then(() => {
     }
   }
   const config = new Config();
+  primaryConfig = config;
   // App-lifetime singletons — built ONCE, not per-window.
   const store = buildCredentialStore(allowInsecure);
   const tunnelStore = buildTunnelConfigStore(allowInsecure);
+  const enrollmentAnchorStore = buildEnrollmentAnchorStore(allowInsecure);
+  const lifecycle = new ManagedLifecycleCoordinator(() => store.load());
   allowInsecureStorage = store.available();
-  // attachBearer registers a webRequest handler on the SHARED default session — must
-  // run exactly once (a per-window call would stack duplicate injectors).
-  attachBearer(session.defaultSession, () => config.getServerUrl(), store);
-
   // Serve the SPA bundle over app://. Every response carries a CSP; every path is
   // (a) lexically contained, (b) symlink-resolved and RE-checked for containment
   // (fs.readFile follows links), and (c) only extension-less paths fall back to
@@ -237,7 +256,15 @@ app.whenReady().then(() => {
     return res.filePath;
   });
 
-  const controls = registerIpc(() => mainWindow, config, store, tunnelStore);
+  const controls = registerIpc(
+    () => mainWindow,
+    () => showWindow(config),
+    config,
+    store,
+    tunnelStore,
+    enrollmentAnchorStore,
+    lifecycle,
+  );
 
   // Tray: one instance for the app lifetime, subscribed to tunnel state. Its actions
   // target the singleton controls + showWindow (recreates the window if closed).
@@ -276,12 +303,16 @@ app.whenReady().then(() => {
   });
 
   createWindow(config);
+  if (focusPending) focusPrimaryWindow();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(config);
   });
-});
+  });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
+}
+
+startSingleInstance(app, initializePrimary, focusPrimaryWindow);

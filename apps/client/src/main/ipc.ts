@@ -2,14 +2,30 @@ import * as fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
 import { ipcMain, BrowserWindow, dialog } from "electron";
-import { parseWgConf } from "./wgconf";
 import { Config, MANAGED_PROFILE_SELECTION } from "./config";
 import { CredentialStore } from "./credential";
+import type { EnrollmentAnchorStore } from "./enrollmentanchor";
 import { runLogin, runLogout } from "./login";
 import { TunnelController, helperSocketPath } from "./tunnel";
 import { TunnelConfigStore, importedProfileOrigin } from "./tunnelstore";
 import { HttpDeviceApi } from "./httpdeviceapi";
-import { resolveTunnelConfig, removeManagedTunnelConfigForOrigin, migrateLegacyConfig, DeviceRevokedError, PendingApprovalError } from "./deviceconfig";
+import {
+  commitManagedDeviceOwnerProof,
+  consumeManagedEnrollmentAbandonProof,
+  enrollmentAnchorOrganizationForUser,
+  proveManagedDeviceOwner,
+  proveManagedEnrollmentAbandonment,
+  proveLegacyManagedDeviceOwner,
+  revokeAndClearManagedDevice,
+  revokeAndClearLegacyManagedDevice,
+  resolveTunnelConfig,
+  parseImportedTunnelConfig,
+  DeviceRevokedError,
+  PendingApprovalError,
+  type LegacyManagedDeviceProof,
+  type ManagedEnrollmentAbandonProof,
+  type ManagedDeviceOwnerProof,
+} from "./deviceconfig";
 import { signOutPreservingDevice } from "./sessionlifecycle";
 import { RevocationMonitor } from "./revocation";
 import { RoutedRangesMonitor } from "./routedrangesmonitor";
@@ -21,13 +37,23 @@ import { ensureHelperInstalled } from "./helperinstall";
 import { postServerUrlAction } from "./entry";
 import { notifyTunnel } from "./notify";
 import { trayStateFor, type TrayState } from "./tray";
-import type { TunnelStatus } from "./helperclient";
-
-// Desktop default: split-tunnel (org network only), matching the CLI default. The UI
-// may pass a full-tunnel INTENT at connect (S6.4 split-tunnel toggle); the helper
-// enforces both-family completeness when it IS full. Switching split↔full preserves
-// the device identity and changes its issued routing mode.
-const DEFAULT_FULL_TUNNEL = false;
+import type { TunnelConfig, TunnelStatus } from "./helperclient";
+import { ManagedOrganizationSelector, NoOrganizationError, OrganizationSelectionRequiredError, type LiveOrganization } from "./orgselection";
+import {
+  ManagedLifecycleCoordinator,
+  StaleManagedLeaseError,
+  type ManagedLease,
+} from "./managedlifecycle";
+import {
+  buildManagedConnectPreparation,
+  runManagedConnectFlow,
+  runManagedDisconnectFlow,
+  runManagedRemoveFlow,
+  runTerminalRevocationFlow,
+  type FixedManagedConnectContext,
+} from "./managedlifecycleflows";
+import { projectTransportStatus, SingleFlightStatusReader } from "./statusreader";
+import { isCanonicalUuid } from "./uuid";
 
 // ClientTunnelStatus is what main forwards: the helper's TunnelStatus plus the
 // client-synthesized states the helper never emits — "revoked", "pending_approval",
@@ -42,6 +68,15 @@ type ClientTunnelStatus =
   | { state: "migrate_failed" }
   | { state: "posture_warning"; failed_checks: HealthReportResult["failed_checks"] }
   | { state: "posture_blocked"; failed_checks: HealthReportResult["failed_checks"] };
+
+type ManagedConnectContext = FixedManagedConnectContext<HttpDeviceApi> & {
+  readonly ownerProof: ManagedDeviceOwnerProof | null;
+};
+
+type ManagedRemoveContext =
+  | { readonly kind: "bound"; readonly proof: ManagedDeviceOwnerProof; readonly api: HttpDeviceApi }
+  | { readonly kind: "legacy"; readonly proof: LegacyManagedDeviceProof }
+  | { readonly kind: "anchor"; readonly proof: ManagedEnrollmentAbandonProof; readonly api: HttpDeviceApi };
 
 // TunnelControls is what registerIpc returns so the tray (built in index.ts) can drive
 // the SAME connect/disconnect path the renderer uses — no duplicated tunnel logic, one
@@ -59,14 +94,52 @@ export interface TunnelControls {
 // the CURRENT window (or null when closed) so the tunnel + monitor outlive any window.
 export function registerIpc(
   getWindow: () => BrowserWindow | null,
+  showWindow: () => BrowserWindow,
   config: Config,
   store: CredentialStore,
   tunnelStore: TunnelConfigStore,
+  enrollmentAnchorStore: EnrollmentAnchorStore,
+  lifecycle: ManagedLifecycleCoordinator,
 ): TunnelControls {
-  // The bearer is bound to the origin it was minted against (store.load().server);
-  // build the device API + resolve config against exactly that origin so a config
-  // is never fetched/used cross-origin.
-  const deviceApiFor = (origin: string) => new HttpDeviceApi(origin, () => store.load()?.token ?? null);
+  // Every managed API is pinned to the immutable credential carried by the
+  // operation lease. No request can observe a later store replacement.
+  const deviceApiFor = (lease: ManagedLease) =>
+    new HttpDeviceApi(lease.credential.server, lease.credential.token);
+  const captureManagedLease = () => lifecycle.capture((credential) =>
+    new HttpDeviceApi(credential.server, credential.token).currentUserId());
+  const guardedValue = async <T>(lease: ManagedLease, effect: () => Promise<T>): Promise<T> => {
+    const value = await lifecycle.guarded(lease, effect);
+    if (value === undefined) throw new StaleManagedLeaseError();
+    return value;
+  };
+  const organizationSelector = new ManagedOrganizationSelector({
+    get: (key) => config.getManagedOrganizationSelection(key),
+    set: (key, organizationId) => config.setManagedOrganizationSelection(key, organizationId),
+  });
+
+  const organizationContext = async (lease: ManagedLease): Promise<{
+    userId: string;
+    organizations: LiveOrganization[];
+    enrolledOrganizationId: string | null;
+    hasStoredManagedRecord: boolean;
+    enrollmentRecoveryRequired: boolean;
+  }> => {
+    const organizations = await deviceApiFor(lease).organizations();
+    lifecycle.assertCurrent(lease);
+    const stored = tunnelStore.get(lease.credential.server);
+    const anchoredOrganizationId = enrollmentAnchorOrganizationForUser(
+      enrollmentAnchorStore.get(lease.credential.server),
+      lease.credential.server,
+      lease.userId,
+    );
+    return {
+      userId: lease.userId,
+      organizations,
+      enrolledOrganizationId: stored?.orgId || anchoredOrganizationId,
+      hasStoredManagedRecord: (stored !== null && stored.imported !== true) || anchoredOrganizationId !== null,
+      enrollmentRecoveryRequired: stored === null && anchoredOrganizationId !== null,
+    };
+  };
 
   const activeImportedProfile = () => {
     const selected = config.getImportedProfileId();
@@ -90,6 +163,7 @@ export function registerIpc(
   // --- tunnel state fan-out (renderer push channel + tray subscribers) -----------
   const subscribers = new Set<(s: TrayState) => void>();
   let trayState: TrayState = "disconnected";
+  let organizationSelectionRequiredPending = false;
   // lastSynth holds a CLIENT-synthesized state so it
   // survives a renderer remount/reload: the helper can't report "revoked", so
   // tunnel:status returns this until the next connect/disconnect clears it.
@@ -98,9 +172,21 @@ export function registerIpc(
   // that helper payload so a warning cannot blank the graph and counters.
   let lastTransport: TunnelStatus | null = null;
 
+  const recordTransportStatus = (status: TunnelStatus): void => {
+    const projected = projectTransportStatus(lastSynth, status);
+    lastSynth = projected.synthetic;
+    lastTransport = projected.transport;
+  };
+
   const emitTray = (s: TrayState): void => {
     trayState = s;
-    for (const cb of subscribers) cb(s);
+    for (const cb of subscribers) {
+      try {
+        cb(s);
+      } catch {
+        /* one stale tray subscriber cannot block transport-truth publication */
+      }
+    }
   };
   // pushRenderer sends to the live window's onStatusChanged channel. GUARDED: a closed/
   // destroyed window is a no-op (never throws) — so callers' tray + notification side
@@ -112,6 +198,27 @@ export function registerIpc(
       w.webContents.send("tunnel:status-changed", s);
     } catch {
       /* webContents torn down mid-send — the tray/notification path still runs */
+    }
+  };
+  // A tray connect has no caller surface for a rejected Promise. Missing tenant
+  // choice therefore opens/focuses the client and sends the same explicit event the
+  // renderer connect path receives. If the window had to be recreated, wait for its
+  // document before sending so the preload listener exists.
+  const surfaceOrganizationSelectionRequired = (): void => {
+    organizationSelectionRequiredPending = true;
+    const w = showWindow();
+    const send = (): void => {
+      if (w.isDestroyed()) return;
+      try {
+        w.webContents.send("tunnel:organization-selection-required");
+      } catch {
+        /* the selection remains discoverable through managedOrganizations() */
+      }
+    };
+    if (w.webContents.isLoading()) {
+      w.webContents.once("did-finish-load", send);
+    } else {
+      send();
     }
   };
   // emit forwards a status to BOTH the renderer and the tray. The tray reflects the
@@ -137,6 +244,17 @@ export function registerIpc(
     pushRenderer(visible);
     emitTray(trayStateFor(visible));
   };
+  // Publish the one truthful state shared by every successful quiescence before
+  // any later helper install, server revoke, store write, or profile mutation can
+  // fail. Callers invoke this only after tunnel.down() resolves; a teardown
+  // refusal therefore preserves the prior renderer, tray, and synthesized state.
+  const publishConfirmedDown = (): ClientTunnelStatus => {
+    const down: ClientTunnelStatus = { state: "down" };
+    lastSynth = null;
+    lastTransport = down;
+    emit(down);
+    return down;
+  };
 
   // --- revocation monitor (proactive, client-side; S6.4) -------------------------
   let monitor: RevocationMonitor | null = null;
@@ -147,19 +265,57 @@ export function registerIpc(
     routedRangesMonitor?.stop();
     routedRangesMonitor = null;
   };
-  // onRevoked is the definitive-gone teardown: tear the dead tunnel down, retain a local
-  // terminal revocation marker (never auto-enroll around an administrator's decision), then surface the distinct revoked state LOUDLY
-  // (renderer banner + tray + notification). All best-effort; the local state is
-  // authoritative. Runs at most once per monitor (RevocationMonitor fires once).
-  const onRevoked = async (origin: string): Promise<void> => {
-    stopMonitor();
-    stopHealthMonitor(); // the device is gone — nothing left to report on
-    await tunnel.down().catch(() => {});
-    const sc = tunnelStore.get(origin);
-    if (sc) tunnelStore.put({ ...sc, pending: false, revoked: true });
-    lastSynth = { state: "revoked" }; // survive a renderer remount until next connect/disconnect
-    emit({ state: "revoked" });
-    notifyTunnel("revoked");
+  // onRevoked is the definitive-gone teardown. The server verdict is already
+  // terminal, but local helper cleanup still has its own truth: only confirmed
+  // down may surface Revoked. A refusal is forced fail-closed and surfaced as
+  // Failed so retry/cleanup remains actionable rather than falsely claiming down.
+  const onRevoked = async (lease: ManagedLease, deviceId: string): Promise<void> => {
+    // The monitor's fixed-token read has already established the terminal
+    // result. guarded() revalidates its exact credential+epoch before any
+    // helper, store, renderer, tray, or notification effect below.
+    const origin = lease.credential.server;
+    await runTerminalRevocationFlow({
+      stopMonitors: () => {
+        stopMonitor();
+        stopHealthMonitor(); // the device is gone — nothing left to report on
+      },
+      downTunnel: () => tunnel.down(),
+      forceFailClosed: () => tunnel.failClosed(),
+      retainTerminalRecord: () => {
+        const sc = tunnelStore.get(origin);
+        if (
+          sc?.deviceId === deviceId &&
+          sc.ownerUserId === lease.userId
+        ) {
+          tunnelStore.put({ ...sc, pending: false, revoked: true });
+        }
+      },
+      publishRevoked: () => {
+        lastSynth = { state: "revoked" }; // survive a renderer remount until next connect/disconnect
+        emit({ state: "revoked" });
+        try {
+          notifyTunnel("revoked");
+        } catch {
+          /* OS notification failure cannot roll back terminal transport truth */
+        }
+      },
+      publishFailed: () => {
+        const failed: ClientTunnelStatus = { state: "failed" };
+        recordTransportStatus(failed);
+        emit(failed);
+        try {
+          notifyTunnel("failed");
+        } catch {
+          /* OS notification failure cannot roll back terminal transport truth */
+        }
+      },
+      reportProblems: (problems) => {
+        // Preserve exact errors in the flow result for deterministic callers,
+        // but keep logs secret-safe: categories are enough to diagnose which
+        // independent terminal effects need operator attention.
+        console.error(`Terminal revocation incomplete: ${Object.keys(problems).join(", ")}`);
+      },
+    });
   };
 
   // --- awaiting-approval poll (S7.3 — sibling of the revocation monitor) ----------
@@ -174,10 +330,18 @@ export function registerIpc(
   // connect reuses the SAME stored config (no re-mint), surface it, notify. Deliberately
   // does NOT auto-connect — a background poll must never arm the kill-switch / trigger the
   // helper privilege flow; the human clicks Connect.
-  const onApproved = (origin: string): void => {
+  const onApproved = (lease: ManagedLease, deviceId: string): void => {
     stopApprovalMonitor();
-    const sc = tunnelStore.get(origin);
-    if (sc?.pending) tunnelStore.put({ ...sc, pending: false });
+    const sc = tunnelStore.get(lease.credential.server);
+    if (
+      !sc ||
+      sc.deviceId !== deviceId ||
+      !sc.pending ||
+      sc.ownerUserId !== lease.userId
+    ) {
+      return;
+    }
+    tunnelStore.put({ ...sc, pending: false });
     lastSynth = null;
     emit({ state: "down" }); // now connectable
     notifyTunnel("approved");
@@ -185,9 +349,9 @@ export function registerIpc(
   // onRejected: the pending device was rejected/deleted — a genuine revocation. Route
   // through the ONE teardown path (onRevoked): clear the dead config + best-effort revoke
   // + the loud revoked notification. (No tunnel is up; tunnel.down is a no-op.)
-  const onRejected = async (origin: string): Promise<void> => {
+  const onRejected = async (lease: ManagedLease, deviceId: string): Promise<void> => {
     stopApprovalMonitor();
-    await onRevoked(origin);
+    await onRevoked(lease, deviceId);
   };
 
   // --- device-health report monitor (S7.5.3 — sibling of the revocation monitor) --
@@ -241,176 +405,386 @@ export function registerIpc(
   };
 
   // --- the tunnel controller -----------------------------------------------------
-  let requestedFullTunnel = DEFAULT_FULL_TUNNEL; // set by connect() before up()
+  // The controller is app-lifetime, but every up receives its own immutable
+  // provider. activeManagedLease only labels heartbeat/onLost effects; it never
+  // supplies credentials or enrollment inputs.
+  let activeManagedLease: ManagedLease | null = null;
+  const applyTunnelStatus = (status: TunnelStatus): void => {
+    const wasFailed = lastTransport?.state === "failed";
+    recordTransportStatus(status);
+    emit(status);
+    if (status.state === "failed") {
+      stopMonitor();
+      stopHealthMonitor();
+      if (!wasFailed) {
+        try {
+          notifyTunnel("failed");
+        } catch {
+          /* a notification failure must not reject a truthful Failed status read */
+        }
+      }
+    }
+  };
   const tunnel = new TunnelController(
     helperSocketPath(),
-    async () => {
-      // ⛔ AN IMPORTED PROFILE SHORT-CIRCUITS THE MINT PATH — AND ONLY THAT PATH.
-      //
-      // It has no credential, so the check below would reject it; it has no deviceId, so
-      // resolveTunnelConfig would drop it as a legacy config and try to create a fresh device.
-      // Both are correct for a minted config and wrong for this one. Returned as-is: the file is
-      // the whole truth about this tunnel, which is exactly why the mode is degraded.
-      const imported = activeImportedProfile();
-      if (imported) return imported.config;
-      const cred = store.load();
-      if (!cred) throw new Error("not_authenticated");
-      return resolveTunnelConfig(cred.server, requestedFullTunnel, deviceApiFor(cred.server), tunnelStore);
-    },
     (status) => {
-      // Live heartbeat status + the LOUD fail-closed signal (onLost → state "failed").
-      lastTransport = status;
-      emit(status);
-      if (status.state === "failed") {
-        // The helper died / fail-closed: the monitor is moot (no tunnel to watch) and
-        // the user must be told loudly. onLost fires once, so this fires once.
-        // The health monitor is connection-scoped too (its posture reads ride the
-        // same helper connection) — it restarts on the next connect.
-        stopMonitor();
-        stopHealthMonitor();
-        notifyTunnel("failed");
+      // Live heartbeat status + the LOUD fail-closed signal (onLost → failed).
+      // A managed callback enters the same FIFO lane and is discarded if its
+      // connection lease was invalidated by logout/profile/server replacement.
+      const lease = activeManagedLease;
+      if (lease) {
+        const apply = () => {
+          applyTunnelStatus(status);
+        };
+        void (status.state === "failed"
+          ? lifecycle.terminal(lease, apply)
+          : lifecycle.guarded(lease, apply));
+      } else {
+        applyTunnelStatus(status); // imported profiles carry no managed credential
       }
     },
   );
-
-  const connect = async (fullTunnel: boolean): Promise<ClientTunnelStatus> => {
-    // First-connect on an unsigned macOS build: install the privileged helper via one
-    // GUI admin prompt (no-op if already installed / off macOS). Throws
-    // helper_install_canceled|failed|asset_missing → surfaced by the renderer.
-    await ensureHelperInstalled();
-    // Stop any prior monitors FIRST, unconditionally — even if we can't resolve a new
-    // deviceId below, an old monitor must not linger and later tear down THIS tunnel.
-    stopMonitor();
-    stopApprovalMonitor();
-    stopHealthMonitor();
-    lastSynth = null; // a fresh connect clears any stale revoked/pending state
-    requestedFullTunnel = fullTunnel;
-    // LEGACY MIGRATION (reduction 2, TERMINAL FORM — outcome-degraded): a stored config from
-    // before the orgId field can't be monitored. Handle it DETERMINISTICALLY AT DETECTION,
-    // terminal for THIS connect — there is NO tunnel.up on the legacy path, so no helper-arm
-    // failure can race the notice, no create/revoke atomicity, no cap collision. migrateLegacyConfig
-    // is REVOKE-FIRST (frees the per-user cap slot before clearing; config KEPT on any failure so
-    // the slot handle survives). This block degrades on OUTCOME, not error type — there are exactly
-    // TWO outcomes, both bounded and both ending in a connectable "down":
-    //   completed        -> "migrated"; the NEXT connect is an ordinary fresh create (slot free, orgId present)
-    //   failed FOR ANY REASON -> config KEPT + honest recoverable down ("couldn't replace device;
-    //                            reconnect to retry / contact admin if it persists")
-    // We do NOT catch-and-branch on which error it was: a failed migration is a failed migration.
-    // This structurally removes the two failure classes the whole arc produced — there is NO path
-    // from a failed migration to (a) a raw renderer reject or (b) an unbounded loop. Transient
-    // self-heals on the next connect; persistent is bounded-by-honest-message, never a crash, never
-    // a silent lockout. (Fourth and final touch on this surface — see docs/S7.3-decisions.md.)
-    const preCred = store.load();
-    if (preCred) {
-      const preSc = tunnelStore.get(preCred.server);
-      if (preSc && !preSc.orgId) {
+  // The renderer polls once per second. Share one lifecycle ticket and one
+  // helper request across every overlapping poll so a wedged helper can delay a
+  // mutation by at most one bounded read, never an ever-growing FIFO backlog.
+  const statusReader = new SingleFlightStatusReader<ClientTunnelStatus>(() =>
+    lifecycle.serial(async () => {
+      const synthesized = lastSynth;
+      if (synthesized?.state === "posture_warning" || synthesized?.state === "posture_blocked") {
+        let status: TunnelStatus;
         try {
-          await migrateLegacyConfig(preCred.server, preSc.deviceId, deviceApiFor(preCred.server), tunnelStore);
-          notifyTunnel("migrated");
-          const down: ClientTunnelStatus = { state: "down" };
-          emit(down);
-          return down; // terminal — next connect is an ordinary fresh create
+          status = await tunnel.status();
         } catch {
-          // ANY failure -> the ONE bounded outcome ("not replaced"). Config is still stored
-          // (revoke-first kept it), so the next connect re-detects + retries; the slot handle
-          // is retained. No re-throw, no branch on error type. Surface it as a DISTINCT synth
-          // state (mirrors "revoked"/"pending_approval") so the window/tray shows it legibly
-          // even when OS notifications are off — never a bare "Disconnected". Latched so it
-          // survives a renderer remount until the next connect/disconnect.
-          notifyTunnel("migrate_retry");
-          const s: ClientTunnelStatus = { state: "migrate_failed" };
-          lastSynth = s;
-          emit(s);
-          return s; // terminal — the user reconnects to retry the update
+          // A transient read error is inconclusive. Preserve the existing
+          // posture overlay; only successful helper Failed truth supersedes it.
+          return synthesized.state === "posture_warning"
+            ? ({ ...(lastTransport ?? {}), ...synthesized } as ClientTunnelStatus)
+            : synthesized;
         }
+        if (status.state === "failed") {
+          applyTunnelStatus(status);
+          return status;
+        }
+        recordTransportStatus(status);
+        return synthesized.state === "posture_warning"
+          ? ({ ...status, ...synthesized } as ClientTunnelStatus)
+          : synthesized;
+      }
+      if (synthesized) return synthesized;
+      const status = await tunnel.status();
+      if (status.state === "failed") {
+        applyTunnelStatus(status);
+      } else {
+        recordTransportStatus(status);
+      }
+      return status;
+    }));
+
+  const connect = (fullTunnel: boolean): Promise<ClientTunnelStatus> => lifecycle.serial(async (owner) => {
+    const importedAtStart = activeImportedProfile();
+
+    // Imported WireGuard files have no managed credential. They still enter the
+    // lifecycle lane and invalidate/stop every managed callback before helper
+    // work, while their exact config stays invocation-local.
+    if (importedAtStart) {
+      await tunnel.down();
+      organizationSelectionRequiredPending = false;
+      publishConfirmedDown();
+      owner.invalidate();
+      stopMonitor();
+      stopApprovalMonitor();
+      stopHealthMonitor();
+      activeManagedLease = null;
+      await ensureHelperInstalled();
+      const status = await tunnel.up(async () => importedAtStart.config);
+      activeManagedLease = null;
+      lastTransport = status;
+      emit(status);
+      notifyTunnel("connected");
+      return status;
+    }
+
+    const lease = await captureManagedLease();
+    const origin = lease.credential.server;
+    const api = deviceApiFor(lease);
+    // LEGACY MIGRATION (reduction 2, TERMINAL FORM): a stored config from before
+    // orgId cannot be monitored. Prove ownership while the old lifecycle is live;
+    // only then quiesce, advance, stop, and consume the opaque revoke-first proof.
+    // Proof failure is the bounded retry state. Helper teardown refusal remains a
+    // distinct rejection with zero epoch/monitor/store/UI mutation.
+    // Every managed connect binds the encrypted device to the fixed authenticated
+    // human before a helper prompt, helper mutation, status read, mode update, or
+    // monitor can run. A failed/inconclusive proof leaves helper+monitors untouched.
+    const preSc = tunnelStore.get(origin);
+    if (preSc && !preSc.orgId) {
+      let proof: LegacyManagedDeviceProof;
+      try {
+        // Prove the exact current user without touching helper ownership or
+        // monitors. Failure is the bounded legacy outcome; helper teardown
+        // refusal remains a distinct zero-effect rejection below.
+        proof = await proveLegacyManagedDeviceOwner(
+          origin,
+          preSc.deviceId,
+          lease.userId,
+          api,
+          tunnelStore,
+          () => lifecycle.assertCurrent(lease),
+        );
+      } catch {
+        notifyTunnel("migrate_retry");
+        const s: ClientTunnelStatus = { state: "migrate_failed" };
+        lastSynth = s;
+        emit(s);
+        return s;
+      }
+
+      // Keep teardown outside the migration-outcome catch. A refusal preserves
+      // epoch, monitors, store, renderer, and tray exactly as they were.
+      await tunnel.down();
+      const down = publishConfirmedDown();
+      organizationSelectionRequiredPending = false;
+      const activeLease = owner.advance(lease);
+      stopMonitor();
+      stopApprovalMonitor();
+      stopHealthMonitor();
+      activeManagedLease = null;
+
+      try {
+        await revokeAndClearLegacyManagedDevice(
+          proof,
+          () => lifecycle.assertCurrent(activeLease),
+        );
+        notifyTunnel("migrated");
+        return down; // terminal — next connect is an ordinary fresh create
+      } catch {
+        // The helper is already truthfully down. Keep the encrypted recovery
+        // handle and surface one bounded retry state for revoke/clear failure.
+        notifyTunnel("migrate_retry");
+        const s: ClientTunnelStatus = { state: "migrate_failed" };
+        lastSynth = s;
+        emit(s);
+        return s;
       }
     }
-    let status: TunnelStatus;
-    try {
-      status = await tunnel.up(); // resolves + persists the device, arms the helper
-    } catch (e) {
-      if (e instanceof DeviceRevokedError) {
-        const revoked: ClientTunnelStatus = { state: "revoked" };
-        lastSynth = revoked;
-        emit(revoked);
-        notifyTunnel("revoked");
-        return revoked;
-      }
-      // S7.3 GATE: the device is awaiting admin approval. resolveTunnelConfig threw BEFORE
-      // arming the helper (no dead tunnel, no RevocationMonitor that would misread pending
-      // as revoked). Show the stable awaiting state + start the ApprovalMonitor instead.
-      if (e instanceof PendingApprovalError) {
-        const cred = store.load();
-        const pending: ClientTunnelStatus = { state: "pending_approval" };
-        lastSynth = pending;
-        emit(pending);
-        notifyTunnel("pending");
-        if (cred) {
-          const orgId = tunnelStore.get(cred.server)?.orgId ?? ""; // persisted before the throw
+
+    return runManagedConnectFlow<ManagedConnectContext, TunnelConfig, TunnelStatus, ClientTunnelStatus>(owner, {
+      proveAndPrepare: async () => {
+        const ownerProof = await proveManagedDeviceOwner(
+          origin,
+          lease.userId,
+          api,
+          tunnelStore,
+          () => lifecycle.assertCurrent(lease),
+        );
+        let enrollmentOrganizationId: string;
+        if (ownerProof) {
+          enrollmentOrganizationId = ownerProof.organizationId;
+        } else {
+          try {
+            const organizations = await api.organizations();
+            lifecycle.assertCurrent(lease);
+            enrollmentOrganizationId = organizationSelector.requireFreshEnrollment(
+              origin,
+              lease.userId,
+              organizations,
+            );
+          } catch (error) {
+            if (error instanceof OrganizationSelectionRequiredError || error instanceof NoOrganizationError) {
+              surfaceOrganizationSelectionRequired();
+            }
+            throw error;
+          }
+        }
+
+        const prepared = buildManagedConnectPreparation({
+          lease,
+          organizationId: enrollmentOrganizationId,
+          fullTunnel,
+          origin,
+          api,
+          resolveConfig: (fixed) => resolveTunnelConfig(
+            fixed.origin,
+            fixed.fullTunnel,
+            fixed.api,
+            tunnelStore,
+            fixed.organizationId,
+            fixed.userId,
+            {
+              anchorStore: enrollmentAnchorStore,
+              credentialFingerprint: fixed.credential.fingerprint,
+            },
+          ),
+        });
+        return Object.freeze({
+          ...prepared,
+          context: Object.freeze({ ...prepared.context, ownerProof }),
+        });
+      },
+      quiesceExisting: async () => {
+        await tunnel.down();
+        organizationSelectionRequiredPending = false;
+      },
+      publishQuiesced: () => {
+        publishConfirmedDown();
+      },
+      prepareRuntime: (connection) => {
+        if (connection.context.ownerProof) {
+          commitManagedDeviceOwnerProof(
+            connection.context.ownerProof,
+            () => lifecycle.assertCurrent(connection.lease),
+          );
+        }
+        stopMonitor();
+        stopApprovalMonitor();
+        stopHealthMonitor();
+        // Label socket callbacks with the new fixed lease before install/up.
+        // Terminal callbacks retain it as a stale tombstone, so a heartbeat
+        // resumed after teardown refusal is guard-discarded rather than treated
+        // as an imported-profile status.
+        activeManagedLease = connection.lease;
+      },
+      // First-connect on an unsigned macOS build: install the privileged helper via one
+      // GUI admin prompt (no-op if already installed / off macOS). This is deliberately
+      // after fixed identity, owner, and organization proof.
+      installHelper: () => ensureHelperInstalled(),
+      up: (configProvider) => tunnel.up(configProvider),
+      onUpError: (e, connection) => {
+        const connectionLease = connection.lease;
+        const { origin: connectionOrigin, api: connectionApi } = connection.context;
+        if (e instanceof DeviceRevokedError) {
+          // This is terminal for the newly prepared managed lease. Fence it but
+          // retain activeManagedLease as a stale tombstone so any delayed helper
+          // callback is guard-discarded instead of entering the imported path.
+          owner.invalidate();
+          const revoked: ClientTunnelStatus = { state: "revoked" };
+          lastSynth = revoked;
+          emit(revoked);
+          notifyTunnel("revoked");
+          return revoked;
+        }
+        // S7.3 GATE: the device is awaiting admin approval. resolveTunnelConfig threw BEFORE
+        // arming the helper (no dead tunnel, no RevocationMonitor that would misread pending
+        // as revoked). Show the stable awaiting state + start the ApprovalMonitor instead.
+        if (e instanceof PendingApprovalError) {
+          const pending: ClientTunnelStatus = { state: "pending_approval" };
+          lastSynth = pending;
+          emit(pending);
+          notifyTunnel("pending");
+          const pendingConfig = tunnelStore.get(connectionOrigin); // persisted before the throw
+          if (!pendingConfig?.ownerUserId || pendingConfig.ownerUserId !== connectionLease.userId) throw e;
           approvalMonitor = new ApprovalMonitor(
             e.deviceId,
-            orgId,
-            deviceApiFor(cred.server),
-            () => onApproved(cred.server),
-            () => onRejected(cred.server),
+            pendingConfig.orgId,
+            {
+              deviceStatus: (deviceId, orgId) => guardedValue(
+                connectionLease,
+                () => connectionApi.deviceStatus(deviceId, orgId),
+              ),
+            },
+            () => lifecycle.guarded(connectionLease, () => onApproved(connectionLease, e.deviceId)),
+            () => lifecycle.terminal(connectionLease, () => {
+              return onRejected(connectionLease, e.deviceId);
+            }),
           );
           approvalMonitor.start();
+          return pending;
         }
-        return pending;
-      }
-      throw e;
-    }
-    // Start the proactive revocation monitor for the device we just brought up.
-    const cred = store.load();
-    const sc = cred ? tunnelStore.get(cred.server) : undefined;
-    if (cred && sc?.deviceId) {
-      monitor = new RevocationMonitor(sc.deviceId, sc.orgId, deviceApiFor(cred.server), () => onRevoked(cred.server));
-      monitor.start();
-      // S8.5 routed-subnets push (#5: runs in BOTH modes): poll the org's declared ranges + reachable DNS
-      // forwards and live-apply each tier via the helper — ranges → set_allowed_ips, forwards →
-      // set_resolvers. The ROUTES tier is enabled only for SPLIT-tunnel (a full tunnel's 0.0.0.0/0 subsumes
-      // every range — no route calls). The RESOLVER tier runs in BOTH: full-tunnel's baked DNS (1.1.1.1)
-      // cannot answer internal cross-site zones, so it needs the forwards just as split-tunnel does.
-      routedRangesMonitor = new RoutedRangesMonitor(
-        sc.orgId,
-        tunnel.baseAllowedIPs(),
-        deviceApiFor(cred.server),
-        (set) => tunnel.setAllowedIPs(set),
-        (fwds) => tunnel.setResolvers(fwds),
-        undefined, // baseMs (default cadence)
-        undefined, // maxMs (default ceiling)
-        undefined, // setTimer (default)
-        undefined, // clearTimer (default)
-        !requestedFullTunnel, // routesEnabled: routes tier split-only; resolver tier always
-        sc.deviceId, // WF-A: scope the dial to THIS device
-        (endpoint, pubkey) => tunnel.setGatewayPeer(pubkey, endpoint), // WF-A: re-home on active-hub move
-        true, // dialEnabled: BOTH modes now (D-WFA-4 carve-out landed); the helper refuses a full-tunnel
-        //        re-home only where its carve-out is absent (Windows) → the dial tier fail-statics there.
-        { endpoint: sc.config.endpoint, pubkey: sc.config.peer_public_key }, // seed = the minted peer
-      );
-      routedRangesMonitor.start();
-      // S7.5.3: self-report posture while connected. First report early (~15s),
-      // then every 10min (+ fixed jitter). Terminal 403 (open edition) stops it
-      // until the next connect. onHealthResult surfaces a require-mode block as the
-      // posture_blocked state so a server-side disconnect is never silent ([2]).
-      healthMonitor = new HealthMonitor(sc.deviceId, sc.orgId, deviceApiFor(cred.server), collectHealthFacts, onHealthResult);
-      healthMonitor.start();
-    }
-    lastTransport = status;
-    emit(status);
-    notifyTunnel("connected");
-    return status;
-  };
+        throw e;
+      },
+      publish: (connection, status) => {
+        const connectionLease = connection.lease;
+        const { origin: connectionOrigin, api: connectionApi } = connection.context;
+        activeManagedLease = connectionLease;
+        // Start the proactive revocation monitor for the device we just brought up.
+        const sc = tunnelStore.get(connectionOrigin);
+        if (sc?.deviceId) {
+          if (sc.ownerUserId !== connectionLease.userId) throw new Error("managed_device_owner_unconfirmed");
+          const monitoredDeviceId = sc.deviceId;
+          monitor = new RevocationMonitor(
+            monitoredDeviceId,
+            sc.orgId,
+            {
+              deviceExists: (deviceId, orgId) => guardedValue(
+                connectionLease,
+                () => connectionApi.deviceExists(deviceId, orgId),
+              ),
+            },
+            () => lifecycle.terminal(
+              connectionLease,
+              () => {
+                return onRevoked(connectionLease, monitoredDeviceId);
+              },
+            ),
+          );
+          monitor.start();
+          // S8.5 routed-subnets push (#5: runs in BOTH modes): poll the org's declared ranges + reachable DNS
+          // forwards and live-apply each tier via the helper — ranges → set_allowed_ips, forwards →
+          // set_resolvers. The ROUTES tier is enabled only for SPLIT-tunnel (a full tunnel's 0.0.0.0/0 subsumes
+          // every range — no route calls). The RESOLVER tier runs in BOTH: full-tunnel's baked DNS (1.1.1.1)
+          // cannot answer internal cross-site zones, so it needs the forwards just as split-tunnel does.
+          routedRangesMonitor = new RoutedRangesMonitor(
+            sc.orgId,
+            tunnel.baseAllowedIPs(),
+            {
+              routedConfig: (orgId, deviceId) => guardedValue(
+                connectionLease,
+                () => connectionApi.routedConfig(orgId, deviceId),
+              ),
+            },
+            async (set) => { await lifecycle.guarded(connectionLease, () => tunnel.setAllowedIPs(set)); },
+            async (fwds) => { await lifecycle.guarded(connectionLease, () => tunnel.setResolvers(fwds)); },
+            undefined, // baseMs (default cadence)
+            undefined, // maxMs (default ceiling)
+            undefined, // setTimer (default)
+            undefined, // clearTimer (default)
+            !connection.fullTunnel, // routesEnabled: routes tier split-only; resolver tier always
+            sc.deviceId, // WF-A: scope the dial to THIS device
+            async (endpoint, pubkey) => {
+              await lifecycle.guarded(connectionLease, () => tunnel.setGatewayPeer(pubkey, endpoint));
+            }, // WF-A: re-home on active-hub move
+            true, // dialEnabled: BOTH modes now (D-WFA-4 carve-out landed); the helper refuses a full-tunnel
+            //        re-home only where its carve-out is absent (Windows) → the dial tier fail-statics there.
+            { endpoint: sc.config.endpoint, pubkey: sc.config.peer_public_key }, // seed = the minted peer
+          );
+          routedRangesMonitor.start();
+          // S7.5.3: self-report posture while connected. First report early (~15s),
+          // then every 10min (+ fixed jitter). Terminal 403 (open edition) stops it
+          // until the next connect. onHealthResult surfaces a require-mode block as the
+          // posture_blocked state so a server-side disconnect is never silent ([2]).
+          healthMonitor = new HealthMonitor(
+            sc.deviceId,
+            sc.orgId,
+            {
+              reportHealth: (deviceId, orgId, facts) => guardedValue(
+                connectionLease,
+                () => connectionApi.reportHealth(deviceId, orgId, facts),
+              ),
+            },
+            () => guardedValue(connectionLease, collectHealthFacts),
+            (result) => { void lifecycle.guarded(connectionLease, () => onHealthResult(result)); },
+          );
+          healthMonitor.start();
+        }
+        lastTransport = status;
+        emit(status);
+        notifyTunnel("connected");
+        return status;
+      },
+    });
+  });
 
-  const disconnect = async (): Promise<void> => {
-    stopMonitor();
-    stopApprovalMonitor(); // also cancel any awaiting-approval poll (disconnect = stop waiting)
-    stopHealthMonitor();
-    lastSynth = null;
-    await tunnel.down();
-    emit({ state: "down" });
-    notifyTunnel("disconnected");
-  };
+  const disconnect = (): Promise<void> => lifecycle.serial((owner) =>
+    runManagedDisconnectFlow(owner, {
+      quiesceExisting: () => tunnel.down(),
+      stopMonitors: () => {
+        stopMonitor();
+        stopApprovalMonitor(); // also cancel any awaiting-approval poll (disconnect = stop waiting)
+        stopHealthMonitor();
+        activeManagedLease = null;
+      },
+      publishDown: () => { publishConfirmedDown(); },
+      notifyDisconnected: () => { notifyTunnel("disconnected"); },
+    }));
 
   // --- auth --------------------------------------------------------------------
   ipcMain.handle("auth:status", () => {
@@ -421,8 +795,24 @@ export function registerIpc(
   });
 
   ipcMain.handle("auth:login", async () => {
-    const server = config.requireServerUrl(); // throws if unset
-    const r = await runLogin(server, store);
+    const r = await lifecycle.replaceLogin({
+      resolveServer: () => config.requireServerUrl(), // resolved only after login owns the FIFO turn
+      sessionIsValid: async (credential) => !CredentialStore.isExpired(credential, new Date()),
+      stopMonitors: () => {
+        organizationSelectionRequiredPending = false;
+        stopMonitor();
+        stopApprovalMonitor();
+        stopHealthMonitor();
+        lastSynth = null;
+        activeManagedLease = null;
+      },
+      // An inactive controller is an idempotent zero-wire success. If an active
+      // helper refuses teardown, propagate it: credential B must not replace A
+      // until A's live tunnel has actually been brought down.
+      downTunnel: () => tunnel.down(),
+      publishDown: () => { publishConfirmedDown(); },
+      saveCredential: (server) => runLogin(server, store),
+    });
     getWindow()?.webContents.reload(); // the injected bearer now authenticates the SPA
     return r;
   });
@@ -430,45 +820,165 @@ export function registerIpc(
   ipcMain.handle("auth:logout", async () => {
     // Sign-out is session-only. The encrypted device config stays so the next sign-in
     // can validate and reuse the same server-side device instead of minting another row.
-    try {
+    await lifecycle.serial(async (owner) => {
       await signOutPreservingDevice({
-        stopMonitors: () => { stopMonitor(); stopApprovalMonitor(); stopHealthMonitor(); },
+        retireLifecycle: () => {
+          owner.invalidate();
+          activeManagedLease = null;
+        },
+        stopMonitors: () => {
+          organizationSelectionRequiredPending = false;
+          stopMonitor();
+          stopApprovalMonitor();
+          stopHealthMonitor();
+        },
         clearSynthesizedState: () => { lastSynth = null; },
         downTunnel: () => tunnel.down(),
-        emitDisconnected: () => emitTray("disconnected"),
+        emitDisconnected: () => { publishConfirmedDown(); },
         logoutSession: () => runLogout(store),
       });
-    } finally {
-      getWindow()?.webContents.reload();
-    }
+    });
+    // Reload only after logout completed. A teardown refusal must remain visible
+    // to the calling renderer rather than destroying it in a finally block.
+    getWindow()?.webContents.reload();
   });
 
-  ipcMain.handle("auth:removeDevice", async () => {
-    const cred = store.load();
-    if (!cred) throw new Error("not_authenticated");
-    stopMonitor();
-    stopApprovalMonitor();
-    stopHealthMonitor();
-    lastSynth = null;
-    await tunnel.down().catch(() => {});
-    emitTray("disconnected");
-    await removeManagedTunnelConfigForOrigin(cred.server, deviceApiFor(cred.server), tunnelStore);
-  });
+  ipcMain.handle("auth:removeDevice", () => lifecycle.serial(async (owner) => {
+    return runManagedRemoveFlow<ManagedRemoveContext, boolean>(owner, {
+      proveOwner: async () => {
+        const lease = await captureManagedLease();
+        const api = deviceApiFor(lease);
+        // Ownership must be proved while the current tunnel and monitors are still
+        // untouched. A foreign or inconclusive sign-in therefore cannot stop the
+        // helper, revoke a peer, or clear another user's encrypted credential.
+        const origin = lease.credential.server;
+        const stored = tunnelStore.get(origin);
+        if (!stored) {
+          const organizations = await api.organizations();
+          lifecycle.assertCurrent(lease);
+          const anchor = enrollmentAnchorStore.get(origin);
+          const organizationId = enrollmentAnchorOrganizationForUser(anchor, origin, lease.userId);
+          if (!anchor || !organizationId) return null;
+          const proof = await proveManagedEnrollmentAbandonment(
+            origin,
+            lease.userId,
+            organizationId,
+            lease.credential.fingerprint,
+            organizations.map((organization) => organization.id),
+            api,
+            enrollmentAnchorStore,
+            () => lifecycle.assertCurrent(lease),
+          );
+          if (!proof) return null;
+          return { lease, context: { kind: "anchor", proof, api } };
+        }
+        if (!stored.orgId) {
+          const proof = await proveLegacyManagedDeviceOwner(
+            origin,
+            stored.deviceId,
+            lease.userId,
+            api,
+            tunnelStore,
+            () => lifecycle.assertCurrent(lease),
+          );
+          return { lease, context: { kind: "legacy", proof } };
+        }
+        const proof = await proveManagedDeviceOwner(
+          origin,
+          lease.userId,
+          api,
+          tunnelStore,
+          () => lifecycle.assertCurrent(lease),
+        );
+        if (!proof) return null;
+        return {
+          lease,
+          context: { kind: "bound", proof, api },
+        };
+      },
+      stopMonitors: () => {
+        organizationSelectionRequiredPending = false;
+        stopMonitor();
+        stopApprovalMonitor();
+        stopHealthMonitor();
+        lastSynth = null;
+        activeManagedLease = null;
+      },
+      quiesceExisting: async (removal) => {
+        await tunnel.down();
+        if (removal.context.kind === "anchor") {
+          let status = await tunnel.status();
+          if (status.state !== "down") {
+            await tunnel.down();
+            status = await tunnel.status();
+          }
+          if (status.state !== "down") throw new Error("managed_enrollment_helper_down_unconfirmed");
+        }
+        publishConfirmedDown();
+      },
+      revokeAndClear: async (removal) => {
+        if (removal.context.kind === "legacy") {
+          await revokeAndClearLegacyManagedDevice(
+            removal.context.proof,
+            () => lifecycle.assertCurrent(removal.lease),
+          );
+          return true;
+        }
+        if (removal.context.kind === "anchor") {
+          await consumeManagedEnrollmentAbandonProof(
+            removal.context.proof,
+            removal.context.api,
+            () => lifecycle.assertCurrent(removal.lease),
+          );
+          return true;
+        }
+        await revokeAndClearManagedDevice(
+          removal.context.proof,
+          removal.context.api,
+          () => lifecycle.assertCurrent(removal.lease),
+        );
+        return true;
+      },
+    });
+  }));
 
   // --- tunnel (S6.3 control + S6.4 UX) -----------------------------------------
   ipcMain.handle("tunnel:up", (_e, fullTunnel: unknown) => connect(fullTunnel === true));
   ipcMain.handle("tunnel:down", () => disconnect());
-  ipcMain.handle("tunnel:status", async () => {
-    // A synthesized "revoked" state must survive a renderer remount — the helper only
-    // knows up/down/failed, so return the latched synth state until the next connect.
-    if (lastSynth)
-      return lastSynth.state === "posture_warning"
-        ? ({ ...(lastTransport ?? await tunnel.status()), ...lastSynth } as ClientTunnelStatus)
-        : lastSynth;
-    const status = await tunnel.status();
-    lastTransport = status;
-    return status;
-  });
+  ipcMain.handle("tunnel:status", () => statusReader.read());
+  ipcMain.handle("tunnel:managedOrganizations", () => lifecycle.serial(async () => {
+    const lease = await captureManagedLease();
+    const context = await organizationContext(lease);
+    const view = organizationSelector.organizations(
+      lease.credential.server,
+      context.userId,
+      context.organizations,
+      context.enrolledOrganizationId,
+      context.hasStoredManagedRecord,
+    );
+    if (view.organizations.some((organization) => organization.selected)) {
+      organizationSelectionRequiredPending = false;
+    }
+    return { ...view, enrollmentRecoveryRequired: context.enrollmentRecoveryRequired };
+  }));
+  ipcMain.handle("tunnel:organizationSelectionRequired", () => organizationSelectionRequiredPending);
+  ipcMain.handle("tunnel:selectManagedOrganization", (_e, rawId: unknown) => lifecycle.serial(async () => {
+    if (!isCanonicalUuid(rawId)) {
+      throw new Error("invalid_organization");
+    }
+    const lease = await captureManagedLease();
+    const context = await organizationContext(lease);
+    const organizations = organizationSelector.select(
+      lease.credential.server,
+      context.userId,
+      context.organizations,
+      rawId,
+      context.enrolledOrganizationId,
+      context.hasStoredManagedRecord,
+    );
+    organizationSelectionRequiredPending = false;
+    return { ...organizations, enrollmentRecoveryRequired: context.enrollmentRecoveryRequired };
+  }));
 
   // --- config ------------------------------------------------------------------
   ipcMain.handle("config:getServerUrl", () => config.getServerUrl());
@@ -493,73 +1003,94 @@ export function registerIpc(
     });
     if (res.canceled || res.filePaths.length === 0) return null;
     const text = fs.readFileSync(res.filePaths[0], "utf8");
-    const parsed = parseWgConf(text); // strict — throws rather than half-parsing
-    const fullTunnel = (parsed.allowed_ips ?? []).some(
-      (a) => a === "0.0.0.0/0" || a === "::/0",
-    );
+    // Validate the complete helper-facing config before entering the lifecycle
+    // lane. Invalid input therefore cannot quiesce the prior session, mutate the
+    // helper/store/selection, or expose its secret-bearing bytes in an error.
+    const importedConfig = parseImportedTunnelConfig(text);
+    const fullTunnel = importedConfig.full_tunnel === true;
     const id = randomUUID();
     const name = path.basename(res.filePaths[0], ".conf").trim().slice(0, 120) || "Imported profile";
-    tunnelStore.put({
-      origin: importedProfileOrigin(id),
-      deviceId: "",
-      orgId: "",
-      config: { ...parsed, full_tunnel: fullTunnel },
-      imported: true,
-      importedName: name,
+    return lifecycle.serial(async (owner) => {
+      // Preserve the old single-import behaviour for a first profile, but fence
+      // and tear down the prior managed lifecycle before changing the selection.
+      const activate = !activeImportedProfile() && !config.isManagedProfileSelected();
+      if (activate) {
+        await tunnel.down();
+        organizationSelectionRequiredPending = false;
+        publishConfirmedDown();
+        owner.invalidate();
+        stopMonitor();
+        stopApprovalMonitor();
+        stopHealthMonitor();
+        activeManagedLease = null;
+      }
+      tunnelStore.put({
+        origin: importedProfileOrigin(id),
+        deviceId: "",
+        orgId: "",
+        config: importedConfig,
+        imported: true,
+        importedName: name,
+      });
+      if (activate) config.setImportedProfileId(id);
+      return { id, name, address: importedConfig.address, endpoint: importedConfig.endpoint, fullTunnel, active: activeImportedProfile()?.id === id };
     });
-    // Preserve the old single-import behaviour for a first profile. Adding another
-    // profile must never silently drop a live connection; the user selects it first.
-    if (!activeImportedProfile() && !config.isManagedProfileSelected()) config.setImportedProfileId(id);
-    return { id, name, address: parsed.address, endpoint: parsed.endpoint, fullTunnel, active: activeImportedProfile()?.id === id };
   });
 
   ipcMain.handle("tunnel:importedProfiles", () => importedProfileSummary());
 
-  ipcMain.handle("tunnel:selectImportedProfile", async (_e, rawId: unknown) => {
+  ipcMain.handle("tunnel:selectImportedProfile", (_e, rawId: unknown) => lifecycle.serial(async (owner) => {
     if (typeof rawId !== "string" || !/^(legacy|[0-9a-f-]{36})$/i.test(rawId)) throw new Error("invalid_imported_profile");
     if (!tunnelStore.importedProfile(rawId)) throw new Error("imported_profile_not_found");
+    await tunnel.down();
+    organizationSelectionRequiredPending = false;
+    publishConfirmedDown();
+    owner.invalidate();
     // Switching is a deliberate disconnect. Stop every old-profile monitor before
     // changing the selected origin so it cannot mutate the next profile's state.
     stopMonitor();
     stopApprovalMonitor();
     stopHealthMonitor();
-    await tunnel.down().catch(() => {});
+    activeManagedLease = null;
     config.setImportedProfileId(rawId);
-    lastSynth = null;
-    emitTray("disconnected");
     return importedProfileSummary();
-  });
+  }));
 
   /** Choose the enrolled-account path without deleting any imported WireGuard file. */
-  ipcMain.handle("tunnel:useManagedProfile", async () => {
+  ipcMain.handle("tunnel:useManagedProfile", () => lifecycle.serial(async (owner) => {
+    await tunnel.down();
+    organizationSelectionRequiredPending = false;
+    publishConfirmedDown();
+    owner.invalidate();
     stopMonitor();
     stopApprovalMonitor();
     stopHealthMonitor();
-    await tunnel.down().catch(() => {});
+    activeManagedLease = null;
     config.useManagedProfile();
-    lastSynth = null;
-    emitTray("disconnected");
     return importedProfileSummary();
-  });
+  }));
 
   /** Remove one imported profile. Removing the active profile tears down its key first. */
-  ipcMain.handle("tunnel:forgetImported", async (_e, rawId?: unknown) => {
+  ipcMain.handle("tunnel:forgetImported", (_e, rawId?: unknown) => lifecycle.serial(async (owner) => {
     const id = rawId === undefined ? activeImportedProfile()?.id : rawId;
     if (typeof id !== "string" || !/^(legacy|[0-9a-f-]{36})$/i.test(id)) throw new Error("invalid_imported_profile");
     const profile = tunnelStore.importedProfile(id);
     if (!profile) throw new Error("imported_profile_not_found");
-    if (activeImportedProfile()?.id === id) {
+    const removingActive = activeImportedProfile()?.id === id;
+    if (removingActive) {
+      await tunnel.down();
+      organizationSelectionRequiredPending = false;
+      publishConfirmedDown();
+      owner.invalidate();
       stopMonitor();
       stopApprovalMonitor();
       stopHealthMonitor();
-      await tunnel.down().catch(() => {});
+      activeManagedLease = null;
       config.setImportedProfileId("");
-      lastSynth = null;
     }
     tunnelStore.remove(importedProfileOrigin(id));
-    emitTray("disconnected");
     return importedProfileSummary();
-  });
+  }));
 
   /** Legacy, active-profile-only read retained for pre-multiple-profile renderers. */
   ipcMain.handle("tunnel:importedInfo", () => {
@@ -570,7 +1101,7 @@ export function registerIpc(
   });
 
 
-  ipcMain.handle("config:setServerUrl", async (_e, url: unknown) => {
+  ipcMain.handle("config:setServerUrl", (_e, url: unknown) => lifecycle.serial(async (owner) => {
     if (typeof url !== "string" || url.length === 0 || url.length > 2000) {
       throw new Error("invalid server url");
     }
@@ -580,6 +1111,10 @@ export function registerIpc(
     // change, revoke + clear the old credential BEFORE the new URL is persisted,
     // so there is no window where (origin=new, credential=old) can attach.
     if (reloginRequired) {
+      await tunnel.down();
+      organizationSelectionRequiredPending = false;
+      publishConfirmedDown();
+      owner.invalidate();
       // Stop BOTH monitors + tunnel (they belong to the OLD origin) — the awaiting-approval
       // poll must also stop, else it keeps polling the old origin with a stale bearer
       // (finding #5: origin-lifecycle stop). Per the signed-off amendment we do NOT
@@ -587,10 +1122,10 @@ export function registerIpc(
       stopMonitor();
       stopApprovalMonitor();
       stopHealthMonitor();
-      lastSynth = null;
-      await tunnel.down().catch(() => {});
-      emitTray("disconnected");
+      activeManagedLease = null;
       await runLogout(store);
+    } else {
+      organizationSelectionRequiredPending = false;
     }
     config.commitServerUrl(accepted);
     // First run (unset → set) must LOAD the renderer — reload() would re-load the
@@ -608,7 +1143,7 @@ export function registerIpc(
       w?.webContents.reload();
     }
     return { url: accepted, reloginRequired };
-  });
+  }));
 
   return {
     connect,

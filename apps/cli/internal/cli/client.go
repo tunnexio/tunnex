@@ -23,7 +23,21 @@ func NewClient(server string) (*api.ClientWithResponses, error) {
 
 // NewAuthedClient builds a client that sends the stored bearer credential.
 func NewAuthedClient(cred Credential) (*api.ClientWithResponses, error) {
+	return newAuthedClientWithTransport(cred, nil)
+}
+
+func newAuthedClientWithTransport(cred Credential, transport http.RoundTripper) (*api.ClientWithResponses, error) {
+	// A CLI bearer is valid across the whole control-plane API. Refuse every
+	// redirect so an HTTPS endpoint can never forward it to plaintext HTTP or
+	// another origin. Callers must configure the canonical API URL instead.
+	httpClient := &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	return api.NewClientWithResponses(strings.TrimRight(cred.Server, "/"),
+		api.WithHTTPClient(httpClient),
 		api.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+cred.Token)
 			return nil

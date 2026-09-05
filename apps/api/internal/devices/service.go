@@ -281,6 +281,80 @@ type CreateResult struct {
 	RuntimeCredential string
 }
 
+// managedHumanKeyReplayEligible is deliberately narrower than "client supplied
+// a public key". Static exports, agents/bootstrap redemption, and OpenVPN retain
+// their existing create semantics. D14o applies only to the managed desktop
+// identity whose private key is durably anchored on that client before POST.
+func managedHumanKeyReplayEligible(in CreateInput) bool {
+	return in.BootstrapToken == "" && in.PublicKey != "" && wgkey.Valid(in.PublicKey) &&
+		(in.Kind == "" || in.Kind == "human") &&
+		(in.Transport == "" || in.Transport == "wireguard") &&
+		(in.Provisioning == "" || in.Provisioning == "managed")
+}
+
+// classifyManagedHumanKeyHistory refuses every shape except the ONE exact live
+// managed-human identity a response-loss retry is allowed to recover. Full
+// history is load-bearing: a retired key is never silently brought back, and a
+// database predating D14o that already contains duplicates is never guessed
+// down to the first row.
+func classifyManagedHumanKeyHistory(in CreateInput, history []sqlc.Device) (sqlc.Device, bool, error) {
+	if len(history) == 0 {
+		return sqlc.Device{}, false, nil
+	}
+	conflict := func() (sqlc.Device, bool, error) {
+		return sqlc.Device{}, false, apierr.Conflict(
+			"device_key_recovery_conflict",
+			"the submitted public key cannot be recovered safely",
+		)
+	}
+	if len(history) != 1 {
+		return conflict()
+	}
+	candidate := history[0]
+	if candidate.OrgID != in.OrgID || candidate.UserID != in.OwnerID ||
+		candidate.PublicKey != in.PublicKey || candidate.Kind != "human" ||
+		candidate.Transport != "wireguard" || candidate.ProvisioningMode != "managed" ||
+		candidate.DeletedAt.Valid || (candidate.Status != "active" && candidate.Status != "pending") ||
+		candidate.AssignedIp == nil || *candidate.AssignedIp == "" ||
+		candidate.ProvisionedIp == nil || *candidate.ProvisionedIp != *candidate.AssignedIp ||
+		!candidate.ProvisionedNodeID.Valid {
+		return conflict()
+	}
+	return candidate, true, nil
+}
+
+// findManagedHumanKeyReplay takes the same owner+org advisory locks as Create's
+// mutation transaction. It is the pre-growth fast path: an existing identity
+// remains recoverable even when the licence now refuses NEW principals or the
+// current IPv6-pool initializer is unavailable. Create repeats the read under
+// its mutation lock after this probe to close a concurrent first-create race.
+func (s *Service) findManagedHumanKeyReplay(ctx context.Context, in CreateInput) (sqlc.Device, bool, error) {
+	var candidate sqlc.Device
+	var found bool
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		for _, key := range sortedKeys(in.OwnerID.String(), in.OrgID.String()) {
+			if err := q.LockDeviceKey(ctx, key); err != nil {
+				return err
+			}
+		}
+		if _, err := q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: in.OrgID, UserID: in.OwnerID}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return apierr.NotFound("owner_not_member", "the owner is not a member of this organization")
+			}
+			return err
+		}
+		history, err := q.ListDevicePublicKeyHistoryForOrg(ctx, sqlc.ListDevicePublicKeyHistoryForOrgParams{
+			OrgID: in.OrgID, PublicKey: in.PublicKey,
+		})
+		if err != nil {
+			return err
+		}
+		candidate, found, err = classifyManagedHumanKeyHistory(in, history)
+		return err
+	})
+	return candidate, found, err
+}
+
 // IssueAgentBootstrapToken creates a short-lived, single-use credential bound
 // to one org gateway. The raw value is returned exactly once.
 func (s *Service) IssueAgentBootstrapToken(ctx context.Context, actor, orgID, gatewayID uuid.UUID, name string) (string, error) {
@@ -338,6 +412,7 @@ type ModeResult struct {
 // lock serializes concurrent toggles; the gateway push happens only after commit.
 func (s *Service) UpdateMode(ctx context.Context, actorID, orgID, deviceID uuid.UUID, fullTunnel bool) (ModeResult, error) {
 	var result ModeResult
+	changed := false
 	// Pool initialization uses the shared DB pool and must happen outside the device
 	// row transaction; nesting a pool operation inside withTx can deadlock under load.
 	ipv6Pool, err := ipalloc.EnsureOrgIPv6Pool(ctx, s.pool, orgID)
@@ -374,18 +449,22 @@ func (s *Service) UpdateMode(ctx context.Context, actorID, orgID, deviceID uuid.
 			return apierr.Conflict("gateway_no_egress", "this gateway can't route full-tunnel internet traffic yet; use split tunnel")
 		}
 		dualStack := ipv6Pool != "" && (!fullTunnel || caps.EgressIPv6)
-		updated, err := q.UpdateDeviceMode(ctx, sqlc.UpdateDeviceModeParams{ID: deviceID, OrgID: orgID, FullTunnel: fullTunnel})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return apierr.Conflict("device_not_active", "only active or pending devices can change mode")
-		}
-		if err != nil {
-			return err
-		}
-		if err := audit(ctx, q, orgID, &actorID, "device.mode_changed", "device", deviceID.String(), map[string]any{
-			"from_full_tunnel": prior.FullTunnel,
-			"to_full_tunnel":   fullTunnel,
-		}); err != nil {
-			return err
+		updated := prior
+		if prior.FullTunnel != fullTunnel {
+			updated, err = q.UpdateDeviceMode(ctx, sqlc.UpdateDeviceModeParams{ID: deviceID, OrgID: orgID, FullTunnel: fullTunnel})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return apierr.Conflict("device_not_active", "only active or pending devices can change mode")
+			}
+			if err != nil {
+				return err
+			}
+			if err := audit(ctx, q, orgID, &actorID, "device.mode_changed", "device", deviceID.String(), map[string]any{
+				"from_full_tunnel": prior.FullTunnel,
+				"to_full_tunnel":   fullTunnel,
+			}); err != nil {
+				return err
+			}
+			changed = true
 		}
 		assigned := ""
 		if updated.AssignedIp != nil {
@@ -425,7 +504,13 @@ func (s *Service) UpdateMode(ctx context.Context, actorID, orgID, deviceID uuid.
 	if err != nil {
 		return ModeResult{}, err
 	}
-	s.PushOrgNodes(ctx, orgID)
+	// D14o uses a same-value request as an idempotent read-through for mutable
+	// helper facts after an ambiguous create response. Preserve the existing
+	// mutation behavior for a real toggle, but do not manufacture an audit event
+	// or gateway push when the requested value is already current.
+	if changed {
+		s.PushOrgNodes(ctx, orgID)
+	}
 	return result, nil
 }
 
@@ -458,9 +543,32 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 	if in.Name == "" {
 		return CreateResult{}, apierr.BadRequest("name_required", "a device name is required")
 	}
+	// Validate an ordinary managed-human client key before the recovery probe.
+	// Otherwise malformed input would reach the full-history query (and could
+	// even match malformed legacy data) instead of deterministically retaining
+	// the existing invalid_wg_key contract. Static/agent/bootstrap/OpenVPN paths
+	// keep their established validation and ordering below.
+	if in.BootstrapToken == "" && in.PublicKey != "" &&
+		(in.Kind == "" || in.Kind == "human") &&
+		(in.Transport == "" || in.Transport == "wireguard") &&
+		(in.Provisioning == "" || in.Provisioning == "managed") &&
+		!wgkey.Valid(in.PublicKey) {
+		return CreateResult{}, apierr.BadRequest("invalid_wg_key", "public_key must be a 32-byte base64 WireGuard key")
+	}
+	replayEligible := managedHumanKeyReplayEligible(in)
+	if replayEligible {
+		if recovered, found, err := s.findManagedHumanKeyReplay(ctx, in); err != nil {
+			return CreateResult{}, err
+		} else if found {
+			return CreateResult{Device: recovered, PendingApproval: recovered.Status == "pending"}, nil
+		}
+	}
 	// ⛔ THE GRACE LADDER (S12.1 slice 7). A device is a principal; enrolling one is GROWTH, and growth is
 	// what an expired licence stops. Every device already issued keeps its tunnel, and no connected user is
 	// ever disconnected — the check is here, at creation, and nowhere near the data plane.
+	// D14o recovery runs immediately above this gate because replaying an already-issued
+	// UUID is not growth. A zero-history request still reaches this exact gate before
+	// any server key generation or create mutation.
 	//
 	// ⚠ BEFORE THE KEYGEN, deliberately. Minting a WireGuard private key and then refusing would spend a
 	// one-time secret on a request that was never going to succeed.
@@ -519,6 +627,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 	var dev sqlc.Device
 	var node sqlc.Node
 	var assignedIP, poolCIDR, ipv6Pool string
+	replayed := false
 	dualStack := false
 	// Resolve the deployment IPv6 pool before opening the device transaction.
 	// EnsureOrgIPv6Pool uses the pool for its query/insert; calling it while a
@@ -552,6 +661,23 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 				return apierr.NotFound("owner_not_member", "the owner is not a member of this organization")
 			}
 			return e
+		}
+		if replayEligible {
+			history, e := q.ListDevicePublicKeyHistoryForOrg(ctx, sqlc.ListDevicePublicKeyHistoryForOrgParams{
+				OrgID: in.OrgID, PublicKey: in.PublicKey,
+			})
+			if e != nil {
+				return e
+			}
+			recovered, found, e := classifyManagedHumanKeyHistory(in, history)
+			if e != nil {
+				return e
+			}
+			if found {
+				dev = recovered
+				replayed = true
+				return nil
+			}
 		}
 		// The node must belong to this org (and be active) — no cross-org attach.
 		n, e := q.GetOrgNode(ctx, sqlc.GetOrgNodeParams{ID: in.NodeID, OrgID: in.OrgID})
@@ -762,7 +888,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 	// dst-group), so the grant must land <5s on those source gateways too — own-node push
 	// would land it only on the reconcile interval. (For a pending device this is a no-op
 	// nudge — it is excluded from every allow-set until approved.)
-	s.PushOrgNodes(ctx, in.OrgID)
+	if !replayed {
+		s.PushOrgNodes(ctx, in.OrgID)
+	}
 
 	res := CreateResult{Device: dev, PrivateKeyOneTime: oneTimePriv, PendingApproval: dev.Status == "pending"}
 	// Only the server-generated flow can produce a complete config (it holds the

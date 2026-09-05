@@ -28,6 +28,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/egress"
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
+	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
 	"github.com/tunnexio/tunnex/apps/node/internal/identity"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 	"github.com/tunnexio/tunnex/apps/node/internal/ovpnserver"
@@ -36,11 +37,22 @@ import (
 )
 
 const (
-	protocolVersion     = 1
-	defaultFlowLogGroup = 100
+	protocolVersion        = 1
+	defaultFlowLogGroup    = 100
+	readinessPollInterval  = 2 * time.Second
+	k8sNetPrepPollInterval = 2 * time.Second
 )
 
+// buildVersion is stamped at link time (`-X main.buildVersion=<tag-or-sha>`).
+// "dev" is honest for an unstamped local binary; deployment metadata is never
+// accepted as a substitute for provenance embedded in the executable itself.
+var buildVersion = "dev"
+
 func main() {
+	if handled, exitCode := runNodeSubcommand(os.Args[1:], os.Stdout); handled {
+		os.Exit(exitCode)
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
@@ -182,13 +194,14 @@ func main() {
 		os.Exit(1)
 	}
 	// Report the WG public key + public endpoint to the control plane, retrying
-	// until it lands. A one-shot best-effort call could leave the control plane
-	// without our key (transient boot-time error) while the agent still went
-	// ready — a silent data-plane hole. Readiness is gated on keyReported below,
-	// so we never advertise ready until the control plane actually holds our key.
-	// The endpoint (host:port peer configs dial) is operator-provided; it cannot
-	// be discovered from inside the container.
-	wgEndpoint := os.Getenv("TUNNEX_NODE_ENDPOINT")
+	// until the exact current pair lands. An explicit endpoint always wins. When
+	// the chart requests LoadBalancer discovery, readiness remains false until a
+	// valid Service ingress is observed and that generation is reported.
+	endpointKick := make(chan struct{}, 1)
+	endpointSource, kubernetesMode, endpointErr := configureEndpointSource(ctx, os.Getenv, &keyReported, endpointKick, logger)
+	if endpointErr != nil {
+		logger.Error("k8s_endpoint_discovery_blocked", slog.String("error", endpointErr.Error()))
+	}
 	// egressNAT holds whether this gateway can source-NAT full-tunnel egress (S3.7),
 	// probed by the egress loop and reported to the control plane so it can refuse
 	// full-tunnel devices against a no-egress gateway (gateway_no_egress).
@@ -205,6 +218,7 @@ func main() {
 	// review #6), then reconcile on an interval (heals a flushed table). Torn down on
 	// shutdown (full-sweep). No-op / not-capable off Linux.
 	egressMgr := egress.New(wgIface)
+	egressMgr.SetKubernetesMode(kubernetesMode)
 	// The FQDN baseline survives agent restarts. A missing/corrupt file does
 	// not silently become an empty generation: egress performs its documented
 	// deny-all + conntrack recovery before accepting the first policy.
@@ -258,7 +272,9 @@ func main() {
 	} else if epw != nil {
 		egressMgr.SetEndpointSource(epw)
 	}
+	k8sSnapshotReady := func() bool { return false }
 	if epw != nil {
+		k8sSnapshotReady = epw.LiveSnapshotReady
 		go epw.Run(ctx)
 		logger.Info("k8s_service_uid_report_enabled")
 		go reportK8sServiceUIDObservationsLoop(ctx, client, epw, egressMgr,
@@ -276,19 +292,27 @@ func main() {
 	// S9.1 4d: the OVPN server's refuse-loudly health kind, written by the OnOVPN handler each tick and
 	// read by the report loop — same shared-sink pattern (the report loop predates the OVPN manager).
 	var ovpnHealth atomic.Pointer[string]
-	go reportKeyLoop(ctx, client, wgPub, wgEndpoint, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, &keyReported, reportEvery, logger)
+	go reportKeyLoop(ctx, client, wgPub, endpointSource, endpointKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, &keyReported, reportEvery, logger)
 
-	backend, err := reconcile.SelectBackend(wgBackend, wgIface, logger)
+	backendOptions := reconcile.BackendOptions{}
+	if kubernetesMode {
+		backendOptions.PreserveInterfaceAlias = hostposture.WireGuardAlias
+	}
+	backend, err := reconcile.SelectBackendWithOptions(wgBackend, wgIface, logger, backendOptions)
 	if err != nil {
 		logger.Error("agent_backend_failed", slog.String("backend", wgBackend), slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 	logger.Info("agent_backend_selected", slog.String("backend", wgBackend), slog.String("interface", wgIface))
-	// WF-C Layer 1: tear the WG interface DOWN on graceful shutdown — the symmetric destroy for the
-	// interface Configure creates. Without it, `--network host` wg0 outlives the container on `docker stop`
-	// and forwards headless (zombie hub / failover-blind). Idempotent. (A hard SIGKILL skips this defer —
-	// that residue is WF-C Layer 2, a separate liveness-model paper.)
-	defer func() { _ = backend.Close(context.Background()) }()
+	// WF-C Layer 1: tear the WG data plane down on graceful shutdown. Legacy
+	// gateways delete their interface; Kubernetes posture-managed gateways drain
+	// keys/peers/address/routes while preserving only the manager-owned shell.
+	// Without this, host-network wg0 could forward headlessly after docker stop.
+	defer func() {
+		if err := backend.Close(context.Background()); err != nil {
+			logger.Error("agent_backend_shutdown_blocked", slog.String("error", err.Error()))
+		}
+	}()
 	r := reconcile.New(backend, wgPriv, wgPub, logger)
 	r.SetSiteLinkStaleSink(&siteLinkStale)
 	r.SetSiteSubnetUnreachableSink(&siteSubnetUnreachable) // D3: unreachable-advertised-subnet health signal
@@ -464,7 +488,7 @@ func main() {
 	// backend converged). It flips false if the backend later fails (e.g. device
 	// lost) so orchestrators see the true state, not a stale first success.
 	go func() {
-		t := time.NewTicker(2 * time.Second)
+		t := time.NewTicker(readinessPollInterval)
 		defer t.Stop()
 		var announced bool
 		for {
@@ -472,7 +496,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				h := r.Healthy() && keyReported.Load()
+				h := agentReady(r.Healthy(), keyReported.Load(), kubernetesMode, egressMgr.K8sNetPrepReady(), k8sSnapshotReady())
 				ready.Store(h)
 				if h && !announced {
 					announced = true
@@ -490,6 +514,16 @@ func main() {
 		commandLane.run(ctx)
 		close(laneDone)
 	}()
+	// Seed the ordinary base before replaying a durable HA lease. The ownership
+	// overlay cannot be reconstructed safely without that base; doing the
+	// lifecycle check first converts a valid unexpired restart checkpoint into
+	// a fail-closed withdrawal and discards it.
+	if err := submitDesiredStateCommand(ctx, commandLane, r, client, ownershipCoordinator, 5*time.Second, logger, "desired_state_startup_base"); err != nil {
+		logger.Error("desired_state_startup_base_failed", slog.String("error", err.Error()))
+		stop()
+		<-laneDone
+		return
+	}
 	if err := commandLane.submitAndWait(ctx, "ownership_startup_withdraw", ownershipLifecycle.StartupReconcile); err != nil && ctx.Err() == nil {
 		logger.Error("ownership_startup_reconcile_failed", slog.String("error", err.Error()))
 		stop()
@@ -497,6 +531,13 @@ func main() {
 		return
 	}
 	go egressLoop(ctx, commandLane, egressMgr, &egressNAT, &egressIPv6, getdur("TUNNEX_AGENT_EGRESS_INTERVAL", 30*time.Second), policyKick)
+	if kubernetesMode {
+		go k8sNetPrepLoop(ctx, k8sNetPrepPollInterval, func(loopCtx context.Context) error {
+			return commandLane.submitAndWait(loopCtx, "k8s_netprep_reconcile", func(commandCtx context.Context) error {
+				return egressMgr.ReconcileK8sNetPrep(commandCtx)
+			})
+		})
+	}
 	go produceDNSBindCommands(ctx, commandLane, dnsFwd, wgIface, getdur("TUNNEX_AGENT_DNS_BIND_INTERVAL", 5*time.Second))
 	go produceDesiredStateCommands(ctx, commandLane, r, client, ownershipCoordinator, getdur("TUNNEX_AGENT_RECONCILE_INTERVAL", 60*time.Second), 5*time.Second, logger)
 	go produceOwnershipCommands(ctx, commandLane, client, ownershipAttestor, ownershipLifecycle,
@@ -505,6 +546,10 @@ func main() {
 	<-laneDone
 	dnsFwd.CloseK8sBinds()
 	logger.Info("agent_stopped")
+}
+
+func agentReady(reconcilerHealthy, endpointReported, kubernetesMode, k8sNetPrepReady, k8sSnapshotReady bool) bool {
+	return reconcilerHealthy && endpointReported && (!kubernetesMode || (k8sNetPrepReady && k8sSnapshotReady))
 }
 
 // serveHealth exposes liveness (process up) and readiness (enrolled + control
@@ -767,9 +812,13 @@ func identityWatchLoop(ctx context.Context, client *control.Client, apiURL, cert
 // with backoff until it succeeds (then sets reported and returns). The report is
 // idempotent server-side, so retrying is safe. Until it succeeds the agent stays
 // not-ready, so no orchestrator routes to a node the control plane can't peer.
-func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint string, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
+func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, endpointKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
 	const maxBackoff = 30 * time.Second
 	report := func() bool {
+		endpoint := endpointSource()
+		if !endpoint.Reportable {
+			return false
+		}
 		// Applied-policy status rides the capability report (S7.2 staleness): version +
 		// canonical hash of what is IN FORCE, plus the last apply error. The control
 		// plane compares against what it pushed — a stale gateway must be visible.
@@ -803,20 +852,36 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint
 		if !failingSince.IsZero() {
 			ps.FailingSince = failingSince.UTC().Format(time.RFC3339)
 		}
-		if err := client.ReportInfo(ctx, pubKey, endpoint, egressNAT.Load(), egressIPv6.Load(), ps); err != nil {
+		if err := client.ReportInfo(ctx, pubKey, endpoint.Endpoint, egressNAT.Load(), egressIPv6.Load(), ps); err != nil {
 			logger.Warn("agent_report_key_failed", slog.String("error", err.Error()))
 			return false
 		}
-		if reported.CompareAndSwap(false, true) {
-			logger.Info("agent_wg_key_reported", slog.String("public_key", pubKey))
+		current, newlyReported := acceptEndpointReport(endpointSource, endpoint, reported)
+		if !current {
+			return false
+		}
+		if newlyReported {
+			logger.Info("agent_wg_key_reported", slog.String("public_key", pubKey), slog.Uint64("endpoint_generation", endpoint.Generation))
 		}
 		return true
 	}
 	// Retry fast until the FIRST success (readiness is gated on it).
 	backoff := time.Second
 	for !report() {
-		if !sleepCtx(ctx, backoff) {
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
 			return
+		case <-endpointKick:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			continue
+		case <-timer.C:
 		}
 		if backoff *= 2; backoff > maxBackoff {
 			backoff = maxBackoff
@@ -830,6 +895,8 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey, endpoint
 		select {
 		case <-ctx.Done():
 			return
+		case <-endpointKick:
+			report()
 		case <-t.C:
 			report()
 		}
@@ -864,6 +931,35 @@ func egressLoop(ctx context.Context, lane *dataplaneCommandLane, mgr *egress.Man
 			}
 		case <-t.C:
 			if !apply() {
+				return
+			}
+		}
+	}
+}
+
+// k8sNetPrepLoop observes the small common host/CNI surface independently of
+// the 30-second full egress repair. It runs on the same command lane, so a CNI
+// controller chain flush retracts readiness on the next two-second observation
+// without racing another nft mutation, and a returned mechanism self-heals.
+func k8sNetPrepLoop(ctx context.Context, every time.Duration, apply func(context.Context) error) {
+	if every <= 0 {
+		every = k8sNetPrepPollInterval
+	}
+	observe := func() bool {
+		_ = apply(ctx)
+		return ctx.Err() == nil
+	}
+	if !observe() {
+		return
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if !observe() {
 				return
 			}
 		}
@@ -1047,7 +1143,15 @@ func startFlowLog(ctx context.Context, group int, client *control.Client, egress
 }
 
 func hostname() string { h, _ := os.Hostname(); return h }
-func version() string  { return getenv("TUNNEX_AGENT_VERSION", "0.1.0") }
+func version() string {
+	if override := strings.TrimSpace(os.Getenv("TUNNEX_AGENT_VERSION")); override != "" {
+		return override
+	}
+	if stamped := strings.TrimSpace(buildVersion); stamped != "" {
+		return stamped
+	}
+	return "dev"
+}
 
 // Re-key retry pacing (S13.1). THE CEILING IS THE LOAD-BEARING NUMBER, not the floor.
 //

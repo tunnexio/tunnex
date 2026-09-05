@@ -1,8 +1,11 @@
 {{- include "tunnex-gateway.ackGuard" . -}}
+{{- include "tunnex-gateway.configGuard" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "tunnex-gateway.fullname" . }}
+  annotations:
+    tunnex.io/zero-touch-contract: "tunnex-zero-touch/v1"
   labels:
     {{- include "tunnex-gateway.labels" . | nindent 4 }}
     app.kubernetes.io/component: gateway
@@ -20,17 +23,20 @@ spec:
       app.kubernetes.io/component: gateway
   template:
     metadata:
+      annotations:
+        tunnex.io/rollout-revision: {{ .Values.rolloutRevision | quote }}
+        tunnex.io/host-posture-contract: "tunnex-host-posture/v1"
+        tunnex.io/host-posture-service-account: {{ include "tunnex-gateway.serviceAccountName" . | quote }}
       labels:
         {{- include "tunnex-gateway.labels" . | nindent 8 }}
         app.kubernetes.io/component: gateway
+        tunnex.io/host-posture-owner: "true"
     spec:
       serviceAccountName: {{ include "tunnex-gateway.serviceAccountName" . }}
-      # L10 RE-AMENDED (WF-K5): the gateway now DNATs each VIP straight to a READY pod endpoint (VIP->ClusterIP
-      # can't complete — kube-proxy's second DNAT is a no-op), so it must LEARN ready pod IPs from a read-only
-      # Services + EndpointSlices watch (see rbac.yaml). The SA token is therefore MOUNTED and USED — the
-      # credential for exactly one narrow capability. Posture for the security team: the gateway reads Service
-      # endpoints; it cannot read Secrets, cannot write, cannot escalate.
-      automountServiceAccountToken: true
+      # Disable Kubernetes' all-container automount. A short-lived projected API
+      # token is mounted only in the ordinary gateway container below; the
+      # unprivileged host-posture admission init receives no Kubernetes credential.
+      automountServiceAccountToken: false
       # F4: hostNetwork puts the agent's prerouting DNAT in the NODE netns, ahead of
       # kube-proxy's ClusterIP→pod DNAT (which also lives there), and gives the real
       # WG datapath + the node's ip_forward.
@@ -48,18 +54,40 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "tunnex-gateway.placement" . | nindent 6 }}
+      # The shared manager discovers this exact Pod UID through a bounded,
+      # read-only API list, journals the node baseline before mutation, and
+      # publishes an advancing node-local heartbeat. This credentialless init
+      # admits the gateway only after its own UID appears in two heartbeats.
+      initContainers:
+        - name: host-posture-check
+          image: {{ include "tunnex-gateway.agentImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-check", "--wait"]
+          securityContext:
+            runAsUser: 65532
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: TUNNEX_HOST_POSTURE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TUNNEX_HOST_POSTURE_OWNER_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: TUNNEX_HOST_POSTURE_STATE_DIR
+              value: /var/lib/tunnex/host-posture/v1
+          volumeMounts:
+            - name: host-posture-state
+              mountPath: /var/lib/tunnex/host-posture/v1
+              readOnly: true
       containers:
         - name: gateway
           image: {{ include "tunnex-gateway.agentImage" . }}
@@ -68,7 +96,7 @@ spec:
             # F4: NET_ADMIN to program WireGuard + nftables; /dev/net/tun for the WG datapath. runAsNonRoot
             # is FALSE — the agent must write the node netns firewall. The privileged posture is acknowledged
             # (F7b). M7 — least-privilege on a root+hostNetwork pod: drop the ENTIRE default capability set and
-            # add back ONLY NET_ADMIN ("we added exactly one capability and dropped the rest"), forbid
+            # add back only the fixed NET_ADMIN + NET_BIND_SERVICE set, forbid
             # privilege escalation, and pin the RuntimeDefault seccomp profile. NOT `privileged: true` —
             # NET_ADMIN is sufficient. readOnlyRootFilesystem is left OFF: the agent writes its enrolled
             # cert/keys under the mounted state volume, but also touches paths under / at runtime; a
@@ -90,9 +118,35 @@ spec:
               containerPort: {{ .Values.wireguard.port }}
               hostPort: {{ .Values.wireguard.port }}
               protocol: UDP
+            - name: health
+              containerPort: 9091
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
           env:
             - name: TUNNEX_LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
+            - name: TUNNEX_AGENT_REPORT_INTERVAL
+              value: {{ .Values.reportInterval | quote }}
             {{- if .Values.nodeName }}
             # WF-K-CHART-1: the CP pins a join token to a NODE NAME; the agent must enroll under EXACTLY that
             # name or the CP refuses (node_name_mismatch). A hostNetwork pod's hostname() is the NODE's
@@ -107,10 +161,26 @@ spec:
               value: {{ required "controlPlane.agentURL is required (the CP agent-mTLS endpoint the gateway enrolls against)" .Values.controlPlane.agentURL | quote }}
             - name: TUNNEX_AGENT_SERVERNAME
               value: {{ .Values.controlPlane.serverName | quote }}
-            # F6: the PUBLIC WG endpoint peers dial. The chart cannot synthesize the LB
-            # IP (it may not exist at install), so the operator supplies it — REQUIRED.
+            # Closed product-mode bit: only this Kubernetes gateway chart opts
+            # the common node binary into host/CNI preparation and readiness.
+            - name: TUNNEX_K8S_MODE
+              value: "true"
+            {{- if .Values.endpoint }}
+            # Explicit endpoint wins over Kubernetes Service discovery.
             - name: TUNNEX_NODE_ENDPOINT
-              value: {{ required "endpoint is required (F6): the public host:port peers dial to reach this gateway; reserve a static LB IP and put it here" .Values.endpoint | quote }}
+              value: {{ .Values.endpoint | quote }}
+            {{- else }}
+            # LoadBalancer discovery reads only this release's named Service and
+            # withholds readiness until status.loadBalancer.ingress is valid.
+            - name: TUNNEX_K8S_ENDPOINT_SERVICE
+              value: {{ printf "%s-wg" (include "tunnex-gateway.fullname" .) | quote }}
+            - name: TUNNEX_K8S_ENDPOINT_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: TUNNEX_K8S_ENDPOINT_PORT
+              value: {{ .Values.wireguard.port | quote }}
+            {{- end }}
             # A real WireGuard datapath (kernel via netlink), not the in-memory test backend.
             - name: TUNNEX_WG_BACKEND
               value: "wgctrl"
@@ -121,7 +191,7 @@ spec:
               value: {{ .Values.flowLog.group | quote }}
             - name: TUNNEX_NODE_STATE_DIR
               value: /var/lib/tunnex-node
-            {{- if or .Values.existingJoinTokenSecret .Values.joinToken }}
+            {{- if eq .Values.enrollment.mode "enroll" }}
             # F5: the one-time join token (from the existing or chart-minted Secret). Only
             # needed for the FIRST enroll — once the node cert is on the state PVC, the
             # agent re-attaches its identity without it.
@@ -130,23 +200,50 @@ spec:
                 secretKeyRef:
                   name: {{ include "tunnex-gateway.joinTokenSecret" . }}
                   key: {{ .Values.joinTokenKey }}
+                  optional: {{ .Values.enrollment.secretOptional }}
             {{- end }}
           volumeMounts:
             - name: state
               mountPath: /var/lib/tunnex-node
             - name: dev-net-tun
               mountPath: /dev/net/tun
+            - name: k8s-api-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
+        - name: host-posture-state
+          hostPath:
+            path: /var/lib/tunnex/host-posture/v1
+            type: Directory
         - name: dev-net-tun
           hostPath:
             path: /dev/net/tun
             type: CharDevice
+        # Short-lived API credential projected only into the main gateway. The
+        # endpoint/Service watcher uses the conventional in-cluster file paths.
+        - name: k8s-api-token
+          projected:
+            defaultMode: 420
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
         {{- if .Values.persistence.enabled }}
         - name: state
           persistentVolumeClaim:
-            claimName: {{ include "tunnex-gateway.fullname" . }}-state
+            claimName: {{ include "tunnex-gateway.stateClaimName" . }}
         {{- else }}
         - name: state
           emptyDir: {}

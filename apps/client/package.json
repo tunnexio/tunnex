@@ -14,7 +14,7 @@
     "pack:mac": "bash scripts/pack.sh mac",
     "pack:win": "bash scripts/pack.sh win",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --require ts-node/register --test test/core.test.ts test/entry.test.ts test/brandmark.test.ts test/appicon.test.ts test/windowdimensions.test.ts test/windowchrome.test.ts test/security.test.ts test/tunnel.test.ts test/deviceconfig.test.ts test/sessionlifecycle.test.ts test/posturevisibility.test.ts test/revocation.test.ts test/routedrangesmonitor.test.ts test/approvalmonitor.test.ts test/healthmonitor.test.ts test/uxwiring.test.ts test/httpdeviceapi.test.ts test/helperinstall.test.ts test/quitguard.test.ts"
+    "test": "node --require ts-node/register --test test/core.test.ts test/entry.test.ts test/brandmark.test.ts test/appicon.test.ts test/windowdimensions.test.ts test/windowchrome.test.ts test/security.test.ts test/tunnel.test.ts test/statusreader.test.ts test/deviceconfig.test.ts test/enrollmentrecovery.test.ts test/sessionlifecycle.test.ts test/posturevisibility.test.ts test/revocation.test.ts test/routedrangesmonitor.test.ts test/approvalmonitor.test.ts test/healthmonitor.test.ts test/uxwiring.test.ts test/httpdeviceapi.test.ts test/orgselection.test.ts test/managedlifecycle.test.ts test/managedlifecycleflows.test.ts test/helperinstall.test.ts test/quitguard.test.ts"
   },
   "engines": {
     "node": ">=20"

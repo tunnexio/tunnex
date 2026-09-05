@@ -74,6 +74,11 @@ func TestBaseStateHashExcludesAuthorityAndTransientDNSRequest(t *testing.T) {
 	if got != want {
 		t.Fatalf("transient/security envelope changed ordinary-base hash: got=%s want=%s", got, want)
 	}
+	base.Version++
+	got, err = BaseStateHash(base)
+	if err != nil || got != want {
+		t.Fatalf("node-push cursor changed data-plane hash: got=%s want=%s err=%v", got, want, err)
+	}
 	base.MTU++
 	changed, err := BaseStateHash(base)
 	if err != nil {
@@ -84,6 +89,29 @@ func TestBaseStateHashExcludesAuthorityAndTransientDNSRequest(t *testing.T) {
 	}
 }
 
+func TestRestartMaintainsFenceAcrossWatchCursorChangeWithoutAuthorityReplay(t *testing.T) {
+	dir := t.TempDir()
+	fencePath := filepath.Join(dir, "fences.json")
+	base := legacyBaseWithOwnership()
+	authority := authorityFor(t, base, 1, PoolClassificationArmFence)
+	first := NewCoordinator(NewProjector(), &fakeDomainSurface{}, NewFileFenceStore(fencePath)).
+		WithBaseAuthorityStateStore(NewFileBaseAuthorityStateStore(filepath.Join(dir, "authority.json")))
+	if err := first.UpdateBase(t.Context(), base, authority); err != nil {
+		t.Fatal(err)
+	}
+
+	restartedBase := cloneDesiredState(base)
+	restartedBase.Version++
+	restarted := NewCoordinator(NewProjector(), &fakeDomainSurface{}, NewFileFenceStore(fencePath))
+	snapshot, err := restarted.UpdateBaseAndSnapshot(t.Context(), restartedBase, BaseAuthority{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsOwnership(expectedDomainState(snapshot), projectorOwnership()) {
+		t.Fatalf("watch-cursor-only restart resurrected fenced ownership: %+v", snapshot)
+	}
+}
+
 func TestBaseStateHashMatchesControlPlaneCrossRuntimeGolden(t *testing.T) {
 	base := reconcile.DesiredState{ProtocolVersion: 9, NodeID: "99999999-9999-9999-9999-999999999999", InterfaceAddress: "10.99.0.1/24", MTU: 1380, ListenPort: 51820, Version: 17,
 		Peers: []reconcile.Peer{}, OVPNEnabled: true, OVPNClients: []reconcile.OVPNClient{{CommonName: "alice", IP: "10.99.0.20", FullTunnel: true}}}
@@ -91,7 +119,7 @@ func TestBaseStateHashMatchesControlPlaneCrossRuntimeGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = "ad039cb612f05abdf22eae00d3fe6bb5102c333ddc5fbb3a98d4b4b94e9d7e67"
+	const want = "d65d4f16319796393393cde68d1d2b7258ca0f8e832f251e842ce5e5c113adba"
 	if got != want {
 		t.Fatalf("base digest=%s want=%s", got, want)
 	}
@@ -195,6 +223,34 @@ func TestAuthorityAcceptedBeforeFencePersistenceAndNoAckOnMismatch(t *testing.T)
 	state, found, err = goodStore.LoadBaseAuthorityState(t.Context())
 	if err != nil || !found || state.PendingAck != nil {
 		t.Fatalf("mismatch persisted ACK: state=%+v found=%v err=%v", state, found, err)
+	}
+}
+
+func TestReconcileCurrentWithdrawsArmedBaseBeforeAuthorityAck(t *testing.T) {
+	dir := t.TempDir()
+	base := legacyBaseWithOwnership()
+	authority := authorityFor(t, base, 4, PoolClassificationArmFence)
+	base = baseWithWireAuthority(t, base, authority)
+	domain := &fakeDomainSurface{applied: expectedDomainState(base)}
+	coordinator := NewCoordinator(NewProjector(), domain, NewFileFenceStore(filepath.Join(dir, "fences.json"))).
+		WithBaseAuthorityStateStore(NewFileBaseAuthorityStateStore(filepath.Join(dir, "authority.json")))
+	if _, err := coordinator.UpdateBaseAndSnapshot(t.Context(), base, authority); err != nil {
+		t.Fatal(err)
+	}
+	if _, ready, err := coordinator.PrepareBaseAuthorityAck(t.Context(), base, time.Now()); !errors.Is(err, ErrDomainReadbackMismatch) || ready {
+		t.Fatalf("stale live ownership produced receipt: ready=%v err=%v", ready, err)
+	}
+	if err := coordinator.ReconcileCurrent(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(domain.stages, withdrawalOrder) {
+		t.Fatalf("base authority convergence order=%v want=%v", domain.stages, withdrawalOrder)
+	}
+	if containsOwnership(domain.applied, projectorOwnership()) {
+		t.Fatalf("armed base ownership remains after convergence: %+v", domain.applied)
+	}
+	if _, ready, err := coordinator.PrepareBaseAuthorityAck(t.Context(), base, time.Now()); err != nil || !ready {
+		t.Fatalf("converged base receipt ready=%v err=%v", ready, err)
 	}
 }
 

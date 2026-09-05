@@ -60,22 +60,32 @@ func TestUnsubscribeStopsDelivery(t *testing.T) {
 }
 
 func TestVersionAdvancesOnNotify(t *testing.T) {
-	h := New()
+	h := newWithInitialVersion(100)
 	node := uuid.New()
-	if h.Version(node) != 0 {
-		t.Fatal("initial version should be 0")
+	if h.Version(node) != 100 {
+		t.Fatalf("initial version should be 100")
 	}
 	h.Notify(node)
-	if h.Version(node) != 1 {
-		t.Fatalf("version should be 1 after one notify, got %d", h.Version(node))
+	if h.Version(node) != 101 {
+		t.Fatalf("version should be 101 after one notify, got %d", h.Version(node))
 	}
 	h.Notify(node)
-	if h.Version(node) != 2 {
+	if h.Version(node) != 102 {
 		t.Fatalf("version should advance on each notify, got %d", h.Version(node))
 	}
 	// A different node's version is independent.
-	if h.Version(uuid.New()) != 0 {
-		t.Fatal("unrelated node version should be 0")
+	if h.Version(uuid.New()) != 100 {
+		t.Fatalf("unrelated node version should be 100")
+	}
+}
+
+func TestNewHubEpochDoesNotReusePreRestartVersions(t *testing.T) {
+	node := uuid.New()
+	before := newWithInitialVersion(100)
+	before.Notify(node)
+	after := newWithInitialVersion(200)
+	if after.Version(node) <= before.Version(node) {
+		t.Fatalf("new process epoch must advance the desired-state version: before=%d after=%d", before.Version(node), after.Version(node))
 	}
 }
 

@@ -1,15 +1,15 @@
 apiVersion: v2
 name: tunnex-gateway
 description: >-
-  Tunnex in-cluster gateway (S10.3) — a node-agent that fronts a Kubernetes
-  cluster on the fabric, DNATing synthetic Service VIPs to their ClusterIPs and
-  answering the cluster's DNS zone. It is a PRIVILEGED, hostNetwork pod
-  (NET_ADMIN + /dev/net/tun): the agent's prerouting DNAT must chain into
-  kube-proxy in the node netns (F4), so it cannot be an ordinary workload —
-  which is exactly why it ships SEPARATE from the control-plane chart (tunnex-cp).
-  A pre-install preflight hook Job (F7) requests the same privileged context and
-  is admission-rejected on a blocking cluster, so `helm install --wait` fails at
-  the hook, not in a crash-loop.
+  Tunnex in-cluster gateway — one connector identity that fronts a Kubernetes
+  cluster on the fabric, DNATing synthetic Service VIPs to ready pod endpoints
+  and answering the cluster's DNS zone. A credentialless init admits the Pod
+  only after the separate cluster-singleton host-posture manager proves this
+  exact live Pod UID on the selected node; the ordinary hostNetwork gateway
+  retains only NET_ADMIN, NET_BIND_SERVICE, /dev/net/tun, and read-only
+  Service/EndpointSlice access.
+  Retained identity state and explicit enroll/reuse modes make install, upgrade,
+  rollback, and uninstall lifecycle-safe across Kubernetes providers.
 type: application
 version: 0.1.0
 appVersion: "0.2.0"

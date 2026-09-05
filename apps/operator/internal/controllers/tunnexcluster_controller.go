@@ -57,6 +57,26 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
 	}
+	connectorID, found, inSite, err := resolveConnector(ctx, r.CP, cr.Spec.Connector, siteID)
+	if err != nil {
+		return ctrl.Result{}, err // transport/5xx -> keep-last
+	}
+	if !found {
+		setReady(&cr.Status.Conditions, metav1.ConditionFalse, "connector_not_found",
+			"no active gateway named "+cr.Spec.Connector+" in this org", gen)
+		if e := r.Status().Update(ctx, &cr); e != nil {
+			return ctrl.Result{}, e
+		}
+		return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+	}
+	if !inSite {
+		setReady(&cr.Status.Conditions, metav1.ConditionFalse, "connector_not_in_cluster_site",
+			"gateway "+cr.Spec.Connector+" is not bound to site "+cr.Spec.Site, gen)
+		if e := r.Status().Update(ctx, &cr); e != nil {
+			return ctrl.Result{}, e
+		}
+		return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+	}
 
 	// Idempotent: find-by-name before create (reconcile runs repeatedly; never double-register).
 	clusters, err := r.CP.ListClusters(ctx)
@@ -86,10 +106,12 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			drift = true
 		}
 	}
+	created := false
 	if reg == nil {
 		c, err := r.CP.RegisterCluster(ctx, cp.RegisterClusterRequest{
-			SiteID: siteID, Name: cr.Spec.Name, VipRange: cr.Spec.VIPRange,
+			SiteID: siteID, ConnectorNodeID: connectorID, Name: cr.Spec.Name, VipRange: cr.Spec.VIPRange,
 			ServiceCidr: cr.Spec.ServiceCIDR, DnsZone: cr.Spec.DNSZone,
+			Provider: cr.Spec.Provider, Platform: cr.Spec.Platform,
 		})
 		if res, e, handled, persist := onCPError(&cr.Status.Conditions, err, gen); handled {
 			if persist {
@@ -100,6 +122,28 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return res, e
 		}
 		reg = &c
+		created = true
+	}
+
+	// Explicit provider/platform is declarative presentation metadata. Reconcile
+	// it through the CP's audited correction verb; omission means "leave the CP
+	// value unchanged", never "infer" or "reset to unknown". A rejected update
+	// must not be reported as Ready for the new CR generation.
+	if !created && cr.Spec.Provider != "" &&
+		(reg.Provider != cr.Spec.Provider || reg.Platform != cr.Spec.Platform) {
+		cause := crRef("tunnexcluster", cr.Namespace, cr.Name)
+		updated, err := r.CP.SetClusterProviderMetadata(
+			ctx, reg.ID, cr.Spec.Provider, cr.Spec.Platform, cause,
+		)
+		if res, e, handled, persist := onCPError(&cr.Status.Conditions, err, gen); handled {
+			if persist {
+				if u := r.Status().Update(ctx, &cr); u != nil {
+					return ctrl.Result{}, u
+				}
+			}
+			return res, e
+		}
+		reg = &updated
 	}
 
 	// Accepted — mirror the CP's DERIVED truth into status.

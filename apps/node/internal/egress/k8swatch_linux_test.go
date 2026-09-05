@@ -9,7 +9,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -20,13 +22,61 @@ import (
 func newTestWatcher(base string, client *http.Client, kick func()) *K8sWatcher {
 	return &K8sWatcher{
 		base: base, client: client, kick: kick,
-		services: map[string]serviceInfo{}, slices: map[string]map[string]epGroup{}, uidTombstones: map[string]string{},
+		services: map[string]serviceInfo{}, slices: map[string]map[string]epGroup{}, uidTombstones: map[string]string{}, now: time.Now,
+	}
+}
+
+func waitForLiveSnapshot(t *testing.T, w *K8sWatcher, want bool) {
+	t.Helper()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if w.LiveSnapshotReady() == want {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Fatalf("live snapshot readiness=%v, want %v", w.LiveSnapshotReady(), want)
+		case <-ticker.C:
+		}
+	}
+}
+
+func TestGetListReloadsProjectedServiceAccountToken(t *testing.T) {
+	tokenPath := t.TempDir() + "/token"
+	if err := os.WriteFile(tokenPath, []byte("first-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		got = append(got, req.Header.Get("Authorization"))
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(rw, `{"metadata":{"resourceVersion":"1"},"items":[]}`)
+	}))
+	defer srv.Close()
+	w := newTestWatcher(srv.URL, srv.Client(), func() {})
+	w.tokenPath = tokenPath
+	if _, _, err := w.getList(context.Background(), servicePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tokenPath, []byte("rotated-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := w.getList(context.Background(), servicePath); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Bearer first-token", "Bearer rotated-token"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("authorization headers = %q, want %q", got, want)
 	}
 }
 
 func TestServiceUIDObservationsKeepDeleteRecreateIncarnationsSeparate(t *testing.T) {
 	w := newTestWatcher("", nil, func() {})
 	w.servicesSynced = true
+	w.servicesWatching = true
 	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"api","namespace":"prod","uid":"uid-a"},"spec":{"ports":[{"port":80}]}}`))
 	if got, ok := w.ServiceUIDObservations("prod", "api"); !ok || len(got) != 1 || got[0].UID != "uid-a" || got[0].State != "live" {
 		t.Fatalf("live UID observation = %+v, ok=%v", got, ok)
@@ -49,6 +99,7 @@ func TestServiceUIDObservationsKeepDeleteRecreateIncarnationsSeparate(t *testing
 func TestServiceInventoryIsDeterministicBoundedAndNonSensitive(t *testing.T) {
 	w := newTestWatcher("", nil, func() {})
 	w.servicesSynced = true
+	w.servicesWatching = true
 	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"dns","namespace":"prod","uid":"uid-dns"},"spec":{"ports":[{"name":"dns-udp","port":53,"protocol":"UDP"},{"name":"dns-tcp","port":53,"protocol":"TCP"},{"name":"sctp","port":54,"protocol":"SCTP"}]}}`))
 	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"api","namespace":"apps","uid":"uid-api"},"spec":{"ports":[{"name":"https","port":443}]}}`))
 	items, ok := w.ServiceInventory()
@@ -112,6 +163,7 @@ func TestTargetsCorrelatesServicePortToEndpointPort(t *testing.T) {
 	// Both synced: servicePort 80 has name "web" -> the slice's "web" port is 8080.
 	w.services["prod/api"] = serviceInfo{ports: svcPorts{{protocol: "tcp", port: 80}: "web"}}
 	w.servicesSynced = true
+	w.servicesWatching, w.slicesWatching = true, true
 	ts, ok := w.Targets("prod", "api", "tcp", 80)
 	if !ok || len(ts) != 1 || ts[0].ip != "10.42.0.14" || ts[0].port != 8080 {
 		t.Fatalf("expected 10.42.0.14:8080, got ok=%v %+v", ok, ts)
@@ -119,6 +171,241 @@ func TestTargetsCorrelatesServicePortToEndpointPort(t *testing.T) {
 	// A servicePort the Service does not expose -> ok=true but no target (refuse, not guess).
 	if ts, ok := w.Targets("prod", "api", "tcp", 443); !ok || len(ts) != 0 {
 		t.Fatalf("an unexposed servicePort must yield zero targets, got ok=%v %+v", ok, ts)
+	}
+}
+
+func TestLiveSnapshotDistinguishesZeroReadyPodsFromAPIUnavailable(t *testing.T) {
+	w := newTestWatcher("", nil, func() {})
+	w.services["prod/api"] = serviceInfo{ports: svcPorts{{protocol: "tcp", port: 80}: "web"}}
+	w.servicesSynced, w.slicesSynced = true, true
+	w.servicesWatching, w.slicesWatching = true, true
+
+	if !w.LiveSnapshotReady() {
+		t.Fatal("successful empty Services/EndpointSlices snapshot was not live")
+	}
+	if targets, ok := w.Targets("prod", "api", "tcp", 80); !ok || len(targets) != 0 {
+		t.Fatalf("zero ready pods must be a live empty result, got ok=%v targets=%+v", ok, targets)
+	}
+
+	w.setWatching(epSlicePath, false)
+	if w.LiveSnapshotReady() {
+		t.Fatal("lost EndpointSlice watch retained live snapshot readiness")
+	}
+	if targets, ok := w.Targets("prod", "api", "tcp", 80); ok || len(targets) != 0 {
+		t.Fatalf("API-unavailable snapshot must fail closed, got ok=%v targets=%+v", ok, targets)
+	}
+}
+
+func TestPlannedWatchRenewalRetainsLiveSnapshot(t *testing.T) {
+	requestStarted := make(chan struct{})
+	allowHeaders := make(chan struct{})
+	streamStarted := make(chan struct{})
+	releaseStream := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		close(requestStarted)
+		<-allowHeaders
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		rw.(http.Flusher).Flush()
+		close(streamStarted)
+		<-releaseStream
+	}))
+	defer srv.Close()
+
+	w := newTestWatcher(srv.URL, srv.Client(), func() {})
+	var clockNanos atomic.Int64
+	w.now = func() time.Time { return time.Unix(0, clockNanos.Load()) }
+	w.servicesSynced, w.slicesSynced = true, true
+	w.servicesWatching = true
+	done := make(chan error, 1)
+	go func() {
+		_, err := w.watch(context.Background(), epSlicePath, "1", func(string, json.RawMessage) {})
+		done <- err
+	}()
+	<-requestStarted
+	if w.LiveSnapshotReady() {
+		t.Fatal("initial readiness was accepted before the first EndpointSlices watch HTTP 200")
+	}
+	close(allowHeaders)
+	<-streamStarted
+	waitForLiveSnapshot(t, w, true)
+	clockNanos.Store(int64(time.Duration(watchServerTimeoutSec) * time.Second))
+	close(releaseStream)
+	if err := <-done; err != nil {
+		t.Fatalf("clean watch close: %v", err)
+	}
+	if !w.LiveSnapshotReady() {
+		t.Fatal("normal bounded watch renewal flapped the last-good live snapshot")
+	}
+}
+
+func TestEarlyCleanWatchEOFRetractsLiveSnapshot(t *testing.T) {
+	streamStarted := make(chan struct{})
+	releaseStream := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		rw.(http.Flusher).Flush()
+		close(streamStarted)
+		<-releaseStream
+	}))
+	defer srv.Close()
+
+	w := newTestWatcher(srv.URL, srv.Client(), func() {})
+	var clockNanos atomic.Int64
+	w.now = func() time.Time { return time.Unix(0, clockNanos.Load()) }
+	w.servicesSynced, w.slicesSynced = true, true
+	w.servicesWatching = true
+	done := make(chan error, 1)
+	go func() {
+		_, err := w.watch(context.Background(), epSlicePath, "1", func(string, json.RawMessage) {})
+		done <- err
+	}()
+	<-streamStarted
+	waitForLiveSnapshot(t, w, true)
+	clockNanos.Store(int64(time.Second))
+	close(releaseStream)
+	if err := <-done; err == nil {
+		t.Fatal("early clean EOF was accepted as the planned Kubernetes watch timeout")
+	}
+	if w.LiveSnapshotReady() {
+		t.Fatal("early clean EOF retained stale snapshot readiness")
+	}
+}
+
+func TestWatchDecodeErrorRetractsLiveSnapshot(t *testing.T) {
+	streamStarted := make(chan struct{})
+	corruptStream := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		rw.(http.Flusher).Flush()
+		close(streamStarted)
+		<-corruptStream
+		_, _ = io.WriteString(rw, "not-json\n")
+	}))
+	defer srv.Close()
+
+	w := newTestWatcher(srv.URL, srv.Client(), func() {})
+	w.servicesSynced, w.slicesSynced = true, true
+	w.servicesWatching = true
+	done := make(chan error, 1)
+	go func() {
+		_, err := w.watch(context.Background(), epSlicePath, "1", func(string, json.RawMessage) {})
+		done <- err
+	}()
+	<-streamStarted
+	waitForLiveSnapshot(t, w, true)
+	close(corruptStream)
+	if err := <-done; err == nil {
+		t.Fatal("malformed watch event was accepted as a clean renewal")
+	}
+	if w.LiveSnapshotReady() {
+		t.Fatal("watch decode failure retained stale snapshot readiness")
+	}
+}
+
+func TestRBACListFailureNeverEstablishesLiveSnapshot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		rw.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	w := newTestWatcher(srv.URL, srv.Client(), func() {})
+
+	if _, err := w.listServices(context.Background()); err == nil {
+		t.Fatal("Services RBAC denial was accepted")
+	}
+	if _, err := w.listSlices(context.Background()); err == nil {
+		t.Fatal("EndpointSlices RBAC denial was accepted")
+	}
+	if w.LiveSnapshotReady() {
+		t.Fatal("RBAC-denied Kubernetes API reported a live Services/EndpointSlices snapshot")
+	}
+}
+
+func TestListRequestDeadlineBoundsUnresponsiveKubernetesAPI(t *testing.T) {
+	requestStarted := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
+		close(requestStarted)
+		<-req.Context().Done()
+	}))
+	defer srv.Close()
+	w := newTestWatcher(srv.URL, srv.Client(), func() {})
+	w.listTimeout = 40 * time.Millisecond
+
+	startedAt := time.Now()
+	_, _, err := w.getList(context.Background(), servicePath)
+	if err == nil {
+		t.Fatal("unresponsive Kubernetes API LIST had no request deadline")
+	}
+	<-requestStarted
+	if elapsed := time.Since(startedAt); elapsed > 500*time.Millisecond {
+		t.Fatalf("unresponsive LIST returned after %v, want a bounded retry", elapsed)
+	}
+	if w.LiveSnapshotReady() {
+		t.Fatal("timed-out LIST established Kubernetes API readiness")
+	}
+}
+
+func TestK8sAPIClientBoundsConnectionSetupWithoutTimingOutWatchBody(t *testing.T) {
+	client := newK8sAPIClient(nil)
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Kubernetes API transport=%T, want *http.Transport", client.Transport)
+	}
+	if client.Timeout != 0 {
+		t.Fatalf("whole-client timeout=%v would terminate healthy watch bodies", client.Timeout)
+	}
+	if transport.ResponseHeaderTimeout != apiResponseTimeout {
+		t.Fatalf("response-header timeout=%v, want %v", transport.ResponseHeaderTimeout, apiResponseTimeout)
+	}
+	if transport.TLSHandshakeTimeout != apiTLSHandshakeTimeout {
+		t.Fatalf("TLS handshake timeout=%v, want %v", transport.TLSHandshakeTimeout, apiTLSHandshakeTimeout)
+	}
+	if client.CheckRedirect == nil {
+		t.Fatal("Kubernetes API client follows redirects")
+	}
+}
+
+func TestK8sWatcherRefusesRedirectWithoutForwardingServiceAccountBearer(t *testing.T) {
+	var mu sync.Mutex
+	targetCalls := 0
+	targetAuthorization := ""
+	target := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		targetCalls++
+		targetAuthorization = req.Header.Get("Authorization")
+		mu.Unlock()
+		rw.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	sourceAuthorization := ""
+	source := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		sourceAuthorization = req.Header.Get("Authorization")
+		mu.Unlock()
+		http.Redirect(rw, req, target.URL+"/credential-leak", http.StatusTemporaryRedirect)
+	}))
+	defer source.Close()
+
+	tokenPath := t.TempDir() + "/token"
+	if err := os.WriteFile(tokenPath, []byte("projected-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := source.Client()
+	client.CheckRedirect = refuseK8sAPIRedirect
+	w := newTestWatcher(source.URL, client, func() {})
+	w.tokenPath = tokenPath
+	if _, _, err := w.getList(context.Background(), servicePath); err == nil {
+		t.Fatal("Kubernetes API redirect was accepted")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if sourceAuthorization != "Bearer projected-secret" {
+		t.Fatalf("source bearer=%q, want projected credential", sourceAuthorization)
+	}
+	if targetCalls != 0 || targetAuthorization != "" {
+		t.Fatalf("redirect target calls=%d authorization=%q; projected bearer must never leave the API origin", targetCalls, targetAuthorization)
 	}
 }
 
@@ -136,6 +423,7 @@ func TestTargetsKeysSameServicePortByProtocol(t *testing.T) {
 		},
 	}}
 	w.servicesSynced, w.slicesSynced = true, true
+	w.servicesWatching, w.slicesWatching = true, true
 	for _, tc := range []struct {
 		protocol string
 		wantPort int
@@ -163,6 +451,7 @@ func TestUnsupportedK8sProtocolsNeverAliasTCP(t *testing.T) {
 	w := newTestWatcher("", nil, func() {})
 	w.services[key], w.slices[key] = info, map[string]epGroup{"api-1": group}
 	w.servicesSynced, w.slicesSynced = true, true
+	w.servicesWatching, w.slicesWatching = true, true
 	for _, protocol := range []string{"tcp", "SCTP"} {
 		if targets, live := w.Targets("prod", "api", protocol, 443); !live || len(targets) != 0 {
 			t.Fatalf("%s must fail closed without TCP alias: live=%v targets=%+v", protocol, live, targets)
@@ -180,6 +469,8 @@ func TestWatchRelistOn410ReflectsCurrent(t *testing.T) {
 		switch r.URL.Path {
 		case servicePath:
 			if watching {
+				w.WriteHeader(http.StatusOK)
+				w.(http.Flusher).Flush()
 				<-r.Context().Done() // no service changes — block until the test ends
 				return
 			}
@@ -194,6 +485,8 @@ func TestWatchRelistOn410ReflectsCurrent(t *testing.T) {
 					w.WriteHeader(http.StatusGone) // rv expired → the agent must relist
 					return
 				}
+				w.WriteHeader(http.StatusOK)
+				w.(http.Flusher).Flush()
 				<-r.Context().Done()
 				return
 			}
@@ -242,6 +535,10 @@ func TestListFailureClearsView(t *testing.T) {
 	w.servicesSynced = true
 	w.slices["prod/api"] = map[string]epGroup{"s1": {ready: []string{"10.42.0.14"}, ports: map[endpointPortKey]int{{protocol: "tcp", name: ""}: 8080}}}
 	w.slicesSynced = true
+	w.servicesWatching, w.slicesWatching = true, true
+	if _, ok := w.Targets("prod", "api", "tcp", 80); !ok {
+		t.Fatal("test precondition: successful live snapshot was not readable")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

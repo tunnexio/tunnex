@@ -542,6 +542,14 @@ func TestCoordinatorFullDomainReadbackMismatchCompensatesAndNeverACKs(t *testing
 	}
 }
 
+func TestCanonicalDomainStateCanonicalizesEmptyPeerAllowedIPs(t *testing.T) {
+	withNil := canonicalDomainState(AppliedDomainState{WGPeers: []WGAppliedPeer{{PublicKey: "peer"}}})
+	withEmpty := canonicalDomainState(AppliedDomainState{WGPeers: []WGAppliedPeer{{PublicKey: "peer", AllowedIPs: []string{}}}})
+	if !reflect.DeepEqual(withNil, withEmpty) {
+		t.Fatalf("empty peer AllowedIPs must be canonical: nil=%+v empty=%+v", withNil, withEmpty)
+	}
+}
+
 func TestFileFenceStoreRejectsCorruptionAndDoesNotInferUnfence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "fences.json")
 	fence, err := fenceFor(projectorOwnership())

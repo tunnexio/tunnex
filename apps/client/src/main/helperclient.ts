@@ -129,10 +129,16 @@ export class FrameDecoder {
 // it. The token/key are never involved here — only the typed tunnel protocol.
 export class HelperConnection {
   private sock: net.Socket | null = null;
-  private connecting: Promise<void> | null = null;
-  private decoder = new FrameDecoder();
-  private waiters: Array<{ resolve: (r: HelperResponse) => void; reject: (e: Error) => void }> = [];
-  private closedByUs = false;
+  private connecting: {
+    socket: net.Socket;
+    promise: Promise<void>;
+    reject: (error: Error) => void;
+  } | null = null;
+  private waiters: Array<{
+    socket: net.Socket;
+    resolve: (r: HelperResponse) => void;
+    reject: (e: Error) => void;
+  }> = [];
 
   constructor(
     private readonly socketPath: string,
@@ -141,56 +147,102 @@ export class HelperConnection {
 
   private ensure(): Promise<void> {
     if (this.sock && !this.sock.destroyed) return Promise.resolve();
-    if (this.connecting) return this.connecting;
-    this.closedByUs = false;
-    this.decoder = new FrameDecoder();
-    this.connecting = new Promise((resolve, reject) => {
-      const sock = net.connect(this.socketPath);
-      sock.on("connect", () => {
-        this.sock = sock;
-        this.connecting = null;
-        resolve();
-      });
-      sock.on("data", (chunk: Buffer) => this.onData(chunk));
-      sock.on("error", (e) => {
-        this.connecting = null;
-        reject(e);
-      });
-      sock.on("close", () => this.onClose());
+    if (this.connecting) return this.connecting.promise;
+
+    const socket = net.connect(this.socketPath);
+    const decoder = new FrameDecoder();
+    let resolveAttempt!: () => void;
+    let rejectAttempt!: (error: Error) => void;
+    const promise = new Promise<void>((resolve, reject) => {
+      resolveAttempt = resolve;
+      rejectAttempt = reject;
     });
-    return this.connecting;
+    const attempt = { socket, promise, reject: rejectAttempt };
+    this.connecting = attempt;
+
+    socket.on("connect", () => {
+      if (this.connecting !== attempt) {
+        socket.destroy();
+        return;
+      }
+      this.sock = socket;
+      this.connecting = null;
+      resolveAttempt();
+    });
+    socket.on("data", (chunk: Buffer) => this.onData(socket, decoder, chunk));
+    socket.on("error", (error) => {
+      // An old socket's delayed error must not cancel a newer connection attempt.
+      if (this.connecting !== attempt) return;
+      this.connecting = null;
+      rejectAttempt(error);
+    });
+    socket.on("close", () => {
+      if (this.connecting === attempt) {
+        this.connecting = null;
+        rejectAttempt(new Error("helper connection closed"));
+      }
+      this.onClose(socket);
+    });
+    return promise;
   }
 
-  private onData(chunk: Buffer): void {
+  private onData(socket: net.Socket, decoder: FrameDecoder, chunk: Buffer): void {
+    if (this.sock !== socket) return;
     let msgs: unknown[];
     try {
-      msgs = this.decoder.push(chunk);
+      msgs = decoder.push(chunk);
     } catch (e) {
-      this.failAll(e as Error);
-      this.sock?.destroy();
+      this.failSocket(socket, e as Error);
+      socket.destroy();
       return;
     }
     for (const m of msgs) {
-      this.waiters.shift()?.resolve(m as HelperResponse);
+      const index = this.waiters.findIndex((waiter) => waiter.socket === socket);
+      if (index >= 0) this.waiters.splice(index, 1)[0].resolve(m as HelperResponse);
     }
   }
 
-  private onClose(): void {
-    const hadSock = this.sock !== null;
-    this.sock = null;
-    this.failAll(new Error("helper connection closed"));
-    if (hadSock && !this.closedByUs) this.onLost?.(); // an UNEXPECTED drop = helper death
+  private onClose(socket: net.Socket): void {
+    const wasCurrent = this.sock === socket;
+    if (wasCurrent) this.sock = null;
+    this.failSocket(socket, new Error("helper connection closed"));
+    if (wasCurrent) this.onLost?.(); // an UNEXPECTED drop of the current socket = helper death
   }
 
-  private failAll(e: Error): void {
-    while (this.waiters.length) this.waiters.shift()!.reject(e);
+  private failSocket(socket: net.Socket, error: Error): void {
+    const failed = this.waiters.filter((waiter) => waiter.socket === socket);
+    this.waiters = this.waiters.filter((waiter) => waiter.socket !== socket);
+    for (const waiter of failed) waiter.reject(error);
+  }
+
+  // The wire has FIFO responses but no request IDs. Once any request times out,
+  // the next frame on this socket is ambiguous: it could be the timed-out reply
+  // or a later request's reply. Retire that exact socket and every waiter bound
+  // to it before another request can reconnect; keeping it alive would let a
+  // late response resolve the wrong operation.
+  private poisonSocket(socket: net.Socket, error: Error): void {
+    const wasCurrent = this.sock === socket;
+    if (wasCurrent) this.sock = null;
+    this.failSocket(socket, error);
+    socket.destroy();
+    if (wasCurrent) this.onLost?.();
+  }
+
+  private removeWaiter(waiter: (typeof this.waiters)[number]): boolean {
+    const index = this.waiters.indexOf(waiter);
+    if (index < 0) return false;
+    this.waiters.splice(index, 1);
+    return true;
   }
 
   async request(req: HelperRequest, timeoutMs = 15000): Promise<HelperResponse> {
     await this.ensure();
+    const socket = this.sock;
+    if (!socket || socket.destroyed) throw new Error("helper connection closed");
     return new Promise<HelperResponse>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("helper request timed out")), timeoutMs);
-      this.waiters.push({
+      let timer!: ReturnType<typeof setTimeout>;
+      const waiter = {
+        socket,
         resolve: (r) => {
           clearTimeout(timer);
           resolve(r);
@@ -199,14 +251,17 @@ export class HelperConnection {
           clearTimeout(timer);
           reject(e);
         },
-      });
+      } satisfies (typeof this.waiters)[number];
+      timer = setTimeout(() => {
+        if (this.waiters.includes(waiter)) {
+          this.poisonSocket(socket, new Error("helper request timed out"));
+        }
+      }, timeoutMs);
+      this.waiters.push(waiter);
       try {
-        this.sock!.write(encodeFrame(req));
+        socket.write(encodeFrame(req));
       } catch (e) {
-        clearTimeout(timer);
-        // Pop the waiter we just pushed and fail it.
-        const w = this.waiters.pop();
-        w?.reject(e as Error);
+        if (this.removeWaiter(waiter)) waiter.reject(e as Error);
       }
     });
   }
@@ -214,8 +269,18 @@ export class HelperConnection {
   // close is the INTENTIONAL teardown (graceful disconnect / app quit): it marks
   // the close as expected so onLost does NOT fire.
   close(): void {
-    this.closedByUs = true;
-    this.sock?.destroy();
+    const attempt = this.connecting;
+    if (attempt) {
+      this.connecting = null;
+      attempt.reject(new Error("helper connection closed"));
+      attempt.socket.destroy();
+    }
+    const socket = this.sock;
+    if (!socket) return;
+    // Clear identity before destroy: its delayed close/data/error handlers can
+    // no longer own or fail a connection established after this call returns.
     this.sock = null;
+    this.failSocket(socket, new Error("helper connection closed"));
+    socket.destroy();
   }
 }

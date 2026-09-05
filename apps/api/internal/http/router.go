@@ -343,7 +343,8 @@ func authBeforeAgentValidation(next http.Handler) http.Handler {
 		// schema validation so an anonymous caller cannot use malformed bodies or
 		// a guessed destination identifier to probe the surface.
 		protectedAlerting := strings.Contains(req.URL.Path, "/alerting-settings") || strings.Contains(req.URL.Path, "/alert-destinations")
-		if orgPath && (protectedAgentMutation || protectedMCPOAuthStart || protectedAlerting || protectedFQDNMutation || protectedRetentionMutation) {
+		protectedNodeLifecycle := strings.Contains(req.URL.Path, "/nodes/lifecycle-claims/")
+		if orgPath && (protectedAgentMutation || protectedMCPOAuthStart || protectedAlerting || protectedFQDNMutation || protectedRetentionMutation || protectedNodeLifecycle) {
 			if _, ok := authctx.PrincipalFrom(req.Context()); !ok {
 				apierr.Write(w, req, apierr.New(http.StatusUnauthorized, "unauthenticated", "authentication required"))
 				return

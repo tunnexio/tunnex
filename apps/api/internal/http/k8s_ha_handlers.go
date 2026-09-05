@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"math"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -30,6 +31,43 @@ func toAPIK8sConnectorPoolHAStatus(in k8ssvc.ConnectorPoolHAStatus) api.K8sConne
 		TransitionRevision: in.TransitionRevision, ReasonCode: in.ReasonCode,
 		RequestedAt: in.RequestedAt, AchievedAt: in.AchievedAt,
 	}
+}
+
+func toAPIK8sConnectorPoolConfiguration(in k8ssvc.ConnectorPoolConfiguration) (api.K8sConnectorPoolConfiguration, error) {
+	if in.Generation > math.MaxInt64 {
+		return api.K8sConnectorPoolConfiguration{}, apierr.Conflict("connector_pool_generation_invalid", "the connector pool has an invalid generation")
+	}
+	out := api.K8sConnectorPoolConfiguration{
+		PoolId: in.PoolID, ClusterId: in.ClusterID, PreferredNodeId: in.PreferredNodeID, ActiveNodeId: in.ActiveNodeID,
+		Generation: int64(in.Generation), MembershipEpochKnown: in.MembershipEpochKnown,
+		Members: make([]api.K8sConnectorPoolMember, len(in.Members)),
+	}
+	if in.MembershipEpochKnown {
+		if in.MembershipEpoch > math.MaxInt64 {
+			return api.K8sConnectorPoolConfiguration{}, apierr.Conflict("connector_pool_membership_epoch_invalid", "the connector pool has an invalid membership epoch")
+		}
+		epoch := int64(in.MembershipEpoch)
+		out.MembershipEpoch = &epoch
+	}
+	for i, member := range in.Members {
+		out.Members[i] = api.K8sConnectorPoolMember{NodeId: member.NodeID, AdminPriority: member.AdminPriority}
+	}
+	return out, nil
+}
+
+func configureK8sConnectorPoolRequest(in api.ConfigureK8sConnectorPoolRequest) (k8ssvc.ConfigureConnectorPoolRequest, error) {
+	request := k8ssvc.ConfigureConnectorPoolRequest{Members: make([]k8ssvc.ConnectorPoolMemberConfiguration, len(in.Members))}
+	for i, member := range in.Members {
+		request.Members[i] = k8ssvc.ConnectorPoolMemberConfiguration{NodeID: member.NodeId, AdminPriority: member.AdminPriority}
+	}
+	if in.ExpectedMembershipEpoch != nil {
+		if *in.ExpectedMembershipEpoch < 0 {
+			return k8ssvc.ConfigureConnectorPoolRequest{}, apierr.BadRequest("connector_pool_membership_epoch_invalid", "expected_membership_epoch must be non-negative")
+		}
+		epoch := uint64(*in.ExpectedMembershipEpoch)
+		request.ExpectedMembershipEpoch = &epoch
+	}
+	return request, nil
 }
 
 func (s apiServer) GetK8sHASettings(ctx context.Context, req api.GetK8sHASettingsRequestObject) (api.GetK8sHASettingsResponseObject, error) {
@@ -97,4 +135,51 @@ func (s apiServer) SetK8sConnectorPoolHAMode(ctx context.Context, req api.SetK8s
 		return nil, err
 	}
 	return api.SetK8sConnectorPoolHAMode200JSONResponse{Body: toAPIK8sConnectorPoolHAStatus(status), Headers: api.SetK8sConnectorPoolHAMode200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) GetK8sConnectorPoolConfiguration(ctx context.Context, req api.GetK8sConnectorPoolConfigurationRequestObject) (api.GetK8sConnectorPoolConfigurationResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sHAView); err != nil {
+		return nil, err
+	}
+	cluster, err := s.k8s.GetCluster(ctx, req.OrgId, req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+	configuration, err := s.k8s.GetConnectorPoolConfiguration(ctx, req.OrgId, cluster.SiteID, req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+	body, err := toAPIK8sConnectorPoolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetK8sConnectorPoolConfiguration200JSONResponse{Body: body, Headers: api.GetK8sConnectorPoolConfiguration200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) ConfigureK8sConnectorPool(ctx context.Context, req api.ConfigureK8sConnectorPoolRequestObject) (api.ConfigureK8sConnectorPoolResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sHAManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "a request body is required")
+	}
+	configurationRequest, err := configureK8sConnectorPoolRequest(*req.Body)
+	if err != nil {
+		return nil, err
+	}
+	configurationRequest.ClusterID = req.ClusterId
+	cluster, err := s.k8s.GetCluster(ctx, req.OrgId, req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+	uid, sys, cause := auditActor(ctx)
+	configuration, err := s.k8s.ConfigureConnectorPool(ctx, req.OrgId, cluster.SiteID, configurationRequest, uid, sys, cause)
+	if err != nil {
+		return nil, err
+	}
+	body, err := toAPIK8sConnectorPoolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
+	return api.ConfigureK8sConnectorPool200JSONResponse{Body: body, Headers: api.ConfigureK8sConnectorPool200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }

@@ -40,7 +40,7 @@ func TestHandoffSchedulerActivationDisabledDoesNothing(t *testing.T) {
 	}
 }
 
-func TestPostgresHandoffSchedulerMigrationGateRequires0122(t *testing.T) {
+func TestPostgresHandoffSchedulerMigrationGateRequires0134(t *testing.T) {
 	admin := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if admin == "" {
 		t.Skip("set TUNNEX_TEST_DATABASE_URL to run scheduler migration-gate PostgreSQL proof")
@@ -48,7 +48,7 @@ func TestPostgresHandoffSchedulerMigrationGateRequires0122(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	dsn := newOwnershipDeliveryIntegrationDatabase(t, ctx, admin)
-	for _, version := range []int{85, 118, 119} {
+	for _, version := range []int{85, 118, 119, 120, 122, 127, 128, 129, 130, 131, 132, 133} {
 		if err := db.MigrateTo(dsn, uint(version)); err != nil {
 			t.Fatalf("migrate through %04d: %v", version, err)
 		}
@@ -58,12 +58,12 @@ func TestPostgresHandoffSchedulerMigrationGateRequires0122(t *testing.T) {
 		}
 		if (&PostgresHandoffSchedulerMigrationGate{pool: pool}).ready(ctx) {
 			pool.Close()
-			t.Fatalf("schema %04d must not enable the scheduler before 0122 HA authority", version)
+			t.Fatalf("schema %04d must not enable the scheduler before 0134 delivery-kind authority", version)
 		}
 		pool.Close()
 	}
-	if err := db.MigrateTo(dsn, 122); err != nil {
-		t.Fatalf("migrate through 0122: %v", err)
+	if err := db.MigrateTo(dsn, 134); err != nil {
+		t.Fatalf("migrate through 0134: %v", err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -71,7 +71,7 @@ func TestPostgresHandoffSchedulerMigrationGateRequires0122(t *testing.T) {
 	}
 	defer pool.Close()
 	if !(&PostgresHandoffSchedulerMigrationGate{pool: pool}).ready(ctx) {
-		t.Fatal("clean schema 0122 must satisfy the scheduler migration gate")
+		t.Fatal("clean schema 0134 must satisfy the scheduler migration gate")
 	}
 }
 

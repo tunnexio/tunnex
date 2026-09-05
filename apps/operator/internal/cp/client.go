@@ -32,7 +32,17 @@ func New(baseURL, token, orgID string) *Client {
 		base:  strings.TrimRight(baseURL, "/"),
 		token: token,
 		org:   orgID,
-		http:  &http.Client{Timeout: 30 * time.Second},
+		http: &http.Client{
+			Timeout: 30 * time.Second,
+			// The persistent org-scoped machine bearer is valid only for the
+			// configured control-plane origin. Refuse every redirect instead of
+			// relying on net/http's credential-forwarding heuristics: even a
+			// same-host HTTPS -> HTTP redirect would disclose it in cleartext, and
+			// a redirected mutation would no longer target the configured API.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 
@@ -138,6 +148,17 @@ type Cluster struct {
 	DnsZone     string `json:"dns_zone"`
 	DnsVip      string `json:"dns_vip"`
 	SiteID      string `json:"site_id"`
+	Provider    string `json:"provider"`
+	Platform    string `json:"platform"`
+}
+
+// Node is the deliberately small shape needed to resolve a TunnexCluster's
+// logical connector name. The operator reads nodes but never manages them.
+type Node struct {
+	ID     string  `json:"id"`
+	Name   string  `json:"name"`
+	SiteID *string `json:"site_id"`
+	Status string  `json:"status"`
 }
 
 type Service struct {
@@ -180,11 +201,19 @@ type Rule struct {
 }
 
 type RegisterClusterRequest struct {
-	SiteID      string `json:"site_id"`
-	Name        string `json:"name"`
-	VipRange    string `json:"vip_range"`
-	ServiceCidr string `json:"service_cidr"`
-	DnsZone     string `json:"dns_zone"`
+	SiteID          string `json:"site_id"`
+	ConnectorNodeID string `json:"connector_node_id"`
+	Provider        string `json:"provider,omitempty"`
+	Platform        string `json:"platform,omitempty"`
+	Name            string `json:"name"`
+	VipRange        string `json:"vip_range"`
+	ServiceCidr     string `json:"service_cidr"`
+	DnsZone         string `json:"dns_zone"`
+}
+
+type ProviderMetadataRequest struct {
+	Provider string `json:"provider"`
+	Platform string `json:"platform"`
 }
 
 type ExposeServiceRequest struct {
@@ -218,6 +247,16 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 func (c *Client) RegisterCluster(ctx context.Context, r RegisterClusterRequest) (Cluster, error) {
 	var out Cluster
 	return out, c.do(ctx, http.MethodPost, c.orgPath("/k8s/clusters"), "", r, &out)
+}
+
+// SetClusterProviderMetadata reconciles explicit presentation metadata without
+// changing traffic or provider authority. An omitted CR pair deliberately
+// never calls this correction verb, preserving the control-plane value.
+func (c *Client) SetClusterProviderMetadata(ctx context.Context, clusterID, provider, platform, cause string) (Cluster, error) {
+	var out Cluster
+	request := ProviderMetadataRequest{Provider: provider, Platform: platform}
+	path := c.orgPath("/k8s/clusters/" + clusterID + "/provider-metadata")
+	return out, c.do(ctx, http.MethodPut, path, cause, request, &out)
 }
 
 // GetCluster fetches one cluster by id — the AUTHORITATIVE confirm-by-ID (S10.2 C2): found=false ONLY on a
@@ -296,6 +335,22 @@ func (c *Client) DeleteGrant(ctx context.Context, ruleID, cause string) error {
 func (c *Client) ListSites(ctx context.Context) ([]Site, error) {
 	var out []Site
 	return out, c.do(ctx, http.MethodGet, c.orgPath("/sites"), "", nil, &out)
+}
+
+// CheckAccess is the readiness proof for the configured CP URL, organization,
+// and machine credential. An empty site list is valid; any auth, org, transport,
+// or server failure keeps the operator non-Ready so Helm cannot report a false
+// successful installation before the first CR exists.
+func (c *Client) CheckAccess(ctx context.Context) error {
+	_, err := c.ListSites(ctx)
+	return err
+}
+
+// ListNodes resolves a cluster connector name to its stable control-plane ID.
+// The machine role has only org:view for this read; it cannot mutate nodes.
+func (c *Client) ListNodes(ctx context.Context) ([]Node, error) {
+	var out []Node
+	return out, c.do(ctx, http.MethodGet, c.orgPath("/nodes"), "", nil, &out)
 }
 
 // ListMembers resolves a user-kind grant subject: email -> user id.

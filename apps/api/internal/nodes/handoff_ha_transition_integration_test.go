@@ -24,7 +24,7 @@ func TestPostgresHandoffHATransitionArmsEveryMemberBeforeP2(t *testing.T) {
 	defer cancel()
 	pool := newHandoffEndToEndTestDB(t, ctx, admin)
 	fixture := seedHandoffBootstrapIntegration(t, ctx, pool)
-	if err := db.MigrateTo(pool.Config().ConnString(), 122); err != nil {
+	if err := db.MigrateTo(pool.Config().ConnString(), 134); err != nil {
 		t.Fatal(err)
 	}
 	const membershipEpoch int64 = 0
@@ -136,7 +136,7 @@ func TestPostgresHandoffHATransitionRetriesStaleAndExpiredAuthorityAtNewRevision
 	defer cancel()
 	pool := newHandoffEndToEndTestDB(t, ctx, admin)
 	fixture := seedHandoffBootstrapIntegration(t, ctx, pool)
-	if err := db.MigrateTo(pool.Config().ConnString(), 122); err != nil {
+	if err := db.MigrateTo(pool.Config().ConnString(), 134); err != nil {
 		t.Fatal(err)
 	}
 	const membershipEpoch int64 = 0

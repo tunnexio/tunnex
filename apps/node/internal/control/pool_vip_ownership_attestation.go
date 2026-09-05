@@ -296,7 +296,10 @@ func PoolVIPOwnershipOwnedRouteDigest(routes []string) (string, error) {
 	if len(routes) > poolVIPOwnershipMaxOwnedRoutes {
 		return "", fmt.Errorf("too many owned routes")
 	}
-	canonical := append([]string(nil), routes...)
+	// The protocol defines one canonical representation for the empty route
+	// set. Prepared and withdrawal deliveries can arrive through JSON storage
+	// as nil, while the control plane signs the equivalent empty array.
+	canonical := append([]string{}, routes...)
 	for _, route := range canonical {
 		if len(route) > poolVIPOwnershipMaxOwnedRouteBytes {
 			return "", fmt.Errorf("owned route exceeds canonical IPv4 length")

@@ -4,6 +4,9 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 COMPOSE="$ROOT/deploy/tunnex.yml"
 CHART="$ROOT/deploy/helm/tunnex-cp"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+. "$ROOT/deploy/helm-label-contract-lib.sh"
 
 grep -Fq 'TUNNEX_K8S_HA_ENABLED: ${TUNNEX_K8S_HA_ENABLED:-false}' "$COMPOSE" || {
   echo "compose must expose TUNNEX_K8S_HA_ENABLED with a false default" >&2
@@ -66,6 +69,30 @@ render() {
     --set masterKey.existingSecret=tunnex-master \
     "$@"
 }
+
+LONG_VERSION=0.0.0-walk.shaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+helm package "$CHART" --version "$LONG_VERSION" --app-version "$LONG_VERSION" \
+  --destination "$TMP" >/dev/null
+helm template ha-long "$TMP/tunnex-cp-$LONG_VERSION.tgz" \
+  --set appBaseURL=https://tunnex.example.test \
+  --set database.url=postgres://user:pass@postgres.example.test/tunnex \
+  --set redis.url=redis://redis.example.test:6379/0 \
+  --set masterKey.existingSecret=tunnex-master >"$TMP/long-version.yaml"
+assert_helm_chart_labels "$TMP/long-version.yaml" \
+  "$(helm_chart_label_expected tunnex-cp "$LONG_VERSION")" \
+  'control-plane long-version chart'
+
+METADATA_VERSION=1.2.3+private.1
+helm package "$CHART" --version "$METADATA_VERSION" --app-version "$METADATA_VERSION" \
+  --destination "$TMP" >/dev/null
+helm template ha-metadata "$TMP/tunnex-cp-$METADATA_VERSION.tgz" \
+  --set appBaseURL=https://tunnex.example.test \
+  --set database.url=postgres://user:pass@postgres.example.test/tunnex \
+  --set redis.url=redis://redis.example.test:6379/0 \
+  --set masterKey.existingSecret=tunnex-master >"$TMP/metadata-version.yaml"
+assert_helm_chart_labels "$TMP/metadata-version.yaml" \
+  "$(helm_chart_label_expected tunnex-cp "$METADATA_VERSION")" \
+  'control-plane build-metadata chart'
 
 default_render=$(render ha-default)
 printf '%s\n' "$default_render" | grep -A1 'name: TUNNEX_K8S_HA_ENABLED' | grep -Fq 'value: "false"' || {

@@ -1,0 +1,129 @@
+{{- include "tunnex-host-posture.validate" . -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "tunnex-host-posture.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    tunnex.io/host-posture-contract: "tunnex-host-posture/v1"
+  labels:
+    {{- include "tunnex-host-posture.labels" . | nindent 4 }}
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      {{- include "tunnex-host-posture.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        tunnex.io/host-posture-contract: "tunnex-host-posture/v1"
+        tunnex.io/rollout-revision: {{ .Values.rolloutRevision | quote }}
+      labels:
+        {{- include "tunnex-host-posture.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "tunnex-host-posture.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 10
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: host-posture-manager
+          image: {{ include "tunnex-host-posture.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-manager", "--run"]
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: TUNNEX_HOST_POSTURE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TUNNEX_HOST_POSTURE_MANAGER_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: TUNNEX_HOST_POSTURE_STATE_DIR
+              value: /var/lib/tunnex/host-posture/v1
+            - name: TUNNEX_HOST_POSTURE_PROC_SYS
+              value: /host/proc/sys
+            - name: TUNNEX_HOST_POSTURE_RECONCILE_INTERVAL
+              value: {{ .Values.reconcileInterval | quote }}
+            - name: TUNNEX_HOST_POSTURE_API_TIMEOUT
+              value: {{ .Values.apiRequestTimeout | quote }}
+            - name: TUNNEX_HOST_POSTURE_MAX_OWNERS
+              value: {{ .Values.maxOwners | quote }}
+          startupProbe:
+            exec:
+              command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-check", "--ready"]
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 45
+          readinessProbe:
+            exec:
+              command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-check", "--ready"]
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-check", "--live"]
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: host-posture-state
+              mountPath: /var/lib/tunnex/host-posture/v1
+            - name: host-proc-sys
+              mountPath: /host/proc/sys
+            - name: k8s-api-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: host-posture-state
+          hostPath:
+            path: /var/lib/tunnex/host-posture/v1
+            type: DirectoryOrCreate
+        - name: host-proc-sys
+          hostPath:
+            path: /proc/sys
+            type: Directory
+        - name: k8s-api-token
+          projected:
+            defaultMode: 420
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt

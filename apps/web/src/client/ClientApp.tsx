@@ -15,7 +15,14 @@ import {
   trayAppearance,
   type ClientState,
 } from "../lib/clientstate";
-import { desktop, type AppInfo, type ImportedProfile, type ReleaseCheck } from "../lib/desktop";
+import {
+  desktop,
+  type AppInfo,
+  type ImportedProfile,
+  type ManagedOrganization,
+  type ManagedOrganizationEnvelope,
+  type ReleaseCheck,
+} from "../lib/desktop";
 import { Logo, Tagline } from "../brand";
 import { Icon, type IconName } from "../components/Icon";
 import { drawGraph, pushRate, rateBetween } from "./throughput";
@@ -25,6 +32,9 @@ import {
   stepLink,
   type HyperMode,
 } from "./hyperdrive";
+
+const REMOVE_DEVICE_RETRY_MESSAGE =
+  "Device removal did not finish. The saved enrollment was kept; try Remove device again or check Logs.";
 
 /**
  * ClientApp — the desktop client's whole UI.
@@ -109,11 +119,11 @@ export function ClientApp() {
     };
   }, [busy, state]);
 
-  function showProblem(error: unknown): void {
+  function showProblem(error: unknown, message = clientErrorMessage(error)): void {
     // Keep the implementation detail in the client log / developer console. The
     // on-screen surface is a VPN control, not an IPC diagnostic.
     console.error("Tunnex client action failed", error);
-    setProblem(clientErrorMessage(error));
+    setProblem(message);
   }
 
   async function refreshAuth(): Promise<boolean> {
@@ -124,8 +134,11 @@ export function ClientApp() {
       setIdentity(st.fingerprint ?? null);
       const ok = st.loggedIn && !st.expired;
       setAuthed(ok);
-      if (!st.loggedIn) setLive("signed_out");
-      else if (st.expired) setLive("expired_creds");
+      // Main truthfully reports expired credentials as loggedIn=false plus the
+      // more specific expired=true. Specific terminal reason wins over the
+      // generic absence state.
+      if (st.expired) setLive("expired_creds");
+      else if (!st.loggedIn) setLive("signed_out");
       return ok;
     } catch {
       // ⚠ A FAILED READ IS NOT "SIGNED OUT". Claiming signed-out on an unreadable session would
@@ -156,17 +169,57 @@ export function ClientApp() {
       .importedProfiles()
       .then(setImportedProfiles)
       .catch(() => {});
+    void loadManagedOrganizations();
     void (async () => {
       const ok = await refreshAuth();
       if (ok) applyTunnelStatus(await d.tunnel.status());
     })();
-    return d.tunnel.onStatusChanged(applyTunnelStatus);
+    const stopStatus = d.tunnel.onStatusChanged(applyTunnelStatus);
+    const stopOrganizationSelection = d.tunnel.onOrganizationSelectionRequired(
+      () => {
+        setPane("profiles");
+        setDrawerOpen(false);
+        setOrganizationNotice(
+          "Choose an organization before connecting. Tunnex will not guess when your account belongs to more than one.",
+        );
+        void loadManagedOrganizations();
+      },
+    );
+    return () => {
+      stopStatus();
+      stopOrganizationSelection();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview]);
 
   function applyTunnelStatus(s: { state?: string; failed_checks?: Array<{ kind: string; mode: string }> }): void {
     setLive(mapStatus(s));
     setPostureFailures(s.failed_checks ?? []);
+  }
+
+  // A failed mutation can still have a confirmed first half: main may have
+  // brought the helper down before a later revoke, keychain, or profile write
+  // failed. Re-read the authoritative helper state so a rejected Promise never
+  // leaves a stale Connected label. A failed read is inconclusive and therefore
+  // preserves the last pushed/known state.
+  async function reconcileTunnelStateAfterFailure(): Promise<void> {
+    const d = desktop();
+    if (!d) return;
+    try {
+      applyTunnelStatus(await d.tunnel.status());
+    } catch {
+      /* keep the last pushed state */
+    }
+  }
+
+  async function refreshServerUrlAfterFailure(): Promise<void> {
+    const d = desktop();
+    if (!d) return;
+    try {
+      setServerUrl(await d.config.getServerUrl());
+    } catch {
+      /* keep the last server value that was actually read */
+    }
   }
 
   /**
@@ -282,8 +335,9 @@ export function ClientApp() {
       // and the product said nothing. A verb that can fail must be able to SAY it failed.
       setProblem(null);
       setBusy(true);
+      const attemptedLogin = state === "signed_out" || state === "expired_creds";
       try {
-        if (state === "signed_out" || state === "expired_creds") {
+        if (attemptedLogin) {
           await d.auth.login();
           await refreshAuth();
         } else if (state === "connected" || state === "posture_warning" || state === "kill_switch") {
@@ -300,6 +354,11 @@ export function ClientApp() {
           setAuthed(false);
           setProblem(null);
         } else {
+          await reconcileTunnelStateAfterFailure();
+          // Login can fail after main has truthfully published Down. Session
+          // truth remains the higher-order state: re-read it last so a cancel
+          // cannot turn Not signed in / Session expired into a dead Connect.
+          if (attemptedLogin) await refreshAuth();
           showProblem(msg);
         }
       } finally {
@@ -337,6 +396,18 @@ export function ClientApp() {
   const [releaseCheck, setReleaseCheck] = useState<ReleaseCheck | null>(null);
   const [checkingRelease, setCheckingRelease] = useState(false);
   const [importedProfiles, setImportedProfiles] = useState<ImportedProfile[]>([]);
+  const [managedOrganizationView, setManagedOrganizationView] = useState<
+    ManagedOrganizationEnvelope | null
+  >(null);
+  const managedOrganizations = managedOrganizationView?.organizations ?? null;
+  const enrollmentLocked = managedOrganizationView?.enrollmentLocked === true;
+  const enrollmentRecoveryRequired =
+    managedOrganizationView?.enrollmentRecoveryRequired === true;
+  const [managedOrganizationsFailed, setManagedOrganizationsFailed] =
+    useState(false);
+  const [organizationNotice, setOrganizationNotice] = useState<string | null>(
+    null,
+  );
   const [exported, setExported] = useState<string | null>(null);
 
   /**
@@ -358,6 +429,40 @@ export function ClientApp() {
     const d = desktop();
     if (!d) return;
     setLogText(await d.diag.readLog());
+  }
+
+  async function loadManagedOrganizations(): Promise<void> {
+    const d = desktop();
+    if (!d) return;
+    setManagedOrganizationsFailed(false);
+    setManagedOrganizationView(null);
+    try {
+      setManagedOrganizationView(await d.tunnel.managedOrganizations());
+    } catch (error) {
+      console.error("Could not load managed organizations", error);
+      setManagedOrganizationsFailed(true);
+    }
+  }
+
+  async function onSelectManagedOrganization(
+    organization: ManagedOrganization,
+  ): Promise<void> {
+    const d = desktop();
+    if (!d || organization.selected || enrollmentLocked) return;
+    setProblem(null);
+    setBusy(true);
+    try {
+      const view = await d.tunnel.selectManagedOrganization(
+        organization.id,
+      );
+      setManagedOrganizationView(view);
+      setManagedOrganizationsFailed(false);
+      setOrganizationNotice(null);
+    } catch (error) {
+      showProblem(error);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onExportLog() {
@@ -395,6 +500,18 @@ export function ClientApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pane]);
 
+  async function refreshImportedProfilesAfterFailure(): Promise<void> {
+    const d = desktop();
+    if (!d) return;
+    try {
+      setImportedProfiles(await d.tunnel.importedProfiles());
+    } catch (error) {
+      // Preserve the action's primary error. A failed recovery read is useful in
+      // logs but cannot justify inventing a profile selection in the renderer.
+      console.error("Could not refresh imported profiles after action failure", error);
+    }
+  }
+
   async function onImportConfig() {
     const d = desktop();
     if (!d) return;
@@ -420,6 +537,7 @@ export function ClientApp() {
   async function onSelectImported(profile: ImportedProfile) {
     const d = desktop();
     if (!d || profile.active) return;
+    setProblem(null);
     setBusy(true);
     try {
       const profiles = await d.tunnel.selectImportedProfile(profile.id);
@@ -427,6 +545,8 @@ export function ClientApp() {
       setFullTunnel(profile.fullTunnel);
       setLive("disconnected");
     } catch (e) {
+      await reconcileTunnelStateAfterFailure();
+      await refreshImportedProfilesAfterFailure();
       showProblem(e);
     } finally {
       setBusy(false);
@@ -446,6 +566,8 @@ export function ClientApp() {
       const ok = await refreshAuth();
       if (ok) applyTunnelStatus(await d.tunnel.status());
     } catch (e) {
+      await reconcileTunnelStateAfterFailure();
+      await refreshImportedProfilesAfterFailure();
       showProblem(e);
     } finally {
       setBusy(false);
@@ -455,12 +577,15 @@ export function ClientApp() {
   async function onForgetImported(id: string) {
     const d = desktop();
     if (!d) return;
+    setProblem(null);
     setBusy(true);
     try {
       const profiles = await d.tunnel.forgetImported(id);
       setImportedProfiles(profiles);
       await refreshAuth();
     } catch (e) {
+      await reconcileTunnelStateAfterFailure();
+      await refreshImportedProfilesAfterFailure();
       showProblem(e);
     } finally {
       setBusy(false);
@@ -479,6 +604,12 @@ export function ClientApp() {
       // The credential was cleared server-side of this call; re-read rather than assume.
       await refreshAuth();
     } catch (e) {
+      await reconcileTunnelStateAfterFailure();
+      await refreshServerUrlAfterFailure();
+      await refreshImportedProfilesAfterFailure();
+      // A failed server switch may have cleared or retained the credential;
+      // only the keychain read may decide. Apply it last so auth wins over Down.
+      await refreshAuth();
       showProblem(e);
     } finally {
       setBusy(false);
@@ -495,6 +626,10 @@ export function ClientApp() {
       await d.auth.logout();
       await refreshAuth();
     } catch (e) {
+      await reconcileTunnelStateAfterFailure();
+      // Auth truth still wins over tunnel truth. In the expected failure paths
+      // the credential remains, but re-read instead of assuming that outcome.
+      await refreshAuth();
       showProblem(e);
     } finally {
       setBusy(false);
@@ -503,14 +638,31 @@ export function ClientApp() {
 
   async function onRemoveDevice() {
     const d = desktop();
-    if (!d || !window.confirm("Remove this device? It will be revoked and a future connection must enroll again.")) return;
+    const question = enrollmentRecoveryRequired
+      ? "Abandon this unfinished enrollment and enroll again? Any same-owner active or pending device will be revoked first."
+      : "Remove this device? It will be revoked and a future connection must enroll again.";
+    if (!d || !window.confirm(question)) return;
     setProblem(null);
     setBusy(true);
     try {
-      await d.auth.removeDevice();
+      const removed = await d.auth.removeDevice();
+      if (!removed) {
+        setProblem("No enrolled managed device was found. Nothing was removed.");
+        return;
+      }
       setLive("disconnected");
+      setOrganizationNotice(
+        enrollmentRecoveryRequired
+          ? "Unfinished enrollment cleared. The next connection will create a new device key."
+          : "Device removed. Choose an organization for the next enrollment.",
+      );
+      await loadManagedOrganizations();
     } catch (e) {
-      showProblem(e);
+      await reconcileTunnelStateAfterFailure();
+      showProblem(
+        e,
+        REMOVE_DEVICE_RETRY_MESSAGE,
+      );
     } finally {
       setBusy(false);
     }
@@ -733,7 +885,10 @@ export function ClientApp() {
       )}
       <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-5 pt-3">
         {problem && (
-          <p className="rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">
+          <p
+            role="alert"
+            className="rounded-lg border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger"
+          >
             {problem}
           </p>
         )}
@@ -966,6 +1121,146 @@ export function ClientApp() {
                   </section>
                 );
               })()}
+              {!simulated && (
+                <section
+                  className="mb-3 rounded-lg border border-line bg-surface-inset p-3"
+                  aria-labelledby="managed-organizations-heading"
+                  data-managed-organizations
+                >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2
+                      id="managed-organizations-heading"
+                      className="text-sm font-medium text-ink-heading"
+                    >
+                      Organizations
+                    </h2>
+                    <p className="mt-0.5 text-[11px] text-ink-secondary">
+                      Choose where a new managed device is enrolled.
+                    </p>
+                  </div>
+                  {enrollmentLocked && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void onRemoveDevice()}
+                      className="shrink-0 rounded border border-warn/60 px-2 py-1 text-xs text-warn hover:text-ink-body disabled:opacity-50"
+                    >
+                      {enrollmentRecoveryRequired ? "Abandon and re-enroll" : "Remove device"}
+                    </button>
+                  )}
+                </div>
+                {organizationNotice && (
+                  <p
+                    className="mt-2 rounded border border-warn/40 bg-warn/5 px-2 py-1.5 text-[11px] text-warn"
+                    role="status"
+                  >
+                    {organizationNotice}
+                  </p>
+                )}
+                {managedOrganizationsFailed ? (
+                  <div className="mt-3">
+                    <p className="text-xs text-warn">
+                      Organizations could not be loaded. Sign in, then try again.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void loadManagedOrganizations()}
+                      className="mt-2 rounded border border-line px-2 py-1 text-xs hover:text-ink-body disabled:opacity-50"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : managedOrganizations === null ? (
+                  <p className="mt-3 text-xs text-ink-secondary">
+                    Loading organizations…
+                  </p>
+                ) : managedOrganizations.length === 0 ? (
+                  <p className="mt-3 text-xs text-warn">
+                    No organizations are available for this account. Ask an administrator to add you to one.
+                  </p>
+                ) : managedOrganizations.length === 1 ? (
+                  <div className="mt-3 rounded-lg border border-line p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-ink-heading">
+                          {managedOrganizations[0].name}
+                        </p>
+                        <p className="mt-0.5 truncate font-mono text-[10px] text-ink-secondary">
+                          {managedOrganizations[0].slug}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[10px] text-accent-400">
+                        {enrollmentLocked
+                          ? managedOrganizations[0].selected
+                            ? "Enrolled device"
+                            : "Remove device first"
+                          : "Only organization"}
+                      </span>
+                    </div>
+                    {!enrollmentLocked && (
+                      <p className="mt-2 text-[11px] text-ink-secondary">
+                        This organization will be used automatically. No selection is needed.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {enrollmentLocked && (
+                      <p className="mt-3 text-[11px] text-warn">
+                        This device stays with its enrolled organization. Remove device before choosing another organization.
+                      </p>
+                    )}
+                    <ul className="mt-3 space-y-2" aria-label="Managed organizations">
+                      {managedOrganizations.map((organization) => {
+                        return (
+                          <li
+                            key={organization.id}
+                            className={
+                              "rounded-lg border p-2.5 " +
+                              (organization.selected
+                                ? "border-accent-400/60 bg-accent-400/5"
+                                : "border-line")
+                            }
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm text-ink-heading">
+                                  {organization.name}
+                                </p>
+                                <p className="mt-0.5 truncate font-mono text-[10px] text-ink-secondary">
+                                  {organization.slug}
+                                </p>
+                              </div>
+                              {organization.selected ? (
+                                <span className="shrink-0 text-[10px] text-accent-400">
+                                  {enrollmentLocked ? "Enrolled device" : "Selected"}
+                                </span>
+                              ) : enrollmentLocked ? (
+                                <span className="shrink-0 text-[10px] text-ink-secondary">
+                                  Remove device first
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void onSelectManagedOrganization(organization)}
+                                  aria-label={`Use ${organization.name}`}
+                                  className="shrink-0 rounded border border-line px-2 py-1 text-xs hover:text-ink-body disabled:opacity-50"
+                                >
+                                  Use
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                )}
+                </section>
+              )}
               <div className="flex items-center justify-between gap-3">
                 <h2 className="font-mono text-[10px] uppercase tracking-wider text-ink-secondary">
                   Imported profiles
@@ -1117,7 +1412,7 @@ export function ClientApp() {
                       onClick={() => void onRemoveDevice()}
                       className="rounded border border-warn/60 px-2 py-1 text-xs text-warn hover:text-ink-body disabled:opacity-50"
                     >
-                      Remove device
+                      {enrollmentRecoveryRequired ? "Abandon and re-enroll" : "Remove device"}
                     </button>
                   )}
                 </div>
@@ -1274,7 +1569,7 @@ function mapStatus(s: { state?: string } | null | undefined): ClientState {
 export function clientErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
   if (raw.includes("revoke_device_failed")) {
-    return "Device could not be removed. Disconnect it, then try again.";
+    return REMOVE_DEVICE_RETRY_MESSAGE;
   }
   if (raw.includes("not_authenticated")) {
     return "Sign in again, then try this action.";

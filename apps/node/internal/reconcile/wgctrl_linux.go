@@ -4,6 +4,7 @@ package reconcile
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -20,8 +21,9 @@ import (
 // absent peers and leaves unchanged peers UNTOUCHED (no handshake reset) —
 // idempotent against a dirty device.
 type wgctrlBackend struct {
-	iface  string
-	logger *slog.Logger
+	iface                  string
+	logger                 *slog.Logger
+	preserveInterfaceAlias string
 	// Cached from the last Configure so ApplyPeers' `wg syncconf` can echo them in
 	// its [Interface] section. An EMPTY [Interface] makes syncconf CLEAR the
 	// private key (→ "(none)") and reset the listen port to a random value —
@@ -32,13 +34,17 @@ type wgctrlBackend struct {
 	// wg0. ApplyRoutes uses only the desired-route intersection to own the
 	// device-pool return rule ahead of provider CNI source rules.
 	interfacePrefixes []netip.Prefix
+	// interfaceAddresses is the exact unmasked address set this process placed.
+	// Kubernetes graceful shutdown removes these while preserving the manager's
+	// alias-owned interface shell.
+	interfaceAddresses []netip.Prefix
 	// runFn shells `ip`/`wg` (defaults to the package run). Overridable in tests to inject a route-
 	// enumeration fault, proving ApplyRoutes surfaces a -4 error (F3).
 	runFn func(context.Context, string, ...string) (string, error)
 }
 
-func newWGCtrlBackend(iface string, logger *slog.Logger) (WGBackend, error) {
-	return &wgctrlBackend{iface: iface, logger: logger, runFn: run}, nil
+func newWGCtrlBackend(iface string, logger *slog.Logger, options BackendOptions) (WGBackend, error) {
+	return &wgctrlBackend{iface: iface, logger: logger, preserveInterfaceAlias: options.PreserveInterfaceAlias, runFn: run}, nil
 }
 
 func run(ctx context.Context, name string, args ...string) (string, error) {
@@ -88,7 +94,7 @@ func (b *wgctrlBackend) Configure(ctx context.Context, cfg InterfaceConfig) erro
 			return err
 		}
 		_ = keyFile.Close()
-		if _, err := run(ctx, "wg", "set", b.iface, "private-key", keyFile.Name()); err != nil {
+		if _, err := b.runCommand(ctx, "wg", "set", b.iface, "private-key", keyFile.Name()); err != nil {
 			return err
 		}
 	}
@@ -96,20 +102,30 @@ func (b *wgctrlBackend) Configure(ctx context.Context, cfg InterfaceConfig) erro
 	// value fails with "Address in use". A zero desired port would make wg pick a
 	// random port, so refuse it.
 	if cfg.ListenPort > 0 && cfg.ListenPort != curPort {
-		if _, err := run(ctx, "wg", "set", b.iface, "listen-port", strconv.Itoa(cfg.ListenPort)); err != nil {
+		if _, err := b.runCommand(ctx, "wg", "set", b.iface, "listen-port", strconv.Itoa(cfg.ListenPort)); err != nil {
 			return err
 		}
 	}
 
-	var interfacePrefixes []netip.Prefix
+	var interfacePrefixes, interfaceAddresses []netip.Prefix
 	for _, addr := range strings.Split(cfg.Address, ",") {
 		addr = strings.TrimSpace(addr)
 		if addr == "" {
 			continue
 		}
-		if p, err := netip.ParsePrefix(addr); err == nil {
-			interfacePrefixes = append(interfacePrefixes, p.Masked())
+		p, err := netip.ParsePrefix(addr)
+		if err != nil {
+			return fmt.Errorf("invalid WireGuard interface address %q: %w", addr, err)
 		}
+		interfacePrefixes = append(interfacePrefixes, p.Masked())
+		interfaceAddresses = append(interfaceAddresses, p)
+	}
+	// Publish ownership before mutation so a later address write failure still
+	// leaves Close with the exact set it may safely withdraw.
+	b.interfacePrefixes = interfacePrefixes
+	b.interfaceAddresses = interfaceAddresses
+	for _, prefix := range interfaceAddresses {
+		addr := prefix.String()
 		if b.hasAddress(ctx, addr) {
 			continue
 		}
@@ -117,22 +133,34 @@ func (b *wgctrlBackend) Configure(ctx context.Context, cfg InterfaceConfig) erro
 			return err
 		}
 	}
-	b.interfacePrefixes = interfacePrefixes
 	return b.ensureLinkUp(ctx, cfg.MTU)
 }
 
 func (b *wgctrlBackend) ensureDevice(ctx context.Context) error {
-	if _, err := run(ctx, "ip", "link", "show", b.iface); err == nil {
+	if b.preserveInterfaceAlias != "" {
+		link, present, err := b.inspectOwnedInterface(ctx)
+		if err != nil {
+			return fmt.Errorf("inspect host-posture WireGuard interface: %w", err)
+		}
+		if !present {
+			return fmt.Errorf("host-posture WireGuard interface %q is absent", b.iface)
+		}
+		if link.Name != b.iface || link.Kind != "wireguard" || link.Alias != b.preserveInterfaceAlias || link.IfIndex < 1 {
+			return fmt.Errorf("refuse ambiguous host-posture WireGuard interface %q", b.iface)
+		}
+		return nil
+	}
+	if _, err := b.runCommand(ctx, "ip", "link", "show", b.iface); err == nil {
 		return nil // already exists
 	}
 	// Kernel WireGuard (present on most modern kernels incl. Docker's LinuxKit
 	// VM). Userspace wireguard-go is tried only if the binary is installed; a
 	// clear error otherwise so readiness failure is diagnosable.
-	if _, err := run(ctx, "ip", "link", "add", "dev", b.iface, "type", "wireguard"); err == nil {
+	if _, err := b.runCommand(ctx, "ip", "link", "add", "dev", b.iface, "type", "wireguard"); err == nil {
 		return nil
 	}
 	if _, err := exec.LookPath("wireguard-go"); err == nil {
-		if _, err := run(ctx, "wireguard-go", b.iface); err == nil {
+		if _, err := b.runCommand(ctx, "wireguard-go", b.iface); err == nil {
 			return nil
 		}
 	}
@@ -144,7 +172,7 @@ func (b *wgctrlBackend) ensureDevice(ctx context.Context) error {
 // fwmark). The public key is used for the clamp-safe key-set check. Returns
 // ("", 0) if unreadable.
 func (b *wgctrlBackend) currentWGInterface(ctx context.Context) (pubKey string, listenPort int) {
-	out, err := run(ctx, "wg", "show", b.iface, "dump")
+	out, err := b.runCommand(ctx, "wg", "show", b.iface, "dump")
 	if err != nil {
 		return "", 0
 	}
@@ -176,7 +204,7 @@ func parseWGInterface(dump string) (pubKey string, listenPort int) {
 
 // hasAddress reports whether addr (e.g. "10.99.0.1/32") is already on the device.
 func (b *wgctrlBackend) hasAddress(ctx context.Context, addr string) bool {
-	out, err := run(ctx, "ip", "-o", "addr", "show", "dev", b.iface)
+	out, err := b.runCommand(ctx, "ip", "-o", "addr", "show", "dev", b.iface)
 	if err != nil {
 		return false
 	}
@@ -186,7 +214,7 @@ func (b *wgctrlBackend) hasAddress(ctx context.Context, addr string) bool {
 // ensureLinkUp sets MTU + brings the link up only if it is not already at the
 // desired MTU and up.
 func (b *wgctrlBackend) ensureLinkUp(ctx context.Context, mtu int) error {
-	out, err := run(ctx, "ip", "link", "show", b.iface)
+	out, err := b.runCommand(ctx, "ip", "link", "show", b.iface)
 	if err == nil {
 		hasMTU := mtu <= 0 || strings.Contains(out, "mtu "+strconv.Itoa(mtu))
 		isUp := strings.Contains(out, "state UP") || strings.Contains(out, "state UNKNOWN") ||
@@ -200,7 +228,7 @@ func (b *wgctrlBackend) ensureLinkUp(ctx context.Context, mtu int) error {
 		setArgs = append(setArgs, "mtu", strconv.Itoa(mtu))
 	}
 	setArgs = append(setArgs, "up")
-	_, err = run(ctx, "ip", setArgs...)
+	_, err = b.runCommand(ctx, "ip", setArgs...)
 	return err
 }
 
@@ -222,15 +250,15 @@ func (b *wgctrlBackend) Peers(ctx context.Context) ([]Peer, error) {
 func (b *wgctrlBackend) Readback(ctx context.Context) (WGBackendReadback, error) {
 	peers, err := b.Peers(ctx)
 	if err != nil {
-		return WGBackendReadback{}, err
+		return WGBackendReadback{}, b.classifyReadbackError(err)
 	}
 	routeDetails, err := b.agentOwnedRouteDetails(ctx)
 	if err != nil {
-		return WGBackendReadback{}, err
+		return WGBackendReadback{}, b.classifyReadbackError(err)
 	}
 	rules, err := b.agentOwnedReturnRules(ctx)
 	if err != nil {
-		return WGBackendReadback{}, err
+		return WGBackendReadback{}, b.classifyReadbackError(err)
 	}
 	return WGBackendReadback{
 		Peers:        peers,
@@ -240,25 +268,260 @@ func (b *wgctrlBackend) Readback(ctx context.Context) (WGBackendReadback, error)
 	}, nil
 }
 
+func (b *wgctrlBackend) classifyReadbackError(err error) error {
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, strings.ToLower(b.iface)) &&
+		(strings.Contains(message, "does not exist") || strings.Contains(message, "cannot find device") || strings.Contains(message, "unable to access interface")) {
+		return fmt.Errorf("%w: %v", ErrWGInterfaceAbsent, err)
+	}
+	return err
+}
+
 // Stats parses per-peer live telemetry from `wg show <iface> dump`.
 func (b *wgctrlBackend) Stats(ctx context.Context) ([]PeerStat, error) {
-	out, err := run(ctx, "wg", "show", b.iface, "dump")
+	out, err := b.runCommand(ctx, "wg", "show", b.iface, "dump")
 	if err != nil {
 		return nil, err
 	}
 	return parseWGStats(out), nil
 }
 
-// Close deletes the WG interface on agent shutdown (WF-C Layer 1) — the symmetric destroy for
-// ensureDevice's `ip link add`. Without it, `--network host` wg0 outlives the container on a graceful
-// stop and forwards headless (zombie hub). IDEMPOTENT: if the interface is already gone (never created,
-// or a prior Close), `ip link del` errors "Cannot find device" — treated as success (nothing to tear down).
+// Close deletes a legacy gateway-owned interface. With explicit host-posture
+// ownership it instead downs and drains the exact alias-owned shell (keys,
+// peers, addresses, owned routes/rules) while preserving alias+ifindex for the
+// per-node manager and next gateway process.
 func (b *wgctrlBackend) Close(ctx context.Context) error {
+	if b.preserveInterfaceAlias != "" {
+		link, present, err := b.inspectOwnedInterface(ctx)
+		if err != nil {
+			return fmt.Errorf("inspect preserved host-posture WireGuard interface: %w", err)
+		}
+		if !present {
+			return nil
+		}
+		if link.Name != b.iface || link.Kind != "wireguard" || link.Alias != b.preserveInterfaceAlias || link.IfIndex < 1 {
+			return fmt.Errorf("refuse ambiguous host-posture WireGuard shutdown for %q", b.iface)
+		}
+		return b.drainPreservedInterface(ctx, link)
+	}
 	if _, err := b.runFn(ctx, "ip", "link", "show", b.iface); err != nil {
 		return nil // already absent → nothing to delete (idempotent)
 	}
 	_, err := b.runFn(ctx, "ip", "link", "del", b.iface)
 	return err
+}
+
+type wireGuardDrainState struct {
+	PrivateKey string
+	PublicKey  string
+	ListenPort int
+	Peers      []string
+}
+
+func parseWireGuardDrainState(out string) (wireGuardDrainState, error) {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return wireGuardDrainState{}, fmt.Errorf("WireGuard dump is empty")
+	}
+	fields := strings.Split(lines[0], "\t")
+	if len(fields) != 4 {
+		return wireGuardDrainState{}, fmt.Errorf("WireGuard interface dump is malformed")
+	}
+	port, err := strconv.Atoi(fields[2])
+	if err != nil || port < 0 || port > 65535 {
+		return wireGuardDrainState{}, fmt.Errorf("WireGuard listen port readback is invalid")
+	}
+	state := wireGuardDrainState{PrivateKey: fields[0], PublicKey: fields[1], ListenPort: port}
+	seen := map[string]struct{}{}
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		peer := strings.Split(line, "\t")
+		if len(peer) != 8 || peer[0] == "" || peer[0] == "(none)" || len(peer[0]) > 128 || strings.ContainsAny(peer[0], " \r\n\t") {
+			return wireGuardDrainState{}, fmt.Errorf("WireGuard peer dump is malformed")
+		}
+		if _, duplicate := seen[peer[0]]; duplicate {
+			return wireGuardDrainState{}, fmt.Errorf("WireGuard peer dump contains a duplicate key")
+		}
+		seen[peer[0]] = struct{}{}
+		state.Peers = append(state.Peers, peer[0])
+	}
+	sort.Strings(state.Peers)
+	return state, nil
+}
+
+func (b *wgctrlBackend) drainPreservedInterface(ctx context.Context, original ownedInterfaceLink) error {
+	// First make packet processing impossible. Even if a later exact-state
+	// enumeration fails, the alias-owned shell remains down rather than becoming
+	// a headless tunnel after the egress hooks are reduced to marker-only state.
+	if _, err := b.runCommand(ctx, "ip", "link", "set", "dev", b.iface, "down"); err != nil {
+		return fmt.Errorf("bring preserved WireGuard shell down: %w", err)
+	}
+	wgDump, err := b.runCommand(ctx, "wg", "show", b.iface, "dump")
+	if err != nil {
+		return fmt.Errorf("read WireGuard state before shutdown: %w", err)
+	}
+	wgState, err := parseWireGuardDrainState(wgDump)
+	if err != nil {
+		return err
+	}
+	routes, err := b.agentOwnedRouteDetails(ctx)
+	if err != nil {
+		return fmt.Errorf("read owned routes before shutdown: %w", err)
+	}
+	rules, err := b.agentOwnedReturnRules(ctx)
+	if err != nil {
+		return fmt.Errorf("read owned return rules before shutdown: %w", err)
+	}
+
+	// Removing the private key is the cryptographic fail-closed boundary. A zero
+	// listen port is retained only as a down-interface configuration; wg chooses
+	// a port again only after the next gateway explicitly configures and raises it.
+	if _, err := b.runCommand(ctx, "wg", "set", b.iface, "private-key", "/dev/null"); err != nil {
+		return fmt.Errorf("remove WireGuard private key: %w", err)
+	}
+	if _, err := b.runCommand(ctx, "wg", "set", b.iface, "listen-port", "0"); err != nil {
+		return fmt.Errorf("clear WireGuard listen port: %w", err)
+	}
+	for _, peer := range wgState.Peers {
+		if _, err := b.runCommand(ctx, "wg", "set", b.iface, "peer", peer, "remove"); err != nil {
+			return fmt.Errorf("remove WireGuard peer during shutdown: %w", err)
+		}
+	}
+	for _, prefix := range b.interfaceAddresses {
+		if _, err := b.runCommand(ctx, "ip", "address", "del", prefix.String(), "dev", b.iface); err != nil {
+			return fmt.Errorf("remove owned WireGuard address %s: %w", prefix, err)
+		}
+	}
+	for _, route := range routes {
+		family := "-6"
+		if route.Family == "ipv4" {
+			family = "-4"
+		} else if route.Family != "ipv6" {
+			return fmt.Errorf("owned route family %q is ambiguous", route.Family)
+		}
+		args := []string{family, "route", "del", route.Destination, "dev", b.iface, "proto", "static", "metric", strconv.Itoa(siteRouteMetric)}
+		if route.Source != "" {
+			args = append(args, "src", route.Source)
+		}
+		if _, err := b.runCommand(ctx, "ip", args...); err != nil {
+			return fmt.Errorf("remove owned route %s: %w", route.Destination, err)
+		}
+	}
+	for _, prefix := range sortedPrefixStrings(rules) {
+		parsed, parseErr := netip.ParsePrefix(prefix)
+		if parseErr != nil {
+			return fmt.Errorf("owned return-rule prefix %q became invalid", prefix)
+		}
+		family := "-6"
+		if parsed.Addr().Is4() {
+			family = "-4"
+		}
+		if _, err := b.runCommand(ctx, "ip", family, "rule", "del", "pref", strconv.Itoa(returnRulePriority), "to", prefix, "lookup", "main"); err != nil {
+			return fmt.Errorf("remove owned return rule %s: %w", prefix, err)
+		}
+	}
+
+	finalDump, err := b.runCommand(ctx, "wg", "show", b.iface, "dump")
+	if err != nil {
+		return fmt.Errorf("read WireGuard state after shutdown: %w", err)
+	}
+	finalWG, err := parseWireGuardDrainState(finalDump)
+	if err != nil || len(finalWG.Peers) != 0 || finalWG.PrivateKey != "(none)" || finalWG.PublicKey != "(none)" || finalWG.ListenPort != 0 {
+		return fmt.Errorf("WireGuard shutdown readback is not a keyless peerless closed shell")
+	}
+	if remaining, err := b.agentOwnedRouteDetails(ctx); err != nil || len(remaining) != 0 {
+		if err != nil {
+			return fmt.Errorf("read owned routes after shutdown: %w", err)
+		}
+		return fmt.Errorf("owned route shutdown readback is not empty")
+	}
+	if remaining, err := b.agentOwnedReturnRules(ctx); err != nil || len(remaining) != 0 {
+		if err != nil {
+			return fmt.Errorf("read owned return rules after shutdown: %w", err)
+		}
+		return fmt.Errorf("owned return-rule shutdown readback is not empty")
+	}
+	liveAddresses, err := b.liveInterfaceAddresses(ctx)
+	if err != nil {
+		return fmt.Errorf("read WireGuard addresses after shutdown: %w", err)
+	}
+	for _, prefix := range b.interfaceAddresses {
+		if liveAddresses[prefix] {
+			return fmt.Errorf("owned WireGuard address %s remains after shutdown", prefix)
+		}
+	}
+	link, present, err := b.inspectOwnedInterface(ctx)
+	if err != nil {
+		return fmt.Errorf("read manager-owned WireGuard shell after shutdown: %w", err)
+	}
+	if !present || link != original {
+		return fmt.Errorf("manager-owned WireGuard shell identity changed during shutdown")
+	}
+	b.privKey, b.listenPort = "", 0
+	b.interfacePrefixes = nil
+	b.interfaceAddresses = nil
+	return nil
+}
+
+func (b *wgctrlBackend) liveInterfaceAddresses(ctx context.Context) (map[netip.Prefix]bool, error) {
+	out, err := b.runCommand(ctx, "ip", "-j", "address", "show", "dev", b.iface)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		IfName   string `json:"ifname"`
+		AddrInfo []struct {
+			Family    string `json:"family"`
+			Local     string `json:"local"`
+			PrefixLen int    `json:"prefixlen"`
+		} `json:"addr_info"`
+	}
+	if err := json.Unmarshal([]byte(out), &rows); err != nil || len(rows) != 1 || rows[0].IfName != b.iface {
+		return nil, fmt.Errorf("address readback is malformed or ambiguous")
+	}
+	addresses := make(map[netip.Prefix]bool, len(rows[0].AddrInfo))
+	for _, info := range rows[0].AddrInfo {
+		address, err := netip.ParseAddr(info.Local)
+		if err != nil || info.PrefixLen < 0 || info.PrefixLen > address.BitLen() ||
+			(info.Family == "inet") != address.Is4() || (info.Family != "inet" && info.Family != "inet6") {
+			return nil, fmt.Errorf("address readback contains an invalid entry")
+		}
+		addresses[netip.PrefixFrom(address, info.PrefixLen)] = true
+	}
+	return addresses, nil
+}
+
+type ownedInterfaceLink struct {
+	Name    string
+	Alias   string
+	Kind    string
+	IfIndex int
+}
+
+func (b *wgctrlBackend) inspectOwnedInterface(ctx context.Context) (ownedInterfaceLink, bool, error) {
+	out, err := b.runCommand(ctx, "ip", "-j", "-d", "link", "show", "dev", b.iface)
+	if err != nil {
+		message := strings.ToLower(err.Error())
+		if strings.Contains(message, "does not exist") || strings.Contains(message, "cannot find device") {
+			return ownedInterfaceLink{}, false, nil
+		}
+		return ownedInterfaceLink{}, false, err
+	}
+	var rows []struct {
+		IfIndex  int    `json:"ifindex"`
+		IfName   string `json:"ifname"`
+		IfAlias  string `json:"ifalias"`
+		LinkInfo struct {
+			Kind string `json:"info_kind"`
+		} `json:"linkinfo"`
+	}
+	if err := json.Unmarshal([]byte(out), &rows); err != nil || len(rows) != 1 {
+		return ownedInterfaceLink{}, false, fmt.Errorf("link readback is malformed or ambiguous")
+	}
+	row := rows[0]
+	return ownedInterfaceLink{Name: row.IfName, Alias: row.IfAlias, Kind: row.LinkInfo.Kind, IfIndex: row.IfIndex}, true, nil
 }
 
 // parseWGStats parses the peer lines of a dump into telemetry. Peer fields:
@@ -459,7 +722,10 @@ func returnRules(listing string) map[netip.Prefix]bool {
 	return out
 }
 
-// agentOwnedRoutes enumerates the exact route shape ApplyRoutes owns. IPv4
+// agentOwnedRoutes enumerates routes and retains the exact shape ApplyRoutes
+// owns. We cannot ask iproute2 to filter by the tunnel interface or ownership
+// attributes: on a host-network Kubernetes connector its filtered rendering
+// can omit the dev, proto, or metric fields. IPv4
 // enumeration errors are fatal because a complete full-sweep/readback is then
 // impossible; IPv6 remains optional while the product admits IPv4 site ranges.
 func (b *wgctrlBackend) agentOwnedRoutes(ctx context.Context) (map[netip.Prefix]bool, error) {
@@ -479,7 +745,7 @@ func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRout
 	metric := strconv.Itoa(siteRouteMetric)
 	var out []OwnedRoute
 	for _, family := range []string{"-4", "-6"} {
-		listing, err := b.runCommand(ctx, "ip", family, "route", "show", "dev", b.iface, "proto", "static", "metric", metric)
+		listing, err := b.runCommand(ctx, "ip", family, "route", "show")
 		if err != nil {
 			if interfaceAbsent(err) {
 				continue
@@ -492,6 +758,9 @@ func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRout
 		}
 		for _, line := range strings.Split(strings.TrimSpace(listing), "\n") {
 			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			if !hasOwnedRouteAttributes(line, b.iface, metric) {
 				continue
 			}
 			route, err := parseOwnedRoute(line, family, b.iface)
@@ -508,6 +777,29 @@ func (b *wgctrlBackend) agentOwnedRouteDetails(ctx context.Context) ([]OwnedRout
 		return out[i].Family < out[j].Family
 	})
 	return out, nil
+}
+
+// hasOwnedRouteAttributes is the narrow classifier for the broad route
+// readback. A kernel-created connected route on wg0 is foreign state; only the
+// exact proto+metric pair installed by ApplyRoutes is eligible for parsing or
+// pruning.
+func hasOwnedRouteAttributes(line, iface, metric string) bool {
+	fields := strings.Fields(line)
+	var device, protocol, routeMetric string
+	for i := 1; i+1 < len(fields); i++ {
+		switch fields[i] {
+		case "dev":
+			device = fields[i+1]
+			i++
+		case "proto":
+			protocol = fields[i+1]
+			i++
+		case "metric":
+			routeMetric = fields[i+1]
+			i++
+		}
+	}
+	return device == iface && protocol == "static" && routeMetric == metric
 }
 
 func parseOwnedRoute(line, familyFlag, iface string) (OwnedRoute, error) {

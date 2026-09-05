@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -14,6 +15,11 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/cli/internal/cli"
 )
+
+// version is set from the release tag with -X main.version=<tag>. A source
+// build remains "dev" and the Kubernetes lifecycle then requires an explicit
+// chart version or local chart path instead of guessing a published artifact.
+var version = "dev"
 
 func usage() {
 	fmt.Fprint(os.Stderr, `tunnex — self-hosted VPN & Zero Trust
@@ -24,7 +30,22 @@ Usage:
   tunnex device create --name NAME [--full-tunnel]
                                             create a device and capture its one-time config
   tunnex up | down                          bring the WireGuard tunnel up/down (wg-quick)
+  tunnex k8s <verb> [flags]                 Kubernetes gateway install and lifecycle
+  tunnex version                            print the exact CLI build version
 `)
+}
+
+func buildVersionLine() string {
+	v := strings.TrimSpace(version)
+	if v == "" {
+		return "unknown"
+	}
+	return v
+}
+
+func writeVersion(out io.Writer) error {
+	_, err := fmt.Fprintln(out, buildVersionLine())
+	return err
 }
 
 func main() {
@@ -70,6 +91,10 @@ func main() {
 		err = cli.CreateDevice(ctx, *name, *full)
 	case "up", "down":
 		err = cli.WgQuick(os.Args[1])
+	case "k8s":
+		err = cli.RunK8s(ctx, os.Args[2:], version)
+	case "version":
+		err = writeVersion(os.Stdout)
 	case "-h", "--help", "help":
 		usage()
 		return

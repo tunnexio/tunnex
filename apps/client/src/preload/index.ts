@@ -3,13 +3,14 @@ import { contextBridge, ipcRenderer } from "electron";
 // The ONLY privileged surface exposed to the renderer (contextIsolation on,
 // nodeIntegration off, sandbox on). VERB-SPECIFIC + promise-based — NO generic
 // invoke(channel, args) passthrough, which would make the allowlist decorative.
-// The raw bearer token is NEVER exposed here (no getToken): main attaches it on
-// requests via the session injector. tunnel.* is reserved for S6.3.
+// The raw bearer token is NEVER exposed here (no getToken). Managed control-plane
+// calls stay in main behind these verb-specific IPC methods. tunnel.* is reserved
+// for S6.3.
 const api = {
   auth: {
     login: (): Promise<{ fingerprint: string; expiresAt: string }> => ipcRenderer.invoke("auth:login"),
     logout: (): Promise<void> => ipcRenderer.invoke("auth:logout"),
-    removeDevice: (): Promise<void> => ipcRenderer.invoke("auth:removeDevice"),
+    removeDevice: (): Promise<boolean> => ipcRenderer.invoke("auth:removeDevice"),
     status: (): Promise<{ loggedIn: boolean; expired?: boolean; fingerprint?: string; expiresAt?: string; secureStorage: boolean }> =>
       ipcRenderer.invoke("auth:status"),
   },
@@ -47,6 +48,32 @@ const api = {
     selectImportedProfile: (id: string): Promise<ImportedProfile[]> => ipcRenderer.invoke("tunnel:selectImportedProfile", id),
     useManagedProfile: (): Promise<ImportedProfile[]> => ipcRenderer.invoke("tunnel:useManagedProfile"),
     forgetImported: (id?: string): Promise<ImportedProfile[]> => ipcRenderer.invoke("tunnel:forgetImported", id),
+    managedOrganizations: (): Promise<ManagedOrganizationEnvelope> => ipcRenderer.invoke("tunnel:managedOrganizations"),
+    selectManagedOrganization: (id: string): Promise<ManagedOrganizationEnvelope> => ipcRenderer.invoke("tunnel:selectManagedOrganization", id),
+    onOrganizationSelectionRequired: (cb: () => void): (() => void) => {
+      let subscribed = true;
+      let initialCheckComplete = false;
+      let eventArrivedDuringInitialCheck = false;
+      const listener = () => {
+        if (!initialCheckComplete) eventArrivedDuringInitialCheck = true;
+        cb();
+      };
+      ipcRenderer.on("tunnel:organization-selection-required", listener);
+      // A tray action may have had to create this window. The live event can then
+      // precede React's subscription, so MAIN retains the pending bit and preload
+      // checks it once after installing the listener. The race flag avoids a double
+      // callback when the live event arrives while this invoke is in flight.
+      void ipcRenderer.invoke("tunnel:organizationSelectionRequired").then((required: unknown) => {
+        initialCheckComplete = true;
+        if (subscribed && required === true && !eventArrivedDuringInitialCheck) cb();
+      }).catch(() => {
+        initialCheckComplete = true;
+      });
+      return () => {
+        subscribed = false;
+        ipcRenderer.removeListener("tunnel:organization-selection-required", listener);
+      };
+    },
     // Push channel for live status + the LOUD fail-closed signal (main forwards
     // the helper heartbeat / onLost). Returns an unsubscribe fn. Carries no secret.
     onStatusChanged: (cb: (s: TunnelStatus) => void): (() => void) => {
@@ -68,6 +95,19 @@ export interface ImportedProfile {
   endpoint?: string;
   fullTunnel: boolean;
   active: boolean;
+}
+
+export interface ManagedOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  selected: boolean;
+}
+
+export interface ManagedOrganizationEnvelope {
+  organizations: ManagedOrganization[];
+  enrollmentLocked: boolean;
+  enrollmentRecoveryRequired?: boolean;
 }
 
 export interface AppInfo {

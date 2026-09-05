@@ -88,18 +88,28 @@ var walkBodies = map[string]string{
 	// S21 resolver configuration is management-gated before endpoint validation.
 	"setfqdnresolvercontextconfig": `{"endpoints":[{"address":"10.20.0.53","port":53,"transport":"udp"}]}`,
 	// S10.3 Kubernetes gated ops (k8s:manage; each still 401s sessionless. deregister/unexpose have no body).
-	"registerk8scluster":              `{"site_id":"00000000-0000-0000-0000-000000000000","name":"walk","vip_range":"100.64.0.0/16","service_cidr":"10.96.0.0/12","dns_zone":"k8s.example.com"}`,
-	"setk8sclusterconnector":          `{"node_id":"00000000-0000-0000-0000-000000000000"}`,
-	"exposek8sservice":                `{"name":"api","namespace":"prod"}`,
-	"setk8sclusterprovidermetadata":   `{"provider":"aws","platform":"eks"}`,
-	"setk8shasettings":                `{"enabled":false,"expected_revision":0}`,
-	"setk8sconnectorpoolhamode":       `{"requested_mode":"legacy","expected_transition_revision":0}`,
-	"setk8sclusterscopesettings":      `{"enabled":false,"expected_revision":0}`,
-	"createk8sclusterscope":           `{"cluster_id":"00000000-0000-0000-0000-000000000000","source":{"kind":"group","id":"00000000-0000-0000-0000-000000000000"},"initial_service_child_ids":[]}`,
-	"setk8sclusterscopeactive":        `{"active":false,"expected_revision":1}`,
-	"decidek8sclusterscopemembership": `{"decision":"rejected"}`,
-	"exposek8sinventoryservice":       `{"port_refs":["00000000-0000-0000-0000-000000000000"]}`,
-	"setdeviceapproval":               `{"mode":"off"}`,
+	"registerk8scluster":                `{"site_id":"00000000-0000-0000-0000-000000000000","name":"walk","vip_range":"100.64.0.0/16","service_cidr":"10.96.0.0/12","dns_zone":"k8s.example.com"}`,
+	"setk8sclusterconnector":            `{"node_id":"00000000-0000-0000-0000-000000000000"}`,
+	"configurek8sconnectorpool":         `{"members":[{"node_id":"00000000-0000-0000-0000-000000000000","admin_priority":100}]}`,
+	"exposek8sservice":                  `{"name":"api","namespace":"prod"}`,
+	"setk8sclusterprovidermetadata":     `{"provider":"aws","platform":"eks"}`,
+	"setk8shasettings":                  `{"enabled":false,"expected_revision":0}`,
+	"setk8sconnectorpoolhamode":         `{"requested_mode":"legacy","expected_transition_revision":0}`,
+	"setk8sclusterscopesettings":        `{"enabled":false,"expected_revision":0}`,
+	"createk8sclusterscope":             `{"cluster_id":"00000000-0000-0000-0000-000000000000","source":{"kind":"group","id":"00000000-0000-0000-0000-000000000000"},"initial_service_child_ids":[]}`,
+	"setk8sclusterscopeactive":          `{"active":false,"expected_revision":1}`,
+	"decidek8sclusterscopemembership":   `{"decision":"rejected"}`,
+	"exposek8sinventoryservice":         `{"port_refs":["00000000-0000-0000-0000-000000000000"]}`,
+	"remintnodelifecycleclaim":          `{"node_name":"walk-gateway","expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
+	"acknowledgenodelifecycleclaim":     `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
+	"abortnodelifecycleclaim":           `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
+	"beginnodelifecycleinstall":         `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001","operation_id":"00000000-0000-4000-8000-000000000002","release_namespace":"tunnex","release_name":"tunnex-gateway","install_intent_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","requested_duration_seconds":120}`,
+	"heartbeatnodelifecycleinstall":     `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001","expected_epoch":1}`,
+	"cancelnodelifecycleinstall":        `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001","expected_epoch":1}`,
+	"requestnodelifecycleinstallabort":  `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001","expected_epoch":1}`,
+	"completenodelifecycleinstall":      `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001","expected_epoch":1,"release_ready":true}`,
+	"finalizenodelifecycleinstallabort": `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001","expected_epoch":1,"release_absent":true}`,
+	"setdeviceapproval":                 `{"mode":"off"}`,
 	// S7.5.2 IdP-group sync gated ops (enterprise; each still 401s sessionless).
 	"putidpsyncconfig": `{"client_id":"x","client_secret":"y"}`,
 	"mapidpgroup":      `{"idp_group_id":"grp-walk"}`,
@@ -180,6 +190,8 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{poolId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{inventoryRef}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{serviceChildId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{claim}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{operationId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
 			reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())

@@ -8,7 +8,8 @@
 # present (M4 — via a non-blocking /dev DIRECTORY mount, so the script actually RUNS on a tun-less node and
 # fails LOUD, instead of the CharDevice mount FailedMount-hanging to helm's timeout) and proves cluster DNS
 # resolves by ANSWER CONTENT (M3 — never the busybox nslookup exit code, which historically returns 0 on
-# failure; the image is pinned for the same reason). NOTES mandates `--wait`.
+# failure). The privileged hook reuses the release-selected node image (or an explicit immutable digest
+# override), so its toolchain cannot drift independently. NOTES mandates `--wait`.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -19,7 +20,12 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    {{- if .Release.IsInstall }}
+    {{- with .Values.lifecycle.installProof }}
+    "tunnex.io/lifecycle-install-proof": {{ . | quote }}
+    {{- end }}
+    {{- end }}
 spec:
   backoffLimit: 0
   template:
@@ -38,17 +44,23 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # Mirror the real gateway's placement constraints. The in-pod privileged
+      # init and probes remain authoritative because they run on the selected
+      # node after scheduling.
+      {{- include "tunnex-gateway.placement" . | nindent 6 }}
       containers:
         - name: preflight
-          image: {{ .Values.image.preflight | quote }}
+          image: {{ default (include "tunnex-gateway.agentImage" .) .Values.image.preflight | quote }}
+          env:
+            - name: DNS_PROBE
+              value: {{ .Values.preflight.dnsProbe | quote }}
           securityContext:
+            privileged: true
+            runAsUser: 0
             runAsNonRoot: false
-            allowPrivilegeEscalation: false
+            allowPrivilegeEscalation: true
             seccompProfile:
               type: RuntimeDefault
-            capabilities:
-              drop: ["ALL"]
-              add: ["NET_ADMIN", "NET_BIND_SERVICE"]
           # WF-K-CHART-3: NO hostPort here. It was added (L9) to mirror the gateway's admission posture, but on
           # `helm upgrade` the LIVE gateway pod already holds hostPort 51820 on the node, so a preflight also
           # claiming it is unschedulable → the pre-upgrade hook deadlocks → upgrade fails. The preflight remains
@@ -74,11 +86,11 @@ spec:
               # by ClusterIP env). Cluster DNS is still needed when controlPlane.apiURL/agentURL are IN-CLUSTER
               # FQDNs (the tunnex-cp-in-cluster deploy) — this proves ClusterFirstWithHostNet is in force so the
               # agent can resolve the CP's address. (For an external CP it is belt-and-suspenders.)
-              echo "preflight: resolving cluster DNS ({{ .Values.preflight.dnsProbe }}) from the gateway's DNS posture ..."
-              out=$(nslookup {{ .Values.preflight.dnsProbe }} 2>&1 || true)
+              echo "preflight: resolving cluster DNS ($DNS_PROBE) from the gateway's DNS posture ..."
+              out=$(nslookup "$DNS_PROBE" 2>&1 || true)
               echo "$out"
               if ! printf '%s\n' "$out" | grep -A50 '^Name:' | grep -q '^Address'; then
-                echo "FATAL: could not resolve {{ .Values.preflight.dnsProbe }} to an address. A hostNetwork pod inherits the NODE resolv.conf; without dnsPolicy ClusterFirstWithHostNet cluster DNS is dead. This blocks resolving an IN-CLUSTER control-plane address (controlPlane.apiURL/agentURL as *.svc.cluster.local). Refuse rather than install a gateway that silently can't reach its control plane."
+                echo "FATAL: could not resolve $DNS_PROBE to an address. A hostNetwork pod inherits the NODE resolv.conf; without dnsPolicy ClusterFirstWithHostNet cluster DNS is dead. This blocks resolving an IN-CLUSTER control-plane address (controlPlane.apiURL/agentURL as *.svc.cluster.local). Refuse rather than install a gateway that silently can't reach its control plane."
                 exit 1
               fi
               echo "preflight: OK — privileged context admitted, /dev/net/tun present, cluster DNS answers."

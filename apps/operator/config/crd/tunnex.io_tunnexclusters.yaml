@@ -50,6 +50,11 @@ spec:
               RegisterCluster verb). The org is IMPLICIT — it is the org of the operator's machine credential (D3),
               never a spec field. The fronting site is referenced by its name.
             properties:
+              connector:
+                description: Connector is the active in-cluster gateway name. The
+                  operator resolves it to the control-plane node ID within Site before
+                  registration. Required.
+                type: string
               dnsZone:
                 description: DNSZone is the customer zone suffix of every exposed
                   Service's FQDN (e.g. k8s.acme.com). Required.
@@ -57,6 +62,26 @@ spec:
               name:
                 description: Name is the cluster's name — a DNS label that becomes
                   part of every exposed Service's FQDN. Required.
+                type: string
+              platform:
+                description: Platform is optional presentation metadata paired with
+                  Provider.
+                enum:
+                - eks
+                - aks
+                - gke_standard
+                - kubernetes
+                type: string
+              provider:
+                description: |-
+                  Provider is optional presentation metadata. It never selects networking or
+                  cloud behavior. Provider and Platform must be supplied together as one of
+                  the supported exact pairs.
+                enum:
+                - aws
+                - azure
+                - gcp
+                - self_managed
                 type: string
               serviceCIDR:
                 description: ServiceCIDR is the cluster's real Kubernetes Service
@@ -72,11 +97,17 @@ spec:
                   other clusters' ranges — the CP's Collect/OrgRanges validator enforces it). Required.
                 type: string
             required:
+            - connector
             - dnsZone
             - name
             - serviceCIDR
             - site
             - vipRange
+            x-kubernetes-validations:
+            - message: provider and platform must be supplied together
+              rule: has(self.provider) == has(self.platform)
+            - message: provider and platform must be one supported pair
+              rule: '!has(self.provider) || (self.provider == ''aws'' && self.platform == ''eks'') || (self.provider == ''azure'' && self.platform == ''aks'') || (self.provider == ''gcp'' && self.platform == ''gke_standard'') || (self.provider == ''self_managed'' && self.platform == ''kubernetes'')'
             type: object
           status:
             description: TunnexClusterStatus reflects the control plane's accepted
