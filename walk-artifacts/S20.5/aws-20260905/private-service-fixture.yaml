@@ -1,0 +1,133 @@
+# Disposable application fixture, not a Tunnex product or network repair.
+# Official nginx/docker-nginx-unprivileged stable-alpine metadata resolved
+# 2026-09-05: version 1.30.4-alpine, exact Linux/amd64 manifest below.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tunnex-s205-workloads
+  labels:
+    tunnex.io/walk-session: tunnex-s205-aws-20260905a
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: s205-private-nginx
+  namespace: tunnex-s205-workloads
+data:
+  nginx.conf: |
+    worker_processes 1;
+    pid /tmp/nginx.pid;
+    error_log /dev/stderr notice;
+    events { worker_connections 128; }
+    http {
+      access_log /dev/stdout;
+      server {
+        listen 8080;
+        location / {
+          default_type text/plain;
+          return 200 "S20.5_PRIVATE_SERVICE_OK\n";
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s205-private-nginx
+  namespace: tunnex-s205-workloads
+  labels:
+    tunnex.io/walk-session: tunnex-s205-aws-20260905a
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: s205-private-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: s205-private-nginx
+        tunnex.io/walk-session: tunnex-s205-aws-20260905a
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        eks.amazonaws.com/nodegroup: tunnex-s205-aws-20260905a-worker-a
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: s205-private-nginx
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx
+          image: docker.io/nginxinc/nginx-unprivileged@sha256:ee1643aef6b99d1058aa79b74679ba3e63094a98a1144a4326def7bae77d293b
+          imagePullPolicy: IfNotPresent
+          command: ["nginx"]
+          args: ["-c", "/etc/nginx/nginx.conf", "-g", "daemon off;"]
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: s205-private-nginx
+        - name: temporary
+          emptyDir:
+            sizeLimit: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s205-private-nginx
+  namespace: tunnex-s205-workloads
+  labels:
+    tunnex.io/walk-session: tunnex-s205-aws-20260905a
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: s205-private-nginx
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
