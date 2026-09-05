@@ -220,7 +220,6 @@ WHERE operation.org_id = sqlc.arg(org_id)
         ON node.id = token.consumed_node_id
        AND node.org_id = token.org_id
        AND node.lifecycle_claim = token.lifecycle_claim
-       AND node.name = token.node_name
       WHERE token.id = operation.token_id
         AND token.org_id = operation.org_id
         AND token.lifecycle_claim = operation.lifecycle_claim

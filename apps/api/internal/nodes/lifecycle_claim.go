@@ -95,12 +95,36 @@ func nullableTime(value pgtype.Timestamptz) *time.Time {
 	return &result
 }
 
+// validateLifecycleNodeBinding proves the persisted enrollment identity. The
+// original token name remains a request pin, but a node's display name may
+// change after enrollment. A deleted node may leave consumed history with a
+// NULL consumed_node_id through the existing ON DELETE SET NULL foreign key.
+func validateLifecycleNodeBinding(token sqlc.NodeJoinToken, node *sqlc.Node) error {
+	if node == nil {
+		if token.ConsumedNodeID.Valid {
+			return errors.New("stored Kubernetes lifecycle claim node binding is malformed")
+		}
+		return nil
+	}
+	if token.LifecycleGeneration <= 0 || !token.ConsumedAt.Valid ||
+		!token.ConsumedNodeID.Valid || uuid.UUID(token.ConsumedNodeID.Bytes) == uuid.Nil ||
+		uuid.UUID(token.ConsumedNodeID.Bytes) != node.ID || token.OrgID != node.OrgID ||
+		!token.LifecycleClaim.Valid || uuid.UUID(token.LifecycleClaim.Bytes) == uuid.Nil ||
+		!node.LifecycleClaim.Valid || token.LifecycleClaim.Bytes != node.LifecycleClaim.Bytes {
+		return errors.New("stored Kubernetes lifecycle claim node binding is malformed")
+	}
+	return nil
+}
+
 func lifecycleStatus(token sqlc.NodeJoinToken, node *sqlc.Node, now time.Time) (LifecycleClaimStatus, error) {
 	if !token.LifecycleClaim.Valid || !token.LifecycleRequestID.Valid || token.LifecycleGeneration < 0 || token.NodeName == nil || strings.TrimSpace(*token.NodeName) == "" {
 		return LifecycleClaimStatus{}, errors.New("stored Kubernetes lifecycle claim is malformed")
 	}
 	if token.LifecycleGeneration == 0 && (!token.LifecycleAbortedAt.Valid || token.LifecycleTokenSealed != nil || token.LifecycleAcknowledgedAt.Valid || token.ConsumedAt.Valid || token.ConsumedNodeID.Valid || node != nil) {
 		return LifecycleClaimStatus{}, errors.New("stored Kubernetes lifecycle claim is malformed")
+	}
+	if err := validateLifecycleNodeBinding(token, node); err != nil {
+		return LifecycleClaimStatus{}, err
 	}
 	status := LifecycleClaimStatus{
 		Claim:          uuid.UUID(token.LifecycleClaim.Bytes),
@@ -175,7 +199,9 @@ func (s *Service) GetLifecycleClaimStatus(ctx context.Context, orgID, claim uuid
 	}
 	var status LifecycleClaimStatus
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
-		token, err := q.GetLifecycleJoinTokenForOrg(ctx, sqlc.GetLifecycleJoinTokenForOrgParams{
+		// Keep enrollment and deletion from committing between the token and
+		// node reads; both rows must describe the same consumption proof.
+		token, err := q.LockLifecycleJoinTokenForOrg(ctx, sqlc.LockLifecycleJoinTokenForOrgParams{
 			OrgID: orgID, LifecycleClaim: requiredPGUUID(claim),
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -560,8 +586,8 @@ func (s *Service) abortLifecycleClaimInTx(ctx context.Context, q *sqlc.Queries, 
 	if nodeErr != nil {
 		return lifecycleClaimAbortOutcome{}, nodeErr
 	}
-	if actualGeneration == 0 || nodeRow.Name != *token.NodeName {
-		return lifecycleClaimAbortOutcome{}, errors.New("stored Kubernetes lifecycle claim node binding is malformed")
+	if err := validateLifecycleNodeBinding(token, &nodeRow); err != nil {
+		return lifecycleClaimAbortOutcome{}, err
 	}
 	node = &nodeRow
 	if nodeRow.Status == "active" {
