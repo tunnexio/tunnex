@@ -33,3 +33,30 @@ manual client state edits, or re-enrollment workaround was performed.
 Private-service wire success, managed-client reconnection, fenced authority
 and HA failover remain unproven at this checkpoint. No completed walk leg or
 merge readiness is inferred from configuration alone.
+
+## Actual client wire success
+
+At 16:07:59.975Z through 16:08:00.436Z, six fresh HTTP requests from the
+local laptop succeeded: three to `http://100.96.0.3:8080`, three to the full
+service FQDN on port8080. All returned HTTP200 and exact body
+`S20.5_PRIVATE_SERVICE_OK`. No hosts override, direct Pod tunnel, or proxy
+substitute was used. Desktop showed a real handshake and received bytes.
+
+Important identity qualification: subsequent authoritative CP read showed
+original device `01a06c09-8ff9-7c78-9569-245c6844312e` revoked and a new active
+device `01a0724f-fbe8-76c4-8ee0-ac2bf1a6a515` homed on A3. The UI transfer
+result above is historical; do NOT claim that the final successful client
+session preserved the original device identity or proved crash recovery.
+
+## HA prerequisite surfaced
+
+HA remains `bootstrap_pending`, reason `base_authority_pending`. CP logs
+repeated `handoff bootstrap plan refused`. Source
+`apps/api/internal/nodes/handoff_bootstrap_plan_source.go` explicitly requires
+an active same-site edge hub outside the connector pool: it skips pool members
+when selecting EdgeWGPublicKey and refuses if none exists. The two current
+same-site gateways are both pool members, so this topology cannot bootstrap
+the implemented fenced handoff. A separate same-site edge gateway is needed;
+the already allocated third worker can host it without another EC2 machine.
+This prerequisite must be dispositioned before changing the endpoint topology;
+no manual promotion or authority record edit is permitted.
