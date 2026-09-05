@@ -1,0 +1,279 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  S20.5 isolated EKS storage and UDP NLB prerequisites. Creates no gateway,
+  NLB, PVC, worker, or control-plane host. Apply only after reviewed absence checks.
+
+# Preparation only. Do not deploy over the bootstrap stack. See the companion
+# inputs document for pins, exact effects, review/apply boundaries and live gates.
+Metadata:
+  ExpectedDeployment:
+    AccountId: '735391218823'
+    Region: ap-south-1
+    StackName: tunnex-s205-aws-20260905a-controllers
+    Inputs: docs/S20.5-aws-controller-deployment-inputs.md
+    LoadBalancerControllerChart: '1.14.1'
+    LoadBalancerControllerImage: public.ecr.aws/eks/aws-load-balancer-controller:v2.14.1
+
+Parameters:
+  GatewayClientCIDR:
+    Type: String
+    Description: Freshly verified walk client public IPv4 /32; no committed default.
+    AllowedPattern: '^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/32$'
+
+Resources:
+  # This AWS-owned account-wide prerequisite was absent on read-only inspection.
+  # Retain it on stack removal: future account consumers may share it. Recheck
+  # absence before creation; do not import, overwrite, or delete an existing role.
+  ELBServiceLinkedRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AWSServiceName: elasticloadbalancing.amazonaws.com
+      Description: AWS ELB service-linked role required by the first S20.5 NLB.
+
+  EBSControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Exact S20.5 cluster EBS controller IRSA; no worker-role attachment.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: arn:aws:iam::735391218823:oidc-provider/oidc.eks.ap-south-1.amazonaws.com/id/EC9D7B319CCC0C36555DB40A392B5813
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                oidc.eks.ap-south-1.amazonaws.com/id/EC9D7B319CCC0C36555DB40A392B5813:aud: sts.amazonaws.com
+                oidc.eks.ap-south-1.amazonaws.com/id/EC9D7B319CCC0C36555DB40A392B5813:sub: system:serviceaccount:kube-system:ebs-csi-controller-sa
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEBSCSIDriverEKSClusterScopedPolicy
+      Policies:
+        - PolicyName: RefuseEC2OutsideWalkRegion
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Deny
+                Action: ec2:*
+                Resource: '*'
+                Condition:
+                  StringNotEquals:
+                    aws:RequestedRegion: ap-south-1
+      Tags:
+        - Key: eks-cluster-name
+          Value: tunnex-s205-aws-20260905a
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+
+  EBSCSIAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: tunnex-s205-aws-20260905a
+      AddonName: aws-ebs-csi-driver
+      # Exact ap-south-1 API default for EKS 1.35, verified 2026-09-05.
+      AddonVersion: v1.65.0-eksbuild.1
+      ServiceAccountRoleArn: !GetAtt EBSControllerRole.Arn
+      ResolveConflicts: NONE
+      ConfigurationValues: >-
+        {"controller":{"replicaCount":1,"extraVolumeTags":{"Project":"Tunnex-S20.5-AWS-Walk","Session":"tunnex-s205-aws-20260905a"}},"sidecars":{"snapshotter":{"forceEnable":false}},"defaultStorageClass":{"enabled":false}}
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+
+  NLBFrontendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: S20.5 two NLBs; client UDP only, health checks are not public.
+      VpcId: vpc-05cbd22769f527e55
+      SecurityGroupIngress:
+        - IpProtocol: udp
+          FromPort: 51820
+          ToPort: 51820
+          CidrIp: !Ref GatewayClientCIDR
+          Description: Exact currently approved walk client.
+      SecurityGroupEgress:
+        - IpProtocol: udp
+          FromPort: 51820
+          ToPort: 51820
+          DestinationSecurityGroupId: sg-0a4645cf6d8de2c33
+          Description: WireGuard to task worker ENIs only.
+        - IpProtocol: tcp
+          FromPort: 9091
+          ToPort: 9091
+          DestinationSecurityGroupId: sg-0a4645cf6d8de2c33
+          Description: HTTP readiness checks to task worker ENIs only.
+      Tags:
+        - Key: Name
+          Value: tunnex-s205-aws-20260905a-nlb
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+
+  # These are the ONLY writes to a pre-existing networking resource: two new,
+  # stack-owned ingress rules on the verified task cluster/worker SG. The demo
+  # VPC and its security groups are not referenced anywhere in this template.
+  WorkerWireGuardFromNLB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 51820
+      ToPort: 51820
+      SourceSecurityGroupId: !Ref NLBFrontendSecurityGroup
+      Description: S20.5 stack-owned NLB WireGuard ingress.
+  WorkerReadinessFromNLB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: tcp
+      FromPort: 9091
+      ToPort: 9091
+      SourceSecurityGroupId: !Ref NLBFrontendSecurityGroup
+      Description: S20.5 stack-owned NLB readiness ingress; not public.
+
+  LoadBalancerControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Exact S20.5 LBC IRSA; NLB only, supplied SGs, no EC2 or IAM writes.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: arn:aws:iam::735391218823:oidc-provider/oidc.eks.ap-south-1.amazonaws.com/id/EC9D7B319CCC0C36555DB40A392B5813
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                oidc.eks.ap-south-1.amazonaws.com/id/EC9D7B319CCC0C36555DB40A392B5813:aud: sts.amazonaws.com
+                oidc.eks.ap-south-1.amazonaws.com/id/EC9D7B319CCC0C36555DB40A392B5813:sub: system:serviceaccount:kube-system:aws-load-balancer-controller
+      Policies:
+        - PolicyName: WalkNLBOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadRegionalNetworkAndLoadBalancerState
+                Effect: Allow
+                Action:
+                  - ec2:DescribeAccountAttributes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeVpcPeeringConnections
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeInstances
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeTags
+                  - ec2:DescribeRouteTables
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeLoadBalancerAttributes
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:DescribeListenerAttributes
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeTargetGroupAttributes
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DescribeTags
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: ap-south-1
+              - Sid: CreateOnlyNamedWalkNLBs
+                Effect: Allow
+                Action: elasticloadbalancing:CreateLoadBalancer
+                Resource:
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/elbv2.k8s.aws/cluster: tunnex-s205-aws-20260905a
+                    elasticloadbalancing:Scheme: internet-facing
+                  ForAllValues:StringEquals:
+                    elasticloadbalancing:Subnet:
+                      - subnet-01be85cea381cc1ae
+                      - subnet-006997cf153f6259e
+                    elasticloadbalancing:SecurityGroup:
+                      - !Ref NLBFrontendSecurityGroup
+                  'Null':
+                    elasticloadbalancing:Subnet: 'false'
+                    elasticloadbalancing:SecurityGroup: 'false'
+              - Sid: CreateClusterTaggedTargetGroups
+                Effect: Allow
+                Action: elasticloadbalancing:CreateTargetGroup
+                Resource: arn:aws:elasticloadbalancing:ap-south-1:735391218823:targetgroup/*/*
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/elbv2.k8s.aws/cluster: tunnex-s205-aws-20260905a
+              - Sid: TagOnNLBAndTargetGroupCreation
+                Effect: Allow
+                Action: elasticloadbalancing:AddTags
+                Resource:
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:targetgroup/*/*
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/elbv2.k8s.aws/cluster: tunnex-s205-aws-20260905a
+                    elasticloadbalancing:CreateAction: [CreateLoadBalancer, CreateTargetGroup]
+              - Sid: ManageTaggedWalkResources
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:ModifyLoadBalancerAttributes
+                  - elasticloadbalancing:SetIpAddressType
+                  - elasticloadbalancing:DeleteLoadBalancer
+                  - elasticloadbalancing:ModifyTargetGroup
+                  - elasticloadbalancing:ModifyTargetGroupAttributes
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:RegisterTargets
+                  - elasticloadbalancing:DeregisterTargets
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:RemoveTags
+                Resource:
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:targetgroup/*/*
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: tunnex-s205-aws-20260905a
+              - Sid: CreateUDPListenerOnNamedWalkNLBs
+                Effect: Allow
+                Action: elasticloadbalancing:CreateListener
+                Resource:
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: tunnex-s205-aws-20260905a
+                    elasticloadbalancing:ListenerProtocol: UDP
+              - Sid: ManageOnlyNamedWalkNLBListeners
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:DeleteListener
+                  - elasticloadbalancing:ModifyListener
+                  - elasticloadbalancing:ModifyListenerAttributes
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:RemoveTags
+                Resource:
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:listener/net/tunnex-s205-a/*/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:listener/net/tunnex-s205-b/*/*
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+
+Outputs:
+  EBSControllerRoleArn:
+    Value: !GetAtt EBSControllerRole.Arn
+  LoadBalancerControllerRoleArn:
+    Value: !GetAtt LoadBalancerControllerRole.Arn
+  NLBFrontendSecurityGroupId:
+    Value: !Ref NLBFrontendSecurityGroup
+  EBSAddonVersion:
+    Value: v1.65.0-eksbuild.1
