@@ -1,6 +1,6 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
-Status: **preflight and quota request only; no working-product proof yet.**
+Status: **isolated EKS provisioning in progress; no working-product proof yet.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
 ## Authority and subject
@@ -45,6 +45,10 @@ The request to increase it to 16 returned:
 - Status at return: `PENDING`.
 - Support case ID at return: none.
 
+A later read at `2026-09-05T15:22:16.847+05:30` reports `CASE_OPENED`, support
+case `178860193200026`. A separate quota read still returned 8. Neither case
+creation nor the request is counted as an increase.
+
 This is a submitted request, not an approved increase. The initial one-worker
 diagnostic fits the existing quota (6 existing + 2 new). No larger node group,
 control-plane host, or update surge is allowed without rechecking quota and
@@ -68,13 +72,65 @@ actual running/pending usage. No existing infra was stopped to obtain capacity.
 No private kubeconfig, certificate body, access token, private key, machine
 credential, or service-account credential is included in this record.
 
+## Live event 2 — reviewed change set executed
+
+Infrastructure source: `fc494ad5b725b1ec6cdba2da3d6c5988ceea7e10`,
+`deploy/aws-s205-walk-bootstrap.yaml`, SHA-256
+`d54c9a8e38fabb0a09c9d3a6406528c454953e3c33e6efffc0e2ad808499c107`.
+AWS `validate-template` accepted it and required only `CAPABILITY_IAM`.
+The complete template/plan received independent scope, IAM and dependency
+review with no confirmed high/medium blocker. Local YAML/reference/dependency
+checks passed; cfn-lint was unavailable. None of these substitutes establishes
+actual bootstrap, CNI, or product readiness.
+
+Before creation, STS account/principal, absent stack/cluster/launch-template,
+running/pending instances, quota, administrator `/32`, Amazon-owned AMI and
+the selected AZ offering were checked. The change set contained exactly 20
+`Add` actions, no replacement, removal, import, or existing physical ID.
+
+- Stack ARN:
+  `arn:aws:cloudformation:ap-south-1:735391218823:stack/tunnex-s205-aws-20260905a/103234e0-a911-11f1-9224-02bb0dc3d5f3`.
+- Change-set ARN:
+  `arn:aws:cloudformation:ap-south-1:735391218823:changeSet/phase1-fc494ad/1fcc2a45-259d-409c-8191-1c804d2daeac`.
+- Exact change set was executed after another STS check; the command succeeded.
+- `OnStackFailure=DO_NOTHING`; stack reports `DisableRollback=true`. Partial
+  resources are preserved if creation fails; cleanup still needs exact approval.
+
+Observed at the first provisioning readback:
+
+| Task resource | Exact identity | Observed state |
+|---|---|---|
+| VPC | `vpc-05cbd22769f527e55` | CREATE_COMPLETE |
+| Public subnet A | `subnet-01be85cea381cc1ae` | CREATE_COMPLETE |
+| Public subnet B | `subnet-006997cf153f6259e` | CREATE_COMPLETE |
+| Internet gateway | `igw-05cb9d4554aa56ab0` | CREATE_COMPLETE |
+| Route table | `rtb-0aefcbaed14f4e857` | CREATE_COMPLETE; both associations and internet route completed |
+| Worker launch template | `lt-017dbe5122c8e360f` | CREATE_COMPLETE |
+| Cluster role | `tunnex-s205-aws-20260905a-ClusterRole-MKKPdDrxluvq` | CREATE_COMPLETE |
+| Worker role | `tunnex-s205-aws-20260905a-WorkerRole-I91s5022hRQ5` | CREATE_COMPLETE |
+| EKS control plane | `tunnex-s205-aws-20260905a` | CREATE_IN_PROGRESS from 10:05:11.300 UTC |
+
+No Tunnex control plane, gateway, private workload, or runtime image publication
+has occurred at this event. The original root checkout remained clean and
+unstaged. This is real infrastructure progress, not a completed product leg.
+
+### DNS preflight for the later fresh CP
+
+The account contains a public Route53 `tunnex.app` zone and a private
+`internal.tunnex.app` zone. The proposed `cp.s205-walk.tunnex.app` record is
+absent from the public Route53 zone, but public NS lookup points to Cloudflare,
+not that zone's AWS delegation set. Therefore an AWS record write alone would
+not prove public resolution. No DNS record or delegation was changed. Establish
+an actually authoritative TLS/DNS path before deploying the later CP; do not
+modify existing domain delegation to make the walk work.
+
 ## Acceptance ledger
 
 | Stage/leg | Result | Remaining proof |
 |---|---|---|
 | Account/region/inventory | READ-ONLY VERIFIED | Recheck before mutation |
-| Quota increase | PENDING | Actual approved quota; do not infer from request |
-| One-worker EKS infrastructure | NOT RUN | Stack/node/CNI/native DNS/kernel readback |
+| Quota increase | CASE_OPENED; quota still 8 | Actual approved quota; do not infer from request |
+| One-worker EKS infrastructure | CREATE_IN_PROGRESS | Node/CNI/native DNS/kernel readback still pending |
 | 0. Candidate provenance/clean baseline | NOT RUN | Matching source/CLI/charts/images; no old ownership state |
 | 1. Redacted plan/no writes | NOT RUN | CLI/CP/Kubernetes evidence |
 | 2/3. A and B enrollment | NOT RUN | Host journal, CNI, readiness, identity and Secret consumption |
