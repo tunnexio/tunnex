@@ -1,6 +1,6 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
-Status: **EKS control plane ACTIVE; empty-worker recovery in progress; no working-product proof yet.**
+Status: **one-worker EKS and native DNS/HTTP baseline passed; Tunnex CNI compatibility blocked; no VPN leg passed.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
 ## Authority and subject
@@ -150,7 +150,8 @@ node group `tunnex-s205-aws-20260905a-worker-a` and its managed ASG
 `eks-tunnex-s205-aws-20260905a-worker-a-30d03887-72cd-93c3-8bb5-dcc8253d7be1`.
 Fresh STS, exact original node-group ARN, exact ASG, zero ASG instances and
 zero task-tagged EC2 instances were verified before `delete-nodegroup`.
-AWS accepted deletion at approximately 10:33 UTC and reported DELETING.
+AWS accepted deletion and reported DELETING. Subsequent CloudTrail readback
+timestamps `DeleteNodegroup` at `2026-09-05T10:34:47Z`.
 The stack then reported CREATE_FAILED, naming only `DiagnosticNodegroup`;
 successful resources were retained with rollback disabled. A subsequent
 read still reported DELETING; deletion completion is not claimed here.
@@ -178,13 +179,145 @@ The branch was successfully pushed through `c02ab84` after that approval;
 this permission does not authorize publication of any credentials or imply
 approval of held product-design decisions. Root checkout remains clean.
 
+## Live event 4 — clean managed worker and native network baseline
+
+The original node group and exact approved managed ASG were both absent before
+executing the update. Zero associated instances had ever launched. The same
+CloudFormation definition can recreate the empty worker; no application data
+was deleted. Fresh account/principal, exactly three protected running demo
+instances, eligible instance type, quota 8, ACTIVE cluster and exact VPC/role
+were checked again. The final full preview still contained only the three
+actions in event 3, with no successful-resource replacement.
+
+Execution explicitly used `--disable-rollback` and a stable request token.
+CloudFormation timestamps:
+
+- `10:49:47.697Z`: UPDATE_IN_PROGRESS.
+- `10:49:49.693Z`: failed-only node-group resource deletion acknowledged.
+- `10:49:53.488Z`: the same source launch template UPDATE_COMPLETE.
+- `10:51:40.380Z`: recreated node group CREATE_COMPLETE.
+- `10:51:52.919Z`: planned CoreDNS add-on CREATE_COMPLETE.
+- `10:51:57.837Z`: stack UPDATE_COMPLETE, DisableRollback=true.
+
+Actual source launch template `lt-017dbe5122c8e360f` version **2** contains
+`c7i-flex.large`, with no credit specification. The recreated node group
+actually references that source version, min/desired/max=1. Its new ARN is
+`arn:aws:eks:ap-south-1:735391218823:nodegroup/tunnex-s205-aws-20260905a/tunnex-s205-aws-20260905a-worker-a/cad03898-38b9-cf0c-8b1a-e201c6c63cd2`.
+EKS generated derived launch template `lt-03d69b07af53c0d50` version 1 for its
+new ASG; this is distinct from source version 2, not version drift or a manual
+patch. The observed EC2 worker is `i-0afe3c3ecd00d1411`, selected AMI
+`ami-03632a6f1684c0665`, in the existing task subnet A. Successful cluster,
+network, IAM, OIDC, access, CNI and kube-proxy physical IDs remain unchanged.
+
+Kubernetes node `ip-10-240-10-204.ap-south-1.compute.internal`, UID
+`abf3e90f-c3bd-4067-ade6-83a12e00f3e2`, reports Ready, two CPUs, amd64,
+Amazon Linux 2023.12.20260817, kernel `6.12.100-125.179.amzn2023.x86_64`,
+kubelet `v1.35.7-eks-cb19647`, containerd `2.2.5+unknown`. The aws-node Pod,
+kube-proxy Pod and both CoreDNS Pods are Ready with zero restarts.
+
+### Actual resolved system images
+
+All registry paths below start `602401143452.dkr.ecr.ap-south-1.amazonaws.com/`.
+
+| Image path / tag | Resolved digest |
+|---|---|
+| `amazon-k8s-cni:v1.22.4-eksbuild.3` | `sha256:7ba0bb50de053432467d1cc629dfc846de4e534f00b73828a1ff33fcee70c8e7` |
+| `amazon/aws-network-policy-agent:v1.4.0-eksbuild.1` | `sha256:c8555b6f2aed6d795a1637e0fe7f1f47cca2465354438157bdc8d8a6beb61045` |
+| `eks/kube-proxy:v1.35.3-eksbuild.21` | `sha256:5f610139b70e7d52f5b00bf9087a789585d21cbb880b5ab94e4209ba85fc3999` |
+| `eks/coredns:v1.13.2-eksbuild.21` | `sha256:df7ee9e5fbcc524da9151b43906cc013cf2089c6a59b3c5c25dd65d2db51f54f` |
+
+### One-shot native Pod proof
+
+`native-network-probe.yaml` records the exact created diagnostic Pod. The
+official BusyBox 1.37.0 Linux/amd64 manifest was resolved before use; returned
+imageID matches the manifest's digest. Strict server dry-run passed, then only
+the absent `default/s205-native-network-probe` was created. It is non-root,
+unprivileged, read-only-root, with no host mounts or service-account token,
+small explicit resource limits and a 120-second active deadline.
+
+Pod UID `2fc6d85a-0d6a-4862-9f24-c694d409bb88`, IP `10.240.10.42`, ran on the
+new worker and completed at `2026-09-05T10:57:40Z`, exit **0**, zero restarts:
+
+```text
+2026-09-05T10:57:39.911958231Z DNS server 172.20.0.10:53
+2026-09-05T10:57:39.911984585Z kubernetes.default.svc.cluster.local -> 172.20.0.1
+2026-09-05T10:57:39.912131267Z NATIVE_SERVICE_DNS_OK
+2026-09-05T10:57:39.914839893Z NATIVE_EXTERNAL_DNS_OK
+2026-09-05T10:57:40.039441731Z NATIVE_HTTP_EGRESS_OK
+```
+
+The first two lines above compact the actual multi-line DNS output; success
+marker lines are exact. External lookup was `checkip.amazonaws.com`, followed
+by anonymous HTTP port 80 GET to that AWS endpoint with response discarded to
+`/dev/null`. This proves native Service DNS, external DNS and HTTP egress;
+it does not prove TLS, a private workload, Tunnex routing, or a desktop VPN.
+The completed Pod is retained as evidence; no cleanup was performed.
+
+## Live event 5 — actual CNI incompatibility and HOLD
+
+Strictly read-only observations in host-network `kube-system/aws-node-f9s9d`
+show nftables 1.0.4 and iptables 1.8.8. `alternatives --display iptables`
+reports manual selection of `/usr/sbin/iptables-nft`. Explicit nft/legacy
+versions and save commands were used; no generic wrapper was invoked and
+legacy-save had no `-t` argument. Legacy-save succeeded with empty output.
+Full nft JSON and explicit nft-save show **no `IP-MASQ-AGENT` chain**.
+
+Actual relevant iptables-nft-save excerpt (10:53:41 UTC):
+
+```text
+-A POSTROUTING -m comment --comment "kubernetes postrouting rules" -j KUBE-POSTROUTING
+-A POSTROUTING -m comment --comment "AWS SNAT CHAIN" -j AWS-SNAT-CHAIN-0
+-A AWS-SNAT-CHAIN-0 -d 10.240.0.0/16 -m comment --comment "AWS SNAT CHAIN" -j RETURN
+-A AWS-SNAT-CHAIN-0 ! -o vlan+ -m comment --comment "AWS, SNAT" -m addrtype ! --dst-type LOCAL -j SNAT --to-source 10.240.10.204 --random-fully
+-A KUBE-POSTROUTING -m mark ! --mark 0x4000/0x4000 -j RETURN
+-A KUBE-POSTROUTING -j MARK --set-xmark 0x4000/0x0
+-A KUBE-POSTROUTING -m comment --comment "kubernetes service traffic requiring SNAT" -j MASQUERADE --random-fully
+```
+
+nft readback places the IPv4 nat POSTROUTING hook at priority 100, with the
+two jumps in that order. `AWS-SNAT-CHAIN-0` handle 34 has VPC return handle 36
+and terminal rule handle 37. Several compat expressions, including SNAT,
+appear as `xt: null` in nft JSON: this is opacity, not absent behavior. Do not
+round-trip foreign rules through that representation. AWS CNI EXTERNALSNAT is
+false, RANDOMIZESNAT is prng, prefix delegation is false; kube-proxy config
+mode is iptables. These are observations, not settings changed for Tunnex.
+
+The CNI image lacks `/usr/sbin/ip` and `/usr/sbin/sysctl`; those invocations
+failed and no tool was installed into it. An exact-instance, read-only SSM
+command on the verified task worker then captured routes, links and sysctls:
+command `7fb08624-dcbd-4286-854e-ec5403613cff`, Success/exit 0 at 10:56:42.773Z.
+It showed no wg0/staging link; native ENI/veth links and AWS rules remain.
+The main default route is via `10.240.10.1` on `enp39s0`, protocol dhcp,
+metric 512; table 2 has the secondary ENI route. Before Tunnex, ip_forward=1,
+all.rp_filter=0, default.rp_filter=2 and primary-ENI.rp_filter=2. No values
+were written, and no route, link, CNI, Secret or PVC was repaired.
+
+**Source-backed inference, not a running Tunnex failure log:** current
+`k8snetprep` recognizes only the absent IP-MASQ seam. With an active tunnel and
+valid interface posture it returns blocked/no_registered_adapter, and gateway
+readiness requires that netprep be ready. The host-posture manager's baseline
+can accept an absent seam; manager readiness must not be conflated with gateway
+readiness. No Tunnex runtime has been deployed to claim either live result.
+
+The adapter/cleanup-journal authority decision was surfaced as HOLD. The user
+then explicitly renewed sandbox implementation approval; its bounded C1–C4
+dispositions are in `docs/S20.5-aws-cni-compatibility-decision-proposal.md`.
+Implementation and qualification remain outstanding. No fake chain,
+SNAT-disable patch, foreign-rule rewrite, broad bypass, or readiness exemption
+was applied. Quota remains 8 (increase CASE_OPENED); broader topology, CP
+authoritative DNS/TLS, red API gates and earlier held decisions remain open.
+Exact pushed `ac7d92e82eb88c167d356c02be0bfe14a8b230df` has zero check runs
+and zero workflow runs. No PR was raised and no required exact-final CI passed.
+
 ## Acceptance ledger
 
 | Stage/leg | Result | Remaining proof |
 |---|---|---|
 | Account/region/inventory | READ-ONLY VERIFIED | Recheck before mutation |
 | Quota increase | CASE_OPENED; quota still 8 | Actual approved quota; do not infer from request |
-| One-worker EKS infrastructure | CP ACTIVE; empty-worker retry pending | Actual worker/node/CNI/native DNS/kernel readback still pending |
+| One-worker EKS infrastructure | UPDATE_COMPLETE; one node Ready | No product qualification implied |
+| Native Pod networking | DNS and HTTP egress PASS | Repeat alongside actual Tunnex packet/fault/cleanup proofs |
+| CNI mechanism | LIVE MISMATCH CONFIRMED | C1–C4 repair authorized; implementation/review/live proof pending |
 | 0. Candidate provenance/clean baseline | NOT RUN | Matching source/CLI/charts/images; no old ownership state |
 | 1. Redacted plan/no writes | NOT RUN | CLI/CP/Kubernetes evidence |
 | 2/3. A and B enrollment | NOT RUN | Host journal, CNI, readiness, identity and Secret consumption |
@@ -196,8 +329,9 @@ approval of held product-design decisions. Root checkout remains clean.
 | 8. Operator/CRD matrix | NOT RUN | Full clean-cluster lookup/adoption/refusal cases |
 | 9. A→B→A | NOT RUN | Automatic fenced ownership and measured client recovery |
 
-The IP-MASQ-AGENT mechanism requirement is a known compatibility risk, not a
-proven EKS failure or an exemption. Current local API gates remain RED and the
+The missing IP-MASQ-AGENT mechanism is now observed on the actual worker, not
+merely a provider-name risk; Tunnex runtime qualification remains unrun.
+Current local API gates remain RED and the
 manager/startup design decisions remain HELD. Infrastructure creation alone
 will not satisfy any product leg, and diagnostic SCP changes cannot establish
 zero-touch acceptance. No cleanup or PR action is implied by this ledger.
