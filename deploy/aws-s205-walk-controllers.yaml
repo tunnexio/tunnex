@@ -190,6 +190,7 @@ Resources:
                 Action: elasticloadbalancing:CreateLoadBalancer
                 Resource:
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a2/*
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
                 Condition:
                   StringEquals:
@@ -216,6 +217,7 @@ Resources:
                 Action: elasticloadbalancing:AddTags
                 Resource:
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a2/*
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:targetgroup/*/*
                 Condition:
@@ -237,6 +239,7 @@ Resources:
                   - elasticloadbalancing:RemoveTags
                 Resource:
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a2/*
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:targetgroup/*/*
                 Condition:
@@ -247,6 +250,7 @@ Resources:
                 Action: elasticloadbalancing:CreateListener
                 Resource:
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-a2/*
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:loadbalancer/net/tunnex-s205-b/*
                 Condition:
                   StringEquals:
@@ -262,6 +266,7 @@ Resources:
                   - elasticloadbalancing:RemoveTags
                 Resource:
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:listener/net/tunnex-s205-a/*/*
+                  - arn:aws:elasticloadbalancing:ap-south-1:735391218823:listener/net/tunnex-s205-a2/*/*
                   - arn:aws:elasticloadbalancing:ap-south-1:735391218823:listener/net/tunnex-s205-b/*/*
       Tags:
         - Key: Project
