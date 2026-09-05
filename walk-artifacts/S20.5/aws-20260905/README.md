@@ -4,8 +4,15 @@ Status: **three-worker EKS ready; retained CP uses its verified valid Scale
 license; six immutable candidate images and four chart OCI pull proofs complete.
 Legs 0 and 1 passed for candidate `d2c9cba`; Leg 2 failed on runtime CNI startup
 admission. The scoped LBC discovery-permission correction is deployed, but
-fresh reconciliation is not yet proven. C5 source correction is under node
-gate and independent review. Historical progress: 2/11; no final-candidate
+fresh reconciliation is not yet proven. C5 (`61ecc5f`) passed local node gates
+and independent review; its approved six images and four charts are published,
+and the licensed CP runs its pinned images. A2 passed runtime CNI admission,
+but its install timed out on the missing A2 NLB name in fixture IAM. That narrow
+permission is corrected; a native retry safely refused the consumed claim.
+The separate B native install reached an AWS account-level CreateLoadBalancer
+`OperationNotPermitted` refusal (contact AWS Support), not IAM denial.
+NLB qualification is blocked; a NodePort alternative needs an explicit design
+disposition and would not prove the NLB path. Historical progress: 2/11; no final-candidate
 or overall walk acceptance.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
@@ -13,6 +20,8 @@ Latest detailed evidence:
 
 - [Candidate provenance, clean baseline and read-only plan](candidate-provenance-leg0-leg1.md).
 - [First gateway failure and scoped controller correction](gateway-a-first-install-failure.md).
+- [C5 publication, licensed CP, and fresh plan](c5-publication-cp-and-plan.md).
+- [C5 live admission, A2 IAM correction, and retry refusal](c5-a2-runtime-and-iam.md).
 
 A new immutable candidate must re-earn the affected baseline, plan and live
 installation proofs. Earlier image or gate results are not inherited as green.
@@ -25,7 +34,7 @@ The chronological entries below retain their original observed state.
   rerun from final immutable source.
 - Paper-first AWS plan: commit `29e1c6d`,
   `docs/S20.5-aws-live-walk-plan.md`.
-- Last product repair: `d2c9cba653d400e2dab3d7b038796efeee1f028c`.
+- Current immutable product candidate: `61ecc5fec4e5a971faaf9b1c65ccdc7b3b4cd8c1`.
 - Last pushed checkpoint before this live-first preparation:
   `9b1797715ef8d5578d1afa73824ebe88963f947e`; that exact SHA had zero check runs,
   zero workflow runs, and zero legacy status contexts. This is not green CI.
