@@ -29,3 +29,14 @@ retroactively a passing install. A fresh native recovery plan is required.
 
 Leg 2 remains incomplete. No PR, merge, release, or exact-final CI success is
 claimed by these observations.
+
+## Bounded retry after IAM correction
+
+Fresh plan passed at 15:32:34.011Z, describing existing bootstrap metadata and
+retained PVC reuse. Actual install retry ran 15:33:24.167Z to 15:33:43.836Z,
+exit 1: `control-plane lifecycle claim is "consumed", not retry-safe`.
+No gateway Pod or Service existed after this refusal. No guard was bypassed;
+recovery metadata and retained storage remain for native lifecycle disposition.
+This also shows that a successful plan is not proof that the subsequent live
+control-plane check will authorize an install. Separate planned B preparation
+continues; B success cannot retroactively pass A2 or prove two-gateway HA.
