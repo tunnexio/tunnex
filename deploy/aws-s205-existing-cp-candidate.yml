@@ -3,25 +3,25 @@
 # Recreate ONLY api web nginx, --no-deps --pull never. No signed-release claim.
 services:
   api:
-    image: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/api@sha256:d6602984cc7af9be86461715685c0ef8b9f19a7a026fc52e49ecca1cd84eca61
+    image: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/api@sha256:ba6c70d3eb2b6d37f0018670b56dcaeb0720c9046e77698a8273358abe8633e6
     pull_policy: never
     environment:
       TUNNEX_AUTO_MIGRATE: "true"
       TUNNEX_GATEWAY_CONTROL_URL: https://cp.13.206.39.40.sslip.io:8443
-      TUNNEX_NODE_AGENT_IMAGE: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/node-agent@sha256:5e525c7046bbdf9b2835be5bce86ad9ee31ebfc0fd92188f73d533b8dfa60f42
+      TUNNEX_NODE_AGENT_IMAGE: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/node-agent@sha256:1189a15a2b78bf029cedd14d09a7de2daa37457ff61cd66506589009fe7708a3
       TUNNEX_K8S_HA_ENABLED: "true"
       TUNNEX_RELEASE_UPDATE_CHECK: "false"
       TUNNEX_RELEASE_MANIFEST_PATH: ""
       TUNNEX_RELEASE_MANIFEST_URL: ""
       TUNNEX_RELEASE_CATALOG_URL: ""
-      TUNNEX_RELEASE_VERSION: 0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe
-      TUNNEX_RELEASE_SOURCE_SHA: d2c9cba653d400e2dab3d7b038796efeee1f028c
+      TUNNEX_RELEASE_VERSION: 0.0.0-walk.sha61ecc5fec4e5a971faaf9b1c65ccdc7b
+      TUNNEX_RELEASE_SOURCE_SHA: 61ecc5fec4e5a971faaf9b1c65ccdc7b3b4cd8c1
       TUNNEX_RELEASE_SEQUENCE: "0"
       TUNNEX_HOST_UPGRADE_REQUEST_PATH: ""
       TUNNEX_HOST_UPGRADE_STATUS_PATH: ""
   web:
-    image: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/web@sha256:51563b8c503a41ae840a70c6f010773936f45d2ef964aff1c1dfb7105891df7b
+    image: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/web@sha256:53cbde3dbbbb78ca32958e4fb0ee691accc95ebec7bb1aec37449f7a85a52718
     pull_policy: never
   nginx:
-    image: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/nginx@sha256:9cdc987e635ec0b99bf5400fbbad83542ed5cd1e660281b85c7fa7a556296065
+    image: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/nginx@sha256:c8e0f845db5f4ccc1954a5cea3fca155d65cfd9315afa8c31f60436c1efd800f
     pull_policy: never
