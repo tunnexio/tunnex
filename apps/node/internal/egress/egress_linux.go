@@ -1304,10 +1304,20 @@ func (m *Manager) reconcileK8sNetPrep(ctx context.Context, subnet string) error 
 	status, err := m.k8sNetPrep.Reconcile(ctx, subnet)
 	m.logK8sNetPrepStatus(status)
 	ready := subnet != "" && err == nil && status.Host.State == k8snetprep.StateReady
+	activeAdapters := 0
 	for _, adapter := range status.Adapters {
-		ready = ready && adapter.State == k8snetprep.StateReady
+		switch adapter.State {
+		case k8snetprep.StateReady:
+			activeAdapters++
+		case k8snetprep.StateNotApplicable:
+			// An exactly absent registered mechanism does not negate another
+			// observed ready mechanism. Unknown coverage is reported blocked,
+			// never synthesized as not-applicable by this readiness consumer.
+		default:
+			ready = false
+		}
 	}
-	if len(status.Adapters) == 0 {
+	if activeAdapters == 0 {
 		ready = false
 	}
 	m.k8sNetPrepReady.Store(ready)
@@ -1326,6 +1336,23 @@ func (m *Manager) SetKubernetesMode(enabled bool) {
 	if !enabled {
 		m.k8sNetPrepReady.Store(false)
 	}
+}
+
+// SetKubernetesCNIAuthority installs the journal-scoped mechanism reconciler
+// before producers start. VM/site mode never acquires host-posture authority.
+// The guard holds the node-local CNI operation lock through each observation
+// and mutation; an unavailable proof cannot fall back to an unguarded adapter.
+func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard) {
+	if !m.kubernetesMode.Load() {
+		return
+	}
+	m.k8sNetPrepReady.Store(false)
+	m.k8sNetPrep = k8snetprep.NewWithAWS(m.wgIface, func(ctx context.Context, args ...string) (string, error) {
+		if m.nftRun == nil {
+			return "", fmt.Errorf("nft runner unavailable")
+		}
+		return m.nftRun(ctx, args...)
+	}, nil, guard)
 }
 
 // ReconcileK8sNetPrep refreshes common host/CNI truth independently of the

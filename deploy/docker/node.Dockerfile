@@ -22,7 +22,10 @@ FROM alpine:3.20
 # guarded by an unstated runtime dep breaks silently on a base-image change). The FEATURE is
 # what the org opts into; the binary is always here. Absent-at-runtime → ovpn_binary_absent
 # (refuse-loudly on the health surface), never a crash.
-RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables openvpn
+# AWS compat-rule inspection uses the explicit iptables-nft-save binary only;
+# the alternative-selected iptables wrapper is never part of the authority proof.
+RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables openvpn \
+    && iptables-nft-save -V
 COPY --from=build /out/tunnex-node /usr/local/bin/tunnex-node
 EXPOSE 9091
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \

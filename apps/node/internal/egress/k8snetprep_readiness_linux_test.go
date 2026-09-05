@@ -73,6 +73,66 @@ func TestK8sNetPrepModeKeepsLegacyVMOutOfKubernetesAdapterPath(t *testing.T) {
 	}
 }
 
+func TestK8sCNIAuthorityWiringNeverEnablesVMOrFallsBackAfterRefusal(t *testing.T) {
+	m := New("wg0")
+	legacy := m.k8sNetPrep
+	guardCalls, nftCalls := 0, 0
+	guard := func(context.Context) (k8snetprep.AuthorityGrant, func(), error) {
+		guardCalls++
+		return k8snetprep.AuthorityGrant{}, nil, errors.New("test authority refused")
+	}
+	m.SetKubernetesCNIAuthority(guard)
+	if m.k8sNetPrep != legacy || guardCalls != 0 {
+		t.Fatal("legacy VM mode acquired Kubernetes CNI authority")
+	}
+	m.SetKubernetesMode(true)
+	m.nftRun = func(context.Context, ...string) (string, error) {
+		nftCalls++
+		return "", errors.New("must not inspect or mutate nft after refusal")
+	}
+	m.SetKubernetesCNIAuthority(guard)
+	if err := m.reconcileK8sNetPrep(t.Context(), "10.99.0.0/24"); err == nil {
+		t.Fatal("missing journal authority fell back to an unguarded reconciler")
+	}
+	if guardCalls != 1 || nftCalls != 0 || m.K8sNetPrepReady() {
+		t.Fatalf("refusal boundary: guard=%d nft=%d ready=%v", guardCalls, nftCalls, m.K8sNetPrepReady())
+	}
+}
+
+func TestK8sNetPrepReadinessRequiresAllObservedMechanismsAndAtLeastOne(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		states []k8snetprep.State
+		ready  bool
+	}{
+		{"aws ready ip-masq absent", []k8snetprep.State{k8snetprep.StateNotApplicable, k8snetprep.StateReady}, true},
+		{"both ready", []k8snetprep.State{k8snetprep.StateReady, k8snetprep.StateReady}, true},
+		{"all absent", []k8snetprep.State{k8snetprep.StateNotApplicable, k8snetprep.StateNotApplicable}, false},
+		{"one blocked", []k8snetprep.State{k8snetprep.StateReady, k8snetprep.StateBlocked}, false},
+		{"unknown state", []k8snetprep.State{k8snetprep.StateReady, "unverified"}, false},
+		{"none", nil, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := New("wg0")
+			status := k8snetprep.ReconcileStatus{Host: k8snetprep.ComponentStatus{Name: "wireguard_rp_filter", State: k8snetprep.StateReady}}
+			for i, state := range tt.states {
+				name := "ip_masq_agent"
+				if i == 1 {
+					name = "aws_snat"
+				}
+				status.Adapters = append(status.Adapters, k8snetprep.ComponentStatus{Name: name, State: state})
+			}
+			m.k8sNetPrep = &fakeK8sNetPrep{status: status}
+			if err := m.reconcileK8sNetPrep(t.Context(), "10.99.0.0/24"); err != nil {
+				t.Fatal(err)
+			}
+			if got := m.K8sNetPrepReady(); got != tt.ready {
+				t.Fatalf("ready=%v want=%v states=%v", got, tt.ready, tt.states)
+			}
+		})
+	}
+}
+
 func TestK8sNetPrepSubnetObservationFailurePreservesOwnedRuleAndRetractsReadiness(t *testing.T) {
 	ready := k8snetprep.ReconcileStatus{
 		Host:     k8snetprep.ComponentStatus{Name: "wireguard_rp_filter", State: k8snetprep.StateReady},

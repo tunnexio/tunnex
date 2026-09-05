@@ -3,15 +3,18 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
+	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 )
 
 type postureCommandReport struct {
@@ -86,7 +89,7 @@ func runK8sHostPostureCheck(args []string, out io.Writer) int {
 	if args[0] == "--wait" {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		err = hostposture.WaitForOwner(ctx, store, nodeName, os.Getenv("TUNNEX_HOST_POSTURE_OWNER_UID"), time.Now, nil)
+		err = hostposture.WaitForCNIOwner(ctx, store, nodeName, os.Getenv("TUNNEX_HOST_POSTURE_OWNER_UID"), time.Now, nil)
 	} else {
 		err = hostposture.CheckManagerHeartbeat(store, nodeName, args[0] == "--live", time.Now())
 	}
@@ -94,6 +97,22 @@ func runK8sHostPostureCheck(args []string, out io.Writer) int {
 		return writePostureReport(out, "k8s_host_posture_check", "blocked", err.Error(), 1)
 	}
 	return writePostureReport(out, "k8s_host_posture_check", "ready", "", 0)
+}
+
+// A runtime process earns its own advancing CNI proofs after init. Retain this
+// one read-only Store across reconciles so its bounded proof history is not
+// reset on every call. Neither construction nor refusal creates host files.
+func newKubernetesCNIAuthorityGuard(stateDir, nodeName, ownerUID string) (k8snetprep.AuthorityGuard, error) {
+	if strings.TrimSpace(nodeName) == "" || strings.TrimSpace(ownerUID) == "" {
+		return nil, fmt.Errorf("exact Kubernetes node and gateway Pod UID are required for CNI authority")
+	}
+	store, err := hostposture.OpenStore(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) (k8snetprep.AuthorityGrant, func(), error) {
+		return store.AcquireCNIAuthority(ctx, nodeName, ownerUID, time.Now())
+	}, nil
 }
 
 func writePostureReport(out io.Writer, operation, status, reason string, code int) int {

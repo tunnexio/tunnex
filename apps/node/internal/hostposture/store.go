@@ -8,20 +8,28 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 const (
-	journalFile   = "journal.json"
-	heartbeatFile = "heartbeat.json"
-	lockFile      = "manager.lock"
-	maxJournal    = 64 << 10
-	maxHeartbeat  = 32 << 10
+	journalFile          = "journal.json"
+	heartbeatFile        = "heartbeat.json"
+	lockFile             = "manager.lock"
+	cniAuthorityFile     = "cni-authority.json"
+	cniOperationLockFile = "cni-operation.lock"
+	maxJournal           = 64 << 10
+	maxHeartbeat         = 32 << 10
 )
 
 // Store owns the versioned hostPath record. Journal writes are durable and
 // private; heartbeat writes are world-readable so the credentialless gateway
 // init can consume only this bounded, non-secret handshake.
-type Store struct{ dir string }
+type Store struct {
+	dir      string
+	readOnly bool
+	proofMu  sync.Mutex
+	cniProof cniOwnerProof
+}
 
 func NewStore(dir string) (*Store, error) {
 	store, err := openStore(dir, true)
@@ -30,6 +38,9 @@ func NewStore(dir string) (*Store, error) {
 	}
 	if err := os.Chmod(store.dir, 0o755); err != nil {
 		return nil, fmt.Errorf("set host-posture state directory mode: %w", err)
+	}
+	if err := store.createCNIOperationLock(); err != nil {
+		return nil, err
 	}
 	return store, nil
 }
@@ -52,12 +63,14 @@ func openStore(dir string, create bool) (*Store, error) {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("host-posture state directory is not a real directory")
 	}
-	return &Store{dir: dir}, nil
+	return &Store{dir: dir, readOnly: !create}, nil
 }
 
-func (s *Store) JournalPath() string   { return filepath.Join(s.dir, journalFile) }
-func (s *Store) HeartbeatPath() string { return filepath.Join(s.dir, heartbeatFile) }
-func (s *Store) LockPath() string      { return filepath.Join(s.dir, lockFile) }
+func (s *Store) JournalPath() string          { return filepath.Join(s.dir, journalFile) }
+func (s *Store) HeartbeatPath() string        { return filepath.Join(s.dir, heartbeatFile) }
+func (s *Store) LockPath() string             { return filepath.Join(s.dir, lockFile) }
+func (s *Store) CNIAuthorityPath() string     { return filepath.Join(s.dir, cniAuthorityFile) }
+func (s *Store) CNIOperationLockPath() string { return filepath.Join(s.dir, cniOperationLockFile) }
 
 func (s *Store) LoadJournal() (Journal, error) {
 	var value Journal

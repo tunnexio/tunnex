@@ -285,7 +285,7 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# netlink to init its cache — needs NET_ADMIN even in check-only mode. Without the cap that one test SKIPS
 	# (never false-fails), so the render-valid proof only holds when the cap is present (it is, here + in CI).
 	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)/apps/node":/src -w /src -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables && go test ./..."
+	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables iptables && go test ./..."
 
 .PHONY: test-operator
 test-operator: ## Build the GitOps operator + run the no-DB-import census (S10.2). Edition-agnostic (one build; the operator is open deployment tooling, no enterprise tag).

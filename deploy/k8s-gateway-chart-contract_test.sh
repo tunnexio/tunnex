@@ -245,6 +245,20 @@ require "${TMP}/main-container.yaml" 'drop: \["ALL"\]' 'gateway complete default
 require "${TMP}/main-container.yaml" 'add: \["NET_ADMIN", "NET_BIND_SERVICE"\]' 'gateway exact host capability set'
 require "${TMP}/main-container.yaml" 'runAsNonRoot: false' 'gateway explicit root execution contract'
 require "${TMP}/main-container.yaml" 'type: RuntimeDefault' 'gateway default seccomp profile'
+require "${TMP}/main-container.yaml" 'name: TUNNEX_HOST_POSTURE_NODE_NAME' 'runtime exact node authority input'
+require "${TMP}/main-container.yaml" 'name: TUNNEX_HOST_POSTURE_OWNER_UID' 'runtime exact Pod authority input'
+require "${TMP}/main-container.yaml" 'fieldPath: spec.nodeName' 'runtime downward-API node identity'
+require "${TMP}/main-container.yaml" 'fieldPath: metadata.uid' 'runtime downward-API Pod identity'
+require "${TMP}/main-container.yaml" 'name: TUNNEX_HOST_POSTURE_STATE_DIR' 'runtime public authority location'
+# Check this particular mount, not any unrelated read-only token mount.
+awk '
+  /- name: host-posture-state$/ { capture = 1; next }
+  capture && /- name:/ { exit }
+  capture { print }
+' "${TMP}/main-container.yaml" >"${TMP}/runtime-posture-mount.yaml"
+require "${TMP}/runtime-posture-mount.yaml" 'mountPath: /var/lib/tunnex/host-posture/v1' 'runtime exact host authority mount'
+require "${TMP}/runtime-posture-mount.yaml" 'readOnly: true' 'runtime cannot write manager journal or authority'
+reject "${TMP}/runtime-posture-mount.yaml" 'readOnly: false' 'writable runtime posture authority'
 
 require "${TMP}/preflight.yaml" 'privileged: true' 'privileged admission-context preflight'
 require "${TMP}/preflight.yaml" 'automountServiceAccountToken: false' 'credentialless privileged preflight'

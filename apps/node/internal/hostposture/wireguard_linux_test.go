@@ -94,6 +94,9 @@ func newStagedLinkHarness(t *testing.T) (*LinuxKernel, *stagedLinkHarness, Journ
 			}
 			return "table present", nil
 
+		case name == "nft" && joined == "-j -a list ruleset":
+			return `{"nftables":[]}`, nil
+
 		case name == "nft" && joined == "-f -":
 			if strings.Contains(string(input), "add table ip6 tunnex") {
 				h.nftPresent["ip6"] = true
@@ -349,6 +352,7 @@ func TestPrepareRefusesAnyUnjournaledTunnexOwnershipCandidateBeforeMutation(t *t
 func TestPrepareRejectsSchemaV1PreparingJournalWithoutMutation(t *testing.T) {
 	kernel, h, journal := newStagedLinkHarness(t)
 	journal.SchemaVersion = LegacyJournalSchemaVersion
+	journal.Artifacts.AWSCNI = nil
 	journal.Artifacts.WireGuard.StagingName = ""
 	journal.Artifacts.WireGuard.Phase = ""
 	h.links[DefaultWireGuardIface] = wireGuardLink{Name: DefaultWireGuardIface, Alias: WireGuardAlias, Kind: "wireguard", IfIndex: 77}
@@ -363,6 +367,7 @@ func TestPrepareRejectsSchemaV1PreparingJournalWithoutMutation(t *testing.T) {
 func TestPrepareSchemaV1ActiveHealsExactFinalLinkAndRejectsIdentityMismatch(t *testing.T) {
 	kernel, h, journal := newStagedLinkHarness(t)
 	journal.SchemaVersion = LegacyJournalSchemaVersion
+	journal.Artifacts.AWSCNI = nil
 	journal.State = StateActive
 	journal.Artifacts.WireGuard.StagingName = ""
 	journal.Artifacts.WireGuard.Phase = ""
@@ -500,6 +505,7 @@ func TestRestoreSchemaV1WithoutRecordedIfIndexAlwaysRefuses(t *testing.T) {
 		t.Run(fmt.Sprintf("alias_%q", alias), func(t *testing.T) {
 			kernel, h, journal := newStagedLinkHarness(t)
 			journal.SchemaVersion = LegacyJournalSchemaVersion
+			journal.Artifacts.AWSCNI = nil
 			journal.State = StateRestoring
 			journal.Owners = nil
 			journal.Artifacts.WireGuard.StagingName = ""
@@ -520,6 +526,7 @@ func TestRestoreSchemaV1WithoutRecordedIfIndexAlwaysRefuses(t *testing.T) {
 func TestRestoreSchemaV1WithRecordedIfIndexDeletesOnlyExactFinal(t *testing.T) {
 	kernel, h, journal := newStagedLinkHarness(t)
 	journal.SchemaVersion = LegacyJournalSchemaVersion
+	journal.Artifacts.AWSCNI = nil
 	journal.State = StateRestoring
 	journal.Owners = nil
 	journal.Artifacts.WireGuard.StagingName = ""

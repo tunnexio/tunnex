@@ -8,6 +8,31 @@ import (
 
 type heartbeatReader interface{ LoadHeartbeat() (Heartbeat, error) }
 
+// WaitForCNIOwner is the new gateway admission path. The old strict heartbeat
+// reader above and WaitForOwner below remain byte- and behavior-compatible.
+// Each attempt releases the operation lock before waiting for advancement.
+func WaitForCNIOwner(ctx context.Context, store *Store, nodeName, ownerUID string, now func() time.Time, sleep func(context.Context, time.Duration) error) error {
+	if store == nil || !validNodeName(nodeName) || len(ownerUID) > MaxOwnerUIDBytes || !uidRE.MatchString(ownerUID) {
+		return fmt.Errorf("gateway CNI posture-check identity is invalid")
+	}
+	if now == nil {
+		now = time.Now
+	}
+	if sleep == nil {
+		sleep = sleepContext
+	}
+	for {
+		_, release, err := store.AcquireCNIAuthority(ctx, nodeName, ownerUID, now())
+		if err == nil {
+			release()
+			return nil
+		}
+		if err := sleep(ctx, 500*time.Millisecond); err != nil {
+			return fmt.Errorf("wait for live host-posture CNI ownership: %w", err)
+		}
+	}
+}
+
 func CheckManagerHeartbeat(reader heartbeatReader, nodeName string, liveOnly bool, now time.Time) error {
 	heartbeat, err := reader.LoadHeartbeat()
 	if err != nil {

@@ -5,14 +5,18 @@
 package hostposture
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 )
 
 const (
@@ -30,7 +34,8 @@ const (
 	ReturnRulePriority            = 100
 	ReturnRuleLookup              = "main"
 	LegacyJournalSchemaVersion    = 1
-	JournalSchemaVersion          = 2
+	StagedJournalSchemaVersion    = 2
+	JournalSchemaVersion          = 3
 	HeartbeatSchemaVersion        = 1
 	DefaultMaxOwners              = 32
 	// Invalid label-selected Pods do not consume the valid-owner limit, but the
@@ -91,6 +96,9 @@ type ArtifactJournal struct {
 	Routes    RouteReceipt      `json:"routes"`
 	CNI       CNIReceipt        `json:"cni"`
 	Docker    DockerReceipt     `json:"docker"`
+	// Omitted for historical epochs, including when those epochs are saved by
+	// a new manager. A legacy receipt never gains AWS cleanup authority.
+	AWSCNI *CNIReceipt `json:"aws_cni,omitempty"`
 }
 
 type WireGuardReceipt struct {
@@ -144,6 +152,31 @@ type Journal struct {
 	Artifacts     ArtifactJournal `json:"artifacts"`
 	UpdatedAt     time.Time       `json:"updated_at"`
 	LastError     string          `json:"last_error,omitempty"`
+}
+
+// UnmarshalJSON preserves the old strict schemas even for an explicit null
+// aws_cni field, which the old decoders rejected as an unknown field.
+func (j *Journal) UnmarshalJSON(body []byte) error {
+	type wireJournal Journal
+	var decoded wireJournal
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&decoded); err != nil {
+		return err
+	}
+	if decoded.SchemaVersion == LegacyJournalSchemaVersion || decoded.SchemaVersion == StagedJournalSchemaVersion {
+		var fields struct {
+			Artifacts map[string]json.RawMessage `json:"artifacts"`
+		}
+		if err := json.Unmarshal(body, &fields); err != nil {
+			return err
+		}
+		if _, present := fields.Artifacts["aws_cni"]; present {
+			return fmt.Errorf("legacy journal contains unsupported AWS CNI receipt")
+		}
+	}
+	*j = Journal(decoded)
+	return nil
 }
 
 // Heartbeat is the non-secret, read-only admission handshake consumed by a
@@ -237,11 +270,19 @@ func fixedArtifacts() ArtifactJournal {
 	}
 }
 
+func fixedArtifactsForSchema(schema int) ArtifactJournal {
+	artifacts := fixedArtifacts()
+	if schema == JournalSchemaVersion {
+		artifacts.AWSCNI = &CNIReceipt{Family: "ip", Table: "nat", Chain: "AWS-SNAT-CHAIN-0", Comments: []string{k8snetprep.AWSOwnedRuleComment}}
+	}
+	return artifacts
+}
+
 func newJournal(node string, epoch uint64, originals []SysctlReceipt, owners []Owner, stagingName string, now time.Time) (Journal, error) {
 	if !validWireGuardStagingName(stagingName) {
 		return Journal{}, fmt.Errorf("WireGuard staging identity is invalid")
 	}
-	artifacts := fixedArtifacts()
+	artifacts := fixedArtifactsForSchema(JournalSchemaVersion)
 	artifacts.WireGuard.StagingName = stagingName
 	artifacts.WireGuard.Phase = WireGuardPhaseStagingPlanned
 	return Journal{
@@ -258,7 +299,7 @@ func newJournal(node string, epoch uint64, originals []SysctlReceipt, owners []O
 }
 
 func (j Journal) validate(node string) error {
-	if (j.SchemaVersion != LegacyJournalSchemaVersion && j.SchemaVersion != JournalSchemaVersion) || j.Contract != Contract || j.NodeName != node || j.Epoch == 0 {
+	if (j.SchemaVersion != LegacyJournalSchemaVersion && j.SchemaVersion != StagedJournalSchemaVersion && j.SchemaVersion != JournalSchemaVersion) || j.Contract != Contract || j.NodeName != node || j.Epoch == 0 {
 		return fmt.Errorf("journal identity does not match %s on node %q", Contract, node)
 	}
 	if j.State != StatePreparing && j.State != StateActive && j.State != StateRestoring && j.State != StateRestored {
@@ -279,7 +320,9 @@ func (j Journal) validate(node string) error {
 	baseArtifacts.WireGuard.StagingName = ""
 	baseArtifacts.WireGuard.StagingIfIndex = 0
 	baseArtifacts.WireGuard.Phase = ""
-	if !reflect.DeepEqual(baseArtifacts, fixedArtifactsWithIfIndex(wg.IfIndex)) {
+	wantArtifacts := fixedArtifactsForSchema(j.SchemaVersion)
+	wantArtifacts.WireGuard.IfIndex = wg.IfIndex
+	if !reflect.DeepEqual(baseArtifacts, wantArtifacts) {
 		return fmt.Errorf("journal artifact ownership contract is invalid")
 	}
 	if j.SchemaVersion == LegacyJournalSchemaVersion {

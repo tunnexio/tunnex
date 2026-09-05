@@ -18,13 +18,18 @@ func (f *fakeOwnerSource) List(context.Context, string, int) ([]Owner, error) {
 }
 
 type fakePostureStore struct {
-	journal     Journal
-	haveJournal bool
-	saveErr     error
-	saveHook    func(Journal) error
-	heartbeat   Heartbeat
-	saveStates  []string
-	saveOwners  [][]Owner
+	journal      Journal
+	haveJournal  bool
+	saveErr      error
+	saveHook     func(Journal) error
+	heartbeat    Heartbeat
+	authority    CNIAuthority
+	authorityErr error
+	revokeErr    error
+	lockErr      error
+	lockHeld     bool
+	saveStates   []string
+	saveOwners   [][]Owner
 }
 
 func (f *fakePostureStore) LoadJournal() (Journal, error) {
@@ -51,6 +56,36 @@ func (f *fakePostureStore) SaveHeartbeat(heartbeat Heartbeat) error {
 	f.heartbeat = heartbeat
 	return nil
 }
+func (f *fakePostureStore) SaveCNIAuthority(authority CNIAuthority) error {
+	if !f.lockHeld {
+		return fmt.Errorf("CNI publication without operation lock")
+	}
+	if f.authorityErr != nil {
+		return f.authorityErr
+	}
+	f.authority = authority
+	return nil
+}
+func (f *fakePostureStore) RevokeCNIAuthority() error {
+	if !f.lockHeld {
+		return fmt.Errorf("CNI revocation without operation lock")
+	}
+	if f.revokeErr != nil {
+		return f.revokeErr
+	}
+	f.authority = CNIAuthority{State: CNIAuthorityRevoked}
+	return nil
+}
+func (f *fakePostureStore) AcquireCNIOperationLock(context.Context) (func(), error) {
+	if f.lockErr != nil {
+		return nil, f.lockErr
+	}
+	if f.lockHeld {
+		return nil, fmt.Errorf("operation lock already held")
+	}
+	f.lockHeld = true
+	return func() { f.lockHeld = false }, nil
+}
 
 type fakeKernel struct {
 	store              *fakePostureStore
@@ -65,6 +100,9 @@ type fakeKernel struct {
 }
 
 func (f *fakeKernel) CaptureBaseline(_ context.Context, stagingName string) ([]SysctlReceipt, error) {
+	if !f.store.lockHeld || f.store.authority.State != CNIAuthorityRevoked {
+		return nil, fmt.Errorf("baseline without serialized revoked authority")
+	}
 	f.capture++
 	f.captureStagingName = stagingName
 	if !validWireGuardStagingName(stagingName) {
@@ -77,12 +115,18 @@ func (f *fakeKernel) CaptureBaseline(_ context.Context, stagingName string) ([]S
 	return out, nil
 }
 func (f *fakeKernel) Prepare(_ context.Context, journal *Journal, _ func(*Journal) error) error {
+	if !f.store.lockHeld || f.store.authority.State != CNIAuthorityRevoked {
+		return fmt.Errorf("prepare without serialized revoked authority")
+	}
 	f.prepare++
-	if !f.store.haveJournal || f.store.journal.State != StatePreparing || len(f.store.journal.Sysctls) != 3 {
+	if !f.store.haveJournal || (f.store.journal.State != StatePreparing && f.store.journal.State != StateActive) || len(f.store.journal.Sysctls) != 3 {
 		return fmt.Errorf("kernel mutation occurred before durable preparing journal")
 	}
 	if f.prepareErr != nil {
 		return f.prepareErr
+	}
+	if journal.State == StateActive {
+		return nil
 	}
 	journal.Artifacts.WireGuard.StagingIfIndex = 41
 	journal.Artifacts.WireGuard.IfIndex = 41
@@ -90,10 +134,16 @@ func (f *fakeKernel) Prepare(_ context.Context, journal *Journal, _ func(*Journa
 	return nil
 }
 func (f *fakeKernel) Enforce(context.Context, Journal) error {
+	if !f.store.lockHeld || f.store.authority.State != CNIAuthorityRevoked {
+		return fmt.Errorf("enforce without serialized revoked authority")
+	}
 	f.enforce++
 	return f.enforceErr
 }
 func (f *fakeKernel) RestoreAndCleanup(_ context.Context, journal *Journal) error {
+	if !f.store.lockHeld || f.store.authority.State != CNIAuthorityRevoked {
+		return fmt.Errorf("cleanup without serialized revoked authority")
+	}
 	f.restore++
 	if len(f.store.journal.Owners) != 0 || f.store.journal.State != StateRestoring {
 		return fmt.Errorf("cleanup occurred before durable empty-owner restoring state")

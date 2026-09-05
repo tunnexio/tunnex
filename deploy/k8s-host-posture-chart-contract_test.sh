@@ -225,11 +225,21 @@ for gateway in "${TMP}/gateway-a.yaml" "${TMP}/gateway-b.yaml"; do
   reject "${gateway}" '^kind: DaemonSet$|^kind: ClusterRole$|^kind: ClusterRoleBinding$' 'per-gateway manager singleton resources'
 done
 
-# The manager contract must remain cloud-neutral in both runtime and chart.
-if grep -Eiq 'azure|amazon|aws|gcp|google|eks|aks|gke' "${CHART}/templates/daemonset.yaml" "${ROOT}/apps/node/internal/hostposture/"*.go; then
-  echo 'host-posture runtime or chart contains provider-specific authority' >&2
+# The manager contract remains mechanism-based. A literal observed chain or
+# closed receipt scope may name AWS; that is not a provider SDK/identity grant.
+# Keep provider placement/config out of the chart, and reject actual cloud
+# authority inputs/dependencies in the runtime instead of banning prose/names.
+if grep -Eiq 'azure|amazon|aws|gcp|google|eks|aks|gke' "${CHART}/templates/daemonset.yaml"; then
+  echo 'host-posture chart contains provider-specific authority or placement' >&2
   exit 1
 fi
+for posture_source in "${ROOT}/apps/node/internal/hostposture/"*.go; do
+  [[ "${posture_source}" == *_test.go ]] && continue
+  if grep -En 'github\.com/(aws/|Azure/|azure/)|cloud\.google\.com/go|google\.golang\.org/api|AWS_(REGION|ACCESS_KEY|SECRET_ACCESS_KEY|ROLE_ARN)|AZURE_(CLIENT|TENANT|SUBSCRIPTION)|GOOGLE_APPLICATION_CREDENTIALS|169\.254\.169\.254|metadata\.google\.internal' "${posture_source}"; then
+    echo 'host-posture runtime contains cloud SDK, credential, or metadata authority' >&2
+    exit 1
+  fi
+done
 
 # A local source chart selects its own literal appVersion. This intentionally
 # differs from release packaging below, which stamps the immutable vX.Y.Z image

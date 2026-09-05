@@ -3,7 +3,40 @@
 // cloud-provider labels are deliberately not inputs.
 package k8snetprep
 
-import "strings"
+import (
+	"context"
+	"strings"
+	"time"
+)
+
+// AuthorityGrant is a scoped admission with an absolute expiry. Runtime grants
+// expire with their correlated heartbeat; manager cleanup uses its locked,
+// durable journal scope and the same bounded operation budget.
+type AuthorityGrant struct {
+	Scope    AuthorityScope
+	NotAfter time.Time
+}
+
+const CNIOperationBudget = 5 * time.Second
+
+// AuthorityScope is a closed journal capability, not provider configuration.
+// Historical journal epochs cannot acquire the AWS ownership namespace.
+type AuthorityScope string
+
+const (
+	ScopeIPMasqOnly     AuthorityScope = "ip_masq_only"
+	ScopeIPMasqAndAWS   AuthorityScope = "ip_masq_and_aws"
+	AWSOwnedRuleComment                = "tunnex_k8s_aws_snat_bypass"
+)
+
+// AuthorityGuard holds the node-local operation lock and validates the current
+// correlated manager authority. The caller holds the returned release function
+// across observation AND mutation. Lock order is guard, then Reconciler.mu.
+type AuthorityGuard func(context.Context) (AuthorityGrant, func(), error)
+
+// IPTablesRunner inspects only the explicitly selected nft-backed save binary;
+// it never mutates iptables and never invokes the auto-selecting wrapper.
+type IPTablesRunner func(context.Context, ...string) (string, error)
 
 // State is the finite outcome vocabulary shared by host preparation and CNI
 // adapters. NotApplicable is a successful observation that a mechanism is not

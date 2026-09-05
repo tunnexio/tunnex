@@ -219,6 +219,16 @@ func main() {
 	// shutdown (full-sweep). No-op / not-capable off Linux.
 	egressMgr := egress.New(wgIface)
 	egressMgr.SetKubernetesMode(kubernetesMode)
+	if kubernetesMode {
+		guard, err := newKubernetesCNIAuthorityGuard(
+			getenv("TUNNEX_HOST_POSTURE_STATE_DIR", hostposture.DefaultStateDir),
+			os.Getenv("TUNNEX_HOST_POSTURE_NODE_NAME"), os.Getenv("TUNNEX_HOST_POSTURE_OWNER_UID"))
+		if err != nil {
+			logger.Error("k8s_cni_authority_unavailable", slog.String("error", err.Error()))
+			return
+		}
+		egressMgr.SetKubernetesCNIAuthority(guard)
+	}
 	// The FQDN baseline survives agent restarts. A missing/corrupt file does
 	// not silently become an empty generation: egress performs its documented
 	// deny-all + conntrack recovery before accepting the first policy.

@@ -41,10 +41,13 @@ type NFTRunner func(context.Context, ...string) (string, error)
 // Reconciler continuously verifies the manager-owned WireGuard rp_filter
 // posture and owns only Tunnex-commented rules in registered CNI mechanisms.
 type Reconciler struct {
-	mu      sync.Mutex
-	iface   string
-	procSys string
-	runNFT  NFTRunner
+	mu          sync.Mutex
+	iface       string
+	procSys     string
+	runNFT      NFTRunner
+	awsAware    bool
+	runIPTables IPTablesRunner
+	guard       AuthorityGuard
 }
 
 // New returns a provider-neutral reconciler for one WireGuard interface.
@@ -66,6 +69,9 @@ func realNFTRunner(ctx context.Context, args ...string) (string, error) {
 // Reconcile converges the exact current tunnel CIDR. An empty CIDR is an
 // explicit withdrawal and removes every obsolete owned adapter rule.
 func (r *Reconciler) Reconcile(ctx context.Context, tunnelCIDR string) (ReconcileStatus, error) {
+	if r.awsAware {
+		return r.reconcileWithAuthority(ctx, tunnelCIDR)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if tunnelCIDR == "" {
@@ -112,6 +118,9 @@ func readAndVerifySysctl(procSys, key, desired string) error {
 // Withdraw removes every Tunnex-owned CNI adapter rule and preserves all
 // foreign state. It is safe when the mechanism has already disappeared.
 func (r *Reconciler) Withdraw(ctx context.Context) (ReconcileStatus, error) {
+	if r.awsAware {
+		return r.reconcileWithAuthority(ctx, "")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.withdrawLocked(ctx)
@@ -160,6 +169,9 @@ type OwnedRuleReceipt struct {
 func (r *Reconciler) OwnedArtifacts(ctx context.Context) ([]OwnedRuleReceipt, State, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.awsAware {
+		return r.ownedAWSAwareArtifacts(ctx)
+	}
 	rules, state, err := r.readIPMasqOwnedRules(ctx)
 	if err != nil {
 		return nil, state, err
@@ -255,7 +267,17 @@ func blockedAdapter(err error) (ComponentStatus, error) {
 }
 
 func (r *Reconciler) readIPMasqOwnedRules(ctx context.Context) ([]ownedRule, State, error) {
+	if r.awsAware {
+		if err := operationContextErr(ctx); err != nil {
+			return nil, StateBlocked, err
+		}
+	}
 	listing, err := r.runNFT(ctx, "-a", "list", "chain", "ip", ipMasqTable, ipMasqChain)
+	if r.awsAware {
+		if expired := operationContextErr(ctx); expired != nil {
+			return nil, StateBlocked, expired
+		}
+	}
 	if err != nil {
 		if exactChainAbsent(err) {
 			return nil, StateNotApplicable, nil
@@ -326,6 +348,11 @@ func parseOwnedRules(listing string) ([]ownedRule, error) {
 }
 
 func (r *Reconciler) deleteIPMasqRule(ctx context.Context, handle uint64) error {
+	if r.awsAware {
+		if err := operationContextErr(ctx); err != nil {
+			return err
+		}
+	}
 	_, err := r.runNFT(ctx, "delete", "rule", "ip", ipMasqTable, ipMasqChain, "handle", strconv.FormatUint(handle, 10))
 	return err
 }

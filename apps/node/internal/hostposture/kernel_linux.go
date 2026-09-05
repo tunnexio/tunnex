@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 )
@@ -70,6 +71,8 @@ type LinuxKernel struct {
 	deleteLink   func(context.Context, int) error
 }
 
+const cniCleanupOperationTimeout = k8snetprep.CNIOperationBudget
+
 func NewLinuxKernel(procSys string, runner CommandRunner) (*LinuxKernel, error) {
 	procSys = filepath.Clean(procSys)
 	if !filepath.IsAbs(procSys) || procSys == string(filepath.Separator) {
@@ -118,7 +121,8 @@ func (k *LinuxKernel) CaptureBaseline(ctx context.Context, stagingName string) (
 			return nil, fmt.Errorf("ambiguous pre-Tunnex nft table %s/%s", table.Family, table.Name)
 		}
 	}
-	owned, state, err := k.cniReconciler().OwnedArtifacts(ctx)
+	// Every new epoch is schema 3; its baseline must census both namespaces.
+	owned, state, err := k.cniReconciler(k8snetprep.ScopeIPMasqAndAWS).OwnedArtifacts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("observe pre-Tunnex CNI ownership: %w", err)
 	}
@@ -431,8 +435,17 @@ func (k *LinuxKernel) RestoreAndCleanup(ctx context.Context, journal *Journal) e
 	if err := k.refuseUnexpectedWireGuardCandidates(ctx, journal.Artifacts.WireGuard); err != nil {
 		return err
 	}
-	if _, err := k.cniReconciler().Withdraw(ctx); err != nil {
+	scope, err := journalCNIScope(journal.SchemaVersion)
+	if err != nil {
+		return err
+	}
+	cniCtx, cancelCNI := context.WithTimeout(ctx, cniCleanupOperationTimeout)
+	defer cancelCNI()
+	if _, err := k.cniReconciler(scope).Withdraw(cniCtx); err != nil {
 		return fmt.Errorf("withdraw exact journaled CNI artifacts: %w", err)
+	}
+	if err := cniCtx.Err(); err != nil {
+		return fmt.Errorf("journaled CNI cleanup exceeded its operation budget: %w", err)
 	}
 	if err := k.cleanupDockerRules(ctx); err != nil {
 		return err
@@ -735,9 +748,31 @@ func commandAbsent(err error, needles ...string) bool {
 	return false
 }
 
-func (k *LinuxKernel) cniReconciler() *k8snetprep.Reconciler {
-	return k8snetprep.New(DefaultWireGuardIface, func(ctx context.Context, args ...string) (string, error) {
-		return k.runner.Run(ctx, "nft", args...)
+func (k *LinuxKernel) cniReconciler(scope k8snetprep.AuthorityScope) *k8snetprep.Reconciler {
+	nft := func(ctx context.Context, args ...string) (string, error) {
+		// Preserve legacy parsing/ownership while making its manager-owned CNI
+		// operation respect cancellation even with an inspection runner that
+		// returns late without observing its context.
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		out, err := k.runner.Run(ctx, "nft", args...)
+		if contextErr := ctx.Err(); contextErr != nil {
+			return "", contextErr
+		}
+		return out, err
+	}
+	if scope == k8snetprep.ScopeIPMasqOnly {
+		// Historical epochs must not even census the newly registered namespace
+		// during cleanup. Their exact receipt remains the old adapter's contract.
+		return k8snetprep.New(DefaultWireGuardIface, nft)
+	}
+	return k8snetprep.NewWithAWS(DefaultWireGuardIface, nft, func(ctx context.Context, args ...string) (string, error) {
+		return k.runner.Run(ctx, "iptables-nft-save", args...)
+	}, func(context.Context) (k8snetprep.AuthorityGrant, func(), error) {
+		// The manager already holds the node-local operation lock. Authority is
+		// the validated durable journal, never this process's public heartbeat.
+		return k8snetprep.AuthorityGrant{Scope: scope, NotAfter: time.Now().Add(cniCleanupOperationTimeout)}, func() {}, nil
 	})
 }
 

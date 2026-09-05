@@ -21,6 +21,9 @@ type journalStore interface {
 	LoadJournal() (Journal, error)
 	SaveJournal(Journal) error
 	SaveHeartbeat(Heartbeat) error
+	SaveCNIAuthority(CNIAuthority) error
+	RevokeCNIAuthority() error
+	AcquireCNIOperationLock(context.Context) (func(), error)
 }
 
 type Config struct {
@@ -91,6 +94,18 @@ func (m *Manager) Run(ctx context.Context) error {
 func (m *Manager) ReconcileOnce(ctx context.Context) error {
 	now := m.now().UTC()
 	owners, sourceErr := m.source.List(ctx, m.config.NodeName, m.config.MaxOwners)
+	// API waits deliberately do not hold this lock. It serializes only the
+	// manager's state/kernel transitions with a gateway's CNI operation.
+	release, err := m.store.AcquireCNIOperationLock(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire host-posture CNI transition lock: %w", err)
+	}
+	defer release()
+	// Revocation must be durable before even a retained-epoch transition. If it
+	// fails, no journal/kernel changes or replacement admission can be made.
+	if err := m.store.RevokeCNIAuthority(); err != nil {
+		return fmt.Errorf("revoke CNI authority before host transition: %w", err)
+	}
 	journal, loadErr := m.store.LoadJournal()
 	haveJournal := loadErr == nil
 	if loadErr != nil && !errors.Is(loadErr, ErrNoJournal) {
@@ -180,11 +195,11 @@ func (m *Manager) ReconcileOnce(ctx context.Context) error {
 		if err := m.kernel.Enforce(ctx, journal); err != nil {
 			return m.block(now, owners, fmt.Errorf("enforce active host posture: %w", err))
 		}
-		return m.heartbeat(now, HeartbeatActive, owners, "")
+		return m.heartbeat(now, HeartbeatActive, owners, "", &journal)
 	}
 
 	if !haveJournal || journal.State == StateRestored {
-		return m.heartbeat(now, HeartbeatIdle, nil, "")
+		return m.heartbeat(now, HeartbeatIdle, nil, "", nil)
 	}
 	if len(journal.Owners) != 0 {
 		journal.Owners = nil
@@ -217,7 +232,7 @@ func (m *Manager) finishRestore(ctx context.Context, journal *Journal, now time.
 	if err := m.store.SaveJournal(*journal); err != nil {
 		return m.block(now, nil, fmt.Errorf("persist restored host posture: %w", err))
 	}
-	return m.heartbeat(now, HeartbeatIdle, nil, "")
+	return m.heartbeat(now, HeartbeatIdle, nil, "", nil)
 }
 
 func (m *Manager) prepare(ctx context.Context, journal *Journal, now time.Time) error {
@@ -238,16 +253,16 @@ func ownerFallback(journal Journal, have bool) []Owner {
 }
 
 func (m *Manager) block(now time.Time, owners []Owner, err error) error {
-	heartbeatErr := m.heartbeat(now, HeartbeatBlocked, owners, boundedReason(err.Error()))
+	heartbeatErr := m.heartbeat(now, HeartbeatBlocked, owners, boundedReason(err.Error()), nil)
 	if heartbeatErr != nil {
 		return errors.Join(err, heartbeatErr)
 	}
 	return err
 }
 
-func (m *Manager) heartbeat(now time.Time, state string, owners []Owner, reason string) error {
+func (m *Manager) heartbeat(now time.Time, state string, owners []Owner, reason string, journal *Journal) error {
 	m.seq++
-	return m.store.SaveHeartbeat(Heartbeat{
+	heartbeat := Heartbeat{
 		SchemaVersion: HeartbeatSchemaVersion,
 		Contract:      Contract,
 		NodeName:      m.config.NodeName,
@@ -258,5 +273,19 @@ func (m *Manager) heartbeat(now time.Time, state string, owners []Owner, reason 
 		Owners:        canonicalOwners(owners),
 		ObservedAt:    now,
 		Reason:        boundedReason(reason),
-	})
+	}
+	if err := m.store.SaveHeartbeat(heartbeat); err != nil {
+		return err
+	}
+	if state != HeartbeatActive {
+		return nil
+	}
+	if journal == nil {
+		return fmt.Errorf("CNI authority requires a durable active journal")
+	}
+	authority, err := authorityForHeartbeat(heartbeat, *journal)
+	if err != nil {
+		return err
+	}
+	return m.store.SaveCNIAuthority(authority)
 }

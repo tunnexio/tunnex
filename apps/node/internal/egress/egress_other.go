@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
+	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
@@ -24,6 +25,9 @@ func (m *Manager) K8sNetPrepReady() bool { return false }
 
 // SetKubernetesMode is a no-op off Linux; readiness remains fail-closed there.
 func (m *Manager) SetKubernetesMode(bool) {}
+
+// SetKubernetesCNIAuthority cannot enable a non-Linux gateway data plane.
+func (m *Manager) SetKubernetesCNIAuthority(k8snetprep.AuthorityGuard) {}
 
 // ReconcileK8sNetPrep fails closed off Linux; the gateway data plane is Linux-only.
 func (m *Manager) ReconcileK8sNetPrep(context.Context) error {
