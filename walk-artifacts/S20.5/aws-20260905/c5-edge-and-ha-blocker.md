@@ -38,3 +38,25 @@ at 16:25:00. This is diagnostic evidence, not a proven root cause.
 
 No authority was forced, no database row edited, and no networking repair or
 remedial restart was used. HA and subsequent dependent legs remain blocked.
+
+## Narrower runtime refusal
+
+A3 logs at 16:27:41.716451457 and 16:28:07.318132099 report
+`ownership full-domain readback mismatch: wg_peers` during
+`desired_state_push`. B2 acknowledged authority revisions 1, 2, 3 and 5;
+A3 had acknowledged none at the corresponding read. This distinguishes the
+node's initial apply/readback failure from the subsequent CP version-binding
+failure; neither is safely fixed by disabling exact ownership checks.
+
+A read-only kernel peer enumeration showed the current desktop peer with
+`10.99.0.2/32` and the edge peer with empty AllowedIPs. No IPv6 pool row exists
+in the CP database. A later kernel snapshot alone cannot prove the expected
+peer set at the instant of refusal.
+
+Diagnostic boundary: a standalone GET-only executable was copied into
+`/tmp/s205-peer-readback-Rsc3W7/peer-readback` in the A3 container. It uses the
+existing in-container mTLS credentials without exporting them and prints only
+public peer keys/prefixes, version and authority metadata. It does not replace
+or alter the Tunnex binary, chart, identity, network state, or database. It is
+diagnostic work, not additional acceptance credit. The temporary executable
+is retained; no cleanup was performed.
