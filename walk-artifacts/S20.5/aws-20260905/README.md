@@ -309,6 +309,50 @@ authoritative DNS/TLS, red API gates and earlier held decisions remain open.
 Exact pushed `ac7d92e82eb88c167d356c02be0bfe14a8b230df` has zero check runs
 and zero workflow runs. No PR was raised and no required exact-final CI passed.
 
+## Live event 6 — user-directed demo retirement frees compute
+
+The user explicitly directed retaining the CP and removing other non-walk
+machines, then finalizing the compatibility fix. Exact targets were shown
+before mutation and revalidated by account, VPC, instance role and root volume.
+The first read-only guard contained a mistyped VPC and refused; no mutation
+ran under that failed guard. The corrected exact guard preceded graceful stop.
+
+Both old hosts stopped normally, and private encrypted snapshots completed
+before their exact termination calls. AWS returned `terminated` for both:
+
+| Removed instance | Role | Deleted root volume | Completed recovery snapshot |
+|---|---|---|---|
+| `i-09e94cd620b7cde0e` | old demo gateway | `vol-0b818564ba3ea911e` | `snap-0d249c993ab1cd583` (12 GiB) |
+| `i-0e2df49c1bbfecc73` | old private Nginx | `vol-0a179ae250dd86e1c` | `snap-08af53773c7ee20fc` (8 GiB) |
+
+The disks are recoverable through those retained snapshots; removed instance
+identities cannot be restored. The old demo VPN/private-Nginx path intentionally
+no longer serves traffic. CP `i-019a97f67dd40ce13` and task EKS worker
+`i-0afe3c3ecd00d1411` were excluded and remain the intended running topology.
+No default-VPC routes, DNS records, CP data, or shared security group was deleted.
+Snapshot storage continues to bill; no public snapshot sharing was requested.
+
+The retained CP's exact stale operator SSH `/32` rule was changed to the freshly
+verified laptop `/32`; all other rules were preserved. Strict SSH then succeeded.
+Ordinary trusted HTTPS health succeeds at `https://cp.13.206.39.40.sslip.io`.
+Read-only CP evidence reports v0.1.20/source `1119bd93c728b47d47f9e8cc9ffd75db6b903d75`,
+clean schema 129, approximately 2.9 GiB available RAM and 15 GiB free root space.
+Candidate migrations will not be silently applied to that retained database.
+
+Current quota remains 8. With the old hosts removed, CP plus one worker use 4
+vCPU; worker B and a later same-AZ spare can fit within 8 without waiting for 16.
+No additional worker, candidate CP stack, gateway, CSI driver, or load balancer
+has been created by this event.
+
+Local source qualification continues separately. The complete first node gate
+passed every non-CNI package but failed the new CNI tests because their external
+walk-artifact fixture path was unavailable in the normal module-only test mount.
+Package-local immutable fixtures correct that harness dependency. Real runtime
+tool evidence also exposed the 1.0.4 `xt:null` versus 1.0.9 exact typed `xt`
+format difference; both encodings must be proven without accepting unknown
+semantics. See `cni-real-tool-witness.md` and the `runtime-alpine-*` snapshots.
+Neither correction is a live VPN pass; full rerun and candidate wire proof remain.
+
 ## Acceptance ledger
 
 | Stage/leg | Result | Remaining proof |
