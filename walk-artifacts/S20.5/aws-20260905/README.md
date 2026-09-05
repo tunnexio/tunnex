@@ -1,11 +1,22 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
-Status: **three-worker EKS ready; CNI source repair and full node gate passed;
-six candidate images published privately; CSI/LBC prerequisites deployed;
-retained CP upgraded with valid Scale license verified; four Tunnex chart
-publications newly authorized and in progress, digest/pull proof pending;
-0/11 product legs passed.**
+Status: **three-worker EKS ready; retained CP uses its verified valid Scale
+license; six immutable candidate images and four chart OCI pull proofs complete.
+Legs 0 and 1 passed for candidate `d2c9cba`; Leg 2 failed on runtime CNI startup
+admission. The scoped LBC discovery-permission correction is deployed, but
+fresh reconciliation is not yet proven. C5 source correction is under node
+gate and independent review. Historical progress: 2/11; no final-candidate
+or overall walk acceptance.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
+
+Latest detailed evidence:
+
+- [Candidate provenance, clean baseline and read-only plan](candidate-provenance-leg0-leg1.md).
+- [First gateway failure and scoped controller correction](gateway-a-first-install-failure.md).
+
+A new immutable candidate must re-earn the affected baseline, plan and live
+installation proofs. Earlier image or gate results are not inherited as green.
+The chronological entries below retain their original observed state.
 
 ## Authority and subject
 

@@ -228,6 +228,19 @@ func main() {
 			return
 		}
 		egressMgr.SetKubernetesCNIAuthority(guard)
+		// Init and runtime must independently earn two advancing observations.
+		// Starting mandatory ownership withdrawal after only one observation
+		// exits before the regular reconciliation loops can ever earn the next.
+		// Keep sampling across slow startup fetches; this never caches a grant.
+		admitted := startKubernetesCNIAuthorityObserver(ctx, guard, k8sNetPrepPollInterval, logger)
+		select {
+		case <-ctx.Done():
+			return
+		case <-admitted:
+			if ctx.Err() != nil {
+				return
+			}
+		}
 	}
 	// The FQDN baseline survives agent restarts. A missing/corrupt file does
 	// not silently become an empty generation: egress performs its documented
