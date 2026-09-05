@@ -156,6 +156,52 @@ Resources:
       CidrIp: !Ref GatewayClientCIDR
       Description: S20.5 B2 NodePort from exact walk client only.
 
+  WorkerEdgeFromClient:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 31083
+      ToPort: 31083
+      CidrIp: !Ref GatewayClientCIDR
+      Description: S20.5 entry gateway from exact walk client.
+  WorkerAFromEdge:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 31081
+      ToPort: 31081
+      CidrIp: 65.2.179.105/32
+      Description: S20.5 entry gateway to A3 peer.
+  WorkerBFromEdge:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 31082
+      ToPort: 31082
+      CidrIp: 65.2.179.105/32
+      Description: S20.5 entry gateway to B2 peer.
+  WorkerEdgeFromA:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 31083
+      ToPort: 31083
+      CidrIp: 13.234.118.111/32
+      Description: S20.5 A3 to entry gateway peer.
+  WorkerEdgeFromB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 31083
+      ToPort: 31083
+      CidrIp: 13.206.207.103/32
+      Description: S20.5 B2 to entry gateway peer.
+
   LoadBalancerControllerRole:
     Type: AWS::IAM::Role
     Properties:
