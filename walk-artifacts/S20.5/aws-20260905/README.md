@@ -13,8 +13,10 @@ The separate B native install reached an AWS account-level CreateLoadBalancer
 `OperationNotPermitted` refusal (contact AWS Support), not IAM denial.
 User explicitly skipped NLB qualification. Native NodePort replacements A3/B2
 both installed successfully, 1/1 Ready, zero restarts, exact C5 agent versions;
-bootstrap metadata is removed. Detailed phase chronology, private-service
-client traffic and the remaining lifecycle/HA proofs are pending.
+bootstrap metadata is removed. Direct-A3 private-service VIP/FQDN client traffic
+passed. A separate entry gateway installed on the existing third worker, but
+switching to that primary exposed a base-authority mismatch and fresh traffic
+timed out. HA and the remaining lifecycle proofs are pending.
 Historical fully evidenced progress: 2/11; no final-candidate
 or overall walk acceptance.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
@@ -26,6 +28,8 @@ Latest detailed evidence:
 - [C5 publication, licensed CP, and fresh plan](c5-publication-cp-and-plan.md).
 - [C5 live admission, A2 IAM correction, and retry refusal](c5-a2-runtime-and-iam.md).
 - [User-approved NodePort transition and two successful installs](c5-nodeport-transition.md).
+- [Dashboard service setup and real client traffic](c5-dashboard-service-and-client.md).
+- [Third-worker entry gateway and live HA blocker](c5-edge-and-ha-blocker.md).
 
 A new immutable candidate must re-earn the affected baseline, plan and live
 installation proofs. Earlier image or gate results are not inherited as green.
