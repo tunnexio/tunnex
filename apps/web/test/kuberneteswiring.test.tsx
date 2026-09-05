@@ -172,6 +172,14 @@ describe("health-kind mirror census — WF-S11-7's own check", () => {
 });
 
 describe("Kubernetes — wiring", () => {
+  it("opens a cluster's filtered services from its detail panel", async () => {
+    withAuth(<Kubernetes />, "/kubernetes?section=clusters&cluster=c1");
+    fireEvent.click(await screen.findByRole("button", { name: "View services →" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect((screen.getByRole("combobox", { name: "Filter services by cluster" }) as HTMLSelectElement).value).toBe("c1");
+    expect(screen.getByRole("table", { name: "Exposed Kubernetes Services" })).toBeTruthy();
+  });
+
   it("names an unassigned connector instead of implying a same-site gateway can serve the cluster", async () => {
     withAuth(<Kubernetes />);
 

@@ -15,7 +15,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       </header>
 
       {/* ── CENTERED CARD CONTAINER ──────────────────────────────────────────── */}
-      <main className="w-full max-w-[440px] rounded-2xl border border-white/[0.08] bg-[#121215]/95 p-8 shadow-2xl shadow-black/80 backdrop-blur-xl">
+      <main className="w-full max-w-[440px] tnx-card-surface p-8">
         {children}
       </main>
 

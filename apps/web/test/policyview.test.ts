@@ -1526,7 +1526,7 @@ describe("srcGroupEmptyWarn — the fourth warn kind, admitted by the test that 
     // A warn kind that only ever fires cannot be told from a constant.
     expect(srcGroupEmptyWarn(0)).toBe("empty");
     expect(srcGroupEmptyWarn(3)).toBe("populated");
-    expect(srcGroupEmptyBadge(srcGroupEmptyWarn(0))).toBe("SOURCE GROUP EMPTY");
+    expect(srcGroupEmptyBadge(srcGroupEmptyWarn(0))).toBe("Source group empty");
     expect(srcGroupEmptyBadge(srcGroupEmptyWarn(3))).toBeNull();
   });
 

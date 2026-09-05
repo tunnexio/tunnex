@@ -89,14 +89,15 @@ describe("Access Resources port scope", () => {
     expect(vi.mocked(api.POST).mock.calls[1][1]).toMatchObject({ body: { protocol: "tcp", port_low: 443, port_high: 445 } });
   });
 
-  it("prefills All, Single, and Range exactly, delays port validation until touch, and labels absent description honestly", async () => {
+  it("prefills All, Single, and Range exactly, delays port validation until touch, and omits empty description filler", async () => {
     resources = [
       { id: "all", name: "All", cidr: "10.0.0.0/24", protocol: "tcp", port_low: null, port_high: null, label: null },
       { id: "one", name: "One", cidr: "10.0.1.0/24", protocol: "udp", port_low: 53, port_high: null, label: "DNS" },
       { id: "range", name: "Range", cidr: "10.0.2.0/24", protocol: "tcp", port_low: 443, port_high: 445, label: "" },
     ];
     renderPage();
-    await screen.findAllByText("No description");
+    await screen.findByRole("button", { name: "All" });
+    expect(screen.queryByText("No description")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect((screen.getByLabelText("Port scope") as HTMLSelectElement).value).toBe("all");
     expect(screen.queryByText(/Use whole ports/)).toBeNull();

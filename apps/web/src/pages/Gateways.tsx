@@ -1,3 +1,4 @@
+import "../network-workspaces.css";
 import { useEffect, useMemo, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -155,7 +156,7 @@ export default function GatewaysPage() {
       header: "Runtime",
       cell: (row: GatewayRow) => (
         <span className="flex flex-col gap-0.5">
-          <span className="font-mono text-cell text-ink-body">
+          <span className="font-sans text-cell text-ink-body">
             {row.agentVersion || "Not reported"}
           </span>
           <span className="text-micro text-ink-faint" data-volatile>
@@ -176,9 +177,9 @@ export default function GatewaysPage() {
         <Link
           to={`/gateways/${row.id}`}
           aria-label={`Open details for ${row.name}`}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-lg text-ink-tertiary hover:bg-white/[.06] hover:text-ink-heading focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+          className="inline-flex min-h-8 items-center justify-center gap-1 rounded-md px-2 text-sm text-ink-tertiary hover:bg-white/[.06] hover:text-ink-heading focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
         >
-          <span aria-hidden="true">›</span>
+          Open <span aria-hidden="true">→</span>
         </Link>
       ),
     },
@@ -188,15 +189,15 @@ export default function GatewaysPage() {
   const closeEnrollment = () => setParam("enroll", "", "");
 
   return (
-    <div className="space-y-4">
+    <div className="network-management space-y-6">
       <PageHeader
         title="Gateways"
-        subtitle="Enroll, inspect, and safely retire the gateways carrying private traffic."
+        subtitle={org?.name || "Your network infrastructure"}
         actions={
           canEnroll ? (
-            <Button onClick={openEnrollment} disabled={ceilingReached}>
+            <div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link><Button onClick={openEnrollment} disabled={ceilingReached}>
               Enroll gateway
-            </Button>
+            </Button></div>
           ) : undefined
         }
       />
@@ -221,7 +222,7 @@ export default function GatewaysPage() {
       {state.kind === "ready" && (
         <>
           <section className="tnx-card-surface overflow-hidden">
-            <div className="flex min-w-0 flex-col gap-3 border-b border-white/[.08] p-3">
+            <div className="network-inventory-toolbar">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <input
                   aria-label="Search gateways"
@@ -262,7 +263,7 @@ export default function GatewaysPage() {
               <div
                 role="group"
                 aria-label="Filter gateway health"
-                className="flex w-fit max-w-full overflow-x-auto rounded-md border border-white/10 bg-black/20 p-0.5"
+                className="network-filter-tabs"
               >
                 {(
                   [
@@ -280,7 +281,7 @@ export default function GatewaysPage() {
                     className={
                       "whitespace-nowrap rounded px-3 py-1.5 text-micro font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 " +
                       (filter === value
-                        ? "bg-white text-black shadow-sm"
+                        ? "network-filter-active"
                         : "text-ink-tertiary hover:bg-white/[.05] hover:text-ink-heading")
                     }
                   >

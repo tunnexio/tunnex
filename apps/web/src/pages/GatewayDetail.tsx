@@ -1,3 +1,4 @@
+import "../network-workspaces.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -146,7 +147,7 @@ export default function GatewayDetail() {
   if (state.kind === "error") return <LoadRetry error={state.error ?? "Could not load gateways."} onRetry={reload} />;
   if (!node || !row) {
     return (
-      <div className="space-y-5">
+      <div className="network-management space-y-6">
         <PageHeader title="Gateway not found" subtitle="The authoritative Gateway inventory does not contain this identifier." />
         <Card><EmptyState action={<Link className="text-accent-400 hover:underline" to="/gateways">Return to Gateways</Link>}>It may have been deleted or belong to another organization.</EmptyState></Card>
       </div>
@@ -167,7 +168,7 @@ export default function GatewayDetail() {
   const canDeleteRevoked = node.status === "revoked" && canManage;
 
   return (
-    <div className="space-y-5">
+    <div className="network-management space-y-6">
       <Link className="inline-flex text-cell text-ink-tertiary hover:text-ink-heading" to="/gateways">← Gateway inventory</Link>
       <PageHeader
         title={node.name}

@@ -5,7 +5,7 @@ import { MANAGED_BADGE } from "../lib/k8sview";
 // string). Renders inline; safe to place inside a heading or a row label.
 export function ManagedBadge() {
   return (
-    <span className="ml-2 rounded-sm bg-sky-500/15 px-1.5 py-0.5 align-middle text-[10px] font-medium text-sky-300">
+    <span className="tnx-status tnx-status-metadata">
       {MANAGED_BADGE}
     </span>
   );

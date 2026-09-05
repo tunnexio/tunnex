@@ -93,7 +93,8 @@ describe("released /agents route absence boundary", () => {
     const { default: AgentsIndex } = await import("../src/pages/AgentsIndex");
     render(createElement(AgentsIndex, { fixture: { state: { kind: "ready", page: { items: [] }, canEnroll: false, canManageMCP: false } } }));
 
-    expect(await screen.findByText("0 in this result")).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "Agent result summary" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Agent result summary" }).textContent).toContain("Current results0");
     expect(screen.queryByText("Environment")).toBeNull();
     expect(screen.queryByText("Runtime")).toBeNull();
     expect(screen.queryByRole("button", { name: "Suspend" })).toBeNull();

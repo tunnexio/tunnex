@@ -1,3 +1,4 @@
+import NetworkSetup from "./pages/NetworkSetup";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { PRODUCT_NAME } from "./brand";
@@ -169,6 +170,7 @@ function ProductApp() {
             <Route path="/devices" element={<Devices />} />
             <Route path="/devices/approvals" element={<DeviceApprovals />} />
             <Route path="/devices/posture" element={<DevicePosture />} />
+            <Route path="/network/setup" element={<NetworkSetup />} />
             <Route path="/gateways" element={<Gateways />} />
             <Route path="/gateways/:gatewayId" element={<GatewayDetail />} />
             <Route path="/sites" element={<Sites />} />

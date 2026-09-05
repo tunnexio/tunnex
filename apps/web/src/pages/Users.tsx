@@ -57,6 +57,9 @@ import {
   rosterShape,
 } from "../lib/usersview";
 
+import "../network-workspaces.css";
+import "../users-workspace.css";
+
 const ROLES: Role[] = ["owner", "admin", "member"];
 const selectCls =
   "rounded-md border border-white/10 bg-ink-900 px-2 py-1 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 disabled:opacity-50";
@@ -387,7 +390,7 @@ export default function Users() {
   }
 
   return (
-    <div>
+    <div className="network-management users-workspace">
       <PageHeader
         title="Users & Roles"
         subtitle={
@@ -405,14 +408,14 @@ export default function Users() {
 
       <section
         aria-labelledby="access-posture-heading"
-        className="mt-4 flex min-h-16 flex-wrap items-center gap-x-7 gap-y-3 border-y border-white/10 py-3"
+        className="tnx-card-surface users-summary"
       >
         <h2 id="access-posture-heading" className="sr-only">Access posture</h2>
-        <div className="flex items-baseline gap-2 border-r border-white/10 pr-7">
+        <div className="users-total">
           <span className="text-2xl font-semibold tabular-nums text-ink-heading">
             {members.length}
           </span>
-          <span className="text-xs font-medium uppercase tracking-[0.12em] text-ink-tertiary">
+          <span className="text-xs text-ink-secondary">
             people
           </span>
           {members.some((m) => m.status === "deactivated") && (
@@ -426,14 +429,14 @@ export default function Users() {
           {roleDistribution(members).map((t) => (
             <div key={t.role} className="flex items-baseline gap-2">
               <dd className="text-lg font-semibold tabular-nums text-ink-heading">{t.n}</dd>
-              <dt className="text-[10px] uppercase tracking-[0.12em] text-ink-tertiary">
+              <dt className="text-xs capitalize text-ink-secondary">
                 {t.role}{t.n === 1 ? "" : "s"}
               </dt>
               <span className="sr-only">{roleTallyLabel(t)}</span>
             </div>
           ))}
         </dl>
-        <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-ink-tertiary">
+        <div className="users-context">
           <span>
             <span className="font-medium text-ink-secondary">Groups</span>{" "}
             {groupAccess.kind === "edges"
@@ -453,7 +456,7 @@ export default function Users() {
       {/* S14.3 slice A: a real <table>. The roster is tabular — person, role, state, actions per row — and as
           <li> blocks the tier could only find a member by matching their email as free text. The role control
           and the action buttons keep their own accessible names, so they stay queryable INSIDE a cell. */}
-      <div className="mt-5">
+      <div className="users-content">
         {/* ⛔ ONE FILTER, AND IT IS THE TABLE'S NOW. The page carried a separate "Filter members" field
             floating above the roster in its own box — disconnected from the thing it narrowed, and a second
             search input the moment the table grew one.
@@ -462,6 +465,11 @@ export default function Users() {
             table's search runs over every column's `sortValue`, which is those three PLUS state — so
             "deactivated" now finds the deactivated members, which the old box could not. Swapping to the
             weaker control to preserve a helper would have been keeping the test, not the capability. */}
+        <div className="tnx-card-surface users-inventory">
+          <div className="users-inventory-heading">
+            <h2>People</h2>
+            <span>{anyRowHasAction ? "Select people to manage their accounts" : "Organization members"}</span>
+          </div>
         <DataTable
           caption="Members"
           selectionBar="active"
@@ -586,7 +594,7 @@ export default function Users() {
                       LESS representative than the double. The inverse of S14.10, where the double was more
                       permissive than the substrate; the lesson is the same one from the other side. */}
                     {primary !== m.email && (
-                      <span className="break-all font-mono text-[11px] text-slate-500">
+                      <span className="break-all font-sans text-xs text-ink-secondary">
                         {m.email}
                       </span>
                     )}
@@ -601,11 +609,14 @@ export default function Users() {
                 m.status === "deactivated" ? "deactivated" : "active",
               cell: (m) => (
                 <>
+                  {m.status === "active" && m.email_verified && (
+                    <span className="tnx-status text-ok">Active</span>
+                  )}
                   {m.status === "deactivated" && (
-                    <span className="text-xs text-warn">deactivated</span>
+                    <span className="tnx-status text-warn">Deactivated</span>
                   )}
                   {!m.email_verified && m.status === "active" && (
-                    <span className="text-xs text-slate-600">unverified</span>
+                    <span className="tnx-status text-warn">Email unverified</span>
                   )}
                 </>
               ),
@@ -662,13 +673,13 @@ export default function Users() {
                 );
                 if (!canManage || assignable.length === 0)
                   return (
-                    <span className="text-xs uppercase tracking-wide text-slate-400">
+                    <span className="text-xs capitalize text-ink-secondary">
                       {m.role}
                     </span>
                   );
                 return (
                   <select
-                    className={selectCls}
+                    className={`${selectCls} users-role-select`}
                     aria-label={`Role for ${m.email}`}
                     value={m.role}
                     disabled={isSoleOwner(m)}
@@ -690,6 +701,16 @@ export default function Users() {
             },
           ]}
         />
+
+        </div>
+        <details className="users-role-guide">
+          <summary>Understand roles <span aria-hidden="true">＋</span></summary>
+          <div className="users-role-grid">
+            <div><h3>Owner</h3><p>Manages the organization and its members, including other owners.</p></div>
+            <div><h3>Admin</h3><p>Manages members and configuration. Cannot manage or appoint owners.</p></div>
+            <div><h3>Member</h3><p>Uses access granted by policy. Cannot manage organization membership.</p></div>
+          </div>
+        </details>
 
         {/* ⚠ CONTEXT, BELOW THE SUBJECT, AND SIDE BY SIDE — two short cards stacked full-width were a screen
           of scrolling to reach a roster. Columns, so a wider display adds a column rather than stretching
@@ -794,7 +815,7 @@ export default function Users() {
                           return (
                             <span
                               className={
-                                "rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold " +
+                                "tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold " +
                                 (st === "pending"
                                   ? "border-accent-500/40 bg-accent-500/10 text-accent-400"
                                   : st === "expired"

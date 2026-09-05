@@ -1,3 +1,5 @@
+import "../network-workspaces.css";
+import "../devices-workspace.css";
 import { useEffect, useState } from "react";
 import { PostureChecksSection } from "../components/DevicePostureSection";
 import { DevicesTabRail } from "../components/DevicesTabRail";
@@ -23,7 +25,7 @@ export default function DevicePosture() {
     });
     return () => { stale = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
-  return <div className="space-y-5"><PageHeader title="Devices" subtitle="Manage client-reported device checks." /><DevicesTabRail />
+  return <div className="network-management devices-workspace space-y-5"><PageHeader title="Devices" subtitle="Manage client-reported device checks." /><DevicesTabRail />
     {!org || canManage === null ? <Card><Loading label="Checking posture permission…" /></Card> : !canManage ? <Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage device posture.</p><ErrorText>{error}</ErrorText></Card> : <PostureChecksSection orgId={org.id} canManage />}
   </div>;
 }

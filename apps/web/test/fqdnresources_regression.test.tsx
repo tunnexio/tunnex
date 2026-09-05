@@ -50,7 +50,7 @@ describe("FQDN resource regressions", () => {
     expect(await screen.findByRole("heading", { name: "FQDN resources" })).toBeTruthy();
   });
 
-  it("keeps a failed inventory out of the empty state and has one FQDN search control", async () => {
+  it("keeps a failed inventory out of the empty state and hides search for an empty inventory", async () => {
     inventoryError = "inventory down";
     page();
     expect(await screen.findByText(/Could not load FQDN resources: inventory down/)).toBeTruthy();
@@ -58,7 +58,7 @@ describe("FQDN resource regressions", () => {
     inventoryError = "";
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findAllByText(/No FQDN resources yet/);
-    expect(screen.getAllByRole("textbox", { name: "Search FQDN resources" })).toHaveLength(1);
+    expect(screen.queryByRole("textbox", { name: "Search FQDN resources" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Search resources" })).toBeNull();
   });
 

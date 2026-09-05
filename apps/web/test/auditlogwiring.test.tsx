@@ -127,7 +127,7 @@ describe("AuditLog — wiring: paging must use the APPLIED filter set, not the o
     expect(queries.at(-1)?.action).toBeUndefined(); // the initial page: no filters applied
 
     // Edit a filter WITHOUT applying it. This is the mid-edit state the comment warns about.
-    fireEvent.change(screen.getByPlaceholderText("e.g. device.created"), {
+    fireEvent.change(screen.getByRole("combobox", { name: "Action" }), {
       target: { value: "policy.rule_enabled" },
     });
 

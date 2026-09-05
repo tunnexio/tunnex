@@ -1,3 +1,4 @@
+import "../network-workspaces.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
@@ -324,13 +325,13 @@ export default function Sites() {
   );
 
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="network-management flex flex-col gap-6">
       <PageHeader
         title="Sites"
         subtitle={org ? `${org.name}${raw ? ` · ${cards.length} sites` : ""}` : "…"}
         actions={
           view === "body" && gate.canManage ? (
-          <div className="flex items-center gap-2.5">
+          <div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link>
             {unboundGatewayNodes.length > 0 && (
               <Button variant="ghost" onClick={() => setRoutingLan(true)}>
                 Route a LAN
@@ -381,7 +382,7 @@ export default function Sites() {
                      the claim is true here. Over the subnet queue it would not be — those are control-plane
                      rows. */
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full border border-line bg-ink-800 px-2 py-0.5 text-micro text-ink-tertiary">Live topology</span>
+                    <span className="text-micro text-ink-tertiary">Live topology</span>
                     <button type="button" className="rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" aria-expanded={!mapCollapsed} onClick={() => setMapCollapsed((collapsed) => !collapsed)}>
                       {mapCollapsed ? "Expand" : "Collapse"}
                     </button>
@@ -571,8 +572,8 @@ function DNSForwardsPanel({
   onManageSite: (siteId: string) => void;
 }) {
   const columns = [
-    { key: "zone", header: "Zone", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-mono text-ink-body">{row.domain}</span> },
-    { key: "resolver", header: "Resolver", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-mono text-ink-tertiary">{row.resolverIp}</span> },
+    { key: "zone", header: "Zone", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-sans text-ink-body">{row.domain}</span> },
+    { key: "resolver", header: "Resolver", cell: (row: OrgForwardsView["rows"][number]) => <span className="font-sans text-ink-tertiary">{row.resolverIp}</span> },
     { key: "site", header: "Site", cell: (row: OrgForwardsView["rows"][number]) => <span className="text-ink-tertiary">{row.siteName}</span> },
     { key: "status", header: "Status", cell: (row: OrgForwardsView["rows"][number]) => view.conflicts.includes(row.domain) ? <Badge tone="danger">conflict</Badge> : <Badge tone="neutral">configured</Badge> },
     { key: "action", header: "", cell: (row: OrgForwardsView["rows"][number]) => canManage ? <Button variant="ghost" size="sm" onClick={() => onManageSite(row.siteId)}>Manage</Button> : <span className="text-micro text-ink-faint">Read-only</span> },
@@ -794,7 +795,7 @@ function HubSetSection({
                     <span className="font-medium text-ink-body">{nameOf(member.nodeId)}</span>
                     <span><Badge tone="neutral">{member.role}</Badge></span>
                     <span className={member.warm === false ? "text-danger" : member.warm === true ? "text-ok" : "text-ink-tertiary"}>{member.demoted ? "demoted" : member.warm === false ? "stale" : member.warm === true ? "warm" : "unknown"}</span>
-                    <span className="text-right font-mono text-micro text-ink-tertiary">↓{member.rx} ↑{member.tx} · {member.handshakeAge === "n/a" ? "no handshake" : member.handshakeAge}</span>
+                    <span className="text-right font-sans text-micro text-ink-tertiary">↓{member.rx} ↑{member.tx} · {member.handshakeAge === "n/a" ? "no handshake" : member.handshakeAge}</span>
                   </li>
                 ))}
               </ul>
@@ -877,7 +878,7 @@ function SiteOverviewSummary({
   ];
 
   return (
-    <section aria-label="Sites summary" className="grid overflow-hidden rounded-xl border border-line bg-ink-800 sm:grid-cols-2 xl:grid-cols-4">
+    <section aria-label="Sites summary" className="tnx-card-surface network-site-summary grid overflow-hidden sm:grid-cols-2 xl:grid-cols-4">
       {stats.map((stat) => (
         <div key={stat.label} className="min-w-0 border-b border-line px-4 py-3 last:border-b-0 sm:border-r sm:[&:nth-child(2)]:border-r-0 sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:[&:nth-child(2)]:border-r xl:[&:nth-child(4)]:border-r-0">
           <p className="text-micro font-medium uppercase tracking-wide text-ink-tertiary">{stat.label}</p>
@@ -958,7 +959,7 @@ function SiteList({
           type="button"
           aria-pressed={c.id === selectedId}
           onClick={() => onSelect(c.id === selectedId ? null : c.id)}
-          className={`text-left font-mono ${c.id === selectedId ? "text-ink-heading underline" : "text-ink-primary"}`}
+          className={`text-left font-sans ${c.id === selectedId ? "text-ink-heading underline" : "text-ink-primary"}`}
         >
           {c.name}
         </button>
@@ -971,7 +972,7 @@ function SiteList({
         const gw = c.gateways.find((g) => g.status === "active");
         return gw ? (
           <span className="flex items-center gap-1.5">
-            <span className="font-mono text-ink-body">{gw.name}</span>
+            <span className="font-sans text-ink-body">{gw.name}</span>
             {gw.isHub && <Badge tone="neutral">HUB</Badge>}
           </span>
         ) : (
@@ -1015,7 +1016,7 @@ function SiteList({
                     ? "Approved, routed"
                     : "Pending approval, not yet routed"
                 }`}
-                className={`rounded border px-1.5 py-px font-mono text-micro ${
+                className={`rounded border px-1.5 py-px font-sans text-micro ${
                   sn.status === "approved"
                     ? "border-line text-ink-body"
                     : "border-warn/50 text-warn"
@@ -1119,7 +1120,7 @@ function SiteCardView({
             <ul role="list" className="mt-1 max-h-[8.25rem] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
               {card.subnets.map((s) => (
                 <li key={s.id} role="listitem" aria-label={`${s.cidr}: ${s.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="flex min-h-10 items-center gap-2 border-b border-line/70 text-cell last:border-0">
-                  <span className="font-mono text-ink-body">{s.cidr}</span>
+                  <span className="font-sans text-ink-body">{s.cidr}</span>
                   <Badge tone={s.status === "approved" ? "ok" : "warn"}>{s.status === "approved" ? "routed" : "pending"}</Badge>
                   {canManage && <button type="button" className="ml-auto rounded px-2 py-1 text-micro text-ink-tertiary hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35" aria-label={`Remove ${s.cidr}`} onClick={() => setRemoving({ id: s.id, cidr: s.cidr, status: s.status })}>Remove</button>}
                 </li>
@@ -1135,7 +1136,7 @@ function SiteCardView({
           <div className="mt-2 grid gap-2 text-micro sm:grid-cols-2">
             <p><span className="font-medium text-ink-body">Gateway VM:</span> enable IP forwarding. On AWS, disable source/destination checks.</p>
             <p><span className="font-medium text-ink-body">Cloud routes:</span> send remote Site and device-pool CIDRs to this gateway. Update that target when cloud-side HA fails over.</p>
-            <p className="sm:col-span-2 text-ink-faint">Full operator reference: <span className="font-mono">docs/deploy-cloud-gateway.md</span></p>
+            <p className="sm:col-span-2 text-ink-faint">Full operator reference: <span className="font-sans">docs/deploy-cloud-gateway.md</span></p>
           </div>
         </details>
       )}
@@ -1626,7 +1627,7 @@ function RemoveSubnetConfirm({
               withdraws its route from every gateway
             </span>{" "}
             on the next reconcile. Behind-hosts on other sites will no longer
-            reach <span className="font-mono">{subnet.cidr}</span>.
+            reach <span className="font-sans">{subnet.cidr}</span>.
           </>
         ) : (
           <>
@@ -1641,7 +1642,7 @@ function RemoveSubnetConfirm({
             ? "1 DNS forward resolves"
             : `${dependents.length} DNS forwards resolve`}{" "}
           via this subnet and will also be removed:{" "}
-          <span className="font-mono">{dependents.join(", ")}</span>
+          <span className="font-sans">{dependents.join(", ")}</span>
         </p>
       )}
       <ErrorText>{err}</ErrorText>
@@ -1729,7 +1730,7 @@ function DNSForwardSection({
         <ul className="max-h-[7.25rem] space-y-1 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
           {forwards.map((f) => (
             <li key={f.domain} className="flex min-h-9 items-center gap-2 border-b border-line/70 last:border-0">
-              <span className="font-mono text-slate-300">{f.domain}</span>
+              <span className="font-sans text-slate-300">{f.domain}</span>
               <span className="text-slate-500">→ {f.resolver_ip}</span>
               <button
                 type="button"
@@ -2030,7 +2031,7 @@ function PendingQueue({
           <ul className="space-y-1.5 pt-1.5">
         {pending.map((s) => (
           <li key={s.id} className="grid grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_auto] items-center gap-3 rounded-md border border-line bg-ink-800 px-2.5 py-2 text-sm">
-            <span className="font-mono text-slate-200">{s.cidr}</span>
+            <span className="font-sans text-slate-200">{s.cidr}</span>
             <span className="text-ink-tertiary">{siteNames[s.site_id] ?? "Site unavailable"}</span>
             <span className="text-ink-tertiary">Pending · not routed</span>
             <Button

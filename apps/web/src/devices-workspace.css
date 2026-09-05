@@ -1,0 +1,26 @@
+.devices-workspace { display:flex; flex-direction:column; gap:20px; }
+.devices-workspace nav[aria-label="Device sections"] { border-color:var(--tnx-divider); }
+.devices-workspace nav[aria-label="Device sections"] > div { gap:24px; }
+.devices-workspace nav[aria-label="Device sections"] a { padding:12px 2px 16px; font-size:13px; }
+.devices-workspace nav[aria-label="Device sections"] a[aria-current=page] { border-color:var(--tnx-focus); }
+.devices-summary.tnx-card-surface { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding:0!important; }
+.devices-summary > div { padding:20px 24px; display:flex; flex-direction:column; gap:10px; }
+.devices-summary > div + div { border-left:1px solid var(--tnx-divider); }
+.devices-summary > div > span { font-size:12px; color:var(--tnx-text-secondary); }
+.devices-summary strong,.devices-summary a { font-size:26px; font-weight:500; color:var(--tnx-text-heading); }
+.devices-summary a span { font-size:16px; color:var(--tnx-text-secondary); }
+.devices-summary a:hover { text-decoration:underline; text-underline-offset:4px; }
+.devices-filter-row { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; border-bottom:1px solid var(--tnx-divider); margin-bottom:18px; }
+.devices-filters { display:flex; gap:22px; }
+.devices-filters button { border-radius:0; background:none!important; box-shadow:none!important; padding:4px 0 15px; border-bottom:2px solid transparent; font-size:13px; }
+.devices-filters button[aria-pressed=true] { border-bottom-color:var(--tnx-focus); color:var(--tnx-text-heading); }
+.device-open { display:inline-flex; align-items:center; gap:8px; text-align:left; width:fit-content; color:var(--tnx-text-heading); font-size:13px; }
+.device-open span { color:var(--tnx-text-secondary); }
+.device-open:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:3px; }
+.devices-inventory td { vertical-align:middle; }
+.devices-inventory td:nth-child(4) { white-space:nowrap; }
+.device-detail-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 24px; }
+.device-detail-facts > div { padding:16px 0; border-bottom:1px solid var(--tnx-divider); }
+.device-detail-facts dt { color:var(--tnx-text-secondary); font-size:12px; }
+.device-detail-facts dd { color:var(--tnx-text-heading); font-size:14px; margin-top:7px; overflow-wrap:anywhere; }
+@media(max-width:600px) { .devices-summary > div { padding:16px 12px; } .devices-filters { gap:15px; } .device-detail-facts { grid-template-columns:1fr; } }

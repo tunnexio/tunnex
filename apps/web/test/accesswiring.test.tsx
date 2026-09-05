@@ -242,6 +242,8 @@ describe("Access — F06 agent sources are first-class", () => {
     expect((add as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(add);
     const createDialog = screen.getByRole("dialog", { name: "Add rule" });
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Review rule" }));
+    expect(postedBodies).toHaveLength(0);
     const create = within(createDialog).getByRole("button", { name: "Create" });
     expect((create as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(create);
@@ -264,6 +266,7 @@ describe("Access — F06 agent sources are first-class", () => {
     fireEvent.click(select);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const editDialog = screen.getByRole("dialog", { name: "Edit rule" });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "Review rule" }));
     const save = within(editDialog).getByRole("button", { name: "Save" });
     expect((save as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(save);
@@ -329,6 +332,7 @@ describe("Access — FQDN destination status is the server projection", () => {
     fireEvent.focus(screen.getByRole("combobox", { name: "Destination" }));
     fireEvent.click(await screen.findByRole("button", { name: /Orders API/ }));
     expect(screen.getAllByText(/Private DNS access remains fail-closed until this hostname has an active resolver generation/i).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Review rule" }));
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(postedBodies).toHaveLength(1));
     expect(postedBodies[0]).toMatchObject({ dst_kind: "fqdn_resource", dst_fqdn_resource_id: "fqdn-1" });
@@ -352,6 +356,7 @@ describe("Access — FQDN destination status is the server projection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog", { name: "Edit rule" });
     expect(within(dialog).getAllByText(/server resolves and projects generation status after save/i).length).toBeGreaterThan(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review rule" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(postedBodies).toHaveLength(1));

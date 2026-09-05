@@ -18,9 +18,13 @@ import {
   Button,
   DataTable,
   ErrorText,
+  Input,
   Modal,
   PageHeader,
 } from "../components/ui";
+
+import "../network-workspaces.css";
+import "../audit-workspace.css";
 
 const PAGE = 50;
 
@@ -50,7 +54,7 @@ function actionArea(action: string): string {
 function targetLabel(entry: AuditLogEntry): string {
   if (!entry.target_type) return "No target recorded";
   return entry.target_id
-    ? `${entry.target_type} · ${entry.target_id.slice(0, 8)}`
+    ? `${entry.target_type} · ${(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(entry.target_id) ? entry.target_id.slice(0, 8) : entry.target_id)}`
     : entry.target_type;
 }
 
@@ -91,6 +95,7 @@ export default function AuditLog() {
   async function fetchPage(orgId: string, f: Filters, cursor?: AuditLogEntry) {
     const seq = ++reqSeq.current;
     setBusy(true);
+    setError(null);
     const { data, error } = await api.GET(
       "/api/v1/organizations/{orgId}/audit-logs",
       {
@@ -185,6 +190,7 @@ export default function AuditLog() {
     e.preventDefault();
     setError(null);
     setSelected(null);
+    if (filters.from && filters.to && filters.from > filters.to) { setError("Choose an end date on or after the start date."); return; }
     if (org) void fetchPage(org.id, filters); // from the top with the new filters
   }
 
@@ -198,10 +204,11 @@ export default function AuditLog() {
   const actionAreaCount = new Set(entries.map((entry) => actionArea(entry.action))).size;
 
   return (
-    <div>
+    <div className="network-management audit-workspace">
       <PageHeader
         title="Audit log"
-        subtitle={org ? `${org.name} · administrative change history` : "…"}
+        subtitle={org?.name ?? "…"}
+        actions={<Button variant="ghost" disabled={busy || !org} onClick={() => org && void fetchPage(org.id, applied)}>Refresh</Button>}
       />
       {memberScoped && (
         <p className="mt-1 text-sm text-ink-tertiary">
@@ -210,8 +217,8 @@ export default function AuditLog() {
       )}
       <ErrorText>{error}</ErrorText>
 
-      <section className="tnx-card-surface mt-5 overflow-hidden">
-        <div className="grid grid-cols-2 border-b border-line-row sm:grid-cols-4">
+      <section className="tnx-card-surface audit-inventory">
+        <div className="audit-metrics">
           {[
             { label: "Loaded changes", value: entries.length, tone: "text-white" },
             { label: "Human actions", value: humanCount, tone: "text-ink-body" },
@@ -219,16 +226,16 @@ export default function AuditLog() {
             { label: "Attribution gaps", value: gapCount, tone: gapCount > 0 ? "text-warn" : "text-ink-body" },
           ].map((metric) => (
             <div key={metric.label} className="flex min-w-0 items-baseline gap-2 border-b border-line-row px-4 py-2.5 odd:border-r sm:border-b-0 sm:border-r sm:last:border-r-0">
-              <div className={`font-mono text-lg font-semibold tabular-nums ${metric.tone}`}>{metric.value}</div>
+              <div className={`font-sans text-lg font-semibold tabular-nums ${metric.tone}`}>{metric.value}</div>
               <div className="truncate text-micro font-medium uppercase tracking-[0.1em] text-ink-faint">{metric.label}</div>
             </div>
           ))}
         </div>
 
-        <form onSubmit={applyFilters} className="border-b border-line-row px-4 py-2.5">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <form onSubmit={applyFilters} className="audit-filters">
+          <div className="audit-filter-grid">
             <label className="min-w-0 text-sm text-ink-tertiary lg:w-52">
-              <span className="sr-only">Actor</span>
+              <span>Actor</span>
               <select
                 aria-label="Actor"
                 className={`min-h-9 w-full ${selectCls}`}
@@ -246,18 +253,20 @@ export default function AuditLog() {
               </select>
             </label>
             <label className="min-w-0 flex-1 text-sm text-ink-tertiary">
-              <span className="sr-only">Action</span>
+              <span>Action</span>
               <input
                 aria-label="Action"
+                list="audit-action-options"
                 value={filters.action}
                 onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
-                placeholder="e.g. device.created"
+                placeholder="All actions or enter an action key"
                 className="min-h-9 w-full rounded-md border border-white/10 bg-ink-900 px-3 text-sm text-white placeholder:text-ink-faint focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35"
               />
             </label>
+            <datalist id="audit-action-options">{Array.from(new Set(entries.map(entry => entry.action))).sort().map(action => <option key={action} value={action}>{actionLabel(action)}</option>)}</datalist>
             <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
-              <span className="shrink-0 text-micro font-medium uppercase tracking-wide text-ink-faint">From</span>
-              <input
+              <span>From</span>
+              <Input
                 aria-label="From"
                 type="date"
                 className={`min-h-9 min-w-0 ${selectCls}`}
@@ -268,8 +277,8 @@ export default function AuditLog() {
               />
             </label>
             <label className="flex min-w-0 items-center gap-2 text-sm text-ink-tertiary">
-              <span className="shrink-0 text-micro font-medium uppercase tracking-wide text-ink-faint">To</span>
-              <input
+              <span>To</span>
+              <Input
                 aria-label="To"
                 type="date"
                 className={`min-h-9 min-w-0 ${selectCls}`}
@@ -314,7 +323,7 @@ export default function AuditLog() {
         </p>
       )}
 
-      <div className="px-4 py-3">
+      <div className="audit-table">
         {/* ⛔ NO CLIENT PAGER HERE: this page ALREADY pages server-side with a keyset cursor behind
                 "Load more". Two paging controls on one screen disagree — "Load more" appends rows the
                 operator cannot see without advancing a second pager, and the count then describes neither
@@ -341,7 +350,7 @@ export default function AuditLog() {
           caption="Audit events"
           rows={entries}
           rowKey={(a) => a.id}
-          empty="No audit events yet."
+          empty={busy ? "Loading audit events…" : activeFilterCount ? "No audit events match these filters." : "No audit events yet."}
           failed={error != null}
           columns={[
             {
@@ -355,8 +364,8 @@ export default function AuditLog() {
                   onClick={() => setSelected(a)}
                   className="group block min-w-0 text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-white"
                 >
-                  <span className="block text-sm font-medium text-ink-body group-hover:text-white">{actionLabel(a.action)}</span>
-                  <span className="mt-1 block font-mono text-micro text-ink-faint">{a.action}</span>
+                  <span className="block text-sm font-medium text-ink-body group-hover:text-white">{actionLabel(a.action)} <span aria-hidden="true">↗</span></span>
+                  <span className="mt-1 block font-sans text-micro text-ink-faint">{a.action}</span>
                 </button>
               ),
             },
@@ -379,7 +388,7 @@ export default function AuditLog() {
                       (actor.gap
                         ? "text-warn"
                         : actor.kind === "system"
-                          ? "font-mono text-accent-400"
+                          ? "font-sans text-accent-400"
                           : // ⛔ A DEPLOYMENT ADMINISTRATOR DOES NOT READ AS A COLLEAGUE. They acted
                             // inside this tenant from outside it, which is the fact the row exists to
                             // convey — rendering them in the same grey as a member would bury it.
@@ -397,7 +406,7 @@ export default function AuditLog() {
               key: "target",
               header: "Target",
               cell: (a) => (
-                <span className="font-mono text-xs text-ink-tertiary">{targetLabel(a)}</span>
+                <span className="font-sans text-xs text-ink-tertiary">{targetLabel(a)}</span>
               ),
             },
             {
@@ -408,7 +417,7 @@ export default function AuditLog() {
               // as text, and an audit log ordered wrongly by time is worse than one not ordered at all.
               sortValue: (a) => Date.parse(a.created_at),
               cell: (a) => (
-                <span className="whitespace-nowrap font-mono text-xs text-ink-tertiary">{relativeAge(a.created_at)}</span>
+                <span className="whitespace-nowrap font-sans text-xs text-ink-tertiary">{relativeAge(a.created_at)}</span>
               ),
             },
           ]}
@@ -416,7 +425,7 @@ export default function AuditLog() {
       </div>
 
       <div className="flex flex-col gap-2 border-t border-line-row px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="font-mono text-micro text-ink-faint">
+        <span className="font-sans text-micro text-ink-faint">
           {entries.length} loaded · {actionAreaCount} {actionAreaCount === 1 ? "area" : "areas"} · newest first
           {activeFilterCount > 0 ? ` · ${activeFilterCount} active ${activeFilterCount === 1 ? "filter" : "filters"}` : ""}
         </span>
@@ -444,40 +453,40 @@ export default function AuditLog() {
               <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line-row pb-4">
                 <div>
                   <div className="text-lg font-semibold text-white">{actionLabel(selected.action)}</div>
-                  <div className="mt-1 font-mono text-xs text-ink-faint">{selected.action}</div>
+                  <div className="mt-1 font-sans text-xs text-ink-faint">{selected.action}</div>
                 </div>
                 <div className="text-right">
                   <div className={`text-sm font-medium ${actor.gap ? "text-warn" : actor.kind === "system" ? "text-accent-400" : "text-ink-body"}`}>{actor.label}</div>
-                  <div className="mt-1 text-micro uppercase tracking-wide text-ink-faint">{actor.kind.replace("_", " ")}</div>
+                  <div className="mt-1 text-xs text-ink-faint">{actor.kind.replace("_", " ")}</div>
                 </div>
               </div>
 
               <dl className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
-                  <dt className="text-micro font-medium uppercase tracking-[0.12em] text-ink-faint">Target</dt>
-                  <dd className="mt-2 break-all font-mono text-sm text-white">{targetLabel(selected)}</dd>
+                  <dt className="text-xs font-medium text-ink-faint">Target</dt>
+                  <dd className="mt-2 break-all font-sans text-sm text-white">{targetLabel(selected)}</dd>
                 </div>
                 <div className="rounded-md border border-line bg-ink-950 px-4 py-3">
-                  <dt className="text-micro font-medium uppercase tracking-[0.12em] text-ink-faint">Recorded</dt>
-                  <dd className="mt-2 font-mono text-sm text-white">{selected.created_at}</dd>
+                  <dt className="text-xs font-medium text-ink-faint">Recorded</dt>
+                  <dd className="mt-2 font-sans text-sm text-white">{new Date(selected.created_at).toLocaleString()}</dd>
                 </div>
               </dl>
 
-              <section aria-labelledby="audit-details-title">
-                <h3 id="audit-details-title" className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">Recorded details</h3>
+              <details className="audit-evidence"><summary id="audit-details-title">Recorded details & IDs</summary>
+                <dl className="audit-record-ids"><div><dt>Event ID</dt><dd>{selected.id}</dd></div><div><dt>Target ID</dt><dd>{selected.target_id || "Not recorded"}</dd></div><div><dt>Recorded timestamp</dt><dd>{selected.created_at}</dd></div></dl>
                 {details.length === 0 ? (
                   <p className="mt-3 text-sm text-ink-tertiary">No additional details were recorded for this change.</p>
                 ) : (
                   <dl className="mt-3 divide-y divide-line-row rounded-md border border-line">
                     {details.map(([key, value]) => (
                       <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
-                        <dt className="font-mono text-xs text-ink-faint">{key}</dt>
-                        <dd className="break-all whitespace-pre-wrap font-mono text-xs text-ink-body">{detailValue(value)}</dd>
+                        <dt className="font-sans text-xs text-ink-faint">{key}</dt>
+                        <dd className="break-all whitespace-pre-wrap font-sans text-xs text-ink-body">{detailValue(value)}</dd>
                       </div>
                     ))}
                   </dl>
                 )}
-              </section>
+              </details>
 
               {actor.gap && <p className="rounded-md border border-warn/20 bg-warn/[.06] px-3 py-2 text-xs text-warn">{UNATTRIBUTED_NOTE}</p>}
             </div>

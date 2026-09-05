@@ -90,7 +90,7 @@ function inactiveReasonLabel(reason: Candidate["inactive_reason"] | Membership["
 }
 
 function StatePill({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "positive" | "attention" | "danger" | "neutral" }) {
-  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+  return <span className={`inline-flex tnx-status rounded-full border px-2 py-0.5 text-[11px] font-medium ${
     tone === "positive" ? "border-emerald-700/50 bg-emerald-950/50 text-emerald-300" :
       tone === "attention" ? "border-amber-700/50 bg-amber-950/40 text-amber-300" :
         tone === "danger" ? "border-rose-700/50 bg-rose-950/40 text-rose-300" :

@@ -1,3 +1,5 @@
+import "../network-workspaces.css";
+import "../devices-workspace.css";
 import { useEffect, useState, type FormEvent } from "react";
 import { useOrg } from "../lib/useOrg";
 import { QRCodeSVG } from "qrcode.react";
@@ -74,6 +76,8 @@ export default function Devices() {
   const [org, setOrg] = useState<Org | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const inspected = devices.find(device => device.id === inspectedId);
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [devicesLoadError, setDevicesLoadError] = useState<string | null>(null);
   // OWNER sub-line. A SECOND-CLASS read: `Device` serves `user_id` and no email, so the roster supplies the
@@ -347,18 +351,12 @@ export default function Devices() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+    <div className="network-management devices-workspace">
       <div style={{ display: "flex", alignItems: "flex-end", gap: "14px" }}>
         <div style={{ flex: 1 }}>
           <PageHeader
             title="Devices"
-            subtitle={
-              org
-                ? devicesLoading
-                  ? org.name
-                  : `${org.name} · ${counts.all} enrolled${counts.attention ? ` · ${counts.attention} need attention` : ""}`
-                : "…"
-            }
+            subtitle={org?.name ?? "Device inventory"}
           />
         </div>
         {/* ⛔ THE CREATE FORM MOVES INTO A MODAL, matching Add rule. Inline, it was a permanently-open
@@ -375,6 +373,20 @@ export default function Devices() {
         </Button>
       </div>
       <DevicesTabRail />
+      {inspected && <Modal title={inspected.name} size="wide" onDismiss={() => setInspectedId(null)} actions={<Button variant="ghost" onClick={() => setInspectedId(null)}>Close</Button>}>
+        <dl className="device-detail-facts">{[
+          ["Owner", ownerEmail.get(inspected.user_id) ?? "Owner record unavailable"],
+          ["Lifecycle", inspected.status],
+          ["Address", addressLabel(inspected.assigned_ip)],
+          ["Protocol", deviceProtocol(inspected.public_key)],
+          ["Routing", deviceModeLabel(inspected.full_tunnel)],
+          ["Last handshake", lastSeen(inspected.last_handshake_at, !!inspected.public_key)],
+          ["Platform", inspected.platform || "Not reported"],
+          ["Posture", inspected.status === "revoked" ? "Not evaluated for revoked devices" : !posturePlatformSupported(inspected.platform) ? "Not supported" : postureBadge(inspected)?.label ?? "Not reported"],
+        ].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        {inspected.status === "pending" && <a className="network-setup-link mt-4" href="/devices/approvals">Review device approvals →</a>}
+        {postureFailureSummary(inspected.health_failed_checks) && <p className="mt-4 text-sm text-warn">{postureFailureSummary(inspected.health_failed_checks)}</p>}
+      </Modal>}
 
       <ErrorText>{error}</ErrorText>
 
@@ -576,8 +588,14 @@ export default function Devices() {
           could only find a device by matching its name as free text. Now: getByRole("row") / ("cell").
           Every badge keeps its TEXT: the status was never carried by colour alone and must not start now. */}
       {/* The chips. Counts derive from the SAME function the table filters with, so the two cannot disagree. */}
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
-        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/10 p-1">
+      <section className="tnx-card-surface devices-summary" aria-label="Device inventory summary">
+        <div><span>Enrolled</span><strong>{counts.all}</strong></div>
+        <div><span>Needs attention</span><strong>{counts.attention}</strong></div>
+        <div><span>Awaiting approval</span><a href="/devices/approvals">{devices.filter(d => d.status === "pending").length}<span aria-hidden="true"> →</span></a></div>
+      </section>
+      <section className="tnx-card-surface devices-inventory" aria-label="Device inventory">
+      <div className="devices-filter-row">
+        <div className="devices-filters">
         {(
           [
             ["all", "All", counts.all],
@@ -657,13 +675,13 @@ export default function Devices() {
               sortValue: (d) => `${d.name} ${ownerEmail.get(d.user_id) ?? ""}`,
               cell: (d) => (
                 <span className="flex flex-col gap-0.5">
-                  <span className="text-sm text-white">{d.name}</span>
+                  <button type="button" className="device-open" onClick={() => setInspectedId(d.id)}>{d.name}<span aria-hidden="true"> ↗</span></button>
                   {/* ⛔ OWNER. `Device` serves `user_id`, never an email, so this is a client-side join over the
                       members roster. NON-FATAL: a failed members read leaves the sub-line ABSENT rather than
                       rendering an id — an opaque uuid is worse than no line, and worse still is "unknown owner",
                       which would claim the device is unowned. */}
                   {ownerEmail.get(d.user_id) !== undefined && (
-                    <span className="text-[11px] text-slate-500">
+                    <span className="text-[12px] text-ink-secondary">
                       {ownerEmail.get(d.user_id)}
                     </span>
                   )}
@@ -687,7 +705,7 @@ export default function Devices() {
               sortValue: (d) => addressLabel(d.assigned_ip),
               cell: (d) => (
                 <span
-                  className={`font-mono text-xs ${
+                  className={`font-sans text-xs ${
                     d.assigned_ip ? "text-slate-500" : "text-slate-600 italic"
                   }`}
                 >
@@ -764,6 +782,7 @@ export default function Devices() {
           ]}
         />
       </div>
+      </section>
         </>
       )}
     </div>
