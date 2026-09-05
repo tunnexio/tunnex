@@ -147,7 +147,7 @@ TUNNEX_DIR="$TMP/control-plane" \
 for expected in \
 	'▀█▀ █ █ █▄ █ █▄ █ █▀▀ ▀▄▀' \
 	'Connect Everything. Trust Nothing.' \
-	'Preparing secure host onboarding…' \
+	'TUNNEX / GUIDED SETUP' \
 	'TUNNEX SETUP' \
 	'Security boundary' \
 	'QuickStart is recommended.' \
@@ -374,7 +374,7 @@ TUNNEX_TLS_MODE='' \
 TUNNEX_ADMIN_EMAIL='' \
 TUNNEX_SMTP='' \
 SMTP_HOST='' SMTP_PORT='' SMTP_USERNAME='' SMTP_PASSWORD='' SMTP_FROM='' \
-TUNNEX_COLOR=always \
+TERM=xterm-256color TUNNEX_COLOR=always \
 TUNNEX_TEST_TTY_DEVICE=- \
 TUNNEX_DIR="$TMP/interactive-control-plane" \
 	env -u NO_COLOR "$PYTHON3" "$TMP/pty-walkthrough.py" "$INSTALLER" "$INTERACTIVE_OUTPUT"
