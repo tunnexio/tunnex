@@ -115,8 +115,8 @@ Resources:
         - Key: Session
           Value: tunnex-s205-aws-20260905a
 
-  # These are the ONLY writes to a pre-existing networking resource: two new,
-  # stack-owned ingress rules on the verified task cluster/worker SG. The demo
+  # These are the ONLY writes to a pre-existing networking resource: the NLB
+  # and explicit NodePort stack-owned rules on the verified task worker SG. The demo
   # VPC and its security groups are not referenced anywhere in this template.
   WorkerWireGuardFromNLB:
     Type: AWS::EC2::SecurityGroupIngress
@@ -136,6 +136,25 @@ Resources:
       ToPort: 9091
       SourceSecurityGroupId: !Ref NLBFrontendSecurityGroup
       Description: S20.5 stack-owned NLB readiness ingress; not public.
+
+  WorkerNodePortAFromClient:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 31081
+      ToPort: 31081
+      CidrIp: !Ref GatewayClientCIDR
+      Description: S20.5 A3 NodePort from exact walk client only.
+  WorkerNodePortBFromClient:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: sg-0a4645cf6d8de2c33
+      IpProtocol: udp
+      FromPort: 31082
+      ToPort: 31082
+      CidrIp: !Ref GatewayClientCIDR
+      Description: S20.5 B2 NodePort from exact walk client only.
 
   LoadBalancerControllerRole:
     Type: AWS::IAM::Role
