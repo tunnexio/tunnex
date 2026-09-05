@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -54,6 +54,9 @@ import { K8sServiceInventoryStatus } from "../components/K8sServiceInventoryStat
 import { K8sHAActivationPanel } from "../components/K8sHAActivationPanel";
 import { ProviderMark } from "../components/ProviderMarks";
 import { providerPlatformEntry } from "../lib/k8senrollment";
+
+import "../network-workspaces.css";
+import "../kubernetes-workspace.css";
 
 // Kubernetes (S10.3): the in-cluster connectivity surface — register a cluster (a synthetic VIP range fronted
 // by a site gateway) and expose its Services to the fabric. CONNECTIVITY is CORE (all editions): this whole
@@ -275,9 +278,9 @@ export default function Kubernetes() {
         const connector = clusterConnectorState({ connectorNodeId: c.connectorNodeId, gateways });
         const name = siteName.get(c.siteId) ?? null;
         return (
-          <span className="flex items-center gap-2 whitespace-nowrap text-cell">
+          <span className="kubernetes-connector-cell">
             <span className="text-ink-body">{name === null ? "Site unavailable" : name}</span>
-            <span aria-hidden className="text-white/20">/</span>
+
             <span className="text-ink-faint">
               {c.connectorNodeId === null ? "Connector required" : nodeName.get(c.connectorNodeId) ?? "Connector unavailable"}
             </span>
@@ -297,7 +300,7 @@ export default function Kubernetes() {
       header: "Service network",
       sortValue: (c: ClusterCard) => c.dnsZone,
       cell: (c: ClusterCard) => (
-        <span className="flex flex-col gap-0.5 font-mono text-cell text-ink-body">
+        <span className="flex flex-col gap-0.5 font-sans text-cell text-ink-body">
           <span>{c.vipRange}</span>
           <span className="text-micro text-ink-faint">{c.dnsZone || "DNS zone not set"}</span>
         </span>
@@ -315,7 +318,7 @@ export default function Kubernetes() {
       header: "Managed by",
       cell: (c: ClusterCard) => (
         <Badge tone="neutral">
-          {c.managedByOperator ? "OPERATOR" : "DASHBOARD"}
+          {c.managedByOperator ? "Operator" : "Dashboard"}
         </Badge>
       ),
     },
@@ -330,7 +333,7 @@ export default function Kubernetes() {
           aria-label={`View ${c.name}`}
           onClick={() => updateQuery({ cluster: c.id, section: "clusters" })}
         >
-          View
+          Open →
         </Button>
       ),
     },
@@ -344,7 +347,7 @@ export default function Kubernetes() {
       sortValue: (r: SvcRow) => r.fqdn,
       cell: (r: SvcRow) => (
         <span className="flex flex-col gap-0.5">
-          <span className="font-mono text-ink-primary">{r.fqdn}</span>
+          <span className="font-sans text-ink-primary">{r.fqdn}</span>
           <span className="text-micro text-ink-faint">
             {r.namespace} / {r.name}
             {cards.length > 1 ? ` · cluster ${r.clusterName}` : ""}
@@ -357,14 +360,14 @@ export default function Kubernetes() {
       header: "VIP",
       sortValue: (r: SvcRow) => r.vip,
       cell: (r: SvcRow) => (
-        <span className="font-mono text-cell text-ink-body">{r.vip}</span>
+        <span className="font-sans text-cell text-ink-body">{r.vip}</span>
       ),
     },
     {
       key: "ports",
       header: "Port",
       cell: (r: SvcRow) => (
-        <span className="font-mono text-cell text-ink-body">
+        <span className="font-sans text-cell text-ink-body">
           {r.protocol} {r.ports}
         </span>
       ),
@@ -374,7 +377,7 @@ export default function Kubernetes() {
       header: "Managed by",
       cell: (r: SvcRow) => (
         <Badge tone="neutral">
-          {r.managedByOperator ? "OPERATOR" : "DASHBOARD"}
+          {r.managedByOperator ? "Operator" : "Dashboard"}
         </Badge>
       ),
     },
@@ -404,16 +407,16 @@ export default function Kubernetes() {
     : null;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="network-management kubernetes-workspace flex flex-col gap-5">
       <PageHeader
         title="Kubernetes"
-        subtitle="Clusters and private services available through Tunnex."
+        subtitle={currentOrg?.name ?? "Clusters and private services"}
         actions={section === "clusters" && raw && gate.canManage && (raw.sites?.length ?? 0) > 0
           ? <Button onClick={() => setRegistering(true)}>Register cluster</Button>
           : undefined}
       />
 
-      <nav aria-label="Kubernetes workspace" className="flex flex-wrap gap-6 border-b border-white/[0.08]">
+      <nav aria-label="Kubernetes workspace" className="kubernetes-tabs">
         {([
           ["clusters", "Clusters"],
           ["services", "Exposed services"],
@@ -440,11 +443,13 @@ export default function Kubernetes() {
         // ⛔ N=0 IS ONE EMPTY STATE, NOT EIGHT. Every panel below would render its own emptiness, and eight
         // simultaneous empty panels is the reassuring-empty defect multiplied. It names the precondition.
         <EmptyState>
+          <h2 className="mb-3">Connect your first cluster</h2>
           {raw.sites === null
             ? "The Site inventory could not be read. Cluster registration is unavailable until it loads; no zero-Site result is inferred."
             : raw.sites.length === 0
             ? "Register a site with a gateway first: a cluster is fronted by one site's gateway, and without one no VIP can be programmed."
             : "No clusters registered. Registering one reserves a VIP range and a DNS zone, and then in-cluster Services can be exposed by name."}
+          {raw.sites?.length === 0 && <Link className="network-setup-link mt-4" to="/network/setup">Set up a network →</Link>}
         </EmptyState>
       )}
 
@@ -456,6 +461,11 @@ export default function Kubernetes() {
 
       {raw && !loadError && cards.length > 0 && (
         <>
+          <section className="tnx-card-surface kubernetes-summary" aria-label="Kubernetes summary">
+            <div><span>Clusters</span><strong>{cards.length}</strong><small>Registered in your network</small></div>
+            <div><span>Exposed services</span><strong>{serviceRows.length}</strong><small>Private service identities</small></div>
+            <div><span>Connector configuration</span><strong>{raw.nodes === null ? "Unknown" : `${cards.filter(c => clusterConnectorState({connectorNodeId:c.connectorNodeId,gateways}).configured).length} / ${cards.length}`}</strong><small>{raw.nodes === null ? "Inventory unavailable" : "Clusters with a configured connector"}</small></div>
+          </section>
           {section === "clusters" && <>
             <section aria-labelledby="k8s-clusters-heading" className="tnx-card-surface flex flex-col gap-4 p-5">
               <div className="flex flex-wrap items-end justify-between gap-3">
@@ -524,10 +534,11 @@ export default function Kubernetes() {
       {section === "clusters" && selected && (
         <Modal
           title={selected.name}
+          size="wide"
           onDismiss={() => updateQuery({ cluster: null })}
           actions={<Button variant="ghost" onClick={() => updateQuery({ cluster: null })}>Close</Button>}
         >
-          <div className="flex flex-col gap-4">
+          <div className="kubernetes-cluster-detail flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-2">
               {selectedProviderContext ? (
                 <span className="inline-flex items-center gap-2 text-cell text-ink-body">
@@ -538,7 +549,11 @@ export default function Kubernetes() {
               {selected.managedByOperator && <ManagedBadge />}
             </div>
 
-            <dl className="grid gap-x-6 gap-y-4 border-y border-line py-4 text-cell sm:grid-cols-2">
+            <div className="kubernetes-next-step">
+              <div><strong>{selected.services.length} exposed {selected.services.length === 1 ? "service" : "services"}</strong><p>Inspect service addresses and manage exposure.</p></div>
+              <Button variant="ghost" onClick={() => updateQuery({section:"services",cluster:selected.id})}>View services →</Button>
+            </div>
+            <dl className="kubernetes-detail-grid">
               {[
                 ["Site", siteName.get(selected.siteId) ?? "Site record unavailable"],
                 ["Connector", selected.connectorNodeId ? (nodeName.get(selected.connectorNodeId) ?? "Unavailable") : "Not selected"],
@@ -549,8 +564,8 @@ export default function Kubernetes() {
                 ["DNS zone", selected.dnsZone || "Not configured"],
                 ["Managed by", selected.managedByOperator ? "GitOps operator" : "Dashboard"],
               ].map(([label, value]) => <div key={label}>
-                <dt className="text-micro uppercase tracking-wide text-ink-faint">{label}</dt>
-                <dd className="mt-1 break-words font-mono text-ink-body">{value}</dd>
+                <dt className="text-micro text-ink-faint">{label}</dt>
+                <dd className="mt-1 break-words font-sans text-ink-body">{value}</dd>
               </div>)}
             </dl>
 
@@ -575,7 +590,7 @@ export default function Kubernetes() {
       )}
       {trafficPathOpen && (
         <Modal title="Kubernetes traffic path" onDismiss={() => setTrafficPathOpen(false)} actions={<Button variant="ghost" onClick={() => setTrafficPathOpen(false)}>Close</Button>}>
-          <p className="font-mono text-cell text-ink-heading">device → service name → VIP → ready pod</p>
+          <p className="font-sans text-cell text-ink-heading">device → service name → VIP → ready pod</p>
           <p className="mt-3 text-cell text-ink-tertiary">Endpoint inventory failures withdraw delivery. Policy remains keyed to the pre-DNAT VIP.</p>
         </Modal>
       )}
@@ -1100,8 +1115,8 @@ function UnexposeServiceModal({
       <div className="flex flex-col gap-2 text-sm text-ink-tertiary">
         <p>
           Unexpose <span className="font-medium text-ink-heading">{service.name}</span>{" "}
-          at <span className="font-mono text-ink-body">{service.fqdn}</span> ({" "}
-          <span className="font-mono text-ink-body">{service.vip}</span>). Its VIP and DNS
+          at <span className="font-sans text-ink-body">{service.fqdn}</span> ({" "}
+          <span className="font-sans text-ink-body">{service.vip}</span>). Its VIP and DNS
           answer withdraw on the next compile, and ordinary grants to this identity stop
           compiling because the Service becomes vanished.
         </p>
@@ -1186,7 +1201,7 @@ function DeregisterClusterModal({
           connector, exposing Services again, and recreating grants and scopes.
         </p>
         <p>
-          Type the cluster name <span className="font-mono text-ink-body">{card.name}</span>{" "}
+          Type the cluster name <span className="font-sans text-ink-body">{card.name}</span>{" "}
           to confirm.
         </p>
       </div>

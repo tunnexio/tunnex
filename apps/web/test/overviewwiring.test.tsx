@@ -287,7 +287,7 @@ describe("the populated Overview consolidates operational state into four cards"
     );
     expect(screen.getByRole("region", { name: "Gateway Health" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Device Health" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Infrastructure" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Your network" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Peer Connection Status" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Device Posture" })).toBeNull();
     expect(screen.queryByRole("region", { name: "HA Hub Set" })).toBeNull();
@@ -298,7 +298,7 @@ describe("the populated Overview consolidates operational state into four cards"
   it("keeps topology, HA, and compact Kubernetes state visible without a view toggle", async () => {
     show();
     const infrastructure = await waitFor(() =>
-      screen.getByRole("region", { name: "Infrastructure" }),
+      screen.getByRole("region", { name: "Your network" }),
     );
     expect(
       within(infrastructure).queryByRole("tablist", {

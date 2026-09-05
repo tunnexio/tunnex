@@ -42,7 +42,22 @@ describe("cross-product alerts workspace", () => {
     render(<MemoryRouter><Alerts /></MemoryRouter>);
     expect(await screen.findByRole("table", { name: "Active alerts" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "edge-west" }).getAttribute("href")).toBe("/gateways/g-1");
-    expect(screen.getByText("critical")).toBeTruthy();
+    expect(within(screen.getByRole("table", { name: "Active alerts" })).getByText("critical")).toBeTruthy();
+  });
+
+  it("filters severity and opens an occurrence without changing it", async () => {
+    get.mockResolvedValue({ data: [active] });
+    render(<MemoryRouter><Alerts /></MemoryRouter>);
+    await screen.findByRole("table", { name: "Active alerts" });
+    fireEvent.click(screen.getByRole("button", { name: "warning" }));
+    expect(screen.getByText("No alerts match this severity.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "All severities" }));
+    fireEvent.click(screen.getByRole("button", { name: /Gateway edge-west is offline/ }));
+    const dialog = screen.getByRole("dialog", { name: active.subject });
+    expect(within(dialog).getByText("gateway.offline")).toBeTruthy();
+    expect(within(dialog).getByRole("link", { name: "Open gateway →" }).getAttribute("href")).toBe("/gateways/g-1");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("keeps resolved history separate and queries the server state", async () => {

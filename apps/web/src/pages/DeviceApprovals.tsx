@@ -1,3 +1,5 @@
+import "../network-workspaces.css";
+import "../devices-workspace.css";
 import { useEffect, useState } from "react";
 import { DeviceApprovalSection } from "../components/DeviceApprovalSection";
 import { DevicesTabRail } from "../components/DevicesTabRail";
@@ -23,7 +25,7 @@ export default function DeviceApprovals() {
     });
     return () => { stale = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
-  return <div className="space-y-5"><PageHeader title="Devices" subtitle="Review new enrollment requests before they connect." /><DevicesTabRail />
+  return <div className="network-management devices-workspace space-y-5"><PageHeader title="Devices" subtitle="Review new enrollment requests before they connect." /><DevicesTabRail />
     {!org || canManage === null ? <Card><Loading label="Checking device approval permission…" /></Card> : !canManage ? <Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage device approvals.</p><ErrorText>{error}</ErrorText></Card> : <DeviceApprovalSection orgId={org.id} canManage />}
   </div>;
 }

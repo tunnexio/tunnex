@@ -78,6 +78,7 @@ const EXEMPT: Record<string, string> = {
 
 // COVERED — a screen enters this list when it has BOTH a wiring test and a failure-path test.
 const COVERED: Record<string, string> = {
+  "NetworkSetup.tsx": "networksetup.test.tsx: review-before-write, permission refusal, failed save and uncertain outcome",
   "Gateways.tsx":
     "test/gatewayworkspace.test.tsx + gatewayswiring.test.tsx — URL-backed operational inventory, error/empty separation, enrollment reachability",
   "GatewayDetail.tsx":
@@ -195,7 +196,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(12);
+    expect(Object.keys(COVERED).length).toBe(13);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -215,7 +216,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 24 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(24);
+  it("the ledger is a snapshot of today — 25 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(25);
   });
 });

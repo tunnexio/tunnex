@@ -1,0 +1,28 @@
+.routing-explorer-tools { display:flex; align-items:center; gap:12px; margin-bottom:22px; font-size:12px; color:var(--tnx-text-secondary); }
+.routing-explorer-tools input,.routing-explorer-tools select { min-height:40px; padding:10px 12px; background:var(--tnx-surface-inset); border:1px solid var(--tnx-border); border-radius:8px; color:var(--tnx-text-primary); font-size:13px; }
+.routing-explorer-tools input { flex:1; min-width:0; }
+.routing-explorer-layout { display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:24px; }
+.routing-explorer-canvas { max-height:640px; overflow:auto; padding:8px 12px 8px 0; }
+.routing-branch { display:grid; grid-template-columns:minmax(120px,.7fr) minmax(190px,1fr); gap:32px; align-items:center; margin-bottom:26px; padding:0!important; }
+.routing-owner { position:relative; font-size:14px; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
+.routing-owner small { display:block; color:var(--tnx-text-secondary); font-size:12px; margin-top:6px; }
+.routing-owner:after { content:""; position:absolute; height:1px; width:20px; right:-26px; top:50%; background:var(--tnx-border); }
+.routing-branch-ranges { border-left:1px solid var(--tnx-border); padding-left:20px; display:grid; gap:10px; }
+.routing-range-node { position:relative; display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px; background:var(--tnx-surface); border:1px solid var(--tnx-border); border-radius:9px; text-align:left; }
+.routing-range-node:before { content:""; position:absolute; left:-21px; width:20px; top:50%; height:1px; background:var(--tnx-border); }
+.routing-range-node strong { font-size:14px; color:var(--tnx-text-heading); font-weight:500; }
+.routing-range-node small { display:block; font-size:12px; margin-top:6px; color:var(--tnx-text-secondary); }
+.routing-range-node[data-kind=approved] small { color:var(--tnx-ok); }
+.routing-range-node[data-kind=pending] small { color:var(--tnx-warn); }
+.routing-range-node:hover,.routing-range-node[aria-pressed=true] { border-color:var(--tnx-focus); background:var(--tnx-surface-inset); }
+.routing-inspector { align-self:start; padding:20px; border:1px solid var(--tnx-border); background:var(--tnx-surface-inset); border-radius:12px; font-size:13px; line-height:1.7; }
+.routing-inspector h3 { font-size:19px; color:var(--tnx-text-heading); margin:10px 0; overflow-wrap:anywhere; }
+.routing-inspector-label,.routing-inspector dt { color:var(--tnx-text-secondary); font-size:12px; }
+.routing-inspector dl { border-block:1px solid var(--tnx-border); padding:16px 0; margin:20px 0; }
+.routing-inspector dd { margin-bottom:12px; color:var(--tnx-text-primary); }
+.routing-inspector a { display:block; margin-top:16px; color:var(--tnx-text-heading); text-decoration:underline; text-underline-offset:4px; }
+.routing-inspector-note { font-size:12px; color:var(--tnx-text-secondary); margin-top:24px; }
+@media(max-width:850px) { .routing-explorer-layout { grid-template-columns:1fr; } .routing-explorer-canvas { max-height:440px; } .routing-explorer-tools { flex-wrap:wrap; } }
+@media(max-width:500px) { .routing-branch { grid-template-columns:1fr; gap:14px; } .routing-owner:after { display:none; } }
+
+.routed-inventory button[aria-pressed=true].network-setup-link { border-color:var(--tnx-focus); background:var(--tnx-surface-inset); }

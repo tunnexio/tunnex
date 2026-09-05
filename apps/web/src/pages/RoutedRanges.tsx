@@ -1,3 +1,7 @@
+import { RoutingExplorer } from "../components/RoutingExplorer";
+import { Link, useSearchParams } from "react-router-dom";
+import "../network-workspaces.css";
+import "../routed-ranges.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOrg } from "../lib/useOrg";
 import {
@@ -17,9 +21,9 @@ import {
   PageHeader,
   Panel,
 } from "../components/ui";
-import { AddressSpaceMap, MAP_LIST_MAX } from "../components/viz";
-import { useMotionPreference } from "../components/MotionProvider";
-import { motionAllowed } from "../lib/motion";
+import { AddressBlockExplorer } from "../components/AddressBlockExplorer";
+
+
 import {
   attributeRanges,
   attributionClass,
@@ -74,12 +78,6 @@ const LEGEND = [
     dashed: false,
   },
   {
-    text: "part of a cell (finer than the grid)",
-    tone: "var(--tnx-ok)",
-    small: true,
-    dashed: false,
-  },
-  {
     text: "pending, withheld until approved on Sites",
     tone: "var(--tnx-warn)",
     small: false,
@@ -100,6 +98,8 @@ const LEGEND = [
 ];
 
 export default function RoutedRangesPage() {
+  const [viewParams, setViewParams] = useSearchParams();
+  const tableView = viewParams.get("view") === "table";
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
   const [org, setOrg] = useState<Org | null>(null);
   const [ranges, setRanges] = useState<string[] | null>(null);
@@ -295,7 +295,7 @@ export default function RoutedRangesPage() {
       cell: (r: RangeRow) => (
         // Monospace and unabbreviated. This is the string a device actually receives in its AllowedIPs; an
         // admin comparing it against a router config needs it character-for-character.
-        <span className="font-mono text-ink-primary">{r.range}</span>
+        <span className="font-sans text-ink-primary">{r.range}</span>
       ),
     },
     {
@@ -309,27 +309,20 @@ export default function RoutedRangesPage() {
       ),
     },
     {
-      key: "pushed",
-      header: "Pushed to",
-      cell: () => (
-        // ⛔ CONSTANT BY CONSTRUCTION, AND SAID ONCE PER ROW ANYWAY, because it is the answer to the question
-        // that brings people here. The handoff shows "split-tunnel AllowedIPs · 126 devices"; THE DEVICE
-        // COUNT IS NOT SERVED — same class as the gateway peer count — and is absent with its reason below
-        // rather than invented from the device list, which would count devices that never fetched this.
-        <span className="text-micro text-ink-tertiary">
-          split-tunnel AllowedIPs
-        </span>
-      ),
+      key: "manage",
+      header: "",
+      cell: (r: RangeRow) => r.attribution.kind === "site"
+        ? <Link to={`/sites?site=${encodeURIComponent(r.attribution.siteId)}`} aria-label={`Open site for ${r.range}`}>Open site →</Link>
+        : <span className="text-micro text-ink-secondary">Ownership unavailable</span>,
     },
   ];
 
-  const reduced = useMotionPreference();
-  const animate = motionAllowed(reduced);
+
   const loading = !loadError && (org === null || ranges === null);
 
   return (
-    <div className="flex flex-col gap-3.5">
-      <PageHeader title="Routed ranges" subtitle={org ? org.name : "…"} />
+    <div className="network-management routed-workspace flex flex-col gap-6">
+      <PageHeader title="Routed ranges" subtitle={org ? org.name : "…"} actions={<div className="network-header-actions"><Link className="network-setup-link" to="/network/setup">Set up a network →</Link><Link className="text-sm text-ink-secondary" to="/sites?section=approvals">Review approvals →</Link></div>} />
 
       {loadError && <LoadRetry error={loadError} onRetry={reload} />}
       {loading && <Loading size="inline" label="Loading routed ranges…" />}
@@ -338,12 +331,12 @@ export default function RoutedRangesPage() {
         <>
           <section
             aria-label="Routing summary"
-            className="grid overflow-hidden rounded-xl border border-line bg-ink-800 sm:grid-cols-2 xl:grid-cols-4"
+            className="tnx-card-surface routed-summary grid overflow-hidden sm:grid-cols-2 xl:grid-cols-4"
           >
             {[
               { label: "Approved ranges", value: ranges.length, detail: "published" },
-              { label: "Sites", value: attributedSites, detail: "carrying traffic" },
-              { label: "Pending", value: pendingRanges, detail: pendingRanges ? "needs approval" : "none waiting", attention: pendingRanges > 0 },
+              { label: "Sites", value: fanOut === null || failedSites > 0 ? "Unknown" : attributedSites, detail: fanOut === null ? "loading ownership" : failedSites > 0 ? "ownership incomplete" : "with approved ranges" },
+              { label: "Pending", value: fanOut === null || failedSites > 0 ? "Unknown" : pendingRanges, detail: fanOut === null ? "loading approvals" : failedSites > 0 ? "inventory incomplete" : pendingRanges ? "needs approval" : "none waiting", attention: pendingRanges > 0 },
               { label: "DNS forwards", value: forwards.length, detail: "reachable" },
             ].map((stat) => (
               <div key={stat.label} className="min-w-0 border-b border-line px-4 py-3 last:border-b-0 sm:border-r sm:[&:nth-child(2)]:border-r-0 sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:[&:nth-child(2)]:border-r xl:[&:nth-child(4)]:border-r-0">
@@ -356,15 +349,15 @@ export default function RoutedRangesPage() {
             ))}
           </section>
 
-          <Panel title="Routing inventory">
-            <DataTable
+          <Panel title="Routing inventory" className="routed-inventory" actions={<div className="network-header-actions">{["Graph","Table"].map(view=><button key={view} className="network-setup-link" aria-pressed={tableView === (view === "Table")} onClick={()=>{const next=new URLSearchParams(viewParams);next.set("view",view.toLowerCase());setViewParams(next,{replace:true});}}>{view}</button>)}</div>}><p className="routed-explainer">{tableView ? "Approved private ranges distributed to split-tunnel devices." : "Explore sites, private routes, and reserved space. Select a range to inspect it."}</p>
+            {!tableView ? <RoutingExplorer allocations={allocations} rows={rows} sites={sites} fanOut={fanOut} forwards={forwards} complete={spaceComplete} /> : <DataTable
               caption="Approved routed ranges"
               columns={columns}
               rows={rows}
               rowKey={(r: RangeRow) => r.range}
               empty="No LAN ranges are routed. Approve an advertised subnet in Sites to publish it here."
               failed={false}
-            />
+            />}
             {failedSites > 0 && (
               <p className="mt-2 text-micro text-warn">
                 {failedSites} site{failedSites === 1 ? "" : "s"} could not be read; unmatched ownership may be incomplete.
@@ -372,7 +365,7 @@ export default function RoutedRangesPage() {
             )}
           </Panel>
 
-          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[7fr_5fr]">
+          <div className="routed-secondary">
             {spaceMap.blocks.length > 0 && (
               <Panel
                 title="Address space"
@@ -400,7 +393,7 @@ export default function RoutedRangesPage() {
                   <div className="col-span-2 sm:col-span-1">
                     <p className="text-micro uppercase tracking-wide text-ink-faint">Next free</p>
                     {suggestion?.at24 ? (
-                      <p className="mt-1 font-mono text-cell text-ink-heading">{suggestion.at24}</p>
+                      <p className="mt-1 font-sans text-cell text-ink-heading">{suggestion.at24}</p>
                     ) : (
                       <p className={`mt-1 text-micro ${spaceComplete ? "text-ink-tertiary" : "text-warn"}`}>
                         {spaceComplete ? "No suggestion" : "Census incomplete"}
@@ -411,7 +404,7 @@ export default function RoutedRangesPage() {
 
                 <div id="address-space-details" className={mapExpanded ? "mt-3 space-y-3 border-t border-line pt-3" : "hidden"}>
                   {spaceMap.blocks.map((m) => (
-                    <AddressSpaceMap key={m.block.key} map={m} animate={animate} />
+                    <AddressBlockExplorer key={m.block.key} map={m} complete={spaceComplete} />
                   ))}
                   <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-micro text-ink-tertiary">
                     {LEGEND.map((l) => (
@@ -431,38 +424,35 @@ export default function RoutedRangesPage() {
                   </ul>
                   {suggestion?.at16 && (
                     <p className="text-micro text-ink-tertiary">
-                      Whole-block option: <span className="font-mono text-ink-heading">{suggestion.at16}</span>
+                      Whole-block option: <span className="font-sans text-ink-heading">{suggestion.at16}</span>
                     </p>
                   )}
                   {!spaceComplete && (
                     <p className="text-micro text-warn">Empty cells are not verified while the allocation census is incomplete.</p>
                   )}
-                  {spaceMap.blocks.some((m) => m.lit.length > MAP_LIST_MAX) && (
-                    <p className="text-micro text-ink-faint">Dense call-outs are capped; the routing inventory remains complete.</p>
-                  )}
                   {spaceMap.offMap.length > 0 && (
                     <p className="text-micro text-warn">
-                      Outside the private blocks and therefore not drawn: <span className="font-mono">{spaceMap.offMap.map((x) => x.cidr).join(", ")}</span>. They are routed exactly the same; only the map cannot place them.
+                      Outside the private blocks and therefore not drawn: <span className="font-sans">{spaceMap.offMap.map((x) => x.cidr).join(", ")}</span>. They are routed exactly the same; only the map cannot place them.
                     </p>
                   )}
                   {spaceMap.unparseable.length > 0 && (
                     <p className="text-micro text-danger">
-                      Not a parseable IPv4 CIDR, so not drawn: <span className="font-mono">{spaceMap.unparseable.map((x) => x.cidr).join(", ")}</span>.
+                      Not a parseable IPv4 CIDR, so not drawn: <span className="font-sans">{spaceMap.unparseable.map((x) => x.cidr).join(", ")}</span>.
                     </p>
                   )}
                 </div>
               </Panel>
             )}
 
-            <Panel title={`Reachable DNS (${forwards.length})`}>
+            <Panel title={`Reachable DNS (${forwards.length})`} actions={<Link className="text-micro text-ink-secondary" to="/sites">Manage in Sites →</Link>}>
               {forwards.length === 0 ? (
                 <EmptyState>{forwardsEmptyCopy(ranges.length)}</EmptyState>
               ) : (
-                <ul className="max-h-44 space-y-0.5 overflow-y-auto [scrollbar-gutter:stable]">
+                <ul className="routed-dns-list max-h-64 overflow-y-auto [scrollbar-gutter:stable]">
                   {sortForwards(forwards).map((f) => (
-                    <li key={`${f.domain}@${f.resolver_ip}`} className="flex min-h-10 items-center justify-between gap-3 rounded-md px-1.5 text-cell transition-colors hover:bg-white/[.03]">
-                      <span className="truncate font-mono text-ink-body" title={f.domain}>{f.domain}</span>
-                      <span className="shrink-0 font-mono text-micro text-ink-tertiary">{f.resolver_ip}</span>
+                    <li key={`${f.domain}@${f.resolver_ip}`} className="flex min-h-12 items-center justify-between gap-3 border-b border-line py-3 text-cell">
+                      <span className="truncate font-sans text-ink-body" title={f.domain}>{f.domain}</span>
+                      <span className="shrink-0 font-sans text-micro text-ink-tertiary">{f.resolver_ip}</span>
                     </li>
                   ))}
                 </ul>

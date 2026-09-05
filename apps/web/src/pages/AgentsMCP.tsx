@@ -1,3 +1,5 @@
+import "../network-workspaces.css";
+import "../agents-workspace.css";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
@@ -160,7 +162,7 @@ export default function AgentsMCP() {
   const transportError = profiles.kind === "error" ? profiles.message : groups.kind === "error" ? groups.message : "";
   const selectedProfileAlreadyActive = activeAssignment?.profile_id === selectedProfile?.id;
 
-  return <div className="space-y-5">
+  return <div className="network-management agents-workspace space-y-5">
     <PageHeader title="MCP profiles" subtitle="Create reusable MCP upstreams. Agents inherit a profile through their Agent Group." actions={enabled && profiles.kind === "ready" && profiles.data.length > 0 ? createButton : undefined} />
     <AgentsTabRail />
     {!enabled && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">MCP management is turned off</h2><p className="mt-2 text-cell text-ink-tertiary">Enable the organization opt-in to create reusable profiles. Profile assignment remains group-owned, never direct to an agent.</p><div className="mt-4"><Button disabled={busy} onClick={() => void enable()}>{busy ? "Enabling…" : "Enable MCP management"}</Button></div><ErrorText>{error}</ErrorText></Card>}

@@ -1,3 +1,5 @@
+import "../network-workspaces.css";
+import "../agents-workspace.css";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
@@ -177,7 +179,7 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
   const detailSubtitle = profile.kind === "ready"
     ? [profile.data.environment, profile.data.runtime].filter(Boolean).join(" · ") || "Managed agent"
     : "Loading agent detail";
-  return <div className="space-y-5">
+  return <div className="network-management agents-workspace space-y-5">
     <div className="text-xs text-ink-tertiary"><Link to="/agents" className="hover:text-ink-heading">AI Agents</Link> <span aria-hidden="true">/</span> {profile.kind === "ready" ? profile.data.name : "Agent"}</div>
     <PageHeader title={profile.kind === "ready" ? profile.data.name : "Agent workspace"} subtitle={detailSubtitle} actions={profile.kind === "ready" ? <Badge tone="neutral">{profile.data.status}</Badge> : undefined} />
     <div role="tablist" aria-label="Agent workspace" className="flex gap-6 overflow-x-auto border-b border-white/[0.08]">
@@ -187,6 +189,9 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
       <Card><dl className="grid gap-x-6 gap-y-3 text-cell sm:grid-cols-2 lg:grid-cols-4">
         {[['Lifecycle', data.status], ['Owner', data.owner_email || 'Unassigned'], ['Managing group', data.managing_group_name || 'None'], ['Last handshake', age(data.last_handshake_at)]].map(([label, value]) => <div key={label}><dt className="text-micro uppercase tracking-wide text-ink-faint">{label}</dt><dd className="mt-1 truncate text-ink-body" title={value}>{value}</dd></div>)}
       </dl><p className="sr-only">Lifecycle comes from the server-owned agent profile. Handshake freshness is reported separately.</p></Card>
+      <nav className="agents-detail-shortcuts" aria-label="Explore this agent">
+        {([["runtime", "Runtime", "Reports and credentials"], ["mcp", "MCP", "Inherited profile and tools"], ["access", "Access", "Policies and permissions"], ["activity", "Activity", "Workflow history"]] as const).map(([target,label,description]) => <button key={target} onClick={() => switchTab(target)}><span>{label}<span aria-hidden="true"> →</span></span><small>{description}</small></button>)}
+      </nav>
       {(data.permissions.manage || data.permissions.assign || data.permissions.revoke) && <SettingGroup title="Agent settings">
         {data.permissions.manage && <SettingRow label="Profile and lifecycle" description={[data.environment, data.runtime].filter(Boolean).join(" · ") || "No environment or runtime metadata"}><Button size="sm" variant="ghost" onClick={() => setProfileEditorOpen(true)}>Edit profile</Button></SettingRow>}
         {data.permissions.assign && <SettingRow label="Ownership" description={`${data.owner_email || "Unassigned"}${data.managing_group_name ? ` · ${data.managing_group_name}` : ""}`}><Button size="sm" variant="ghost" onClick={() => setAssignmentOpen(true)}>Change</Button></SettingRow>}

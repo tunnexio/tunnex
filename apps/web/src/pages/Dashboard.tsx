@@ -1,3 +1,4 @@
+import "../overview-scan.css";
 import { useEffect, useState, type ReactNode } from "react";
 import { useOrg } from "../lib/useOrg";
 import { Icon, type IconName } from "../components/Icon";
@@ -222,9 +223,9 @@ export default function Dashboard() {
     // The shell's `<main>` already sets `flex flex-col gap-3.5` (the README's page-body rhythm), but a flex gap
     // reaches only DIRECT children, and the whole page is a single child of main. The gap was correct and
     // applied to exactly one element. Every screen root must therefore repeat this — see docs/S14.4.
-    <div className="flex flex-col gap-3.5">
+    <div className="overview-scan flex flex-col gap-4">
       {/* README: PAGE HEADER = title + subtitle, its own block above the body. */}
-      <PageHeader title="Overview" subtitle={orgName || "…"} />
+      <PageHeader title="Overview" subtitle={orgName || "…"} actions={<Link className="rounded-lg border border-line bg-surface px-4 py-2 text-sm text-ink-heading" to="/network/setup">Set up a network →</Link>} />
       <ErrorText>{error}</ErrorText>
       <UpgradeCenter />
 
@@ -321,7 +322,7 @@ export default function Dashboard() {
                 >
                   <section
                     aria-label="Fleet summary metrics"
-                    className="grid grid-cols-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-7 lg:divide-x lg:divide-white/10"
+                    className="scan-metrics"
                   >
                   <Stat
                     label="Members"
@@ -452,222 +453,8 @@ export default function Dashboard() {
                     Set and others gate too), so hand-ordering rows by height could not have worked: which
                     panels are present varies per org, and a row tuned for one tenant is ragged for the next.
                     Packing has to be automatic for that reason alone. */}
-                <div className="grid gap-3 xl:grid-cols-2">
-                  <Panel title="Gateway Health">
-                    {nodesRes === null ? (
-                      <Loading />
-                    ) : !nodesRes.ok ? (
-                      <ErrorText>Gateway health is unavailable.</ErrorText>
-                    ) : nodesRes.data.length === 0 ? (
-                      <EmptyState>No gateway enrolled yet.</EmptyState>
-                    ) : (
-                      (() => {
-                        const health = nodesRes.data.map(gatewayHealthRow);
-                        const issues = health.filter(
-                          (verdict) => verdict.tone !== "ok",
-                        );
-                        const unhealthy = issues.filter(
-                          (verdict) => verdict.label !== "revoked",
-                        );
-                        const revoked = issues.filter(
-                          (verdict) => verdict.label === "revoked",
-                        );
-                        const healthy = health.filter(
-                          (verdict) => verdict.tone === "ok",
-                        );
-                        const issueGroups = Array.from(
-                          issues.reduce((groups, verdict) => {
-                            groups.set(
-                              verdict.label,
-                              (groups.get(verdict.label) ?? 0) + 1,
-                            );
-                            return groups;
-                          }, new Map<string, number>()),
-                        ).sort(
-                          ([labelA, countA], [labelB, countB]) =>
-                            countB - countA || labelA.localeCompare(labelB),
-                        );
-                        const unattributed = nodesRes.data.filter(
-                          (node) => attributionBadge(node) !== null,
-                        ).length;
-
-                        return (
-                          <div className="grid gap-4 lg:grid-cols-[minmax(13rem,.8fr)_minmax(0,1.2fr)] lg:items-start">
-                            <Donut
-                              label="Gateway health summary"
-                              source={{
-                                endpoint:
-                                  "/api/v1/organizations/{orgId}/nodes",
-                              }}
-                              failed={false}
-                              slices={[
-                                {
-                                  label: "Healthy",
-                                  value: healthy.length,
-                                  tone: "ok",
-                                },
-                                {
-                                  label: "Unhealthy",
-                                  value: unhealthy.length,
-                                  tone: "danger",
-                                },
-                                {
-                                  label: "Revoked",
-                                  value: revoked.length,
-                                  tone: "neutral",
-                                },
-                              ]}
-                              centreLabel="total"
-                            />
-                            <div className="min-w-0">
-                            {issues.length > 0 || unattributed > 0 ? (
-                              <div>
-                                <p className="text-badge font-semibold uppercase tracking-wide text-ink-tertiary">
-                                  Needs attention
-                                </p>
-                                <div
-                                  role="group"
-                                  aria-label="Gateway health conditions"
-                                  className="mt-2 divide-y divide-white/10 border-y border-white/10"
-                                >
-                                  {unattributed > 0 && (
-                                    <div className="flex min-h-10 items-center gap-2 py-2 text-cell">
-                                      <span
-                                        aria-hidden="true"
-                                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
-                                      />
-                                      <span className="min-w-0 flex-1 text-ink-secondary">
-                                        no recorded owner
-                                      </span>
-                                      <span className="shrink-0 tabular-nums text-warn">
-                                        {unattributed}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {issueGroups.map(([label, count]) => (
-                                    <div
-                                      key={label}
-                                      className="flex min-h-10 items-center gap-2 py-2 text-cell"
-                                    >
-                                      <span
-                                        aria-hidden="true"
-                                        className={
-                                          "h-1.5 w-1.5 shrink-0 rounded-full " +
-                                          (label === "revoked"
-                                            ? "bg-ink-tertiary"
-                                            : "bg-danger")
-                                        }
-                                      />
-                                      <span className="min-w-0 flex-1 text-ink-secondary">
-                                        {label}
-                                      </span>
-                                      <span
-                                        className={
-                                          "shrink-0 tabular-nums " +
-                                          (label === "revoked"
-                                            ? "text-ink-secondary"
-                                            : "text-danger")
-                                        }
-                                      >
-                                        {count}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-cell text-ink-secondary">
-                                No gateway health issues reported.
-                              </p>
-                            )}
-                            <Link
-                              className="mt-3 inline-flex items-center gap-1 text-cell font-medium text-accent-400 hover:text-accent-400"
-                              to="/gateways"
-                            >
-                              {gatewayReviewLabel(issues.length)}
-                              <Icon name="chevron-right" size={14} />
-                            </Link>
-                            </div>
-                          </div>
-                        );
-                      })()
-                    )}
-                  </Panel>
-
-                  <Panel title="Device Health">
-                    {devicesRes === null ? (
-                      <Loading />
-                    ) : !devicesRes.ok ? (
-                      <ErrorText>Device health is unavailable.</ErrorText>
-                    ) : devicesRes.data.length === 0 ? (
-                      <EmptyState>No devices enrolled yet.</EmptyState>
-                    ) : (
-                      (() => {
-                        const ps = postureSplit(devicesRes.data);
-                        return (
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <div>
-                              <h3 className="mb-2 text-cell font-medium text-ink-secondary">
-                                Connection
-                              </h3>
-                              <Donut
-                                label="Peer connection status"
-                                source={{
-                                  endpoint:
-                                    "/api/v1/organizations/{orgId}/devices",
-                                }}
-                                failed={false}
-                                slices={peerSlices(devicesRes.data)}
-                                centreLabel="devices"
-                                empty="No devices enrolled yet."
-                              />
-                            </div>
-                            <div className="border-t border-white/10 pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-                              <h3 className="mb-2 text-cell font-medium text-ink-secondary">
-                                Posture
-                              </h3>
-                              <Donut
-                                label="Device posture"
-                                source={{
-                                  endpoint:
-                                    "/api/v1/organizations/{orgId}/devices",
-                                }}
-                                failed={false}
-                                slices={[
-                                  {
-                                    label: "Compliant",
-                                    value: ps.compliant,
-                                    tone: "ok",
-                                  },
-                                  {
-                                    label: "Blocked",
-                                    value: ps.blocked,
-                                    tone: "danger",
-                                  },
-                                  {
-                                    label: "Unknown",
-                                    value: ps.unknown,
-                                    tone: "neutral",
-                                  },
-                                ]}
-                                centreLabel="devices"
-                                empty="No devices enrolled yet."
-                              />
-                            </div>
-                            {pending.state === "ok" && pending.value > 0 && (
-                              <p className="border-t border-white/10 pt-3 text-center text-cell text-warn sm:col-span-2">
-                                {pending.value} device
-                                {pending.value === 1 ? "" : "s"} awaiting
-                                approval
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })()
-                    )}
-                  </Panel>
-
-                  <Panel title="Infrastructure" className="xl:col-span-2">
+                <div className="scan-panels">
+                  <Panel title="Your network" className="scan-network">
                     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
                       <div className="min-w-0 lg:pr-1">
                         {sitesRes === null || nodesRes === null ? (
@@ -923,6 +710,221 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </Panel>
+                  <Panel title="Gateway Health" className="scan-gateways">
+                    {nodesRes === null ? (
+                      <Loading />
+                    ) : !nodesRes.ok ? (
+                      <ErrorText>Gateway health is unavailable.</ErrorText>
+                    ) : nodesRes.data.length === 0 ? (
+                      <EmptyState>No gateway enrolled yet.</EmptyState>
+                    ) : (
+                      (() => {
+                        const health = nodesRes.data.map(gatewayHealthRow);
+                        const issues = health.filter(
+                          (verdict) => verdict.tone !== "ok",
+                        );
+                        const unhealthy = issues.filter(
+                          (verdict) => verdict.label !== "revoked",
+                        );
+                        const revoked = issues.filter(
+                          (verdict) => verdict.label === "revoked",
+                        );
+                        const healthy = health.filter(
+                          (verdict) => verdict.tone === "ok",
+                        );
+                        const issueGroups = Array.from(
+                          issues.reduce((groups, verdict) => {
+                            groups.set(
+                              verdict.label,
+                              (groups.get(verdict.label) ?? 0) + 1,
+                            );
+                            return groups;
+                          }, new Map<string, number>()),
+                        ).sort(
+                          ([labelA, countA], [labelB, countB]) =>
+                            countB - countA || labelA.localeCompare(labelB),
+                        );
+                        const unattributed = nodesRes.data.filter(
+                          (node) => attributionBadge(node) !== null,
+                        ).length;
+
+                        return (
+                          <div className="grid gap-4 lg:grid-cols-[minmax(13rem,.8fr)_minmax(0,1.2fr)] lg:items-start">
+                            <Donut
+                              label="Gateway health summary"
+                              source={{
+                                endpoint:
+                                  "/api/v1/organizations/{orgId}/nodes",
+                              }}
+                              failed={false}
+                              slices={[
+                                {
+                                  label: "Healthy",
+                                  value: healthy.length,
+                                  tone: "ok",
+                                },
+                                {
+                                  label: "Unhealthy",
+                                  value: unhealthy.length,
+                                  tone: "danger",
+                                },
+                                {
+                                  label: "Revoked",
+                                  value: revoked.length,
+                                  tone: "neutral",
+                                },
+                              ]}
+                              centreLabel="total"
+                            />
+                            <div className="min-w-0">
+                            {issues.length > 0 || unattributed > 0 ? (
+                              <div>
+                                <p className="text-badge font-semibold uppercase tracking-wide text-ink-tertiary">
+                                  Needs attention
+                                </p>
+                                <div
+                                  role="group"
+                                  aria-label="Gateway health conditions"
+                                  className="mt-2 divide-y divide-white/10 border-y border-white/10"
+                                >
+                                  {unattributed > 0 && (
+                                    <div className="flex min-h-10 items-center gap-2 py-2 text-cell">
+                                      <span
+                                        aria-hidden="true"
+                                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+                                      />
+                                      <span className="min-w-0 flex-1 text-ink-secondary">
+                                        no recorded owner
+                                      </span>
+                                      <span className="shrink-0 tabular-nums text-warn">
+                                        {unattributed}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {issueGroups.map(([label, count]) => (
+                                    <div
+                                      key={label}
+                                      className="flex min-h-10 items-center gap-2 py-2 text-cell"
+                                    >
+                                      <span
+                                        aria-hidden="true"
+                                        className={
+                                          "h-1.5 w-1.5 shrink-0 rounded-full " +
+                                          (label === "revoked"
+                                            ? "bg-ink-tertiary"
+                                            : "bg-danger")
+                                        }
+                                      />
+                                      <span className="min-w-0 flex-1 text-ink-secondary">
+                                        {label}
+                                      </span>
+                                      <span
+                                        className={
+                                          "shrink-0 tabular-nums " +
+                                          (label === "revoked"
+                                            ? "text-ink-secondary"
+                                            : "text-danger")
+                                        }
+                                      >
+                                        {count}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-cell text-ink-secondary">
+                                No gateway health issues reported.
+                              </p>
+                            )}
+                            <Link
+                              className="mt-3 inline-flex items-center gap-1 text-cell font-medium text-accent-400 hover:text-accent-400"
+                              to="/gateways"
+                            >
+                              {gatewayReviewLabel(issues.length)}
+                              <Icon name="chevron-right" size={14} />
+                            </Link>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    )}
+                  </Panel>
+
+                  <Panel title="Device Health" className="scan-devices">
+                    {devicesRes === null ? (
+                      <Loading />
+                    ) : !devicesRes.ok ? (
+                      <ErrorText>Device health is unavailable.</ErrorText>
+                    ) : devicesRes.data.length === 0 ? (
+                      <EmptyState>No devices enrolled yet.</EmptyState>
+                    ) : (
+                      (() => {
+                        const ps = postureSplit(devicesRes.data);
+                        return (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <h3 className="mb-2 text-cell font-medium text-ink-secondary">
+                                Connection
+                              </h3>
+                              <Donut
+                                label="Peer connection status"
+                                source={{
+                                  endpoint:
+                                    "/api/v1/organizations/{orgId}/devices",
+                                }}
+                                failed={false}
+                                slices={peerSlices(devicesRes.data)}
+                                centreLabel="devices"
+                                empty="No devices enrolled yet."
+                              />
+                            </div>
+                            <div className="border-t border-white/10 pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+                              <h3 className="mb-2 text-cell font-medium text-ink-secondary">
+                                Posture
+                              </h3>
+                              <Donut
+                                label="Device posture"
+                                source={{
+                                  endpoint:
+                                    "/api/v1/organizations/{orgId}/devices",
+                                }}
+                                failed={false}
+                                slices={[
+                                  {
+                                    label: "Compliant",
+                                    value: ps.compliant,
+                                    tone: "ok",
+                                  },
+                                  {
+                                    label: "Blocked",
+                                    value: ps.blocked,
+                                    tone: "danger",
+                                  },
+                                  {
+                                    label: "Unknown",
+                                    value: ps.unknown,
+                                    tone: "neutral",
+                                  },
+                                ]}
+                                centreLabel="devices"
+                                empty="No devices enrolled yet."
+                              />
+                            </div>
+                            {pending.state === "ok" && pending.value > 0 && (
+                              <p className="border-t border-white/10 pt-3 text-center text-cell text-warn sm:col-span-2">
+                                {pending.value} device
+                                {pending.value === 1 ? "" : "s"} awaiting
+                                approval
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()
+                    )}
+                  </Panel>
+
+
                 </div>
               </div>
             );
@@ -990,7 +992,6 @@ function InfrastructureLink({
  */
 function Stat({
   label,
-  icon,
   to,
   value,
   sub,
@@ -1018,7 +1019,7 @@ function Stat({
     <div
       role="group"
       aria-label={label}
-      className="min-w-0 px-2 sm:px-3"
+      className="scan-metric min-w-0"
     >
       <Link
         to={to}
@@ -1028,12 +1029,7 @@ function Stat({
           <span className="block truncate text-cell font-medium text-ink-primary">
             {label}
           </span>
-          <span
-            aria-hidden="true"
-            className="flex h-6 w-6 shrink-0 items-center justify-center text-ink-tertiary"
-          >
-            <Icon name={icon} size={15} />
-          </span>
+
         </span>
         {text === null ? (
           <span

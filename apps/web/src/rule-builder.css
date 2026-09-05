@@ -1,0 +1,24 @@
+.rule-builder { display:flex; flex-direction:column; gap:22px; }
+.rule-builder-steps { display:flex; gap:30px; padding-bottom:18px; border-bottom:1px solid var(--tnx-divider); list-style:none; }
+.rule-builder-steps li { display:flex; align-items:center; gap:9px; font-size:12px; color:var(--tnx-text-secondary); }
+.rule-builder-steps li > span { display:grid; place-items:center; width:24px; height:24px; border:1px solid var(--tnx-border); border-radius:7px; }
+.rule-builder-steps [aria-current=step] { color:var(--tnx-text-heading); }
+.rule-builder-steps [aria-current=step] > span { background:var(--tnx-surface-inset); border-color:var(--tnx-focus); }
+.rule-builder-intro h3 { font-size:23px; letter-spacing:-.035em; color:var(--tnx-text-heading); font-weight:500; }
+.rule-builder-intro p,.rule-builder-duration p { margin-top:7px; font-size:13px; color:var(--tnx-text-secondary); line-height:1.6; }
+.rule-builder-path { display:grid; grid-template-columns:minmax(0,1fr) 20px minmax(0,1fr); align-items:start; gap:12px; }
+.rule-builder-path[hidden] { display:none; }
+.rule-builder-endpoint { min-width:0; border:1px solid var(--tnx-border); border-radius:12px; padding:18px; background:var(--tnx-surface-inset); }
+.rule-endpoint-caption { color:var(--tnx-text-heading); font-size:14px; font-weight:500; margin-bottom:18px; }
+.rule-builder-arrow { align-self:center; color:var(--tnx-text-secondary); text-align:center; }
+.rule-builder-preview { border:1px solid var(--tnx-border); border-radius:12px; background:var(--tnx-surface); padding:20px; font-size:13px; line-height:1.7; color:var(--tnx-text-body); }
+.rule-preview-label { display:block; color:var(--tnx-text-secondary); font-size:12px; margin-bottom:8px; }
+.rule-preview-path { display:flex; flex-wrap:wrap; align-items:center; gap:14px; padding-bottom:20px; margin-bottom:18px; border-bottom:1px solid var(--tnx-divider); }
+.rule-preview-path strong { font-weight:500; font-size:18px; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
+.rule-preview-path > span { color:var(--tnx-ok); }
+.rule-builder-duration { border-top:1px solid var(--tnx-divider); padding-top:18px; }
+.rule-builder-duration h4 { font-size:14px; font-weight:500; color:var(--tnx-text-heading); }
+.rule-builder-duration p { margin-bottom:14px; }
+.rule-builder .font-mono { font-family:inherit; }
+.rule-builder .uppercase { text-transform:none; letter-spacing:normal; }
+@media(max-width:640px) { .rule-builder-path { grid-template-columns:1fr; } .rule-builder-arrow { transform:rotate(90deg); } .rule-builder-steps { gap:20px; } }

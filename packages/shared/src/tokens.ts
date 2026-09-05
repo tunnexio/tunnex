@@ -96,52 +96,34 @@ export type Theme = Record<TokenName, string>;
  * contrast corrections below. This is not a re-pick: the previous `dark` was the OLD APP'S palette, shipped
  * before the specification had been read.
  */
+// Opaque, layered console surfaces. Depth comes from luminance, borders and shadows,
+// never from a page gradient showing through a card.
 const mono: Theme = {
-  bg: "#0A0A0A",
-  // The two backdrops the glass needs SOMETHING to refract. Without them a translucent card sits on a flat
-  // field and looks identical to an opaque one — the effect is in the CONTRAST BEHIND, not in the blur.
-  "bg-glow":
-    "radial-gradient(1200px 700px at 80% -10%,rgba(255,255,255,.03),transparent 62%),#0A0A0A",
-  "bg-page":
-    "radial-gradient(130% 120% at 12% -5%,#1C1C1C 0%,#141414 48%,#0D0D0D 100%)",
-  // ⛔ TRANSLUCENT, NOT COMPOSITED. A first pass set these to the composited hex (#1B1B1B) "because the alpha
-  // lives in the glass recipe" — which made every card OPAQUE, so `backdrop-filter` had nothing to see through
-  // and the liquid glass rendered as flat plastic. The alpha IS the material.
-  surface: "rgba(31,31,31,.72)",
-  "surface-inset": "rgba(18,18,18,.72)",
-  code: "#101010",
-  "badge-bg": "#1A1A1A",
-  border: "#2E2E2E",
-  "border-inset": "#242424",
-  divider: "#1A1A1A",
-  "divider-head": "#1E1E1E",
-
-  "text-heading": "#F5F5F5",
-  "text-primary": "#EDEDEB",
-  "text-emphasis": "#D6D6D2",
-  "text-body": "#A9A9A6",
-  "text-secondary": "#858582",
-  // ⛔ TWO CONTRAST CORRECTIONS, FOUNDER-RULED. The README's tertiary #5E5E5B (2.65:1) and faint #4A4A48
-  // (1.94:1) FAIL the WCAG AA 4.5:1 floor that S14.1 built and mutation-proved. The minimum warm grey that
-  // clears it on this surface is #838380, so both collapse to #858582 and the hierarchy is carried by WEIGHT
-  // and SIZE instead — which the README specifies in full.
-  //
-  // Recorded rather than silently applied: the design sets its own honesty captions ("'Failed' is never
-  // rendered as a reassuring empty state") in its least readable tone. A colour that cannot be read is a
-  // value the interface claims to show and does not.
-  "text-tertiary": "#858582", // README: #5E5E5B — raised
-  "text-faint": "#858582", // README: #4A4A48 — raised
-  // Disabled is EXEMPT: WCAG does not require contrast for disabled controls, so this stays verbatim.
-  "text-disabled": "#454542",
-
-  ok: "#6E9C7C",
-  warn: "#C39A4E",
-  danger: "#C77474",
-  neutral: "#858582",
-
-  // Mono's interaction colours, measured from the source prototype rather than the README's violet row.
-  accent: "#C9C9C4",
-  focus: "#C9C9C4",
+  bg: "#0D0F12",
+  "bg-glow": "#0D0F12",
+  "bg-page": "#121418",
+  surface: "#08090B",
+  "surface-inset": "#14171B",
+  code: "#111317",
+  "badge-bg": "#252A31",
+  border: "#343A43",
+  "border-inset": "#303640",
+  divider: "#2B3038",
+  "divider-head": "#343A43",
+  "text-heading": "#F3F5F7",
+  "text-primary": "#E1E5EA",
+  "text-emphasis": "#D0D6DE",
+  "text-body": "#BCC3CD",
+  "text-secondary": "#A0A9B6",
+  "text-tertiary": "#959FAD",
+  "text-faint": "#959FAD",
+  "text-disabled": "#606977",
+  ok: "#34D399",
+  warn: "#FBBF24",
+  danger: "#F87171",
+  neutral: "#94A3B8",
+  accent: "#D9E1ED",
+  focus: "#A8C7F0",
 };
 
 /** `mono` — the second theme, present to PROVE the mechanism is n-theme. Hue stripped, contrast preserved. */

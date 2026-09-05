@@ -1,0 +1,25 @@
+.users-workspace { display:flex; flex-direction:column; gap:20px; }
+.users-summary.tnx-card-surface { display:flex; flex-wrap:wrap; align-items:center; gap:24px 36px; padding:22px 24px!important; }
+.users-total { display:flex; align-items:baseline; gap:10px; padding-right:32px; border-right:1px solid var(--tnx-divider); }
+.users-summary dl { flex:1; gap:32px; }
+.users-summary dl > div { flex-direction:column-reverse; align-items:flex-start; gap:6px; }
+.users-summary dl dd { font-size:24px; font-weight:500; }
+.users-context { display:flex; width:100%; flex-wrap:wrap; justify-content:space-between; gap:10px; border-top:1px solid var(--tnx-divider); padding-top:16px; font-size:12px; color:var(--tnx-text-secondary); }
+.users-content { min-width:0; }
+.users-inventory-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
+.users-inventory-heading h2 { font-size:16px; font-weight:550; color:var(--tnx-text-heading); }
+.users-inventory-heading > span { font-size:12px; color:var(--tnx-text-secondary); }
+.users-inventory td { vertical-align:middle; }
+.users-inventory .tnx-datatable table:has(thead th:nth-child(5)) { min-width:640px; }
+.users-inventory .tnx-datatable td:first-child:has(input[type="checkbox"]),
+.users-inventory .tnx-datatable th:first-child:has(input[type="checkbox"]) { min-width:40px; width:40px; }
+.users-role-select { min-width:120px; text-transform:capitalize; }
+.users-role-guide { margin-top:20px; border-bottom:1px solid var(--tnx-divider); }
+.users-role-guide summary { display:flex; justify-content:space-between; align-items:center; list-style:none; cursor:pointer; padding:16px 0; font-size:13px; color:var(--tnx-text-heading); }
+.users-role-guide summary::-webkit-details-marker { display:none; }
+.users-role-guide summary:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:4px; }
+.users-role-guide[open] summary > span { transform:rotate(45deg); }
+.users-role-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:28px; padding:8px 0 24px; }
+.users-role-grid h3 { font-size:14px; font-weight:500; color:var(--tnx-text-heading); margin-bottom:8px; }
+.users-role-grid p { font-size:13px; line-height:1.65; color:var(--tnx-text-secondary); }
+@media(max-width:650px) { .users-summary.tnx-card-surface { gap:20px; padding:18px!important; } .users-summary dl { gap:20px; } .users-total { padding-right:18px; } .users-role-grid { grid-template-columns:1fr; gap:18px; } }

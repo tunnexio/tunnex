@@ -1,3 +1,5 @@
+import "../network-workspaces.css";
+import "../agents-workspace.css";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, apiErrorCode, apiErrorMessage, type Member, type Role } from "../lib/api";
@@ -168,11 +170,11 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
   const rows = state.kind === "ready" ? state.page.items : [];
   const activeFilterCount = filters.reduce((count, [key]) => count + (query[key] ? 1 : 0), 0);
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="network-management agents-workspace flex flex-col gap-5">
       <PageHeader
         title="AI Agents"
-        subtitle={state.kind === "ready" ? `${rows.length} in this result` : "Operational inventory, runtime posture, and inherited access context."}
-        actions={state.kind === "ready" && state.canEnroll ? <Link to="?add=1"><Button>Add agent</Button></Link> : undefined}
+        subtitle={org?.name ?? "Agent inventory and access"}
+        actions={state.kind === "ready" && state.canEnroll ? <Button onClick={() => update({ add: "1" })}>Add agent</Button> : undefined}
       />
       <AgentsTabRail />
       {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow orgId={org.id} enabled onDismiss={() => update({ add: null })} />}
@@ -181,8 +183,16 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
       {state.kind === "denied" && <Card><EmptyState>You do not have permission to view AI Agents in this organization.</EmptyState></Card>}
       {state.kind === "failed" && <Card><div role="alert" className="py-6 text-sm text-danger">{state.message} <Button variant="ghost" onClick={() => update({}, true)}>Retry</Button></div></Card>}
       {state.kind === "ready" && (
+        <>
+        <section className="tnx-card-surface agents-result-summary" aria-label="Agent result summary">
+          <div><span>Current results</span><strong>{rows.length}</strong><small>{state.page.next_cursor ? "More agents on the next page" : "Agents in this result"}</small></div>
+          <div><span>Connected</span><strong className="text-ok">{rows.filter(a => agentLiveness(a) === "online").length}</strong><small>Reported by their gateways</small></div>
+          <div><span>Connectivity unknown</span><strong>{rows.filter(a => agentLiveness(a) === "unknown").length}</strong><small>Gateway is not reporting</small></div>
+          <div><span>Ownership missing</span><strong>{rows.filter(a => a.unattributable || !a.owner_email).length}</strong><small>Review agent attribution</small></div>
+        </section>
         <Card>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="agents-inventory-heading"><h2>Agent inventory</h2><span>Open an agent to manage its runtime and access</span></div>
+          <div className="agents-inventory-toolbar">
             <div className="min-w-[14rem] flex-1">
               <Input aria-label="Search AI agents" placeholder="Search name, owner, address" value={query.q} onChange={(event) => update({ q: event.target.value }, true)} />
             </div>
@@ -202,6 +212,7 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
               </Select>
             ))}
           </div>}
+          {(activeFilterCount > 0 || query.q || query.gateway_id) && <Button size="sm" variant="ghost" className="mb-3" onClick={() => update({q:null,lifecycle:null,runtime:null,mcp:null,access:null,gateway_id:null})}>Clear filters</Button>}
           {state.page.partial && <p role="status" className="mb-3 rounded-md border border-warn/40 px-3 py-2 text-xs text-warn">Some agent posture data is unavailable. Rows below include the latest complete inventory data.</p>}
           <DataTable<AgentRow>
             caption="AI Agents"
@@ -217,21 +228,22 @@ export default function AgentsIndex({ fixture }: { fixture?: AgentsIndexFixture 
                 key: "name", header: "Agent", sortValue: (agent) => agent.name,
                 cell: (agent) => {
                   const status = labelForStatus(agent);
-                  return <Link className="inline-flex items-center gap-2 text-white hover:underline" to={`/agents/${agent.device_id}`}><StatusDot tone={status.tone === "ok" ? "on" : status.tone === "warn" ? "warn" : "off"} /><span>{agent.name}</span></Link>;
+                  return <Link className="inline-flex items-center gap-2 text-white hover:underline" to={`/agents/${agent.device_id}`}><StatusDot tone={status.tone === "ok" ? "on" : status.tone === "warn" ? "warn" : "off"} /><span>{agent.name}</span><span aria-hidden="true" className="agent-open-arrow">↗</span></Link>;
                 },
               },
               { key: "status", header: "Status", sortValue: (agent) => labelForStatus(agent).label, cell: (agent) => { const status = labelForStatus(agent); return <Badge tone={status.tone}>{status.label}</Badge>; } },
               { key: "owner", header: "Owner", sortValue: (agent) => agent.owner_email ?? "", cell: (agent) => { const note = attributionNote(agent); return note ? <Badge tone={note.tone}>{note.label}</Badge> : <span>{agent.owner_email ?? "Not available"}</span>; } },
               { key: "gateway", header: "Gateway", sortValue: (agent) => agent.gateway_name, cell: (agent) => <span>{agent.gateway_name || "—"}</span> },
-              { key: "address", header: "Address", sortValue: (agent) => agent.address ?? "", cell: (agent) => <span className="font-mono text-xs">{agent.address ?? "Not available"}</span> },
+              { key: "address", header: "Address", sortValue: (agent) => agent.address ?? "", cell: (agent) => <span className="font-sans text-xs">{agent.address ?? "Not available"}</span> },
               { key: "last_seen", header: "Last seen", sortValue: (agent) => agent.last_handshake_at ?? "", cell: (agent) => <span>{agent.last_handshake_at ? new Date(agent.last_handshake_at).toLocaleString() : "Never reported"}</span> },
             ]}
           />
-          <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="agents-pagination">
             <span className="text-xs text-ink-secondary">{state.page.next_cursor ? `Up to ${LIMIT} results shown` : "End of results"}</span>
             <Button variant="ghost" disabled={!state.page.next_cursor} onClick={() => update({ cursor: state.page.next_cursor ?? null })}>Next</Button>
           </div>
         </Card>
+        </>
       )}
     </div>
   );

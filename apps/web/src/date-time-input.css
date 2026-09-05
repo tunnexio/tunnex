@@ -1,0 +1,30 @@
+.tnx-date-field { width:100%; }
+.tnx-date-control { position:relative; }
+.tnx-date-control input { width:100%; min-height:44px; padding:10px 46px 10px 12px; background:#0b0d10; border:1px solid var(--tnx-border); border-radius:8px; color:var(--tnx-text-primary); font:inherit; font-size:13px; }
+.tnx-date-control input::-webkit-calendar-picker-indicator { display:none; }
+.tnx-date-control > button { position:absolute; right:5px; top:5px; bottom:5px; width:34px; display:grid; place-items:center; border-radius:5px; color:var(--tnx-text-secondary); }
+.tnx-date-control > button:hover { background:var(--tnx-surface-inset); color:var(--tnx-text-heading); }
+.tnx-date-picker { width:min(100%,330px); padding:14px; margin-top:8px; border:1px solid #3b424c; border-radius:12px; background:#101317; box-shadow:0 8px 24px #0005; }
+.tnx-date-picker header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; font-size:13px; }
+.tnx-date-picker header button { width:32px; height:30px; border-radius:6px; font-size:22px; }
+.tnx-calendar-week,.tnx-calendar-days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:3px; text-align:center; }
+.tnx-calendar-week { color:var(--tnx-text-secondary); font-size:11px; margin-bottom:6px; }
+.tnx-calendar-days button { height:32px; border-radius:6px; font-size:12px; color:var(--tnx-text-primary); }
+.tnx-date-picker button:hover:not(:disabled) { background:#222a34; }
+.tnx-calendar-days button[aria-pressed=true] { background:var(--tnx-focus)!important; color:#101317; }
+.tnx-calendar-time { display:flex; align-items:center; gap:7px; margin-top:14px; padding-top:14px; border-top:1px solid var(--tnx-divider); font-size:12px; }
+.tnx-calendar-time > span:first-child { margin-right:auto; }
+.tnx-calendar-time small { display:block; color:var(--tnx-text-secondary); font-size:10px; margin-top:4px; }
+.tnx-calendar-time select { min-height:34px; padding:6px 8px; min-width:58px; }
+.tnx-date-picker footer { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:12px; border-top:1px solid var(--tnx-divider); }
+.tnx-date-picker footer button { padding:7px 10px; border-radius:6px; font-size:12px; }
+.tnx-date-picker footer button:first-child { margin-right:auto; }
+.tnx-date-picker footer button:last-child { border:1px solid var(--tnx-border); color:var(--tnx-text-heading); }
+.tnx-date-field button { cursor:pointer; }
+.tnx-date-field button:disabled { opacity:.35; cursor:not-allowed; }
+.tnx-date-field button:focus-visible,.tnx-date-control input:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:2px; }
+.tnx-date-placeholder { position:absolute; left:14px; right:46px; top:50%; transform:translateY(-50%); pointer-events:none; font-size:13px; color:var(--tnx-text-secondary); }
+.tnx-date-control[data-empty=true] input:not(:focus)::-webkit-datetime-edit { color:transparent; }
+.tnx-date-control:focus-within .tnx-date-placeholder { display:none; }
+.tnx-date-control[data-empty=true]:has(button:focus) .tnx-date-placeholder { display:block; }
+.tnx-date-control input { cursor:pointer; }

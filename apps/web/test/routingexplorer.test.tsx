@@ -1,0 +1,9 @@
+import {afterEach,expect,it} from "vitest";
+import {cleanup,fireEvent,render,screen} from "@testing-library/react";
+import {MemoryRouter} from "react-router-dom";
+import {RoutingExplorer} from "../src/components/RoutingExplorer";
+afterEach(cleanup);
+function show(){render(<MemoryRouter><RoutingExplorer complete={false} allocations={[{cidr:"10.0.0.0/24",kind:"approved",label:"Office"},{cidr:"10.1.0.0/24",kind:"pending",label:"Office"},{cidr:"10.2.0.0/24",kind:"pool",label:"Device pool"}]} rows={[{range:"10.0.0.0/24",attribution:{kind:"site",siteId:"s1",siteName:"Office"}}]} sites={[{id:"s1",name:"Office"} as never]} fanOut={[{ok:true,siteId:"s1",subnets:[{cidr:"10.1.0.0/24",status:"pending"} as never]}]} forwards={[]} /></MemoryRouter>);}
+it("opens the owning site from a routed range",()=>{show();fireEvent.click(screen.getByRole("button",{name:/10.0.0.0/}));expect(screen.getByRole("link",{name:/Open site/}).getAttribute("href")).toBe("/sites?site=s1");expect(screen.getByText("Published to split-tunnel devices")).toBeTruthy();});
+it("distinguishes pending and reserved allocations from routes",()=>{show();fireEvent.click(screen.getByRole("button",{name:/10.1.0.0/}));expect(screen.getByText("Withheld until approved")).toBeTruthy();expect(screen.getByRole("link",{name:/Review approvals/})).toBeTruthy();fireEvent.click(screen.getByRole("button",{name:/10.2.0.0/}));expect(screen.getByText(/Reserved allocation; not a published route/)).toBeTruthy();});
+it("filters ranges and removes details for hidden selections",()=>{show();fireEvent.click(screen.getByRole("button",{name:/10.0.0.0/}));fireEvent.change(screen.getByRole("combobox",{name:"Filter routing graph"}),{target:{value:"pending"}});expect(screen.queryByRole("button",{name:/10.0.0.0/})).toBeNull();expect(screen.getByText("Select a range")).toBeTruthy();expect(screen.getByText(/This view may be incomplete/)).toBeTruthy();});

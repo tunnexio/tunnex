@@ -1,0 +1,13 @@
+.routed-workspace .routed-summary > div { padding:20px 24px; }
+.routed-summary .text-title { font-size:28px; font-weight:500; }
+.routed-summary .text-micro { white-space:normal; }
+.routed-secondary { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:20px; }
+.routed-explainer { margin:0 0 20px; font-size:13px; color:var(--tnx-text-secondary); line-height:1.7; }
+.routed-inventory .tnx-datatable td:first-child { font-weight:500; color:var(--tnx-text-heading); }
+.routed-inventory .tnx-datatable td:last-child { text-align:right; }
+.routed-dns-list li:last-child { border-bottom:0; }
+.routed-dns-list li > span:first-child { color:var(--tnx-text-primary); }
+.routed-workspace svg text { font-family:inherit; }
+.routed-workspace #address-space-details { padding-top:20px; margin-top:20px; }
+@media(max-width:1000px) { .routed-secondary { grid-template-columns:1fr; } }
+@media(max-width:540px) { .routed-workspace .routed-summary > div { padding:16px; } }
