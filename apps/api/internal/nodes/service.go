@@ -833,9 +833,44 @@ func (s *Service) desiredState(ctx context.Context, node sqlc.Node) (DesiredStat
 		ds.Peers = append(ds.Peers, peers...)
 		handoffPeers, _ := k8sHandoffGraph(topo, node)
 		ds.Peers = append(ds.Peers, handoffPeers...)
+		ds.Peers, err = composeDesiredPeers(ds.Peers)
+		if err != nil {
+			return DesiredState{}, err
+		}
 		ds.Policy = s.finalizeArtifact(topo, node, ds.Policy)
 	}
 	return ds, nil
+}
+
+// composeDesiredPeers joins graph contributions to WireGuard's one-peer-per-key domain.
+func composeDesiredPeers(peers []Peer) ([]Peer, error) {
+	byKey := make(map[string]Peer, len(peers))
+	allowed := make(map[string]map[string]struct{}, len(peers))
+	for _, peer := range peers {
+		if prior, found := byKey[peer.PublicKey]; found {
+			if !prior.SiteLink || !peer.SiteLink || prior.Endpoint != peer.Endpoint || prior.PersistentKeepalive != peer.PersistentKeepalive {
+				return nil, fmt.Errorf("conflicting desired WireGuard peer transport contributions")
+			}
+		} else {
+			copy := peer
+			copy.AllowedIPs = nil
+			byKey[peer.PublicKey] = copy
+			allowed[peer.PublicKey] = make(map[string]struct{})
+		}
+		for _, prefix := range peer.AllowedIPs {
+			allowed[peer.PublicKey][prefix] = struct{}{}
+		}
+	}
+	out := make([]Peer, 0, len(byKey))
+	for key, peer := range byKey {
+		for prefix := range allowed[key] {
+			peer.AllowedIPs = append(peer.AllowedIPs, prefix)
+		}
+		sort.Strings(peer.AllowedIPs)
+		out = append(out, peer)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].PublicKey < out[j].PublicKey })
+	return out, nil
 }
 
 func appendWarmWireGuardCandidates(peers []Peer, seen map[string]struct{}, candidates []sqlc.ListPreparedAgentWireGuardPeersForNodeRow) []Peer {

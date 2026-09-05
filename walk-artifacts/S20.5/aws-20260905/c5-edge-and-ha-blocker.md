@@ -60,3 +60,32 @@ public peer keys/prefixes, version and authority metadata. It does not replace
 or alter the Tunnex binary, chart, identity, network state, or database. It is
 diagnostic work, not additional acceptance credit. The temporary executable
 is retained; no cleanup was performed.
+
+## Confirmed compiler defect and local correction
+
+The GET diagnostic saw only HTTP 500 during its bounded 30-request run. A
+second standalone diagnostic invoked the unchanged CP peer compiler against
+the existing database with every connection forced read-only. It returned:
+
+- Desktop peer: `10.99.0.2/32`.
+- Edge peer contribution from site transit: `10.99.0.0/24`, `172.31.0.0/16`.
+- **The same edge key again**, from Kubernetes transit: `10.99.0.0/24`.
+
+Both edge contributions had identical endpoint and keepalive. The second
+diagnostic does not configure a policy provider: its evidence is the peer
+path, not full policy/hash equivalence. Its temporary executable remains at
+`/tmp/s205-cp-peer-readback-Rsc3W7` on the CP host and in its API container;
+the running API binary was not changed. No credential value was emitted.
+
+Decision paper `docs/S20.5-shared-topology-peer-correction.md` records the
+bounded source fix. Regression tests failed with concatenation and passed
+after compatible topology peers were combined into one deterministic union.
+Focused API tests passed open and enterprise, plus open race. Focused node
+ownership tests passed, including preservation of the ordinary site route
+and desktop peer during the pool fence. Independent slice review found no
+concrete P1/P2 findings; full compiler/hash execution was not directly tested.
+
+The live CP still runs C5, not this correction. The next live topology must
+also use the supported device-move workflow to home the desktop on the edge;
+the serving ownership overlap guard must not be relaxed. Exact-final gates,
+story-end review, new immutable publication and fresh live proof remain owed.
