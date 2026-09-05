@@ -175,6 +175,7 @@ Resources:
                   - elasticloadbalancing:DescribeLoadBalancers
                   - elasticloadbalancing:DescribeLoadBalancerAttributes
                   - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:DescribeRules
                   - elasticloadbalancing:DescribeListenerAttributes
                   - elasticloadbalancing:DescribeTargetGroups
                   - elasticloadbalancing:DescribeTargetGroupAttributes
