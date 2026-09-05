@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   S20.5 phase-one diagnostic only: one isolated EKS 1.35 cluster and one
-  managed AL2023 t3.medium worker. No Tunnex workload or full-walk topology.
+  managed AL2023 c7i-flex.large worker. No Tunnex workload or full-walk topology.
 
 # Create only the fresh stack tunnex-s205-aws-20260905a in account
 # 735391218823, ap-south-1, after checking identity, absence, and vCPU quota.
@@ -11,6 +11,9 @@ Description: >-
 # in this file. Reverify quota before any later scaling or node-group update.
 # Keep kubeconfig/credentials outside Git. Cleanup requires a separately
 # approved exact resource list; the identifying tags do not authorize it.
+# The original t3.medium attempt was rejected by account instance eligibility.
+# See docs/S20.5-aws-free-tier-worker-repair.md before recovering that empty
+# failed node group. Eligibility does not promise free billing.
 Metadata:
   ExpectedDeployment:
     AccountId: '735391218823'
@@ -333,9 +336,7 @@ Resources:
     Properties:
       LaunchTemplateName: tunnex-s205-aws-20260905a-worker
       LaunchTemplateData:
-        InstanceType: t3.medium
-        CreditSpecification:
-          CpuCredits: standard
+        InstanceType: c7i-flex.large
         MetadataOptions:
           HttpEndpoint: enabled
           HttpTokens: required
@@ -406,8 +407,9 @@ Resources:
         MaxSize: 1
       NodeRepairConfig:
         Enabled: false
-      # Phase one authorizes no update. If one is later approved, this strategy
-      # prevents the default replacement surge from silently exceeding one node.
+      # Any failed-empty provisioning retry follows the recorded repair and
+      # removal approval. No later workload rollout is authorized here. If one
+      # is approved, MINIMAL prevents a default replacement surge above one node.
       UpdateConfig:
         MaxUnavailable: 1
         UpdateStrategy: MINIMAL
