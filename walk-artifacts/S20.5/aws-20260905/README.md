@@ -11,8 +11,11 @@ but its install timed out on the missing A2 NLB name in fixture IAM. That narrow
 permission is corrected; a native retry safely refused the consumed claim.
 The separate B native install reached an AWS account-level CreateLoadBalancer
 `OperationNotPermitted` refusal (contact AWS Support), not IAM denial.
-NLB qualification is blocked; a NodePort alternative needs an explicit design
-disposition and would not prove the NLB path. Historical progress: 2/11; no final-candidate
+User explicitly skipped NLB qualification. Native NodePort replacements A3/B2
+both installed successfully, 1/1 Ready, zero restarts, exact C5 agent versions;
+bootstrap metadata is removed. Detailed phase chronology, private-service
+client traffic and the remaining lifecycle/HA proofs are pending.
+Historical fully evidenced progress: 2/11; no final-candidate
 or overall walk acceptance.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
@@ -22,6 +25,7 @@ Latest detailed evidence:
 - [First gateway failure and scoped controller correction](gateway-a-first-install-failure.md).
 - [C5 publication, licensed CP, and fresh plan](c5-publication-cp-and-plan.md).
 - [C5 live admission, A2 IAM correction, and retry refusal](c5-a2-runtime-and-iam.md).
+- [User-approved NodePort transition and two successful installs](c5-nodeport-transition.md).
 
 A new immutable candidate must re-earn the affected baseline, plan and live
 installation proofs. Earlier image or gate results are not inherited as green.
