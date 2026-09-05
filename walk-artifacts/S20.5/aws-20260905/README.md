@@ -1,8 +1,10 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
 Status: **three-worker EKS ready; CNI source repair and full node gate passed;
-six candidate images built locally; registry publication awaiting explicit
-payload authorization after a tool refusal; no VPN leg passed.**
+six candidate images published privately; CSI/LBC prerequisites deployed;
+retained CP upgraded with valid Scale license verified; four Tunnex chart
+publications newly authorized and in progress, digest/pull proof pending;
+0/11 product legs passed.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
 ## Authority and subject
@@ -12,7 +14,7 @@ No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
   rerun from final immutable source.
 - Paper-first AWS plan: commit `29e1c6d`,
   `docs/S20.5-aws-live-walk-plan.md`.
-- Last product repair: `18bd20af82d09c5a6bcec1d6f5d525bbf57550fa`.
+- Last product repair: `d2c9cba653d400e2dab3d7b038796efeee1f028c`.
 - Last pushed checkpoint before this live-first preparation:
   `9b1797715ef8d5578d1afa73824ebe88963f947e`; that exact SHA had zero check runs,
   zero workflow runs, and zero legacy status contexts. This is not green CI.
@@ -410,6 +412,31 @@ the controller stack nor the candidate CP has been deployed. Existing CP
 services/IDs and schema 129 remained unchanged on readback. Its new candidate
 directories were absent; no new candidate administrator credential exists.
 
+## Live event 8 — authorized image publication, controllers and retained CP
+
+Event 7 records the earlier refusal and pre-deployment state. The user then
+explicitly authorized the six-image private ECR payload; all six uploads and
+digest readbacks succeeded. The four Tunnex chart uploads initially remained
+blocked for separate exact approval, without an alternate export or transfer.
+The user has now explicitly approved those four uploads; publication is in
+progress, with digest readback and pull proof still pending at this checkpoint.
+
+The approved controller change set created exactly seven Add-only resources,
+then the pinned LBC chart and named nondefault Retain StorageClass were
+installed. CSI and LBC report ready; no gateway PVC, NLB or packet path has yet
+been exercised. See [controller deployment evidence](controller-deployment-evidence.md).
+
+The user separately approved upgrading the retained licensed dev CP. The
+committed plan/override `6081525` preceded replacement of only API, web and
+Nginx. The same public HTTPS origin is healthy, schema is 136/clean, and fresh
+normal authentication with unchanged credentials verifies a valid Scale
+license. Existing stores and the other four old container IDs were retained;
+all five isolated-project containers were stopped, with their files/stores
+retained. See [candidate publication and CP evidence](candidate-deployment-evidence.md).
+
+These are prerequisites, not Leg 0 or any product-leg pass. There is still no
+Tunnex gateway, NLB, PVC or client proof, no exact-final green CI, and no PR.
+
 ## Acceptance ledger
 
 | Stage/leg | Result | Remaining proof |
@@ -418,7 +445,10 @@ directories were absent; no new candidate administrator credential exists.
 | Quota increase | CASE_OPENED; quota still 8; minimal topology fits | No extra EC2 surge headroom; increase not required for the current four machines |
 | Three-worker EKS infrastructure | UPDATE_COMPLETE; three nodes Ready | No product qualification implied |
 | Native Pod networking | DNS and HTTP egress PASS | Repeat alongside actual Tunnex packet/fault/cleanup proofs |
-| CNI mechanism | Source repair committed; full node gate PASS | Candidate publication and real tunnel/controller proof pending |
+| CNI mechanism | Source repair committed; full node gate PASS | Real Tunnex tunnel/controller proof pending |
+| Candidate images | Six private ECR uploads and exact digest readbacks PASS | Four Tunnex chart uploads newly authorized/in progress; digest/pull proof pending; full Leg 0 still unrun |
+| CSI/LBC prerequisites | Stack CREATE_COMPLETE; pinned controllers Ready; named nondefault Retain StorageClass created | First PVC/volume and UDP NLB reconciliation unrun |
+| Retained licensed CP | Candidate API/web/Nginx deployed; schema 136 clean; trusted TLS health and Scale license verified | Gateway enrollment/control, HA opt-in and client packet proof unrun |
 | 0. Candidate provenance/clean baseline | NOT RUN | Matching source/CLI/charts/images; no old ownership state |
 | 1. Redacted plan/no writes | NOT RUN | CLI/CP/Kubernetes evidence |
 | 2/3. A and B enrollment | NOT RUN | Host journal, CNI, readiness, identity and Secret consumption |
