@@ -1,0 +1,444 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  S20.5 phase-one diagnostic only: one isolated EKS 1.35 cluster and one
+  managed AL2023 t3.medium worker. No Tunnex workload or full-walk topology.
+
+# Create only the fresh stack tunnex-s205-aws-20260905a in account
+# 735391218823, ap-south-1, after checking identity, absence, and vCPU quota.
+# This template creates IAM roles with CloudFormation-generated names and
+# requires CAPABILITY_IAM. It never imports resources from the existing VPC.
+# Supply the freshly observed laptop IPv4 /32 at execution time; do not put it
+# in this file. Reverify quota before any later scaling or node-group update.
+# Keep kubeconfig/credentials outside Git. Cleanup requires a separately
+# approved exact resource list; the identifying tags do not authorize it.
+Metadata:
+  ExpectedDeployment:
+    AccountId: '735391218823'
+    Region: ap-south-1
+    StackName: tunnex-s205-aws-20260905a
+    Plan: docs/S20.5-aws-live-walk-plan.md
+
+Parameters:
+  AdminCIDR:
+    Type: String
+    Description: Freshly verified administrator public IPv4 address with /32 suffix.
+    AllowedPattern: '^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/32$'
+    ConstraintDescription: Supply one valid IPv4 /32; no wider network is accepted.
+  ManagedNodegroupReleaseVersion:
+    Type: String
+    Description: >-
+      Exact EKS 1.35 AL2023 x86_64 standard release_version verified from the
+      AWS public SSM AMI record before creation; never an AMI ID or latest alias.
+    AllowedPattern: '^1\.35\.[0-9]+-[0-9]{8}$'
+    ConstraintDescription: Supply the verified EKS 1.35 release in 1.35.patch-YYYYMMDD form.
+
+Resources:
+  WalkVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.240.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: tunnex-s205-aws-20260905a-vpc
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WalkVPC
+      AvailabilityZone: ap-south-1a
+      CidrBlock: 10.240.10.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: tunnex-s205-aws-20260905a-public-a
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WalkVPC
+      AvailabilityZone: ap-south-1b
+      CidrBlock: 10.240.20.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: tunnex-s205-aws-20260905a-public-b
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: tunnex-s205-aws-20260905a-igw
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref WalkVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WalkVPC
+      Tags:
+        - Key: Name
+          Value: tunnex-s205-aws-20260905a-public
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  PublicInternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  ClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: EKS control-plane role for the isolated S20.5 AWS walk.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  WalkCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: tunnex-s205-aws-20260905a
+      Version: '1.35'
+      RoleArn: !GetAtt ClusterRole.Arn
+      BootstrapSelfManagedAddons: false
+      AccessConfig:
+        AuthenticationMode: API
+        BootstrapClusterCreatorAdminPermissions: false
+      ComputeConfig:
+        Enabled: false
+      KubernetesNetworkConfig:
+        IpFamily: ipv4
+        ElasticLoadBalancing:
+          Enabled: false
+      StorageConfig:
+        BlockStorage:
+          Enabled: false
+      UpgradePolicy:
+        SupportType: STANDARD
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref PublicSubnetA
+          - !Ref PublicSubnetB
+        EndpointPrivateAccess: true
+        EndpointPublicAccess: true
+        PublicAccessCidrs:
+          - !Ref AdminCIDR
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  AdministratorAccess:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref WalkCluster
+      PrincipalArn: arn:aws:iam::735391218823:user/aws-cli
+      Type: STANDARD
+      AccessPolicies:
+        - PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
+          AccessScope:
+            Type: cluster
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  ClusterOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: !GetAtt WalkCluster.OpenIdConnectIssuerUrl
+      ClientIdList:
+        - sts.amazonaws.com
+      # ThumbprintList is optional: IAM retrieves the provider's intermediate
+      # CA thumbprint. No fixed certificate fingerprint is guessed or pinned.
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  VPCCNIRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Exact-cluster aws-node service-account role; never a worker policy.
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Federated": "${ClusterOIDCProvider}"},
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {"StringEquals": {
+                  "${IssuerHostPath}:aud": "sts.amazonaws.com",
+                  "${IssuerHostPath}:sub": "system:serviceaccount:kube-system:aws-node"
+                }}
+              }]
+            }
+          - IssuerHostPath: !Select [1, !Split ['https://', !GetAtt WalkCluster.OpenIdConnectIssuerUrl]]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  VPCCNIAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref WalkCluster
+      AddonName: vpc-cni
+      AddonVersion: v1.22.4-eksbuild.3
+      ServiceAccountRoleArn: !GetAtt VPCCNIRole.Arn
+      ResolveConflicts: NONE
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  KubeProxyAddon:
+    Type: AWS::EKS::Addon
+    Properties:
+      ClusterName: !Ref WalkCluster
+      AddonName: kube-proxy
+      AddonVersion: v1.35.3-eksbuild.21
+      ResolveConflicts: NONE
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  CoreDNSAddon:
+    Type: AWS::EKS::Addon
+    DependsOn: DiagnosticNodegroup
+    Properties:
+      ClusterName: !Ref WalkCluster
+      AddonName: coredns
+      AddonVersion: v1.13.2-eksbuild.21
+      ResolveConflicts: NONE
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Minimal managed-worker and SSM role for the isolated S20.5 AWS walk.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Project
+          Value: Tunnex-S20.5-AWS-Walk
+        - Key: Session
+          Value: tunnex-s205-aws-20260905a
+        - Key: Repository
+          Value: tunnexio/tunnex
+
+  WorkerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: tunnex-s205-aws-20260905a-worker
+      LaunchTemplateData:
+        InstanceType: t3.medium
+        CreditSpecification:
+          CpuCredits: standard
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          HttpPutResponseHopLimit: 2
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              VolumeType: gp3
+              VolumeSize: 30
+              Encrypted: true
+              DeleteOnTermination: true
+        # No ImageId, UserData, IamInstanceProfile, SSH key, custom security
+        # group, or network-interface override. EKS chooses the pinned managed
+        # AMI, authors bootstrap, and attaches its managed cluster security group.
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: tunnex-s205-aws-20260905a-worker-a
+              - Key: Project
+                Value: Tunnex-S20.5-AWS-Walk
+              - Key: Session
+                Value: tunnex-s205-aws-20260905a
+              - Key: Repository
+                Value: tunnexio/tunnex
+          - ResourceType: volume
+            Tags:
+              - Key: Project
+                Value: Tunnex-S20.5-AWS-Walk
+              - Key: Session
+                Value: tunnex-s205-aws-20260905a
+              - Key: Repository
+                Value: tunnexio/tunnex
+      TagSpecifications:
+        - ResourceType: launch-template
+          Tags:
+            - Key: Project
+              Value: Tunnex-S20.5-AWS-Walk
+            - Key: Session
+              Value: tunnex-s205-aws-20260905a
+            - Key: Repository
+              Value: tunnexio/tunnex
+
+  DiagnosticNodegroup:
+    Type: AWS::EKS::Nodegroup
+    # CNI creation and worker creation must proceed in parallel: workers need
+    # CNI to become Ready, while the CNI add-on can need workers to stabilize.
+    # Neither resource depends on the other's CloudFormation completion.
+    DependsOn:
+      - PublicInternetRoute
+      - PublicSubnetARouteAssociation
+    Properties:
+      ClusterName: !Ref WalkCluster
+      NodegroupName: tunnex-s205-aws-20260905a-worker-a
+      Version: '1.35'
+      AmiType: AL2023_x86_64_STANDARD
+      ReleaseVersion: !Ref ManagedNodegroupReleaseVersion
+      CapacityType: ON_DEMAND
+      NodeRole: !GetAtt WorkerRole.Arn
+      Subnets:
+        - !Ref PublicSubnetA
+      LaunchTemplate:
+        Id: !Ref WorkerLaunchTemplate
+        Version: !GetAtt WorkerLaunchTemplate.LatestVersionNumber
+      ScalingConfig:
+        MinSize: 1
+        DesiredSize: 1
+        MaxSize: 1
+      NodeRepairConfig:
+        Enabled: false
+      # Phase one authorizes no update. If one is later approved, this strategy
+      # prevents the default replacement surge from silently exceeding one node.
+      UpdateConfig:
+        MaxUnavailable: 1
+        UpdateStrategy: MINIMAL
+      ForceUpdateEnabled: false
+      Tags:
+        Project: Tunnex-S20.5-AWS-Walk
+        Session: tunnex-s205-aws-20260905a
+        Repository: tunnexio/tunnex
+
+Outputs:
+  VPCId:
+    Value: !Ref WalkVPC
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+  InternetGatewayId:
+    Value: !Ref InternetGateway
+  ClusterArn:
+    Value: !GetAtt WalkCluster.Arn
+  ClusterSecurityGroupId:
+    Value: !GetAtt WalkCluster.ClusterSecurityGroupId
+  NodegroupArn:
+    Value: !GetAtt DiagnosticNodegroup.Arn
+  WorkerLaunchTemplateId:
+    Value: !Ref WorkerLaunchTemplate
+  ClusterRoleArn:
+    Value: !GetAtt ClusterRole.Arn
+  WorkerRoleArn:
+    Value: !GetAtt WorkerRole.Arn
+  VPCCNIRoleArn:
+    Value: !GetAtt VPCCNIRole.Arn
+  OIDCProviderArn:
+    Value: !Ref ClusterOIDCProvider
