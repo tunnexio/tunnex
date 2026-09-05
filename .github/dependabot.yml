@@ -27,15 +27,6 @@ updates:
       web-javascript:
         patterns: ['*']
 
-  - package-ecosystem: npm
-    directory: /apps/client
-    open-pull-requests-limit: 0
-    schedule:
-      interval: weekly
-    groups:
-      client-javascript:
-        patterns: ['*']
-
   - package-ecosystem: gomod
     directory: /apps/api
     open-pull-requests-limit: 0
@@ -70,13 +61,4 @@ updates:
       interval: weekly
     groups:
       cli-go:
-        patterns: ['*']
-
-  - package-ecosystem: gomod
-    directory: /apps/helper
-    open-pull-requests-limit: 0
-    schedule:
-      interval: weekly
-    groups:
-      helper-go:
         patterns: ['*']

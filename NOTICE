@@ -18,7 +18,10 @@ reaffirmed.
 
 ---
 
-Third-party components (desktop client privilege helper, S6.3):
+Historical desktop client privilege-helper attribution (S6.3), retained for
+provenance. Current desktop source, dependencies and distribution notices live
+in https://github.com/tunnexio/tunnex-client:
+
 
   wireguard-go            golang.zx2c4.com/wireguard
   WireGuard-Windows       golang.zx2c4.com/wireguard/windows

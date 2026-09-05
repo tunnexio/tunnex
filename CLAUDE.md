@@ -31,8 +31,10 @@ Stories build one at a time, decision-first:
    Walk evidence is COMMITTED during the walk session (walk-artifacts/), not after.
    Walk-time scratch credentials (WG configs etc.) contain private keys — gitignore
    them at creation, never commit.
-5. **Both-green** — CI required checks (`gates` + `client (macos-latest)` + `client (windows-latest)`)
-   must pass; run the gate targets locally first.
+5. **Required checks** — all control-plane CI required checks must pass on the exact PR head; run
+   the applicable gate targets locally first. Desktop platform checks now belong to
+   [tunnex-client](https://github.com/tunnexio/tunnex-client). The ruleset transition prerequisite
+   for retiring the old desktop contexts is recorded in `docs/S-client-cleanup-decisions.md`.
 6. **⛔ THE POINTER NAMES THE CONTENT TIP, NOT `main`'s HEAD** (ruled S14.11, from archaeology).
    The re-entry checkpoint records the **last non-pointer commit of the story** — the branch tip *before*
    the PLAN commit — never the post-merge head sha.
@@ -123,8 +125,6 @@ make migrate           # apply migrations (stack's postgres must be up)
 make test-editions     # Go API tests in BOTH editions (open + enterprise build tags)
 make build-editions    # both editions compile (catches edition rot)
 make test-node         # node-agent data-plane tests
-make test-helper       # privilege-helper vet + test
-make helper-crosscompile
 pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build
 ```
 
@@ -166,16 +166,11 @@ Monorepo (pnpm workspaces + turbo for TS; independent Go modules per app):
 - **`apps/node`** — data-plane agent owning WireGuard via wgctrl. Desired-state reconcile
   loop: data-plane state is continuously reconciled against control-plane desired state,
   never assumed in sync.
-- **`apps/web`** — React + Vite + Tailwind SPA; same bundle reused by the Electron renderer.
+- **`apps/web`** — React + Vite + Tailwind browser dashboard.
   RBAC mirror is generated (`src/lib/rbac-policy.json`), never hand-edited.
-- **`apps/client`** — Electron desktop app. Renderer never holds tokens (main-process
-  webRequest injector); preload exposes a verb allowlist, no generic invoke. Client unit
-  tests must import NO electron at runtime (CI sets ELECTRON_SKIP_BINARY_DOWNLOAD) — pure
-  view-models live in electron-free modules.
-- **`apps/helper`** — root privilege helper (typed protocol, canonicalized caller auth,
-  version handshake) + kill-switches: macOS pf, Windows WFP. `internal/wfp/` is a PINNED,
-  DIVERGED fork of wireguard/windows tunnel/firewall — on any wireguard/windows bump,
-  re-diff and re-apply the deltas (see its VENDOR.md).
+- **Desktop client and privilege helper** — maintained in
+  [tunnex-client](https://github.com/tunnexio/tunnex-client), including its renderer and platform CI.
+  This repository retains the server-side authentication, device, posture and routing contracts.
 - **`apps/cli`** — `tunnex` CLI (Go client generated from the spec).
 - **`packages/shared`** — generated TS API types + shared client transport.
 

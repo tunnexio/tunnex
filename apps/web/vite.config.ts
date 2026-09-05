@@ -1,9 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve } from "node:path";
 
-// The SPA is served as static files (by nginx in compose) and reused by the
-// Electron renderer, so the build output is a plain static bundle.
+// The dashboard is served as a static bundle by nginx in compose.
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -28,18 +26,5 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
-    // ⛔ TWO ENTRIES, ONE BUILD. `index.html` is the web app; `client.html` is the desktop
-    // client's own surface. They share tokens and the build pipeline and NOTHING else — the
-    // client mounts no router and imports no page.
-    //
-    // This is step 1 of the migration: the entry exists and is reviewable at /client.html in a
-    // BROWSER, while Electron still loads index.html. Nothing switches until step 3, which is a
-    // one-line change to the loader.
-    rollupOptions: {
-      input: {
-        index: resolve(__dirname, "index.html"),
-        client: resolve(__dirname, "client.html"),
-      },
-    },
   },
 });

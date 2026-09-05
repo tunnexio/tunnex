@@ -55,13 +55,13 @@ The things an attacker would actually go after, and where we will act on a repor
   principal reach a resource they hold no grant for.
 - **The data-plane agent** (`apps/node`) — the WireGuard/OpenVPN configuration it renders and the firewall
   rules it programs, including any bypass of the enforcement chain.
-- **The privilege helper** (`apps/helper`) — it runs as root. Caller authentication, the typed protocol, the
+- **The privilege helper** ([tunnex-client/apps/helper](https://github.com/tunnexio/tunnex-client/tree/main/apps/helper)) — it runs as root. Caller authentication, the typed protocol, the
   kill-switches (macOS pf, Windows WFP), and any local privilege escalation through it.
 - **Key and secret handling** — the sealed master key, the certificate authorities, device and machine
   credentials, one-time-secret ceremonies, anything that leaks a secret into a log, an API response, or a
   backup that should not carry it.
 - **The GitOps operator** (`apps/operator`) and the machine-credential principal.
-- **The desktop client** (`apps/client`) — token handling, the preload boundary, navigation and CSP locks.
+- **The desktop client** ([tunnex-client/apps/client](https://github.com/tunnexio/tunnex-client/tree/main/apps/client)) — token handling, the preload boundary, navigation and CSP locks.
 
 ## What is out of scope
 

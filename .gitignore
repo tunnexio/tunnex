@@ -7,23 +7,6 @@ dist/
 build/
 out/
 
-# ⛔ `build/` ABOVE IS UNANCHORED, AND IT WAS ALREADY SWALLOWING PACKAGING SOURCE.
-#
-# It matches `apps/client/build/` — the electron-builder buildResources directory, which holds
-# AUTHORED files: the NSIS installer script, the macOS pkg postinstall, the Windows helper
-# install/uninstall scripts and now the app icon. Four of them are in git only because somebody ran
-# `git add -f`; the icon would have been the fifth, and the packaged app would have shipped with
-# ELECTRON'S icon on any fresh clone while looking correct on the machine that generated it.
-#
-# > **THIS REPO HAS ALREADY PAID FOR THIS EXACT PATTERN.** An unanchored `secrets/` kept
-# > `apps/api/internal/secrets` SOURCE out of git — it built locally and broke every fresh clone —
-# > and the fix then was to anchor the patterns. The lesson did not reach this line.
-#
-# Un-ignored explicitly (the directory first: git does not descend into an excluded one), with the
-# genuinely-generated artefact re-excluded after.
-!apps/client/build/
-!apps/client/build/**
-apps/client/build/helper/
 *.tsbuildinfo
 apps/web/dist/
 bin/
@@ -74,9 +57,7 @@ apps/web/vite.config.d.ts
 /apps/api/seed
 /apps/node/agent
 
-# S6.5a packaging build outputs (electron-builder + staged helper)
-apps/client/release/
-apps/client/build/helper/
+# Historical tunnel scratch (may contain private keys)
 S.conf
 
 # stray go-build binary (cmd/walk-bootstrap dev tool)
