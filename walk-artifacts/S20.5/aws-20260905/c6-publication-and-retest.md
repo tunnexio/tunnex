@@ -33,5 +33,18 @@ old node-agent, Postgres, Redis, volumes and all other settings are unchanged.
 The Scale license was valid; CP health returned 200. The C6 override was
 installed as a new file; original deployment environment and C5 override remain.
 
-Deployment and fresh HA results are pending at this entry. No PR or merge;
+CP rollout completed around 23:47 UTC: API `071d3428fe3a`, web
+`3e88e60ef606`, nginx `8911c64f208b` healthy. Caddy `64e95d0b321e`, old
+node-agent `80259b6ef9e4`, Postgres `59a305613856` and Redis `d819881e8ef9`
+were unchanged. Subsequent health 200 and valid Scale license confirmed.
+
+Native A3 upgrade started next. Its replacement reused the stored identity
+and passed the two-heartbeat CNI admission, but startup GET returned HTTP 500
+and it entered CrashLoopBackOff. The existing authority revision 153 was
+created 23:40:01 and expires 23:50:00; no expiry/authority state was modified.
+The command remains within its native five-minute atomic upgrade window at
+this entry. B2 and edge upgrades are paused pending its outcome. This is not
+a passed upgrade or HA leg; no remedial restart was used.
+
+Fresh HA results remain pending. No PR or merge;
 NLB remains skipped, not passed. Historical C5 traffic is not C6 acceptance.
