@@ -48,3 +48,18 @@ a passed upgrade or HA leg; no remedial restart was used.
 
 Fresh HA results remain pending. No PR or merge;
 NLB remains skipped, not passed. Historical C5 traffic is not C6 acceptance.
+
+## A3 recovery and fresh exact authority acknowledgments
+
+Native A3 upgrade ran 23:48:01.050–23:50:20.344 UTC, **exit 0**. After
+revision 153 expired naturally, startup recovered without another mutation.
+The same A3 node/PVC returned Ready on C6. This records the transient crash
+honestly; it is not a claim of uninterrupted access or instant recovery.
+
+New authority revision 154 was created 23:50:02.013187. A3 acknowledged it
+at 23:50:09.589253 and B2 at 23:50:26.055473. This is the first recorded
+pair of exact acknowledgments since the duplicated-peer blocker. A3 kernel
+readback now shows one edge peer retaining ordinary `172.31.0.0/16` after
+the pool fence, with no desktop peer left on A3. The peer correction is
+therefore supported by fresh wire evidence; complete fenced HA and client
+recovery are still separate pending proofs. B2 native upgrade started next.
