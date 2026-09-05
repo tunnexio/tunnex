@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  S20.5 phase-one diagnostic only: one isolated EKS 1.35 cluster and one
-  managed AL2023 c7i-flex.large worker. No Tunnex workload or full-walk topology.
+  S20.5 isolated EKS 1.35 walk infrastructure with one to three managed AL2023
+  c7i-flex.large workers. Tunnex workloads are installed separately.
 
 # Create only the fresh stack tunnex-s205-aws-20260905a in account
 # 735391218823, ap-south-1, after checking identity, absence, and vCPU quota.
@@ -22,6 +22,13 @@ Metadata:
     Plan: docs/S20.5-aws-live-walk-plan.md
 
 Parameters:
+  WorkerCount:
+    Type: Number
+    Default: 1
+    AllowedValues: [1, 2, 3]
+    Description: >-
+      Exact desired/max worker count. Reverify account quota and existing usage;
+      retained CP plus three 2-vCPU workers consume the current 8-vCPU quota.
   AdminCIDR:
     Type: String
     Description: Freshly verified administrator public IPv4 address with /32 suffix.
@@ -403,8 +410,8 @@ Resources:
         Version: !GetAtt WorkerLaunchTemplate.LatestVersionNumber
       ScalingConfig:
         MinSize: 1
-        DesiredSize: 1
-        MaxSize: 1
+        DesiredSize: !Ref WorkerCount
+        MaxSize: !Ref WorkerCount
       NodeRepairConfig:
         Enabled: false
       # Any failed-empty provisioning retry follows the recorded repair and
