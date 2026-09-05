@@ -1,6 +1,8 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
-Status: **one-worker EKS and native DNS/HTTP baseline passed; Tunnex CNI compatibility blocked; no VPN leg passed.**
+Status: **three-worker EKS ready; CNI source repair and full node gate passed;
+six candidate images built locally; registry publication awaiting explicit
+payload authorization after a tool refusal; no VPN leg passed.**
 No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
 ## Authority and subject
@@ -353,15 +355,70 @@ format difference; both encodings must be proven without accepting unknown
 semantics. See `cni-real-tool-witness.md` and the `runtime-alpine-*` snapshots.
 Neither correction is a live VPN pass; full rerun and candidate wire proof remain.
 
+## Live event 7 — required capacity and finalized CNI candidate
+
+Worker scaling source `430177d` added only a closed 1/2/3 count parameter.
+Full property-level change set
+`arn:aws:cloudformation:ap-south-1:735391218823:changeSet/walk-workers-three-430177d/b28cec57-b751-4546-a553-b7a4cd977607`
+contained exactly one non-replacing `DiagnosticNodegroup` modification:
+desired/max 1 to 3. Normalized before/after properties outside ScalingConfig
+were identical, including launch-template version 2. Fresh identity and exact
+two-instance inventory preceded execution. CloudFormation UPDATE_COMPLETE
+and all three nodes Ready were read back without a host or CNI repair.
+
+| Retained/new machine | Role | Private IP | Public IP |
+|---|---|---|---|
+| `i-019a97f67dd40ce13` | retained CP host | 172.31.39.125 | 13.206.39.40 |
+| `i-0afe3c3ecd00d1411` | original task worker | 10.240.10.204 | 65.2.179.105 |
+| `i-0f6bb7eca4b726637` | additional task worker | 10.240.10.88 | 13.234.118.111 |
+| `i-03c1fb3619712c8d3` | additional task worker / relocation capacity | 10.240.10.121 | 13.206.207.103 |
+
+All four are 2-vCPU/4-GiB c7i-flex.large. The workers are in the exact task
+subnet/AZ and use the unchanged pinned AMI/kubelet. This consumes 8 vCPU;
+there is no additional EC2 surge headroom. No gateway placement is implied.
+
+After verifying that the old gateway EIP was unattached and belonged to the
+removed gateway, released only `eipalloc-0f8de2bcddee7e221` / 13.126.17.194.
+Its address cannot be guaranteed recoverable. The CP EIP remained attached;
+the subsequent address inventory contained only that allocation. Both old
+root-volume IDs were absent after termination; their encrypted snapshots remain.
+
+CNI product content is committed and pushed at
+`d2c9cba653d400e2dab3d7b038796efeee1f028c`. The complete rerun of
+`make test-node` passed all 14 packages (cmd/agent 89.900s, k8snetprep 1.018s),
+following the recorded failed fixture-path attempt. Host-posture Linux and
+Darwin race suites, actual read-only-mount locking, gateway/host-posture chart
+contracts and focused cross-reviews passed their respective scopes. No
+concrete P1/P2 remained in the CNI/host-posture cross-review; this is not the
+uncompleted whole-story review or all-gates approval. Exact pushed-SHA GitHub
+lookup returned zero check runs and zero workflow runs, not green CI.
+
+Six linux/amd64 runtime images built from a separate clean detached checkout
+of that exact product SHA. API used the enterprise build tag; node/operator
+embedded version equals `0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe`.
+The ten planned private ECR repositories were created with immutable tags,
+verified exact account/ARN/URI, and no other repositories were modified.
+Image upload was then refused by the execution safety reviewer for missing
+directly visible authorization of this exact code payload and destination.
+No workaround or alternate transfer was used; read-only post-refusal checks
+returned ImageNotFound for both attempted candidate tags. Remaining uploads
+were not attempted. User confirmation of the exact private image publication
+is required before proceeding with that refused operation.
+
+Controller and isolated-CP templates are committed at `79c2425`, but neither
+the controller stack nor the candidate CP has been deployed. Existing CP
+services/IDs and schema 129 remained unchanged on readback. Its new candidate
+directories were absent; no new candidate administrator credential exists.
+
 ## Acceptance ledger
 
 | Stage/leg | Result | Remaining proof |
 |---|---|---|
 | Account/region/inventory | READ-ONLY VERIFIED | Recheck before mutation |
-| Quota increase | CASE_OPENED; quota still 8 | Actual approved quota; do not infer from request |
-| One-worker EKS infrastructure | UPDATE_COMPLETE; one node Ready | No product qualification implied |
+| Quota increase | CASE_OPENED; quota still 8; minimal topology fits | No extra EC2 surge headroom; increase not required for the current four machines |
+| Three-worker EKS infrastructure | UPDATE_COMPLETE; three nodes Ready | No product qualification implied |
 | Native Pod networking | DNS and HTTP egress PASS | Repeat alongside actual Tunnex packet/fault/cleanup proofs |
-| CNI mechanism | LIVE MISMATCH CONFIRMED | C1–C4 repair authorized; implementation/review/live proof pending |
+| CNI mechanism | Source repair committed; full node gate PASS | Candidate publication and real tunnel/controller proof pending |
 | 0. Candidate provenance/clean baseline | NOT RUN | Matching source/CLI/charts/images; no old ownership state |
 | 1. Redacted plan/no writes | NOT RUN | CLI/CP/Kubernetes evidence |
 | 2/3. A and B enrollment | NOT RUN | Host journal, CNI, readiness, identity and Secret consumption |
