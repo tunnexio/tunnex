@@ -55,6 +55,7 @@ setup_palette() {
 	TUNNEX_DIM=''
 	TUNNEX_RESET=''
 	[ -z "${NO_COLOR+x}" ] || return 0
+	[ "${TERM:-}" != dumb ] || return 0
 	case "${TUNNEX_COLOR:-auto}" in
 	always) : ;;
 	auto) [ -t 1 ] || return 0 ;;
@@ -69,36 +70,94 @@ setup_palette() {
 	TUNNEX_DIM="$(printf '\033[2m')"
 	TUNNEX_RESET="$(printf '\033[0m')"
 }
+# Original installer wordmark, retained at the user-requested compact size.
+# Connected E and symmetric X, approved for terminal legibility.
+ui_motion() {
+	[ -t 1 ] && [ "${TERM:-}" != dumb ] && [ -z "${NO_COLOR+x}" ] &&
+		[ "${TUNNEX_LOADER:-auto}" != never ]
+}
+# Original compact glyphs and spacing, with the approved EX colors.
+wordmark_row() {
+	_wordmark_fg=$TUNNEX_RED
+	if [ -n "$TUNNEX_RESET" ]; then
+		case "${COLORTERM:-}" in
+		truecolor|24bit) _wordmark_fg="$(printf '\033[38;2;%sm' "$3")" ;;
+		*) case "${TERM:-}" in *256color*) _wordmark_fg="$(printf '\033[38;5;%sm' "$4")" ;; esac ;;
+		esac
+	fi
+	printf '  %s%s%s%s%s%s\n' "$TUNNEX_WHITE" "$1" "$TUNNEX_RESET" "$_wordmark_fg" "$2" "$TUNNEX_RESET"
+	if ui_motion; then sleep 0.12; fi
+}
+# A short decorative sweep; never presented as installation progress.
+brand_sweep() {
+	ui_motion || return 0
+	_sweep_step=0
+	while [ "$_sweep_step" -lt 12 ]; do
+		printf '\r    '
+		_sweep_cell=0
+		while [ "$_sweep_cell" -lt 12 ]; do
+			if [ "$_sweep_cell" -eq "$_sweep_step" ]; then
+				printf '%s━━%s' "$TUNNEX_CYAN" "$TUNNEX_RESET"
+			else
+				printf '%s──%s' "$TUNNEX_DIM" "$TUNNEX_RESET"
+			fi
+			_sweep_cell=$((_sweep_cell + 1))
+		done
+		sleep 0.07
+		_sweep_step=$((_sweep_step + 1))
+	done
+	printf '\r\033[2K'
+}
 print_wordmark() {
 	say ''
-	printf '%sPreparing secure host onboarding…%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
-	say ''
-	printf '  %s▀█▀ █ █ █▄ █ █▄ █ %s%s█▀▀ ▀▄▀%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
-	printf '  %s █  █ █ █ ▀█ █ ▀█ %s%s█▀▀ ▄▀▄%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
-	printf '  %s ▀  ▀▀▀ ▀  ▀ ▀  ▀ %s%s▀▀▀ ▀ ▀%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET" "$TUNNEX_RED" "$TUNNEX_RESET"
-	printf '  %sConnect Everything. Trust Nothing.%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
-	printf '  %sSelf-hosted Zero Trust VPN%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
+	printf '  %sTUNNEX / GUIDED SETUP%s\n\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
+	wordmark_row '▀█▀ █ █ █▄ █ █▄ █ ' '█▀▀ ▀▄▀' '176;58;69' '131'
+	wordmark_row ' █  █ █ █ ▀█ █ ▀█ ' '█▀▀ ▄▀▄' '143;39;51' '95'
+	wordmark_row ' ▀  ▀▀▀ ▀  ▀ ▀  ▀ ' '▀▀▀ ▀ ▀' '110;21;32' '88'
+
+	brand_sweep
+	printf '  %sConnect Everything. Trust Nothing.%s\n' "$TUNNEX_WHITE" "$TUNNEX_RESET"
+	printf '\n  %s────────────────────────────────────────────%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
 }
 stage() {
-	printf '\n%s[%s/5]%s %s\n' "$TUNNEX_RED" "$1" "$TUNNEX_RESET" "$2"
+	printf '\n  '
+	_stage_index=1
+	while [ "$_stage_index" -le 5 ]; do
+		if [ "$_stage_index" -lt "$1" ]; then
+			printf '%s━%s' "$TUNNEX_CYAN" "$TUNNEX_RESET"
+		elif [ "$_stage_index" -eq "$1" ]; then
+			printf '%s●%s' "$TUNNEX_RED" "$TUNNEX_RESET"
+		else
+			printf '%s─%s' "$TUNNEX_DIM" "$TUNNEX_RESET"
+		fi
+		if ui_motion; then sleep 0.035; fi
+		_stage_index=$((_stage_index + 1))
+	done
+	printf '  %s[%s/5] %s%s\n\n' "$TUNNEX_WHITE" "$1" "$2" "$TUNNEX_RESET"
 }
 info() {
-	printf '%s·%s %s\n' "$TUNNEX_DIM" "$TUNNEX_RESET" "$1"
+	printf '    %s·%s %s\n' "$TUNNEX_DIM" "$TUNNEX_RESET" "$1"
 }
 success() {
-	printf '%s✓%s %s\n' "$TUNNEX_CYAN" "$TUNNEX_RESET" "$1"
+	printf '    %s✓%s %s\n' "$TUNNEX_CYAN" "$TUNNEX_RESET" "$1"
 }
 warn() {
-	printf '%s!%s %s\n' "$TUNNEX_AMBER" "$TUNNEX_RESET" "$1"
+	printf '    %s!%s %s\n' "$TUNNEX_AMBER" "$TUNNEX_RESET" "$1"
 }
 plan_start() {
-	printf '\n%s╭─%s %sQuickStart plan%s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_WHITE" "$TUNNEX_RESET"
+	printf '\n    %s╭─%s %sQuickStart plan%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET" "$TUNNEX_WHITE" "$TUNNEX_RESET"
 }
 plan_item() {
-	printf '  %s│%s %s%-18s%s %s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_DIM" "$1" "$TUNNEX_RESET" "$2"
+	printf '    %s│%s  %s%-18s%s %s\n' "$TUNNEX_DIM" "$TUNNEX_RESET" "$TUNNEX_DIM" "$1" "$TUNNEX_RESET" "$2"
 }
 plan_end() {
-	printf '%s╰────────────────────────────────────────────────────────────%s\n' "$TUNNEX_RED" "$TUNNEX_RESET"
+	printf '    %s╰─────────────────────────────────────────%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
+}
+preview_complete() {
+	printf '\n  %s╭─ %sPREVIEW COMPLETE%s\n' "$TUNNEX_CYAN" "$TUNNEX_WHITE" "$TUNNEX_RESET"
+	printf '  %s│%s  This was a simulation. Nothing was installed.\n' "$TUNNEX_CYAN" "$TUNNEX_RESET"
+	printf '  %s│%s  %sNext%s  Dashboard → Sign in → Enroll gateway\n' "$TUNNEX_CYAN" "$TUNNEX_RESET" "$TUNNEX_WHITE" "$TUNNEX_RESET"
+	printf '  %s╰───────────────────────────────────────────%s\n\n' "$TUNNEX_CYAN" "$TUNNEX_RESET"
 }
 show_setup_boundary() {
 	printf '\n%sTUNNEX SETUP%s\n' "$TUNNEX_RED" "$TUNNEX_RESET"
@@ -117,7 +176,7 @@ show_setup_boundary() {
 run_with_loader() {
 	_loader_title=$1
 	shift
-	if ! have_tty || [ "${TUNNEX_LOADER:-auto}" = never ]; then
+	if ! have_tty || [ ! -t 1 ] || [ "${TERM:-}" = dumb ] || [ -n "${NO_COLOR+x}" ] || [ "${TUNNEX_LOADER:-auto}" = never ]; then
 		info "${_loader_title}"
 		"$@"
 		return
@@ -131,11 +190,11 @@ run_with_loader() {
 		while :; do
 			for _loader_frame in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
 				if [ "$TUNNEX_TTY_DEVICE" = - ]; then
-					printf '\r%s%s%s %s' "$TUNNEX_CYAN" "$_loader_frame" "$TUNNEX_RESET" "$_loader_title" >&2
+					printf '\r    %s%s%s %s' "$TUNNEX_CYAN" "$_loader_frame" "$TUNNEX_RESET" "$_loader_title" >&2
 				else
-					printf '\r%s%s%s %s' "$TUNNEX_CYAN" "$_loader_frame" "$TUNNEX_RESET" "$_loader_title" >"$TUNNEX_TTY_DEVICE"
+					printf '\r    %s%s%s %s' "$TUNNEX_CYAN" "$_loader_frame" "$TUNNEX_RESET" "$_loader_title" >"$TUNNEX_TTY_DEVICE"
 				fi
-				sleep 1
+				sleep 0.1
 			done
 		done
 	) &
@@ -151,6 +210,8 @@ run_with_loader() {
 	if [ "$_loader_status" -ne 0 ]; then
 		warn "${_loader_title} failed"
 		tail -n 80 "$_loader_log" >&2 || true
+	else
+		success "${_loader_title}"
 	fi
 	rm -f "$_loader_log"
 	return "$_loader_status"
@@ -619,10 +680,40 @@ select_tls_mode() {
 	[ "$SCHEME" = https ] && COOKIE_SECURE=true || COOKIE_SECURE=false
 }
 
+# Offline presentation demo: intentionally exits before host/release operations.
+ui_preview() {
+	print_wordmark
+	printf '\n    %sDESIGN PREVIEW%s  ·  Sample data / no installation\n' "$TUNNEX_CYAN" "$TUNNEX_RESET"
+	stage 1 'Checking this host'
+	run_with_loader 'Checking host requirements' sleep 1
+	info 'macOS / Windows · Portable control plane'
+	stage 2 'Selecting a verified Tunnex release'
+	run_with_loader 'Verifying release signature' sleep 1
+	info 'Signed release · Images pinned by digest (sample)'
+	stage 3 'Configuring your control plane'
+	plan_start
+	plan_item 'Dashboard' 'https://vpn.example.com'
+	plan_item 'Administrator' 'owner@example.com'
+	plan_end
+	stage 4 'Reviewing the installation plan'
+	plan_start
+	plan_item 'Mode' 'QuickStart (recommended)'
+	plan_item 'Gateway' 'Separate Linux host'
+	plan_item 'Changes' 'UI preview only; no host changes'
+	plan_end
+	printf '\n    %s›%s Proceed with this installation? %sY / n%s\n' "$TUNNEX_RED" "$TUNNEX_RESET" "$TUNNEX_DIM" "$TUNNEX_RESET"
+	stage 5 'Installing and verifying Tunnex'
+	run_with_loader 'Pulling verified images' sleep 1
+	run_with_loader 'Waiting for control-plane health' sleep 1
+	preview_complete
+}
+
 AUTO_CONFIRM=false
 DRY_RUN=false
+UI_PREVIEW=false
 for _arg in "$@"; do
 	case "$_arg" in
+	--ui-preview) UI_PREVIEW=true ;;
 	--yes|-y) AUTO_CONFIRM=true ;;
 	--dry-run|--preview) DRY_RUN=true ;;
 	*) die "unknown installer option: $_arg" ;;
@@ -630,6 +721,7 @@ for _arg in "$@"; do
 done
 
 setup_palette
+if [ "$UI_PREVIEW" = true ]; then ui_preview; exit 0; fi
 print_wordmark
 show_setup_boundary
 stage 1 "Checking this host"
@@ -1008,8 +1100,8 @@ fi
 
 # ── 8. NEXT STEPS (the customer's first experience — a real hand-off, not an echo) ───────────────
 say ''
-say '════════════════════════════════════════════════════════════════════════════'
-say " Tunnex ${VERSION} is running."
+printf '  %s────────────────────────────────────────%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
+success "Tunnex ${VERSION} is running."
 say ''
 say "   1. Open the dashboard:   ${BASE_URL}/"
 say "   2. Sign in as ${ADMIN_EMAIL}; set the one-time password to your own password."
@@ -1026,4 +1118,4 @@ fi
 say ''
 say "   Config:   $(pwd)/.env       (edit values here; never hand-edit tunnex.yml)"
 say '   Upgrade:  use the dashboard when an update appears, or run ./upgrade.sh for a dry run.'
-say '════════════════════════════════════════════════════════════════════════════'
+printf '  %s────────────────────────────────────────%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"
