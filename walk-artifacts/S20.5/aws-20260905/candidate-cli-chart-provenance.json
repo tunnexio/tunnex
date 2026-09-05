@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "kind": "tunnex-private-candidate-cli-chart-provenance-companion",
+  "recorded_at": "2026-09-05 13:49:51 UTC",
+  "public_release": false,
+  "source_sha": "d2c9cba653d400e2dab3d7b038796efeee1f028c",
+  "candidate_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+  "original_candidate_manifest": {
+    "path": "candidate-manifest.json",
+    "sha256": "8b4ce669d5781799387f9b2ab47c235d6008e8c5e418859d4112569daf2986c8",
+    "modified": false,
+    "scope": "Original packager manifest includes Linux amd64 CLI, four charts, and six immutable images. Native macOS CLI is added by this separately bound companion, not by editing that manifest."
+  },
+  "build_source_boundary": {
+    "linux_cli_and_charts": "Unmodified deploy/k8s-walk-candidate-package.sh exported the exact full committed source with git archive. Clean HEAD was checked before and after packaging.",
+    "native_cli": "A separate git archive of the same full source commit's apps/cli subtree supplied every native build source file. Source checkout remained clean and unchanged.",
+    "native_goos": "darwin",
+    "native_goarch": "arm64",
+    "native_cgo_enabled": "0",
+    "native_goflags": "-mod=readonly",
+    "native_build_args": [
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-s -w -buildid= -X main.version=0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "./cmd/tunnex"
+    ],
+    "toolchains": {
+      "go": "go version go1.25.13 darwin/arm64",
+      "helm": "v3.18.4+gd80839c"
+    }
+  },
+  "linux_cli": {
+    "path": "tunnex-linux-amd64",
+    "goos": "linux",
+    "goarch": "amd64",
+    "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "sha256": "3a05f7e3dffd27d02215ead95df9b2d28853d85b9e431976287e09059a898aa4",
+    "actual_artifact_version_execution": "passed in a disposable read-only network-disabled linux/amd64 container",
+    "actual_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe"
+  },
+  "native_cli": {
+    "artifact": "tunnex-darwin-arm64",
+    "goos": "darwin",
+    "goarch": "arm64",
+    "format": "Mach-O 64-bit executable arm64",
+    "sha256": "bcaf3bbf324635ad451bb99a1344105dc385108620e554de06de72f1d6a94758",
+    "source_sha": "d2c9cba653d400e2dab3d7b038796efeee1f028c",
+    "candidate_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "original_candidate_manifest_sha256": "8b4ce669d5781799387f9b2ab47c235d6008e8c5e418859d4112569daf2986c8",
+    "build_exit_code": 0,
+    "actual_version_exit_code": 0,
+    "actual_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe"
+  },
+  "registry": {
+    "account": "735391218823",
+    "region": "ap-south-1",
+    "principal_arn": "arn:aws:iam::735391218823:user/aws-cli",
+    "repositories_immutable": true,
+    "fresh_identity_repository_and_tag_absence_checks": true,
+    "publication_after_explicit_four_chart_user_approval": true,
+    "maximum_concurrent_pushes": 2,
+    "credential_contents_exported": false
+  },
+  "charts": [
+    {
+      "name": "tunnex-host-posture",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "archive_sha256": "3d11408b21074c1e209543a9a4f9bbaf18e988d0a9cc3957be30e1c4ccc4705c",
+      "repository_arn": "arn:aws:ecr:ap-south-1:735391218823:repository/tunnex-s205-aws-20260905a/tunnex-host-posture",
+      "oci_reference": "oci://735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/tunnex-host-posture",
+      "registry_manifest_digest": "sha256:d1d64234ed9de1d5f227561f46e71beb5bff14b43d14fb5983dc07e80c8a7daa",
+      "image_manifest_media_type": "application/vnd.oci.image.manifest.v1+json",
+      "artifact_media_type": "application/vnd.cncf.helm.config.v1+json",
+      "pushed_at": "2026-09-05T19:06:25.378000+05:30",
+      "push_exit_code": 0,
+      "ordinary_oci_pull_exit_code": 0,
+      "aws_readback_exit_code": 0,
+      "cmp_exit_code": 0,
+      "pulled_archive_byte_identical": true
+    },
+    {
+      "name": "tunnex-gateway",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "archive_sha256": "68ea7191ddfdd3d34f44ad5eadc4bc55c8884d3fef7aec5f1a24078d2746f5b9",
+      "repository_arn": "arn:aws:ecr:ap-south-1:735391218823:repository/tunnex-s205-aws-20260905a/tunnex-gateway",
+      "oci_reference": "oci://735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/tunnex-gateway",
+      "registry_manifest_digest": "sha256:0d2a81601af16510ecdad4c007e62ecddd841bee4bd250690791d8c5bd51f1c7",
+      "image_manifest_media_type": "application/vnd.oci.image.manifest.v1+json",
+      "artifact_media_type": "application/vnd.cncf.helm.config.v1+json",
+      "pushed_at": "2026-09-05T19:06:25.173000+05:30",
+      "push_exit_code": 0,
+      "ordinary_oci_pull_exit_code": 0,
+      "aws_readback_exit_code": 0,
+      "cmp_exit_code": 0,
+      "pulled_archive_byte_identical": true
+    },
+    {
+      "name": "tunnex-operator-crds",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "archive_sha256": "221eaa3c47d1879d4f5ae62bf37daea84d3403002f06fc08e3f65ac08bfaa4ee",
+      "repository_arn": "arn:aws:ecr:ap-south-1:735391218823:repository/tunnex-s205-aws-20260905a/tunnex-operator-crds",
+      "oci_reference": "oci://735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/tunnex-operator-crds",
+      "registry_manifest_digest": "sha256:758118b7a2072d1918a82f63ed0a936c90227d3bf41e9c46cba6ef12cc4ea1b4",
+      "image_manifest_media_type": "application/vnd.oci.image.manifest.v1+json",
+      "artifact_media_type": "application/vnd.cncf.helm.config.v1+json",
+      "pushed_at": "2026-09-05T19:07:00.001000+05:30",
+      "push_exit_code": 0,
+      "ordinary_oci_pull_exit_code": 0,
+      "aws_readback_exit_code": 0,
+      "cmp_exit_code": 0,
+      "pulled_archive_byte_identical": true
+    },
+    {
+      "name": "tunnex-operator",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "archive_sha256": "8fc34cf042fac607a406eb4dbeac6daca0f80455565ef78582abf70819361ea4",
+      "repository_arn": "arn:aws:ecr:ap-south-1:735391218823:repository/tunnex-s205-aws-20260905a/tunnex-operator",
+      "oci_reference": "oci://735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/tunnex-operator",
+      "registry_manifest_digest": "sha256:2e43e96b6c4f62b98459672bb96a3e5a4a24e6b207da0ce7f215d5590ed5c4ed",
+      "image_manifest_media_type": "application/vnd.oci.image.manifest.v1+json",
+      "artifact_media_type": "application/vnd.cncf.helm.config.v1+json",
+      "pushed_at": "2026-09-05T19:07:03.247000+05:30",
+      "push_exit_code": 0,
+      "ordinary_oci_pull_exit_code": 0,
+      "aws_readback_exit_code": 0,
+      "cmp_exit_code": 0,
+      "pulled_archive_byte_identical": true
+    }
+  ],
+  "node_version_evidence": {
+    "docker_build_version_argument": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "image_reference": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/node-agent@sha256:5e525c7046bbdf9b2835be5bce86ad9ee31ebfc0fd92188f73d533b8dfa60f42",
+    "embedded_candidate_literal_read_from_shipped_binary": true,
+    "nft_version": "1.0.9",
+    "iptables_nft_save_version": "1.8.10 (nf_tables)",
+    "post_enrollment_agent_version_readback": "pending Leg2 at this checkpoint; not inferred from image tag or this manifest"
+  },
+  "verification": {
+    "original_bundle_sha256sums": "all six entries passed unchanged after chart publication",
+    "double_chart_package_byte_comparison": "all four passed before publication",
+    "ordinary_chart_pull_directory": "fresh private directory; no reused local package accepted as a pull witness",
+    "private_runtime_paths": "omitted",
+    "prior_safety_rejections": "Preserved in private historical records. No publication retry occurred before new explicit payload approval.",
+    "source_or_chart_edits_during_build_publication": false,
+    "cluster_or_control_plane_mutations_by_packaging_publication": false
+  }
+}

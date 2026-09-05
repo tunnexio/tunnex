@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "kind": "tunnex-kubernetes-private-walk-candidate",
+  "release_class": "private-pre-release-qualification",
+  "public_release": false,
+  "candidate_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+  "source": {
+    "sha": "d2c9cba653d400e2dab3d7b038796efeee1f028c",
+    "state": "clean-committed-head"
+  },
+  "build_inputs": {
+    "go": "go version go1.25.13 darwin/arm64",
+    "helm": "v3.18.4+gd80839c"
+  },
+  "cli": {
+    "path": "tunnex-linux-amd64",
+    "goos": "linux",
+    "goarch": "amd64",
+    "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "sha256": "3a05f7e3dffd27d02215ead95df9b2d28853d85b9e431976287e09059a898aa4"
+  },
+  "charts": [
+    {
+      "name": "tunnex-host-posture",
+      "path": "charts/tunnex-host-posture-0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe.tgz",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "sha256": "3d11408b21074c1e209543a9a4f9bbaf18e988d0a9cc3957be30e1c4ccc4705c"
+    },
+    {
+      "name": "tunnex-gateway",
+      "path": "charts/tunnex-gateway-0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe.tgz",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "sha256": "68ea7191ddfdd3d34f44ad5eadc4bc55c8884d3fef7aec5f1a24078d2746f5b9"
+    },
+    {
+      "name": "tunnex-operator-crds",
+      "path": "charts/tunnex-operator-crds-0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe.tgz",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "sha256": "221eaa3c47d1879d4f5ae62bf37daea84d3403002f06fc08e3f65ac08bfaa4ee"
+    },
+    {
+      "name": "tunnex-operator",
+      "path": "charts/tunnex-operator-0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe.tgz",
+      "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+      "sha256": "8fc34cf042fac607a406eb4dbeac6daca0f80455565ef78582abf70819361ea4"
+    }
+  ],
+  "images": {
+    "api": {
+      "reference": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/api@sha256:d6602984cc7af9be86461715685c0ef8b9f19a7a026fc52e49ecca1cd84eca61",
+      "digest": "sha256:d6602984cc7af9be86461715685c0ef8b9f19a7a026fc52e49ecca1cd84eca61"
+    },
+    "web": {
+      "reference": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/web@sha256:51563b8c503a41ae840a70c6f010773936f45d2ef964aff1c1dfb7105891df7b",
+      "digest": "sha256:51563b8c503a41ae840a70c6f010773936f45d2ef964aff1c1dfb7105891df7b"
+    },
+    "nginx": {
+      "reference": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/nginx@sha256:9cdc987e635ec0b99bf5400fbbad83542ed5cd1e660281b85c7fa7a556296065",
+      "digest": "sha256:9cdc987e635ec0b99bf5400fbbad83542ed5cd1e660281b85c7fa7a556296065"
+    },
+    "migrate": {
+      "reference": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/migrate@sha256:0279b55fa58ab4b6eea0ceddda3a057c05acf2a9bc948051eb3aa3cdefa8c832",
+      "digest": "sha256:0279b55fa58ab4b6eea0ceddda3a057c05acf2a9bc948051eb3aa3cdefa8c832"
+    },
+    "node-agent": {
+      "reference": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/node-agent@sha256:5e525c7046bbdf9b2835be5bce86ad9ee31ebfc0fd92188f73d533b8dfa60f42",
+      "digest": "sha256:5e525c7046bbdf9b2835be5bce86ad9ee31ebfc0fd92188f73d533b8dfa60f42"
+    },
+    "operator": {
+      "reference": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/operator@sha256:6e6c57ad66f8353b1790f2cdb62971c03059cde6cd56a1f2ea751ac1c4a4b997",
+      "digest": "sha256:6e6c57ad66f8353b1790f2cdb62971c03059cde6cd56a1f2ea751ac1c4a4b997"
+    }
+  }
+}
