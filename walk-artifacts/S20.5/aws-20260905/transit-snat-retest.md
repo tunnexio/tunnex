@@ -144,3 +144,26 @@ A3/B2 reuse plans both PASS and select manager `reuse`, not another upgrade.
 Their independent retained-state installations started concurrently only after
 that manager rollout completed; exact original PVCs, host selectors and public
 NodePort endpoints were checked. End-to-end traffic is not yet marked PASS.
+
+## Client wire restored
+
+A3 native reuse install PASS 02:10:02.690–02:10:49.704 UTC; B2 PASS
+02:10:03.332–02:10:49.785 UTC. Both have active schema-4 epoch 3 and their
+original WG public keys. All three gateway deployments are 1/1 Ready.
+
+Unmodified local client route remains `100.96.0.0/24 → utun6`. Its normal
+split-DNS resolver maps `s205-aws-eks.s205.internal.tunnex.app` to `100.96.0.2`.
+No resolver/hosts/client-profile edit was made.
+
+From 02:11:47.987 through 02:13:02.362 UTC, eight fresh IP and eight fresh
+FQDN HTTP requests all returned `S20.5_PRIVATE_SERVICE_OK` (16/16, zero
+failures). HA status stayed A3 active, `fenced_ha`, generation 1, epoch 0,
+revision 181 across more than two 30-second lease periods. Full redacted
+per-request timing receipts remain in the task-local `baseline.jsonl`.
+
+CP node list reports fresh last-seen times and original node IDs but retains
+the original C5 `agent_version` field despite actual new image digests. Do not
+use that stale field as final-candidate provenance; investigate separately.
+The new image/revision, live schema-4 rules and retained public keys are the
+verified runtime evidence. This observation does not invalidate the measured
+client traffic, but it is not a clean final provenance/UI result.
