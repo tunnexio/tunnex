@@ -72,3 +72,15 @@ typed `dnat ip to jhash` rule and receipt digest
 This clears the DNAT activation blocker on AWS. It is not A→B/B→A failover
 acceptance. Edge native upgrade started next. First local HTTP VIP probe
 timed out (HTTP000); end-to-end client recovery is still unproven.
+
+Edge native upgrade 00:55:39.267–00:56:16.969 UTC completed exit 0.
+All three gateways are now on C7; shared manager remains the explicitly
+restored C5 revision. Desktop remains the user-installed C5 build.
+
+Desktop read-only UI shows Connected and tunnel address `10.99.0.2/32`;
+local VIP route uses utun6 and the selected profile is managed against the
+correct CP. Edge live WireGuard state includes the expected desktop public
+key with `10.99.0.2/32`, but its handshake timestamp is zero, while gateway
+peers have fresh handshakes. UI Connected alone therefore does not prove
+current path connectivity. No desktop credential/config file was decrypted,
+replaced or reimported, and no automated VPN disconnect/reconnect performed.
