@@ -82,3 +82,9 @@ then the narrow nil guard passed in both editions and the browser retry succeede
 See the running-CP section of the walk record for isolated runtime identities,
 test-only overlays and proof limits. This closes local first-login wire proof,
 not real Okta tenant or signed licence deployment qualification.
+
+## Configured login discovery
+User requests only configured providers on normal login. Expose minimal public connection ID, name and provider for enabled verified connections; no issuer, credentials or user membership. Legacy providers require a single enabled organization because slug-less start rejects ambiguity. Preserve explicit links and password login; no enforcement change.
+
+### Approved real-provider claim completion (2026-09-06)
+User approved UserInfo fallback after real Okta org-server ID token omitted email_verified. Locked: custom Okta/OIDC only; verify ID token including nonce first; retain bounded public HTTPS/no-redirect transport; UserInfo subject must exactly match signed subject; require explicitly verified email; reject conflicting email and explicit false/null ID-token verification. Google/Microsoft behavior unchanged. No email-based identity adoption. Real provider walk must be repeated.
