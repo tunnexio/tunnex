@@ -14,3 +14,6 @@ Baseline: main f240bd53; user branch sso-improvement. User authorized the recomm
 
 ## Validation plan
 Regression tests for SSRF refusal, identity linking refusal, stale verification, disabled login, provider token validation, RBAC and secret-free responses; migration and API generation; both Go editions; UI typecheck/tests/build; local test-IdP walkthrough and browser preview. Real Okta/other IdP tenant validation remains deferred to customer-test-tenant availability. Native desktop SSO compatibility is not established by a web preview.
+
+## Review disposition (user approved, 2026-09-06)
+All six findings accepted for correction: browser-bound callback; authenticated member self-link; immutable issuer/audience after identities are linked (new connection for a new identity namespace); return to exact Authentication org/connection; safe failure messages; pending editor guards. Test may link only with explicit opt-in, matching verified account email and current browser authentication. Member linking is a separate mode and does not verify or enable configuration. Re-review required after folding.

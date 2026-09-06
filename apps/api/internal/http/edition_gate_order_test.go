@@ -41,8 +41,10 @@ import (
 // The edition answer there discloses a DEPLOYMENT fact ("this deployment has no SSO") rather than a per-caller
 // entitlement — and the caller must be told, or the login button leads nowhere.
 var preSessionEditionGates = map[string]string{
-	"StartSsoLogin": "pre-session: no principal exists yet; the caller must learn the login method is absent",
-	"SsoCallback":   "pre-session: the IdP round-trip lands here before a session is minted",
+	"StartSsoConnection":    "pre-session: company connection login",
+	"SsoConnectionCallback": "pre-session: browser-bound company callback",
+	"StartSsoLogin":         "pre-session: no principal exists yet; the caller must learn the login method is absent",
+	"SsoCallback":           "pre-session: the IdP round-trip lands here before a session is minted",
 }
 
 // expectedNamedErrorHelpers is an exact source inventory. A new helper which
@@ -60,6 +62,15 @@ var expectedNamedErrorHelpers = map[string]string{
 // the retained legacy named-plan handlers, post-historical named-plan handlers,
 // and Scale feature gates that the old edition-only scanner missed.
 var expectedEntitlementHandlers = map[string]string{
+	"StartSsoConnection":          "named feature: sso connections",
+	"SsoConnectionCallback":       "named feature: sso connections",
+	"ListSsoConnections":          "named feature: sso connections",
+	"SaveSsoConnection":           "named feature: sso connections",
+	"ActivateSsoConnection":       "named feature: sso connections",
+	"TestSsoConnection":           "named feature: sso connections",
+	"ListAvailableSsoConnections": "named feature: sso connections",
+	"LinkSsoConnection":           "named feature: sso connections",
+
 	"PutIdpSyncConfig": "named plan", "GetIdpSyncHealth": "named plan", "TriggerIdpSync": "named plan", "MapIdpGroup": "named plan", "UnmapIdpGroup": "named plan",
 	"GetMfaEnforce": "named plan", "SetMfaEnforce": "named plan", "AdminResetMfa": "named plan",
 	"StartSsoLogin": "named plan", "SsoCallback": "named plan", "SetSsoConfig": "named plan", "GetSsoConfig": "named plan",
@@ -95,6 +106,15 @@ var historicalEntitlementHandlers = []historicalEntitlementHandler{
 // measured 43-handler migration ledger; they must not be rewritten into that
 // historical evidence merely to make a new feature pass the guard.
 var postHistoricalEntitlementHandlers = map[string]string{
+	"StartSsoConnection":          "named feature: sso connections",
+	"SsoConnectionCallback":       "named feature: sso connections",
+	"ListSsoConnections":          "named feature: sso connections",
+	"SaveSsoConnection":           "named feature: sso connections",
+	"ActivateSsoConnection":       "named feature: sso connections",
+	"TestSsoConnection":           "named feature: sso connections",
+	"ListAvailableSsoConnections": "named feature: sso connections",
+	"LinkSsoConnection":           "named feature: sso connections",
+
 	"CreateK8sClusterScope":           "named feature: k8s_cluster_scopes",
 	"DecideK8sClusterScopeMembership": "named feature: k8s_cluster_scopes",
 	"GetAccessEventRetention":         "named plan",
@@ -226,8 +246,8 @@ func TestHistoricalEntitlementLedgerReconcilesToOneBinaryInventory(t *testing.T)
 			}
 		}
 	}
-	if legacy != 17 || features != 13 {
-		t.Fatalf("entitlement reconciliation is %d named-plan + %d feature; expected 17 named-plan + 13 feature", legacy, features)
+	if legacy != 17 || features != 21 {
+		t.Fatalf("entitlement reconciliation is %d named-plan + %d feature; expected 17 named-plan + 21 feature", legacy, features)
 	}
 	for name, classification := range seen {
 		if classification == "Community-core" {

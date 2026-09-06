@@ -92,7 +92,9 @@ export function OrgProvider({ children }: { children: React.ReactNode }) {
         // ⛔ THE STORED ID IS VALIDATED AGAINST MEMBERSHIP, NEVER TRUSTED. A user removed from an org
         // keeps its id in their browser; restoring it blindly would point the whole UI at a tenant whose
         // every request now 404s, which reads as "the app is broken" rather than "you were removed".
-        const stored = readStored();
+        const query = new URLSearchParams(window.location.search);
+        const callbackOrg = query.get("section") === "authentication" && query.has("sso_test") ? query.get("sso_org") : null;
+        const stored = callbackOrg && list.some(o=>o.id===callbackOrg) ? callbackOrg : readStored();
         const restorable =
           stored && list.some((o) => o.id === stored) ? stored : null;
         setCurrentId(restorable ?? list[0]?.id ?? null);

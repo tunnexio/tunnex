@@ -9,6 +9,9 @@ import { ErrorText, Field, Input } from "../components/ui";
 // Human-readable text for SSO callback reject codes (watch-item d) — the server
 // redirects failures to /login?sso_error=<code> instead of a raw error body.
 const SSO_ERRORS: Record<string, string> = {
+  invalid_state: "This sign-in expired or belongs to another browser. Start company sign-in again here.",
+  sso_link_required: "Sign in with your existing method, then open Settings → Authentication → Link company sign-in.",
+  sso_consent_denied: "Company sign-in was cancelled. You can try again.",
   unverified_local_exists:
     "An account with this email already exists. Sign in with your password first, then link SSO from settings.",
   idp_email_unverified:
@@ -200,6 +203,12 @@ function BrowserLogin() {
         Sign in to {window.location.host}
       </p>
 
+      {new URLSearchParams(window.location.search).get("connection") && <button className="mt-5 w-full rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white" onClick={async () => {
+        const connectionId = new URLSearchParams(window.location.search).get("connection")!;
+        const { data, error } = await api.GET("/api/v1/auth/sso-connections/{connectionId}/start", { params: { path: { connectionId } } });
+        if (error || !data) setError(apiErrorMessage(error, "Company sign-in is unavailable."));
+        else window.location.assign(data.redirect_url);
+      }}>Continue with company SSO</button>}
       <SsoSection providers={ssoProviders} onError={setError} />
 
       <div className="my-5 flex items-center gap-3">

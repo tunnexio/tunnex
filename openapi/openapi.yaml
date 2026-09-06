@@ -439,6 +439,133 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/sso-connections:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listSsoConnections
+      tags: [sso]
+      responses:
+        "200":
+          description: Successful operation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SsoConnectionList" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/sso-connections/{connectionId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: saveSsoConnection
+      tags: [sso]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SsoConnectionRequest" }
+      responses:
+        "200":
+          description: Successful operation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SsoConnection" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/sso-connections/{connectionId}/activation:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: activateSsoConnection
+      tags: [sso]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SsoConnectionActivation" }
+      responses:
+        "200":
+          description: Successful operation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SsoConnection" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/sso-connections/{connectionId}/test:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: testSsoConnection
+      tags: [sso]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SsoConnectionTestRequest" }
+      responses:
+        "200":
+          description: Successful operation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SsoRedirect" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/sso-connections/available:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAvailableSsoConnections
+      tags: [sso]
+      responses:
+        "200":
+          description: Enabled company sign-in connections available to this member.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SsoConnectionList" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/sso-connections/{connectionId}/link:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: linkSsoConnection
+      tags: [sso]
+      security: [{cookieAuth: []}]
+      responses:
+        "200":
+          description: Explicitly link the signed-in member's matching identity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SsoRedirect" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/auth/sso-connections/{connectionId}/start:
+    parameters:
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: startSsoConnection
+      tags: [sso]
+      security: []
+      responses:
+        "200":
+          description: Successful operation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SsoRedirect" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/auth/sso-connections/callback:
+    get:
+      operationId: ssoConnectionCallback
+      security: []
+      tags: [sso]
+      parameters:
+        - { name: tnx_oidc_flow, in: cookie, schema: { type: string, maxLength: 200 } }
+        - { name: code, in: query, schema: { type: string, maxLength: 4096 } }
+        - { name: state, in: query, required: true, schema: { type: string, maxLength: 200 } }
+        - { name: error, in: query, schema: { type: string, maxLength: 200 } }
+      responses:
+        "302":
+          description: Return to settings after a test or to the application after login.
+        default: { $ref: "#/components/responses/Error" }
+
   # ---- CLI credential flow (S5.1) -------------------------------------------
   # `tunnex login` opens the system browser; auth completes IN-BROWSER (local or
   # SSO, MFA and all); the SPA then calls cliAuthorize and redirects the browser
@@ -8746,6 +8873,55 @@ components:
         token: { type: string, minLength: 1, maxLength: 200 }
         name: { type: string, maxLength: 200 }
         password: { type: string, minLength: 12, maxLength: 200 }
+
+    SsoConnectionRequest:
+      type: object
+      additionalProperties: false
+      required: [name, provider, issuer_url, client_id]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        provider: { type: string, enum: [okta, oidc] }
+        issuer_url: { type: string, minLength: 1, maxLength: 2048 }
+        client_id: { type: string, minLength: 1, maxLength: 500 }
+        client_secret: { type: string, minLength: 1, maxLength: 4000, description: Omit to preserve an existing secret. }
+    SsoConnectionActivation:
+      type: object
+      additionalProperties: false
+      required: [enabled, revision]
+      properties:
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64 }
+    SsoConnectionTestRequest:
+      type: object
+      additionalProperties: false
+      required: [link_account]
+      properties:
+        link_account: { type: boolean, description: Explicitly link the tested identity to the initiating account after verification. }
+    SsoConnection:
+      type: object
+      additionalProperties: false
+      required: [id, org_id, name, provider, issuer_url, client_id, enabled, revision, verified, updated_at, callback_url, login_url]
+      properties:
+        id: { type: string, format: uuid }
+        org_id: { type: string, format: uuid }
+        name: { type: string }
+        provider: { type: string, enum: [okta, oidc] }
+        issuer_url: { type: string }
+        client_id: { type: string }
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64 }
+        verified: { type: boolean }
+        updated_at: { type: string, format: date-time }
+        tested_at: { type: string, format: date-time }
+        callback_url: { type: string }
+        login_url: { type: string }
+    SsoConnectionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SsoConnection" }
 
     SsoConfigRequest:
       type: object

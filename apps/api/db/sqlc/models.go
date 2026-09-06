@@ -1668,6 +1668,28 @@ type SsoConfig struct {
 	SecretFingerprint  string    `json:"secret_fingerprint"`
 }
 
+type SsoConnection struct {
+	ID                 uuid.UUID          `json:"id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	Name               string             `json:"name"`
+	Provider           string             `json:"provider"`
+	IssuerUrl          string             `json:"issuer_url"`
+	ClientID           string             `json:"client_id"`
+	ClientSecretSealed []byte             `json:"client_secret_sealed"`
+	Enabled            bool               `json:"enabled"`
+	Revision           int64              `json:"revision"`
+	TestedRevision     *int64             `json:"tested_revision"`
+	TestedAt           pgtype.Timestamptz `json:"tested_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+}
+
+type SsoConnectionIdentity struct {
+	ConnectionID uuid.UUID `json:"connection_id"`
+	IssuerUrl    string    `json:"issuer_url"`
+	Subject      string    `json:"subject"`
+	UserID       uuid.UUID `json:"user_id"`
+}
+
 type SystemSetting struct {
 	Key       string    `json:"key"`
 	Value     string    `json:"value"`

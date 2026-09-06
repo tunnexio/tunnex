@@ -1,3 +1,5 @@
+import { SsoSelfLink } from "../components/SsoSelfLink";
+import { SsoConnections } from "../components/SsoConnections";
 import "../network-workspaces.css";
 import "../settings-workspace.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -307,9 +309,11 @@ export default function Settings() {
               `divide-y`; a wrapping div collapses all of them into one child and every divider vanishes,
               which is what made these rows float with no separation. */}
           <MfaSettings />
+          {org && <SsoSelfLink key={`link-${org.id}`} orgId={org.id} />}
 
             {org && isAdmin && meta?.edition === "enterprise" && (
-              <SsoSettings orgId={org.id} canEdit={emailVerified} />
+              <><SsoSettings orgId={org.id} canEdit={emailVerified} />
+              <SsoConnections key={org.id} orgId={org.id} canEdit={emailVerified} /></>
             )}
             {org && isAdmin && meta?.edition !== "enterprise" && (
               <SettingRow
