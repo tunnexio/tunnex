@@ -5,7 +5,9 @@ on all three workers through native retained-state lifecycle operations.
 Local private IP and normal split-DNS FQDN access pass. Automatic A3-to-B2
 recovery is demonstrated, but member-return interruptions and a startup 500
 remain unresolved; the reverse fault trial was invalid and is not counted.
-Enterprise API gates remain red. The walk is NOT complete or merge-ready;
+The former enterprise API gate failures are fixed at source `48f96b0`, whose
+full local API suites now pass in both editions; that correction is not yet
+deployed. Native CI is running. The walk is NOT complete or merge-ready;
 NLB remains explicitly SKIPPED.** See [current transit and HA evidence](transit-snat-retest.md).
 CP currently runs the separate API lock correction, not a unified final image
 set. No PR or merge exists. Earlier counts below are historical, not current
@@ -34,6 +36,8 @@ No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
 Latest detailed evidence:
 
+- [Credential/health correction and full API gates](credential-health-gate-retest.md).
+- [Transit correction, client IP/FQDN and partial HA proof](transit-snat-retest.md).
 - [Candidate provenance, clean baseline and read-only plan](candidate-provenance-leg0-leg1.md).
 - [First gateway failure and scoped controller correction](gateway-a-first-install-failure.md).
 - [C5 publication, licensed CP, and fresh plan](c5-publication-cp-and-plan.md).
