@@ -84,3 +84,18 @@ key with `10.99.0.2/32`, but its handshake timestamp is zero, while gateway
 peers have fresh handshakes. UI Connected alone therefore does not prove
 current path connectivity. No desktop credential/config file was decrypted,
 replaced or reimported, and no automated VPN disconnect/reconnect performed.
+
+Later the desktop peer established a fresh edge handshake automatically;
+the HTTP probe still timed out. Edge policy counter recorded an accepted
+service SYN. A3 subsequently withdrew its DNAT and pool-owned return route
+after repeated CP ownership fetch timeouts. CP healthz still returned 200,
+but database-backed requests timed out.
+
+Read-only pg_stat_activity showed one idle transaction (PID 103292) after
+`SELECT p.pool_id,p.kind,d.authority_revision` and three active transactions
+blocked on it. Their statement names were TouchNodeSeen, FQDN answer-generation
+insert, and Service UID observation. Independent source inspection identified
+HA maintenance calling the global-pool base compiler while holding org/node/
+pool locks, exhausting all four connections. No backend was terminated and
+no CP restart used. Decision paper: `docs/S20.5-ha-base-compile-lock-correction.md`.
+Sustained HA and end-to-end access remain BLOCKED despite earlier activation.
