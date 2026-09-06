@@ -128,3 +128,19 @@ owners, idle heartbeats and revoked CNI authority. Host readback showed no
 sequences at this check were A3 2197, edge 2195, B2 2198. The old manager
 remained healthy; no manual restoration was necessary. Gateway outage is
 intentional during this retained-reuse/new-epoch transition.
+
+## Native schema-4 edge reuse
+
+Edge plan PASS, selecting manager `upgrade`, retained PVC and original endpoint.
+Native install ran 02:07:34.251–02:08:30.023 UTC, exit 0. Manager revision 4 is
+deployed with honest `tunnex-zero-touch/v1` description and the new digest;
+all three manager pods are Ready. Edge now has active schema 4 / epoch 3 and
+a matching granted `ip_masq_and_aws_transit` capability. Its original WG public
+key is unchanged. Live AWS chain readback shows both destination and exact
+source + `iifname wg0` + `oifname wg0` returns before unchanged foreign rules.
+No manual networking mutation occurred.
+
+A3/B2 reuse plans both PASS and select manager `reuse`, not another upgrade.
+Their independent retained-state installations started concurrently only after
+that manager rollout completed; exact original PVCs, host selectors and public
+NodePort endpoints were checked. End-to-end traffic is not yet marked PASS.
