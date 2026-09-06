@@ -7,18 +7,15 @@ the focused regression/re-test. Unrun broader qualification remains explicit,
 not a blocker automatically attached to every unrelated fix. The historical
 2/11 and latest-build 0/11 reports are no longer the progress model.
 
-Current checkpoint (2026-09-06): **dc70c9b node/manager candidate is installed
-on all three workers through native retained-state lifecycle operations.
-Local private IP and normal split-DNS FQDN access pass. Automatic A3-to-B2
-recovery is demonstrated, but member-return interruptions and a startup 500
-remain unresolved; the reverse fault trial was invalid and is not counted.
-The former enterprise API gate failures are fixed at source `48f96b0`, whose
-full local API suites now pass in both editions; that correction is not yet
-deployed. Native CI is running. The walk is NOT complete or merge-ready;
-NLB remains explicitly SKIPPED.** See [current transit and HA evidence](transit-snat-retest.md).
-CP currently runs the separate API lock correction, not a unified final image
-set. No PR or merge exists. Earlier counts below are historical, not current
-final-candidate acceptance.
+Current checkpoint (2026-09-06): **API `e6a56a4` is deployed to the retained
+licensed CP, including the credential/health and bounded HA wake repairs.
+`dc70c9b` node/manager remains installed on all three workers; no gateway or
+chart reinstall was needed. New baseline private-IP/FQDN proof passes 12/12.
+Targeted standby/owner fault and return checks are running; exact-product CI
+is running with native macOS/Windows already green. This is not yet merge-ready.
+NLB remains explicitly SKIPPED.** See [current HA repair evidence](ha-wake-repair.md).
+The mixed-component candidate is not a unified final release. No PR or merge
+exists yet. Earlier counts below are historical, not current acceptance.
 
 Historical status: **three-worker EKS ready; retained CP uses its verified valid Scale
 license; six immutable candidate images and four chart OCI pull proofs complete.
@@ -43,6 +40,7 @@ No PR exists for `codex/s205-aws-reentry`; no merge or public release occurred.
 
 Latest detailed evidence:
 
+- [HA wake repair, immutable API deployment and targeted retest](ha-wake-repair.md).
 - [Credential/health correction and full API gates](credential-health-gate-retest.md).
 - [Transit correction, client IP/FQDN and partial HA proof](transit-snat-retest.md).
 - [Candidate provenance, clean baseline and read-only plan](candidate-provenance-leg0-leg1.md).

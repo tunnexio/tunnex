@@ -3,7 +3,7 @@
 Status: source correction tested; AWS retest pending. This is the targeted
 acceptance path, not a restart of the historical eleven-leg checklist.
 
-Decision: [acknowledged-base reuse and pending delivery cursor](../../../../docs/S20.5-ha-acknowledged-base-reuse-decisions.md).
+Decision: [acknowledged-base reuse and pending delivery cursor](../../../docs/S20.5-ha-acknowledged-base-reuse-decisions.md).
 
 ## Reproduction and bounded correction
 
@@ -97,3 +97,23 @@ At 03:53:53.333 UTC B2 was scaled from one replica to zero after fresh checks
 confirmed A3 owner/generation and all deployments Ready. This is intentionally
 a standby-absence regression, not reverse active-failover evidence. The probe
 has a restoration path; results will be recorded after restoration.
+
+## Standby absence/return — PASS
+
+B2 was restored at 03:55:52.300 UTC, after **118.967 seconds absent**. During
+absence 22 paired rounds passed (44/44 requests); during return 18 paired
+rounds passed (36/36), ending 03:57:27.244. A3 remained owner/generation 3
+throughout. The separate pre-fault pair also passed. All deployments returned
+Ready 1/1 and the manager stayed Ready 3/3.
+
+Read-only durable evidence at 03:55:17 UTC shows A3 serving lease epochs
+261–264 advancing expiry through 03:54:30, 03:55:00, 03:55:30 and 03:56:00,
+while both nodes' latest base-authority revision remained 420. Renewal no
+longer needed a fresh unchanged-base standby ACK. B2's new pod started at
+03:55:58 UTC, Ready with **zero restarts**; the earlier startup-500 recurrence
+was not observed. The original A3/B2/edge PVC UIDs remain unchanged.
+
+Standby JSONL SHA256:
+`b121fbd7c2addf7a3d38492abe40106dd06a768074258348c01aba386685e34d`.
+This establishes bounded standby absence and return, not unbounded outage
+continuity or generic startup recovery. Active-owner fault proof is next.
