@@ -21,6 +21,12 @@ preconditions.
 
 ## Before you begin
 
+Direct Helm users: the gateway chart also validates existing PVC provenance for
+enroll mode during connected install/upgrade, before applying resources. The CLI adds CP
+claim verification and bootstrap orchestration. See the
+[chart's direct-Helm and retained-storage guidance](../deploy/helm/tunnex-gateway/README.md)
+for the exact guard, explicit reuse and offline-rendering limitations.
+
 You need:
 
 - a logged-in Tunnex CLI session with permission to enroll gateways;
