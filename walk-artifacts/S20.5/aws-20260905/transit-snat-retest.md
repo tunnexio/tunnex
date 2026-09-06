@@ -2,7 +2,7 @@
 
 Product source: `dc70c9bc847925f43d19bff59306ebb63ef5c7ec`.
 Decision records precede product code in `648c7b0` and `ade26c3`.
-Private candidate version: `0.0.1-walk.1.shadc70c9bc847925f43d19bff59306ebb63`.
+Private candidate version: `0.0.1-walk.1.shadc70c9bc847925f43d19bff59306ebb6`.
 
 ## Reviewed correction
 
@@ -37,7 +37,8 @@ This is slice review, not final story-end multi-finder completion.
 - Initial full node/race invocations exposed an outdated test-only schema
   threshold: the fixture mapped schema 3 to IP-MASQ after the current schema
   advanced to 4. Corrected to preserve 1/2, 3 and 4 independently; full target
-  rerun and final startup race were started after correction.
+  rerun PASS (`cmd/agent` 100.203s and every node package green), and final
+  Linux startup race PASS (11.761s) after correction.
 
 ## Real Linux packet witness (not AWS acceptance)
 
@@ -88,3 +89,29 @@ outage and is retained reuse evidence, not a fresh empty-cluster baseline.
 
 Live IP/FQDN and HA legs remain pending. NLB remains SKIPPED. No PR, merge,
 release, exact-final CI or story-complete claim is made here.
+
+## Publication and pre-transition checkpoint
+
+All six linux/amd64 images and four charts were built from clean detached
+`dc70c9b`, published to the existing immutable private ECR prefix after exact
+account/repository checks, and their image digests verified. Every image has
+the full source revision label. All four privately pulled chart archives
+compare byte-for-byte with local bundles. No public artifact was published.
+
+Node/manager image:
+`sha256:147a81bdfb1818a2a168a5b7f29ead9f28d1ce6a0fe1cf6bc72480962e5d70fc`.
+Native CLI reports the exact candidate version. The packet witness was also
+rerun in this new node image and PASS (3.26s), not only the old C7 tool image.
+GitHub reports zero check runs for the product SHA; not exact-SHA CI green.
+
+Before transition, A3/B2/edge each have active schema-3 epoch 2, one owner,
+and a committed owned `wg0`. Native status confirms manager revision 3,
+healthy 3/3 and original C5 image. Original retained identities:
+
+| Role | PVC UID | Lifecycle claim |
+| --- | --- | --- |
+| A3 | `355a26b0-022d-4710-b10c-85fae3375418` | `f6fb3425-bfef-483e-b879-2faefb341917` |
+| B2 | `8eb91d90-453a-4412-b18c-8e28d587caae` | `3fb061eb-63c9-486c-8590-a57a86801f64` |
+| edge | `78f384ac-4ef7-447f-ac60-77ef44a43089` | `a8654d15-6140-4d08-a164-94a3c786f4bd` |
+
+All remain Bound to original matching PVs; failed A/A2/B fixtures are untouched.
