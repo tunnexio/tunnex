@@ -37,3 +37,15 @@ endpoint still allowed only the laptop's previous IP. EndpointAccessUpdate
 existing laptop-only UDP31081/31082/31083 rules were likewise updated to
 the new `/32`; gateway-to-gateway rules and other resources remain unchanged.
 This is an operator connectivity correction, not a product fix or HA proof.
+
+Endpoint update succeeded. A3 retry 00:52:19.855–00:52:24.745 UTC then
+correctly refused before gateway mutation: shared manager revision 2 had
+plain Helm description `Upgrade complete`, not proven zero-touch provenance.
+This was caused by the operator's C6 plain-Helm manager upgrade, not the
+DNAT correction. It invalidates that manager-upgrade path as zero-touch proof.
+
+Fresh history verified revision 1 has `tunnex-zero-touch/v1`; source diff
+confirmed no hostposture code/chart changes between C5 and C7. A normal Helm
+rollback to revision 1 was started as an explicit operator fixture repair.
+No Helm Secret/history rewriting, forged description, journal/PVC edit, or
+provenance-check bypass. This repair must not count as zero-touch acceptance.
