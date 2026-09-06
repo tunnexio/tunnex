@@ -88,3 +88,6 @@ User requests only configured providers on normal login. Expose minimal public c
 
 ### Approved real-provider claim completion (2026-09-06)
 User approved UserInfo fallback after real Okta org-server ID token omitted email_verified. Locked: custom Okta/OIDC only; verify ID token including nonce first; retain bounded public HTTPS/no-redirect transport; UserInfo subject must exactly match signed subject; require explicitly verified email; reject conflicting email and explicit false/null ID-token verification. Google/Microsoft behavior unchanged. No email-based identity adoption. Real provider walk must be repeated.
+
+### Walk-discovered suspension ordering fix (2026-09-06)
+Locked within the authorized lifecycle walk: directory-only deactivation may look up a retained, revoked membership because group reconciliation revokes org access before the disabled-user sweep. Human-admin deactivation continues requiring active membership. Preserve organization scope, last-owner guard, credential/session sweep, system audit and idempotency. Regression reproduced member_not_found before the fix; retry the running fixture suspension after both-edition validation.
