@@ -34,6 +34,17 @@ Baseline: main `a3c192a`. Not release-ready or live-proven.
 Each slice records its tests honestly; render/unit tests do not satisfy live proof.
 Required repository gates, story-end review and explicit merge sign-off remain owed.
 
+### Slice 1 checkpoint
+
+Implemented custom URL Secret keys and shared read-only DB TLS Secret mounts for
+API/migrations, preserving the legacy key default. Customer configuration notes:
+`deploy/helm/tunnex-cp/BYODB.md`. The contract is wired into CI.
+
+Local checks passed: Helm lint; parsed YAML contracts for legacy, TLS, custom key
+and migrations-disabled configurations; existing HA deployment gate contract;
+`git diff --check`. No cloud mutation or live DB proof performed. Full gates and
+review remain pending; next implementation slice is runtime preflight.
+
 ## Deferred scope
 
 Native cloud IAM token renewal, DB provisioning, arbitrary engine support, automatic

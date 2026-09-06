@@ -31,6 +31,9 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        {{- if .Values.database.tls.existingSecret }}
+        fsGroup: 10001
+        {{- end }}
       containers:
         - name: migrate
           image: {{ include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.migrate) }}
@@ -42,9 +45,17 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.database.urlSecret }}
-                  key: TUNNEX_DATABASE_URL
+                  key: {{ .Values.database.urlSecretKey | default "TUNNEX_DATABASE_URL" | quote }}
             {{- else }}
             - name: DATABASE_URL
               value: {{ required "database.url or database.urlSecret is required" .Values.database.url | quote }}
             {{- end }}
+          {{- if .Values.database.tls.existingSecret }}
+          volumeMounts:
+            {{- include "tunnex-cp.databaseTLSMount" . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.database.tls.existingSecret }}
+      volumes:
+        {{- include "tunnex-cp.databaseTLSVolume" . | nindent 8 }}
+      {{- end }}
 {{- end }}

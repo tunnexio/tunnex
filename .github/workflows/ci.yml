@@ -63,6 +63,9 @@ jobs:
       - name: Kubernetes HA deployment gate contract
         run: sh deploy/k8s-ha-deployment-gate-contract_test.sh
 
+      - name: BYODB Helm Secret and TLS contract
+        run: bash deploy/byodb-chart-contract_test.sh
+
       - name: Set up Go for reproducible chart artifacts
         uses: actions/setup-go@v5
         with:

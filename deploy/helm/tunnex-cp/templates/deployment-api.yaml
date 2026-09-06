@@ -32,6 +32,9 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        {{- if .Values.database.tls.existingSecret }}
+        fsGroup: 10001
+        {{- end }}
       containers:
         - name: api
           image: {{ include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.api) }}
@@ -80,7 +83,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.database.urlSecret }}
-                  key: TUNNEX_DATABASE_URL
+                  key: {{ .Values.database.urlSecretKey | default "TUNNEX_DATABASE_URL" | quote }}
             {{- else }}
             - name: TUNNEX_DATABASE_URL
               value: {{ required "database.url or database.urlSecret is required (external Postgres — this chart runs no bundled DB)" .Values.database.url | quote }}
@@ -96,6 +99,7 @@ spec:
               value: {{ required "redis.url or redis.urlSecret is required (external Redis — this chart runs no bundled Redis)" .Values.redis.url | quote }}
             {{- end }}
           volumeMounts:
+            {{- include "tunnex-cp.databaseTLSMount" . | nindent 12 }}
             - name: roots
               mountPath: {{ .Values.api.masterKeyPath }}
               readOnly: true
@@ -118,6 +122,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        {{- include "tunnex-cp.databaseTLSVolume" . | nindent 8 }}
         # Roots of trust: a single READ-ONLY projected mount. The master key is
         # REQUIRED and the chart NEVER generates one — a new key would orphan every
         # value sealed under the real one (see NOTES / values.yaml). The session
