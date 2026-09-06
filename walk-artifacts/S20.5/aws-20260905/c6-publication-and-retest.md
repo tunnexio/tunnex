@@ -63,3 +63,31 @@ readback now shows one edge peer retaining ordinary `172.31.0.0/16` after
 the pool fence, with no desktop peer left on A3. The peer correction is
 therefore supported by fresh wire evidence; complete fenced HA and client
 recovery are still separate pending proofs. B2 native upgrade started next.
+
+## Remaining C6 upgrades and next live refusal
+
+B2 native upgrade completed 23:50:39.550–23:51:18.226 UTC, exit 0;
+edge completed 23:52:05.511–23:52:43.199 UTC, exit 0. Host-posture normal
+Helm upgrade completed at revision 2 (23:53:55 UTC start), exit 0. No
+credential replacement, PVC edits, or remedial rollout restarts were used.
+
+At 23:52:02.703512393 UTC A3 rejected the ownership serving overlay because
+the actual nft listing used `dnat ip to jhash ...`, whereas the emitter and
+receipt parser expected `dnat to jhash ...`. Both Nginx backends remain
+present (`10.240.10.149:8080`, `10.240.10.98:8080`). Automatic compensation
+withdrew the incomplete overlay; fenced HA remains **BLOCKED**, not passed.
+The bounded correction is papered in
+`docs/S20.5-nft-dnat-readback-correction.md`. C6 is not the corrected candidate.
+
+Fresh readback after all upgrades: A3/B2/edge each Running and Ready 1/1;
+host-posture desired/current/ready/up-to-date/available all 3. A3 retained
+its four startup restarts; B2 and edge had zero. Readiness does not satisfy HA.
+
+Local correction verification: typed-printer regression failed before the
+change, then package race tests passed. An opt-in Linux test applied and listed
+single/two-backend rules in a fresh network namespace; nft 1.0.9 printed
+`dnat ip to` and both original digests validated. This is local proof only.
+Independent review raised **P2 (HOLD)**: that kernel test uses hardcoded rules
+in an inet table, whereas production uses the actual emitter in an ip table
+and different listing options. Repair the test to exercise the production
+path after disposition; do not treat the current probe as full path coverage.
