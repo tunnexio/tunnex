@@ -27,7 +27,26 @@ verify-full/required binding, migration up/down/up, old/new lock contention,
 matching-major dump, archive listing, and actual restore: schema `136|f` each.
 Fixtures retained. Default Compose project untouched.
 
+## Live Neon runtime proof
+
 Live Neon preflight passed from verified AWS account 735391218823 using the fixed
-connection mechanism. Fresh CP migration is in progress; no live CP/login success
-claimed at this checkpoint. Final repository gates/CI and signed installer/upgrade
-remain separate, pending requirements. No merge or public release performed.
+connection mechanism. The existing CP host connected to direct Neon PostgreSQL
+18.6 with verify-full and required channel binding. Fresh migration progressed
+through all 136 migrations; API became healthy without a migration restart.
+
+Cross-region migration took longer than Compose's dependency health window;
+the initial `up` reported unhealthy before migration completed. After confirming
+API health, proxy services were started using canonical Compose. This is a live
+runtime proof, **not** an unattended/signed-installer success claim. Recommend
+co-locating CP and DB; initial-startup wait behavior remains to be qualified.
+
+Passed over public HTTPS: bootstrap login 200, mandatory password change 204,
+fresh login 200, organization creation 201 and readback 200. Final candidate image
+20260906d then recreated the API against the same Neon DB/secrets; health, fresh
+login and organization readback passed again. Credentials stored only in protected
+scratch files, never in this repository. No browser screenshot claimed here.
+
+RDS-backed CP services were stopped for the test URL cutover; its database and
+volumes remain intact. The URL now serves the fresh Neon organization. RDS remains
+billable. Final repository gates/CI and signed installer/upgrade remain separate
+requirements. No merge or public release performed.
