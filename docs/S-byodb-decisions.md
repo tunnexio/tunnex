@@ -91,6 +91,17 @@ customer-managed secret synchronization without requiring a new secret operator.
 
 ## Acceptance
 
+### Review disposition — 2026-09-06
+
+User approved fixing both held P1 findings and testing them. Preserve the legacy
+URL-path-derived migration advisory-lock identity across old/new driver versions,
+with a contention regression. Enforce required channel binding at the actual
+authentication boundary for every CP database connection, including migrations
+and backup detection, with negative trust/password/MD5 tests and positive
+SCRAM-PLUS proof. Prefer a qualified upstream driver fix over a local fork; never
+remove the requirement or downgrade TLS. Re-review the folded changes before
+claiming qualification. Existing RDS CP stays available until safe Neon cutover.
+
 Private-only DB install, failure diagnostics (DNS/network/auth/CA), migration and
 upgrade, backup/restore, credential rotation and restart/failover recovery. Qualify
 mechanisms rather than repeating identical walks for every provider. No public DB
