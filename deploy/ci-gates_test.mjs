@@ -85,6 +85,8 @@ test('workflow graph and cache wiring enforce the tested boundary', () => {
   assert.equal(jobs.web.if, undefined);
   assert.ok(jobs.web.steps.some(step => !step.if && /tsc --noEmit/.test(step.run ?? '')));
   for (const name of ['scope', 'contracts', 'codegen', 'api', 'tooling', 'web', 'gates']) {
+    assert.equal(jobs[name].steps.find(step => step.uses === 'actions/checkout@v4')
+      .with['fetch-depth'], 0, `${name} must preserve historical regression inputs`);
     assert.notEqual(jobs[name]['continue-on-error'], true);
     for (const step of jobs[name].steps) assert.notEqual(step['continue-on-error'], true);
   }

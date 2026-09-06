@@ -100,6 +100,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Installer version provenance contract
         run: sh deploy/install-version-provenance_test.sh
 
@@ -163,6 +165,8 @@ jobs:
       GATE_CACHE_PREFIX: ci-codegen-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/go-container-cache
       - run: make generate-check
 
@@ -180,6 +184,8 @@ jobs:
       GATE_CACHE_PREFIX: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/go-container-cache
         with:
           lane: ${{ matrix.edition }}
@@ -201,6 +207,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/go-container-cache
         with:
           lane: ${{ matrix.target }}
@@ -212,6 +220,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -251,6 +261,8 @@ jobs:
       web: ${{ needs.scope.outputs.web }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Require every applicable lane
         env:
           GATE_NEEDS: ${{ toJSON(needs) }}

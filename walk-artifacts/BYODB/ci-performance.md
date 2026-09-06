@@ -42,3 +42,11 @@ results will be reported in PR #59; this document does not predeclare them green
 The 8–12 minute warm-cache target remains an estimate until measured. Compare
 queue time separately from execution and report cold versus warm cache behavior.
 Existing test resources are retained; no default Compose project or cloud changes.
+
+## First remote run correction
+
+Run 34026324184 correctly failed the chart contract: isolated jobs initially used
+shallow checkout, omitting historical CRD fixture commit 025368ab. Restore the
+original full-history checkout in all gate lanes; a wiring regression now requires
+fetch-depth=0 in every lane. This was a CI-refactor defect, not a product failure,
+and the failed run is not qualification evidence.
