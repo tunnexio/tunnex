@@ -50,3 +50,16 @@ RDS-backed CP services were stopped for the test URL cutover; its database and
 volumes remain intact. The URL now serves the fresh Neon organization. RDS remains
 billable. Final repository gates/CI and signed installer/upgrade remain separate
 requirements. No merge or public release performed.
+
+Final-image Neon native PG18 dump and offline archive listing passed. The protected
+dump was restored into a new isolated local PostgreSQL 18 database using matching
+pg_restore with `--no-owner --no-privileges`. Restored migration state `136|f` and
+the expected organization count `1` passed. This verifies database restore only,
+not a second restored CP/master-key deployment. Restore ownership/grants must be
+applied for the chosen target role; provider-specific roles were not recreated.
+Dump/log files remain protected scratch artifacts and are not committed.
+
+Installer behavioral contracts passed. Helm lint and BYODB chart contracts passed
+using the existing Helm 3.16.4 container with Ruby installed in that disposable
+container. Local host lacks Helm; initial host/container dependency failures are
+not counted as passing runs. Full gate chain is still running at this checkpoint.
