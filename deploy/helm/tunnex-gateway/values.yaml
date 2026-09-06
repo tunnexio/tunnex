@@ -117,6 +117,12 @@ persistence:
   # zero-touch CLI supplies both canonical UUIDs from its approved lifecycle
   # anchor. Direct legacy Helm installs leave both empty; reuse mode must never
   # invent or overwrite provenance on an existing claim.
+  # Direct Helm install/upgrade reads the live PVC before applying resources:
+  # enroll can retry only when both existing annotations exactly match these
+  # canonical non-nil UUIDs. Missing/partial/foreign provenance refuses without
+  # relabelling. An unannotated legacy claim needs explicit tokenless reuse.
+  # Offline `helm template` is not a live ownership check; use a normal Helm
+  # install/upgrade or `--dry-run=server` with permission to get the exact PVC.
   provenance:
     organizationID: ""
     lifecycleClaim: ""
