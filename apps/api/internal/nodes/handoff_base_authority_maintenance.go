@@ -57,6 +57,28 @@ func (t *PostgresHandoffOwnershipModeTransition) MaintainHandoffOrdinaryBaseAuth
 		}
 	}
 
+	// The external compiler uses the global pool. Compile before acquiring
+	// org/node/pool row locks; otherwise writers can occupy every remaining
+	// connection waiting for this transaction, starving the compiler forever.
+	// The locked plan/member revalidation below remains mandatory.
+	bases := make(map[[2]uuid.UUID]DesiredState)
+	for _, plan := range plans {
+		members := append([]uuid.UUID{plan.ActiveNodeID}, plan.EligibleStandbyIDs...)
+		for _, nodeID := range members {
+			key := [2]uuid.UUID{plan.Scope.OrgID, nodeID}
+			if _, exists := bases[key]; exists {
+				continue
+			}
+			base, err := t.base.HandoffBaseState(ctx, plan.Scope.OrgID, nodeID)
+			if err != nil {
+				return false, err
+			}
+			if base.NodeID != nodeID.String() || base.Version == 0 {
+				return false, ErrHandoffHATransitionRefused
+			}
+			bases[key] = base
+		}
+	}
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return false, err
@@ -143,12 +165,9 @@ func (t *PostgresHandoffOwnershipModeTransition) MaintainHandoffOrdinaryBaseAuth
 			// durable armed-fence evidence for that scope and must reject it.
 			return false, ErrHandoffHATransitionRefused
 		}
-		base, err := t.base.HandoffBaseState(ctx, entry.orgID, nodeID)
-		if err != nil || base.NodeID != nodeID.String() || base.Version == 0 || entry.transitionRevision == 0 {
-			if err == nil {
-				err = ErrHandoffHATransitionRefused
-			}
-			return false, err
+		base, exists := bases[[2]uuid.UUID{entry.orgID, nodeID}]
+		if !exists || entry.transitionRevision == 0 {
+			return false, ErrHandoffHATransitionRefused
 		}
 		hash, err := KubernetesOwnershipBaseStateHash(base)
 		if err != nil {

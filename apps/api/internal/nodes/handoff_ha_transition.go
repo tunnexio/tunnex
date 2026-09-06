@@ -29,6 +29,8 @@ const (
 // HandoffBaseStateSource returns the exact ordinary desired state that the
 // authenticated agent route will serve, including its node-push version.
 // Production supplies the existing nodes.Service + nodepush.Hub seam.
+// It may acquire the shared pool: never invoke it inside a lock-owning
+// handoff transaction. Prefetched results still require exact hash/ACK checks.
 type HandoffBaseStateSource interface {
 	HandoffBaseState(context.Context, uuid.UUID, uuid.UUID) (DesiredState, error)
 }
@@ -83,6 +85,17 @@ func (t *PostgresHandoffOwnershipModeTransition) ArmHandoffOwnershipBaseWithLead
 	expires := now.UTC().Truncate(t.config.AuthorityTTL).Add(2 * t.config.AuthorityTTL)
 	result := HandoffBaseAuthorityArmSnapshot{TransitionRevision: revision, MembershipEpoch: membershipEpoch, Members: make([]HandoffBaseAuthorityArmMember, 0, len(members))}
 	poolGeneration := KubernetesOwnershipBaseAuthorityPoolGeneration{Scope: classification.Scope, PromotionGeneration: plan.Generation}
+	bases := make(map[uuid.UUID]DesiredState, len(members))
+	for _, nodeID := range members {
+		base, err := t.base.HandoffBaseState(ctx, plan.Scope.OrgID, nodeID)
+		if err != nil {
+			return HandoffBaseAuthorityArmSnapshot{}, false, err
+		}
+		if base.NodeID != nodeID.String() || base.Version == 0 {
+			return HandoffBaseAuthorityArmSnapshot{}, false, ErrHandoffHATransitionRefused
+		}
+		bases[nodeID] = base
+	}
 	issueTx, err := conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return HandoffBaseAuthorityArmSnapshot{}, false, err
@@ -99,13 +112,7 @@ func (t *PostgresHandoffOwnershipModeTransition) ArmHandoffOwnershipBaseWithLead
 		return HandoffBaseAuthorityArmSnapshot{}, false, err
 	}
 	for _, nodeID := range members {
-		base, err := t.base.HandoffBaseState(ctx, plan.Scope.OrgID, nodeID)
-		if err != nil || base.NodeID != nodeID.String() || base.Version == 0 {
-			if err == nil {
-				err = ErrHandoffHATransitionRefused
-			}
-			return HandoffBaseAuthorityArmSnapshot{}, false, err
-		}
+		base := bases[nodeID]
 		hash, err := KubernetesOwnershipBaseStateHash(base)
 		if err != nil {
 			return HandoffBaseAuthorityArmSnapshot{}, false, err
