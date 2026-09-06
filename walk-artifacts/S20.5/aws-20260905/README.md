@@ -1,5 +1,12 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
+**Current acceptance (2026-09-06):** [targeted AWS repair](../../../docs/S20.5-aws-targeted-acceptance.md)
+supersedes the old eleven-leg completion denominator. Working installation,
+retained identity and IP/FQDN evidence is retained; the active HA failure gets
+the focused regression/re-test. Unrun broader qualification remains explicit,
+not a blocker automatically attached to every unrelated fix. The historical
+2/11 and latest-build 0/11 reports are no longer the progress model.
+
 Current checkpoint (2026-09-06): **dc70c9b node/manager candidate is installed
 on all three workers through native retained-state lifecycle operations.
 Local private IP and normal split-DNS FQDN access pass. Automatic A3-to-B2
