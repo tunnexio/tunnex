@@ -91,6 +91,20 @@ customer-managed secret synchronization without requiring a new secret operator.
 
 ## Acceptance
 
+### Same-PR CI performance scope approved — 2026-09-06
+
+User explicitly approved parallel CI and caching in PR #59. Preserve the required
+`gates` context as a fail-closed aggregator over independent contract, codegen,
+API edition, data-plane/tooling and web jobs. Each API edition gets its own runner
+and explicit Compose project/database; retain serial package execution within an
+edition. Preserve fail-closed diff classification and all existing coverage.
+Cache dependencies/compiler output by platform, toolchain and dependency inputs;
+never reuse database state or integration-test results. Local defaults remain
+unchanged. Test failure/cancellation/missing-job aggregation before pushing and
+measure actual exact-head CI, distinguishing queue time and cold/warm cache runs.
+The 8–12 minute warm-run target is an estimate, not acceptance evidence. No merge
+or further branch-protection changes are authorized by this scope addition.
+
 ### Completion scope approved — 2026-09-06
 
 User requested completion of the remaining development and qualification, not just
