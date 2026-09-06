@@ -89,6 +89,7 @@ func DumpEnvironment(raw string, inherited []string) ([]string, error) {
 		return nil, errors.New("database_config_invalid")
 	}
 	u, _ := url.Parse(raw)
+	query := u.Query()
 	env := make([]string, 0, len(inherited)+12)
 	for _, value := range inherited {
 		if !strings.HasPrefix(value, "PG") {
@@ -98,15 +99,15 @@ func DumpEnvironment(raw string, inherited []string) ([]string, error) {
 	env = append(env, "PGHOST="+cfg.Host, "PGPORT="+strconv.Itoa(int(cfg.Port)), "PGDATABASE="+cfg.Database,
 		"PGUSER="+cfg.User, "PGPASSWORD="+cfg.Password, "PGCONNECT_TIMEOUT=10", "PGCHANNELBINDING="+cfg.ChannelBinding)
 	for key, variable := range map[string]string{"sslmode": "PGSSLMODE", "sslrootcert": "PGSSLROOTCERT", "sslcert": "PGSSLCERT", "sslkey": "PGSSLKEY", "application_name": "PGAPPNAME", "target_session_attrs": "PGTARGETSESSIONATTRS"} {
-		value := u.Query().Get(key)
-		if value == "" {
+		value := query.Get(key)
+		if !query.Has(key) {
 			value = os.Getenv(variable)
 		}
 		// pgx uses system roots by default; libpq otherwise looks for a private
 		// ~/.postgresql/root.crt. Match the verified TLS runtime's trust policy.
 		if key == "sslrootcert" && value == "" {
-			mode := u.Query().Get("sslmode")
-			if mode == "" {
+			mode := query.Get("sslmode")
+			if !query.Has("sslmode") {
 				mode = os.Getenv("PGSSLMODE")
 			}
 			if mode == "verify-full" {

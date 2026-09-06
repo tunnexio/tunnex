@@ -108,6 +108,11 @@ first BYODB-capable production-signed release, before general-availability claim
 or advancing the website launcher pin. Candidate runtime/contract tests remain
 substitutes, not satisfaction of that release qualification.
 
+Native TLS precedence is one explicit rule: URL key presence (including empty
+values) wins over process environment, then provider-neutral defaults apply.
+For verify-full without an effective CA path, both clients use system trust.
+Do not infer URL absence from an empty value or introduce provider-specific rules.
+
 ### Review disposition — 2026-09-06
 
 User approved fixing both held P1 findings and testing them. Preserve the legacy

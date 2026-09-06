@@ -169,4 +169,11 @@ func TestDumpEnvironmentPreservesEffectiveTrust(t *testing.T) {
 	if !strings.Contains(strings.Join(env, "\n"), "PGSSLROOTCERT=system") {
 		t.Fatal("URL trust precedence lost")
 	}
+	env, err = DumpEnvironment("postgres://fixture@localhost/fixture?sslmode=verify-full&sslrootcert=", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "PGSSLROOTCERT=system") {
+		t.Fatal("explicit empty URL must override ambient root")
+	}
 }
