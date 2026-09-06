@@ -48,6 +48,32 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- default (printf "%s-state" (include "tunnex-gateway.fullname" .)) .Values.persistence.existingClaim -}}
 {{- end -}}
 
+{{/*
+Direct Helm enroll must never stamp new provenance onto retained identity bytes.
+This render-time lookup uses the Helm caller's existing Kubernetes credentials;
+it runs before hooks or ordinary resources are applied, including with --no-hooks.
+Offline template/client dry-run cannot inspect live objects and is only a preview.
+*/}}
+{{- define "tunnex-gateway.retainedEnrollGuard" -}}
+{{- if and .Values.persistence.enabled (eq .Values.enrollment.mode "enroll") (not .Values.persistence.existingClaim) -}}
+  {{- $claimName := include "tunnex-gateway.stateClaimName" . -}}
+  {{- $claim := lookup "v1" "PersistentVolumeClaim" .Release.Namespace $claimName -}}
+  {{- if $claim -}}
+    {{- $annotations := default (dict) $claim.metadata.annotations -}}
+    {{- $organization := default "" (index $annotations "tunnex.io/organization-id") -}}
+    {{- $lifecycleClaim := default "" (index $annotations "tunnex.io/lifecycle-claim") -}}
+    {{- $uuidPattern := "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" -}}
+    {{- $nilUUID := "00000000-0000-0000-0000-000000000000" -}}
+    {{- if or (not (regexMatch $uuidPattern $organization)) (not (regexMatch $uuidPattern $lifecycleClaim)) (eq $organization $nilUUID) (eq $lifecycleClaim $nilUUID) -}}
+      {{- fail (printf "retained PVC %s/%s: enroll requires existing canonical non-nil organization and lifecycle-claim annotations; refusing to relabel retained identity state. An unannotated legacy claim requires explicit tokenless enrollment.mode=reuse with persistence.existingClaim" .Release.Namespace $claimName) -}}
+    {{- end -}}
+    {{- if or (ne $organization .Values.persistence.provenance.organizationID) (ne $lifecycleClaim .Values.persistence.provenance.lifecycleClaim) -}}
+      {{- fail (printf "retained PVC %s/%s: organization and lifecycle-claim must exactly match persistence.provenance; refusing to relabel retained identity state" .Release.Namespace $claimName) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Keep gateway and hook node placement byte-for-byte aligned. */}}
 {{- define "tunnex-gateway.placement" -}}
 {{- with .Values.nodeSelector }}
@@ -79,6 +105,15 @@ Fail closed on lifecycle combinations that JSON Schema cannot prove against a
 live retained claim. One release is one identity; Helm never rotates or purges it.
 */}}
 {{- define "tunnex-gateway.configGuard" -}}
+{{- $organization := .Values.persistence.provenance.organizationID -}}
+{{- $lifecycleClaim := .Values.persistence.provenance.lifecycleClaim -}}
+{{- if or $organization $lifecycleClaim -}}
+  {{- $uuidPattern := "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" -}}
+  {{- $nilUUID := "00000000-0000-0000-0000-000000000000" -}}
+  {{- if or (not (regexMatch $uuidPattern $organization)) (not (regexMatch $uuidPattern $lifecycleClaim)) (eq $organization $nilUUID) (eq $lifecycleClaim $nilUUID) -}}
+    {{- fail "persistence.provenance requires both organizationID and lifecycleClaim as canonical non-nil UUIDs, or both empty for a fresh legacy install" -}}
+  {{- end -}}
+{{- end -}}
 {{- $mode := .Values.enrollment.mode -}}
 {{- $sources := 0 -}}
 {{- if .Values.enrollment.existingSecret -}}{{- $sources = add1 $sources -}}{{- end -}}
