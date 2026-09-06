@@ -123,3 +123,12 @@ admin access and app/service configuration have not yet been completed.
 - Focused Okta/import/licence regression cases passed in BOTH editions. Full SSO package also passed in BOTH editions after UserInfo fix.
 - Completed requested real-provider happy paths: real local Keycloak ordinary login; real Okta test callback, service-app directory read/import, imported member ordinary login.
 - Boundaries: local licence is still a test trial overlay, not a real signed licence qualification. Licence expiry/removal refusal paths have regression proof, not a real-tenant lifecycle walkthrough. No native gateway/tunnel revocation or full CI/release qualification claimed. No remote push.
+
+### Running expiry/removal/recovery walkthrough — 2026-09-06
+
+- Ran API with expired trial claims via ignored local-only test-manager overlay. This bypasses signature verification and is NOT a signed-licence lifecycle qualification.
+- Added a previously unknown ACTIVE local-IdP joiner `expiry-joiner@fixture.example`. Sync succeeded with `provisioning_allowed=false`; scoped DB audit confirmed zero matching user rows.
+- Removed support test account from real Okta mapped group. Real directory sync under expired trial succeeded; DB audit confirmed its mapped CP group membership removed.
+- Restored upstream Okta group assignment while still expired: sync succeeded but CP membership remained absent. No new grant on lapsed entitlement.
+- Restored valid trial overlay and repeated both syncs: fixture joiner now exists exactly once and both its Engineering grant and support user's real Okta group grant are present. Preview restored to valid trial; real test-group membership restored.
+- Target real-Okta organization has zero nodes and zero devices (global DB contains unrelated test fixture rows). No WireGuard traffic, device credential, gateway peer removal, suspended-Okta-user session sweep or real signed licence lifecycle proof claimed. Those remain outstanding for a complete deployment lifecycle walk.
