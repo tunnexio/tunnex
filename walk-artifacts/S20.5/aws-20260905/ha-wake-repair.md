@@ -1,6 +1,7 @@
 # HA wake/authority repair — 2026-09-06
 
-Status: source correction tested; AWS retest pending. This is the targeted
+Status: wake-only standby repair PASS; sustained post-takeover renewal FAIL.
+All faulted deployments restored. This is the targeted
 acceptance path, not a restart of the historical eleven-leg checklist.
 
 Decision: [acknowledged-base reuse and pending delivery cursor](../../../docs/S20.5-ha-acknowledged-base-reuse-decisions.md).
@@ -117,3 +118,41 @@ Standby JSONL SHA256:
 `b121fbd7c2addf7a3d38492abe40106dd06a768074258348c01aba386685e34d`.
 This establishes bounded standby absence and return, not unbounded outage
 continuity or generic startup recovery. Active-owner fault proof is next.
+
+## Active-owner fault — takeover observed, sustained renewal FAIL
+
+A3 was freshly verified as the active owner/generation 3 with all deployments
+Ready and healthy pre-fault traffic, then scaled to zero at 03:57:40.098 UTC.
+B2 became owner/generation 4 by 03:58:39.949. Both IP and FQDN first recovered
+at 03:59:03.983, **83.885 seconds after the fault**. This is automatic recovery,
+not seamless failover.
+
+The longer hold exposed a distinct remaining failure: requests failed again
+at 04:00:09.631 while B2 remained owner and A3 was absent. Read-only database
+evidence at 04:00:49 shows B2's sole serving epoch 270 was issued 03:58:44.735
+and expired 04:00:00, with no subsequent serving renewal. B2 ACKed its new
+generation-4 ordinary authority revision 421/hash `9b9d4f89a9ca…`. A3's desired
+base genuinely changed from `1c3a627d2662…` to `d48deef6326c…`; its revisions
+421–425 remained unACKed while it was absent. The existing all-member barrier
+therefore still prevents the new owner's continuing renewal after a handoff.
+This is not another unchanged-content cursor case and cannot be declared fixed
+by the acknowledged-base replay correction.
+
+A3 was restored by the fault script at 04:01:34.054. Traffic recovered by
+04:01:53.252. Automatic failback to A3/generation 5 was observed by 04:02:45.118,
+with another interruption during that transition; both paths recovered by
+04:03:08.847 and remained successful through 04:03:31.023. Final readback at
+04:03:32 confirms every deployment Ready 1/1. No remedial rollout restart,
+SCP product patch, host/CNI/Secret/PVC edit or client repair was performed.
+
+There were 19 fault-stage and six return-stage paired rounds with at least one
+failed request. The sampler's completed process is not an acceptance result:
+the **sustained active-owner test is FAIL** despite initial recovery and final
+healthy state. No PR or merge is justified as completed proof yet.
+
+Active JSONL SHA256:
+`491a2d1a463d506f35841fe84893e5851507c80097469384c4ac57c0bfc0ade5`.
+Next correction must explicitly model the already-fenced-out previous owner
+versus continuing current-owner renewal, retaining exact current authority,
+completed handoff/expiry proof and future candidate admission. Do not remove
+the general changed-base ACK barrier merely to pass this test.
