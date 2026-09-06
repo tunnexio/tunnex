@@ -102,6 +102,12 @@ SCRAM-PLUS proof. Prefer a qualified upstream driver fix over a local fork; neve
 remove the requirement or downgrade TLS. Re-review the folded changes before
 claiming qualification. Existing RDS CP stays available until safe Neon cutover.
 
+Implementation: pgx v5.10.0 supplies `RequireAuth`; shared `dbconn` configuration
+requires SCRAM whenever effective channel binding is required. Every production
+CP pool/connection constructor uses that boundary, including reconnects. Native
+backups receive the same effective channel-binding value (URL overrides environment).
+No local driver fork, protocol interception or authentication fallback is added.
+
 Private-only DB install, failure diagnostics (DNS/network/auth/CA), migration and
 upgrade, backup/restore, credential rotation and restart/failover recovery. Qualify
 mechanisms rather than repeating identical walks for every provider. No public DB

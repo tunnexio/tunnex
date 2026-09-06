@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -29,10 +30,45 @@ func TestValidateURL(t *testing.T) {
 		{"postgres://u:p@db/cp?sslmode=verify-full&sslrootcert=%ZZ", true, false},
 		{"postgres://u:p@db/cp?sslmode=verify-full#fragment", true, false},
 		{"postgres://u:p@db/cp?host=somewhere-else", false, false},
+		{"postgres://u:p@db/cp?sslmode=verify-full&channel_binding=require", true, true},
+		{"postgres://u:p@db/cp?sslmode=verify-full&channel_binding=prefer", true, true},
+		{"postgres://u:p@db/cp?sslmode=verify-full&channel_binding=disable", true, true},
+		{"postgres://u:p@db/cp?sslmode=verify-full&channel_binding=invalid", true, false},
+		{"postgres://u:p@db/cp?sslmode=verify-full&channel_binding=", true, false},
 	} {
 		if got := ValidateURL(tc.url, tc.tls); (got == nil) != tc.ok {
 			t.Errorf("valid=%v want %v", got == nil, tc.ok)
 		}
+	}
+}
+
+func TestBackupClientsMatchServerMajor(t *testing.T) {
+	for _, version := range []int{160000, 160014, 170000, 170010, 180006} {
+		for _, tool := range []string{"pg_dump", "pg_restore"} {
+			path, err := NativeToolPath(version, tool)
+			if err != nil || !strings.Contains(path, "/postgresql"+strconv.Itoa(version/10000)+"/"+tool) {
+				t.Fatalf("version %d tool %s: %q %v", version, tool, path, err)
+			}
+		}
+	}
+	for _, version := range []int{-1, 0, 150099, 190000} {
+		if _, err := NativeToolPath(version, "pg_dump"); err == nil {
+			t.Fatalf("accepted unsupported version %d", version)
+		}
+	}
+	if _, err := NativeToolPath(160000, "../../bin/sh"); err == nil {
+		t.Fatal("accepted arbitrary tool")
+	}
+}
+
+func TestBackupPreservesRequiredChannelBinding(t *testing.T) {
+	env, err := DumpEnvironment("postgres://u:p@db/cp?sslmode=verify-full&channel_binding=require", []string{"PGCHANNELBINDING=disable"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, "PGCHANNELBINDING=require") || strings.Contains(joined, "PGCHANNELBINDING=disable") {
+		t.Fatal("backup dropped or downgraded channel binding")
 	}
 }
 
@@ -81,5 +117,29 @@ func TestDumpEnvironmentUsesPlainDatabaseAndOverridesAmbientTarget(t *testing.T)
 	}
 	if strings.Contains(joined, "wrong-") || strings.Contains(joined, "postgres://") {
 		t.Fatal("wrong backup target or unexpanded URI")
+	}
+}
+
+func TestDumpEnvironmentPreservesEffectiveChannelBinding(t *testing.T) {
+	t.Setenv("PGCHANNELBINDING", "require")
+	for _, tc := range []struct{ query, want string }{
+		{"", "require"}, {"&channel_binding=prefer", "prefer"}, {"&channel_binding=disable", "disable"},
+	} {
+		env, err := DumpEnvironment("postgres://fixture@localhost/fixture?sslmode=verify-full"+tc.query, []string{"PGCHANNELBINDING=disable"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		count := 0
+		for _, value := range env {
+			if strings.HasPrefix(value, "PGCHANNELBINDING=") {
+				count++
+				if value != "PGCHANNELBINDING="+tc.want {
+					t.Fatal("effective binding requirement changed")
+				}
+			}
+		}
+		if count != 1 {
+			t.Fatal("missing or duplicate channel binding environment")
+		}
 	}
 }

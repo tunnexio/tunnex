@@ -20,7 +20,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/seeddata"
 )
@@ -112,7 +112,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := dbconn.NewPool(ctx, dsn)
 	if err != nil {
 		logger.Error("seed_fixtures_failed", slog.String("error", err.Error()))
 		os.Exit(1)

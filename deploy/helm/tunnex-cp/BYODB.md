@@ -34,15 +34,22 @@ to the server. Existing `urlSecret` users retain the default `TUNNEX_DATABASE_UR
 key. The chart does not create, own or delete your database or existing Secrets.
 
 The migration Job now validates connectivity and migration prerequisites before
-DDL. The API validates its runtime connection before serving. PostgreSQL 16 is
-the initially qualified version; keep `database.requireTLS: true` in production.
+DDL. The API validates its runtime connection before serving. The BYODB candidate
+supports PostgreSQL 16, 17 and 18; keep `database.requireTLS: true` in production.
+For servers requiring channel binding, preserve `channel_binding=require` in the
+URL. Tunnex also requires SCRAM authentication for that mode, rejecting trust,
+password and MD5 authentication rather than silently accepting unbound sessions.
+Backup clients are selected to match the server major. Restore with a matching
+major client into an isolated compatible target before replacing a live database.
 Optional `database.migrationURLSecret` and `database.migrationURLSecretKey` select
 separate migration credentials for the same database and TLS files. Without them
 the Job uses the runtime URL. Migration-role ownership and runtime grants remain
 the DBA's responsibility; Tunnex does not create privileged database accounts.
 
-Current boundary: private TLS install/restore has local-container proof; a signed
-public-release installer walk and Kubernetes mTLS proof remain pending.
+Current boundary: private PG16 VM/RDS runtime walks and a PG16/17/18 TLS migration,
+legacy-lock contention and dump/restore matrix passed. This remains an unmerged
+candidate; signed public-release installer/upgrade and Kubernetes mTLS proof remain
+pending. Consult the PR evidence for the latest Neon live-install result.
 Changing a URL Secret requires restarting the consuming API workload; credential
 rotation/recovery automation remains in the BYODB implementation plan. Preserve
 database backups and the separately backed-up Tunnex master key.

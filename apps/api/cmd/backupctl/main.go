@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/backup"
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
@@ -93,7 +93,7 @@ func main() {
 // discovered through confusing failures. Best-effort: a manifest is still useful without it.
 func schemaVersion(cfg config.Config) int64 {
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := dbconn.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return 0
 	}

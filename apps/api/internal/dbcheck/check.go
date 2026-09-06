@@ -4,7 +4,6 @@ package dbcheck
 import (
 	"context"
 	"crypto/x509"
-	"database/sql"
 	"errors"
 	"net"
 	"net/url"
@@ -14,7 +13,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/lib/pq"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 )
 
 // SafeError never includes driver messages: they can contain DSNs or server-controlled text.
@@ -44,7 +45,7 @@ func SafeError(err error) string {
 	}
 }
 
-// ValidateURL constrains the common URL contract used by pgx, libpq and pg_dump.
+// ValidateURL constrains the common URL contract used by pgx and native libpq tools.
 func ValidateURL(raw string, requireTLS bool) error {
 	u, err := url.Parse(raw)
 	if err != nil || u == nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Hostname() == "" || strings.Trim(u.Path, "/") == "" {
@@ -62,6 +63,12 @@ func ValidateURL(raw string, requireTLS bool) error {
 			return errors.New("database_url_invalid: duplicate connection parameters are not supported")
 		}
 		switch key {
+		case "channel_binding":
+			switch values[0] {
+			case "require", "prefer", "disable":
+			default:
+				return errors.New("database_channel_binding_invalid: use require, prefer or disable")
+			}
 		case "sslmode", "sslrootcert", "sslcert", "sslkey", "connect_timeout", "application_name", "target_session_attrs":
 		default:
 			return errors.New("database_url_parameter_unsupported: use the documented common PostgreSQL URL parameters")
@@ -76,7 +83,7 @@ func DumpEnvironment(raw string, inherited []string) ([]string, error) {
 	if err := ValidateURL(raw, false); err != nil {
 		return nil, err
 	}
-	cfg, err := pgx.ParseConfig(raw)
+	cfg, err := dbconn.ParseConfig(raw)
 	if err != nil {
 		return nil, errors.New("database_config_invalid")
 	}
@@ -88,7 +95,7 @@ func DumpEnvironment(raw string, inherited []string) ([]string, error) {
 		}
 	}
 	env = append(env, "PGHOST="+cfg.Host, "PGPORT="+strconv.Itoa(int(cfg.Port)), "PGDATABASE="+cfg.Database,
-		"PGUSER="+cfg.User, "PGPASSWORD="+cfg.Password, "PGCONNECT_TIMEOUT=10")
+		"PGUSER="+cfg.User, "PGPASSWORD="+cfg.Password, "PGCONNECT_TIMEOUT=10", "PGCHANNELBINDING="+cfg.ChannelBinding)
 	for key, variable := range map[string]string{"sslmode": "PGSSLMODE", "sslrootcert": "PGSSLROOTCERT", "sslcert": "PGSSLCERT", "sslkey": "PGSSLKEY", "application_name": "PGAPPNAME", "target_session_attrs": "PGTARGETSESSIONATTRS"} {
 		if value := u.Query().Get(key); value != "" {
 			env = append(env, variable+"="+value)
@@ -105,7 +112,7 @@ func Run(parent context.Context, raw string, requireTLS, migration bool) error {
 	}
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
-	cfg, err := pgx.ParseConfig(raw)
+	cfg, err := dbconn.ParseConfig(raw)
 	if err != nil {
 		return errors.New("database_config_invalid: check URL parameters and TLS files")
 	}
@@ -127,8 +134,8 @@ func Run(parent context.Context, raw string, requireTLS, migration bool) error {
 	if err != nil {
 		return errors.New(SafeError(err))
 	}
-	if version < 160000 || version >= 170000 {
-		return errors.New("database_version_unsupported: this BYODB release qualifies PostgreSQL 16")
+	if !SupportedVersion(version) {
+		return errors.New("database_version_unsupported: supported PostgreSQL majors are 16, 17 and 18")
 	}
 	if !writable {
 		return errors.New("database_read_only: use the writable primary endpoint")
@@ -154,12 +161,9 @@ func Run(parent context.Context, raw string, requireTLS, migration bool) error {
 	if !citextInstalled && (!migration || !citextAvailable || !dbCreate) {
 		return errors.New("database_extension_missing: ask your DBA to install citext in the Tunnex database")
 	}
-	// The migration driver is not pgx. Refuse incompatible URL options before DDL.
+	// Exercise the same pgx database/sql adapter used by migrations before DDL.
 	if migration {
-		db, err := sql.Open("postgres", raw)
-		if err != nil {
-			return errors.New("database_migration_connection_failed: check the common PostgreSQL URL parameters")
-		}
+		db := stdlib.OpenDB(*cfg)
 		defer db.Close()
 		if err := db.PingContext(ctx); err != nil {
 			return errors.New("database_migration_connection_failed: check migration credentials, TLS and URL parameters")

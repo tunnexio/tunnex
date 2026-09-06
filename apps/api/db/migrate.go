@@ -3,10 +3,13 @@ package db
 import (
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres" // registers "postgres://"
+	pgxmigrate "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 )
 
 // newMigrator builds a migrate.Migrate over the embedded migrations and the
@@ -16,8 +19,30 @@ func newMigrator(databaseURL string) (*migrate.Migrate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load embedded migrations: %w", err)
 	}
-	m, err := migrate.NewWithSourceInstance("iofs", src, databaseURL)
+	parsed, err := url.Parse(databaseURL)
 	if err != nil {
+		_ = src.Close()
+		return nil, errors.New("invalid migration connection configuration")
+	}
+	config, err := dbconn.ParseConfig(databaseURL)
+	if err != nil {
+		_ = src.Close()
+		return nil, errors.New("invalid migration connection configuration")
+	}
+	instance := stdlib.OpenDB(*config)
+	// The previous postgres adapter hashes url.Path (including its leading slash)
+	// into its advisory-lock identity. CURRENT_DATABASE() would change that key
+	// and allow old and new migrators to run concurrently during an upgrade.
+	driver, err := pgxmigrate.WithInstance(instance, &pgxmigrate.Config{DatabaseName: parsed.Path})
+	if err != nil {
+		_ = instance.Close()
+		_ = src.Close()
+		return nil, fmt.Errorf("init migration connection: %w", err)
+	}
+	m, err := migrate.NewWithInstance("iofs", src, "pgx5", driver)
+	if err != nil {
+		_ = driver.Close()
+		_ = src.Close()
 		return nil, fmt.Errorf("init migrator: %w", err)
 	}
 	return m, nil

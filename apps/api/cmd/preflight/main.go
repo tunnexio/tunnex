@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
 	"github.com/tunnexio/tunnex/apps/api/internal/dbcheck"
@@ -43,18 +44,27 @@ func main() {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
-			fmt.Println("Database preflight passed: connectivity, TLS/authentication, writable PostgreSQL 16 and migration prerequisites")
+			fmt.Println("Database preflight passed: connectivity, TLS/authentication, supported writable PostgreSQL (16-18) and migration prerequisites")
 			return
 		case "--database-dump", "--database-verify-archive":
 			// Never place the DSN in argv or forward pg_dump stderr (server text may contain secrets).
-			tool, args := "pg_dump", []string{"--format=custom", "--no-owner"}
+			var tool string
+			var err error
+			args := []string{"--format=custom", "--no-owner"}
 			if os.Args[1] == "--database-verify-archive" {
-				tool, args = "pg_restore", []string{"--list"}
+				// Offline listing: newest reader understands all supported archive formats.
+				tool, err = dbcheck.NativeToolPath(180000, "pg_restore")
+				args = []string{"--list"}
+			} else {
+				tool, err = dbcheck.DumpTool(ctx, cfg.DatabaseURL, cfg.ExternalDatabase)
+			}
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
 			}
 			backupCtx, stop := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer stop()
 			cmd := exec.CommandContext(backupCtx, tool, args...)
-			var err error
 			cmd.Env, err = dbcheck.DumpEnvironment(cfg.DatabaseURL, os.Environ())
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
@@ -69,7 +79,7 @@ func main() {
 		}
 	}
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := dbconn.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		refuse([]check{{"database reachable", false,
 			dbcheck.SafeError(err)}})

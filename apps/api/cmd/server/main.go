@@ -19,7 +19,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/google/uuid"
 
@@ -185,7 +185,7 @@ func main() {
 	}
 
 	// Database connection pool (used by the tenancy services).
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	pool, err := dbconn.NewPool(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("db_pool_failed", slog.String("error", dbcheck.SafeError(err)))
 		os.Exit(1)
