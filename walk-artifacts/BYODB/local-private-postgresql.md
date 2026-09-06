@@ -4,6 +4,9 @@ Status: in-progress implementation proof, not a published-release or cloud walk.
 Branch: `codex/byodb-private-postgresql`, baseline `a3c192a`; tested working-tree
 API image `tunnex-byodb-dev:20260906a` (candidate changes not yet committed).
 
+Final implementation checkpoint: product/CI content committed as `b3ab8cd`, draft
+core PR #59. Companion website documentation: tunnex-web PR #40 (`5f03fea`).
+
 ## Isolation
 
 - Dedicated Compose project `tunnex-byodb-proof-20260906a`.
@@ -36,11 +39,34 @@ API image `tunnex-byodb-dev:20260906a` (candidate changes not yet committed).
     fixture DB with a different roots volume: correctly refused decrypting the
     existing agent CA. This was a fixture mismatch, not a reason to regenerate
     keys. The canonical fresh-install test was then given its own empty DB.
+12. Canonical `deploy/tunnex.yml`, external profile and an empty dedicated database
+    owned by the non-superuser role: preflight and CP healthy. Only API and Redis
+    run in that installed project; there is no bundled Postgres service running.
+13. Rotate the fixture DB owner's password, update the protected installed URL
+    and recreate API using the final candidate image: preflight and CP healthy.
+    This proves controlled rotation, not automatic secret hot-reload.
+14. Restart the private PostgreSQL container without restarting the installed CP:
+    database preflight passes and CP health remains OK after DB recovery. This
+    proves restart recovery, not a multi-node PostgreSQL failover.
+
+## Local gates
+
+Passed: generate-check, migrate, test-editions, build-editions, test-node; targeted
+dbcheck tests on real isolated PostgreSQL; installer full mocked-release/host flow
+(including external mode and interactive bundled mode); standalone installer/Helm
+contracts; upgrade helper/apply/runner contracts; signed-release contract and the
+new release-source-ref regression. The release regression fails on a3c192a with
+the same HTTP 422 class as main CI and passes on the fix.
+
+Core web typecheck/tests/build passed (1,281 tests); website typecheck/tests/build
+passed (214 tests). Final exact-SHA hosted CI and story-end review are not replaced
+by these local results. A final core-web rerun after frozen-lockfile dependency
+installation is tracked separately in the session.
 
 ## Still owed
 
-Final-content recheck, signed public installer/release-path execution, Kubernetes
-runtime mTLS proof, credential rotation/reconnect and database failover/recovery.
+Signed public installer/release-path execution, Kubernetes runtime mTLS proof,
+multi-node database failover, exact-head CI and story-end review.
 Local containers do not establish all-provider qualification. No cloud resources
 were mutated and no registry artifacts published. Test resources are retained;
 cleanup is not performed as part of this evidence record.
