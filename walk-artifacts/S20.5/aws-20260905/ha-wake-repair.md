@@ -3,7 +3,7 @@
 Status: source correction tested; AWS retest pending. This is the targeted
 acceptance path, not a restart of the historical eleven-leg checklist.
 
-Decision: [acknowledged-base reuse and pending delivery cursor](../../../..//docs/S20.5-ha-acknowledged-base-reuse-decisions.md).
+Decision: [acknowledged-base reuse and pending delivery cursor](../../../../docs/S20.5-ha-acknowledged-base-reuse-decisions.md).
 
 ## Reproduction and bounded correction
 
@@ -59,3 +59,27 @@ No machines, charts, client settings or cloud resources were changed for setup.
 
 Next: publish/deploy only the reviewed API candidate, then baseline and bounded
 standby/owner fault/recovery probes with original identities preserved.
+
+## API-only publication and deployment
+
+Product source: `e6a56a41282e5368cb99e7adb4281db4887eb72f`, built from its
+clean detached worktree with the committed Dockerfile, enterprise tag,
+linux/amd64 and OCI source-revision label. Private ECR tag
+`tunnex-s205-aws-20260905a/api:ha-e6a56a41282e` resolves to
+`sha256:c733301c9423154ae6523a4a3d509ba7f3d9e28468b9a36d0bfd5331ddcb424d`.
+The CP pulled this exact digest; image inspection confirmed amd64 and the
+exact source label. Effective Compose comparison verified the API image was
+the only configuration change, without exposing private configuration.
+
+At 03:52:17 UTC the already-authorized retained licensed CP was updated with
+`up -d --no-deps --pull never api`; replacement API started at 03:52:27.466 UTC.
+No gateway, chart, database service, client setting or machine was recreated.
+Existing candidate metadata remains C7; this is a truthfully mixed-component
+sandbox repair, not a newly signed unified release. Node production remains
+`dc70c9b` / digest `147a81bd…`.
+
+Full node ownershiplease race suite PASS (2.769s) and both independent bounded
+reviewers found no P1/P2 in the API correction. Exact-source
+[CI run 34009930693](https://github.com/tunnexio/tunnex/actions/runs/34009930693)
+is running in parallel; its result is not yet claimed green. AWS fault proof
+and final story review remain pending.
