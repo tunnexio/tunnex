@@ -20,122 +20,19 @@ env:
   DOCKER_METADATA_SHORT_SHA_LENGTH: "7"
 
 jobs:
-  # Linux: the existing make gates + web typecheck/build. RED BLOCKS MERGE.
-  gates:
+  # Classification is cheap and precedes all independent lanes. Unknown means full coverage.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
       go: ${{ steps.scope.outputs.go }}
       web: ${{ steps.scope.outputs.web }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30 # observed 9–11m; a hung tool fails red instead of looking alive for hours
+      codegen: ${{ steps.scope.outputs.codegen }}
     steps:
-      # fetch-depth: 0 so the classifier below can diff against the PR base. A shallow clone would make the
-      # base unreachable — which the classifier treats as UNKNOWN and therefore runs everything, so a
-      # regression here costs time, never coverage.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Installer version provenance contract
-        run: sh deploy/install-version-provenance_test.sh
-
-      - name: Local gate cache isolation contract
-        run: bash deploy/gate-cache-isolation-contract_test.sh
-
-      - name: Installer fresh-host bootstrap contract
-        run: sh deploy/install-host-bootstrap_test.sh
-
-      - name: Installer Windows fresh-host bootstrap contract
-        shell: pwsh
-        run: ./deploy/install-windows-bootstrap_test.ps1
-
-      - name: Signed update catalog contract
-        run: sh deploy/signed-main-release-contract_test.sh
-
-      - name: Draft release source-ref lifecycle regression
-        run: bash deploy/release-source-ref-contract_test.sh
-
-      - name: Host upgrade contract
-        run: sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
-
-      - name: Set up Helm for deployment contracts
-        uses: azure/setup-helm@v5.0.1
-        with:
-          version: v3.18.4
-
-      - name: Kubernetes HA deployment gate contract
-        run: sh deploy/k8s-ha-deployment-gate-contract_test.sh
-
-      - name: BYODB Helm Secret and TLS contract
-        run: bash deploy/byodb-chart-contract_test.sh
-
-      - name: BYODB installer contract
-        run: sh deploy/byodb-install-contract_test.sh
-
-      - name: Set up Go for reproducible chart artifacts
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.13'
-          cache: false
-
-      - name: Kubernetes zero-touch chart contracts
-        run: make test-k8s-charts
-
-      - name: E2E heading locator contract
-        run: node e2e/check-heading-locators.mjs
-
-      # ⛔ THE DIFF CLASSIFIER. MEASURED FINDING (S14.10): `gates` is 8.1 min and is the ENTIRE critical path
-      # of a PR run, and 78% of that is Go steps a web-only diff cannot affect. A UI section pushes 3-6 times,
-      # so the epic was paying 20-40 min per section for work it could not have changed.
-      #
-      # ⛔ IT IS CONDITIONAL STEPS INSIDE THIS JOB, NOT A SECOND JOB, and that is the load-bearing choice:
-      # GitHub's `paths:` filter is workflow-level, so a `gates-web` job would mean a NEW REQUIRED-CHECK NAME,
-      # a companion no-op job so branch protection resolves, and two mechanisms for one problem. Keeping the
-      # job name means branch protection is untouched and `gates` still reports on every PR.
-      #
-      # ⛔ AND IT FAILS CLOSED. `RUN_GO` starts true; ONLY an explicit, successful, non-empty classification
-      # turns it off. Unknown base, shallow clone, non-PR event, or an EMPTY diff all run everything — an
-      # empty result is indistinguishable from a detection that silently returned nothing, and skipping every
-      # Go test on "we found no files" is the worst possible reading of silence.
-      #
-      # Go-relevant is deliberately WIDE: Go sources, module files, Dockerfiles, workflows, THE SPEC
-      # (openapi/ regenerates Go) and MIGRATIONS (apps/api/db/). `packages/shared` is NOT listed because it is
-      # generated and the Codegen drift guard — which always runs — catches a hand-edit there.
-      #
-      # Decision table proven 18/18 including every fail-closed arm (docs/S14.10-handoff.md).
-      #
-      # ── ⛔ AND `\.sql$` IS HERE BECAUSE OF `//go:embed`, WHICH IS THE SEAM THIS LIST CANNOT SEE ───────────
-      #
-      # S14.11 found a FAIL-OPEN in a classifier whose header says it fails closed:
-      # `apps/api/cmd/seed-fixtures/fixtures.sql` is a **compile input** to a Go package (`//go:embed
-      # fixtures.sql` in that package's main.go), and it matched NONE of the patterns. A fixtures-only diff
-      # therefore set `go=false` and SKIPPED `build-editions` — the step that would fail if that embed target
-      # were renamed or deleted, because a missing embed target is a COMPILE ERROR.
-      #
-      #   ⛔ THE CLASSIFIER REASONS ABOUT FILE EXTENSIONS. THE COMPILER REASONS ABOUT COMPILE INPUTS.
-      #   ⛔ `//go:embed` IS THE SEAM WHERE THOSE TWO DISAGREE — it makes a file of ANY extension a build
-      #   ⛔ input to a Go package, and no amount of care with a suffix list can anticipate which extension.
-      #
-      # This is the epic's PROSE-VERSUS-BEHAVIOUR class (docs/CUT-REGISTER.md): the comment above asserted
-      # fail-closed, the behaviour was fail-open, and nothing compared the two.
-      #
-      # CENSUSED, not patched at the one instance — every `//go:embed` in the tree (all modules, `grep -rn
-      # "go:embed" --include="*.go"`), both now covered:
-      #   apps/api/db/embed.go            -> migrations/*.sql   COVERED by `apps/api/db/`
-      #   apps/api/cmd/seed-fixtures/     -> fixtures.sql        COVERED by `\.sql$`   <- was the hole
-      #   apps/api/internal/mail/         -> tunnex-logo.png     COVERED by `apps/api/internal/mail/`
-      #
-      # ⭐ THE PNG IS WHY THE CENSUS EARNS ITS KEEP. S12.14 embedded a logo so branded email carries its own
-      # image instead of fetching one, and NO suffix in this pattern covers `.png` — a diff touching only
-      # that file would have set go=false and skipped build-editions, the one step a missing embed target
-      # fails. The guard caught it on the PR that introduced it, which is the whole point of a census that
-      # runs rather than a list that is maintained. The scope is the DIRECTORY, not `\.png$`: every file in
-      # that package is a compile input, and a bare suffix would drag every web asset into the Go legs.
-      #
-      # ⛔ AND A SUFFIX IS STILL A GUESS ABOUT THE FUTURE, so the list alone is not the fix. `TestGoEmbed
-      # TargetsAreGoRelevantToCI` (apps/api/cmd/) re-derives the embed set from source on every run and fails
-      # if any target is not matched by THIS regex — so an embed of a `.json`, `.txt` or `.tmpl` breaks the
-      # build with an instruction rather than silently skipping the Go steps.
       - name: Classify the diff (fails closed — anything uncertain runs everything)
         id: scope
         run: |
@@ -197,57 +94,167 @@ jobs:
           echo "::notice title=gates scope::go=$RUN_GO codegen=$RUN_CODEGEN web=$RUN_WEB docs_only=$DOCS_ONLY (false = SKIPPED, not passed)"
           printf '%s\n' "${CHANGED:-<no diff computed>}" | head -40
 
-      - name: Codegen drift guard
-        if: steps.scope.outputs.codegen == 'true'
-        run: make generate-check
 
-      - name: Both editions — build + test (open + enterprise)
-        if: steps.scope.outputs.go == 'true'
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer version provenance contract
+        run: sh deploy/install-version-provenance_test.sh
+
+      - name: Local gate cache isolation contract
+        run: bash deploy/gate-cache-isolation-contract_test.sh
+
+      - name: Installer fresh-host bootstrap contract
+        run: sh deploy/install-host-bootstrap_test.sh
+
+      - name: Installer Windows fresh-host bootstrap contract
+        shell: pwsh
+        run: ./deploy/install-windows-bootstrap_test.ps1
+
+      - name: Signed update catalog contract
+        run: sh deploy/signed-main-release-contract_test.sh
+
+      - name: Draft release source-ref lifecycle regression
+        run: bash deploy/release-source-ref-contract_test.sh
+
+      - name: Host upgrade contract
+        run: sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
+
+      - name: Set up Helm for deployment contracts
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
+      - name: Kubernetes HA deployment gate contract
+        run: sh deploy/k8s-ha-deployment-gate-contract_test.sh
+
+      - name: BYODB Helm Secret and TLS contract
+        run: bash deploy/byodb-chart-contract_test.sh
+
+      - name: BYODB installer contract
+        run: sh deploy/byodb-install-contract_test.sh
+
+      - name: Set up Go for reproducible chart artifacts
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.13'
+          cache-dependency-path: apps/cli/go.sum
+      - name: Reuse compiler cache across chart invocations
+        run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+      - name: CI aggregation and wiring contracts
+        run: node --test deploy/ci-gates_test.mjs
+
+      - name: Kubernetes zero-touch chart contracts
+        run: make test-k8s-charts
+
+      - name: E2E heading locator contract
+        run: node e2e/check-heading-locators.mjs
+
+
+  codegen:
+    needs: scope
+    if: needs.scope.outputs.codegen == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: ci-codegen-${{ github.run_id }}-${{ github.run_attempt }}
+      GATE_CACHE_PREFIX: ci-codegen-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/go-container-cache
+      - run: make generate-check
+
+  api:
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [open, enterprise]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
+      GATE_CACHE_PREFIX: ci-api-${{ matrix.edition }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/go-container-cache
+        with:
+          lane: ${{ matrix.edition }}
+      - name: Migrate isolated database and build/test edition
         run: |
-          cp .env.example .env   # compose + make migrate read DATABASE_URL from here
+          cp .env.example .env
           docker compose up -d --wait postgres
           make migrate
-          make test-editions
+          make test-edition TEST_EDITION=${{ matrix.edition }}
 
-      - name: Node agent — data-plane tests (reconcile idempotence)
-        if: steps.scope.outputs.go == 'true'
-        run: make test-node
+  tooling:
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [test-node, test-operator, test-cli]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/go-container-cache
+        with:
+          lane: ${{ matrix.target }}
+      - run: make ${{ matrix.target }}
 
-      - name: GitOps operator — build + no-DB-import census (S10.2)
-        if: steps.scope.outputs.go == 'true'
-        run: make test-operator
-
-      - name: "tunnex CLI — build + vet + test (S11-2: previously covered by NO job)"
-        if: steps.scope.outputs.go == 'true'
-        run: make test-cli
-
+  web:
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable pinned package manager
+        run: corepack enable
+      - name: Locate pnpm store
+        id: pnpm
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Web — typecheck + unit tests + build
-        if: steps.scope.outputs.web == 'true'
+        if: needs.scope.outputs.web == 'true'
         run: |
-          corepack enable
           pnpm install --frozen-lockfile
           pnpm --filter @tunnex/web typecheck
           pnpm --filter @tunnex/web test
           pnpm --filter @tunnex/web build
-
-      # ⛔ THE E2E SPECS COMPILE — INSIDE THE BLOCKING GATE, WITH NO BROWSER.
-      #
-      # `e2e/` had no tsconfig and is not in the pnpm workspace, so NOTHING parsed these files before CI
-      # executed them. On 2026-08-02 a spec split left an orphaned `describe` and reached CI as
-      # `SyntaxError: Unexpected token (153:0)` — and because the visual job is ADVISORY, that red would have
-      # been shrugged at.
-      #
-      # A red advisory job otherwise means one of four indistinguishable things: pixel drift · a geometric
-      # regression · THE SPEC DOES NOT COMPILE · the spec has no subject. This removes the third, here, where
-      # it blocks.
-      #
-      # IT DOES NOT REOPEN THE ADVISORY RULING — it asserts the check COMPILES, never that the pixels match.
-      # PROVEN TO REJECT: reintroducing the orphaned `describe` gives `visual.spec.ts(151,1): error TS1005`.
+      # Always compile E2E specs, as in the original blocking gate.
       - name: E2E specs — typecheck (compiles, not runs)
         run: |
           cd e2e
           npm install --no-audit --no-fund --silent
           npx tsc --noEmit -p tsconfig.json
+
+  # Preserve the existing required check and downstream outputs. Never convert a
+  # failed/cancelled/missing lane into success, or accept an unexplained skip.
+  gates:
+    needs: [scope, contracts, codegen, api, tooling, web]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ needs.scope.outputs.docs_only }}
+      go: ${{ needs.scope.outputs.go }}
+      web: ${{ needs.scope.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require every applicable lane
+        env:
+          GATE_NEEDS: ${{ toJSON(needs) }}
+        run: node deploy/ci-gates.mjs
 
   # Linux CLI: a separate, headless distribution surface. Build both public
   # architectures on every change; only tag-bound artifacts may be attached to
