@@ -39,3 +39,27 @@ tunnex-client `684a8b0`, but automatic fallback and CP-issued policy/GUI were no
 This explicitly authorized contract slice does not retroactively close that bar.
 Full repository gates, exact-head CI and multi-finder review remain prerequisites
 for declaring a completed product story. No push, release or merge in this slice.
+
+## Slice 1 result and integration map
+
+Implemented `apps/api/internal/connectivity`: immutable binding, fail-closed
+authorization and independent sequential message reducers. Focused open-edition
+race tests, enterprise tests and vet pass; package statement coverage is 100%
+(not end-to-end coverage). Two independent reviewers reported no actionable
+findings and explicitly withheld claims about authentication/storage wiring.
+
+Next integration targets verified in source:
+
+- `internal/http/device_health_handlers.go` shows existing user principal and
+  owner-service boundaries; connectivity must also enforce exact device owner.
+- `internal/http/agentchannel.go:authenticateAgent` is the single gateway mTLS
+  principal seam. Reuse it rather than constructing an agent principal elsewhere.
+- `db/queries/devices.sql:GetDeviceForUpdate` supplies the scoped device lock;
+  canonical active-device/roster readers contain status, identity, membership,
+  posture and valid-WireGuard-key predicates that the new reader must preserve.
+- Session persistence must join/lock current eligibility and compare sequence in
+  one transaction. Mapping an arbitrary JSON body into Snapshot is prohibited.
+
+No OpenAPI changes yet because no endpoint is exposed. The next slice must add
+the spec before handlers and run generation rather than editing generated files.
+No cloud work is needed for these deterministic contract tests.
