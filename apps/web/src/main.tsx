@@ -14,13 +14,7 @@ import { ToastProvider } from "./components/Toasts";
 import "../../../packages/shared/generated/tokens.css";
 import "./index.css";
 
-// ⛔ THE DESKTOP TRANSPORT BOOTSTRAP IS GONE (S14.20 step 4). It read the configured server origin
-// off the bridge before the first request, because this entry used to be what the Electron client
-// loaded. It loads `client.html` now, so this file only ever runs in a BROWSER — where `desktop()`
-// is null and the whole block was a no-op that still cost an `await` before first paint.
-//
-// ⚠ The client needs no origin at all: `ClientApp` talks to the bridge and imports no HTTP client,
-// so there is nothing to point anywhere. Verified before this was removed, not assumed.
+// The browser dashboard owns this entry; desktop rendering lives in tunnexio/tunnex-client.
 function boot() {
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>

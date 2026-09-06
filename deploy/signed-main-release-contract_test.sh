@@ -7,7 +7,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 CI="$ROOT/.github/workflows/ci.yml"
 
 grep -Fq 'release-assets:' "$CI"
-grep -Fq 'needs: [publish, client, cli-release]' "$CI"
+grep -Fq 'needs: [publish, cli-release]' "$CI"
 grep -Fq 'TUNNEX_RELEASE_SIGNING_PRIVATE_KEY' "$CI"
 grep -Fq 'TUNNEX_RELEASE_KEY_ID' "$CI"
 grep -Fq 'tunnex-build-${SOURCE_SHA}' "$CI"
@@ -17,7 +17,7 @@ grep -Fq 'gh release upload tunnex-updates release.json release.json.sha256 --cl
 
 # Desktop installers have their own source and release pipeline in
 # tunnexio/tunnex-client. The server release must not silently republish a stale
-# copy from this monorepo, even though the client build remains a useful gate.
+# copy from this monorepo. Desktop build gates run in the standalone repository.
 release_assets=$(sed -n '/^  release-assets:/,$p' "$CI")
 for forbidden in 'desktop-artifacts' 'tunnex-*-installer' 'Tunnex-desktop-SHA256SUMS'; do
   if printf '%s\n' "$release_assets" | grep -Fq "$forbidden"; then

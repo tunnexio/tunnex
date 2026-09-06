@@ -16,15 +16,12 @@
   "mounts": [
     "source=tunnex-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
     "source=tunnex-web-node-modules,target=${containerWorkspaceFolder}/apps/web/node_modules,type=volume",
-    "source=tunnex-shared-node-modules,target=${containerWorkspaceFolder}/packages/shared/node_modules,type=volume",
-    "source=tunnex-client-node-modules,target=${containerWorkspaceFolder}/apps/client/node_modules,type=volume"
+    "source=tunnex-shared-node-modules,target=${containerWorkspaceFolder}/packages/shared/node_modules,type=volume"
   ],
   "remoteEnv": {
-    // The client's unit tests must import NO electron at runtime (CI convention, kept identical here).
-    "ELECTRON_SKIP_BINARY_DOWNLOAD": "1",
     "GOFLAGS": "-mod=readonly"
   },
-  "onCreateCommand": "sudo chown -R vscode:vscode node_modules apps/web/node_modules packages/shared/node_modules apps/client/node_modules 2>/dev/null || true",
+  "onCreateCommand": "sudo chown -R vscode:vscode node_modules apps/web/node_modules packages/shared/node_modules 2>/dev/null || true",
   "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile=false",
   "customizations": {
     "vscode": {

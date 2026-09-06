@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stripJsComments } from "./support/source";
 
@@ -41,11 +41,7 @@ const WIREFRAME = join(
 );
 const APP = join(__dirname, "..", "src", "App.tsx");
 
-/** Flipped to true when EPIC 14 is declared closed. Until then the close-gate assertion is inert. */
-const EPIC_CLOSING = false;
-
 /** A screen banner is `<!-- ===== NAME ===== -->`. Parsed, never transcribed. */
-/** Remove comments so a source scan judges CODE, not the prose describing it. */
 
 function banners(src: string): string[] {
   return [
@@ -54,24 +50,10 @@ function banners(src: string): string[] {
 }
 
 type Disposition =
-  // ⛔ A BLOCK IS EITHER A ROUTE OR AN ENTRY, AND THE CHECK DIFFERS. Most screens are React Router
-  // paths in App.tsx. The desktop client is its OWN vite entry — `client.html` mounts no router at
-  // all — so asserting it against App.tsx would either fail (it did) or have to be weakened. The
-  // census refused the sloppy disposition rather than accepting a route that does not exist.
-  | { kind: "built"; route: string; entry?: never }
-  | { kind: "built"; entry: string; route?: never }
+  | { kind: "built"; route: string }
   | { kind: "absorbed"; into: string; why: string }
   | { kind: "cut"; why: string }
-  | { kind: "unbuilt"; story: string }
-  // ⛔ built_unadopted — see the header block below before adding one.
-  | {
-      kind: "built_unadopted";
-      surface: string;
-      consumer: string;
-      adoptedWhen: string;
-      story: string;
-      branch: string;
-    };
+  | { kind: "unbuilt"; story: string };
 
 // ⛔ EVERY DISPOSITION CARRIES ITS REASON INLINE. A name with no reason is indistinguishable from
 // a name someone added to make the census pass.
@@ -121,12 +103,11 @@ const DISPOSITIONS: Record<string, Disposition> = {
   // /access-log/health shipped in S7.5.1 with no consumer; neither the page census nor anyone's
   // list found it, only running the census against the DESIGN did.
   "FLOW LOGS": { kind: "built", route: "/access-events" },
-  // ⛔ FLIPPED AT STEP 3, AND THE CENSUS FORCED IT. The disposition was `built_unadopted`, which
-  // asserts that `apps/client/src/main/index.ts` does NOT reference client.html. The one-line flip
-  // in this same PR makes that assertion FALSE, so the census went red and the only way to green
-  // was this edit. The state did exactly what it was designed to do: it could not outlive the
-  // condition that justified it.
-  "DESKTOP CLIENT": { kind: "built", entry: "client.html" },
+  "DESKTOP CLIENT": {
+    kind: "absorbed",
+    into: "https://github.com/tunnexio/tunnex-client (apps/web/src/client/ClientApp.tsx)",
+    why: "the independently released desktop application owns its renderer, Electron shell and privilege helper; this repository serves the browser dashboard",
+  },
 };
 
 // ⛔ AND BANNERS ALONE ARE NOT THE WHOLE DESIGN — WHICH IS WHY THIS SECOND LEDGER EXISTS.
@@ -152,50 +133,8 @@ const SHELL_COMPONENTS: Record<string, ComponentDisposition> = {
   },
 };
 
-// ⛔⛔ `built_unadopted` — A FACT ABOUT THE CODE, NOT A CLAIM ABOUT US.
-//
-// The state exists because "in progress" was proposed and rejected: **intent is unfalsifiable.** An
-// entry saying *we are working on it* can never be proven wrong by a test, only by someone
-// noticing — and naming a story and a branch does not fix that, because a stale entry with a dead
-// branch still READS true. That is exactly the escape hatch that would have let this epic close
-// early.
-//
-// So this state asserts something checkable instead:
-//
-//   > **THE SURFACE EXISTS AND IS REACHABLE. THE THING THAT SHOULD CONSUME IT DOES NOT YET.**
-//
-//   `surface`      a path that MUST EXIST — fails if the work was never done, so the state cannot
-//                  be used to mean "not started"
-//   `consumer` +   the file that must reference it, and the string that proves adoption. ⛔ WHEN
-//   `adoptedWhen`  THAT STRING APPEARS, THIS DISPOSITION IS A LIE AND THE CENSUS FAILS. The state
-//                  flips ITSELF: the only way back to green is changing it to `built`.
-//   `story` +      for the human reading it (founder's guard, kept)
-//   `branch`
-//
-// ⚠ THE HONEST COST, IN THE HEADER WHERE IT BELONGS: **this is weaker than `built`.** A reviewer
-// must accept "reachable but unconsumed" as a resting state for a merge. That is acceptable HERE
-// because the surface is done and reviewable in a browser and the single line that adopts it is
-// deliberately its own PR. **It would NOT be acceptable for a block with no surface at all — and
-// the `surface` existence check is precisely what stops it becoming a hiding place.**
-//
-// And the epic cannot close while any block sits here — asserted separately and by name, below.
-
-const CLIENT_MAIN = join(__dirname, "..", "..", "client", "src", "main");
-
-/** Every .ts under the client's main process, RECURSIVELY, as paths relative to CLIENT_MAIN. */
-function mainSources(dir = ""): string[] {
-  return readdirSync(join(CLIENT_MAIN, dir), { withFileTypes: true }).flatMap(
-    (e) =>
-      e.isDirectory()
-        ? mainSources(join(dir, e.name))
-        : e.name.endsWith(".ts")
-          ? [join(dir, e.name)]
-          : [],
-  );
-}
-
 const wireframe = readFileSync(WIREFRAME, "utf8");
-const app = readFileSync(APP, "utf8");
+const app = stripJsComments(readFileSync(APP, "utf8"));
 const BLOCKS = banners(wireframe);
 
 describe("wireframe census — the DESIGN is the authoritative set", () => {
@@ -219,131 +158,12 @@ describe("wireframe census — the DESIGN is the authoritative set", () => {
     expect(unbuilt).toEqual([]);
   });
 
-  it("⛔ every built_unadopted block's SURFACE actually exists — not a hiding place", () => {
-    for (const b of BLOCKS) {
-      const d = DISPOSITIONS[b];
-      if (d?.kind !== "built_unadopted") continue;
-      const p = join(__dirname, "..", d.surface);
-      expect(existsSync(p), `${b}: surface ${d.surface} must exist`).toBe(true);
-      expect(d.story.length, `${b} must name its story`).toBeGreaterThan(3);
-      expect(d.branch.length, `${b} must name its branch`).toBeGreaterThan(3);
-    }
-  });
-
-  it("⛔ built_unadopted FLIPS ITSELF — the state is a lie once the consumer adopts", () => {
-    // The whole point: this disposition cannot outlive its justification. When the consumer
-    // references the surface, the only way back to green is changing the kind to `built`.
-    for (const b of BLOCKS) {
-      const d = DISPOSITIONS[b];
-      if (d?.kind !== "built_unadopted") continue;
-      const consumer = readFileSync(join(__dirname, "..", d.consumer), "utf8");
-      expect(
-        consumer.includes(d.adoptedWhen),
-        `${b} is marked built_unadopted, but ${d.consumer} now references "${d.adoptedWhen}" — it IS adopted. Change the disposition to { kind: "built", route: … }.`,
-      ).toBe(false);
-    }
-  });
-
-  it("⛔ THE EPIC CANNOT CLOSE while any block is built_unadopted", () => {
-    // Named on its own so it fails LOUDLY rather than as a side effect of something else.
-    // EPIC_CLOSING is flipped by hand when the epic is declared done; until then this is inert.
-    const pending = BLOCKS.filter(
-      (b) => DISPOSITIONS[b]?.kind === "built_unadopted",
-    );
-    if (!EPIC_CLOSING) {
-      expect(Array.isArray(pending)).toBe(true); // inert while the epic is open
-      return;
-    }
-    expect(
-      pending,
-      "EPIC 14 cannot close with blocks still built-but-unadopted",
-    ).toEqual([]);
-  });
-
-  it("every BUILT block names a route in App.tsx, or an ENTRY file that exists", () => {
-    // Stops a disposition from being aspirational — "built" must be checkable, and each kind of
-    // block is checked against the thing that would actually prove it.
+  it("every BUILT block names a route in App.tsx", () => {
     const missing = BLOCKS.filter((b) => {
       const d = DISPOSITIONS[b];
-      if (d?.kind !== "built") return false;
-      if (d.route) return !app.includes(`path="${d.route}"`);
-      if (d.entry) return !existsSync(join(__dirname, "..", d.entry));
-      return true; // a `built` with neither is not checkable, so it fails
+      return d?.kind === "built" && !app.includes(`path="${d.route}"`);
     });
     expect(missing).toEqual([]);
-  });
-
-  it("⛔ every ENTRY block is actually LOADED by its consumer — built means adopted", () => {
-    // The other half of what `built_unadopted` used to assert. An entry that exists but nothing
-    // loads is `built_unadopted`, not `built` — this stops the flip being done prematurely.
-    for (const b of BLOCKS) {
-      const d = DISPOSITIONS[b];
-      if (d?.kind !== "built" || !d.entry) continue;
-      // ⛔ COMMENTS STRIPPED, AND THE FIRST VERSION WAS VACUOUS WITHOUT IT. Reverting the flip left
-      // this test GREEN, because the COMMENT explaining the flip contains the word "client.html".
-      // A substring search over source counts the prose that describes the code as if it were the
-      // code — the third time this exact shape has bitten in this epic.
-      //
-      // ⛔ AND SCANNING `index.ts` ALONE IS WHAT LET THE MIGRATION SHIP HALF-DONE. This asserted the
-      // entry is loaded SOMEWHERE — true — and never asked whether anything loads a DIFFERENT one.
-      // `ipc.ts` still loaded `index.html` on the FIRST-RUN branch of config:setServerUrl, so a
-      // fresh install reached the web dashboard and only a second launch reached the client.
-      // A ledger sees only the shape it is keyed on. This is now keyed on the SET.
-      // ⚠ RECURSIVE. A load site one directory down is the same defect one level deeper, and a
-      // non-recursive scan would report the same clean set while missing it.
-      const loaded = new Map<string, string[]>();
-      for (const f of mainSources()) {
-        const src = stripJsComments(readFileSync(join(CLIENT_MAIN, f), "utf8"));
-        for (const m of src.matchAll(
-          /app:\/\/tunnex\/([A-Za-z0-9._-]+\.html)/g,
-        )) {
-          loaded.set(m[1]!, [...(loaded.get(m[1]!) ?? []), f]);
-        }
-      }
-      expect(
-        [...loaded.keys()].sort(),
-        `the client main process references these renderer entries: ` +
-          `${[...loaded].map(([k, v]) => `${k} (${v.join(", ")})`).join("; ")} — ` +
-          `${b} is marked built with entry ${d.entry}, so that must be the ONLY one.`,
-      ).toEqual([d.entry]);
-    }
-  });
-
-  it("⛔ the entry URL has ONE definition — two literals in two files are two constants", () => {
-    // The fix for the above, held in place. A second file spelling the URL out again would pass the
-    // set check on the day it was written and drift the moment either copy changed.
-    const spellers = mainSources().filter((f) =>
-      /app:\/\/tunnex\/[A-Za-z0-9._-]+\.html/.test(
-        stripJsComments(readFileSync(join(CLIENT_MAIN, f), "utf8")),
-      ),
-    );
-    expect(
-      spellers,
-      "the entry URL is spelled out in more than one file",
-    ).toEqual(["entry.ts"]);
-  });
-
-  it("⛔ the entry a block claims is a DECLARED VITE INPUT — a reference is not an artifact", () => {
-    // Every other check here proves the loader REFERENCES the entry. None proves the build EMITS
-    // it — and a multi-entry vite build with an undeclared input succeeds and emits index.html
-    // alone. `gates` would be green, this census would be green, and the app would open on a 404.
-    // The same shape as the defect above: a ledger keyed on the reference, not on the artifact.
-    const vite = stripJsComments(
-      readFileSync(join(__dirname, "..", "vite.config.ts"), "utf8"),
-    );
-    for (const b of BLOCKS) {
-      const d = DISPOSITIONS[b];
-      if (d?.kind !== "built" || !d.entry) continue;
-      expect(
-        vite.includes(`"${d.entry}"`),
-        `${b} claims entry ${d.entry}, but vite.config.ts does not declare it as a rollup input — ` +
-          `the build would succeed and never emit it`,
-      ).toBe(true);
-      expect(
-        existsSync(join(__dirname, "..", d.entry)),
-        `${d.entry} is declared as an input but the file does not exist`,
-      ).toBe(true);
-    }
   });
 
   it("⛔ NO SHELL COMPONENT IS UNBUILT — banners cannot see these, so they are counted separately", () => {
