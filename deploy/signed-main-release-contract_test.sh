@@ -6,6 +6,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 CI="$ROOT/.github/workflows/ci.yml"
 
+ruby "$ROOT/deploy/release-draft-permissions_test.rb"
+
 grep -Fq 'release-assets:' "$CI"
 grep -Fq 'needs: [publish, publish-pullable, cli-release]' "$CI"
 grep -Fq 'TUNNEX_RELEASE_SIGNING_PRIVATE_KEY' "$CI"
