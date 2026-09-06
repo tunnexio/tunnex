@@ -73,7 +73,7 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 	if err != nil {
 		return awsBlocked(fmt.Errorf("CNI authority: %w", err))
 	}
-	if release == nil || (grant.Scope != ScopeIPMasqOnly && grant.Scope != ScopeIPMasqAndAWS) {
+	if release == nil || (grant.Scope != ScopeIPMasqOnly && grant.Scope != ScopeIPMasqAndAWS && grant.Scope != ScopeIPMasqAndAWSTransit) {
 		return awsBlocked(errors.New("CNI authority scope or release is invalid"))
 	}
 	if grant.NotAfter.IsZero() || !time.Now().Before(grant.NotAfter) {
@@ -94,10 +94,13 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 			}
 			return status, err
 		}
-		return r.withdrawAWSAwareLocked(ctx)
+		return r.withdrawAWSAwareLocked(ctx, grant.Scope)
 	}
 	if !interfaceNameRE.MatchString(r.iface) {
 		return awsBlocked(errors.New("invalid WireGuard interface"))
+	}
+	if grant.Scope == ScopeIPMasqAndAWSTransit && r.iface != "wg0" {
+		return awsBlocked(errors.New("AWS transit requires the exact journal-owned wg0 interface"))
 	}
 	prefix, err := netip.ParsePrefix(cidr)
 	if err != nil || !prefix.Addr().Is4() {
@@ -111,8 +114,11 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 	if err != nil {
 		return awsBlocked(err)
 	}
-	if snapshot.hasChain(awsChain) && grant.Scope != ScopeIPMasqAndAWS {
+	if snapshot.hasChain(awsChain) && grant.Scope == ScopeIPMasqOnly {
 		return awsBlocked(errors.New("AWS CNI requires a new journal epoch with AWS authority"))
+	}
+	if err := snapshot.validateOwnedAuthorityScope(grant.Scope); err != nil {
+		return awsBlocked(err)
 	}
 	if !snapshot.hasChain(ipMasqChain) && !snapshot.hasChain(awsChain) {
 		return awsBlocked(errors.New(ReasonNoRegisteredAdapter))
@@ -123,10 +129,16 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 			status.Adapters = append(status.Adapters, ComponentStatus{Name: adapter.name, State: StateNotApplicable, Reason: "exact chain absent"})
 			continue
 		}
-		if err := r.convergeScopedChain(ctx, snapshot, adapter.chain, adapter.marker, cidr); err != nil {
+		wanted := r.desiredScopedRules(adapter.chain, cidr, grant.Scope)
+		if adapter.chain == awsChain && grant.Scope == ScopeIPMasqAndAWSTransit {
+			err = r.convergeAWSTransitChain(ctx, snapshot, wanted)
+		} else {
+			err = r.convergeScopedChain(ctx, snapshot, adapter.chain, adapter.marker, cidr)
+		}
+		if err != nil {
 			return awsBlocked(err)
 		}
-		status.Adapters = append(status.Adapters, ComponentStatus{Name: adapter.name, State: StateReady, OwnedRules: 1})
+		status.Adapters = append(status.Adapters, ComponentStatus{Name: adapter.name, State: StateReady, OwnedRules: len(wanted)})
 	}
 	// Re-prove both adapters and hook ordering after ALL mutations. One adapter's
 	// success cannot hide another mechanism or a controller replacement.
@@ -141,10 +153,7 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 		if !after.hasChain(chain) {
 			continue
 		}
-		owned := after.owned[chain]
-		if len(owned) != 1 || owned[0].cidr != cidr || owned[0].iface != r.iface || owned[0].direction != "daddr" ||
-			owned[0].marker != markerForChain(chain) || len(after.rules[nftKey("ip", "nat", chain)]) == 0 ||
-			after.rules[nftKey("ip", "nat", chain)][0].Handle != owned[0].handle {
+		if !after.exactOwnedPrefix(chain, r.desiredScopedRules(chain, cidr, grant.Scope)) {
 			return awsBlocked(errors.New("CNI exact owned rule or prepend readback mismatch"))
 		}
 	}
@@ -195,6 +204,72 @@ func markerForChain(chain string) string {
 	return ownedRuleComment
 }
 
+func isAWSOwnedMarker(marker string) bool {
+	return marker == AWSOwnedRuleComment || marker == AWSTransitOwnedRuleComment
+}
+
+func (s *cniSnapshot) validateOwnedAuthorityScope(scope AuthorityScope) error {
+	for _, rule := range s.owned[awsChain] {
+		if scope == ScopeIPMasqOnly || (rule.marker == AWSTransitOwnedRuleComment && scope != ScopeIPMasqAndAWSTransit) {
+			return errors.New("owned AWS CNI artifact exceeds the current journal authority")
+		}
+	}
+	return nil
+}
+
+func (r *Reconciler) desiredScopedRules(chain, cidr string, scope AuthorityScope) []ownedRule {
+	want := []ownedRule{{cidr: cidr, iface: r.iface, marker: markerForChain(chain), direction: "daddr"}}
+	if chain == awsChain && scope == ScopeIPMasqAndAWSTransit {
+		want = append(want, ownedRule{cidr: cidr, iface: r.iface, ingress: r.iface, marker: AWSTransitOwnedRuleComment, direction: "saddr"})
+	}
+	return want
+}
+
+func (s *cniSnapshot) exactOwnedPrefix(chain string, want []ownedRule) bool {
+	owned, all := s.owned[chain], s.rules[nftKey("ip", "nat", chain)]
+	if len(owned) != len(want) || len(all) < len(want) {
+		return false
+	}
+	for i, expected := range want {
+		actual := owned[i]
+		if actual.handle != all[i].Handle || actual.cidr != expected.cidr || actual.iface != expected.iface ||
+			actual.ingress != expected.ingress || actual.marker != expected.marker || actual.direction != expected.direction {
+			return false
+		}
+	}
+	return true
+}
+
+// Both exact owned returns precede every foreign rule. Rebuild only this
+// journal-authorized pair when incomplete, obsolete, duplicated or displaced;
+// a crash between writes remains an exact, cleanable partial owned set.
+func (r *Reconciler) convergeAWSTransitChain(ctx context.Context, snapshot *cniSnapshot, want []ownedRule) error {
+	if snapshot.exactOwnedPrefix(awsChain, want) {
+		return nil
+	}
+	for _, rule := range snapshot.owned[awsChain] {
+		if err := r.deleteScopedRule(ctx, awsChain, rule.handle); err != nil {
+			return err
+		}
+	}
+	// Insert prepends, so reverse insertion produces destination then transit.
+	for i := len(want) - 1; i >= 0; i-- {
+		if err := operationContextErr(ctx); err != nil {
+			return err
+		}
+		rule := want[i]
+		args := []string{"insert", "rule", "ip", "nat", awsChain, "ip", rule.direction, rule.cidr}
+		if rule.ingress != "" {
+			args = append(args, "iifname", rule.ingress)
+		}
+		args = append(args, "oifname", rule.iface, "return", "comment", rule.marker)
+		if _, err := r.runNFT(ctx, args...); err != nil {
+			return fmt.Errorf("insert scoped AWS CNI return: %w", err)
+		}
+	}
+	return nil
+}
+
 func (r *Reconciler) convergeScopedChain(ctx context.Context, snapshot *cniSnapshot, chain, marker, cidr string) error {
 	owned := snapshot.owned[chain]
 	all := snapshot.rules[nftKey("ip", "nat", chain)]
@@ -239,9 +314,12 @@ func (r *Reconciler) deleteScopedRule(ctx context.Context, chain string, handle 
 	return nil
 }
 
-func (r *Reconciler) withdrawAWSAwareLocked(ctx context.Context) (ReconcileStatus, error) {
+func (r *Reconciler) withdrawAWSAwareLocked(ctx context.Context, scope AuthorityScope) (ReconcileStatus, error) {
 	snapshot, err := r.readOwnedCNISnapshot(ctx)
 	if err != nil {
+		return awsBlocked(err)
+	}
+	if err := snapshot.validateOwnedAuthorityScope(scope); err != nil {
 		return awsBlocked(err)
 	}
 	for _, chain := range []string{ipMasqChain, awsChain} {
@@ -284,7 +362,7 @@ func (r *Reconciler) ownedAWSAwareArtifacts(ctx context.Context) ([]OwnedRuleRec
 	var out []OwnedRuleReceipt
 	for _, chain := range []string{ipMasqChain, awsChain} {
 		for _, rule := range snapshot.owned[chain] {
-			out = append(out, OwnedRuleReceipt{Handle: rule.handle, CIDR: rule.cidr, Interface: rule.iface, Marker: rule.marker, Direction: rule.direction})
+			out = append(out, OwnedRuleReceipt{Handle: rule.handle, CIDR: rule.cidr, Interface: rule.iface, IngressInterface: rule.ingress, Marker: rule.marker, Direction: rule.direction})
 		}
 	}
 	if !snapshot.hasChain(ipMasqChain) && !snapshot.hasChain(awsChain) {
@@ -406,7 +484,7 @@ func (s *cniSnapshot) validateAWSOwnedCompat(listing string) error {
 				}
 				continue
 			}
-			if native[i].Comment != AWSOwnedRuleComment {
+			if !isAWSOwnedMarker(native[i].Comment) {
 				if reserved {
 					return errors.New("AWS compat ownership marker lacks an exact native owned rule")
 				}
@@ -425,8 +503,12 @@ func validateOwnedAWSCompatRule(rule nftRuleView, line string) error {
 	if err != nil {
 		return err
 	}
-	plain := fmt.Sprintf("-A %s -d %s -o %s -j RETURN", awsChain, owned.cidr, owned.iface)
-	marked := fmt.Sprintf("-A %s -d %s -o %s -m comment --comment %s -j RETURN", awsChain, owned.cidr, owned.iface, AWSOwnedRuleComment)
+	match := fmt.Sprintf("-A %s -d %s -o %s", awsChain, owned.cidr, owned.iface)
+	if owned.marker == AWSTransitOwnedRuleComment {
+		match = fmt.Sprintf("-A %s -s %s -i %s -o %s", awsChain, owned.cidr, owned.ingress, owned.iface)
+	}
+	plain := match + " -j RETURN"
+	marked := fmt.Sprintf("%s -m comment --comment %s -j RETURN", match, owned.marker)
 	if line != plain && line != marked {
 		return errors.New("owned AWS rule compat readback is not exact")
 	}
@@ -474,7 +556,7 @@ func parseCNISnapshot(listing string) (*cniSnapshot, error) {
 				continue
 			}
 			if rule.Family != "ip" || rule.Table != "nat" ||
-				!((rule.Chain == ipMasqChain && (rule.Comment == ownedRuleComment || rule.Comment == legacyRuleComment)) || (rule.Chain == awsChain && rule.Comment == AWSOwnedRuleComment)) {
+				!((rule.Chain == ipMasqChain && (rule.Comment == ownedRuleComment || rule.Comment == legacyRuleComment)) || (rule.Chain == awsChain && isAWSOwnedMarker(rule.Comment))) {
 				return nil, errors.New("CNI ownership marker is malformed or outside its exact namespace")
 			}
 			owned, err := parseExactOwnedNFTRule(rule)
@@ -494,6 +576,19 @@ func parseCNISnapshot(listing string) (*cniSnapshot, error) {
 
 func parseExactOwnedNFTRule(rule nftRuleView) (ownedRule, error) {
 	expr := withoutCounters(rule.Expr)
+	if rule.Comment == AWSTransitOwnedRuleComment {
+		if rule.Family != "ip" || rule.Table != "nat" || rule.Chain != awsChain ||
+			len(expr) != 4 || !reflect.DeepEqual(expr[3], map[string]any{"return": nil}) {
+			return ownedRule{}, errors.New("owned AWS transit rule has an unknown expression or namespace")
+		}
+		cidr, addressOK := nftAddressMatch(expr[0], "saddr")
+		ingress, ingressOK := nftNamedInterfaceMatch(expr[1], "==", "iifname")
+		egress, egressOK := nftInterfaceMatch(expr[2], "==")
+		if !addressOK || !ingressOK || !egressOK || ingress != "wg0" || egress != ingress {
+			return ownedRule{}, errors.New("owned AWS transit rule lacks exact source and WireGuard ingress/egress")
+		}
+		return ownedRule{handle: rule.Handle, cidr: cidr, iface: egress, ingress: ingress, marker: rule.Comment, direction: "saddr"}, nil
+	}
 	if len(expr) != 3 || !reflect.DeepEqual(expr[2], map[string]any{"return": nil}) {
 		return ownedRule{}, errors.New("owned CNI rule has an unknown expression")
 	}
@@ -575,7 +670,11 @@ func nftAddressMatch(expr map[string]any, direction string) (string, bool) {
 }
 
 func nftInterfaceMatch(expr map[string]any, op string) (string, bool) {
-	right, ok := nftMatch(expr, op, map[string]any{"meta": map[string]any{"key": "oifname"}})
+	return nftNamedInterfaceMatch(expr, op, "oifname")
+}
+
+func nftNamedInterfaceMatch(expr map[string]any, op, key string) (string, bool) {
+	right, ok := nftMatch(expr, op, map[string]any{"meta": map[string]any{"key": key}})
 	iface, stringOK := right.(string)
 	return iface, ok && stringOK
 }
@@ -834,7 +933,7 @@ func (s *cniSnapshot) validateAWSCompat(listing string) error {
 	var foreign []string
 	var foreignNFT []nftRuleView
 	for i, rule := range nftRules {
-		if rule.Comment == AWSOwnedRuleComment {
+		if isAWSOwnedMarker(rule.Comment) {
 			// nft native comments are metadata; iptables-nft-save may print the
 			// semantic return without that metadata, but never an unknown rule.
 			if err := validateOwnedAWSCompatRule(rule, aws[i]); err != nil {

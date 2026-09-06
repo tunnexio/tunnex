@@ -16,11 +16,19 @@ Usage: deploy/k8s-walk-candidate-package.sh \
   --nginx-image REGISTRY/REPOSITORY@sha256:DIGEST \
   --migrate-image REGISTRY/REPOSITORY@sha256:DIGEST \
   --node-image REGISTRY/REPOSITORY@sha256:DIGEST \
-  --operator-image REGISTRY/REPOSITORY@sha256:DIGEST
+  --operator-image REGISTRY/REPOSITORY@sha256:DIGEST \
+  [--walk-sequence N]
 
 Builds one local, private pre-release Kubernetes walk-candidate bundle from a
 clean committed HEAD. The command never logs in, pushes, deploys, or accepts a
 credential. Every image input must already be an immutable digest reference.
+
+Optional --walk-sequence accepts a canonical decimal integer from 1 through
+999 and selects 0.0.1-walk.N.sha<actual 32-hex HEAD prefix>. Choose increasing
+sequences for successive private candidates. Without it, the historical
+0.0.0-walk.sha<actual 32-hex HEAD prefix> version remains unchanged. Build all
+input images with the same selected version; no arbitrary version override is
+accepted. The manifest always records the full source SHA.
 EOF
 }
 
@@ -47,10 +55,11 @@ nginx_image=
 migrate_image=
 node_image=
 operator_image=
+walk_sequence=
 
 while (($#)); do
   case "$1" in
-    --output|--api-image|--web-image|--nginx-image|--migrate-image|--node-image|--operator-image)
+    --output|--api-image|--web-image|--nginx-image|--migrate-image|--node-image|--operator-image|--walk-sequence)
       (($# >= 2)) || fail "$1 requires a value"
       case "$1" in
         --output) output_dir=$2 ;;
@@ -60,6 +69,10 @@ while (($#)); do
         --migrate-image) migrate_image=$2 ;;
         --node-image) node_image=$2 ;;
         --operator-image) operator_image=$2 ;;
+        --walk-sequence)
+          [[ "$2" =~ ^[1-9][0-9]{0,2}$ ]] || fail "--walk-sequence must be a canonical integer from 1 through 999"
+          walk_sequence=$2
+          ;;
       esac
       shift 2
       ;;
@@ -113,6 +126,9 @@ worktree_status=$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=no
 candidate_source_prefix=${source_sha:0:32}
 [[ "$candidate_source_prefix" =~ ^[0-9a-f]{32}$ ]] || fail "could not derive the candidate source abbreviation"
 candidate_version="0.0.0-walk.sha${candidate_source_prefix}"
+if [[ -n "$walk_sequence" ]]; then
+  candidate_version="0.0.1-walk.${walk_sequence}.sha${candidate_source_prefix}"
+fi
 ((${#candidate_version} <= 50)) || fail "candidate version exceeds the agent_version API limit"
 
 stage=$(mktemp -d "${output_parent}/.tunnex-k8s-walk-candidate.XXXXXX")

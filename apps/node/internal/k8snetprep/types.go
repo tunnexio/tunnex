@@ -24,9 +24,11 @@ const CNIOperationBudget = 5 * time.Second
 type AuthorityScope string
 
 const (
-	ScopeIPMasqOnly     AuthorityScope = "ip_masq_only"
-	ScopeIPMasqAndAWS   AuthorityScope = "ip_masq_and_aws"
-	AWSOwnedRuleComment                = "tunnex_k8s_aws_snat_bypass"
+	ScopeIPMasqOnly            AuthorityScope = "ip_masq_only"
+	ScopeIPMasqAndAWS          AuthorityScope = "ip_masq_and_aws"
+	ScopeIPMasqAndAWSTransit   AuthorityScope = "ip_masq_and_aws_transit"
+	AWSOwnedRuleComment                       = "tunnex_k8s_aws_snat_bypass"
+	AWSTransitOwnedRuleComment                = "tunnex_k8s_aws_snat_transit_bypass"
 )
 
 // AuthorityGuard holds the node-local operation lock and validates the current

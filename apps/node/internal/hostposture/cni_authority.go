@@ -38,8 +38,10 @@ func journalCNIScope(schema int) (k8snetprep.AuthorityScope, error) {
 	switch schema {
 	case LegacyJournalSchemaVersion, StagedJournalSchemaVersion:
 		return k8snetprep.ScopeIPMasqOnly, nil
-	case JournalSchemaVersion:
+	case AWSJournalSchemaVersion:
 		return k8snetprep.ScopeIPMasqAndAWS, nil
+	case JournalSchemaVersion:
+		return k8snetprep.ScopeIPMasqAndAWSTransit, nil
 	default:
 		return "", fmt.Errorf("CNI journal schema is unsupported")
 	}

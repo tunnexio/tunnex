@@ -118,6 +118,18 @@ func (f *awsTestKernel) nft(_ context.Context, args ...string) (string, error) {
 		}
 		return "", nil
 	}
+	if len(args) == 15 && args[0] == "insert" && args[1] == "rule" && args[2] == "ip" && args[3] == "nat" &&
+		args[4] == awsChain && args[5] == "ip" && args[6] == "saddr" && args[8] == "iifname" && args[10] == "oifname" &&
+		args[12] == "return" && args[13] == "comment" && args[14] == AWSTransitOwnedRuleComment {
+		f.mutations = append(f.mutations, command)
+		if !f.discardInsert {
+			ingress := map[string]any{"match": map[string]any{"op": "==", "left": map[string]any{"meta": map[string]any{"key": "iifname"}}, "right": args[9]}}
+			f.addRule(nftRuleView{Family: "ip", Table: "nat", Chain: awsChain, Comment: args[14], Expr: []map[string]any{
+				nftAddr("saddr", args[7]), ingress, nftIface("==", args[11]), {"return": nil},
+			}}, true)
+		}
+		return "", nil
+	}
 	if len(args) == 7 && args[0] == "delete" && args[1] == "rule" && args[2] == "ip" && args[3] == "nat" &&
 		(args[4] == awsChain || args[4] == ipMasqChain) && args[5] == "handle" {
 		f.mutations = append(f.mutations, command)
@@ -164,7 +176,7 @@ func (f *awsTestKernel) iptables(_ context.Context, args ...string) (string, err
 	var rendered []string
 	foreignIndex := 0
 	for _, rule := range snapshot.rules[nftKey("ip", "nat", awsChain)] {
-		if rule.Comment != AWSOwnedRuleComment {
+		if rule.Comment != AWSOwnedRuleComment && rule.Comment != AWSTransitOwnedRuleComment {
 			if foreignIndex >= len(base[awsChain]) {
 				return "", errors.New("fake lacks exact foreign rule bytes")
 			}
@@ -176,7 +188,11 @@ func (f *awsTestKernel) iptables(_ context.Context, args ...string) (string, err
 		if err != nil {
 			return "", err
 		}
-		rendered = append(rendered, fmt.Sprintf("-A %s -d %s -o %s -j RETURN", awsChain, owned.cidr, owned.iface))
+		if owned.marker == AWSTransitOwnedRuleComment {
+			rendered = append(rendered, fmt.Sprintf("-A %s -s %s -i %s -o %s -j RETURN", awsChain, owned.cidr, owned.ingress, owned.iface))
+		} else {
+			rendered = append(rendered, fmt.Sprintf("-A %s -d %s -o %s -j RETURN", awsChain, owned.cidr, owned.iface))
+		}
 	}
 	var lines []string
 	emitted := false
@@ -985,6 +1001,7 @@ func TestAWSOperationDeadlineIsEarliestAdmissionCallerAndBudget(t *testing.T) {
 func TestAWSExpiredInspectionOrMutationCannotContinueOrPublishReady(t *testing.T) {
 	for _, test := range []struct {
 		name          string
+		scope         AuthorityScope
 		readToExpire  int
 		deleteExpires bool
 		withdraw      bool
@@ -992,11 +1009,16 @@ func TestAWSExpiredInspectionOrMutationCannotContinueOrPublishReady(t *testing.T
 	}{
 		{name: "first inspection", readToExpire: 1},
 		{name: "final readback", readToExpire: 4, wantMutations: 1},
+		{name: "transit final readback", scope: ScopeIPMasqAndAWSTransit, readToExpire: 4, wantMutations: 2},
 		{name: "between replacement deletes", deleteExpires: true, wantMutations: 1},
 		{name: "withdrawal inspection", readToExpire: 1, withdraw: true},
 		{name: "withdrawal final readback", readToExpire: 4, withdraw: true, wantMutations: 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			scope := test.scope
+			if scope == "" {
+				scope = ScopeIPMasqAndAWS
+			}
 			f := newAWSTestKernel(t)
 			if test.deleteExpires || test.withdraw {
 				f.addRule(nftOwned(awsChain, "10.98.0.0/24", "old0", AWSOwnedRuleComment), true)
@@ -1004,10 +1026,10 @@ func TestAWSExpiredInspectionOrMutationCannotContinueOrPublishReady(t *testing.T
 			if test.deleteExpires {
 				f.addRule(nftOwned(awsChain, "10.97.0.0/24", "old0", AWSOwnedRuleComment), true)
 			}
-			r := awsTestReconciler(t, f, ScopeIPMasqAndAWS)
+			r := awsTestReconciler(t, f, scope)
 			released := 0
 			r.guard = func(context.Context) (AuthorityGrant, func(), error) {
-				return AuthorityGrant{Scope: ScopeIPMasqAndAWS, NotAfter: time.Now().Add(100 * time.Millisecond)}, func() { released++ }, nil
+				return AuthorityGrant{Scope: scope, NotAfter: time.Now().Add(100 * time.Millisecond)}, func() { released++ }, nil
 			}
 			reads, deletes := 0, 0
 			r.runNFT = func(ctx context.Context, args ...string) (string, error) {

@@ -37,7 +37,7 @@ func startKubernetesCNIAuthorityObserver(ctx context.Context, guard k8snetprep.A
 				}
 				err = probeErr
 				if err == nil && (release == nil || !time.Now().Before(grant.NotAfter) ||
-					(grant.Scope != k8snetprep.ScopeIPMasqOnly && grant.Scope != k8snetprep.ScopeIPMasqAndAWS)) {
+					(grant.Scope != k8snetprep.ScopeIPMasqOnly && grant.Scope != k8snetprep.ScopeIPMasqAndAWS && grant.Scope != k8snetprep.ScopeIPMasqAndAWSTransit)) {
 					err = fmt.Errorf("runtime CNI admission probe has no current scoped grant")
 				}
 			}

@@ -134,8 +134,8 @@ func TestKubernetesCNIStartupObserverRefusesInvalidGrants(t *testing.T) {
 	})
 }
 
-func TestKubernetesCNIStartupObserverAcceptsBothClosedScopes(t *testing.T) {
-	for _, scope := range []k8snetprep.AuthorityScope{k8snetprep.ScopeIPMasqOnly, k8snetprep.ScopeIPMasqAndAWS} {
+func TestKubernetesCNIStartupObserverAcceptsClosedScopes(t *testing.T) {
+	for _, scope := range []k8snetprep.AuthorityScope{k8snetprep.ScopeIPMasqOnly, k8snetprep.ScopeIPMasqAndAWS, k8snetprep.ScopeIPMasqAndAWSTransit} {
 		t.Run(string(scope), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -237,8 +237,10 @@ func publishCNIStartupPair(t *testing.T, manager *hostposture.Store, sequence, e
 		Owners: []hostposture.Owner{{UID: cniStartupOwnerUID, Namespace: "tunnex-system", Name: "gateway-a"}},
 	}
 	scope := k8snetprep.ScopeIPMasqAndAWS
-	if schema < hostposture.JournalSchemaVersion {
+	if schema <= hostposture.StagedJournalSchemaVersion {
 		scope = k8snetprep.ScopeIPMasqOnly
+	} else if schema == hostposture.JournalSchemaVersion {
+		scope = k8snetprep.ScopeIPMasqAndAWSTransit
 	}
 	authority := hostposture.CNIAuthority{
 		SchemaVersion: hostposture.CNIAuthoritySchemaVersion, Contract: hostposture.CNIAuthorityContract,
@@ -251,6 +253,32 @@ func publishCNIStartupPair(t *testing.T, manager *hostposture.Store, sequence, e
 	}
 	if err := manager.SaveCNIAuthority(authority); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestKubernetesCNIStartupObserverAdmitsRealTransitAuthority(t *testing.T) {
+	manager, guard := realCNIStartupGuard(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var calls atomic.Int64
+	counted := func(ctx context.Context) (k8snetprep.AuthorityGrant, func(), error) {
+		grant, release, err := guard(ctx)
+		calls.Add(1)
+		return grant, release, err
+	}
+	publishCNIStartupPair(t, manager, 1, 8, hostposture.JournalSchemaVersion, time.Now())
+	admitted := startKubernetesCNIAuthorityObserver(ctx, counted, 2*time.Millisecond, cniStartupLogger())
+	awaitCNIStartupCalls(t, &calls, 3)
+	assertCNIStartupBlocked(t, admitted)
+	publishCNIStartupPair(t, manager, 2, 8, hostposture.JournalSchemaVersion, time.Now())
+	awaitCNIStartup(t, admitted)
+	grant, release, err := guard(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if grant.Scope != k8snetprep.ScopeIPMasqAndAWSTransit {
+		t.Fatalf("wrong transit grant: %+v", grant)
 	}
 }
 

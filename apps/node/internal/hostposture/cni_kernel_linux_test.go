@@ -58,6 +58,79 @@ func cniKernelIPTablesSave(ipMasq, aws bool) string {
 	return listing + "-A AWS-SNAT-CHAIN-0 -j SNAT --to-source 192.0.2.1\nCOMMIT\n"
 }
 
+func cniTransitKernelSnapshot(present bool) string {
+	var doc map[string][]any
+	_ = json.Unmarshal([]byte(cniKernelSnapshot(false, false, false)), &doc)
+	if present {
+		expr := []any{
+			map[string]any{"match": map[string]any{"op": "==", "left": map[string]any{"payload": map[string]any{"protocol": "ip", "field": "saddr"}}, "right": map[string]any{"prefix": map[string]any{"addr": "10.99.0.0", "len": 24}}}},
+			map[string]any{"match": map[string]any{"op": "==", "left": map[string]any{"meta": map[string]any{"key": "iifname"}}, "right": "wg0"}},
+			map[string]any{"match": map[string]any{"op": "==", "left": map[string]any{"meta": map[string]any{"key": "oifname"}}, "right": "wg0"}},
+			map[string]any{"return": nil},
+		}
+		// Native and compat readbacks both put the owned return before foreign SNAT.
+		row := map[string]any{"rule": map[string]any{"family": "ip", "table": "nat", "chain": "AWS-SNAT-CHAIN-0", "handle": 6, "comment": k8snetprep.AWSTransitOwnedRuleComment, "expr": expr}}
+		doc["nftables"] = append(doc["nftables"][:2], append([]any{row}, doc["nftables"][2:]...)...)
+	}
+	body, _ := json.Marshal(doc)
+	return string(body)
+}
+
+func TestKernelTransitCleanupRequiresSchemaFourAndBaselineRejectsLeftovers(t *testing.T) {
+	for _, schema := range []int{3, 4} {
+		t.Run(fmt.Sprint(schema), func(t *testing.T) {
+			kernel, harness, journal := newStagedLinkHarness(t)
+			journal = committedHarnessJournal(journal, harness)
+			journal.SchemaVersion = schema
+			journal.Artifacts.AWSCNI = fixedArtifactsForSchema(schema).AWSCNI
+			journal.State, journal.Owners = StateRestoring, nil
+			base := kernel.runner
+			present, deletes := true, 0
+			kernel.runner = runnerFunc(func(ctx context.Context, name string, input []byte, args ...string) (string, error) {
+				joined := strings.Join(args, " ")
+				if name == "iptables-nft-save" {
+					if joined == "-V" {
+						return "iptables-nft-save v1.8.8 (nf_tables)", nil
+					}
+					listing := cniKernelIPTablesSave(false, false)
+					if present {
+						listing = strings.Replace(listing, "-A AWS-SNAT-CHAIN-0 -j SNAT", "-A AWS-SNAT-CHAIN-0 -s 10.99.0.0/24 -i wg0 -o wg0 -j RETURN\n-A AWS-SNAT-CHAIN-0 -j SNAT", 1)
+					}
+					return listing, nil
+				}
+				if name == "nft" && joined == "-j -a list ruleset" {
+					return cniTransitKernelSnapshot(present), nil
+				}
+				if name == "nft" && strings.HasPrefix(joined, "delete rule ip nat ") {
+					if joined != "delete rule ip nat AWS-SNAT-CHAIN-0 handle 6" {
+						t.Fatalf("foreign deletion: %s", joined)
+					}
+					present, deletes = false, deletes+1
+					return "", nil
+				}
+				return base.RunInput(ctx, name, input, args...)
+			})
+			err := kernel.RestoreAndCleanup(t.Context(), &journal)
+			if schema == 3 {
+				if err == nil || deletes != 0 || !present || len(harness.mutations) != 0 {
+					t.Fatalf("old receipt touched transit: %v deletes=%d", err, deletes)
+				}
+			} else {
+				if err != nil || deletes != 1 || present {
+					t.Fatalf("new receipt failed transit cleanup: %v deletes=%d", err, deletes)
+				}
+				if err := kernel.RestoreAndCleanup(t.Context(), &journal); err != nil || deletes != 1 {
+					t.Fatalf("cleanup replay: %v", err)
+				}
+				present = true
+				if _, err := kernel.CaptureBaseline(t.Context(), testStagingName); err == nil {
+					t.Fatal("fresh epoch accepted orphan transit rule")
+				}
+			}
+		})
+	}
+}
+
 func TestKernelNewEpochBaselineCensusesBothCNINamespacesWithoutMutation(t *testing.T) {
 	for _, namespace := range []string{"legacy", "aws", "malformed AWS"} {
 		t.Run(namespace, func(t *testing.T) {
@@ -86,14 +159,12 @@ func TestKernelNewEpochBaselineCensusesBothCNINamespacesWithoutMutation(t *testi
 }
 
 func TestKernelCleanupUsesOnlyActualJournalCNIReceipts(t *testing.T) {
-	for _, schema := range []int{1, 2, 3} {
+	for _, schema := range []int{1, 2, 3, 4} {
 		t.Run(fmt.Sprint(schema), func(t *testing.T) {
 			kernel, harness, journal := newStagedLinkHarness(t)
 			journal = committedHarnessJournal(journal, harness)
 			journal.SchemaVersion = schema
-			if schema < 3 {
-				journal.Artifacts.AWSCNI = nil
-			}
+			journal.Artifacts.AWSCNI = fixedArtifactsForSchema(schema).AWSCNI
 			if schema == 1 {
 				journal.Artifacts.WireGuard.StagingName = ""
 				journal.Artifacts.WireGuard.StagingIfIndex = 0
@@ -102,7 +173,7 @@ func TestKernelCleanupUsesOnlyActualJournalCNIReceipts(t *testing.T) {
 			journal.State = StateRestoring
 			journal.Owners = nil
 			base := kernel.runner
-			ipMasq, aws := schema == 3, true
+			ipMasq, aws := schema >= 3, true
 			inspections, deletes := 0, []string{}
 			kernel.runner = runnerFunc(func(ctx context.Context, name string, input []byte, args ...string) (string, error) {
 				joined := strings.Join(args, " ")
@@ -139,7 +210,7 @@ func TestKernelCleanupUsesOnlyActualJournalCNIReceipts(t *testing.T) {
 			if schema < 3 && (inspections != 0 || len(deletes) != 0 || !aws) {
 				t.Fatal("historical journal enumerated or removed AWS namespace")
 			}
-			if schema == 3 && (inspections != 4 || len(deletes) != 2 || aws || ipMasq) {
+			if schema >= 3 && (inspections != 4 || len(deletes) != 2 || aws || ipMasq) {
 				t.Fatalf("v3 cleanup missed exact receipts: scans=%d deletes=%v", inspections, deletes)
 			}
 			if err := kernel.RestoreAndCleanup(t.Context(), &journal); err != nil {
@@ -175,14 +246,12 @@ func TestKernelMalformedAWSReceiptArtifactBlocksAllCleanup(t *testing.T) {
 }
 
 func TestKernelCNICleanupDeadlineBlocksLateInspectionBeforeMutation(t *testing.T) {
-	for _, schema := range []int{1, 2, 3} {
+	for _, schema := range []int{1, 2, 3, 4} {
 		t.Run(fmt.Sprint(schema), func(t *testing.T) {
 			kernel, harness, journal := newStagedLinkHarness(t)
 			journal = committedHarnessJournal(journal, harness)
 			journal.SchemaVersion = schema
-			if schema < 3 {
-				journal.Artifacts.AWSCNI = nil
-			}
+			journal.Artifacts.AWSCNI = fixedArtifactsForSchema(schema).AWSCNI
 			if schema == 1 {
 				journal.Artifacts.WireGuard.StagingName = ""
 				journal.Artifacts.WireGuard.StagingIfIndex = 0
@@ -203,7 +272,7 @@ func TestKernelCNICleanupDeadlineBlocksLateInspectionBeforeMutation(t *testing.T
 					<-ctx.Done()
 					// Deliberately ignore cancellation and return an owned rule.
 					// No caller may act on this late readback.
-					if schema == 3 {
+					if schema >= 3 {
 						return cniKernelSnapshot(true, true, false), nil
 					}
 					return "table ip nat {\nchain IP-MASQ-AGENT {\nip daddr 10.99.0.0/24 oifname wg0 return comment \"tunnex_k8s_ip_masq_bypass\" # handle 3\n}\n}", nil

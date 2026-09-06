@@ -89,10 +89,11 @@ func TestCNIJournalLegacyBytesAndClosedSchemaThree(t *testing.T) {
 	}
 	j := cniTestJournal(t, 3, time.Unix(1000, 0))
 	for name, mutate := range map[string]func(*Journal){
-		"missing AWS":     func(j *Journal) { j.Artifacts.AWSCNI = nil },
-		"foreign chain":   func(j *Journal) { j.Artifacts.AWSCNI.Chain = "POSTROUTING" },
-		"widened markers": func(j *Journal) { j.Artifacts.AWSCNI.Comments = append(j.Artifacts.AWSCNI.Comments, "foreign") },
-		"unknown schema":  func(j *Journal) { j.SchemaVersion = 4 },
+		"missing AWS":             func(j *Journal) { j.Artifacts.AWSCNI = nil },
+		"foreign chain":           func(j *Journal) { j.Artifacts.AWSCNI.Chain = "POSTROUTING" },
+		"widened markers":         func(j *Journal) { j.Artifacts.AWSCNI.Comments = append(j.Artifacts.AWSCNI.Comments, "foreign") },
+		"unknown schema":          func(j *Journal) { j.SchemaVersion = 5 },
+		"unreceipted schema four": func(j *Journal) { j.SchemaVersion = 4 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := cniTestJournal(t, 3, time.Unix(1000, 0))
@@ -155,7 +156,9 @@ func TestCNIAuthorityRejectsForeignStalePartialAndWidenedRecords(t *testing.T) {
 		"partial publication":      func(a *CNIAuthority, _ *Heartbeat) { a.Sequence-- },
 		"zero epoch":               func(a *CNIAuthority, _ *Heartbeat) { a.Epoch = 0 },
 		"unknown authority schema": func(a *CNIAuthority, _ *Heartbeat) { a.SchemaVersion++ },
-		"unknown journal schema":   func(a *CNIAuthority, _ *Heartbeat) { a.JournalSchema = 4 },
+		"unknown journal schema":   func(a *CNIAuthority, _ *Heartbeat) { a.JournalSchema = 5 },
+		"schema four old scope":    func(a *CNIAuthority, _ *Heartbeat) { a.JournalSchema = 4 },
+		"schema three transit":     func(a *CNIAuthority, _ *Heartbeat) { a.Scope = k8snetprep.ScopeIPMasqAndAWSTransit },
 		"legacy widened to AWS":    func(a *CNIAuthority, _ *Heartbeat) { a.JournalSchema = 2 },
 		"unknown scope":            func(a *CNIAuthority, _ *Heartbeat) { a.Scope = "all" },
 		"revoked":                  func(a *CNIAuthority, _ *Heartbeat) { a.State = CNIAuthorityRevoked },
@@ -183,7 +186,7 @@ func TestCNIAuthorityRejectsForeignStalePartialAndWidenedRecords(t *testing.T) {
 }
 
 func TestCNIAuthorityTwoProofsLegacyScopeAndReadOnlyStore(t *testing.T) {
-	for _, schema := range []int{1, 2, 3} {
+	for _, schema := range []int{1, 2, 3, 4} {
 		t.Run(fmt.Sprint(schema), func(t *testing.T) {
 			store, err := NewStore(t.TempDir())
 			if err != nil {
@@ -305,8 +308,8 @@ func TestManagerCNIDurableGrantRevocationAndPublicationFailure(t *testing.T) {
 	if err := manager.ReconcileOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if store.journal.SchemaVersion != 3 || store.journal.Artifacts.AWSCNI == nil || store.authority.Scope != k8snetprep.ScopeIPMasqAndAWS {
-		t.Fatalf("new epoch did not acquire closed durable v3 authority: %+v", store.authority)
+	if store.journal.SchemaVersion != JournalSchemaVersion || store.journal.Artifacts.AWSCNI == nil || store.authority.Scope != k8snetprep.ScopeIPMasqAndAWSTransit {
+		t.Fatalf("new epoch did not acquire closed durable v4 authority: %+v", store.authority)
 	}
 	if err := validateCNIAuthority(store.authority, store.heartbeat, "worker-a", testOwner().UID, manager.now()); err != nil {
 		t.Fatal(err)
@@ -341,7 +344,7 @@ func TestManagerCNIDurableGrantRevocationAndPublicationFailure(t *testing.T) {
 }
 
 func TestManagerLegacyEpochNeverWidensOrMigratesInPlace(t *testing.T) {
-	for _, schema := range []int{1, 2} {
+	for _, schema := range []int{1, 2, 3} {
 		t.Run(fmt.Sprint(schema), func(t *testing.T) {
 			j := cniTestJournal(t, schema, time.Unix(1234, 0))
 			before, _ := json.Marshal(j)
@@ -353,21 +356,25 @@ func TestManagerLegacyEpochNeverWidensOrMigratesInPlace(t *testing.T) {
 				t.Fatal(err)
 			}
 			after, _ := json.Marshal(store.journal)
-			if !bytes.Equal(before, after) || len(store.saveStates) != 0 || store.authority.JournalSchema != schema || store.authority.Scope != k8snetprep.ScopeIPMasqOnly {
+			wantScope, _ := journalCNIScope(schema)
+			if !bytes.Equal(before, after) || len(store.saveStates) != 0 || store.authority.JournalSchema != schema || store.authority.Scope != wantScope {
 				t.Fatalf("legacy active epoch migrated: authority=%+v before=%s after=%s", store.authority, before, after)
 			}
 			source.owners = nil
 			if err := manager.ReconcileOnce(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			if store.journal.SchemaVersion != schema || store.journal.Artifacts.AWSCNI != nil {
+			wantAWS := fixedArtifactsForSchema(schema).AWSCNI
+			gotAWSBytes, _ := json.Marshal(store.journal.Artifacts.AWSCNI)
+			wantAWSBytes, _ := json.Marshal(wantAWS)
+			if store.journal.SchemaVersion != schema || !bytes.Equal(gotAWSBytes, wantAWSBytes) {
 				t.Fatal("legacy cleanup widened receipt")
 			}
 			source.owners = []Owner{testOwner()}
 			if err := manager.ReconcileOnce(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			if store.journal.SchemaVersion != 3 || store.journal.Epoch != j.Epoch+1 || kernel.capture != 1 {
+			if store.journal.SchemaVersion != JournalSchemaVersion || store.journal.Epoch != j.Epoch+1 || kernel.capture != 1 {
 				t.Fatal("clean new epoch did not receive new baseline and schema")
 			}
 		})
@@ -379,7 +386,7 @@ func TestManagerUnknownJournalAndAPIFaultCannotGrantCNIAuthority(t *testing.T) {
 	store := &fakePostureStore{journal: cniTestJournal(t, 3, time.Unix(1234, 0)), haveJournal: true}
 	kernel := &fakeKernel{}
 	manager := newTestManager(t, source, store, kernel)
-	store.journal.SchemaVersion = 4
+	store.journal.SchemaVersion = 5
 	before, _ := json.Marshal(store.journal)
 	if err := manager.ReconcileOnce(t.Context()); err == nil {
 		t.Fatal("unknown schema accepted")

@@ -12,11 +12,12 @@ type NFTRunner func(context.Context, ...string) (string, error)
 type Reconciler struct{ awsAware bool }
 
 type OwnedRuleReceipt struct {
-	Handle    uint64 `json:"handle"`
-	CIDR      string `json:"cidr"`
-	Interface string `json:"interface"`
-	Marker    string `json:"marker"`
-	Direction string `json:"direction"`
+	Handle           uint64 `json:"handle"`
+	CIDR             string `json:"cidr"`
+	Interface        string `json:"interface"`
+	IngressInterface string `json:"ingress_interface,omitempty"`
+	Marker           string `json:"marker"`
+	Direction        string `json:"direction"`
 }
 
 func New(string, NFTRunner) *Reconciler { return &Reconciler{} }

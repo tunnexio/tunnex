@@ -127,6 +127,60 @@ if grep -Fq "$SENTINEL" "$TMP/cli-strings" "$OUT_A/candidate-manifest.json" "$OU
   fail "ignored credential sentinel entered a candidate artifact"
 fi
 
+# Exercise real packaging at the lower bound, across a decimal-width change,
+# and at the upper bound (exactly the API's 50-character version limit).
+for sequence in 1 10 999; do
+  sequence_version="0.0.1-walk.${sequence}.sha${SOURCE_SHA:0:32}"
+  sequence_out="$TMP/candidate-sequence-$sequence"
+  "$REPO/deploy/k8s-walk-candidate-package.sh" --output "$sequence_out" \
+    --walk-sequence "$sequence" "${args[@]}" >/dev/null
+  jq -e --arg sha "$SOURCE_SHA" --arg version "$sequence_version" '
+    .source == {sha: $sha, state: "clean-committed-head"} and
+    .candidate_version == $version and
+    (.candidate_version | length) <= 50 and
+    .cli.version == $version and
+    (.charts | length) == 4 and
+    ([.charts[].version] | unique) == [$version] and
+    ([.charts[].app_version] | unique) == [$version] and
+    ([.charts[] | .path == ("charts/" + .name + "-" + $version + ".tgz")] | all) and
+    (.images | length) == 6 and
+    ([.images[].reference | test("@sha256:[0-9a-f]{64}$")] | all)
+  ' "$sequence_out/candidate-manifest.json" >/dev/null || fail "sequence $sequence lost exact candidate provenance"
+  (
+    cd "$sequence_out"
+    sha256sum -c SHA256SUMS >/dev/null
+  ) || fail "sequence $sequence candidate checksums do not verify"
+  for chart in "${charts[@]}"; do
+    helm show chart "$sequence_out/charts/$chart-$sequence_version.tgz" > "$TMP/sequence-chart-metadata"
+    grep -Fxq "version: $sequence_version" "$TMP/sequence-chart-metadata" || fail "sequence $sequence chart version mismatch"
+  done
+  strings "$sequence_out/tunnex-linux-amd64" > "$TMP/sequence-cli-strings"
+  grep -Fq "$sequence_version" "$TMP/sequence-cli-strings" || fail "sequence $sequence CLI lacks exact version"
+done
+[[ ${#sequence_version} -eq 50 ]] || fail "sequence 999 did not exercise the exact version limit"
+
+bad_sequence_index=0
+for sequence in '' 0 00 01 001 0001 -1 +1 1.0 1e2 1000 999999999999999999999 ' 1' '1 ' $'1\n' 1a; do
+  bad_sequence_index=$((bad_sequence_index + 1))
+  bad_sequence_out="$TMP/bad-sequence-$bad_sequence_index"
+  if "$REPO/deploy/k8s-walk-candidate-package.sh" --output "$bad_sequence_out" \
+    --walk-sequence "$sequence" "${args[@]}" >/dev/null 2>"$TMP/bad-sequence.err"; then
+    fail "noncanonical or out-of-range walk sequence was accepted"
+  fi
+  [[ ! -e "$bad_sequence_out" ]] || fail "invalid walk sequence created an output bundle"
+  grep -Fq -- '--walk-sequence must be a canonical integer from 1 through 999' "$TMP/bad-sequence.err" || fail "walk sequence refusal was not actionable"
+done
+if "$REPO/deploy/k8s-walk-candidate-package.sh" --walk-sequence \
+  >/dev/null 2>"$TMP/missing-sequence.err"; then
+  fail "missing walk sequence was accepted"
+fi
+grep -Fq -- '--walk-sequence requires a value' "$TMP/missing-sequence.err" || fail "missing walk sequence refusal was not actionable"
+if "$REPO/deploy/k8s-walk-candidate-package.sh" --version 99.0.0 \
+  >/dev/null 2>"$TMP/arbitrary-version.err"; then
+  fail "arbitrary version override was accepted"
+fi
+grep -Fq 'unknown argument --version' "$TMP/arbitrary-version.err" || fail "arbitrary version refusal was not actionable"
+
 BAD_OUT="$TMP/bad-image"
 if "$REPO/deploy/k8s-walk-candidate-package.sh" \
   --output "$BAD_OUT" "${args[@]:0:8}" \

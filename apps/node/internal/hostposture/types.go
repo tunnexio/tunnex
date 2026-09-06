@@ -35,7 +35,8 @@ const (
 	ReturnRuleLookup              = "main"
 	LegacyJournalSchemaVersion    = 1
 	StagedJournalSchemaVersion    = 2
-	JournalSchemaVersion          = 3
+	AWSJournalSchemaVersion       = 3
+	JournalSchemaVersion          = 4
 	HeartbeatSchemaVersion        = 1
 	DefaultMaxOwners              = 32
 	// Invalid label-selected Pods do not consume the valid-owner limit, but the
@@ -272,8 +273,11 @@ func fixedArtifacts() ArtifactJournal {
 
 func fixedArtifactsForSchema(schema int) ArtifactJournal {
 	artifacts := fixedArtifacts()
-	if schema == JournalSchemaVersion {
+	if schema == AWSJournalSchemaVersion || schema == JournalSchemaVersion {
 		artifacts.AWSCNI = &CNIReceipt{Family: "ip", Table: "nat", Chain: "AWS-SNAT-CHAIN-0", Comments: []string{k8snetprep.AWSOwnedRuleComment}}
+		if schema == JournalSchemaVersion {
+			artifacts.AWSCNI.Comments = append(artifacts.AWSCNI.Comments, k8snetprep.AWSTransitOwnedRuleComment)
+		}
 	}
 	return artifacts
 }
@@ -299,7 +303,7 @@ func newJournal(node string, epoch uint64, originals []SysctlReceipt, owners []O
 }
 
 func (j Journal) validate(node string) error {
-	if (j.SchemaVersion != LegacyJournalSchemaVersion && j.SchemaVersion != StagedJournalSchemaVersion && j.SchemaVersion != JournalSchemaVersion) || j.Contract != Contract || j.NodeName != node || j.Epoch == 0 {
+	if (j.SchemaVersion != LegacyJournalSchemaVersion && j.SchemaVersion != StagedJournalSchemaVersion && j.SchemaVersion != AWSJournalSchemaVersion && j.SchemaVersion != JournalSchemaVersion) || j.Contract != Contract || j.NodeName != node || j.Epoch == 0 {
 		return fmt.Errorf("journal identity does not match %s on node %q", Contract, node)
 	}
 	if j.State != StatePreparing && j.State != StateActive && j.State != StateRestoring && j.State != StateRestored {

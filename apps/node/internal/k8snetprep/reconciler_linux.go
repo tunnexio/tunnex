@@ -147,6 +147,7 @@ type ownedRule struct {
 	handle    uint64
 	cidr      string
 	iface     string
+	ingress   string
 	marker    string
 	direction string
 }
@@ -156,11 +157,12 @@ type ownedRule struct {
 // Withdraw for mutation; this readback exists so the host-posture journal can
 // refuse an ambiguous pre-Tunnex baseline without duplicating the parser.
 type OwnedRuleReceipt struct {
-	Handle    uint64 `json:"handle"`
-	CIDR      string `json:"cidr"`
-	Interface string `json:"interface"`
-	Marker    string `json:"marker"`
-	Direction string `json:"direction"`
+	Handle           uint64 `json:"handle"`
+	CIDR             string `json:"cidr"`
+	Interface        string `json:"interface"`
+	IngressInterface string `json:"ingress_interface,omitempty"`
+	Marker           string `json:"marker"`
+	Direction        string `json:"direction"`
 }
 
 // OwnedArtifacts observes only the exact registered IP-MASQ-AGENT seam. A

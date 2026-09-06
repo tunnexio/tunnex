@@ -121,8 +121,8 @@ func (k *LinuxKernel) CaptureBaseline(ctx context.Context, stagingName string) (
 			return nil, fmt.Errorf("ambiguous pre-Tunnex nft table %s/%s", table.Family, table.Name)
 		}
 	}
-	// Every new epoch is schema 3; its baseline must census both namespaces.
-	owned, state, err := k.cniReconciler(k8snetprep.ScopeIPMasqAndAWS).OwnedArtifacts(ctx)
+	// New epochs census both namespaces, including the schema-4 transit marker.
+	owned, state, err := k.cniReconciler(k8snetprep.ScopeIPMasqAndAWSTransit).OwnedArtifacts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("observe pre-Tunnex CNI ownership: %w", err)
 	}
