@@ -156,3 +156,28 @@ Next correction must explicitly model the already-fenced-out previous owner
 versus continuing current-owner renewal, retaining exact current authority,
 completed handoff/expiry proof and future candidate admission. Do not remove
 the general changed-base ACK barrier merely to pass this test.
+
+## Second correction — immutable API deployed, live retest pending
+
+Source `fa6d851b8f3343e74f3f0244c618c22413378fce` adds proof-gated retired-owner
+renewal in a single transaction with all resulting leases; future candidate
+admission still requires the latest exact ordinary-base ACK. See the
+[decision and local red/green controls](../../../docs/S20.5-ha-retired-owner-renewal-decisions.md).
+
+Built from a clean detached source and published only to the verified private
+AWS account `735391218823`, region `ap-south-1`, immutable API repository
+`tunnex-s205-aws-20260905a/api`, tag `renewal-fa6d851b8f33`.
+Manifest digest:
+`sha256:ab718b31a7d0abe7b34602cd1fa1205adf0f7bebb2a9d39ea75ba61c57c3fe0d`.
+AMD64 manifest:
+`sha256:e1347d12ec56f32fdc536e81be5691dca92d7fb7f4da19405969d9640dbd016e`.
+The CP image's OCI revision matches the exact source SHA. Private effective
+Compose comparison confirmed that only the API image changed. The existing
+licensed CP's API started at **04:35:23.823674141 UTC**, running and healthy.
+Gateway/client images, identities, PVCs and other CP services were not changed.
+
+The prior source `e6a56a4` CI run 34009930693 completed successfully. Exact
+second-source CI [34011797134](https://github.com/tunnexio/tunnex/actions/runs/34011797134)
+has been started; it is not yet reported green. Retain the passing standby
+evidence above; repeat baseline and the failed sustained active-owner sequence.
+Deployment is not itself acceptance. No PR, final checkpoint or merge yet.
