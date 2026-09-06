@@ -17,8 +17,11 @@ while the old owner remained absent, then 12/12 final stability requests after
 automatic failback. Measured takeover/failback outages remain explicit. Exact-product
 CI is running with native macOS/Windows already green. This is not yet merge-ready.
 NLB remains explicitly SKIPPED.** See [current HA repair evidence](ha-wake-repair.md).
-The mixed-component candidate is not a unified final release. No PR or merge
-exists yet. Earlier counts below are historical, not current acceptance.
+The mixed-component candidate is not a unified final release. Draft
+[PR #56](https://github.com/tunnexio/tunnex/pull/56) is open after the targeted
+AWS proof. No merge occurred. Historical review holds must be dispositioned
+before the final PLAN pointer and merge approval. Earlier counts below are
+historical, not current acceptance.
 
 Historical status: **three-worker EKS ready; retained CP uses its verified valid Scale
 license; six immutable candidate images and four chart OCI pull proofs complete.
