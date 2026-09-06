@@ -32,6 +32,13 @@ This is an unmerged candidate, not a signed customer release.
   deleted or switched. Resolving the planned cutover is deferred until review.
 - Full exact-content gates/CI, signed installer/upgrade and Kubernetes mTLS proof
   remain prerequisites. Existing PG16 VM/RDS evidence does not satisfy these gaps.
+- CP web typecheck/build passed. Under Node 22, 1280/1281 tests passed; the
+  bootstrap-command test in agentview.test.ts failed on a missing systemctl.calls
+  fixture file and reproduced in a focused run. Cause not yet dispositioned.
+  Node 26 additionally produced localStorage-related failures; neither run is
+  counted as a green full web gate. Full API edition/build/node gate chain remains
+  in progress at this checkpoint. This differs from the companion website's
+  separate passing 214-test suite.
 
 ## Independent review: ranked and HELD
 
