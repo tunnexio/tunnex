@@ -27,3 +27,13 @@ Effective CP configuration comparison PASS: only API/web/nginx images and
 three candidate API metadata values differ from C6; stores and other
 services unchanged. Native CP candidate rollout started. Gateway upgrades
 and fresh HA/client proof are pending; not a walk PASS or merge-ready claim.
+
+CP native rollout completed exit 0; health returned 200. First A3 attempt
+00:50:41.252–00:51:11.738 UTC stopped at Kubernetes API context verification
+(timeout), before Helm mutation. Read-only EKS inspection proved its public
+endpoint still allowed only the laptop's previous IP. EndpointAccessUpdate
+`42823a41-2116-3e05-b6b7-659c1c74d882` changes only that `/32` to
+`223.181.44.79/32`, retaining both public and private access. The three
+existing laptop-only UDP31081/31082/31083 rules were likewise updated to
+the new `/32`; gateway-to-gateway rules and other resources remain unchanged.
+This is an operator connectivity correction, not a product fix or HA proof.
