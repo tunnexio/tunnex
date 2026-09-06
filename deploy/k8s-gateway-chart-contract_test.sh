@@ -405,4 +405,8 @@ expect_fail insecure-api-url 'controlPlane.apiURL|pattern|https' \
 expect_fail insecure-agent-url 'controlPlane.agentURL|pattern|https' \
   "${ENROLL[@]}" --set-string controlPlane.agentURL=http://cp.example.test:8443
 
+# Offline template rendering cannot prove lookup behavior. Exercise the actual
+# Helm engine against a local read-only Kubernetes API fixture as well.
+python3 "${ROOT}/deploy/k8s-gateway-pvc-lookup_test.py"
+
 echo 'k8s gateway chart contract: PASS'
