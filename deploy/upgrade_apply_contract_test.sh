@@ -29,7 +29,7 @@ out=$4
 case "$url" in
   https://updates.example.test/release.json) cp "$MOCK_CATALOG" "$out" ;;
   https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/tunnex.yml)
-    printf '%s\n' 'services:' '  api:' '    environment:' '      TUNNEX_ENV: production' >"$out"
+    printf '%s\n' 'services:' '  api:' '    environment:' '      TUNNEX_ENV: production' '      TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}' '# bundled-db' >"$out"
     ;;
   *) echo "unexpected curl URL: $url" >&2; exit 1 ;;
 esac
@@ -70,6 +70,8 @@ cat >"$TMP/bin/docker" <<'SH'
 set -eu
 printf '%s\n' "$*" >>"$MOCK_DOCKER_LOG"
 case "$*" in
+  *'api preflight --database-dump'*) [ "${MOCK_FAIL_STAGE:-}" != backup ] || exit 42; printf 'PGDMP-test-external-backup' ;;
+  *'api preflight --database-verify-archive'*) [ "${MOCK_FAIL_STAGE:-}" != archive ] || exit 42; cat >/dev/null ;;
   *'api preflight'*) [ "${MOCK_FAIL_STAGE:-}" != preflight ] || exit 42 ;;
   *'exec -T postgres sh -c '*pg_dump*) printf 'PGDMP-test-backup' ;;
   *'api backupctl manifest'*) printf '%s\n' '{"manifest":"test"}' ;;
@@ -137,5 +139,27 @@ if (
 fi
 grep -Fq 'state=failed' "$STATUS"
 grep -Fq 'reason_code=preflight_failed' "$STATUS"
+
+# BYODB backs up through the CP connection, never through a bundled DB service.
+printf '%s\n' TUNNEX_DATABASE_MODE=external >>"$TMP/tunnex/.env"
+for outcome in success backup archive; do
+  if (
+    cd "$TMP/tunnex"
+    PATH="$TMP/bin:$PATH" MOCK_CATALOG="$TMP/catalog.json" \
+      MOCK_DOCKER_LOG="$TMP/external-$outcome.log" MOCK_FAIL_STAGE="$outcome" \
+      TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" TUNNEX_UPGRADE_STATUS_FILE="$STATUS" \
+      TUNNEX_UPGRADE_REQUEST_ID="external-$outcome" ./upgrade.sh --apply
+  ); then
+    [ "$outcome" = success ] || { echo 'backup failure did not block upgrade'; exit 1; }
+    grep -Fq 'state=healthy' "$STATUS"
+    grep -Fq 'COMPOSE_PROFILES=external-db' "$TMP/tunnex/.env"
+  else
+    [ "$outcome" != success ] || exit 1
+    grep -Fq 'state=failed' "$STATUS"
+    ! grep -Fq 'up -d' "$TMP/external-$outcome.log"
+  fi
+  grep -Fq 'api preflight --database-dump' "$TMP/external-$outcome.log"
+  ! grep -Fq 'exec -T postgres' "$TMP/external-$outcome.log"
+done
 
 echo 'upgrade apply contract passed'

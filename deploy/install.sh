@@ -830,10 +830,75 @@ warn 'SMTP skipped — invitations, password resets, and verification emails are
 	;;
 esac
 
+# BEGIN BYODB INPUT — tested independently without host mutation.
+configure_database() {
+	DB_MODE=${TUNNEX_DATABASE_MODE:-}
+	DB_URL=${TUNNEX_DATABASE_URL:-}
+	DB_TLS_SOURCE=${TUNNEX_DATABASE_TLS_SOURCE:-tunnex_database_tls}
+	if [ -f "$DIR/.env" ]; then
+		_saved_mode=$(sed -n 's/^TUNNEX_DATABASE_MODE=//p' "$DIR/.env" | head -1)
+		_saved_mode=${_saved_mode:-bundled}
+		[ -z "$DB_MODE" ] || [ "$DB_MODE" = "$_saved_mode" ] || die 'Database mode cannot change on reinstall; use a planned data migration.'
+		if [ -n "${TUNNEX_DATABASE_URL_FILE:-}" ]; then
+			[ -z "$DB_URL" ] || die 'Choose either TUNNEX_DATABASE_URL or TUNNEX_DATABASE_URL_FILE.'
+			[ -f "$TUNNEX_DATABASE_URL_FILE" ] && [ -r "$TUNNEX_DATABASE_URL_FILE" ] || die 'Database URL file is not readable.'
+			DB_URL=$(cat "$TUNNEX_DATABASE_URL_FILE")
+		fi
+		if [ -n "$DB_URL" ]; then
+			_saved_url=$(sed -n 's/^TUNNEX_DATABASE_URL=//p' "$DIR/.env" | head -1)
+			# Our generated dotenv uses literal single quotes, never shell evaluation.
+			_saved_url=${_saved_url#\'}
+			_saved_url=${_saved_url%\'}
+			[ "$DB_URL" = "$_saved_url" ] || die 'Existing database configuration is preserved; rotate its credential in the installed configuration, not by reinstalling.'
+		fi
+		DB_MODE=$_saved_mode
+		return
+	fi
+	if [ -z "$DB_MODE" ]; then
+		if [ -n "$DB_URL" ] || [ -n "${TUNNEX_DATABASE_URL_FILE:-}" ]; then
+			DB_MODE=external
+		elif have_tty; then
+			DB_MODE=$(ask 'CP database: bundled or external PostgreSQL? [bundled]: ')
+		fi
+	fi
+	DB_MODE=${DB_MODE:-bundled}
+	case "$DB_MODE" in
+	bundled)
+		[ -z "$DB_URL" ] && [ -z "${TUNNEX_DATABASE_URL_FILE:-}" ] || die 'External database inputs conflict with bundled mode.'
+		;;
+	external)
+		_db_file=${TUNNEX_DATABASE_URL_FILE:-}
+		if [ -z "$DB_URL" ] && [ -z "$_db_file" ] && have_tty; then
+			_db_file=$(ask 'Path to a protected file containing the PostgreSQL connection URL: ')
+		fi
+		if [ -n "$_db_file" ]; then
+			[ -z "$DB_URL" ] || die 'Choose either TUNNEX_DATABASE_URL or TUNNEX_DATABASE_URL_FILE.'
+			[ -f "$_db_file" ] && [ -r "$_db_file" ] || die 'Database URL file is not readable.'
+			DB_URL=$(cat "$_db_file")
+		fi
+		case "$DB_URL" in postgres://*|postgresql://*) ;; *) die 'External mode requires a PostgreSQL connection URL.' ;; esac
+		# Single-quoted dotenv preserves dollar signs; quote/newline characters must
+		# be percent-encoded in a URI, never interpreted as dotenv syntax.
+		case "$DB_URL" in *"'"*|*'\'*|*"
+"*|*"$(printf '\r')"*) die 'URL contains unsafe literal characters; percent-encode credentials.' ;; esac
+		case "$DB_TLS_SOURCE" in
+		tunnex_database_tls) ;;
+		/*) [ -d "$DB_TLS_SOURCE" ] || die 'Database TLS source must be an existing directory.' ;;
+		*) die 'Database TLS source must be an absolute directory path.' ;;
+		esac
+		case "$DB_TLS_SOURCE" in *[!a-zA-Z0-9_./-]*) die 'Database TLS path must contain only letters, numbers, slash, dot, underscore and hyphen.' ;; esac
+		;;
+	*) die 'TUNNEX_DATABASE_MODE must be bundled or external.' ;;
+	esac
+}
+# END BYODB INPUT
+configure_database
+
 # ── 4. review once, then prepare the host and versioned compose ──────────────────────────────────
 stage 4 "Reviewing the installation plan"
 plan_start
 plan_item 'Mode' 'QuickStart (recommended)'
+plan_item 'CP database' "$DB_MODE PostgreSQL (credentials hidden)"
 plan_item 'Version' "${DISPLAY_VERSION}"
 plan_item 'Public URL' "${BASE_URL}"
 plan_item 'TLS mode' "${TLS_MODE}"
@@ -934,6 +999,10 @@ if ! RELEASE_ENV="$(docker_cli run --rm --entrypoint releaseverify \
 	-manifest /tmp/release.json -public-key "$TRUSTED_RELEASE_PUBLIC_KEY" \
 	-expected-source-sha "$SOURCE_REF" -platform "$RELEASE_ARCH" -print-env)"; then
 	die "signed release verification failed; refusing to publish deployment files or privileged updater code"
+fi
+if [ "$DB_MODE" = external ]; then
+	grep -Fq 'TUNNEX_DATABASE_URL:' "$STAGE_DIR/tunnex.yml" && grep -Fq 'bundled-db' "$STAGE_DIR/tunnex.yml" ||
+		die 'The selected signed release does not support BYODB. Select a BYODB-capable release before installing.'
 fi
 
 mv "$STAGE_DIR/tunnex.yml" tunnex.yml
@@ -1038,6 +1107,9 @@ TUNNEX_HOST_UPGRADE_STATUS_SOURCE=${TUNNEX_HOST_UPGRADE_STATUS_SOURCE:-./upgrade
 POSTGRES_USER=tunnex
 POSTGRES_PASSWORD=${PG_PASS}
 POSTGRES_DB=tunnex
+TUNNEX_DATABASE_MODE=${DB_MODE}
+TUNNEX_DATABASE_URL='${DB_URL}'
+TUNNEX_DATABASE_TLS_SOURCE=${DB_TLS_SOURCE}
 DATABASE_URL=postgres://tunnex:${PG_PASS}@postgres:5432/tunnex?sslmode=disable
 REDIS_URL=redis://redis:6379/0
 SMTP_HOST=${SMTP_HOST}
@@ -1076,11 +1148,20 @@ for RELEASE_KEY in TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_N
 done
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 tunnex.yml)"
 set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$PORTABLE_CONTROL_PLANE"
+case "$DB_MODE" in
+bundled) set_dotenv COMPOSE_PROFILES bundled-db ;;
+external) set_dotenv COMPOSE_PROFILES external-db ;;
+esac
 tunnex_compose() {
-	docker_cli compose --project-name "$INSTALL_COMPOSE_PROJECT" --env-file .env -f tunnex.yml "$@"
+	case "$DB_MODE" in external) _db_profile=external-db ;; *) _db_profile=bundled-db ;; esac
+	COMPOSE_PROFILES=$_db_profile docker_cli compose --project-name "$INSTALL_COMPOSE_PROJECT" --env-file .env -f tunnex.yml "$@"
 }
 run_with_loader 'Pulling verified Tunnex images' tunnex_compose pull || die 'could not pull the verified Tunnex images'
 success 'Signed release verified; images pinned by digest.'
+if [ "$DB_MODE" = external ]; then
+	run_with_loader 'Checking private PostgreSQL from the CP network' tunnex_compose run --rm --no-deps --entrypoint preflight api --database-only ||
+		die 'External database preflight failed; CP was not started. Fix the installed database configuration and rerun.'
+fi
 if [ "$PORTABLE_CONTROL_PLANE" = true ]; then
 	run_with_loader 'Starting the portable control plane' tunnex_compose up -d --wait --scale node-agent=0 ||
 		die 'control plane did not become healthy'

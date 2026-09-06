@@ -5,12 +5,13 @@ CHART="$ROOT/deploy/helm/tunnex-cp"
 VALUES=(--set appBaseURL=https://vpn.example.com --set masterKey.existingSecret=roots
   --set redis.urlSecret=redis --set database.urlSecret=customer-db)
 helm lint "$CHART" "${VALUES[@]}"
-for mode in legacy tls custom-key no-migration; do
+for mode in legacy tls custom-key no-migration migration-role; do
   EXTRA=()
   case "$mode" in
     tls) EXTRA=(--set database.tls.existingSecret=customer-db-tls);;
     custom-key) EXTRA=(--set database.urlSecretKey=connection-uri --set database.tls.existingSecret=customer-db-tls);;
     no-migration) EXTRA=(--set migrations.enabled=false --set database.tls.existingSecret=customer-db-tls);;
+    migration-role) EXTRA=(--set database.migrationURLSecret=customer-migrator --set database.migrationURLSecretKey=ddl-uri --set database.tls.existingSecret=customer-db-tls);;
   esac
   helm template byodb "$CHART" "${VALUES[@]}" ${EXTRA[@]+"${EXTRA[@]}"} | ruby -ryaml -e '
     mode = ARGV.fetch(0)
@@ -22,7 +23,12 @@ for mode in legacy tls custom-key no-migration; do
       container = pod.fetch("containers").first
       env = container.fetch("env").find { |e| ["DATABASE_URL", "TUNNEX_DATABASE_URL"].include?(e["name"]) }
       expected_key = mode == "custom-key" ? "connection-uri" : "TUNNEX_DATABASE_URL"
-      abort "secret drift" unless env.fetch("valueFrom").fetch("secretKeyRef") == {"name" => "customer-db", "key" => expected_key}
+      expected_secret = "customer-db"
+      if mode == "migration-role" && w["kind"] == "Job"
+        expected_secret, expected_key = "customer-migrator", "ddl-uri"
+      end
+      abort "secret drift" unless env.fetch("valueFrom").fetch("secretKeyRef") == {"name" => expected_secret, "key" => expected_key}
+      abort "TLS enforcement drift" unless container.fetch("env").any? { |e| e["name"] == "TUNNEX_DATABASE_REQUIRE_TLS" && e["value"] == "true" }
       mount = (container["volumeMounts"] || []).find { |v| v["name"] == "database-tls" }
       volume = (pod["volumes"] || []).find { |v| v["name"] == "database-tls" }
       if mode == "legacy"
@@ -35,4 +41,4 @@ for mode in legacy tls custom-key no-migration; do
     end
   ' "$mode"
 done
-echo 'BYODB chart contracts passed (legacy, TLS, custom Secret key, migrations disabled)'
+echo 'BYODB chart contracts passed (legacy, TLS, custom Secret key, migrations disabled, separate migration role)'

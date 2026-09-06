@@ -39,8 +39,16 @@ spec:
           image: {{ include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.migrate) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            - name: TUNNEX_DATABASE_REQUIRE_TLS
+              value: {{ .Values.database.requireTLS | quote }}
             # cmd/migrate reads DATABASE_URL (the external store; URL-wins upstream).
-            {{- if .Values.database.urlSecret }}
+            {{- if .Values.database.migrationURLSecret }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.migrationURLSecret | quote }}
+                  key: {{ .Values.database.migrationURLSecretKey | quote }}
+            {{- else if .Values.database.urlSecret }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

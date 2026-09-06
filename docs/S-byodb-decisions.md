@@ -45,6 +45,28 @@ and migrations-disabled configurations; existing HA deployment gate contract;
 `git diff --check`. No cloud mutation or live DB proof performed. Full gates and
 review remain pending; next implementation slice is runtime preflight.
 
+### Implementation checkpoint — 2026-09-06
+
+Installer and runtime wiring are now implemented: bundled/external choice, protected
+URL-file input, preserved reinstall settings, external Compose profile, pre-migration
+driver/TLS/PostgreSQL-16 checks, private TLS mounts, optional separate Helm migration
+role, and external-aware dump/archive validation in the existing upgrade safety gate.
+External mode requires verify-full. Common DSN parameters are deliberately enumerated
+so API, migration and backup clients agree; native IAM renewal remains deferred.
+Initial version qualification is PostgreSQL 16 (matching the bundled DB and backup
+client). Additional major versions require compatibility/restore qualification.
+
+Website docs are on companion branch `codex/byodb-installation-docs` in tunnex-web.
+The production launcher pin is NOT advanced to an unpushed/unreleased source. Its
+update follows a green signed BYODB-capable release; old manifests are refused for
+external installation/upgrade rather than silently selecting bundled Postgres.
+
+User-added same-PR scope: fix main CI run 34015654906. Its release guard assumed a
+draft release created a Git ref and failed with HTTP 422. Explicit missing main-build
+ref creation now follows ledger validation; no existing tag is moved. The offline
+regression fails on baseline a3c192a and passes on the fix; published/moved refs still
+refuse. No live release or tag has been created by this work.
+
 ## Deferred scope
 
 Native cloud IAM token renewal, DB provisioning, arbitrary engine support, automatic

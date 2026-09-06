@@ -56,6 +56,8 @@ spec:
             # Migrations run via the pre-upgrade hook Job, never on the serving pod.
             - name: TUNNEX_AUTO_MIGRATE
               value: "false"
+            - name: TUNNEX_DATABASE_REQUIRE_TLS
+              value: {{ .Values.database.requireTLS | quote }}
             - name: TUNNEX_COOKIE_SECURE
               value: "true"
             - name: TUNNEX_SECRETS_DIR

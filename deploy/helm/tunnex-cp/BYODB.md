@@ -33,8 +33,16 @@ Without a custom CA, omit the TLS Secret and use the trust configuration appropr
 to the server. Existing `urlSecret` users retain the default `TUNNEX_DATABASE_URL`
 key. The chart does not create, own or delete your database or existing Secrets.
 
-Current boundary: this slice adds Secret selection and TLS file delivery, not a
-completed onboarding/preflight, automatic rotation or live compatibility proof.
+The migration Job now validates connectivity and migration prerequisites before
+DDL. The API validates its runtime connection before serving. PostgreSQL 16 is
+the initially qualified version; keep `database.requireTLS: true` in production.
+Optional `database.migrationURLSecret` and `database.migrationURLSecretKey` select
+separate migration credentials for the same database and TLS files. Without them
+the Job uses the runtime URL. Migration-role ownership and runtime grants remain
+the DBA's responsibility; Tunnex does not create privileged database accounts.
+
+Current boundary: private TLS install/restore has local-container proof; a signed
+public-release installer walk and Kubernetes mTLS proof remain pending.
 Changing a URL Secret requires restarting the consuming API workload; credential
 rotation/recovery automation remains in the BYODB implementation plan. Preserve
 database backups and the separately backed-up Tunnex master key.

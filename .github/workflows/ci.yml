@@ -52,6 +52,9 @@ jobs:
       - name: Signed update catalog contract
         run: sh deploy/signed-main-release-contract_test.sh
 
+      - name: Draft release source-ref lifecycle regression
+        run: bash deploy/release-source-ref-contract_test.sh
+
       - name: Host upgrade contract
         run: sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
 
@@ -65,6 +68,9 @@ jobs:
 
       - name: BYODB Helm Secret and TLS contract
         run: bash deploy/byodb-chart-contract_test.sh
+
+      - name: BYODB installer contract
+        run: sh deploy/byodb-install-contract_test.sh
 
       - name: Set up Go for reproducible chart artifacts
         uses: actions/setup-go@v5
@@ -640,6 +646,13 @@ jobs:
               exit 1
               ;;
           esac
+          # GitHub defers tag creation for a draft release. Create the missing
+          # main-build ref explicitly only AFTER source-ledger validation. Never
+          # move/update an existing ref, and never recreate a missing version tag.
+          if [[ "$RELEASE_REF_STATUS" == 404 && "$IS_VERSION" == false ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/tags/${RELEASE_TAG}" -f "sha=${GITHUB_SHA}" >/dev/null
+          fi
           CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
           if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
             echo "::error::release source ref ${RELEASE_TAG} moved from workflow source ${GITHUB_SHA} to ${CURRENT_RELEASE_SHA}; refusing publication"

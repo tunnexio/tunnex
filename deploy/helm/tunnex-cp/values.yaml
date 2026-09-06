@@ -29,6 +29,11 @@ database:
   url: ""                 # e.g. postgres://user:pass@db.internal:5432/tunnex?sslmode=verify-full
   urlSecret: ""           # name of a Secret holding key `TUNNEX_DATABASE_URL` (preferred)
   urlSecretKey: TUNNEX_DATABASE_URL
+  # Optional DDL role; runtime pods continue using urlSecret. Existing Secrets
+  # must exist before the pre-install hook. Both roles use the same TLS mount.
+  migrationURLSecret: ""
+  migrationURLSecretKey: TUNNEX_DATABASE_URL
+  requireTLS: true
   tls:
     # Existing Secret mounted read-only at /etc/tunnex/database-tls in BOTH API
     # and migration pods. Reference files explicitly in the connection URL:
