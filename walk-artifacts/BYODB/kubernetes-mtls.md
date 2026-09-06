@@ -62,6 +62,55 @@ Native local image identifiers:
 
 ## Retention and remaining limits
 
+### Final-code requalification
+
+Rebuilt native ARM64 API and migration images from HEAD
+`4616135fc2c49d3c80033129d2856096038bf61b` plus the pending effective native-backup
+TLS/default and explicit-URL-presence fix. At build time the modified
+`apps/api/internal/dbcheck/check.go` SHA-256 was
+`445b84fab7247ab4f166f00c32e77ad49e7be84122f432e0087880895a4f9aa2`.
+The final commit annotation is to follow; this records the tested working content
+without inventing an exact-final-SHA claim.
+
+- `tunnex-mtls-api:20260906-final`:
+  `sha256:566801032f87850a4a72f6f1aac5f06278a8f66ed6c4f868f49423344de67eb9`
+- `tunnex-mtls-migrate:20260906-final`:
+  `sha256:27fc96a0f36e7acc5d1c8b066940bbd66a8f6b0c6dae5e3e98ac15a4098bd479`
+
+Loaded both images into the same isolated cluster and performed another actual
+Helm upgrade, overriding only the image tag. Release revision 3 is deployed.
+The migration hook completed, schema remains `136|f`, and the replacement API
+is 1/1 Ready with zero restarts and `/healthz` status `ok`. PostgreSQL again
+observed `runtime|t|TLSv1.3|/CN=byodb-fixture-client`.
+
+Repeated the missing-client-certificate chart Job with the final migration image:
+one failed pod, the same redacted `database_auth_failed` diagnostic, and no
+impact on the healthy API. No existing Secret was edited.
+
+Also ran the final API's actual `preflight --database-dump` and
+`--database-verify-archive` inside Kubernetes using the runtime role and mounted
+mTLS files. Both succeeded; the custom-format dump was 815,571 bytes, retained
+outside Git with mode 0600. This adds native-client backup coverage on the
+final mTLS path; it does not claim a new restore drill.
+
+### Operator-driven credential rotation and reconnect
+
+On the same isolated fixture, rotated only the `runtime` PostgreSQL role password,
+updated its existing `runtime-url` Secret using the existing custom `connection`
+key, and explicitly ran `kubectl rollout restart deployment/api`. Migration-role
+credentials, CA/client certificates, master key and database contents were not
+changed. Old and new recovery URL files were retained outside Git with mode 0600;
+no password was printed or placed in command arguments.
+
+The replacement API reached 1/1 Ready with zero restarts, `/healthz` returned
+`status=ok`, schema remained `136|f`, and fresh PostgreSQL sessions again reported
+`runtime|t|TLSv1.3|/CN=byodb-fixture-client`. A fresh connection using the old
+credential was rejected with the redacted `database_auth_failed` diagnostic.
+
+This proves the documented **manual/operator-driven** credential rotation and
+reconnect procedure. It does not claim automatic Secret watching, live pool
+credential refresh, password provisioning, or zero-downtime rotation.
+
 The isolated kind cluster and failed negative Job are retained for inspection;
 there was no cleanup. Fixture certificates, private keys, URL files, master key
 and kubeconfig remain outside Git in a mode-0700 temporary directory; kubeconfig

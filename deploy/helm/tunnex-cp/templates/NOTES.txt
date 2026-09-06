@@ -45,6 +45,8 @@ a separate operational wire proof; do not treat scheduler election alone as that
 Open the dashboard, issue a join token, and deploy a gateway with the SEPARATE
 tunnex-gateway chart (privileged; consumes the join token as a Secret).
 
-NOTE (chart maturity): this chart is validated by `helm lint` + `helm template`
-render only. A real `helm install` against a live cluster is the owed wire proof
-(SUBSTITUTES ≠ SATISFIES) — trigger: the EPIC-10 walk.
+NOTE (database startup): the API startup probe allows up to 15 minutes before
+normal liveness handling begins. Set Helm --timeout to cover migration hooks
+and rollout as well; the probe does not extend Helm's own timeout.
+BYODB has focused live Helm install/upgrade and client-certificate proof. That
+does not independently qualify your ingress, gateway networking or HA topology.
