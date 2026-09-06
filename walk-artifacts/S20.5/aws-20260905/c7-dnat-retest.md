@@ -60,3 +60,15 @@ A3 native retry 00:53:58.091–00:54:35.613 UTC completed exit 0. Replacement
 B2 native upgrade started next. HA remained bootstrap_pending at the first
 post-A3 check; a transient stale ownership tuple refusal was observed, not
 the previous DNAT grammar refusal. Fresh fenced/client proof remains pending.
+
+## Fresh fenced activation achieved
+
+B2 native upgrade 00:54:52.676–00:55:29.708 UTC completed exit 0.
+CP reported `actual_mode=fenced_ha`, `reason_code=fenced_base_ready`,
+`achieved_at=2026-09-06T00:55:14.228073Z`, revision 181, generation 1,
+membership epoch 0, active A3. A3 live nft readback contains the two-backend
+typed `dnat ip to jhash` rule and receipt digest
+`da08ea33fa250d837cd61af68f199839a78ed08e165726d0bc3cf564e73fcf17`.
+This clears the DNAT activation blocker on AWS. It is not A→B/B→A failover
+acceptance. Edge native upgrade started next. First local HTTP VIP probe
+timed out (HTTP000); end-to-end client recovery is still unproven.
