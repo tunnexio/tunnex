@@ -789,6 +789,8 @@ type IdpSyncConfig struct {
 	CreatedAt           time.Time          `json:"created_at"`
 	UpdatedAt           time.Time          `json:"updated_at"`
 	DelegatedAdminEmail *string            `json:"delegated_admin_email"`
+	OktaOrgUrl          *string            `json:"okta_org_url"`
+	SsoConnectionID     pgtype.UUID        `json:"sso_connection_id"`
 }
 
 type Invitation struct {
@@ -1666,6 +1668,29 @@ type SsoConfig struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 	TenantID           *string   `json:"tenant_id"`
 	SecretFingerprint  string    `json:"secret_fingerprint"`
+}
+
+type SsoConnection struct {
+	ID                 uuid.UUID          `json:"id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	Name               string             `json:"name"`
+	Provider           string             `json:"provider"`
+	IssuerUrl          string             `json:"issuer_url"`
+	ClientID           string             `json:"client_id"`
+	ClientSecretSealed []byte             `json:"client_secret_sealed"`
+	Enabled            bool               `json:"enabled"`
+	Revision           int64              `json:"revision"`
+	TestedRevision     *int64             `json:"tested_revision"`
+	TestedAt           pgtype.Timestamptz `json:"tested_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+}
+
+type SsoConnectionIdentity struct {
+	ConnectionID      uuid.UUID `json:"connection_id"`
+	IssuerUrl         string    `json:"issuer_url"`
+	Subject           string    `json:"subject"`
+	UserID            uuid.UUID `json:"user_id"`
+	DirectoryImported bool      `json:"directory_imported"`
 }
 
 type SystemSetting struct {

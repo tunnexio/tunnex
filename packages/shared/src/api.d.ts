@@ -387,6 +387,152 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/sso-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listSsoConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sso-connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveSsoConnection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sso-connections/{connectionId}/activation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["activateSsoConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sso-connections/{connectionId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["testSsoConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sso-connections/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listAvailableSsoConnections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/sso-connections/{connectionId}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["linkSsoConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso-connections/{connectionId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["startSsoConnection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso-connections/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ssoConnectionCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/cli/authorize": {
         parameters: {
             query?: never;
@@ -1581,7 +1727,7 @@ export interface paths {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -1601,7 +1747,7 @@ export interface paths {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -1621,7 +1767,7 @@ export interface paths {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -1641,7 +1787,7 @@ export interface paths {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -1661,7 +1807,7 @@ export interface paths {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
                 groupId: string;
             };
             cookie?: never;
@@ -4649,7 +4795,7 @@ export interface components {
             /** @enum {string} */
             origin?: "manual" | "idp_sync";
             /** @enum {string} */
-            idp_provider?: "microsoft" | "google";
+            idp_provider?: "microsoft" | "google" | "okta";
             idp_group_id?: string;
         };
         IdpSyncConfigRequest: {
@@ -4657,8 +4803,17 @@ export interface components {
             client_id: string;
             /** @description Entra client secret; sealed at rest and never returned. */
             client_secret: string;
+            /** @description Okta organization HTTPS origin. */
+            okta_org_url?: string;
+            /**
+             * Format: uuid
+             * @description Tested and enabled Okta SSO connection in this organization.
+             */
+            sso_connection_id?: string;
             /** @description Entra tenant id; required for microsoft. */
             tenant_id?: string;
+            /** @description RSA private JWK for the Okta directory service app; sealed at rest. Omit to change only enabled state of an existing matching configuration. */
+            private_jwk?: string;
             /** @description Google service-account JSON with DWD; sealed at rest and never returned. */
             service_account_json?: string;
             /**
@@ -4666,14 +4821,21 @@ export interface components {
              * @description Google Workspace admin subject for DWD impersonation.
              */
             delegated_admin_email?: string;
-            /** @default true */
-            enabled: boolean;
+            /** @description Okta requires explicit true to opt in; legacy directory providers default to true. */
+            enabled?: boolean;
         };
         IdpSyncConfig: {
             /** @enum {string} */
-            provider: "microsoft" | "google";
+            provider: "microsoft" | "google" | "okta";
             client_id: string;
             secret_fingerprint?: string;
+            /** @description Okta organization HTTPS origin. */
+            okta_org_url?: string;
+            /**
+             * Format: uuid
+             * @description Tested and enabled Okta SSO connection in this organization.
+             */
+            sso_connection_id?: string;
             tenant_id?: string;
             /** Format: email */
             delegated_admin_email?: string;
@@ -4686,8 +4848,15 @@ export interface components {
             sync_health: string;
         };
         IdpSyncHealth: {
+            enabled: boolean;
+            client_id: string;
+            okta_org_url?: string;
+            /** Format: uuid */
+            sso_connection_id?: string;
             /** @enum {string} */
-            provider: "microsoft" | "google";
+            provider: "microsoft" | "google" | "okta";
+            /** @description New directory accounts and grants require an unexpired entitled licence; revocations continue when false. */
+            provisioning_allowed: boolean;
             sync_health: string;
             last_sync_ok: boolean;
             /** Format: date-time */
@@ -6831,6 +7000,48 @@ export interface components {
             name?: string;
             password?: string;
         };
+        SsoConnectionRequest: {
+            name: string;
+            /** @enum {string} */
+            provider: "okta" | "oidc";
+            issuer_url: string;
+            client_id: string;
+            /** @description Omit to preserve an existing secret. */
+            client_secret?: string;
+        };
+        SsoConnectionActivation: {
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+        };
+        SsoConnectionTestRequest: {
+            /** @description Explicitly link the tested identity to the initiating account after verification. */
+            link_account: boolean;
+        };
+        SsoConnection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            org_id: string;
+            name: string;
+            /** @enum {string} */
+            provider: "okta" | "oidc";
+            issuer_url: string;
+            client_id: string;
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            verified: boolean;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            tested_at?: string;
+            callback_url: string;
+            login_url: string;
+        };
+        SsoConnectionList: {
+            items: components["schemas"]["SsoConnection"][];
+        };
         SsoConfigRequest: {
             client_id: string;
             client_secret: string;
@@ -7161,6 +7372,13 @@ export interface components {
             /** @description S8.3 (CW): the control plane's current compiled-artifact version CEILING (policyspec.ProtocolVersion). The cross-site upgrade warning names gateways whose reported max is below this — server-sourced so the UI never hardcodes the ceiling (it bumps with each protocol change; a hardcoded copy would silently fork on the next bump). */
             protocol_version: number;
             setup_complete?: boolean;
+            sso_connections?: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                /** @enum {string} */
+                provider: "okta" | "oidc";
+            }[];
             sso_providers: ("google" | "microsoft")[];
             upgrade?: components["schemas"]["UpgradeStatus"];
         };
@@ -7815,6 +8033,208 @@ export interface operations {
             204: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSsoConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoConnectionList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    saveSsoConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    activateSsoConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoConnectionActivation"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testSsoConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SsoConnectionTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoRedirect"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAvailableSsoConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enabled company sign-in connections available to this member. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoConnectionList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    linkSsoConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Explicitly link the signed-in member's matching identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoRedirect"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startSsoConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful operation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoRedirect"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    ssoConnectionCallback: {
+        parameters: {
+            query: {
+                code?: string;
+                state: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                tnx_oidc_flow?: string;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Return to settings after a test or to the application after login. */
+            302: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -9625,7 +10045,7 @@ export interface operations {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -9654,7 +10074,7 @@ export interface operations {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -9679,7 +10099,7 @@ export interface operations {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -9704,7 +10124,7 @@ export interface operations {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
             };
             cookie?: never;
         };
@@ -9733,7 +10153,7 @@ export interface operations {
             header?: never;
             path: {
                 orgId: string;
-                provider: "microsoft" | "google";
+                provider: "microsoft" | "google" | "okta";
                 groupId: string;
             };
             cookie?: never;

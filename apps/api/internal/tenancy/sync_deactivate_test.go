@@ -3,6 +3,7 @@ package tenancy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -17,6 +18,12 @@ import (
 // NULL — not a borrowed admin) with the CAUSE in metadata, so a compliance reader sees "revoked by
 // idp-sync because disabled_in_directory". Same discipline as device.self_approved.
 func TestDeactivateMemberBySyncAuditsSystemActorWithCause(t *testing.T) {
+	for _, revoked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("revoked=%t", revoked), func(t *testing.T) { testSyncDeactivationAudit(t, revoked) })
+	}
+}
+
+func testSyncDeactivationAudit(t *testing.T, revoked bool) {
 	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
@@ -45,7 +52,21 @@ func TestDeactivateMemberBySyncAuditsSystemActorWithCause(t *testing.T) {
 		}
 	}
 
+	// Directory group removal may revoke org access before the disabled-user sweep.
+	if revoked {
+		if _, err := tx.Exec(ctx, "UPDATE memberships SET access_revoked_at=now() WHERE org_id=$1 AND user_id=$2", org, member); err != nil {
+			t.Fatal(err)
+		}
+	}
 	svc := &MembershipService{q: sqlc.New(tx), revoker: &fakeRevoker{}}
+	if revoked {
+		if err := svc.DeactivateMember(ctx, uuid.New(), org, member); err == nil {
+			t.Fatal("human deactivation must refuse revoked membership")
+		}
+	}
+	if _, err := svc.DeactivateMemberBySync(ctx, uuid.New(), member, "disabled_in_directory"); err == nil {
+		t.Fatal("sync must refuse a different organization")
+	}
 	didAct, err := svc.DeactivateMemberBySync(ctx, org, member, "disabled_in_directory")
 	if err != nil {
 		t.Fatalf("DeactivateMemberBySync: %v", err)

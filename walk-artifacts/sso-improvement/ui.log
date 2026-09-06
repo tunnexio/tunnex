@@ -1,0 +1,16 @@
+
+ RUN  v2.1.9 /Users/pawangupta/tunnex/.cli-installtion-improvement-worktree/apps/web
+
+ ✓ test/ssoview.test.ts (7 tests) 2ms
+ ✓ test/ssoselflink.test.tsx (1 test) 84ms
+stderr | test/loginsso.test.tsx > SSO sign-in without an organization field > starts SSO with no org query and follows the IdP redirect
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ test/ssoconnections.test.tsx (5 tests) 246ms
+ ✓ test/loginsso.test.tsx (4 tests) 250ms
+
+ Test Files  4 passed (4)
+      Tests  17 passed (17)
+   Start at  19:01:11
+   Duration  1.59s (transform 465ms, setup 0ms, collect 1.04s, tests 582ms, environment 1.26s, prepare 263ms)

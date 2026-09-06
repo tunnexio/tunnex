@@ -1,0 +1,19 @@
+
+ RUN  v2.1.9 /Users/pawangupta/tunnex/.cli-installtion-improvement-worktree/apps/web
+
+ ✓ test/orgseam.test.tsx (3 tests) 59ms
+ ✓ test/accessorgswitch.test.tsx (1 test) 44ms
+(node:72906) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+stderr | test/settingswiring.test.tsx > Settings — URL-backed section rail > wires both access-event and audit-log policies into Data retention
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ test/settingswiring.test.tsx (23 tests) 2487ms
+   ✓ SSO config — a failed read is not 'not configured' > ⛔ a NON-`sso_not_configured` failure NEVER offers Configure 1014ms
+   ✓ SSO config — a failed read is not 'not configured' > `sso_not_configured` DOES offer Configure — both arms, or the fix is a blank screen 1005ms
+
+ Test Files  3 passed (3)
+      Tests  27 passed (27)
+   Start at  19:03:21
+   Duration  3.61s (transform 573ms, setup 0ms, collect 922ms, tests 2.59s, environment 1.11s, prepare 144ms)

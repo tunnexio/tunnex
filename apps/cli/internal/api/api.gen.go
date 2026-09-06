@@ -637,12 +637,14 @@ const (
 const (
 	IdpSyncConfigProviderGoogle    IdpSyncConfigProvider = "google"
 	IdpSyncConfigProviderMicrosoft IdpSyncConfigProvider = "microsoft"
+	IdpSyncConfigProviderOkta      IdpSyncConfigProvider = "okta"
 )
 
 // Defines values for IdpSyncHealthProvider.
 const (
 	IdpSyncHealthProviderGoogle    IdpSyncHealthProvider = "google"
 	IdpSyncHealthProviderMicrosoft IdpSyncHealthProvider = "microsoft"
+	IdpSyncHealthProviderOkta      IdpSyncHealthProvider = "okta"
 )
 
 // Defines values for InvitationRole.
@@ -855,6 +857,12 @@ const (
 	Open       MetaEdition = "open"
 )
 
+// Defines values for MetaSsoConnectionsProvider.
+const (
+	MetaSsoConnectionsProviderOidc MetaSsoConnectionsProvider = "oidc"
+	MetaSsoConnectionsProviderOkta MetaSsoConnectionsProvider = "okta"
+)
+
 // Defines values for MetaSsoProviders.
 const (
 	MetaSsoProvidersGoogle    MetaSsoProviders = "google"
@@ -1027,6 +1035,18 @@ const (
 	SsoConfigViewProviderMicrosoft SsoConfigViewProvider = "microsoft"
 )
 
+// Defines values for SsoConnectionProvider.
+const (
+	SsoConnectionProviderOidc SsoConnectionProvider = "oidc"
+	SsoConnectionProviderOkta SsoConnectionProvider = "okta"
+)
+
+// Defines values for SsoConnectionRequestProvider.
+const (
+	SsoConnectionRequestProviderOidc SsoConnectionRequestProvider = "oidc"
+	SsoConnectionRequestProviderOkta SsoConnectionRequestProvider = "okta"
+)
+
 // Defines values for TransferNodeDevicesResponseDevicesReissueCause.
 const (
 	DestinationNotHubSetMember   TransferNodeDevicesResponseDevicesReissueCause = "destination_not_hub_set_member"
@@ -1084,6 +1104,7 @@ const (
 const (
 	UserGroupIdpProviderGoogle    UserGroupIdpProvider = "google"
 	UserGroupIdpProviderMicrosoft UserGroupIdpProvider = "microsoft"
+	UserGroupIdpProviderOkta      UserGroupIdpProvider = "okta"
 )
 
 // Defines values for UserGroupOrigin.
@@ -1106,8 +1127,8 @@ const (
 
 // Defines values for StartSsoLoginParamsProvider.
 const (
-	Google    StartSsoLoginParamsProvider = "google"
-	Microsoft StartSsoLoginParamsProvider = "microsoft"
+	StartSsoLoginParamsProviderGoogle    StartSsoLoginParamsProvider = "google"
+	StartSsoLoginParamsProviderMicrosoft StartSsoLoginParamsProvider = "microsoft"
 )
 
 // Defines values for ListAgentMCPAssignmentsParamsState.
@@ -3101,14 +3122,20 @@ type IdpGroupMapRequest struct {
 
 // IdpSyncConfig defines model for IdpSyncConfig.
 type IdpSyncConfig struct {
-	ClientId            string                `json:"client_id"`
-	DelegatedAdminEmail *openapi_types.Email  `json:"delegated_admin_email,omitempty"`
-	Enabled             bool                  `json:"enabled"`
-	LastSyncAt          *time.Time            `json:"last_sync_at,omitempty"`
-	LastSyncError       *string               `json:"last_sync_error,omitempty"`
-	LastSyncOk          bool                  `json:"last_sync_ok"`
-	Provider            IdpSyncConfigProvider `json:"provider"`
-	SecretFingerprint   *string               `json:"secret_fingerprint,omitempty"`
+	ClientId            string               `json:"client_id"`
+	DelegatedAdminEmail *openapi_types.Email `json:"delegated_admin_email,omitempty"`
+	Enabled             bool                 `json:"enabled"`
+	LastSyncAt          *time.Time           `json:"last_sync_at,omitempty"`
+	LastSyncError       *string              `json:"last_sync_error,omitempty"`
+	LastSyncOk          bool                 `json:"last_sync_ok"`
+
+	// OktaOrgUrl Okta organization HTTPS origin.
+	OktaOrgUrl        *string               `json:"okta_org_url,omitempty"`
+	Provider          IdpSyncConfigProvider `json:"provider"`
+	SecretFingerprint *string               `json:"secret_fingerprint,omitempty"`
+
+	// SsoConnectionId Tested and enabled Okta SSO connection in this organization.
+	SsoConnectionId *openapi_types.UUID `json:"sso_connection_id,omitempty"`
 
 	// SyncHealth Two-tier derived health (D2).
 	SyncHealth string  `json:"sync_health"`
@@ -3128,10 +3155,21 @@ type IdpSyncConfigRequest struct {
 
 	// DelegatedAdminEmail Google Workspace admin subject for DWD impersonation.
 	DelegatedAdminEmail *openapi_types.Email `json:"delegated_admin_email,omitempty"`
-	Enabled             *bool                `json:"enabled,omitempty"`
+
+	// Enabled Okta requires explicit true to opt in; legacy directory providers default to true.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// OktaOrgUrl Okta organization HTTPS origin.
+	OktaOrgUrl *string `json:"okta_org_url,omitempty"`
+
+	// PrivateJwk RSA private JWK for the Okta directory service app; sealed at rest. Omit to change only enabled state of an existing matching configuration.
+	PrivateJwk *string `json:"private_jwk,omitempty"`
 
 	// ServiceAccountJson Google service-account JSON with DWD; sealed at rest and never returned.
 	ServiceAccountJson *string `json:"service_account_json,omitempty"`
+
+	// SsoConnectionId Tested and enabled Okta SSO connection in this organization.
+	SsoConnectionId *openapi_types.UUID `json:"sso_connection_id,omitempty"`
 
 	// TenantId Entra tenant id; required for microsoft.
 	TenantId *string `json:"tenant_id,omitempty"`
@@ -3139,11 +3177,18 @@ type IdpSyncConfigRequest struct {
 
 // IdpSyncHealth defines model for IdpSyncHealth.
 type IdpSyncHealth struct {
+	ClientId      string                `json:"client_id"`
+	Enabled       bool                  `json:"enabled"`
 	LastSyncAt    *time.Time            `json:"last_sync_at,omitempty"`
 	LastSyncError *string               `json:"last_sync_error,omitempty"`
 	LastSyncOk    bool                  `json:"last_sync_ok"`
+	OktaOrgUrl    *string               `json:"okta_org_url,omitempty"`
 	Provider      IdpSyncHealthProvider `json:"provider"`
-	SyncHealth    string                `json:"sync_health"`
+
+	// ProvisioningAllowed New directory accounts and grants require an unexpired entitled licence; revocations continue when false.
+	ProvisioningAllowed bool                `json:"provisioning_allowed"`
+	SsoConnectionId     *openapi_types.UUID `json:"sso_connection_id,omitempty"`
+	SyncHealth          string              `json:"sync_health"`
 }
 
 // IdpSyncHealthProvider defines model for IdpSyncHealth.Provider.
@@ -3662,13 +3707,21 @@ type Meta struct {
 	SetupComplete *bool   `json:"setup_complete,omitempty"`
 
 	// SmtpConfigured Whether this deployment can send email at all. ⛔ False means invitations, password resets and email verification cannot be delivered — and invitations are the only way anyone joins. The screens that send mail say so BEFORE the operator acts, rather than after a recipient does not receive something.
-	SmtpConfigured *bool              `json:"smtp_configured,omitempty"`
-	SsoProviders   []MetaSsoProviders `json:"sso_providers"`
-	Upgrade        *UpgradeStatus     `json:"upgrade,omitempty"`
+	SmtpConfigured *bool `json:"smtp_configured,omitempty"`
+	SsoConnections *[]struct {
+		Id       openapi_types.UUID         `json:"id"`
+		Name     string                     `json:"name"`
+		Provider MetaSsoConnectionsProvider `json:"provider"`
+	} `json:"sso_connections,omitempty"`
+	SsoProviders []MetaSsoProviders `json:"sso_providers"`
+	Upgrade      *UpgradeStatus     `json:"upgrade,omitempty"`
 }
 
 // MetaEdition defines model for Meta.Edition.
 type MetaEdition string
+
+// MetaSsoConnectionsProvider defines model for Meta.SsoConnections.Provider.
+type MetaSsoConnectionsProvider string
 
 // MetaSsoProviders defines model for Meta.SsoProviders.
 type MetaSsoProviders string
@@ -4409,6 +4462,57 @@ type SsoConfigView struct {
 // SsoConfigViewProvider defines model for SsoConfigView.Provider.
 type SsoConfigViewProvider string
 
+// SsoConnection defines model for SsoConnection.
+type SsoConnection struct {
+	CallbackUrl string                `json:"callback_url"`
+	ClientId    string                `json:"client_id"`
+	Enabled     bool                  `json:"enabled"`
+	Id          openapi_types.UUID    `json:"id"`
+	IssuerUrl   string                `json:"issuer_url"`
+	LoginUrl    string                `json:"login_url"`
+	Name        string                `json:"name"`
+	OrgId       openapi_types.UUID    `json:"org_id"`
+	Provider    SsoConnectionProvider `json:"provider"`
+	Revision    int64                 `json:"revision"`
+	TestedAt    *time.Time            `json:"tested_at,omitempty"`
+	UpdatedAt   time.Time             `json:"updated_at"`
+	Verified    bool                  `json:"verified"`
+}
+
+// SsoConnectionProvider defines model for SsoConnection.Provider.
+type SsoConnectionProvider string
+
+// SsoConnectionActivation defines model for SsoConnectionActivation.
+type SsoConnectionActivation struct {
+	Enabled  bool  `json:"enabled"`
+	Revision int64 `json:"revision"`
+}
+
+// SsoConnectionList defines model for SsoConnectionList.
+type SsoConnectionList struct {
+	Items []SsoConnection `json:"items"`
+}
+
+// SsoConnectionRequest defines model for SsoConnectionRequest.
+type SsoConnectionRequest struct {
+	ClientId string `json:"client_id"`
+
+	// ClientSecret Omit to preserve an existing secret.
+	ClientSecret *string                      `json:"client_secret,omitempty"`
+	IssuerUrl    string                       `json:"issuer_url"`
+	Name         string                       `json:"name"`
+	Provider     SsoConnectionRequestProvider `json:"provider"`
+}
+
+// SsoConnectionRequestProvider defines model for SsoConnectionRequest.Provider.
+type SsoConnectionRequestProvider string
+
+// SsoConnectionTestRequest defines model for SsoConnectionTestRequest.
+type SsoConnectionTestRequest struct {
+	// LinkAccount Explicitly link the tested identity to the initiating account after verification.
+	LinkAccount bool `json:"link_account"`
+}
+
 // SsoRedirect defines model for SsoRedirect.
 type SsoRedirect struct {
 	RedirectUrl string `json:"redirect_url"`
@@ -4632,6 +4736,14 @@ type PollAgentRuntimeParams struct {
 type ChangePasswordJSONBody struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
+}
+
+// SsoConnectionCallbackParams defines parameters for SsoConnectionCallback.
+type SsoConnectionCallbackParams struct {
+	Code        *string `form:"code,omitempty" json:"code,omitempty"`
+	State       string  `form:"state" json:"state"`
+	Error       *string `form:"error,omitempty" json:"error,omitempty"`
+	TnxOidcFlow *string `form:"tnx_oidc_flow,omitempty" json:"tnx_oidc_flow,omitempty"`
 }
 
 // SsoCallbackParams defines parameters for SsoCallback.
@@ -5183,6 +5295,15 @@ type SetSiteDNSForwardJSONRequestBody = DNSForward
 // AddSiteSubnetJSONRequestBody defines body for AddSiteSubnet for application/json ContentType.
 type AddSiteSubnetJSONRequestBody = AddSiteSubnetRequest
 
+// SaveSsoConnectionJSONRequestBody defines body for SaveSsoConnection for application/json ContentType.
+type SaveSsoConnectionJSONRequestBody = SsoConnectionRequest
+
+// ActivateSsoConnectionJSONRequestBody defines body for ActivateSsoConnection for application/json ContentType.
+type ActivateSsoConnectionJSONRequestBody = SsoConnectionActivation
+
+// TestSsoConnectionJSONRequestBody defines body for TestSsoConnection for application/json ContentType.
+type TestSsoConnectionJSONRequestBody = SsoConnectionTestRequest
+
 // SetSsoConfigJSONRequestBody defines body for SetSsoConfig for application/json ContentType.
 type SetSsoConfigJSONRequestBody = SsoConfigRequest
 
@@ -5425,6 +5546,12 @@ type ClientInterface interface {
 	SignupWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	Signup(ctx context.Context, body SignupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SsoConnectionCallback request
+	SsoConnectionCallback(ctx context.Context, params *SsoConnectionCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartSsoConnection request
+	StartSsoConnection(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SsoCallback request
 	SsoCallback(ctx context.Context, provider SsoCallbackParamsProvider, params *SsoCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6292,6 +6419,30 @@ type ClientInterface interface {
 
 	AddSiteSubnet(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, body AddSiteSubnetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListSsoConnections request
+	ListSsoConnections(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAvailableSsoConnections request
+	ListAvailableSsoConnections(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SaveSsoConnectionWithBody request with any body
+	SaveSsoConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SaveSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body SaveSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ActivateSsoConnectionWithBody request with any body
+	ActivateSsoConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ActivateSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body ActivateSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LinkSsoConnection request
+	LinkSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestSsoConnectionWithBody request with any body
+	TestSsoConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSsoConfig request
 	GetSsoConfig(ctx context.Context, orgId openapi_types.UUID, provider string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -7058,6 +7209,30 @@ func (c *Client) SignupWithBody(ctx context.Context, contentType string, body io
 
 func (c *Client) Signup(ctx context.Context, body SignupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSignupRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SsoConnectionCallback(ctx context.Context, params *SsoConnectionCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSsoConnectionCallbackRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartSsoConnection(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartSsoConnectionRequest(c.Server, connectionId)
 	if err != nil {
 		return nil, err
 	}
@@ -10920,6 +11095,114 @@ func (c *Client) AddSiteSubnet(ctx context.Context, orgId openapi_types.UUID, si
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListSsoConnections(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSsoConnectionsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAvailableSsoConnections(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAvailableSsoConnectionsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SaveSsoConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSaveSsoConnectionRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SaveSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body SaveSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSaveSsoConnectionRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ActivateSsoConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewActivateSsoConnectionRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ActivateSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body ActivateSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewActivateSsoConnectionRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) LinkSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLinkSsoConnectionRequest(c.Server, orgId, connectionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestSsoConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestSsoConnectionRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestSsoConnection(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestSsoConnectionRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetSsoConfig(ctx context.Context, orgId openapi_types.UUID, provider string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSsoConfigRequest(c.Server, orgId, provider)
 	if err != nil {
@@ -12459,6 +12742,134 @@ func NewSignupRequestWithBody(server string, contentType string, body io.Reader)
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSsoConnectionCallbackRequest generates requests for SsoConnectionCallback
+func NewSsoConnectionCallbackRequest(server string, params *SsoConnectionCallbackParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/sso-connections/callback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Code != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "code", runtime.ParamLocationQuery, *params.Code); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, params.State); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.Error != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "error", runtime.ParamLocationQuery, *params.Error); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.TnxOidcFlow != nil {
+			var cookieParam0 string
+
+			cookieParam0, err = runtime.StyleParamWithLocation("simple", true, "tnx_oidc_flow", runtime.ParamLocationCookie, *params.TnxOidcFlow)
+			if err != nil {
+				return nil, err
+			}
+
+			cookie0 := &http.Cookie{
+				Name:  "tnx_oidc_flow",
+				Value: cookieParam0,
+			}
+			req.AddCookie(cookie0)
+		}
+	}
+	return req, nil
+}
+
+// NewStartSsoConnectionRequest generates requests for StartSsoConnection
+func NewStartSsoConnectionRequest(server string, connectionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/auth/sso-connections/%s/start", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -23171,6 +23582,277 @@ func NewAddSiteSubnetRequestWithBody(server string, orgId openapi_types.UUID, si
 	return req, nil
 }
 
+// NewListSsoConnectionsRequest generates requests for ListSsoConnections
+func NewListSsoConnectionsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sso-connections", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAvailableSsoConnectionsRequest generates requests for ListAvailableSsoConnections
+func NewListAvailableSsoConnectionsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sso-connections/available", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSaveSsoConnectionRequest calls the generic SaveSsoConnection builder with application/json body
+func NewSaveSsoConnectionRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body SaveSsoConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSaveSsoConnectionRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewSaveSsoConnectionRequestWithBody generates requests for SaveSsoConnection with any type of body
+func NewSaveSsoConnectionRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sso-connections/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewActivateSsoConnectionRequest calls the generic ActivateSsoConnection builder with application/json body
+func NewActivateSsoConnectionRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body ActivateSsoConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewActivateSsoConnectionRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewActivateSsoConnectionRequestWithBody generates requests for ActivateSsoConnection with any type of body
+func NewActivateSsoConnectionRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sso-connections/%s/activation", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewLinkSsoConnectionRequest generates requests for LinkSsoConnection
+func NewLinkSsoConnectionRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sso-connections/%s/link", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTestSsoConnectionRequest calls the generic TestSsoConnection builder with application/json body
+func NewTestSsoConnectionRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestSsoConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestSsoConnectionRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewTestSsoConnectionRequestWithBody generates requests for TestSsoConnection with any type of body
+func NewTestSsoConnectionRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sso-connections/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetSsoConfigRequest generates requests for GetSsoConfig
 func NewGetSsoConfigRequest(server string, orgId openapi_types.UUID, provider string) (*http.Request, error) {
 	var err error
@@ -23580,6 +24262,12 @@ type ClientWithResponsesInterface interface {
 	SignupWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SignupResponse, error)
 
 	SignupWithResponse(ctx context.Context, body SignupJSONRequestBody, reqEditors ...RequestEditorFn) (*SignupResponse, error)
+
+	// SsoConnectionCallbackWithResponse request
+	SsoConnectionCallbackWithResponse(ctx context.Context, params *SsoConnectionCallbackParams, reqEditors ...RequestEditorFn) (*SsoConnectionCallbackResponse, error)
+
+	// StartSsoConnectionWithResponse request
+	StartSsoConnectionWithResponse(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*StartSsoConnectionResponse, error)
 
 	// SsoCallbackWithResponse request
 	SsoCallbackWithResponse(ctx context.Context, provider SsoCallbackParamsProvider, params *SsoCallbackParams, reqEditors ...RequestEditorFn) (*SsoCallbackResponse, error)
@@ -24446,6 +25134,30 @@ type ClientWithResponsesInterface interface {
 	AddSiteSubnetWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddSiteSubnetResponse, error)
 
 	AddSiteSubnetWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, body AddSiteSubnetJSONRequestBody, reqEditors ...RequestEditorFn) (*AddSiteSubnetResponse, error)
+
+	// ListSsoConnectionsWithResponse request
+	ListSsoConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSsoConnectionsResponse, error)
+
+	// ListAvailableSsoConnectionsWithResponse request
+	ListAvailableSsoConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAvailableSsoConnectionsResponse, error)
+
+	// SaveSsoConnectionWithBodyWithResponse request with any body
+	SaveSsoConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SaveSsoConnectionResponse, error)
+
+	SaveSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body SaveSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*SaveSsoConnectionResponse, error)
+
+	// ActivateSsoConnectionWithBodyWithResponse request with any body
+	ActivateSsoConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ActivateSsoConnectionResponse, error)
+
+	ActivateSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body ActivateSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*ActivateSsoConnectionResponse, error)
+
+	// LinkSsoConnectionWithResponse request
+	LinkSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*LinkSsoConnectionResponse, error)
+
+	// TestSsoConnectionWithBodyWithResponse request with any body
+	TestSsoConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestSsoConnectionResponse, error)
+
+	TestSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*TestSsoConnectionResponse, error)
 
 	// GetSsoConfigWithResponse request
 	GetSsoConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, provider string, reqEditors ...RequestEditorFn) (*GetSsoConfigResponse, error)
@@ -25335,6 +26047,51 @@ func (r SignupResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SignupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SsoConnectionCallbackResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SsoConnectionCallbackResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SsoConnectionCallbackResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StartSsoConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SsoRedirect
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r StartSsoConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartSsoConnectionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -30458,6 +31215,144 @@ func (r AddSiteSubnetResponse) StatusCode() int {
 	return 0
 }
 
+type ListSsoConnectionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SsoConnectionList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSsoConnectionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSsoConnectionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAvailableSsoConnectionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SsoConnectionList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAvailableSsoConnectionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAvailableSsoConnectionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SaveSsoConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SsoConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SaveSsoConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SaveSsoConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ActivateSsoConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SsoConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ActivateSsoConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ActivateSsoConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type LinkSsoConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SsoRedirect
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r LinkSsoConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LinkSsoConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestSsoConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *SsoRedirect
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestSsoConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestSsoConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetSsoConfigResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -31112,6 +32007,24 @@ func (c *ClientWithResponses) SignupWithResponse(ctx context.Context, body Signu
 		return nil, err
 	}
 	return ParseSignupResponse(rsp)
+}
+
+// SsoConnectionCallbackWithResponse request returning *SsoConnectionCallbackResponse
+func (c *ClientWithResponses) SsoConnectionCallbackWithResponse(ctx context.Context, params *SsoConnectionCallbackParams, reqEditors ...RequestEditorFn) (*SsoConnectionCallbackResponse, error) {
+	rsp, err := c.SsoConnectionCallback(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSsoConnectionCallbackResponse(rsp)
+}
+
+// StartSsoConnectionWithResponse request returning *StartSsoConnectionResponse
+func (c *ClientWithResponses) StartSsoConnectionWithResponse(ctx context.Context, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*StartSsoConnectionResponse, error) {
+	rsp, err := c.StartSsoConnection(ctx, connectionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartSsoConnectionResponse(rsp)
 }
 
 // SsoCallbackWithResponse request returning *SsoCallbackResponse
@@ -33906,6 +34819,84 @@ func (c *ClientWithResponses) AddSiteSubnetWithResponse(ctx context.Context, org
 	return ParseAddSiteSubnetResponse(rsp)
 }
 
+// ListSsoConnectionsWithResponse request returning *ListSsoConnectionsResponse
+func (c *ClientWithResponses) ListSsoConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSsoConnectionsResponse, error) {
+	rsp, err := c.ListSsoConnections(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSsoConnectionsResponse(rsp)
+}
+
+// ListAvailableSsoConnectionsWithResponse request returning *ListAvailableSsoConnectionsResponse
+func (c *ClientWithResponses) ListAvailableSsoConnectionsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAvailableSsoConnectionsResponse, error) {
+	rsp, err := c.ListAvailableSsoConnections(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAvailableSsoConnectionsResponse(rsp)
+}
+
+// SaveSsoConnectionWithBodyWithResponse request with arbitrary body returning *SaveSsoConnectionResponse
+func (c *ClientWithResponses) SaveSsoConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SaveSsoConnectionResponse, error) {
+	rsp, err := c.SaveSsoConnectionWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSaveSsoConnectionResponse(rsp)
+}
+
+func (c *ClientWithResponses) SaveSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body SaveSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*SaveSsoConnectionResponse, error) {
+	rsp, err := c.SaveSsoConnection(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSaveSsoConnectionResponse(rsp)
+}
+
+// ActivateSsoConnectionWithBodyWithResponse request with arbitrary body returning *ActivateSsoConnectionResponse
+func (c *ClientWithResponses) ActivateSsoConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ActivateSsoConnectionResponse, error) {
+	rsp, err := c.ActivateSsoConnectionWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseActivateSsoConnectionResponse(rsp)
+}
+
+func (c *ClientWithResponses) ActivateSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body ActivateSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*ActivateSsoConnectionResponse, error) {
+	rsp, err := c.ActivateSsoConnection(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseActivateSsoConnectionResponse(rsp)
+}
+
+// LinkSsoConnectionWithResponse request returning *LinkSsoConnectionResponse
+func (c *ClientWithResponses) LinkSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*LinkSsoConnectionResponse, error) {
+	rsp, err := c.LinkSsoConnection(ctx, orgId, connectionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLinkSsoConnectionResponse(rsp)
+}
+
+// TestSsoConnectionWithBodyWithResponse request with arbitrary body returning *TestSsoConnectionResponse
+func (c *ClientWithResponses) TestSsoConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestSsoConnectionResponse, error) {
+	rsp, err := c.TestSsoConnectionWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestSsoConnectionResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestSsoConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestSsoConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*TestSsoConnectionResponse, error) {
+	rsp, err := c.TestSsoConnection(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestSsoConnectionResponse(rsp)
+}
+
 // GetSsoConfigWithResponse request returning *GetSsoConfigResponse
 func (c *ClientWithResponses) GetSsoConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, provider string, reqEditors ...RequestEditorFn) (*GetSsoConfigResponse, error) {
 	rsp, err := c.GetSsoConfig(ctx, orgId, provider, reqEditors...)
@@ -35208,6 +36199,65 @@ func ParseSignupResponse(rsp *http.Response) (*SignupResponse, error) {
 			return nil, err
 		}
 		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSsoConnectionCallbackResponse parses an HTTP response from a SsoConnectionCallbackWithResponse call
+func ParseSsoConnectionCallbackResponse(rsp *http.Response) (*SsoConnectionCallbackResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SsoConnectionCallbackResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartSsoConnectionResponse parses an HTTP response from a StartSsoConnectionWithResponse call
+func ParseStartSsoConnectionResponse(rsp *http.Response) (*StartSsoConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartSsoConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SsoRedirect
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -42355,6 +43405,204 @@ func ParseAddSiteSubnetResponse(rsp *http.Response) (*AddSiteSubnetResponse, err
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListSsoConnectionsResponse parses an HTTP response from a ListSsoConnectionsWithResponse call
+func ParseListSsoConnectionsResponse(rsp *http.Response) (*ListSsoConnectionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSsoConnectionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SsoConnectionList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAvailableSsoConnectionsResponse parses an HTTP response from a ListAvailableSsoConnectionsWithResponse call
+func ParseListAvailableSsoConnectionsResponse(rsp *http.Response) (*ListAvailableSsoConnectionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAvailableSsoConnectionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SsoConnectionList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSaveSsoConnectionResponse parses an HTTP response from a SaveSsoConnectionWithResponse call
+func ParseSaveSsoConnectionResponse(rsp *http.Response) (*SaveSsoConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SaveSsoConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SsoConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseActivateSsoConnectionResponse parses an HTTP response from a ActivateSsoConnectionWithResponse call
+func ParseActivateSsoConnectionResponse(rsp *http.Response) (*ActivateSsoConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ActivateSsoConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SsoConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseLinkSsoConnectionResponse parses an HTTP response from a LinkSsoConnectionWithResponse call
+func ParseLinkSsoConnectionResponse(rsp *http.Response) (*LinkSsoConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LinkSsoConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SsoRedirect
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestSsoConnectionResponse parses an HTTP response from a TestSsoConnectionWithResponse call
+func ParseTestSsoConnectionResponse(rsp *http.Response) (*TestSsoConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestSsoConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SsoRedirect
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

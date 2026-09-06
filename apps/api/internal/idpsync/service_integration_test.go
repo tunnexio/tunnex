@@ -17,6 +17,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/idpsync"
 	"github.com/tunnexio/tunnex/apps/api/internal/idpsyncspec"
+	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 )
 
@@ -69,7 +70,7 @@ func testSealer(t *testing.T) *crypto.Sealer {
 }
 
 func newService(t *testing.T, pool *pgxpool.Pool) *idpsync.Service {
-	return idpsync.NewService(pool, testSealer(t), &nopPusher{}, nopDeprov{}, testLogger())
+	return idpsync.NewService(pool, testSealer(t), &nopPusher{}, nopDeprov{}, testLogger()).WithLicence(licence.NewTestManager("starter", time.Now().Add(time.Hour)))
 }
 
 // D1 refuse-unless-empty: a POPULATED manual group cannot be converted to directory sync. This is
@@ -228,7 +229,7 @@ func TestIdpAccessProvenanceOnlySourceAndPreservation(t *testing.T) {
 		exec(t, pool, `INSERT INTO user_groups (id,org_id,name,origin,idp_provider,idp_group_id) VALUES ($1,$2,$3,'idp_sync','microsoft',$4)`, gid, org, "g-"+gid.String()[:8], gid.String())
 	}
 	deprov := &recordingDeprov{}
-	svc := idpsync.NewService(pool, testSealer(t), &nopPusher{}, deprov, testLogger())
+	svc := idpsync.NewService(pool, testSealer(t), &nopPusher{}, deprov, testLogger()).WithLicence(licence.NewTestManager("starter", time.Now().Add(time.Hour)))
 	// Only-source removal revokes this org, while the other org remains untouched.
 	exec(t, pool, `DELETE FROM membership_access_sources WHERE org_id=$1 AND user_id=$2`, org, user)
 	exec(t, pool, `INSERT INTO group_members (org_id,group_id,user_id,origin) VALUES ($1,$2,$3,'idp_sync')`, org, groupA, user)

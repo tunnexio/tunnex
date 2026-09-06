@@ -20,11 +20,13 @@ import (
 // it serves discovery + JWKS and mints RS256-signed ID tokens the test controls.
 // ~150 lines, reused by S2.4 (Microsoft) and S2.5 (JIT provisioning).
 type fakeIdP struct {
-	server   *httptest.Server
-	key      *rsa.PrivateKey
-	kid      string
-	clientID string
-	nextTok  string // the id_token the token endpoint returns next
+	server        *httptest.Server
+	key           *rsa.PrivateKey
+	kid           string
+	clientID      string
+	userinfo      map[string]any
+	userinfoCalls int
+	nextTok       string // the id_token the token endpoint returns next
 }
 
 func newFakeIdP(t *testing.T, clientID string) *fakeIdP {
@@ -40,6 +42,7 @@ func newFakeIdP(t *testing.T, clientID string) *fakeIdP {
 		writeJSON(w, map[string]any{
 			"issuer":                                f.issuer(),
 			"authorization_endpoint":                f.issuer() + "/auth",
+			"userinfo_endpoint":                     f.issuer() + "/userinfo",
 			"token_endpoint":                        f.issuer() + "/token",
 			"jwks_uri":                              f.issuer() + "/jwks",
 			"id_token_signing_alg_values_supported": []string{"RS256"},
@@ -57,6 +60,14 @@ func newFakeIdP(t *testing.T, clientID string) *fakeIdP {
 			"expires_in":   3600,
 			"id_token":     f.nextTok,
 		})
+	})
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
+		f.userinfoCalls++
+		if r.Header.Get("Authorization") != "Bearer fake-access-token" {
+			w.WriteHeader(401)
+			return
+		}
+		writeJSON(w, f.userinfo)
 	})
 	f.server = httptest.NewServer(mux)
 	t.Cleanup(f.server.Close)

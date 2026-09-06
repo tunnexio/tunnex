@@ -71,7 +71,7 @@ func (s *MembershipService) WithDevicePusher(p DevicePusher) *MembershipService 
 // session. It refuses to deactivate the sole owner of any org (last-owner
 // invariant) so an org can never be orphaned.
 func (s *MembershipService) DeactivateMember(ctx context.Context, actor, orgID, targetUserID uuid.UUID) error {
-	_, err := s.deactivate(ctx, orgID, targetUserID, func(q *sqlc.Queries) error {
+	_, err := s.deactivate(ctx, orgID, targetUserID, false, func(q *sqlc.Queries) error {
 		return writeAudit(ctx, q, orgID, &actor, "user.deactivated", "user", targetUserID.String(), map[string]any{})
 	})
 	return err
@@ -84,7 +84,7 @@ func (s *MembershipService) DeactivateMember(ctx context.Context, actor, orgID, 
 // Returns didAct=false when the user was ALREADY deactivated (idempotent no-op) so a still-listed
 // disabled member doesn't re-audit + re-push on every poll (#7).
 func (s *MembershipService) DeactivateMemberBySync(ctx context.Context, orgID, targetUserID uuid.UUID, cause string) (bool, error) {
-	return s.deactivate(ctx, orgID, targetUserID, func(q *sqlc.Queries) error {
+	return s.deactivate(ctx, orgID, targetUserID, true, func(q *sqlc.Queries) error {
 		return writeSystemAudit(ctx, q, orgID, "idp-sync", "user.deactivated", "user", targetUserID.String(),
 			map[string]any{"cause": cause})
 	})
@@ -130,9 +130,17 @@ func (s *MembershipService) RevokeOrgAccessBySync(ctx context.Context, orgID, ta
 // and system callers attribute the SAME action to different, legible actors. Returns didAct=false
 // (no error) when the user is ALREADY deactivated — an idempotent no-op: no second audit row, no
 // redundant sweep/push.
-func (s *MembershipService) deactivate(ctx context.Context, orgID, targetUserID uuid.UUID, writeAuditFn func(*sqlc.Queries) error) (bool, error) {
-	// target must belong to the acting org (authorization scope).
-	if _, err := s.q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: orgID, UserID: targetUserID}); err != nil {
+func (s *MembershipService) deactivate(ctx context.Context, orgID, targetUserID uuid.UUID, includeRevoked bool, writeAuditFn func(*sqlc.Queries) error) (bool, error) {
+	// Directory reconciliation can revoke org access before this disabled-user sweep.
+	// Human actions remain scoped to active membership; sync still requires a retained
+	// membership in this exact organization.
+	var membershipErr error
+	if includeRevoked {
+		_, membershipErr = s.q.GetMembershipIncludingRevoked(ctx, sqlc.GetMembershipIncludingRevokedParams{OrgID: orgID, UserID: targetUserID})
+	} else {
+		_, membershipErr = s.q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: orgID, UserID: targetUserID})
+	}
+	if err := membershipErr; err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, apierr.NotFound("member_not_found", "member not found")
 		}

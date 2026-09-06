@@ -81,3 +81,5 @@ walk-artifacts/**/*.key
 
 # S14.1: emitted design tokens (built from packages/shared/src/tokens.ts by `build:tokens`)
 /packages/shared/dist/
+
+walk-artifacts/sso-improvement/local-runtime/

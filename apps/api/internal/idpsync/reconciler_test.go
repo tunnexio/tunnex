@@ -431,7 +431,7 @@ func TestReconcile_NoopAddDoesNotPush(t *testing.T) {
 	}
 }
 
-// Directory sync supports the two managed providers; unknown providers are rejected.
+// Directory sync supports the managed providers; unknown providers are rejected.
 func TestSupportedProvider(t *testing.T) {
 	if err := supportedProvider("microsoft"); err != nil {
 		t.Fatalf("microsoft must be supported, got %v", err)
@@ -439,7 +439,10 @@ func TestSupportedProvider(t *testing.T) {
 	if err := supportedProvider("google"); err != nil {
 		t.Fatalf("google must be supported, got %v", err)
 	}
-	for _, p := range []string{"okta", ""} {
+	if err := supportedProvider("okta"); err != nil {
+		t.Fatalf("okta must be supported: %v", err)
+	}
+	for _, p := range []string{"oidc", ""} {
 		if err := supportedProvider(p); err == nil {
 			t.Errorf("#6: provider %q must be rejected at config time", p)
 		}

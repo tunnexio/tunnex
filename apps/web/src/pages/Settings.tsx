@@ -1,3 +1,5 @@
+import { SsoSelfLink } from "../components/SsoSelfLink";
+import { SsoConnections } from "../components/SsoConnections";
 import "../network-workspaces.css";
 import "../settings-workspace.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -74,6 +76,8 @@ import { AuditLogRetentionSettings } from "../components/AuditLogRetentionSettin
 
 const PROVIDERS = ["google", "microsoft"] as const;
 type Provider = (typeof PROVIDERS)[number];
+const DIRECTORY_PROVIDERS = [...PROVIDERS, "okta"] as const;
+const directoryLabel = (p: string) => p === "okta" ? "Okta" : providerLabel(p as Provider);
 type SsoView = SsoConfigView;
 
 export default function Settings() {
@@ -307,9 +311,11 @@ export default function Settings() {
               `divide-y`; a wrapping div collapses all of them into one child and every divider vanishes,
               which is what made these rows float with no separation. */}
           <MfaSettings />
+          {org && <SsoSelfLink key={`link-${org.id}`} orgId={org.id} />}
 
             {org && isAdmin && meta?.edition === "enterprise" && (
-              <SsoSettings orgId={org.id} canEdit={emailVerified} />
+              <><SsoSettings orgId={org.id} canEdit={emailVerified} />
+              <SsoConnections key={org.id} orgId={org.id} canEdit={emailVerified} /></>
             )}
             {org && isAdmin && meta?.edition !== "enterprise" && (
               <SettingRow
@@ -348,9 +354,9 @@ export default function Settings() {
         {org && active === "directory" && (
           <SettingGroup id="directory" title="Directory sync"
             tabpanel>
-            {PROVIDERS.map((pv) => (
+            {DIRECTORY_PROVIDERS.map((pv) => (
               <IdpSyncSection
-                key={pv}
+                key={`${org.id}:${pv}`}
                 orgId={org.id}
                 provider={pv}
                 role={myRole}
@@ -1096,22 +1102,25 @@ function PoolSection({
 // ⛔ GATED ON POLICY PERMISSIONS, NOT ORG ONES — measured from the handlers, not from the screen
 // it lives on. An operator with org:update and without policy:manage sees Settings and does not
 // see this panel, rather than seeing a control that can only ever 403.
-function IdpSyncSection({
+export function IdpSyncSection({
   orgId,
   provider,
   role,
   isEnterprise,
   canEdit,
+  directoryAPI = api,
 }: {
   orgId: string;
-  provider: Provider;
+  provider: (typeof DIRECTORY_PROVIDERS)[number];
   role: Role | undefined;
   isEnterprise: boolean;
   canEdit: boolean;
+  directoryAPI?: typeof api;
 }) {
   const gate = idpGate({ role: role ?? null, isEnterprise });
   const [state, setState] = useState<IdpConfigState>({ kind: "unknown" });
   const [groups, setGroups] = useState<UserGroup[]>([]);
+  const mutationPending = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -1125,14 +1134,39 @@ function IdpSyncSection({
   const [unmapping, setUnmapping] = useState<UserGroup | null>(null);
   const [confirmText, setConfirmText] = useState("");
 
+  const [oktaOrgUrl, setOktaOrgUrl] = useState("");
+  const [privateJwk, setPrivateJwk] = useState("");
+  const [connectionId, setConnectionId] = useState("");
+  const [enableImport, setEnableImport] = useState(false);
+  const [oktaConnections, setOktaConnections] = useState<Array<{ id: string; name: string; issuer_url: string; enabled: boolean }>>([]);
+  const [connectionLoad, setConnectionLoad] = useState<"loading" | "ready" | "error">("loading");
+  const [connectionRetry, setConnectionRetry] = useState(0);
   const ready = gate.kind === "ready";
+  useEffect(() => {
+    if (!ready || provider !== "okta") return;
+    let cancelled = false;
+    setConnectionLoad("loading");
+    void directoryAPI.GET("/api/v1/organizations/{orgId}/sso-connections", { params: { path: { orgId } } }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data) { setConnectionLoad("error"); return; }
+      setOktaConnections(data.items.filter((c) => c.provider === "okta"));
+      setConnectionLoad("ready");
+    }).catch(() => { if (!cancelled) setConnectionLoad("error"); });
+    return () => { cancelled = true; };
+  }, [orgId, provider, ready, connectionRetry]);
 
   const load = async (isCancelled: () => boolean) => {
-    const { data, error } = await api.GET(
+    const { data, error } = await directoryAPI.GET(
       "/api/v1/organizations/{orgId}/idp-sync/{provider}/health",
       { params: { path: { orgId, provider } } },
     );
     if (isCancelled()) return;
+    if (provider === "okta" && data) {
+      setEnableImport(data.enabled);
+      setClientId(data.client_id);
+      setOktaOrgUrl(data.okta_org_url ?? "");
+      setConnectionId(data.sso_connection_id ?? "");
+    }
     // ⛔ NOT CONFIGURED IS A STATE; A FAILED READ IS NOT. The server answers 404 with a stable
     // `idp_sync_not_configured` (service.go:141), so existence is knowable and only a NON-404
     // failure is `unknown`. Third instance of this shape, first one built right up front.
@@ -1143,7 +1177,7 @@ function IdpSyncSection({
         health: (data as IdpHealth | undefined) ?? null,
       }),
     );
-    const { data: gs } = await api.GET("/api/v1/organizations/{orgId}/groups", {
+    const { data: gs } = await directoryAPI.GET("/api/v1/organizations/{orgId}/groups", {
       params: { path: { orgId } },
     });
     if (!isCancelled() && gs) setGroups(gs as UserGroup[]);
@@ -1164,10 +1198,10 @@ function IdpSyncSection({
     return (
       <Card>
         <h2 className="text-sm font-semibold text-slate-300">
-          Directory sync — {providerLabel(provider)}
+          Directory sync — {directoryLabel(provider)}
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Syncing groups from {providerLabel(provider)} is a Tunnex Enterprise
+          Syncing groups from {directoryLabel(provider)} is a Tunnex Enterprise
           feature.
         </p>
       </Card>
@@ -1176,11 +1210,19 @@ function IdpSyncSection({
   const mapped = mappedGroups(groups, provider);
   const emptyManual = groups.filter((g) => (g.origin ?? "manual") === "manual");
 
+  async function mutate(kind: string, action: () => Promise<void>) {
+    if (mutationPending.current) return;
+    mutationPending.current = true;
+    setBusy(kind); setErr(null);
+    try { await action(); }
+    catch { setErr("Could not complete the directory request. Check your connection and retry."); }
+    finally { mutationPending.current = false; setBusy(null); }
+  }
+
   async function saveConfig(e: FormEvent) {
     e.preventDefault();
-    setBusy("config");
-    setErr(null);
-    const { error } = await api.PUT(
+    return mutate("config", async () => {
+    const { error } = await directoryAPI.PUT(
       "/api/v1/organizations/{orgId}/idp-sync/{provider}",
       {
         params: { path: { orgId, provider } },
@@ -1190,63 +1232,76 @@ function IdpSyncSection({
           tenant_id: tenantId || undefined,
           service_account_json: serviceAccountJSON || undefined,
           delegated_admin_email: delegatedAdminEmail || undefined,
-          enabled: true,
+          enabled: provider === "okta" ? enableImport : true,
+          okta_org_url: provider === "okta" ? oktaOrgUrl : undefined,
+          private_jwk: provider === "okta" ? privateJwk : undefined,
+          sso_connection_id: provider === "okta" ? connectionId : undefined,
         },
       },
     );
-    setBusy(null);
     if (error) return setErr(idpErrorCopy(apiErrorCode(error)));
     setClientSecret(""); // never keep a secret in page state after the write
     setServiceAccountJSON("");
+    setPrivateJwk("");
     setShowForm(false);
     await load(() => false);
+    });
+  }
+
+  async function toggleOkta() {
+    if (state.kind !== "configured") return;
+    return mutate("activation", async () => {
+      const { error } = await directoryAPI.PUT("/api/v1/organizations/{orgId}/idp-sync/{provider}", {
+        params: { path: { orgId, provider } },
+        body: { client_id: state.health.client_id ?? "", client_secret: "", okta_org_url: state.health.okta_org_url ?? "", sso_connection_id: state.health.sso_connection_id, enabled: !state.health.enabled },
+      });
+      if (error) { setErr(idpErrorCopy(apiErrorCode(error))); return; }
+      await load(() => false);
+    });
   }
 
   async function trigger() {
-    setBusy("trigger");
-    setErr(null);
-    const { data, error } = await api.POST(
+    return mutate("trigger", async () => {
+    const { data, error } = await directoryAPI.POST(
       "/api/v1/organizations/{orgId}/idp-sync/{provider}/trigger",
       { params: { path: { orgId, provider } } },
     );
-    setBusy(null);
     if (error) return setErr(idpErrorCopy(apiErrorCode(error)));
     // ⛔ RENDER WHAT THE SERVER RETURNED, NOT "SYNC COMPLETE". Trigger answers with the resulting
     // HEALTH SNAPSHOT, so a sync that ran and FAILED comes back here as degraded/escalated. A
     // success toast would state an outcome the response contradicts.
     if (data) setState({ kind: "configured", health: data as IdpHealth });
+    });
   }
 
   async function mapGroup(e: FormEvent) {
     e.preventDefault();
-    setBusy("map");
-    setErr(null);
-    const { error } = await api.POST(
+    return mutate("map", async () => {
+    const { error } = await directoryAPI.POST(
       "/api/v1/organizations/{orgId}/idp-sync/{provider}/groups",
       {
         params: { path: { orgId, provider } },
         body: { idp_group_id: idpGroupId, name: newName || undefined },
       },
     );
-    setBusy(null);
     if (error) return setErr(idpErrorCopy(apiErrorCode(error)));
     setIdpGroupId("");
     setNewName("");
     await load(() => false);
+    });
   }
 
   async function unmap(g: UserGroup) {
-    setBusy("unmap");
-    setErr(null);
-    const { error } = await api.DELETE(
+    return mutate("unmap", async () => {
+    const { error } = await directoryAPI.DELETE(
       "/api/v1/organizations/{orgId}/idp-sync/{provider}/groups/{groupId}",
       { params: { path: { orgId, provider, groupId: g.id } } },
     );
-    setBusy(null);
     setUnmapping(null);
     setConfirmText("");
     if (error) return setErr(idpErrorCopy(apiErrorCode(error)));
     await load(() => false);
+    });
   }
 
   const tier = state.kind === "configured" ? syncTier(state.health) : null;
@@ -1258,8 +1313,8 @@ function IdpSyncSection({
     // Save. So the dialog's only action is Close; every control inside keeps its own confirmation, and
     // nothing pretends the panel is a single form that can be "saved".
     <SettingDialogRow
-      label={providerLabel(provider)}
-      description={`Sync groups for access using ${providerLabel(provider)}.`}
+      label={directoryLabel(provider)}
+      description={`Sync groups for access using ${directoryLabel(provider)}.`}
       value={
         copy ? (
           // ⚠ THE TESTID STAYS PUT. `idp-tier-<provider>` is the seam S14.14's tests read to prove the three
@@ -1278,7 +1333,7 @@ function IdpSyncSection({
         )
       }
       actionLabel={state.kind === "configured" ? "Manage" : "Configure"}
-      dialogTitle={`Directory sync — ${providerLabel(provider)}`}
+      dialogTitle={`Directory sync — ${directoryLabel(provider)}`}
       error={err}
       actions={(close) => (
         <Button variant="ghost" onClick={close}>
@@ -1317,13 +1372,13 @@ function IdpSyncSection({
       {state.kind === "unconfigured" && !showForm && (
         <>
           <p className="mt-1 text-xs text-slate-500">
-            Not configured. Connect {providerLabel(provider)} to sync directory
+            Not configured. Connect {directoryLabel(provider)} to sync directory
             groups into Tunnex groups.
           </p>
           <Button
             type="button"
             className="mt-3"
-            disabled={!canEdit}
+            disabled={!canEdit || busy !== null}
             onClick={() => setShowForm(true)}
           >
             Configure
@@ -1331,6 +1386,20 @@ function IdpSyncSection({
         </>
       )}
 
+      {state.kind === "configured" && state.health.provisioning_allowed === false && (
+        <div role="status" className="rounded border border-amber-700/40 bg-amber-950/20 p-3 text-sm text-amber-200">
+          <p className="font-semibold">User provisioning paused — licence required</p>
+          <p className="mt-1">New user imports and group access grants require a valid licence or active trial. Directory removals and disabled-user revocations continue.</p>
+        </div>
+      )}
+
+      {state.kind === "configured" && provider === "okta" && (
+        <div className="space-y-2 text-sm">
+          <p>Directory sync: {state.health.enabled ? "Enabled" : "Paused by administrator"}</p>
+          <p className="text-xs text-slate-400">Pausing stops directory polling, including revocations. Licence expiry only pauses additions and does not pause polling.</p>
+          <Button disabled={!canEdit || busy !== null} onClick={() => void toggleOkta()}>{state.health.enabled ? "Pause directory sync" : "Resume directory sync"}</Button>
+        </div>
+      )}
       {state.kind === "configured" && copy && (
         <>
           <p
@@ -1356,14 +1425,14 @@ function IdpSyncSection({
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               type="button"
-              disabled={!canEdit || busy === "trigger"}
+              disabled={!canEdit || busy !== null}
               onClick={() => void trigger()}
             >
               {busy === "trigger" ? "Syncing…" : "Sync now"}
             </Button>
             <Button
               type="button"
-              disabled={!canEdit}
+              disabled={!canEdit || busy !== null}
               onClick={() => setShowForm(true)}
             >
               Replace credential
@@ -1378,21 +1447,19 @@ function IdpSyncSection({
               the secret fingerprint come back only from the PUT that wrote them. So the form is
               never pre-filled from the server and does not pretend to show what is stored. */}
           <p className="text-xs text-slate-600">
-            Credentials are set, not readable back — this server serves no read
-            for the directory-sync credential, so the fields below always start
-            empty even when a credential is stored.
+            {provider === "okta" ? "The private signing key is never returned. Replacing it preserves the current sync state and directory binding." : "Credentials are set, not readable back — this server serves no read for the directory-sync credential, so the fields below always start empty even when a credential is stored."}
           </p>
-          {provider === "microsoft" && <Field label={`${providerLabel(provider)} directory client ID`}>
+          {(provider === "microsoft" || provider === "okta") && <Field label={`${directoryLabel(provider)} directory client ID`}>
             <Input
               name={`${provider}-idp-client-id`}
               autoComplete="off"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               required
-              disabled={!canEdit}
+              disabled={!canEdit || busy !== null}
             />
           </Field>}
-          {provider === "microsoft" && <Field label={`${providerLabel(provider)} directory client secret`}>
+          {provider === "microsoft" && <Field label={`${directoryLabel(provider)} directory client secret`}>
             <Input
               type="password"
               name={`${provider}-idp-client-secret`}
@@ -1400,7 +1467,7 @@ function IdpSyncSection({
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
               required
-              disabled={!canEdit}
+              disabled={!canEdit || busy !== null}
               placeholder="••••••••"
             />
           </Field>}
@@ -1411,10 +1478,26 @@ function IdpSyncSection({
                 autoComplete="off"
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
-                disabled={!canEdit}
+                disabled={!canEdit || busy !== null}
               />
             </Field>
           )}
+          {provider === "okta" && <>
+            <p className="text-sm text-slate-400">Import active users from mapped Okta groups as members. New imported users sign in directly with Okta. Existing account conflicts require explicit account linking.</p>
+            {connectionLoad === "loading" && <p role="status">Loading Okta connections…</p>}
+            {connectionLoad === "error" && <div role="alert">Could not load Okta connections. <Button type="button" onClick={() => setConnectionRetry((v) => v + 1)}>Retry connections</Button></div>}
+            <Field label="Okta SSO connection">
+              <select className="w-full rounded border border-white/10 bg-ink-950 p-2" required value={connectionId} disabled={!canEdit || busy !== null || state.kind === "configured" || connectionLoad !== "ready"} onChange={(e) => { setConnectionId(e.target.value); const c = oktaConnections.find((c) => c.id === e.target.value); if (c) setOktaOrgUrl(new URL(c.issuer_url).origin); }}>
+                <option value="">Select a tested, enabled connection</option>
+                {oktaConnections.map((c) => <option key={c.id} value={c.id} disabled={!c.enabled && c.id !== connectionId}>{c.name}{c.enabled ? "" : " (disabled)"}</option>)}
+              </select>
+            </Field>
+            <Field label="Okta organization URL"><Input required value={oktaOrgUrl} readOnly placeholder="https://company.okta.com" /></Field>
+            <p className="text-xs text-slate-400">Use a separate Okta API Services app with an RSA signing key and read-only okta.users.read and okta.groups.read scopes. Grant the corresponding read-only admin permissions in Okta.</p>
+            <Field label="Private JWK"><textarea className="min-h-24 w-full rounded border border-white/10 bg-ink-950 p-2" required autoComplete="off" spellCheck={false} value={privateJwk} onChange={(e) => setPrivateJwk(e.target.value)} disabled={!canEdit || busy !== null} /></Field>
+            {state.kind !== "configured" && <label className="flex gap-2 text-sm"><input type="checkbox" checked={enableImport} onChange={(e) => setEnableImport(e.target.checked)} disabled={!canEdit || busy !== null} />Enable directory sync and automatic imports for mapped groups</label>}
+            <p className="text-xs text-slate-400">Disabled or deleted directory users lose access. Licence expiry pauses new accounts and grants; revocations continue. The selected directory and SSO connection cannot be replaced after configuration.</p>
+          </>}
           {provider === "google" && (
             <>
               <Field label="Google service-account JSON (DWD)">
@@ -1425,7 +1508,7 @@ function IdpSyncSection({
                   required
                   autoComplete="off"
                   spellCheck={false}
-                  disabled={!canEdit}
+                  disabled={!canEdit || busy !== null}
                 />
               </Field>
               <Field label="Delegated Workspace admin email">
@@ -1434,13 +1517,13 @@ function IdpSyncSection({
                   value={delegatedAdminEmail}
                   onChange={(e) => setDelegatedAdminEmail(e.target.value)}
                   required
-                  disabled={!canEdit}
+                  disabled={!canEdit || busy !== null}
                 />
               </Field>
             </>
           )}
           <div className="flex gap-2">
-            <Button type="submit" disabled={busy === "config" || !canEdit}>
+            <Button type="submit" disabled={busy !== null || !canEdit}>
               {busy === "config" ? "Saving…" : "Save credential"}
             </Button>
             <Button type="button" onClick={() => setShowForm(false)}>
@@ -1473,7 +1556,7 @@ function IdpSyncSection({
                     </span>
                     <button
                       type="button"
-                      disabled={!canEdit}
+                      disabled={!canEdit || busy !== null}
                       onClick={() => {
                         setUnmapping(g);
                         setConfirmText("");
@@ -1494,7 +1577,7 @@ function IdpSyncSection({
                 value={idpGroupId}
                 onChange={(e) => setIdpGroupId(e.target.value)}
                 required
-                disabled={!canEdit}
+                disabled={!canEdit || busy !== null}
               />
             </Field>
             {/* No picker is possible: nothing in the spec lists the directory's groups, so a
@@ -1504,7 +1587,7 @@ function IdpSyncSection({
               <Input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                disabled={!canEdit}
+                disabled={!canEdit || busy !== null}
                 placeholder="defaults to the directory group ID"
               />
             </Field>
@@ -1545,12 +1628,12 @@ function IdpSyncSection({
               <Button
                 type="button"
                 disabled={
-                  busy === "unmap" ||
+                  busy !== null ||
                   !unmapConfirmSatisfied(confirmText, unmapping.name)
                 }
                 onClick={() => void unmap(unmapping)}
               >
-                {busy === "unmap" ? "Un-mapping…" : "Un-map group"}
+                {busy !== null ? "Un-mapping…" : "Un-map group"}
               </Button>
               <Button type="button" onClick={() => setUnmapping(null)}>
                 Cancel
@@ -2069,23 +2152,21 @@ function SsoProvider({
               removed it. Both are annotated for that reason.
               `new-password` (not `off`) is what actually suppresses saved-password fill in
               Chrome — `off` is widely ignored on password inputs. */}
-          {provider === "microsoft" && (
-            <Field label={`${providerName} client ID`}>
-              <Input
-                name={`${provider}-oauth-client-id`}
-                autoComplete="off"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                required
-                disabled={!canEdit}
-              />
-            </Field>
-          )}
+          <Field label={`${providerName} client ID`}>
+            <Input
+              name={`${provider}-oauth-client-id`}
+              autoComplete="off"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              required
+              disabled={!canEdit}
+            />
+          </Field>
           {/* WRITE-ONLY secret: the current secret is NEVER fetched or shown. We
               display only its keyed fingerprint as proof-of-storage, and the
               input is a "replace" affordance (blank = leave unchanged is not
               supported by the API, so a save requires re-entering it). */}
-          {provider === "microsoft" && <Field
+          <Field
             label={
               configured
                 ? `${providerName} client secret (enter to replace)`
@@ -2102,7 +2183,7 @@ function SsoProvider({
               disabled={!canEdit}
               placeholder={secretPlaceholder(configured)}
             />
-          </Field>}
+          </Field>
           {configured && view?.secret_fingerprint && (
             <p className="font-sans text-xs text-slate-500">
               stored secret fingerprint: {view.secret_fingerprint}

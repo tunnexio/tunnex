@@ -19,6 +19,7 @@ type Querier interface {
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	AccessEventRetentionMorePending(ctx context.Context, arg AccessEventRetentionMorePendingParams) (*bool, error)
 	AcknowledgeLifecycleJoinToken(ctx context.Context, arg AcknowledgeLifecycleJoinTokenParams) (int64, error)
+	ActivateSSOConnection(ctx context.Context, arg ActivateSSOConnectionParams) (SsoConnection, error)
 	AddAgentGroupMember(ctx context.Context, arg AddAgentGroupMemberParams) (int64, error)
 	AddAlertSubscription(ctx context.Context, arg AddAlertSubscriptionParams) (AlertSubscription, error)
 	// ── group_members ───────────────────────────────────────────────────────────────
@@ -354,6 +355,8 @@ type Querier interface {
 	// the cap. A row that silently defaulted to 'agent' would be cap-exempt by accident — the failure would be
 	// a quota that stopped working, discovered by nobody.
 	CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error)
+	// Called only for a user created in the same import transaction; never upserts an existing account.
+	CreateDirectoryMembership(ctx context.Context, arg CreateDirectoryMembershipParams) error
 	CreateDomainClaim(ctx context.Context, arg CreateDomainClaimParams) (DomainClaim, error)
 	// ── group mapping (create / bind / unbind) ───────────────────────────────────────
 	// Create a fresh Tunnex group already bound to an IdP group (origin='idp_sync').
@@ -801,6 +804,10 @@ type Querier interface {
 	GetRunningAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
 	GetRunningAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error)
 	GetSSOConfig(ctx context.Context, arg GetSSOConfigParams) (SsoConfig, error)
+	// lint:cross-org — public login selects an explicit globally unique connection; no tenant guessing.
+	GetSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)
+	// lint:cross-org — identity namespace is the explicit connection plus issuer and subject; callback checks flow ownership, and directory sync resolves the connection from its tenant-scoped config.
+	GetSSOConnectionIdentity(ctx context.Context, arg GetSSOConnectionIdentityParams) (uuid.UUID, error)
 	GetSite(ctx context.Context, arg GetSiteParams) (Site, error)
 	// lint:cross-org — org-scoped via the join to sites.org_id.
 	GetSiteSubnetForOrg(ctx context.Context, arg GetSiteSubnetForOrgParams) (GetSiteSubnetForOrgRow, error)
@@ -819,7 +826,10 @@ type Querier interface {
 	// annotation. Granting deployment-level authority to a soft-deleted account would arm an identity that is
 	// meant to be gone, and a later undelete would restore it silently holding a capability nobody granted it.
 	GrantCPAdmin(ctx context.Context, id uuid.UUID) error
+	// lint:cross-org — SaveConnection checks the locked connection owner before inspecting this exact identity namespace.
+	HasSSOConnectionIdentities(ctx context.Context, connectionID uuid.UUID) (bool, error)
 	HeartbeatLifecycleInstallOperation(ctx context.Context, arg HeartbeatLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
+	ImportSSOConnectionIdentity(ctx context.Context, arg ImportSSOConnectionIdentityParams) error
 	IncrementAlertDeliveryCooldown(ctx context.Context, arg IncrementAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	// lint:cross-org — user-scoped login challenge.
 	IncrementMfaChallengeAttempts(ctx context.Context, id uuid.UUID) (int32, error)
@@ -867,6 +877,11 @@ type Querier interface {
 	IsAccessEventRetentionDue(ctx context.Context, arg IsAccessEventRetentionDueParams) (*bool, error)
 	IsAgentTemplateManagedRule(ctx context.Context, arg IsAgentTemplateManagedRuleParams) (bool, error)
 	IsAuditLogRetentionDue(ctx context.Context, arg IsAuditLogRetentionDueParams) (*bool, error)
+	// lint:cross-org — callback checks its locked connection and active organization membership before reading provenance for this exact issuer and subject.
+	IsDirectoryImportedIdentity(ctx context.Context, arg IsDirectoryImportedIdentityParams) (bool, error)
+	// lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
+	IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error)
+	LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConnectionIdentityParams) error
 	// The security-focused feed: deny + deny_aggregate + terminated + gap, same keyset shape.
 	ListAccessDenies(ctx context.Context, arg ListAccessDeniesParams) ([]AccessEvent, error)
 	ListAccessDeniesByAgent(ctx context.Context, arg ListAccessDeniesByAgentParams) ([]AccessEvent, error)
@@ -1328,10 +1343,13 @@ type Querier interface {
 	// lint:cross-org — keyed by the mTLS-authorized gateway node, exactly like
 	// ListActiveWireGuardPeersForNode.
 	ListPreparedAgentWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListPreparedAgentWireGuardPeersForNodeRow, error)
+	// lint:cross-org — minimal public login choices; explicit IDs prevent tenant guessing.
+	ListPublicLoginConnections(ctx context.Context) ([]ListPublicLoginConnectionsRow, error)
 	ListResourcesByOrg(ctx context.Context, orgID uuid.UUID) ([]Resource, error)
 	// The CRL entries for an org: serials revoked and not yet past expiry (an expired cert need not
 	// appear on the CRL — it's rejected on validity anyway). Slice 5 renders these into the CRL.
 	ListRevokedOVPNSerialsByOrg(ctx context.Context, orgID uuid.UUID) ([]ListRevokedOVPNSerialsByOrgRow, error)
+	ListSSOConnections(ctx context.Context, orgID uuid.UUID) ([]SsoConnection, error)
 	// lint:cross-org — org-scoped directly. S8.4: each site's dns_forwarding JSONB ([{domain,resolver_ip}]),
 	// unioned CP-side into the org forwarding table compiled onto every gateway.
 	ListSiteDNSForwardsForOrg(ctx context.Context, orgID uuid.UUID) ([][]byte, error)
@@ -1420,6 +1438,7 @@ type Querier interface {
 	// guard). Resize takes only the org key; allocation takes {owner,org} sorted;
 	// resize never waits on the owner key, so no inversion/deadlock.
 	LockDeviceKey(ctx context.Context, dollar_1 string) error
+	LockDirectoryMappedGroup(ctx context.Context, arg LockDirectoryMappedGroupParams) (UserGroup, error)
 	LockLatestLifecycleInstallOperationForOrg(ctx context.Context, arg LockLatestLifecycleInstallOperationForOrgParams) (NodeLifecycleInstallOperation, error)
 	LockLifecycleJoinTokenForOrg(ctx context.Context, arg LockLifecycleJoinTokenForOrgParams) (NodeJoinToken, error)
 	// Settings are user-facing configuration and may only change for a live tenant.
@@ -1427,6 +1446,8 @@ type Querier interface {
 	// Settings are user-facing configuration and may only change for a live tenant.
 	LockLiveAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
 	LockNodeByLifecycleClaimForOrg(ctx context.Context, arg LockNodeByLifecycleClaimForOrgParams) (Node, error)
+	// lint:cross-org — callback locks its opaque server-side flow's exact connection.
+	LockSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)
 	// lint:cross-org — the bearer hash supplies only the locking scope, never authentication.
 	// Do not lock a credential before its device: device lifecycle triggers take
 	// those locks in device -> credential order. Re-read below AFTER the device lock.
@@ -1528,6 +1549,9 @@ type Querier interface {
 	// Remove a synced member — scoped to origin='idp_sync' so the reconcile can NEVER delete a
 	// manual membership even if one somehow shared the (group,user) key.
 	RemoveIdpGroupMember(ctx context.Context, arg RemoveIdpGroupMemberParams) (int64, error)
+	// The legacy insert trigger creates this source. Remove it only for the freshly
+	// created directory-owned identity, before that transaction becomes visible.
+	RemoveImportedBootstrapSource(ctx context.Context, arg RemoveImportedBootstrapSourceParams) error
 	RemoveMember(ctx context.Context, arg RemoveMemberParams) (int64, error)
 	RenewAccessEventRetentionRunLease(ctx context.Context, arg RenewAccessEventRetentionRunLeaseParams) (int64, error)
 	RenewAuditLogRetentionRunLease(ctx context.Context, arg RenewAuditLogRetentionRunLeaseParams) (int64, error)
@@ -1677,6 +1701,7 @@ type Querier interface {
 	// runs once per org. lint:cross-org — keyed by node_id inside the node-revoke transaction (org-authorized
 	// upstream, mirrors RevokeDevicesForNode).
 	RevokeOVPNClientCertsForNode(ctx context.Context, nodeID uuid.UUID) ([]uuid.UUID, error)
+	SaveSSOConnection(ctx context.Context, arg SaveSSOConnectionParams) (SsoConnection, error)
 	SetAgentManagingGroup(ctx context.Context, arg SetAgentManagingGroupParams) (AgentProfile, error)
 	SetAgentOwner(ctx context.Context, arg SetAgentOwnerParams) (Device, error)
 	// The deployment-administrator capability, both directions (S12.11).
@@ -1719,6 +1744,7 @@ type Querier interface {
 	// that bumped past us (higher number, later revocation snapshot) is authoritative — our lower-numbered CRL
 	// is simply not stored (the latest full-set CRL wins).
 	SetOVPNCRL(ctx context.Context, arg SetOVPNCRLParams) error
+	SetOktaDirectoryEnabled(ctx context.Context, arg SetOktaDirectoryEnabledParams) (IdpSyncConfig, error)
 	// S7.3: flip the org device-approval gate. Enterprise-gated at the HTTP layer; the open
 	// build can never set it 'on', so enrollment there stays immediately-active.
 	SetOrgDeviceApproval(ctx context.Context, arg SetOrgDeviceApprovalParams) (Organization, error)
@@ -1923,6 +1949,8 @@ type Querier interface {
 	// The D8/D5 enforcement predicate (local-auth users only; SSO is exempt at the login seam).
 	UserInEnforcingOrg(ctx context.Context, userID uuid.UUID) (bool, error)
 	UserIsCPAdmin(ctx context.Context, id uuid.UUID) (bool, error)
+	// lint:cross-org — callback validates the locked connection against its server-side flow and rechecks administrator membership before marking this exact revision tested.
+	VerifySSOConnection(ctx context.Context, arg VerifySSOConnectionParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

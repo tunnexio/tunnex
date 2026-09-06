@@ -107,7 +107,7 @@ func TestStartSsoLoginForwardsEmptySlugWhenOrgOmitted(t *testing.T) {
 			port := &recordingSSOPort{}
 			s := apiServer{sso: port}
 			_, err := s.StartSsoLogin(context.Background(), api.StartSsoLoginRequestObject{
-				Provider: api.Google,
+				Provider: api.StartSsoLoginParamsProviderGoogle,
 				Params:   api.StartSsoLoginParams{Org: tc.org},
 			})
 			if err != nil {
@@ -130,7 +130,7 @@ func TestStartSsoLoginForwardsAnExplicitSlug(t *testing.T) {
 	port := &recordingSSOPort{}
 	s := apiServer{sso: port}
 	if _, err := s.StartSsoLogin(context.Background(), api.StartSsoLoginRequestObject{
-		Provider: api.Google,
+		Provider: api.StartSsoLoginParamsProviderGoogle,
 		Params:   api.StartSsoLoginParams{Org: &slug},
 	}); err != nil {
 		t.Fatalf("StartSsoLogin: unexpected error %v", err)

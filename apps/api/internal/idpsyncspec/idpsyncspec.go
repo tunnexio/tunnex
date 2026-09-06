@@ -11,6 +11,9 @@ import (
 
 // ConfigInput is a provider-credential upsert (the client_secret is sealed before storage).
 type ConfigInput struct {
+	OktaOrgURL          string
+	PrivateJWK          string
+	SSOConnectionID     *uuid.UUID
 	ClientID            string
 	ClientSecret        string
 	TenantID            string // Entra tenant; empty for google
@@ -21,6 +24,8 @@ type ConfigInput struct {
 
 // ConfigView is a stored config for display — NEVER carries the secret, only its fingerprint.
 type ConfigView struct {
+	OktaOrgURL          string
+	SSOConnectionID     *uuid.UUID
 	Provider            string
 	ClientID            string
 	SecretFingerprint   string // keyed 12-hex proof-of-secret (S4.5); never the secret itself
@@ -35,11 +40,16 @@ type ConfigView struct {
 
 // HealthView is the two-tier sync-health snapshot.
 type HealthView struct {
-	Provider      string
-	SyncHealth    string // ok | degraded | escalated
-	LastSyncOk    bool
-	LastSyncAt    *time.Time
-	LastSyncError string
+	Enabled             bool
+	ClientID            string
+	OktaOrgURL          string
+	SSOConnectionID     *uuid.UUID
+	ProvisioningAllowed bool
+	Provider            string
+	SyncHealth          string // ok | degraded | escalated
+	LastSyncOk          bool
+	LastSyncAt          *time.Time
+	LastSyncError       string
 }
 
 // MapInput maps a directory group to a Tunnex group. Exactly one of Name (create a new idp_sync
