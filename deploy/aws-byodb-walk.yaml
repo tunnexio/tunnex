@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Disposable BYODB CP and private PostgreSQL lab, not a production topology
+Parameters:
+  ImageId:
+    Type: AWS::EC2::Image::Id
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  AdminCIDR:
+    Type: String
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.245.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  CPSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-south-1a
+      CidrBlock: 10.245.1.0/24
+      MapPublicIpOnLaunch: true
+  DBSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: ap-south-1a
+      CidrBlock: 10.245.2.0/24
+      MapPublicIpOnLaunch: false
+  PublicRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  PublicAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRoutes
+      SubnetId: !Ref CPSubnet
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRoutes
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PrivateRoutes:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  PrivateAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      SubnetId: !Ref DBSubnet
+  LabOutboundRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRoutes
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref CP
+  CPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lab CP admin and HTTPS, plus private DB package egress
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref AdminCIDR}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 10.245.2.0/24}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 10.245.2.0/24}
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private PostgreSQL and SSH only from CP
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 22, ToPort: 22, SourceSecurityGroupId: !Ref CPSecurityGroup}
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref CPSecurityGroup}
+  CP:
+    Type: AWS::EC2::Instance
+    DependsOn: InternetRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: c7i-flex.large
+      KeyName: !Ref KeyName
+      SubnetId: !Ref CPSubnet
+      PrivateIpAddress: 10.245.1.10
+      SecurityGroupIds: [!Ref CPSecurityGroup]
+      SourceDestCheck: false
+      MetadataOptions: {HttpTokens: required}
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: {VolumeSize: 30, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true}
+      Tags:
+        - {Key: Name, Value: tunnex-byodb-aws-20260906a-cp}
+      UserData:
+        Fn::Base64: |
+          #cloud-config
+          package_update: true
+          packages: [docker.io, docker-compose-v2]
+          write_files:
+            - path: /etc/sysctl.d/90-byodb-lab.conf
+              content: "net.ipv4.ip_forward=1\n"
+            - path: /etc/systemd/system/byodb-lab-egress.service
+              content: |
+                [Unit]
+                After=network-online.target docker.service
+                Wants=network-online.target
+                [Service]
+                Type=oneshot
+                RemainAfterExit=yes
+                ExecStart=/usr/sbin/sysctl -w net.ipv4.ip_forward=1
+                ExecStart=/usr/sbin/iptables -t nat -A POSTROUTING -s 10.245.2.0/24 -j MASQUERADE
+                ExecStart=/usr/sbin/iptables -I FORWARD -s 10.245.2.0/24 -j ACCEPT
+                ExecStart=/usr/sbin/iptables -I FORWARD -d 10.245.2.0/24 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+                [Install]
+                WantedBy=multi-user.target
+          runcmd:
+            - [systemctl, enable, --now, docker]
+            - [systemctl, daemon-reload]
+            - [systemctl, enable, --now, byodb-lab-egress]
+  DB:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: t3.micro
+      KeyName: !Ref KeyName
+      SubnetId: !Ref DBSubnet
+      PrivateIpAddress: 10.245.2.10
+      SecurityGroupIds: [!Ref DBSecurityGroup]
+      MetadataOptions: {HttpTokens: required}
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: {VolumeSize: 12, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true}
+      Tags:
+        - {Key: Name, Value: tunnex-byodb-aws-20260906a-db}
+Outputs:
+  CPInstance: {Value: !Ref CP}
+  CPPublicIP: {Value: !GetAtt CP.PublicIp}
+  DBInstance: {Value: !Ref DB}
+  DBPrivateIP: {Value: !GetAtt DB.PrivateIp}
+  VPC: {Value: !Ref VPC}
