@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const activateSSOConnection = `-- name: ActivateSSOConnection :one
@@ -101,6 +102,55 @@ func (q *Queries) HasSSOConnectionIdentities(ctx context.Context, connectionID u
 	return exists, err
 }
 
+const importSSOConnectionIdentity = `-- name: ImportSSOConnectionIdentity :exec
+INSERT INTO sso_connection_identities (connection_id,issuer_url,subject,user_id,directory_imported) VALUES ($1,$2,$3,$4,true)
+`
+
+type ImportSSOConnectionIdentityParams struct {
+	ConnectionID uuid.UUID `json:"connection_id"`
+	IssuerUrl    string    `json:"issuer_url"`
+	Subject      string    `json:"subject"`
+	UserID       uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) ImportSSOConnectionIdentity(ctx context.Context, arg ImportSSOConnectionIdentityParams) error {
+	_, err := q.db.Exec(ctx, importSSOConnectionIdentity,
+		arg.ConnectionID,
+		arg.IssuerUrl,
+		arg.Subject,
+		arg.UserID,
+	)
+	return err
+}
+
+const isDirectoryImportedIdentity = `-- name: IsDirectoryImportedIdentity :one
+SELECT directory_imported FROM sso_connection_identities WHERE connection_id=$1 AND issuer_url=$2 AND subject=$3
+`
+
+type IsDirectoryImportedIdentityParams struct {
+	ConnectionID uuid.UUID `json:"connection_id"`
+	IssuerUrl    string    `json:"issuer_url"`
+	Subject      string    `json:"subject"`
+}
+
+func (q *Queries) IsDirectoryImportedIdentity(ctx context.Context, arg IsDirectoryImportedIdentityParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isDirectoryImportedIdentity, arg.ConnectionID, arg.IssuerUrl, arg.Subject)
+	var directory_imported bool
+	err := row.Scan(&directory_imported)
+	return directory_imported, err
+}
+
+const isDirectoryManagedConnection = `-- name: IsDirectoryManagedConnection :one
+SELECT EXISTS(SELECT 1 FROM idp_sync_configs WHERE sso_connection_id=$1)
+`
+
+func (q *Queries) IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isDirectoryManagedConnection, ssoConnectionID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const linkSSOConnectionIdentity = `-- name: LinkSSOConnectionIdentity :exec
 INSERT INTO sso_connection_identities (connection_id,issuer_url,subject,user_id) VALUES ($1,$2,$3,$4)
 `
@@ -120,6 +170,38 @@ func (q *Queries) LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConn
 		arg.UserID,
 	)
 	return err
+}
+
+const listPublicLoginConnections = `-- name: ListPublicLoginConnections :many
+SELECT id,name,provider FROM sso_connections
+WHERE enabled=true AND tested_revision=revision ORDER BY name,id
+`
+
+type ListPublicLoginConnectionsRow struct {
+	ID       uuid.UUID `json:"id"`
+	Name     string    `json:"name"`
+	Provider string    `json:"provider"`
+}
+
+// lint:cross-org — minimal public login choices; explicit IDs prevent tenant guessing.
+func (q *Queries) ListPublicLoginConnections(ctx context.Context) ([]ListPublicLoginConnectionsRow, error) {
+	rows, err := q.db.Query(ctx, listPublicLoginConnections)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPublicLoginConnectionsRow{}
+	for rows.Next() {
+		var i ListPublicLoginConnectionsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Provider); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listSSOConnections = `-- name: ListSSOConnections :many

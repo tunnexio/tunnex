@@ -159,7 +159,7 @@ func (s apiServer) SsoConnectionCallback(ctx context.Context, req api.SsoConnect
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	actor := uuid.Nil
-	if p.AuthMethod == authctx.AuthSSO || p.AuthMethod == authctx.AuthLocalPassword {
+	if p != nil && (p.AuthMethod == authctx.AuthSSO || p.AuthMethod == authctx.AuthLocalPassword) {
 		actor = p.UserID
 	}
 	code := ""
@@ -219,7 +219,7 @@ func connectionErrorCode(err error) string {
 	var e *apierr.Error
 	if errors.As(err, &e) {
 		switch e.Code {
-		case "invalid_state", "sso_test_stale", "sso_discovery_failed", "sso_verification_failed", "sso_link_required", "sso_consent_denied", "forbidden":
+		case "directory_membership_required", "directory_identity_conflict", "invalid_state", "sso_test_stale", "sso_discovery_failed", "sso_verification_failed", "sso_link_required", "sso_consent_denied", "forbidden":
 			return e.Code
 		}
 	}

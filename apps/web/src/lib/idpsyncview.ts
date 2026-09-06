@@ -44,6 +44,11 @@ export function idpGate(i: {
 export type SyncTier = "ok" | "degraded" | "escalated";
 
 export type IdpHealth = {
+ enabled?: boolean;
+ client_id?: string;
+ okta_org_url?: string;
+ sso_connection_id?: string;
+  provisioning_allowed?: boolean;
   provider: string;
   sync_health: string;
   last_sync_ok: boolean;
@@ -251,6 +256,10 @@ export function idpGroupIdHelp(provider: string): string {
 /** Server error codes, each read off the service rather than guessed. */
 export function idpErrorCopy(code: string | null | undefined): string {
   switch (code) {
+    case "invalid_okta_credentials": return "Check the Okta API Services client ID and RSA private JWK, including its key ID.";
+    case "invalid_okta_connection": return "Select a tested and enabled Okta SSO connection from the same directory.";
+    case "directory_namespace_locked": return "This directory is already bound to its SSO connection. Reload the configuration; its directory and connection cannot be replaced.";
+    case "directory_identity_conflict": return "An existing account needs authenticated company-sign-in linking before it can be synced.";
     case "idp_sync_not_configured": // service.go:141/160/228
       return "Configure this provider's credential before mapping groups.";
     case "group_not_empty": // service.go:253 — D1 refuse-unless-empty

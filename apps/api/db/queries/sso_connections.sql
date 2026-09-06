@@ -25,3 +25,17 @@ SELECT user_id FROM sso_connection_identities WHERE connection_id=$1 AND issuer_
 INSERT INTO sso_connection_identities (connection_id,issuer_url,subject,user_id) VALUES ($1,$2,$3,$4);
 -- name: HasSSOConnectionIdentities :one
 SELECT EXISTS(SELECT 1 FROM sso_connection_identities WHERE connection_id=$1);
+
+-- name: IsDirectoryManagedConnection :one
+SELECT EXISTS(SELECT 1 FROM idp_sync_configs WHERE sso_connection_id=$1);
+
+-- name: IsDirectoryImportedIdentity :one
+SELECT directory_imported FROM sso_connection_identities WHERE connection_id=$1 AND issuer_url=$2 AND subject=$3;
+
+-- name: ImportSSOConnectionIdentity :exec
+INSERT INTO sso_connection_identities (connection_id,issuer_url,subject,user_id,directory_imported) VALUES ($1,$2,$3,$4,true);
+
+-- name: ListPublicLoginConnections :many
+-- lint:cross-org — minimal public login choices; explicit IDs prevent tenant guessing.
+SELECT id,name,provider FROM sso_connections
+WHERE enabled=true AND tested_revision=revision ORDER BY name,id;

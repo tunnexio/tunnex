@@ -111,6 +111,7 @@ func newCustomProviderWithClient(ctx context.Context, issuer, clientID, secret, 
 			return nil, e
 		}
 	}
+	p.(*oidcProvider).completeUserInfo = true
 	// Retain the restricted HTTP client for code exchange, not only discovery.
 	return &customProvider{Provider: p, client: client}, nil
 }
@@ -130,3 +131,6 @@ type boundedOIDCBody struct {
 }
 
 func issuerHasHTTPS(issuer string) bool { return strings.HasPrefix(issuer, "https://") }
+
+// NewPublicProviderHTTPClient supplies the shared public HTTPS boundary for directory providers.
+func NewPublicProviderHTTPClient() *http.Client { return customHTTPClient() }

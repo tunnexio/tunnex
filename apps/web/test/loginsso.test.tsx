@@ -92,7 +92,7 @@ describe("SSO sign-in without an organization field", () => {
     expect(await screen.findByText("v0.1.5")).toBeTruthy();
     expect(screen.queryByText("v0.1.0")).toBeNull();
     expect(screen.queryByLabelText("Organization slug")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() =>
       expect(nav.url).toBe("https://accounts.google.com/o/oauth2/v2/auth?x=1"),
@@ -117,7 +117,7 @@ describe("SSO sign-in without an organization field", () => {
       },
     });
     renderLogin();
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await screen.findByText(/not configured for this provider/i);
     expect(screen.queryByLabelText("Organization slug")).toBeNull();
@@ -141,7 +141,7 @@ describe("SSO sign-in without an organization field", () => {
     );
     renderLogin();
 
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
     const field = await screen.findByLabelText("Organization slug");
     expect(screen.getByText(/press enter to continue/i)).toBeTruthy();
 
@@ -167,12 +167,34 @@ describe("SSO sign-in without an organization field", () => {
       error: { error: { code: "sso_org_ambiguous", message: "ambiguous" } },
     });
     renderLogin();
-    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
     const field = await screen.findByLabelText("Organization slug");
 
     const before = get.mock.calls.length;
     fireEvent.keyDown(field, { key: "Enter" });
     await new Promise((r) => setTimeout(r, 0));
     expect(get.mock.calls.length).toBe(before);
+  });
+});
+
+describe("Configured login choices", () => {
+  beforeEach(() => { cleanup(); get.mockReset(); });
+  it("does not invent Google or Microsoft when configuration is empty", async () => {
+    get.mockResolvedValue({data:{sso_providers:[],sso_connections:[]}});
+    renderLogin();
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/api/v1/meta'));
+    expect(screen.queryByRole('button',{name:/Continue with/})).toBeNull();
+    expect(screen.getByRole('button',{name:'Sign in'})).toBeTruthy();
+  });
+  it("shows configured Okta and named OIDC on the ordinary login URL", async () => {
+    get.mockResolvedValue({data:{sso_providers:[],sso_connections:[
+      {id:'okta-id',name:'Workforce',provider:'okta'},
+      {id:'oidc-id',name:'Acme SSO',provider:'oidc'},
+    ]}});
+    renderLogin();
+    expect(await screen.findByRole('button',{name:'Continue with Okta · Workforce'})).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Continue with Acme SSO'})).toBeTruthy();
+    expect(screen.queryByRole('button',{name:/Continue with Google/})).toBeNull();
+    expect(screen.queryByRole('button',{name:/Continue with Microsoft/})).toBeNull();
   });
 });

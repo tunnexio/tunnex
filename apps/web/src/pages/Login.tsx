@@ -10,6 +10,8 @@ import { ErrorText, Field, Input } from "../components/ui";
 // redirects failures to /login?sso_error=<code> instead of a raw error body.
 const SSO_ERRORS: Record<string, string> = {
   invalid_state: "This sign-in expired or belongs to another browser. Start company sign-in again here.",
+  directory_membership_required: "Your account must have active access through a mapped Okta group. Ask your administrator to check directory sync.",
+  directory_identity_conflict: "Your verified Okta email does not match the imported account. Ask your administrator to check the directory identity.",
   sso_link_required: "Sign in with your existing method, then open Settings → Authentication → Link company sign-in.",
   sso_consent_denied: "Company sign-in was cancelled. You can try again.",
   unverified_local_exists:
@@ -191,10 +193,13 @@ function BrowserLogin() {
     );
   }
 
-  const ssoProviders =
-    meta && meta.sso_providers.length > 0
-      ? meta.sso_providers
-      : ["google", "microsoft"];
+  const ssoProviders = meta?.sso_providers ?? [];
+  const configuredConnections = meta?.sso_connections ?? [];
+  const requestedConnection = new URLSearchParams(window.location.search).get("connection");
+  const connections = requestedConnection
+    ? configuredConnections.filter(c => c.id === requestedConnection)
+    : configuredConnections;
+  const hasSSO = ssoProviders.length > 0 || connections.length > 0;
 
   return (
     <AuthLayout>
@@ -203,21 +208,22 @@ function BrowserLogin() {
         Sign in to {window.location.host}
       </p>
 
-      {new URLSearchParams(window.location.search).get("connection") && <button className="mt-5 w-full rounded-lg border border-white/15 bg-white/5 p-3 text-sm text-white" onClick={async () => {
-        const connectionId = new URLSearchParams(window.location.search).get("connection")!;
-        const { data, error } = await api.GET("/api/v1/auth/sso-connections/{connectionId}/start", { params: { path: { connectionId } } });
+      {connections.map(connection => <button key={connection.id} className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#1C1C20] px-4 py-3 text-sm font-medium text-slate-200 transition-all duration-200 hover:border-white/20 hover:bg-[#25252B] active:scale-[0.99]" onClick={async () => {
+        const { data, error } = await api.GET("/api/v1/auth/sso-connections/{connectionId}/start", { params: { path: { connectionId: connection.id } } });
         if (error || !data) setError(apiErrorMessage(error, "Company sign-in is unavailable."));
         else window.location.assign(data.redirect_url);
-      }}>Continue with company SSO</button>}
+      }}>
+        {connection.provider === "okta" ? <img src="/providers/okta.svg" alt="" aria-hidden="true" className="h-6 w-6 shrink-0 invert" /> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z" /><path d="m8.5 12 2.5 2.5 4.5-5" /></svg>}
+        <span>Continue with {connection.provider === "okta" ? "Okta" : connection.name}{connections.length > 1 && connection.provider === "okta" ? ` · ${connection.name}` : ""}</span></button>)}
       <SsoSection providers={ssoProviders} onError={setError} />
 
-      <div className="my-5 flex items-center gap-3">
+      {hasSSO && <div className="my-5 flex items-center gap-3">
         <span className="h-px flex-1 bg-white/10" />
         <span className="font-mono text-[10px] tracking-widest text-slate-500 uppercase">
           OR
         </span>
         <span className="h-px flex-1 bg-white/10" />
-      </div>
+      </div>}
 
       <form onSubmit={submit} className="mt-4 space-y-4">
         <div className="space-y-1.5">

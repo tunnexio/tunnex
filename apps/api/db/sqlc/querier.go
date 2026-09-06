@@ -355,6 +355,8 @@ type Querier interface {
 	// the cap. A row that silently defaulted to 'agent' would be cap-exempt by accident — the failure would be
 	// a quota that stopped working, discovered by nobody.
 	CreateDevice(ctx context.Context, arg CreateDeviceParams) (Device, error)
+	// Called only for a user created in the same import transaction; never upserts an existing account.
+	CreateDirectoryMembership(ctx context.Context, arg CreateDirectoryMembershipParams) error
 	CreateDomainClaim(ctx context.Context, arg CreateDomainClaimParams) (DomainClaim, error)
 	// ── group mapping (create / bind / unbind) ───────────────────────────────────────
 	// Create a fresh Tunnex group already bound to an IdP group (origin='idp_sync').
@@ -825,6 +827,7 @@ type Querier interface {
 	GrantCPAdmin(ctx context.Context, id uuid.UUID) error
 	HasSSOConnectionIdentities(ctx context.Context, connectionID uuid.UUID) (bool, error)
 	HeartbeatLifecycleInstallOperation(ctx context.Context, arg HeartbeatLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
+	ImportSSOConnectionIdentity(ctx context.Context, arg ImportSSOConnectionIdentityParams) error
 	IncrementAlertDeliveryCooldown(ctx context.Context, arg IncrementAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	// lint:cross-org — user-scoped login challenge.
 	IncrementMfaChallengeAttempts(ctx context.Context, id uuid.UUID) (int32, error)
@@ -872,6 +875,8 @@ type Querier interface {
 	IsAccessEventRetentionDue(ctx context.Context, arg IsAccessEventRetentionDueParams) (*bool, error)
 	IsAgentTemplateManagedRule(ctx context.Context, arg IsAgentTemplateManagedRuleParams) (bool, error)
 	IsAuditLogRetentionDue(ctx context.Context, arg IsAuditLogRetentionDueParams) (*bool, error)
+	IsDirectoryImportedIdentity(ctx context.Context, arg IsDirectoryImportedIdentityParams) (bool, error)
+	IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error)
 	LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConnectionIdentityParams) error
 	// The security-focused feed: deny + deny_aggregate + terminated + gap, same keyset shape.
 	ListAccessDenies(ctx context.Context, arg ListAccessDeniesParams) ([]AccessEvent, error)
@@ -1334,6 +1339,8 @@ type Querier interface {
 	// lint:cross-org — keyed by the mTLS-authorized gateway node, exactly like
 	// ListActiveWireGuardPeersForNode.
 	ListPreparedAgentWireGuardPeersForNode(ctx context.Context, nodeID uuid.UUID) ([]ListPreparedAgentWireGuardPeersForNodeRow, error)
+	// lint:cross-org — minimal public login choices; explicit IDs prevent tenant guessing.
+	ListPublicLoginConnections(ctx context.Context) ([]ListPublicLoginConnectionsRow, error)
 	ListResourcesByOrg(ctx context.Context, orgID uuid.UUID) ([]Resource, error)
 	// The CRL entries for an org: serials revoked and not yet past expiry (an expired cert need not
 	// appear on the CRL — it's rejected on validity anyway). Slice 5 renders these into the CRL.
@@ -1427,6 +1434,7 @@ type Querier interface {
 	// guard). Resize takes only the org key; allocation takes {owner,org} sorted;
 	// resize never waits on the owner key, so no inversion/deadlock.
 	LockDeviceKey(ctx context.Context, dollar_1 string) error
+	LockDirectoryMappedGroup(ctx context.Context, arg LockDirectoryMappedGroupParams) (UserGroup, error)
 	LockLatestLifecycleInstallOperationForOrg(ctx context.Context, arg LockLatestLifecycleInstallOperationForOrgParams) (NodeLifecycleInstallOperation, error)
 	LockLifecycleJoinTokenForOrg(ctx context.Context, arg LockLifecycleJoinTokenForOrgParams) (NodeJoinToken, error)
 	// Settings are user-facing configuration and may only change for a live tenant.
@@ -1537,6 +1545,9 @@ type Querier interface {
 	// Remove a synced member — scoped to origin='idp_sync' so the reconcile can NEVER delete a
 	// manual membership even if one somehow shared the (group,user) key.
 	RemoveIdpGroupMember(ctx context.Context, arg RemoveIdpGroupMemberParams) (int64, error)
+	// The legacy insert trigger creates this source. Remove it only for the freshly
+	// created directory-owned identity, before that transaction becomes visible.
+	RemoveImportedBootstrapSource(ctx context.Context, arg RemoveImportedBootstrapSourceParams) error
 	RemoveMember(ctx context.Context, arg RemoveMemberParams) (int64, error)
 	RenewAccessEventRetentionRunLease(ctx context.Context, arg RenewAccessEventRetentionRunLeaseParams) (int64, error)
 	RenewAuditLogRetentionRunLease(ctx context.Context, arg RenewAuditLogRetentionRunLeaseParams) (int64, error)
@@ -1729,6 +1740,7 @@ type Querier interface {
 	// that bumped past us (higher number, later revocation snapshot) is authoritative — our lower-numbered CRL
 	// is simply not stored (the latest full-set CRL wins).
 	SetOVPNCRL(ctx context.Context, arg SetOVPNCRLParams) error
+	SetOktaDirectoryEnabled(ctx context.Context, arg SetOktaDirectoryEnabledParams) (IdpSyncConfig, error)
 	// S7.3: flip the org device-approval gate. Enterprise-gated at the HTTP layer; the open
 	// build can never set it 'on', so enrollment there stays immediately-active.
 	SetOrgDeviceApproval(ctx context.Context, arg SetOrgDeviceApprovalParams) (Organization, error)

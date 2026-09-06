@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addIdpAccessSource = `-- name: AddIdpAccessSource :exec
@@ -130,6 +131,21 @@ func (q *Queries) CountGroupMembers(ctx context.Context, arg CountGroupMembersPa
 	return count, err
 }
 
+const createDirectoryMembership = `-- name: CreateDirectoryMembership :exec
+INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'member')
+`
+
+type CreateDirectoryMembershipParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// Called only for a user created in the same import transaction; never upserts an existing account.
+func (q *Queries) CreateDirectoryMembership(ctx context.Context, arg CreateDirectoryMembershipParams) error {
+	_, err := q.db.Exec(ctx, createDirectoryMembership, arg.OrgID, arg.UserID)
+	return err
+}
+
 const createIdpSyncGroup = `-- name: CreateIdpSyncGroup :one
 INSERT INTO user_groups (org_id, name, description, origin, idp_provider, idp_group_id)
 VALUES ($1, $2, '', 'idp_sync', $3, $4)
@@ -187,7 +203,7 @@ func (q *Queries) DeleteGroupMembersByGroup(ctx context.Context, arg DeleteGroup
 
 const getIdpSyncConfig = `-- name: GetIdpSyncConfig :one
 
-SELECT id, org_id, provider, client_id, secret_sealed, tenant_id, enabled, last_sync_at, last_sync_ok, last_sync_error, created_at, updated_at, delegated_admin_email FROM idp_sync_configs
+SELECT id, org_id, provider, client_id, secret_sealed, tenant_id, enabled, last_sync_at, last_sync_ok, last_sync_error, created_at, updated_at, delegated_admin_email, okta_org_url, sso_connection_id FROM idp_sync_configs
 WHERE org_id = $1 AND provider = $2
 `
 
@@ -217,6 +233,8 @@ func (q *Queries) GetIdpSyncConfig(ctx context.Context, arg GetIdpSyncConfigPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DelegatedAdminEmail,
+		&i.OktaOrgUrl,
+		&i.SsoConnectionID,
 	)
 	return i, err
 }
@@ -251,7 +269,7 @@ func (q *Queries) GetOrgUserByEmail(ctx context.Context, arg GetOrgUserByEmailPa
 }
 
 const listEnabledIdpSyncConfigs = `-- name: ListEnabledIdpSyncConfigs :many
-SELECT id, org_id, provider, client_id, secret_sealed, tenant_id, enabled, last_sync_at, last_sync_ok, last_sync_error, created_at, updated_at, delegated_admin_email FROM idp_sync_configs
+SELECT id, org_id, provider, client_id, secret_sealed, tenant_id, enabled, last_sync_at, last_sync_ok, last_sync_error, created_at, updated_at, delegated_admin_email, okta_org_url, sso_connection_id FROM idp_sync_configs
 WHERE enabled = true
 ORDER BY org_id, provider
 `
@@ -282,6 +300,8 @@ func (q *Queries) ListEnabledIdpSyncConfigs(ctx context.Context) ([]IdpSyncConfi
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DelegatedAdminEmail,
+			&i.OktaOrgUrl,
+			&i.SsoConnectionID,
 		); err != nil {
 			return nil, err
 		}
@@ -374,6 +394,33 @@ func (q *Queries) ListIdpSyncGroups(ctx context.Context, arg ListIdpSyncGroupsPa
 	return items, nil
 }
 
+const lockDirectoryMappedGroup = `-- name: LockDirectoryMappedGroup :one
+SELECT id, org_id, name, description, created_at, updated_at, origin, idp_provider, idp_group_id FROM user_groups WHERE id=$1 AND org_id=$2 AND origin='idp_sync' AND idp_provider=$3 FOR UPDATE
+`
+
+type LockDirectoryMappedGroupParams struct {
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+	IdpProvider *string   `json:"idp_provider"`
+}
+
+func (q *Queries) LockDirectoryMappedGroup(ctx context.Context, arg LockDirectoryMappedGroupParams) (UserGroup, error) {
+	row := q.db.QueryRow(ctx, lockDirectoryMappedGroup, arg.ID, arg.OrgID, arg.IdpProvider)
+	var i UserGroup
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Origin,
+		&i.IdpProvider,
+		&i.IdpGroupID,
+	)
+	return i, err
+}
+
 const recordIdpSyncResult = `-- name: RecordIdpSyncResult :exec
 UPDATE idp_sync_configs
 SET last_sync_ok    = $3,
@@ -450,6 +497,25 @@ func (q *Queries) RemoveIdpGroupMember(ctx context.Context, arg RemoveIdpGroupMe
 	return result.RowsAffected(), nil
 }
 
+const removeImportedBootstrapSource = `-- name: RemoveImportedBootstrapSource :exec
+DELETE FROM membership_access_sources s
+WHERE s.org_id=$1 AND s.user_id=$2 AND s.source_type='manual' AND s.source_key='legacy'
+AND EXISTS(SELECT 1 FROM sso_connection_identities i JOIN sso_connections c ON c.id=i.connection_id
+ WHERE i.user_id=s.user_id AND c.org_id=s.org_id AND i.directory_imported)
+`
+
+type RemoveImportedBootstrapSourceParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// The legacy insert trigger creates this source. Remove it only for the freshly
+// created directory-owned identity, before that transaction becomes visible.
+func (q *Queries) RemoveImportedBootstrapSource(ctx context.Context, arg RemoveImportedBootstrapSourceParams) error {
+	_, err := q.db.Exec(ctx, removeImportedBootstrapSource, arg.OrgID, arg.UserID)
+	return err
+}
+
 const restoreMembershipAfterIdpGrant = `-- name: RestoreMembershipAfterIdpGrant :exec
 UPDATE memberships SET access_revoked_at = NULL WHERE org_id = $1 AND user_id = $2
 `
@@ -462,6 +528,49 @@ type RestoreMembershipAfterIdpGrantParams struct {
 func (q *Queries) RestoreMembershipAfterIdpGrant(ctx context.Context, arg RestoreMembershipAfterIdpGrantParams) error {
 	_, err := q.db.Exec(ctx, restoreMembershipAfterIdpGrant, arg.OrgID, arg.UserID)
 	return err
+}
+
+const setOktaDirectoryEnabled = `-- name: SetOktaDirectoryEnabled :one
+UPDATE idp_sync_configs SET enabled=$3,updated_at=now()
+WHERE org_id=$1 AND provider='okta' AND sso_connection_id=$2 AND client_id=$4 AND okta_org_url=$5
+RETURNING id, org_id, provider, client_id, secret_sealed, tenant_id, enabled, last_sync_at, last_sync_ok, last_sync_error, created_at, updated_at, delegated_admin_email, okta_org_url, sso_connection_id
+`
+
+type SetOktaDirectoryEnabledParams struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	SsoConnectionID pgtype.UUID `json:"sso_connection_id"`
+	Enabled         bool        `json:"enabled"`
+	ClientID        string      `json:"client_id"`
+	OktaOrgUrl      *string     `json:"okta_org_url"`
+}
+
+func (q *Queries) SetOktaDirectoryEnabled(ctx context.Context, arg SetOktaDirectoryEnabledParams) (IdpSyncConfig, error) {
+	row := q.db.QueryRow(ctx, setOktaDirectoryEnabled,
+		arg.OrgID,
+		arg.SsoConnectionID,
+		arg.Enabled,
+		arg.ClientID,
+		arg.OktaOrgUrl,
+	)
+	var i IdpSyncConfig
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Provider,
+		&i.ClientID,
+		&i.SecretSealed,
+		&i.TenantID,
+		&i.Enabled,
+		&i.LastSyncAt,
+		&i.LastSyncOk,
+		&i.LastSyncError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DelegatedAdminEmail,
+		&i.OktaOrgUrl,
+		&i.SsoConnectionID,
+	)
+	return i, err
 }
 
 const unbindIdpGroup = `-- name: UnbindIdpGroup :one
@@ -495,26 +604,31 @@ func (q *Queries) UnbindIdpGroup(ctx context.Context, arg UnbindIdpGroupParams) 
 }
 
 const upsertIdpSyncConfig = `-- name: UpsertIdpSyncConfig :one
-INSERT INTO idp_sync_configs (org_id, provider, client_id, secret_sealed, tenant_id, delegated_admin_email, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO idp_sync_configs (org_id, provider, client_id, secret_sealed, tenant_id, delegated_admin_email, enabled, okta_org_url, sso_connection_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (org_id, provider) DO UPDATE
     SET client_id = EXCLUDED.client_id,
         secret_sealed = EXCLUDED.secret_sealed,
         tenant_id = EXCLUDED.tenant_id,
         delegated_admin_email = EXCLUDED.delegated_admin_email,
         enabled = EXCLUDED.enabled,
+        okta_org_url = EXCLUDED.okta_org_url,
+        sso_connection_id = EXCLUDED.sso_connection_id,
         updated_at = now()
-RETURNING id, org_id, provider, client_id, secret_sealed, tenant_id, enabled, last_sync_at, last_sync_ok, last_sync_error, created_at, updated_at, delegated_admin_email
+WHERE idp_sync_configs.provider <> 'okta' OR (idp_sync_configs.sso_connection_id IS NOT DISTINCT FROM EXCLUDED.sso_connection_id AND idp_sync_configs.okta_org_url IS NOT DISTINCT FROM EXCLUDED.okta_org_url)
+RETURNING id, org_id, provider, client_id, secret_sealed, tenant_id, enabled, last_sync_at, last_sync_ok, last_sync_error, created_at, updated_at, delegated_admin_email, okta_org_url, sso_connection_id
 `
 
 type UpsertIdpSyncConfigParams struct {
-	OrgID               uuid.UUID `json:"org_id"`
-	Provider            string    `json:"provider"`
-	ClientID            string    `json:"client_id"`
-	SecretSealed        []byte    `json:"secret_sealed"`
-	TenantID            *string   `json:"tenant_id"`
-	DelegatedAdminEmail *string   `json:"delegated_admin_email"`
-	Enabled             bool      `json:"enabled"`
+	OrgID               uuid.UUID   `json:"org_id"`
+	Provider            string      `json:"provider"`
+	ClientID            string      `json:"client_id"`
+	SecretSealed        []byte      `json:"secret_sealed"`
+	TenantID            *string     `json:"tenant_id"`
+	DelegatedAdminEmail *string     `json:"delegated_admin_email"`
+	Enabled             bool        `json:"enabled"`
+	OktaOrgUrl          *string     `json:"okta_org_url"`
+	SsoConnectionID     pgtype.UUID `json:"sso_connection_id"`
 }
 
 // Connect / update a provider credential. The secret is pre-sealed (AES-GCM) by the caller;
@@ -529,6 +643,8 @@ func (q *Queries) UpsertIdpSyncConfig(ctx context.Context, arg UpsertIdpSyncConf
 		arg.TenantID,
 		arg.DelegatedAdminEmail,
 		arg.Enabled,
+		arg.OktaOrgUrl,
+		arg.SsoConnectionID,
 	)
 	var i IdpSyncConfig
 	err := row.Scan(
@@ -545,6 +661,8 @@ func (q *Queries) UpsertIdpSyncConfig(ctx context.Context, arg UpsertIdpSyncConf
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DelegatedAdminEmail,
+		&i.OktaOrgUrl,
+		&i.SsoConnectionID,
 	)
 	return i, err
 }

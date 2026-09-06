@@ -37,6 +37,11 @@ type ProviderFactory func(cfg sqlc.IdpSyncConfig, secret string) (DirectoryProvi
 // fast-follow behind the same DirectoryProvider interface, rejected loudly until then.
 func DefaultProviderFactory(cfg sqlc.IdpSyncConfig, secret string) (DirectoryProvider, error) {
 	switch cfg.Provider {
+	case "okta":
+		if cfg.OktaOrgUrl == nil {
+			return nil, errors.New("Okta organization URL is missing")
+		}
+		return NewOktaProvider(*cfg.OktaOrgUrl, cfg.ClientID, secret, nil)
 	case "microsoft":
 		tenant := ""
 		if cfg.TenantID != nil {
@@ -66,8 +71,8 @@ type Service struct {
 	factory ProviderFactory
 	now     func() time.Time
 	logger  *slog.Logger
-	// licence answers ONE question: may the ADDITIVE half of a reconcile run. ⚠ nil => yes, the fail-open
-	// default. There is deliberately no licence hook on the subtractive half anywhere in this package.
+	// licence gates only additions. Missing or expired entitlement refuses provisioning;
+	// the subtractive half continues independently.
 	licence *licence.Manager
 }
 
@@ -78,11 +83,11 @@ func NewService(pool *pgxpool.Pool, sealer *crypto.Sealer, push Pusher, deprov D
 	}
 }
 
-// mayProvision is the predicate handed to the reconciler. ⭐ Extracted so the WIRING is provable without a
-// database — the defect this slice fixes was never a wrong predicate, it was a right one nobody called.
-// ⚠ nil manager => true, the fail-open default.
+// mayProvision is shared by scheduled and manual reconciliation. New grants require
+// a currently valid entitled key (including an active entitled trial), not expiry grace.
 func (s *Service) mayProvision() bool {
-	return s.licence == nil || s.licence.Has(licence.FeatIdpSync, s.now())
+	status := s.licence.Evaluate(s.now())
+	return status.State == licence.StateValid && licence.Has(status.Tier, licence.FeatIdpSync)
 }
 
 // WithLicence wires the entitlement manager. ⛔ It can only ever narrow the ADDITIVE half: the subtractive
@@ -103,7 +108,7 @@ func (s *Service) SetClock(now func() time.Time) { s.now = now }
 const perConfigPollTimeout = 2 * time.Minute
 
 func supportedProvider(p string) error {
-	if p != "microsoft" && p != "google" {
+	if p != "microsoft" && p != "google" && p != "okta" {
 		return apierr.BadRequest("provider_not_supported", "directory sync provider is not supported")
 	}
 	return nil
@@ -116,8 +121,20 @@ func (s *Service) UpsertConfig(ctx context.Context, orgID uuid.UUID, provider st
 	if err := supportedProvider(provider); err != nil {
 		return idpsyncspec.ConfigView{}, err
 	}
+	if provider == "okta" && strings.TrimSpace(in.PrivateJWK) == "" {
+		return s.setOktaEnabled(ctx, orgID, in)
+	}
 	secret := in.ClientSecret
-	if provider == "google" {
+	if provider == "okta" {
+		secret = in.PrivateJWK
+		in.OktaOrgURL = strings.TrimRight(strings.TrimSpace(in.OktaOrgURL), "/")
+		if in.SSOConnectionID == nil {
+			return idpsyncspec.ConfigView{}, apierr.BadRequest("invalid_okta_credentials", "select an enabled Okta SSO connection")
+		}
+		if _, e := NewOktaProvider(in.OktaOrgURL, in.ClientID, secret, nil); e != nil {
+			return idpsyncspec.ConfigView{}, apierr.BadRequest("invalid_okta_credentials", e.Error())
+		}
+	} else if provider == "google" {
 		secret = in.ServiceAccountJSON
 		if strings.TrimSpace(secret) == "" || strings.TrimSpace(in.DelegatedAdminEmail) == "" {
 			return idpsyncspec.ConfigView{}, apierr.BadRequest("invalid_google_credentials", "Google Workspace sync requires service-account JSON and a delegated admin email")
@@ -138,10 +155,31 @@ func (s *Service) UpsertConfig(ctx context.Context, orgID uuid.UUID, provider st
 	var row sqlc.IdpSyncConfig
 	err = s.withTx(ctx, func(q *sqlc.Queries) error {
 		var e error
+		var connectionID pgtype.UUID
+		var origin *string
+		if provider == "okta" {
+			c, err := q.LockSSOConnection(ctx, *in.SSOConnectionID)
+			if err != nil || !oktaConnectionMatches(c, orgID, in.OktaOrgURL) {
+				return apierr.BadRequest("invalid_okta_connection", "select a tested and enabled Okta connection from this directory")
+			}
+			old, err := q.GetIdpSyncConfig(ctx, sqlc.GetIdpSyncConfigParams{OrgID: orgID, Provider: provider})
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			connectionID = pgtype.UUID{Bytes: *in.SSOConnectionID, Valid: true}
+			if err == nil && (old.SsoConnectionID != connectionID || old.OktaOrgUrl == nil || *old.OktaOrgUrl != in.OktaOrgURL) {
+				return apierr.New(409, "directory_namespace_locked", "the configured Okta directory and SSO connection cannot be replaced")
+			}
+			origin = &in.OktaOrgURL
+		}
 		row, e = q.UpsertIdpSyncConfig(ctx, sqlc.UpsertIdpSyncConfigParams{
 			OrgID: orgID, Provider: provider, ClientID: in.ClientID,
+			OktaOrgUrl: origin, SsoConnectionID: connectionID,
 			SecretSealed: []byte(sealed), TenantID: tid, DelegatedAdminEmail: nullableString(in.DelegatedAdminEmail), Enabled: in.Enabled,
 		})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apierr.New(409, "directory_namespace_locked", "the configured directory namespace cannot be replaced")
+		}
 		if e != nil {
 			return e
 		}
@@ -172,7 +210,9 @@ func (s *Service) Health(ctx context.Context, orgID uuid.UUID, provider string) 
 	}
 	v := s.viewOf(row)
 	return idpsyncspec.HealthView{
-		Provider: v.Provider, SyncHealth: v.SyncHealth, LastSyncOk: v.LastSyncOk,
+		Enabled: v.Enabled, ClientID: v.ClientID, OktaOrgURL: v.OktaOrgURL, SSOConnectionID: v.SSOConnectionID,
+		ProvisioningAllowed: s.mayProvision(),
+		Provider:            v.Provider, SyncHealth: v.SyncHealth, LastSyncOk: v.LastSyncOk,
 		LastSyncAt: v.LastSyncAt, LastSyncError: v.LastSyncError,
 	}, nil
 }
@@ -188,6 +228,9 @@ func (s *Service) Trigger(ctx context.Context, orgID uuid.UUID, provider string)
 	}
 	if err != nil {
 		return idpsyncspec.HealthView{}, err
+	}
+	if provider == "okta" && !cfg.Enabled {
+		return s.Health(ctx, orgID, provider)
 	}
 	// A reconcile error is recorded on the config's health by the reconciler; we still return the
 	// (now-degraded) health view rather than a 500, so "sync now" surfaces the failure legibly.
@@ -455,6 +498,13 @@ func (s *Service) viewOf(row sqlc.IdpSyncConfig) idpsyncspec.ConfigView {
 	}
 	if row.TenantID != nil {
 		v.TenantID = *row.TenantID
+	}
+	if row.OktaOrgUrl != nil {
+		v.OktaOrgURL = *row.OktaOrgUrl
+	}
+	if row.SsoConnectionID.Valid {
+		id := uuid.UUID(row.SsoConnectionID.Bytes)
+		v.SSOConnectionID = &id
 	}
 	if row.DelegatedAdminEmail != nil {
 		v.DelegatedAdminEmail = *row.DelegatedAdminEmail

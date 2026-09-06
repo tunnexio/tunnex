@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
@@ -56,12 +57,16 @@ func (s *Service) SaveConnection(ctx context.Context, actor, org, id uuid.UUID, 
 		if e == nil && old.OrgID != org {
 			return apierr.NotFound("sso_not_configured", "connection not found")
 		}
-		if e == nil && (old.IssuerUrl != in.Issuer || old.ClientID != in.ClientID) {
+		if e == nil && (old.IssuerUrl != in.Issuer || old.ClientID != in.ClientID || old.Provider != in.Provider) {
 			linked, lookup := q.HasSSOConnectionIdentities(ctx, id)
 			if lookup != nil {
 				return lookup
 			}
-			if linked {
+			managed, lookup := q.IsDirectoryManagedConnection(ctx, pgtype.UUID{Bytes: id, Valid: true})
+			if lookup != nil {
+				return lookup
+			}
+			if linked || managed {
 				return apierr.New(409, "sso_identity_namespace_locked", "create a new connection to change the issuer or client ID after accounts have been linked")
 			}
 		}
@@ -103,6 +108,9 @@ func (s *Service) ActivateConnection(ctx context.Context, actor, org, id uuid.UU
 	return
 }
 func (s *Service) connectionProvider(ctx context.Context, c sqlc.SsoConnection) (Provider, error) {
+	if s.connectionFactory != nil {
+		return s.connectionFactory(ctx, c)
+	}
 	secret, err := s.configs.sealer.Open(string(c.ClientSecretSealed))
 	if err != nil {
 		return nil, err
@@ -229,8 +237,15 @@ func (s *Service) CompleteConnection(ctx context.Context, code, state, browserBi
 			}
 			return audit(ctx, q, c.OrgID, &actor, "sso.connection_verified", "sso_connection", c.ID.String(), map[string]any{"revision": c.Revision, "linked": flow.Link})
 		}
+		managed, e := q.IsDirectoryManagedConnection(ctx, pgtype.UUID{Bytes: c.ID, Valid: true})
+		if e != nil {
+			return e
+		}
 		uid, e := q.GetSSOConnectionIdentity(ctx, sqlc.GetSSOConnectionIdentityParams{ConnectionID: c.ID, IssuerUrl: c.IssuerUrl, Subject: identity.Subject})
 		if errors.Is(e, pgx.ErrNoRows) {
+			if managed {
+				return apierr.New(403, "directory_membership_required", "your account must be synced from a mapped Okta group before sign-in")
+			}
 			_, lookup := q.GetUserByEmail(ctx, identity.Email)
 			if lookup == nil {
 				return apierr.New(409, "sso_link_required", "sign in using an existing method, then link company sign-in in Settings → Authentication")
@@ -255,8 +270,27 @@ func (s *Service) CompleteConnection(ctx context.Context, code, state, browserBi
 		} else if e != nil {
 			return e
 		}
-		if e = s.ensureMembership(ctx, q, c.OrgID, uid, "sso_connection", identity); e != nil {
+		if managed {
+			if _, e = q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: c.OrgID, UserID: uid}); e != nil {
+				return apierr.New(403, "directory_membership_required", "your directory-managed organization access is not active")
+			}
+		} else if e = s.ensureMembership(ctx, q, c.OrgID, uid, "sso_connection", identity); e != nil {
 			return e
+		}
+		if managed {
+			imported, check := q.IsDirectoryImportedIdentity(ctx, sqlc.IsDirectoryImportedIdentityParams{ConnectionID: c.ID, IssuerUrl: c.IssuerUrl, Subject: identity.Subject})
+			if check != nil {
+				return check
+			}
+			if imported {
+				account, check := q.GetUserByEmail(ctx, identity.Email)
+				if check != nil || account.ID != uid || !identity.EmailVerified {
+					return apierr.New(403, "directory_identity_conflict", "verified sign-in email does not match the imported account")
+				}
+				if check = q.MarkEmailVerified(ctx, uid); check != nil {
+					return check
+				}
+			}
 		}
 		result.UserID = uid
 		return nil

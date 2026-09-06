@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -43,10 +44,12 @@ type Normalizer func(RawClaims) (Identity, error)
 
 // oidcProvider is the generic OIDC implementation used by every provider.
 type oidcProvider struct {
-	name      string
-	oauth2    *oauth2.Config
-	verifier  *oidc.IDTokenVerifier
-	normalize Normalizer
+	discovered       *oidc.Provider
+	completeUserInfo bool
+	name             string
+	oauth2           *oauth2.Config
+	verifier         *oidc.IDTokenVerifier
+	normalize        Normalizer
 }
 
 // NewOIDCProvider discovers the issuer (fetching JWKS) and builds a provider
@@ -57,7 +60,8 @@ func NewOIDCProvider(ctx context.Context, name, issuer, clientID, clientSecret, 
 		return nil, fmt.Errorf("oidc discovery for %s: %w", name, err)
 	}
 	return &oidcProvider{
-		name: name,
+		name:       name,
+		discovered: p,
 		oauth2: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
@@ -99,6 +103,29 @@ func (p *oidcProvider) Exchange(ctx context.Context, code, verifier, expectedNon
 	var raw RawClaims
 	if err := idt.Claims(&raw); err != nil {
 		return Identity{}, fmt.Errorf("parse claims: %w", err)
+	}
+	if p.completeUserInfo {
+		var fields map[string]json.RawMessage
+		if err := idt.Claims(&fields); err != nil {
+			return Identity{}, errors.New("invalid identity claims")
+		}
+		verified, present := fields["email_verified"]
+		if present && string(verified) != "true" {
+			return Identity{}, errors.New("ID token email is not verified")
+		}
+		if raw.Sub == "" {
+			return Identity{}, errors.New("missing signed subject")
+		}
+		if !present || raw.Email == "" {
+			info, err := p.discovered.UserInfo(ctx, oauth2.StaticTokenSource(tok))
+			if err != nil {
+				return Identity{}, errors.New("could not verify UserInfo")
+			}
+			if info.Subject != raw.Sub || !info.EmailVerified || info.Email == "" || (raw.Email != "" && raw.Email != info.Email) {
+				return Identity{}, errors.New("UserInfo identity mismatch or unverified email")
+			}
+			raw.Email, raw.EmailVerified = info.Email, true
+		}
 	}
 	id, err := p.normalize(raw)
 	if err != nil {

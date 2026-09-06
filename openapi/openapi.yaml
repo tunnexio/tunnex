@@ -2243,7 +2243,7 @@ paths:
       - name: provider
         in: path
         required: true
-        schema: { type: string, enum: [microsoft, google] }
+        schema: { type: string, enum: [microsoft, google, okta] }
     put:
       operationId: putIdpSyncConfig
       summary: Connect / update a directory-sync provider credential (enterprise)
@@ -2271,7 +2271,7 @@ paths:
       - name: provider
         in: path
         required: true
-        schema: { type: string, enum: [microsoft, google] }
+        schema: { type: string, enum: [microsoft, google, okta] }
     get:
       operationId: getIdpSyncHealth
       summary: Directory-sync two-tier health (enterprise)
@@ -2294,7 +2294,7 @@ paths:
       - name: provider
         in: path
         required: true
-        schema: { type: string, enum: [microsoft, google] }
+        schema: { type: string, enum: [microsoft, google, okta] }
     post:
       operationId: triggerIdpSync
       summary: Reconcile the org's mapped directory groups now (enterprise)
@@ -2317,7 +2317,7 @@ paths:
       - name: provider
         in: path
         required: true
-        schema: { type: string, enum: [microsoft, google] }
+        schema: { type: string, enum: [microsoft, google, okta] }
     post:
       operationId: mapIdpGroup
       summary: Map a directory group to a Tunnex group — new or an EMPTY manual group (enterprise)
@@ -2345,7 +2345,7 @@ paths:
       - name: provider
         in: path
         required: true
-        schema: { type: string, enum: [microsoft, google] }
+        schema: { type: string, enum: [microsoft, google, okta] }
       - name: groupId
         in: path
         required: true
@@ -6027,7 +6027,7 @@ components:
           type: string
           enum: [manual, idp_sync]
           x-enum-varnames: [Manual, IdpSync]
-        idp_provider: { type: string, enum: [microsoft, google] }
+        idp_provider: { type: string, enum: [microsoft, google, okta] }
         idp_group_id: { type: string }
 
     IdpSyncConfigRequest:
@@ -6037,21 +6037,26 @@ components:
       properties:
         client_id: { type: string, description: Entra application client id; required for microsoft. }
         client_secret: { type: string, description: Entra client secret; sealed at rest and never returned. }
+        okta_org_url: { type: string, description: Okta organization HTTPS origin. }
+        sso_connection_id: { type: string, format: uuid, description: Tested and enabled Okta SSO connection in this organization. }
         tenant_id: { type: string, description: Entra tenant id; required for microsoft. }
+        private_jwk: { type: string, writeOnly: true, description: RSA private JWK for the Okta directory service app; sealed at rest. Omit to change only enabled state of an existing matching configuration. }
         service_account_json: { type: string, description: Google service-account JSON with DWD; sealed at rest and never returned. }
         delegated_admin_email: { type: string, format: email, description: Google Workspace admin subject for DWD impersonation. }
-        enabled: { type: boolean, default: true }
+        enabled: { type: boolean, description: Okta requires explicit true to opt in; legacy directory providers default to true. }
 
     IdpSyncConfig:
       type: object
       required: [provider, client_id, enabled, last_sync_ok, sync_health]
       additionalProperties: false
       properties:
-        provider: { type: string, enum: [microsoft, google] }
+        provider: { type: string, enum: [microsoft, google, okta] }
         client_id: { type: string }
         # Keyed 12-hex proof-of-secret (S4.5): the read path NEVER returns the client secret, only
         # this fingerprint — enough to confirm a secret is set / detect a change, useless to an attacker.
         secret_fingerprint: { type: string }
+        okta_org_url: { type: string, description: Okta organization HTTPS origin. }
+        sso_connection_id: { type: string, format: uuid, description: Tested and enabled Okta SSO connection in this organization. }
         tenant_id: { type: string }
         delegated_admin_email: { type: string, format: email }
         enabled: { type: boolean }
@@ -6062,10 +6067,15 @@ components:
 
     IdpSyncHealth:
       type: object
-      required: [provider, sync_health, last_sync_ok]
+      required: [provider, sync_health, last_sync_ok, provisioning_allowed, enabled, client_id]
       additionalProperties: false
       properties:
-        provider: { type: string, enum: [microsoft, google] }
+        enabled: { type: boolean }
+        client_id: { type: string }
+        okta_org_url: { type: string }
+        sso_connection_id: { type: string, format: uuid }
+        provider: { type: string, enum: [microsoft, google, okta] }
+        provisioning_allowed: { type: boolean, description: New directory accounts and grants require an unexpired entitled licence; revocations continue when false. }
         sync_health: { type: string }
         last_sync_ok: { type: boolean }
         last_sync_at: { type: string, format: date-time }
@@ -9359,6 +9369,15 @@ components:
         # regardless. Hiding a link is not closing a door, and a refused endpoint behind a visible link is a
         # dead end — so both halves exist and neither is load-bearing alone.
         setup_complete: { type: boolean }
+        sso_connections:
+          type: array
+          items:
+            type: object
+            required: [id, name, provider]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+              provider: { type: string, enum: [okta, oidc] }
         sso_providers:
           type: array
           items: { type: string, enum: [google, microsoft] }

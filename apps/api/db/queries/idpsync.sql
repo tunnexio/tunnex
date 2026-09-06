@@ -34,15 +34,18 @@ WHERE org_id = $1 AND provider = $2;
 -- Connect / update a provider credential. The secret is pre-sealed (AES-GCM) by the caller;
 -- plaintext never reaches SQL. On re-set, credentials update but the sync-health columns are
 -- left intact (a credential rotation shouldn't fake a green health).
-INSERT INTO idp_sync_configs (org_id, provider, client_id, secret_sealed, tenant_id, delegated_admin_email, enabled)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO idp_sync_configs (org_id, provider, client_id, secret_sealed, tenant_id, delegated_admin_email, enabled, okta_org_url, sso_connection_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (org_id, provider) DO UPDATE
     SET client_id = EXCLUDED.client_id,
         secret_sealed = EXCLUDED.secret_sealed,
         tenant_id = EXCLUDED.tenant_id,
         delegated_admin_email = EXCLUDED.delegated_admin_email,
         enabled = EXCLUDED.enabled,
+        okta_org_url = EXCLUDED.okta_org_url,
+        sso_connection_id = EXCLUDED.sso_connection_id,
         updated_at = now()
+WHERE idp_sync_configs.provider <> 'okta' OR (idp_sync_configs.sso_connection_id IS NOT DISTINCT FROM EXCLUDED.sso_connection_id AND idp_sync_configs.okta_org_url IS NOT DISTINCT FROM EXCLUDED.okta_org_url)
 RETURNING *;
 
 -- ── group mapping (create / bind / unbind) ───────────────────────────────────────
@@ -134,3 +137,23 @@ SELECT u.id, u.status
 FROM users u
 JOIN memberships m ON m.user_id = u.id AND m.org_id = $1
 WHERE u.email = $2 AND u.deleted_at IS NULL;
+
+-- name: LockDirectoryMappedGroup :one
+SELECT * FROM user_groups WHERE id=$1 AND org_id=$2 AND origin='idp_sync' AND idp_provider=$3 FOR UPDATE;
+
+-- name: CreateDirectoryMembership :exec
+-- Called only for a user created in the same import transaction; never upserts an existing account.
+INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'member');
+
+-- name: RemoveImportedBootstrapSource :exec
+-- The legacy insert trigger creates this source. Remove it only for the freshly
+-- created directory-owned identity, before that transaction becomes visible.
+DELETE FROM membership_access_sources s
+WHERE s.org_id=$1 AND s.user_id=$2 AND s.source_type='manual' AND s.source_key='legacy'
+AND EXISTS(SELECT 1 FROM sso_connection_identities i JOIN sso_connections c ON c.id=i.connection_id
+ WHERE i.user_id=s.user_id AND c.org_id=s.org_id AND i.directory_imported);
+
+-- name: SetOktaDirectoryEnabled :one
+UPDATE idp_sync_configs SET enabled=$3,updated_at=now()
+WHERE org_id=$1 AND provider='okta' AND sso_connection_id=$2 AND client_id=$4 AND okta_org_url=$5
+RETURNING *;

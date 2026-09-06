@@ -637,12 +637,14 @@ const (
 const (
 	IdpSyncConfigProviderGoogle    IdpSyncConfigProvider = "google"
 	IdpSyncConfigProviderMicrosoft IdpSyncConfigProvider = "microsoft"
+	IdpSyncConfigProviderOkta      IdpSyncConfigProvider = "okta"
 )
 
 // Defines values for IdpSyncHealthProvider.
 const (
 	IdpSyncHealthProviderGoogle    IdpSyncHealthProvider = "google"
 	IdpSyncHealthProviderMicrosoft IdpSyncHealthProvider = "microsoft"
+	IdpSyncHealthProviderOkta      IdpSyncHealthProvider = "okta"
 )
 
 // Defines values for InvitationRole.
@@ -853,6 +855,12 @@ const (
 const (
 	Enterprise MetaEdition = "enterprise"
 	Open       MetaEdition = "open"
+)
+
+// Defines values for MetaSsoConnectionsProvider.
+const (
+	MetaSsoConnectionsProviderOidc MetaSsoConnectionsProvider = "oidc"
+	MetaSsoConnectionsProviderOkta MetaSsoConnectionsProvider = "okta"
 )
 
 // Defines values for MetaSsoProviders.
@@ -1096,6 +1104,7 @@ const (
 const (
 	UserGroupIdpProviderGoogle    UserGroupIdpProvider = "google"
 	UserGroupIdpProviderMicrosoft UserGroupIdpProvider = "microsoft"
+	UserGroupIdpProviderOkta      UserGroupIdpProvider = "okta"
 )
 
 // Defines values for UserGroupOrigin.
@@ -1118,8 +1127,8 @@ const (
 
 // Defines values for StartSsoLoginParamsProvider.
 const (
-	Google    StartSsoLoginParamsProvider = "google"
-	Microsoft StartSsoLoginParamsProvider = "microsoft"
+	StartSsoLoginParamsProviderGoogle    StartSsoLoginParamsProvider = "google"
+	StartSsoLoginParamsProviderMicrosoft StartSsoLoginParamsProvider = "microsoft"
 )
 
 // Defines values for ListAgentMCPAssignmentsParamsState.
@@ -3113,14 +3122,20 @@ type IdpGroupMapRequest struct {
 
 // IdpSyncConfig defines model for IdpSyncConfig.
 type IdpSyncConfig struct {
-	ClientId            string                `json:"client_id"`
-	DelegatedAdminEmail *openapi_types.Email  `json:"delegated_admin_email,omitempty"`
-	Enabled             bool                  `json:"enabled"`
-	LastSyncAt          *time.Time            `json:"last_sync_at,omitempty"`
-	LastSyncError       *string               `json:"last_sync_error,omitempty"`
-	LastSyncOk          bool                  `json:"last_sync_ok"`
-	Provider            IdpSyncConfigProvider `json:"provider"`
-	SecretFingerprint   *string               `json:"secret_fingerprint,omitempty"`
+	ClientId            string               `json:"client_id"`
+	DelegatedAdminEmail *openapi_types.Email `json:"delegated_admin_email,omitempty"`
+	Enabled             bool                 `json:"enabled"`
+	LastSyncAt          *time.Time           `json:"last_sync_at,omitempty"`
+	LastSyncError       *string              `json:"last_sync_error,omitempty"`
+	LastSyncOk          bool                 `json:"last_sync_ok"`
+
+	// OktaOrgUrl Okta organization HTTPS origin.
+	OktaOrgUrl        *string               `json:"okta_org_url,omitempty"`
+	Provider          IdpSyncConfigProvider `json:"provider"`
+	SecretFingerprint *string               `json:"secret_fingerprint,omitempty"`
+
+	// SsoConnectionId Tested and enabled Okta SSO connection in this organization.
+	SsoConnectionId *openapi_types.UUID `json:"sso_connection_id,omitempty"`
 
 	// SyncHealth Two-tier derived health (D2).
 	SyncHealth string  `json:"sync_health"`
@@ -3140,10 +3155,21 @@ type IdpSyncConfigRequest struct {
 
 	// DelegatedAdminEmail Google Workspace admin subject for DWD impersonation.
 	DelegatedAdminEmail *openapi_types.Email `json:"delegated_admin_email,omitempty"`
-	Enabled             *bool                `json:"enabled,omitempty"`
+
+	// Enabled Okta requires explicit true to opt in; legacy directory providers default to true.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// OktaOrgUrl Okta organization HTTPS origin.
+	OktaOrgUrl *string `json:"okta_org_url,omitempty"`
+
+	// PrivateJwk RSA private JWK for the Okta directory service app; sealed at rest. Omit to change only enabled state of an existing matching configuration.
+	PrivateJwk *string `json:"private_jwk,omitempty"`
 
 	// ServiceAccountJson Google service-account JSON with DWD; sealed at rest and never returned.
 	ServiceAccountJson *string `json:"service_account_json,omitempty"`
+
+	// SsoConnectionId Tested and enabled Okta SSO connection in this organization.
+	SsoConnectionId *openapi_types.UUID `json:"sso_connection_id,omitempty"`
 
 	// TenantId Entra tenant id; required for microsoft.
 	TenantId *string `json:"tenant_id,omitempty"`
@@ -3151,11 +3177,18 @@ type IdpSyncConfigRequest struct {
 
 // IdpSyncHealth defines model for IdpSyncHealth.
 type IdpSyncHealth struct {
+	ClientId      string                `json:"client_id"`
+	Enabled       bool                  `json:"enabled"`
 	LastSyncAt    *time.Time            `json:"last_sync_at,omitempty"`
 	LastSyncError *string               `json:"last_sync_error,omitempty"`
 	LastSyncOk    bool                  `json:"last_sync_ok"`
+	OktaOrgUrl    *string               `json:"okta_org_url,omitempty"`
 	Provider      IdpSyncHealthProvider `json:"provider"`
-	SyncHealth    string                `json:"sync_health"`
+
+	// ProvisioningAllowed New directory accounts and grants require an unexpired entitled licence; revocations continue when false.
+	ProvisioningAllowed bool                `json:"provisioning_allowed"`
+	SsoConnectionId     *openapi_types.UUID `json:"sso_connection_id,omitempty"`
+	SyncHealth          string              `json:"sync_health"`
 }
 
 // IdpSyncHealthProvider defines model for IdpSyncHealth.Provider.
@@ -3674,13 +3707,21 @@ type Meta struct {
 	SetupComplete *bool   `json:"setup_complete,omitempty"`
 
 	// SmtpConfigured Whether this deployment can send email at all. ⛔ False means invitations, password resets and email verification cannot be delivered — and invitations are the only way anyone joins. The screens that send mail say so BEFORE the operator acts, rather than after a recipient does not receive something.
-	SmtpConfigured *bool              `json:"smtp_configured,omitempty"`
-	SsoProviders   []MetaSsoProviders `json:"sso_providers"`
-	Upgrade        *UpgradeStatus     `json:"upgrade,omitempty"`
+	SmtpConfigured *bool `json:"smtp_configured,omitempty"`
+	SsoConnections *[]struct {
+		Id       openapi_types.UUID         `json:"id"`
+		Name     string                     `json:"name"`
+		Provider MetaSsoConnectionsProvider `json:"provider"`
+	} `json:"sso_connections,omitempty"`
+	SsoProviders []MetaSsoProviders `json:"sso_providers"`
+	Upgrade      *UpgradeStatus     `json:"upgrade,omitempty"`
 }
 
 // MetaEdition defines model for Meta.Edition.
 type MetaEdition string
+
+// MetaSsoConnectionsProvider defines model for Meta.SsoConnections.Provider.
+type MetaSsoConnectionsProvider string
 
 // MetaSsoProviders defines model for Meta.SsoProviders.
 type MetaSsoProviders string

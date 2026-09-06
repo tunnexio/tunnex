@@ -38,6 +38,7 @@ afterEach(() => {
     );
 });
 // ⛔ a NON-sso_not_configured failure — the arm the collapse could not distinguish.
+let provisioningAllowed = true;
 let ssoFail = false; // docs/laws.md — no globals/setup file, so auto-cleanup never registers
 
 let edition: "open" | "enterprise" = "enterprise";
@@ -81,6 +82,8 @@ vi.mock("../src/lib/api", async () => {
     api: {
       GET: vi.fn(async (path: string, request?: { params?: { path?: { destinationId?: string; orgId?: string } } }) => {
         if (__cleaned) __lateGets.push(path);
+        if (path === "/api/v1/organizations/{orgId}/idp-sync/{provider}/health")
+          return { data: { provider: "microsoft", sync_health: "ok", last_sync_ok: true, provisioning_allowed: provisioningAllowed } };
         if (path === "/api/v1/auth/me")
           return { data: { id: "u1", email: "a@b.c", email_verified: true } };
         if (path === "/api/v1/meta") return { data: { edition } };
@@ -267,7 +270,10 @@ const withAuthAndSwitch = () => render(
   </AuthProvider>,
 );
 
+const defaultGetImplementation = vi.mocked(api.GET).getMockImplementation()!;
 beforeEach(() => {
+  vi.mocked(api.GET).mockImplementation(defaultGetImplementation);
+  provisioningAllowed = true;
   if (typeof window.localStorage.removeItem === "function") {
     window.localStorage.removeItem("tunnex.currentOrg");
   }
@@ -653,7 +659,9 @@ describe("Settings — failure path", () => {
       GET: ReturnType<typeof vi.fn>;
     };
     api.GET.mockImplementation(async (path: string) => {
-      if (path === "/api/v1/auth/me")
+      if (path === "/api/v1/organizations/{orgId}/idp-sync/{provider}/health")
+          return { data: { provider: "microsoft", sync_health: "ok", last_sync_ok: true, provisioning_allowed: provisioningAllowed } };
+        if (path === "/api/v1/auth/me")
         return { data: { id: "u1", email: "a@b.c", email_verified: true } };
       if (path === "/api/v1/meta") return { data: { edition: "enterprise" } };
       if (path === "/api/v1/organizations")
@@ -770,5 +778,18 @@ describe("Settings — one section at a time", () => {
       expect(name.length).toBeLessThan(20);
       expect(tab.textContent!.startsWith(name)).toBe(true);
     }
+  });
+});
+
+
+describe("Directory provisioning entitlement", () => {
+  it("shows paused additions separately from successful directory health", async () => {
+    provisioningAllowed = false;
+    withAuthAndRouter(<Settings />);
+    await openSection(/Directory sync/);
+    const manage = await screen.findAllByRole("button", { name: "Manage" });
+    fireEvent.click(manage[0]);
+    expect(await screen.findByText("User provisioning paused — licence required")).toBeTruthy();
+    expect(screen.getByText(/Directory removals and disabled-user revocations continue/)).toBeTruthy();
   });
 });

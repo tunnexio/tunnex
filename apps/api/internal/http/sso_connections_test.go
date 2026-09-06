@@ -1,14 +1,20 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/sso"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestConnectionStartSetsPrivateBrowserBindingCookie(t *testing.T) {
@@ -56,5 +62,24 @@ func TestCompanyLoginFailureRetainsVerifiedFlowConnection(t *testing.T) {
 	u, _ = url.Parse(connectionLoginFailureURL("https://vpn.example.com", uuid.Nil, apierr.BadRequest("unknown", "private")))
 	if u.Query().Has("connection") {
 		t.Fatal("unbound flow acquired a connection")
+	}
+}
+
+func TestFirstSSOCallbackWithoutSessionDoesNotPanic(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	svc := sso.NewService(nil, nil, sso.NewFlowStore(rdb, time.Minute), nil, "http://localhost", nil)
+	server := apiServer{sso: &ssoAdapter{svc: svc}, appBaseURL: "http://localhost"}
+	response, err := server.SsoConnectionCallback(context.Background(), api.SsoConnectionCallbackRequestObject{Params: api.SsoConnectionCallbackParams{State: "missing-flow"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	if err = response.VisitSsoConnectionCallbackResponse(w); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 302 || !strings.Contains(w.Header().Get("Location"), "sso_error=invalid_state") {
+		t.Fatalf("unexpected refusal: %d %s", w.Code, w.Header().Get("Location"))
 	}
 }

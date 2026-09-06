@@ -172,12 +172,29 @@ func (r *Reconciler) reconcileGroup(ctx context.Context, orgID uuid.UUID, provid
 // are COLLECTED, never fatal (#3): one un-deprovisionable user (e.g. a sole-owner last_owner 409)
 // must not strand every other removal/sweep in the group. A non-nil return degrades config health.
 func (r *Reconciler) converge(ctx context.Context, orgID uuid.UUID, provider string, g SyncGroup, members []DirectoryMember) (err error) {
+	var errs []error
+	protectedExternalIDs := map[string]bool{}
 	desired := map[uuid.UUID]string{}   // uid -> directory external id (recorded on the add)
 	deprovision := map[uuid.UUID]bool{} // uid listed as DISABLED in this group → full sweep
 	for _, m := range members {
-		uid, found, e := r.store.ResolveOrgUser(ctx, orgID, m.Email)
+		var uid uuid.UUID
+		var found bool
+		var e error
+		if resolver, ok := r.store.(interface {
+			ResolveDirectoryMember(context.Context, uuid.UUID, uuid.UUID, string, DirectoryMember) (uuid.UUID, bool, error)
+		}); ok && provider == "okta" {
+			uid, found, e = resolver.ResolveDirectoryMember(ctx, orgID, g.ID, provider, m)
+		} else {
+			uid, found, e = r.store.ResolveOrgUser(ctx, orgID, m.Email)
+		}
 		if e != nil {
-			return e // a resolve failure before any mutation → fail-static (nothing changed yet)
+			if provider != "okta" {
+				return e
+			}
+			// Preserve this unresolved identity, but don't strand unrelated leavers.
+			protectedExternalIDs[m.ExternalID] = true
+			errs = append(errs, e)
+			continue
 		}
 		if !found {
 			continue // sync grants existing org users only; unmatched directory members are skipped
@@ -197,13 +214,18 @@ func (r *Reconciler) converge(ctx context.Context, orgID uuid.UUID, provider str
 		return e
 	}
 
+	for _, current := range currentMembers {
+		if protectedExternalIDs[current.ExternalID] {
+			desired[current.UserID] = current.ExternalID
+		}
+	}
+
 	changed := false
 	defer func() {
 		if changed {
 			r.store.PushOrg(ctx, orgID) // #2: committed changes propagate even if err != nil
 		}
 	}()
-	var errs []error
 
 	// Adds (grant). Fail-closed: collect + continue (a failed add just means fewer grants).
 	//
@@ -225,11 +247,14 @@ func (r *Reconciler) converge(ctx context.Context, orgID uuid.UUID, provider str
 	for _, m := range currentMembers {
 		currentSet[m.UserID] = true
 	}
-	// Evaluated ONCE, before the loop: a predicate re-read per member could grant half a group and skip the
-	// rest, which is a state no operator could explain and no test would reliably reproduce.
-	if r.mayProvision() {
+	// Recheck before each new grant. An already-authorized write may finish, but
+	// expiry stops subsequent grants; removals below always continue.
+	{
 		for _, uid := range sortedUUIDKeys(desired) {
 			if !currentSet[uid] {
+				if !r.mayProvision() {
+					break
+				}
 				did, e := r.store.AddIdpGroupMember(ctx, orgID, g.ID, uid, desired[uid])
 				if e != nil {
 					errs = append(errs, fmt.Errorf("add %s: %w", uid, e))

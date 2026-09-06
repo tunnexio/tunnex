@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -44,8 +46,33 @@ func (s apiServer) GetMeta(ctx context.Context, _ api.GetMetaRequestObject) (api
 	// is not a secret — it is a fact any visitor discovers the moment a reset email does not arrive.
 	smtp := s.smtpConfigured
 	providers := []api.MetaSsoProviders{}
-	if s.sso != nil {
-		providers = []api.MetaSsoProviders{api.MetaSsoProvidersGoogle, api.MetaSsoProvidersMicrosoft}
+	connections := []struct {
+		Id       uuid.UUID                      `json:"id"`
+		Name     string                         `json:"name"`
+		Provider api.MetaSsoConnectionsProvider `json:"provider"`
+	}{}
+	if adapter, ok := s.sso.(*ssoAdapter); ok && adapter.pool != nil {
+		q := sqlc.New(adapter.pool)
+		for _, provider := range []string{"google", "microsoft"} {
+			orgs, err := q.ListEnabledSSOOrgsByProvider(ctx, provider)
+			if err != nil {
+				return nil, err
+			}
+			if len(orgs) == 1 {
+				providers = append(providers, api.MetaSsoProviders(provider))
+			}
+		}
+		rows, err := q.ListPublicLoginConnections(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			connections = append(connections, struct {
+				Id       uuid.UUID                      `json:"id"`
+				Name     string                         `json:"name"`
+				Provider api.MetaSsoConnectionsProvider `json:"provider"`
+			}{row.ID, row.Name, api.MetaSsoConnectionsProvider(row.Provider)})
+		}
 	}
 	// ⛔ THE DEPLOYMENT QUESTION. Unauthenticated, because the login page must answer it before anyone has
 	// signed in — and it is a HINT, never the boundary: auth.Signup refuses on the server regardless.
@@ -102,7 +129,7 @@ func (s apiServer) GetMeta(ctx context.Context, _ api.GetMetaRequestObject) (api
 		}
 	}
 	return api.GetMeta200JSONResponse{
-		Body:    api.Meta{Edition: api.MetaEdition(s.editionName()), SsoProviders: providers, ProtocolVersion: policyspec.ProtocolVersion, PublicBaseUrl: &base, GatewayControlUrl: &gatewayURL, SetupComplete: &setup, NodeAgentImage: &img, SmtpConfigured: &smtp, Upgrade: upgrade},
+		Body:    api.Meta{Edition: api.MetaEdition(s.editionName()), SsoProviders: providers, SsoConnections: &connections, ProtocolVersion: policyspec.ProtocolVersion, PublicBaseUrl: &base, GatewayControlUrl: &gatewayURL, SetupComplete: &setup, NodeAgentImage: &img, SmtpConfigured: &smtp, Upgrade: upgrade},
 		Headers: api.GetMeta200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }

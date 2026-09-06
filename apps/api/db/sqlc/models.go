@@ -789,6 +789,8 @@ type IdpSyncConfig struct {
 	CreatedAt           time.Time          `json:"created_at"`
 	UpdatedAt           time.Time          `json:"updated_at"`
 	DelegatedAdminEmail *string            `json:"delegated_admin_email"`
+	OktaOrgUrl          *string            `json:"okta_org_url"`
+	SsoConnectionID     pgtype.UUID        `json:"sso_connection_id"`
 }
 
 type Invitation struct {
@@ -1684,10 +1686,11 @@ type SsoConnection struct {
 }
 
 type SsoConnectionIdentity struct {
-	ConnectionID uuid.UUID `json:"connection_id"`
-	IssuerUrl    string    `json:"issuer_url"`
-	Subject      string    `json:"subject"`
-	UserID       uuid.UUID `json:"user_id"`
+	ConnectionID      uuid.UUID `json:"connection_id"`
+	IssuerUrl         string    `json:"issuer_url"`
+	Subject           string    `json:"subject"`
+	UserID            uuid.UUID `json:"user_id"`
+	DirectoryImported bool      `json:"directory_imported"`
 }
 
 type SystemSetting struct {

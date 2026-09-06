@@ -1,4 +1,5 @@
 import React from "react";
+import { DirectoryPreview } from "./directory-preview";
 import { createRoot } from "react-dom/client";
 import {
   SsoConnections,
@@ -120,6 +121,7 @@ createRoot(document.getElementById("root")!).render(
           ))}
         </div>
         <SsoConnections orgId={org} canEdit transport={transport} preview />
+        <DirectoryPreview />
       </div>
     </div>
   </React.StrictMode>,

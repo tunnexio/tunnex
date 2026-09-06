@@ -67,3 +67,43 @@ func TestCustomProviderVerifiesLocalIDPTokens(t *testing.T) {
 		t.Fatal("accepted unverified email")
 	}
 }
+
+func TestCustomUserInfoCompletion(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		claim        any
+		include      bool
+		sub, email   string
+		verified, ok bool
+		calls        int
+	}{
+		{"missing verified", nil, false, "subject", "a@example.com", true, true, 1},
+		{"subject mismatch", nil, false, "other", "a@example.com", true, false, 1},
+		{"email mismatch", nil, false, "subject", "b@example.com", true, false, 1},
+		{"userinfo unverified", nil, false, "subject", "a@example.com", false, false, 1},
+		{"explicit false", false, true, "subject", "a@example.com", true, false, 0},
+		{"null claim", nil, true, "subject", "a@example.com", true, false, 0},
+		{"complete token", true, true, "other", "b@example.com", false, true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeIdP(t, "client")
+			f.userinfo = map[string]any{"sub": tc.sub, "email": tc.email, "email_verified": tc.verified}
+			claims := map[string]any{"sub": "subject", "email": "a@example.com", "nonce": "nonce"}
+			if tc.include {
+				claims["email_verified"] = tc.claim
+			}
+			f.mint(f.key, claims)
+			p, err := newCustomProviderWithClient(context.Background(), f.issuer(), "client", "secret", "http://localhost/callback", f.server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = p.Exchange(context.Background(), "code", "verifier", "nonce")
+			if (err == nil) != tc.ok {
+				t.Fatalf("success=%v want %v", err == nil, tc.ok)
+			}
+			if f.userinfoCalls != tc.calls {
+				t.Fatalf("calls=%d want %d", f.userinfoCalls, tc.calls)
+			}
+		})
+	}
+}

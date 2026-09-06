@@ -39,10 +39,11 @@ func (s apiServer) PutIdpSyncConfig(ctx context.Context, req api.PutIdpSyncConfi
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
 	in := idpsyncspec.ConfigInput{
+		OktaOrgURL: valueOrEmpty(req.Body.OktaOrgUrl), PrivateJWK: valueOrEmpty(req.Body.PrivateJwk), SSOConnectionID: req.Body.SsoConnectionId,
 		ClientID:           req.Body.ClientId,
 		ClientSecret:       req.Body.ClientSecret,
 		ServiceAccountJSON: valueOrEmpty(req.Body.ServiceAccountJson),
-		Enabled:            req.Body.Enabled == nil || *req.Body.Enabled, // default enabled
+		Enabled:            req.Body.Enabled != nil && *req.Body.Enabled || req.Provider != "okta" && req.Body.Enabled == nil, // Okta requires explicit opt-in
 	}
 	if req.Body.TenantId != nil {
 		in.TenantID = *req.Body.TenantId
@@ -163,6 +164,10 @@ func toAPIIdpSyncConfig(v idpsyncspec.ConfigView) api.IdpSyncConfig {
 	if v.SecretFingerprint != "" {
 		out.SecretFingerprint = &v.SecretFingerprint
 	}
+	if v.OktaOrgURL != "" {
+		out.OktaOrgUrl = &v.OktaOrgURL
+	}
+	out.SsoConnectionId = v.SSOConnectionID
 	if v.TenantID != "" {
 		out.TenantId = &v.TenantID
 	}
@@ -179,12 +184,17 @@ func toAPIIdpSyncConfig(v idpsyncspec.ConfigView) api.IdpSyncConfig {
 
 func toAPIIdpSyncHealth(v idpsyncspec.HealthView) api.IdpSyncHealth {
 	out := api.IdpSyncHealth{
-		Provider:   api.IdpSyncHealthProvider(v.Provider),
-		SyncHealth: v.SyncHealth,
-		LastSyncOk: v.LastSyncOk,
+		Enabled: v.Enabled, ClientId: v.ClientID, SsoConnectionId: v.SSOConnectionID,
+		ProvisioningAllowed: v.ProvisioningAllowed,
+		Provider:            api.IdpSyncHealthProvider(v.Provider),
+		SyncHealth:          v.SyncHealth,
+		LastSyncOk:          v.LastSyncOk,
 	}
 	if v.LastSyncError != "" {
 		out.LastSyncError = &v.LastSyncError
+	}
+	if v.OktaOrgURL != "" {
+		out.OktaOrgUrl = &v.OktaOrgURL
 	}
 	out.LastSyncAt = v.LastSyncAt
 	return out

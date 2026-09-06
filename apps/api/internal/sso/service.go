@@ -39,8 +39,10 @@ type Service struct {
 	configs *ConfigService
 	flows   *FlowStore
 	factory ProviderFactory
-	baseURL string
-	logger  *slog.Logger
+	// Internal provider seam for isolated signed-token integration tests; no runtime override.
+	connectionFactory func(context.Context, sqlc.SsoConnection) (Provider, error)
+	baseURL           string
+	logger            *slog.Logger
 	// licence answers "may this deployment still ONBOARD somebody through SSO". ⚠ nil => permitted, the
 	// fail-open default every other consumer uses: a deployment that upgrades into this code keeps working.
 	licence *licence.Manager
