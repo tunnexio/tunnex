@@ -49,3 +49,14 @@ confirmed no hostposture code/chart changes between C5 and C7. A normal Helm
 rollback to revision 1 was started as an explicit operator fixture repair.
 No Helm Secret/history rewriting, forged description, journal/PVC edit, or
 provenance-check bypass. This repair must not count as zero-touch acceptance.
+
+Manager rollback completed: revision 3 records `Rollback to 1`, all three
+manager instances Ready. Manager is therefore C5 again (its component source
+is unchanged), not C7. CP C7 containers `db156daef5d2` API, `75034812ba18`
+web and `b93287a32374` nginx are healthy; other CP container IDs unchanged.
+
+A3 native retry 00:53:58.091–00:54:35.613 UTC completed exit 0. Replacement
+`tunnex-s205-a3-tunnex-gateway-5bc78d7fdc-b6kgc` Ready 1/1, zero restarts.
+B2 native upgrade started next. HA remained bootstrap_pending at the first
+post-A3 check; a transient stale ownership tuple refusal was observed, not
+the previous DNAT grammar refusal. Fresh fenced/client proof remains pending.
