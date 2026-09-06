@@ -167,3 +167,17 @@ use that stale field as final-candidate provenance; investigate separately.
 The new image/revision, live schema-4 rules and retained public keys are the
 verified runtime evidence. This observation does not invalidate the measured
 client traffic, but it is not a clean final provenance/UI result.
+
+## HA first direction
+
+After all three deployments were 1/1 Ready and continuous requests succeeded,
+the exact A3 scale subresource changed `1 → 0` at 02:14:53 UTC. No template,
+Service, PVC, pool, fence or role changed manually. Edge and B2 stayed up.
+
+First failed request sample: 02:14:57.934. CP automatically reported B2 as
+active at the 02:15:40.868 sample, promotion generation 2. Both IP and FQDN
+requests first recovered at 02:16:16.553, and the next sample also passed.
+Observed scale-to-first-success is about 83.6 seconds; the scheduler/lease
+convergence outage is recorded, not represented as seamless failover.
+No intervention occurred between scale-down and automatic client recovery.
+A3 restoration and reverse-direction proof remain next.
