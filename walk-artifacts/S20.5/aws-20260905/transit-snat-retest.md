@@ -115,3 +115,16 @@ healthy 3/3 and original C5 image. Original retained identities:
 | edge | `78f384ac-4ef7-447f-ac60-77ef44a43089` | `a8654d15-6140-4d08-a164-94a3c786f4bd` |
 
 All remain Bound to original matching PVs; failed A/A2/B fixtures are untouched.
+
+## Old epoch withdrawal
+
+All three CP lifecycle claims were read-only verified `consumed` into their
+original A3/B2/edge node IDs before removal. Native CLI uninstalls succeeded
+in B2, A3, edge order, retaining each original PVC. No purge-state was invoked.
+
+All three managers subsequently proved schema 3 / epoch 2 / `restored`, no
+owners, idle heartbeats and revoked CNI authority. Host readback showed no
+`wg0` or posture-aliased link, and no Tunnex-commented nft rules. Heartbeat
+sequences at this check were A3 2197, edge 2195, B2 2198. The old manager
+remained healthy; no manual restoration was necessary. Gateway outage is
+intentional during this retained-reuse/new-epoch transition.
