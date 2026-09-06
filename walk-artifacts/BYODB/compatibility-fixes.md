@@ -62,4 +62,12 @@ Dump/log files remain protected scratch artifacts and are not committed.
 Installer behavioral contracts passed. Helm lint and BYODB chart contracts passed
 using the existing Helm 3.16.4 container with Ruby installed in that disposable
 container. Local host lacks Helm; initial host/container dependency failures are
-not counted as passing runs. Full gate chain is still running at this checkpoint.
+not counted as passing runs.
+
+Final local gate chain completed successfully: `make generate-check migrate
+test-editions build-editions test-node`, using only the explicit
+`tunnex-byodb-compat-gates-20260906b` Compose project. Both API editions passed
+against the dedicated live gate database. CP web typecheck/build passed earlier;
+its Node22 agentview bootstrap fixture test still fails locally as recorded in
+pg16-18-compatibility.md, so the complete repository gate set is not green.
+Exact-pushed-head GitHub checks remain authoritative and pending.
