@@ -1,0 +1,27 @@
+.kubernetes-tabs { display:flex; gap:28px; border-bottom:1px solid var(--tnx-border); overflow-x:auto; }
+.kubernetes-tabs button { white-space:nowrap; padding:12px 2px 16px; font-size:13px; }
+.kubernetes-tabs button[aria-current=page] { color:var(--tnx-text-heading); }
+.kubernetes-tabs button[aria-current=page]::after { background:var(--tnx-focus); height:2px; }
+.kubernetes-summary.tnx-card-surface { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding:0!important; }
+.kubernetes-summary > div { display:flex; flex-direction:column; gap:10px; padding:22px 24px; }
+.kubernetes-summary > div + div { border-left:1px solid var(--tnx-divider); }
+.kubernetes-summary span { color:var(--tnx-text-secondary); font-size:13px; }
+.kubernetes-summary strong { color:var(--tnx-text-heading); font-size:28px; font-weight:500; letter-spacing:-.04em; }
+.kubernetes-summary small { color:var(--tnx-text-secondary); font-size:12px; line-height:1.5; }
+.kubernetes-connector-cell { display:flex; flex-direction:column; align-items:flex-start; gap:5px; font-size:13px; }
+.kubernetes-workspace .tnx-table-scroll td { vertical-align:middle; }
+.kubernetes-workspace .tnx-table-scroll { border-top:1px solid var(--tnx-divider); }
+.kubernetes-next-step { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px; border:1px solid var(--tnx-border); border-radius:10px; background:var(--tnx-surface-inset); }
+.kubernetes-next-step strong { color:var(--tnx-text-heading); font-weight:500; }
+.kubernetes-next-step p { margin-top:5px; font-size:13px; color:var(--tnx-text-secondary); }
+.kubernetes-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 28px; }
+.kubernetes-detail-grid > div { padding:15px 0; border-bottom:1px solid var(--tnx-divider); }
+.kubernetes-detail-grid dd { color:var(--tnx-text-heading); font-size:14px; }
+@media(max-width:640px) {
+ .kubernetes-summary > div { padding:16px 12px; }
+ .kubernetes-summary strong { font-size:24px; }
+ .kubernetes-summary small { font-size:11px; }
+ .kubernetes-tabs { gap:20px; }
+ .kubernetes-next-step { align-items:flex-start; flex-direction:column; gap:12px; }
+ .kubernetes-detail-grid { grid-template-columns:1fr; }
+}

@@ -173,7 +173,7 @@ export function EntityPicker({
               {o.section && o.section !== shown[idx - 1]?.section && (
                 <div
                   role="presentation"
-                  className="sticky top-0 z-10 bg-[#141414]/95 px-2.5 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[.14em] text-ink-tertiary backdrop-blur"
+                  className="sticky top-0 z-10 bg-surface px-2.5 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[.14em] text-ink-tertiary"
                 >
                   {o.section}
                 </div>

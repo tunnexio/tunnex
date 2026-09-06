@@ -1,3 +1,5 @@
+import "../network-workspaces.css";
+import "../settings-workspace.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   api,
@@ -214,7 +216,7 @@ export default function Settings() {
     // ⚠ THE WORRY IT ENCODED WAS A ONE-COLUMN WORRY. The rail track is fixed and the content track takes
     // what is left, so a wide screen buys a wider VALUE column, not a 2000px input — and AppShell's stated
     // law is that page bodies fill available width (its own comment records what capping one cost before).
-    <div>
+    <div className="network-management settings-workspace">
       <PageHeader
         title="Settings"
         subtitle={
@@ -258,13 +260,14 @@ export default function Settings() {
           push it wider than its share, which is the class of bug that shaved this page's right edge off
           before. Below `lg` the rail is dropped rather than stacked: six labels above the content is six
           rows of chrome before the thing you came for. */}
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+      <div className="settings-layout">
         <SettingsRail
           sections={shown}
           active={active}
           onSelect={selectSection}
         />
-        <div className="flex min-w-0 flex-col gap-3.5">
+        <div className="settings-content">
+          <p className="settings-section-hint">{shown.find(section => section.id === active)?.hint}</p>
         {org && isAdmin && active === "organization" && (
           <SettingGroup id="organization" title="Organization"
             tabpanel>
@@ -988,7 +991,7 @@ function PoolSection({
       description="The WireGuard address range assigned to devices."
       value={
         <SettingValue>
-          <span className="font-mono">{org.pool_cidr}</span>
+          <span className="font-sans">{org.pool_cidr}</span>
         </SettingValue>
       }
       actionLabel="Resize"
@@ -1038,7 +1041,7 @@ function PoolSection({
             configs embed the old range and are one-time — they can't be re-served. */}
         {done && (
           <p className="mt-3 text-xs text-accent-400">
-            Pool resized to <span className="font-mono">{cidr}</span>. Existing
+            Pool resized to <span className="font-sans">{cidr}</span>. Existing
             devices keep their current addresses — to reach addresses in the new
             range, re-issue their configs (revoke + recreate; configs are shown
             once and can’t be re-sent).
@@ -1064,7 +1067,7 @@ function PoolSection({
                   className="flex items-center justify-between text-xs"
                 >
                   <span className="text-slate-300">{o.name}</span>
-                  <span className="font-mono text-slate-500">
+                  <span className="font-sans text-slate-500">
                     {o.assigned_ip}
                     <span className="ml-2 text-slate-600">
                       {orphanReasonCopy(o.reason)}
@@ -1340,7 +1343,7 @@ function IdpSyncSection({
           {/* Fail-static is the part a health badge cannot carry: a broken sync KEEPS access. */}
           <p className="mt-1 text-xs text-slate-500">{FAIL_STATIC_NOTE}</p>
           {state.health.last_sync_error && (
-            <p className="mt-1 break-all font-mono text-xs text-slate-500">
+            <p className="mt-1 break-all font-sans text-xs text-slate-500">
               last error: {state.health.last_sync_error}
             </p>
           )}
@@ -1416,7 +1419,7 @@ function IdpSyncSection({
             <>
               <Field label="Google service-account JSON (DWD)">
                 <textarea
-                  className="min-h-24 w-full rounded-md border border-ink-600 bg-ink-950 p-2 font-mono text-xs text-slate-300"
+                  className="min-h-24 w-full rounded-md border border-ink-600 bg-ink-950 p-2 font-sans text-xs text-slate-300"
                   value={serviceAccountJSON}
                   onChange={(e) => setServiceAccountJSON(e.target.value)}
                   required
@@ -1465,7 +1468,7 @@ function IdpSyncSection({
                 >
                   <span className="text-slate-300">{g.name}</span>
                   <span className="flex items-center gap-2">
-                    <span className="font-mono text-slate-600">
+                    <span className="font-sans text-slate-600">
                       {g.idp_group_id}
                     </span>
                     <button
@@ -1524,7 +1527,7 @@ function IdpSyncSection({
       {unmapping && (
         <div className="mt-3 rounded-lg border border-danger/40 bg-danger/5 p-3">
           <p className="text-sm text-slate-200">
-            Un-map <span className="font-mono">{unmapping.name}</span>?
+            Un-map <span className="font-sans">{unmapping.name}</span>?
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-400">
             {UNMAP_CONSEQUENCES.map((c) => (
@@ -1605,7 +1608,7 @@ const RAIL: ReadonlyArray<{
     id: "organization",
     needsOrg: true,
     label: "Organization",
-    hint: "Manage your organization information and preferences.",
+    hint: "Organization identity and tenant management.",
     requiredPermission: "org:update",
   },
   {
@@ -1618,7 +1621,7 @@ const RAIL: ReadonlyArray<{
   {
     id: "authentication",
     label: "Authentication",
-    hint: "Manage how members sign in and access your resources.",
+    hint: "Your two-factor authentication and organization sign-in methods.",
   },
   {
     id: "directory",
@@ -1638,7 +1641,7 @@ const RAIL: ReadonlyArray<{
     id: "data-retention",
     needsOrg: true,
     label: "Data retention",
-    hint: "Manage access-event and audit-log retention, pruning cadence, and maintenance status.",
+    hint: "How long logs are kept and when they are pruned.",
     requiredAnyPermission: [
       "access_event_retention:manage",
       "audit_log_retention:manage",
@@ -1688,14 +1691,19 @@ function SettingsRail({
   active: string;
   onSelect: (id: string) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const matching = sections.filter(section => `${section.label} ${section.hint}`.toLowerCase().includes(query.trim().toLowerCase()));
   return (
+    <aside className="settings-navigation">
+      <Input type="search" aria-label="Find settings section" placeholder="Find a section…" value={query} onChange={event => setQuery(event.target.value)} />
+      {matching.length === 0 && <p className="settings-search-empty">No matching sections.</p>}
     <div
       role="tablist"
       aria-orientation="vertical"
       aria-label="Settings sections"
       className="flex gap-1.5 overflow-x-auto pb-1 lg:sticky lg:top-6 lg:flex-col lg:overflow-visible lg:rounded-xl lg:border lg:border-white/[0.07] lg:bg-white/[0.018] lg:p-1.5"
     >
-      {sections.map((s) => {
+      {matching.map((s) => {
         const on = s.id === active;
         return (
           <button
@@ -1709,7 +1717,7 @@ function SettingsRail({
             aria-label={s.label}
             aria-selected={on}
             aria-controls={s.id}
-            onClick={() => onSelect(s.id)}
+            onClick={() => { onSelect(s.id); setQuery(""); }}
             title={s.hint}
             className={`group flex min-h-10 shrink-0 items-center rounded-lg border px-3 py-2 text-left transition-colors duration-fast focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/30 ${
               on
@@ -1734,6 +1742,7 @@ function SettingsRail({
         );
       })}
     </div>
+    </aside>
   );
 }
 
@@ -1808,7 +1817,7 @@ function OrgSection({
             />
           </Field>
           {/* Slug is immutable (identity); shown read-only. */}
-          <p className="font-mono text-xs text-slate-500">slug: {org.slug}</p>
+          <p className="font-sans text-xs text-slate-500">slug: {org.slug}</p>
           <ErrorText>{err}</ErrorText>
         </div>
       )}
@@ -2095,7 +2104,7 @@ function SsoProvider({
             />
           </Field>}
           {configured && view?.secret_fingerprint && (
-            <p className="font-mono text-xs text-slate-500">
+            <p className="font-sans text-xs text-slate-500">
               stored secret fingerprint: {view.secret_fingerprint}
             </p>
           )}

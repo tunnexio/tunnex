@@ -159,7 +159,7 @@ export function FQDNEnforcementSetting({
           {setting && (
             <span
               role="status"
-              className={`rounded-full border px-2.5 py-1 font-mono text-xs font-semibold ${
+              className={`tnx-status rounded-full border px-2.5 py-1 font-mono text-xs font-semibold ${
                 enabled
                   ? "border-emerald-800/50 bg-emerald-950/40 text-emerald-400"
                   : "border-warn/40 bg-warn/10 text-warn"

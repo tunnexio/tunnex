@@ -1,6 +1,8 @@
+import { MemoryRouter } from "react-router-dom";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
-  render,
+  render as renderUI,
   screen,
   waitFor,
   cleanup,
@@ -8,6 +10,8 @@ import {
 } from "@testing-library/react";
 
 import { OrgProvider } from "../src/lib/useOrg";
+
+const render = (ui: ReactElement) => renderUI(<MemoryRouter initialEntries={["/routed-ranges?view=table"]}>{ui}</MemoryRouter>);
 
 afterEach(cleanup);
 
@@ -378,10 +382,10 @@ describe("RoutedRanges — the address-space map", () => {
     await expectAddressSpaceExpanded();
     // Two grids, each labelled, rather than one grid silently missing half the data.
     expect(
-      await screen.findByRole("img", { name: /^10\.0\.0\.0\/8/ }),
+      await screen.findByRole("group", { name: /^10\.0\.0\.0\/8/ }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("img", { name: /^192\.168\.0\.0\/16/ }),
+      screen.getByRole("group", { name: /^192\.168\.0\.0\/16/ }),
     ).toBeTruthy();
   });
 
@@ -420,7 +424,7 @@ describe("RoutedRanges — the address-space map", () => {
       </OrgProvider>,
     );
     await expectAddressSpaceExpanded();
-    const svg = await screen.findByRole("img", { name: /^10\.0\.0\.0\/8/ });
+    const svg = await screen.findByRole("group", { name: /^10\.0\.0\.0\/8/ });
     const name = svg.getAttribute("aria-label") ?? "";
     expect(name).toContain("1 routed");
     // A /16 in a /8 is 1/256 = 0.39%.

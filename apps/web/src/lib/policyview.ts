@@ -1230,7 +1230,7 @@ export function srcGroupEmptyWarn(
 
 /** Badge text. `unknown` and `populated` BOTH render nothing — for different reasons, neither of them a warn. */
 export function srcGroupEmptyBadge(w: GroupEmptyWarn): string | null {
-  return w === "empty" ? "SOURCE GROUP EMPTY" : null;
+  return w === "empty" ? "Source group empty" : null;
 }
 
 export function srcGroupEmptyExplain(w: GroupEmptyWarn): string | null {

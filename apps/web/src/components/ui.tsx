@@ -1,3 +1,4 @@
+import { DateTimeInput } from "./DateTimeInput";
 import {
   cloneElement,
   Fragment,
@@ -83,7 +84,7 @@ export function Button({
   // onto a container without re-reading that law.
   const variants = {
     primary:
-      "border border-white/40 bg-white/[.16] text-ink-heading shadow-[0_4px_16px_rgba(0,0,0,.4)] backdrop-blur-[10px] hover:bg-white/25",
+      "border border-line bg-surface text-ink-heading shadow-sm hover:bg-surface-inset",
     ghost: "border border-white/10 text-slate-200 hover:bg-white/5",
     danger: "text-slate-400 hover:text-danger",
     // The product-defining activation control is decisive, not decorative: a
@@ -143,6 +144,7 @@ export function Input({
   className = "",
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
+  if (props.type === "datetime-local" || props.type === "date") return <DateTimeInput {...props} className={className} />;
   return (
     <input
       className={`min-h-11 w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus-visible:border-white/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35 ${className}`}
@@ -304,7 +306,7 @@ export function Modal({
   // THE TREE it happens to be rendered.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4"
+      className="tnx-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={headingId}
@@ -313,7 +315,7 @@ export function Modal({
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "workspace" ? "max-w-4xl" : size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal backdrop-blur-[24px] backdrop-saturate-[1.4] sm:max-h-[calc(100dvh-2rem)]`}
+        className={`tnx-modal-panel flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden ${size === "workspace" ? "max-w-4xl" : size === "wide" ? "max-w-2xl" : size === "enrollment" ? "max-w-xl" : "max-w-md"} rounded-card border border-white/10 bg-surface p-4 shadow-modal sm:max-h-[calc(100dvh-2rem)]`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
@@ -323,8 +325,8 @@ export function Modal({
             <button type="button" aria-label={`Close ${title}`} onClick={onDismiss} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-lg leading-none text-ink-tertiary hover:bg-white/5 hover:text-ink-heading focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/35">×</button>
           )}
         </div>
-        <div className="mt-3 min-h-0 overflow-y-auto text-cell text-ink-body">{children}</div>
-        {actions && <div className="mt-5 shrink-0 flex justify-end gap-2">{actions}</div>}
+        <div className="tnx-modal-body mt-3 min-h-0 overflow-y-auto text-cell text-ink-body">{children}</div>
+        {actions && <div className="tnx-modal-actions mt-5 shrink-0 flex justify-end gap-2">{actions}</div>}
       </div>
     </div>,
     document.body,
@@ -516,7 +518,7 @@ export function SettingRow({
     // `basis` + `flex-wrap` so a narrow column drops the control under the text instead of crushing both.
     <div
       data-testid={testId}
-      className={`flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-3 ${className}`}
+      className={`tnx-setting-row flex flex-wrap items-start justify-between gap-x-6 gap-y-2 py-3 ${className}`}
     >
       <div className="min-w-0 flex-1 basis-[20rem]">
         <p id={labelId} className="text-cell font-medium text-ink-body">
@@ -604,7 +606,7 @@ export function SettingGroup({
       // Named by its own heading rather than by its tab: the heading is the more specific label, and it is
       // the one a reader sees.
       aria-labelledby={headingId}
-      className={`${CARD_SURFACE} p-6 scroll-mt-6 ${className}`}
+      className={`${CARD_SURFACE} tnx-setting-group p-6 scroll-mt-6 ${className}`}
     >
       <h2
         id={headingId}
@@ -800,17 +802,8 @@ export function Badge({
   tone?: BadgeTone;
   children: ReactNode;
 }) {
-  const cls = {
-    ok: "border-ok/40 text-ok",
-    warn: "border-warn/40 text-warn",
-    danger: "border-danger/40 text-danger",
-    neutral: "border-white/10 text-slate-400",
-    unknown: "border-amber-500/40 text-amber-300",
-  }[tone];
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs ${cls}`}
-    >
+    <span className="tnx-badge" data-tone={tone}>
       {children}
     </span>
   );
@@ -1259,9 +1252,9 @@ export function DataTable<T>({
     );
 
   return (
-    <div>
+    <div className="tnx-datatable">
       {(showFilter || toolbar) && (
-        <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-white/[.08] pb-3">
+        <div className="tnx-table-toolbar mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-white/[.08] pb-3">
           {showFilter ? (
             <input
               type="search"
@@ -1286,7 +1279,7 @@ export function DataTable<T>({
           "0 selected" teaches where the count will appear, and a bar that only materialises on the first
           click moves the layout under the operator's cursor. */}
       {showSelect && (selectionBar === "always" || selected.size > 0) && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs">
+        <div className="tnx-table-selection mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs">
           <span className="text-ink-secondary">
             <span className="tabular-nums text-slate-300">{selected.size}</span>{" "}
             selected
@@ -1377,7 +1370,7 @@ export function DataTable<T>({
         tabIndex={0}
         role="region"
         aria-label={`${caption} table scroll area`}
-        className="overflow-x-auto rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
+        className="tnx-table-scroll overflow-x-auto rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400"
       >
         <table className="w-full text-left text-sm">
           <caption className="sr-only">{caption}</caption>
@@ -1496,6 +1489,8 @@ export function DataTable<T>({
                 <Fragment key={key}>
                   <tr
                     {...(rowAttrs?.(r) ?? {})}
+                    data-selected={selected.has(key) || undefined}
+                    data-expanded={isOpen || undefined}
                     // Zebra + hover: scanning across a wide row is where the eye loses its line, and this is
                     // presentation only — never the carrier of a state the row needs to announce in words.
                     className={
@@ -1556,7 +1551,7 @@ export function DataTable<T>({
           or when a FILTER is narrowing (the "3 of 47" that stops a filtered view reading as a short one).
           On a table that fits and is unfiltered it renders nothing at all. */}
       {paged && (lastPage > 0 || query.trim() !== "") && (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-2 text-[11px] text-ink-secondary">
+        <div className="tnx-table-footer mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-2 text-[11px] text-ink-secondary">
           {/* ⚠ ABSENT WHEN EVERYTHING FITS — changing "rows per page" on a table showing all of them does
               nothing, and a control whose every value produces the same screen teaches that the controls
               here are decorative. */}

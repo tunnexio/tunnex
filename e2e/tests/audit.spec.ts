@@ -114,6 +114,8 @@ test("the feed renders actions + resolved actors + secret-free details, with key
     .getByRole("button", { name: "Inspect sso.config_updated audit event" })
     .click();
   await expect(page.getByRole("dialog", { name: "Audit evidence" })).toBeVisible();
+  await expect(page.getByText(/a1b2c3d4e5f6/)).toBeHidden();
+  await page.getByRole("dialog", { name: "Audit evidence" }).getByText("Recorded details & IDs", { exact: true }).click();
   await expect(page.getByText(/a1b2c3d4e5f6/)).toBeVisible();
   await expect(page.getByText(/client_secret/i)).toHaveCount(0);
   await page.getByRole("button", { name: "Close" }).click();

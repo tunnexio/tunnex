@@ -170,7 +170,7 @@ export function badgeClass(tone: BadgeTone): string {
     neutral: "border-white/10 text-slate-400",
     unknown: "border-white/10 text-slate-400",
   };
-  return `inline-flex items-center rounded-full border px-2 py-0.5 text-micro ${colour[tone]}`;
+  return `tnx-status inline-flex items-center rounded-full border px-2 py-0.5 text-micro ${colour[tone]}`;
 }
 
 /**

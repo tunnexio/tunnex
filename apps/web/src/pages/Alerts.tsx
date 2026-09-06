@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertManagement } from "../components/AlertManagement";
-import { Badge, Button, Card, DataTable, EmptyState, ErrorText, Loading, PageHeader } from "../components/ui";
+import { Badge, Button, Card, DataTable, EmptyState, ErrorText, Loading, Modal, PageHeader } from "../components/ui";
 import { api, apiErrorMessage, type AlertOccurrence, type AlertOccurrenceState, type Role } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { relativeAge } from "../lib/format";
 import { can } from "../lib/rbac";
 import { useOrg } from "../lib/useOrg";
+
+import "../network-workspaces.css";
+import "../alerts-workspace.css";
 
 type View = "active" | "history" | "management";
 
@@ -34,6 +37,8 @@ function severityTone(severity: AlertOccurrence["severity"]): "danger" | "warn" 
 export default function Alerts() {
   const { org, loading: orgLoading, failed: orgFailed } = useOrg();
   const { state: authState } = useAuth();
+  const [severity, setSeverity] = useState("all");
+  const [inspected, setInspected] = useState<AlertOccurrence | null>(null);
   const [view, setView] = useState<View>("active");
   const [rows, setRows] = useState<AlertOccurrence[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,49 +83,68 @@ export default function Alerts() {
   if (orgFailed || !org) return <ErrorText>Could not load the organization for alerts.</ErrorText>;
 
   return (
-    <div className="space-y-4">
+    <div className="network-management alerts-workspace">
       <PageHeader
-        title="Alerting"
-        subtitle="Monitor product conditions and route them to your response channels."
+        title="Alerts"
+        subtitle={org.name}
         actions={view !== "management" ? <Button variant="ghost" onClick={() => void load()}>Refresh</Button> : undefined}
       />
 
       <div className="flex items-center gap-5 border-b border-white/10" role="tablist" aria-label="Alert views">
         {(["active", "history", ...(canManage ? ["management" as const] : [])] as View[]).map((item) => (
-          <button key={item} type="button" role="tab" aria-selected={view === item} onClick={() => setView(item)} className={`border-b-2 px-1 pb-2 text-cell font-medium capitalize ${view === item ? "border-white text-ink-heading" : "border-transparent text-ink-tertiary hover:text-ink-primary"}`}>{item}</button>
+          <button key={item} type="button" role="tab" aria-selected={view === item} onClick={() => { setView(item); setSeverity("all"); }} className={`border-b-2 px-1 pb-2 text-cell font-medium capitalize ${view === item ? "border-white text-ink-heading" : "border-transparent text-ink-tertiary hover:text-ink-primary"}`}>{item}</button>
         ))}
       </div>
 
       {view === "management" && canManage ? (
         <AlertManagement orgId={org.id} canEdit={emailVerified} canAllowPrivate={myRole === "owner"} />
       ) : <>
-      {view === "active" && rows && rows.length > 0 && (
-        <div className="grid grid-cols-3 divide-x divide-white/10 rounded-lg border border-white/10 bg-surface px-1 py-3" aria-label="Active alert summary">
-          <div className="px-4"><div className="font-mono text-stat text-ink-heading">{rows.length}</div><div className="text-badge uppercase tracking-wider text-ink-tertiary">Active</div></div>
-          <div className="px-4"><div className="font-mono text-stat text-danger">{counts.critical}</div><div className="text-badge uppercase tracking-wider text-ink-tertiary">Critical</div></div>
-          <div className="px-4"><div className="font-mono text-stat text-warn">{counts.warning}</div><div className="text-badge uppercase tracking-wider text-ink-tertiary">Warning</div></div>
-        </div>
+      {rows && !error && (
+        <section className="tnx-card-surface alerts-summary" aria-label={view === "active" ? "Active alert summary" : "Resolved alert summary"}>
+          <div><span>{view === "active" ? "Active conditions" : "Resolved conditions"}</span><strong>{rows.length}</strong></div>
+          <div><span>Critical</span><strong className="text-danger">{counts.critical}</strong></div>
+          <div><span>Warning</span><strong className="text-warn">{counts.warning}</strong></div>
+        </section>
       )}
 
       {error ? <Card><ErrorText>{error}</ErrorText><Button className="mt-3" variant="ghost" onClick={() => void load()}>Retry</Button></Card> : rows === null ? <Loading label={`Loading ${view} alerts…`} /> : (
-        <Card>
+        <Card className="alerts-inventory">
+          <div className="alerts-inventory-heading">
+            <h2>{view === "active" ? "Needs attention" : "Resolved history"}</h2>
+            <div className="alerts-filters" aria-label="Filter severity">
+              {["all", "critical", "warning", "info"].map(value => <button type="button" key={value} aria-pressed={severity === value} onClick={() => setSeverity(value)}>{value === "all" ? "All severities" : value}</button>)}
+            </div>
+          </div>
           <DataTable
             caption={view === "active" ? "Active alerts" : "Resolved alert history"}
-            rows={rows}
+            rows={rows.filter(row => severity === "all" || row.severity === severity)}
             rowKey={(row) => row.id}
             failed={false}
             pageSize={25}
-            empty={<EmptyState>{view === "active" ? "No active conditions have been recorded." : "No resolved alerts recorded yet."}</EmptyState>}
+            empty={<EmptyState>{severity !== "all" ? "No alerts match this severity." : view === "active" ? "No active conditions have been recorded." : "No resolved alerts recorded yet."}</EmptyState>}
             columns={[
               { key: "severity", header: "Severity", cell: (row) => <Badge tone={severityTone(row.severity)}>{row.severity}</Badge>, sortValue: (row) => row.severity },
-              { key: "condition", header: "Condition", cell: (row) => <div><div className="font-medium text-ink-heading">{row.subject}</div><div className="mt-0.5 text-badge text-ink-tertiary">{row.event_key}</div></div>, sortValue: (row) => row.subject },
-              { key: "resource", header: "Resource", cell: (row) => { const href = resourceHref(row); const label = row.resource_name || row.resource_id; return <div><div className="text-badge text-ink-tertiary">{productLabel(row)}</div>{href ? <Link className="font-medium text-ink-primary hover:underline" to={href}>{label}</Link> : <span>{label}</span>}</div>; }, sortValue: (row) => row.resource_name || row.resource_id },
-              { key: "observed", header: view === "active" ? "Last observed" : "Resolved", cell: (row) => relativeAge(view === "active" ? row.last_observed_at : row.resolved_at ?? row.last_observed_at), sortValue: (row) => row.last_observed_at },
+              { key: "condition", header: "Condition", cell: (row) => <div><button type="button" className="alert-open" onClick={() => setInspected(row)}>{row.subject}<span aria-hidden="true">↗</span></button></div>, sortValue: (row) => row.subject },
+              { key: "resource", header: "Resource", cell: (row) => { const href = resourceHref(row); const label = row.resource_name || row.resource_id; return <div><div className="text-badge text-ink-tertiary">{productLabel(row)}</div>{href ? <Link className="alert-resource-link" to={href}>{label}</Link> : <span>{label}</span>}</div>; }, sortValue: (row) => row.resource_name || row.resource_id },
+              { key: "observed", header: view === "active" ? "Last observed" : "Resolved", cell: (row) => relativeAge(view === "active" ? row.last_observed_at : row.resolved_at ?? row.last_observed_at), sortValue: (row) => view === "active" ? row.last_observed_at : row.resolved_at ?? row.last_observed_at },
             ]}
           />
         </Card>
       )}
       </>}
+      {inspected && <Modal title={inspected.subject} size="wide" onDismiss={() => setInspected(null)} actions={<Button variant="ghost" onClick={() => setInspected(null)}>Close</Button>}>
+        <div className="alert-detail-state"><Badge tone={severityTone(inspected.severity)}>{inspected.severity}</Badge><span>{inspected.state === "firing" ? "Active condition" : "Resolved"}</span></div>
+        <dl className="alert-detail-facts">
+          <div><dt>Resource</dt><dd>{inspected.resource_name || inspected.resource_id}</dd></div>
+          <div><dt>Product</dt><dd>{productLabel(inspected)}</dd></div>
+          <div><dt>First observed</dt><dd>{new Date(inspected.first_observed_at).toLocaleString()}</dd></div>
+          <div><dt>Last observed</dt><dd>{new Date(inspected.last_observed_at).toLocaleString()}</dd></div>
+          <div><dt>Occurrences</dt><dd>{inspected.occurrence_count}</dd></div>
+          <div><dt>Signal</dt><dd>{inspected.event_key}</dd></div>
+          {inspected.resolved_at && <div><dt>Resolved</dt><dd>{new Date(inspected.resolved_at).toLocaleString()}</dd></div>}
+        </dl>
+        {resourceHref(inspected) && <Link className="alert-detail-link" to={resourceHref(inspected)!}>Open {productLabel(inspected).toLowerCase()} →</Link>}
+      </Modal>}
     </div>
   );
 }

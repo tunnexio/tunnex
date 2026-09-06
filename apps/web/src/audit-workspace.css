@@ -1,0 +1,30 @@
+.audit-workspace { display:flex; flex-direction:column; gap:20px; }
+.audit-inventory.tnx-card-surface { padding:0!important; overflow:hidden; }
+.audit-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-bottom:1px solid var(--tnx-divider); }
+.audit-metrics > div { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:20px 24px; border:0; }
+.audit-metrics > div + div { border-left:1px solid var(--tnx-divider); }
+.audit-metrics > div > div:first-child { font-size:26px; font-weight:500; }
+.audit-metrics > div > div:last-child { text-transform:none; letter-spacing:0; font-size:12px; }
+.audit-filters { padding:20px 24px; border-bottom:1px solid var(--tnx-divider); }
+.audit-filter-grid { display:grid; grid-template-columns:minmax(150px,1fr) minmax(200px,1.5fr) repeat(2,minmax(150px,1fr)); gap:16px; align-items:end; }
+.audit-filter-grid > label { width:auto; display:flex; flex-direction:column; align-items:stretch; gap:8px; font-size:12px; }
+.audit-filter-grid > label > input,.audit-filter-grid > label > select { min-height:40px; font-size:13px; border-color:var(--tnx-border); background:var(--tnx-surface-inset); }
+.audit-filter-grid > div:last-child { grid-column:1/-1; justify-content:flex-end; }
+.audit-filter-grid .tnx-date-field { min-width:0; }
+.audit-table { padding:20px 24px; }
+.audit-table td { vertical-align:middle; }
+.audit-table td:first-child button { max-width:300px; }
+.audit-table td:first-child button > span:last-child { overflow-wrap:anywhere; font-size:12px; }
+.audit-evidence { border-top:1px solid var(--tnx-divider); }
+.audit-evidence > summary { cursor:pointer; font-size:13px; }
+.audit-record-ids { margin-top:16px; }
+.audit-record-ids > div { display:grid; grid-template-columns:150px minmax(0,1fr); gap:16px; padding:10px 0; font-size:12px; }
+.audit-record-ids dt { color:var(--tnx-text-secondary); }
+.audit-record-ids dd { overflow-wrap:anywhere; }
+@media(max-width:1000px) { .audit-filter-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:550px) { .audit-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .audit-metrics > div,.audit-filters,.audit-table { padding:16px; } .audit-filter-grid { grid-template-columns:1fr; } .audit-record-ids > div { grid-template-columns:1fr; gap:4px; } }
+
+.audit-inventory.tnx-card-surface { overflow:visible; }
+.audit-filter-grid { align-items:start; }
+.audit-filter-grid .tnx-date-field { position:relative; }
+.audit-filter-grid .tnx-date-picker { position:absolute; z-index:40; top:100%; right:0; width:330px; max-width:calc(100vw - 64px); box-shadow:0 20px 60px #000a; }
