@@ -208,6 +208,34 @@ Automatic first-direction recovery is demonstrated, but returning-member
 interruptions and startup HTTP 500 are unresolved. Leg 9 is not complete.
 No general startup-retry feature or named lifecycle deferral is implemented.
 
+### Read-only durable-ledger correlation
+
+Exact org/pool-filtered SELECTs in a read-only CP database transaction establish
+a serving-lease gap, not just a temporal association with a returning pod:
+
+| Receipt | Created (UTC) | ACK (UTC) | Expiry (UTC) |
+| --- | --- | --- | --- |
+| A3 serving, generation 3, epoch 110 | 02:18:32.014676 | 02:18:33.598102 | 02:19:30 |
+| A3 base authority 275 | 02:19:27.009116 | 02:19:52.883331 | 02:25:00 |
+| B2 base authority 274 | 02:19:27.009116 | 02:19:43.500674 | 02:25:00 |
+| B2 base authority 275 | 02:19:57.008779 | 02:20:22.886426 | 02:25:00 |
+| A3 base authority 276 | 02:20:02.005308 | 02:20:06.337171 | 02:30:00 |
+| A3 serving, generation 3, epoch 111 | 02:20:27.016545 | 02:20:27.545678 | 02:21:00 |
+
+There was no intervening serving delivery. A3 remained owner; its authority
+expired **before** B2 restoration at 02:19:32. Therefore calling this purely a
+return-triggered outage would be inaccurate: standby absence/pending full-base
+ACKs already coincided with blocked renewal. Both members' base versions
+advanced while their individual base hashes stayed unchanged across these
+rows. The next serving delivery followed the last required ACK, and client
+traffic recovered at 02:20:30.051.
+
+Source `reconcileFencedPools` deliberately requires scope-complete exact
+full-base ACK acceptance before renewing any serving/prepared lease. This
+correlates the conservative renewal barrier with the observed gap; changing
+that barrier requires a fencing-safety decision, not a shorter polling interval
+or an unchecked retry. No deployment overrides the agent reconcile interval.
+
 ## Exact product-source local gates
 
 At clean `dc70c9bc847925f43d19bff59306ebb63ef5c7ec`, generation, both-edition
