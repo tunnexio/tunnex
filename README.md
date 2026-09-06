@@ -4,7 +4,7 @@ Self-hosted, multi-tenant VPN & Zero Trust access platform — a modern, open al
 
 - **WireGuard** management (OpenVPN later), with a control-plane / data-plane split.
 - **Auth**: local users, Google & Microsoft SSO.
-- **Clients**: CLI first, then Electron for Windows & macOS.
+- **Clients**: the headless CLI lives here; the Windows and macOS desktop application is maintained in [tunnex-client](https://github.com/tunnexio/tunnex-client).
 - **One-command install**: a single guided installer brings up the whole stack from **prebuilt images** — no source build, no file edits — and auto-generates every secret/key on first boot.
 
 > The full product roadmap — every epic and story — lives in [`PLAN.md`](./PLAN.md). Point any session at it and name the current story (e.g. "we're on S1.3").
@@ -105,14 +105,18 @@ apps/
   api/       Go control-plane API (chi, sqlc, Postgres, Redis)
   node/      tunnex-node data-plane agent (owns WireGuard via wgctrl)
   cli/       tunnex CLI client            (EPIC 5)
-  client/    Electron desktop client      (EPIC 6)
-  web/       React + Vite SPA dashboard   (reused by Electron renderer)
+  web/       React + Vite SPA dashboard
 packages/
   shared/    Generated TypeScript API client (OpenAPI-first)
 deploy/
   docker/    Dockerfiles
   nginx/     Reverse-proxy config
 ```
+
+Desktop development, installers, native helper code and platform CI live in
+[tunnex-client](https://github.com/tunnexio/tunnex-client). Download desktop installers from its
+[releases](https://github.com/tunnexio/tunnex-client/releases). This repository continues to own the
+control-plane APIs, device enrollment, posture and authorization used by those clients.
 
 ## Architecture (why the split)
 

@@ -313,7 +313,6 @@ web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 20 — wor
 	  -v $(ROOT_NM_VOL):/w/node_modules \
 	  -v $(WEB_NM_VOL):/w/apps/web/node_modules \
 	  -v $(SHARED_NM_VOL):/w/packages/shared/node_modules \
-	  -e ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
 	  node:20-alpine sh -c 'apk add --no-cache jq >/dev/null && corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
 	    pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build'
 
@@ -325,21 +324,6 @@ test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate c
 	# extreme case of the degraded-signal class this epic repays; build+vet+test closes it.
 	docker run --rm -v "$(PWD)/apps/cli":/src -w /src -e GOFLAGS=-mod=readonly \
 	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go vet ./... && go test ./..."
-
-.PHONY: test-helper
-test-helper: ## Vet + test the privilege-helper core (S6.3; x/sys dep for caller-path)
-	docker run --rm -v "$(PWD)/apps/helper":/src -w /src -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git && go vet ./... && go test ./..."
-
-.PHONY: helper-crosscompile
-helper-crosscompile: ## Compile-check the helper (incl platform build-tagged files) for all targets
-	@for t in darwin/amd64 darwin/arm64 windows/amd64; do \
-	  goos=$${t%/*}; goarch=$${t#*/}; echo ">> $$goos/$$goarch (CGO off)"; \
-	  docker run --rm -v "$(PWD)/apps/helper":/src -w /src -e GOFLAGS=-mod=readonly \
-	    -e CGO_ENABLED=0 -e GOOS=$$goos -e GOARCH=$$goarch \
-	    $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./..." || exit 1; \
-	done
-	@echo ">> helper cross-compiles (CGO off) for darwin/amd64+arm64 + windows/amd64."
 
 .PHONY: seed
 seed: ## Seed the demo org/user (idempotent, non-destructive)

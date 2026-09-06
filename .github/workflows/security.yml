@@ -83,7 +83,7 @@ jobs:
       fail-fast: false
       matrix:
         # Every independent Go module. A vuln in ANY of them is a vuln we ship.
-        module: [apps/api, apps/node, apps/helper, apps/cli, apps/operator]
+        module: [apps/api, apps/node, apps/cli, apps/operator]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -194,18 +194,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: apps/api/go.mod
-          # The five modules share one toolchain but have independent dependency graphs. Hashing every sum
+          # The four modules share one toolchain but have independent dependency graphs. Hashing every sum
           # lets setup-go restore the same module/build cache that the sequential vet commands consume.
           cache-dependency-path: |
             apps/api/go.sum
             apps/node/go.sum
-            apps/helper/go.sum
             apps/cli/go.sum
             apps/operator/go.sum
       - name: gofmt (all Go modules)
         run: |
           set -euo pipefail
-          unformatted=$(gofmt -l apps/api apps/node apps/helper apps/cli apps/operator)
+          unformatted=$(gofmt -l apps/api apps/node apps/cli apps/operator)
           if [ -n "$unformatted" ]; then
             echo "::error::gofmt would reformat these files:"; echo "$unformatted"; exit 1
           fi
@@ -213,7 +212,7 @@ jobs:
         env: { GOFLAGS: -mod=readonly }
         run: |
           set -euo pipefail
-          for m in apps/api apps/node apps/helper apps/cli apps/operator; do
+          for m in apps/api apps/node apps/cli apps/operator; do
             echo "── vet $m"; (cd "$m" && go vet ./...)
           done
       # actionlint: a malformed workflow does not fail a JOB — it fails the whole RUN before any job

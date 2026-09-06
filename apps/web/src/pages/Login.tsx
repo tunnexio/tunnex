@@ -23,11 +23,7 @@ function ssoErrorText(code: string): string {
 }
 
 export default function Login() {
-  // ⛔ THE DESKTOP ARM IS GONE (S14.20 step 4). This page is the BROWSER login and nothing else:
-  // the desktop client loads `client.html`, which mounts no router and never reaches this file.
-  // The browser-based sign-in it used to trigger still exists — it lives in the client's own
-  // surface now, behind `auth.login()`, which is where the "never an in-app password field" rule
-  // is actually enforced.
+  // Browser authentication also handles the standalone client's browser-based sign-in.
   return <BrowserLogin />;
 }
 

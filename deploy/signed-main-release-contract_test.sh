@@ -7,7 +7,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 CI="$ROOT/.github/workflows/ci.yml"
 
 grep -Fq 'release-assets:' "$CI"
-grep -Fq 'needs: [publish, publish-pullable, client, cli-release]' "$CI"
+grep -Fq 'needs: [publish, publish-pullable, cli-release]' "$CI"
 grep -Fq 'TUNNEX_RELEASE_SIGNING_PRIVATE_KEY' "$CI"
 grep -Fq 'TUNNEX_RELEASE_KEY_ID' "$CI"
 grep -Fq 'tunnex-build-${SOURCE_SHA}' "$CI"
@@ -15,8 +15,8 @@ grep -Fq 'artifact-metadata: write' "$CI"
 grep -Fq 'name: operator, dockerfile: apps/operator/Dockerfile' "$CI"
 grep -Fq 'flavor: latest=false' "$CI"
 grep -Fq 'release-version-guard:' "$CI"
-grep -Fq 'needs: [gates, client, e2e, e2e-enterprise]' "$CI"
-grep -Fq 'needs: [release-version-guard, gates, client, e2e, e2e-enterprise]' "$CI"
+grep -Fq 'needs: [gates, e2e, e2e-enterprise]' "$CI"
+grep -Fq 'needs: [release-version-guard, gates, e2e, e2e-enterprise]' "$CI"
 grep -Fq 'name: Refuse published tag reuse before any artifact publication' "$CI"
 grep -Fq 'GH_REPO: ${{ github.repository }}' "$CI"
 grep -Fq 'release tags must use exact stable vMAJOR.MINOR.PATCH syntax' "$CI"
@@ -84,7 +84,7 @@ test "$completed_release_line" -lt "$catalog_job_line"
 
 # Desktop installers have their own source and release pipeline in
 # tunnexio/tunnex-client. The server release must not silently republish a stale
-# copy from this monorepo, even though the client build remains a useful gate.
+# copy from this monorepo. Desktop build gates run in the standalone repository.
 release_assets=$(sed -n '/^  release-assets:/,$p' "$CI")
 for forbidden in 'desktop-artifacts' 'tunnex-*-installer' 'Tunnex-desktop-SHA256SUMS'; do
   if printf '%s\n' "$release_assets" | grep -Fq "$forbidden"; then

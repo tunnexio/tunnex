@@ -21,11 +21,6 @@ import { stripJsComments } from "./support/source";
 // docs/DEFERRAL-REGISTER.md) and are NOT this test's business. Conflating them is what let a resolved rule
 // ride an unresolved one's schedule.
 //
-// One intentionally visible exception exists: the desktop client's labelled connection-metrics table uses
-// `—` for an unavailable measurement. This was a founder-approved desktop convention: it preserves the
-// fixed telemetry grid without inventing a number, and every row has its metric label plus an icon. It is
-// not available to arbitrary product surfaces.
-
 const SRC = join(__dirname, "..", "src");
 
 function walk(dir: string): string[] {
@@ -43,8 +38,6 @@ function walk(dir: string): string[] {
 // past fix by quoting the old code, and a guard that fails on its own changelog teaches people to delete
 // the changelog.
 const AS_A_VALUE = /(\?\?|\?|:)\s*"—"|\{\s*"—"\s*\}|>\s*—\s*</;
-const CLIENT_METRICS = join(SRC, "client", "ClientApp.tsx");
-const APPROVED_CLIENT_METRIC_VALUE = /value: .*"—"|(?:stats|displayStats)\.rate === null \? "—"/;
 
 describe("the em-dash is never a placeholder value", () => {
   const files = walk(SRC);
@@ -54,15 +47,12 @@ describe("the em-dash is never a placeholder value", () => {
     expect(files.length).toBeGreaterThan(50);
   });
 
-  it("⛔ no source file renders an em-dash as a value outside labelled client metrics", () => {
+  it("⛔ no source file renders an em-dash as a value", () => {
     const offenders: string[] = [];
     for (const f of files) {
       const src = stripJsComments(readFileSync(f, "utf8"));
       src.split("\n").forEach((line, i) => {
-        if (
-          AS_A_VALUE.test(line) &&
-          !(f === CLIENT_METRICS && APPROVED_CLIENT_METRIC_VALUE.test(line))
-        )
+        if (AS_A_VALUE.test(line))
           offenders.push(`${f.replace(SRC, "src")}:${i + 1}  ${line.trim()}`);
       });
     }
