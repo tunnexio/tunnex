@@ -181,3 +181,55 @@ second-source CI [34011797134](https://github.com/tunnexio/tunnex/actions/runs/3
 has been started; it is not yet reported green. Retain the passing standby
 evidence above; repeat baseline and the failed sustained active-owner sequence.
 Deployment is not itself acceptance. No PR, final checkpoint or merge yet.
+
+## Second correction — targeted active renewal proof PASS with measured outages
+
+Baseline passed **12/12** IP/FQDN requests (04:35:43.778–04:36:11.534 UTC),
+all three gateways Ready, A3 owner/generation 5. Baseline JSONL SHA256:
+`e24cb7bf3dcf1c46c4603a762ae132c205f27665f9d6af12286c3ad4e9fa2837`.
+
+A3 was scaled down at **04:36:26.205**, after fresh owner/readiness/traffic
+guards. B2 took over generation 6. Both paths recovered at **04:37:50.349**,
+**84.144 seconds** after the fault. All **42/42** requests from that recovery
+through 04:39:42.144 passed while A3 stayed absent. There was no repeat outage
+after takeover; the sustained healthy observation lasted 111.795 seconds.
+A3 was restored at **04:39:43.505**, after **197.300 seconds** absent.
+
+Read-only CP evidence confirms actual continuing renewal, not just HTTP recovery:
+
+| B2 generation-6 lease epoch | Issued UTC | Expires UTC |
+| --- | --- | --- |
+| 342 (initial takeover) | 04:37:15.495897 | 04:38:30 |
+| 343 | 04:37:44.088595 | 04:38:30 |
+| 344 | 04:38:04.088250 | 04:39:00 |
+| 345 | 04:38:34.088766 | 04:39:30 |
+| 346 | 04:39:04.088216 | 04:40:00 |
+
+At 04:38:26 A3's genuinely changed base revision 429/hash `d48deef6326c…`
+was unACKed; B2's revision 423/hash `9b9d4f89a9ca…` was ACKed. The generation-6
+handoff was complete with prepared/serving ACKs and CAS audit. The retired A3
+serving epoch 341 expired 04:37:30. No expiry or ACK was manually changed.
+
+Returned A3 pod `tunnex-s205-a3-tunnex-gateway-5486fb9c8d-btg4l` started
+04:39:43, Ready with **zero restarts**. All original A3/B2/edge PVC UIDs were
+unchanged. A3 genuinely ACKed revision 432 before automatic failback. A3 became
+owner/generation 7 by 04:40:52.517. Failback caused a separate interruption:
+first failed pair 04:40:43.173, full IP/FQDN recovery 04:41:33.353 (50.180 seconds
+between those samples). This is **not seamless failover/failback**.
+
+The active sampler recorded nine failed fault-stage pairs before takeover
+recovery and six failed return-stage pairs during failback. Its exit was **1**:
+the fixed return window ended with only two healthy pairs, below its three-pair
+final stability check. Do not relabel that process exit as green. Without any
+intervening mutation, a read-only continuation at 04:41:43.452–04:42:11.049
+passed **12/12** additional IP/FQDN requests with A3/generation 7 and all gateways
+Ready. The combined observation completes the bounded final-stability proof;
+there was no repeated fault, remedial restart, or host/client repair.
+
+Active JSONL SHA256:
+`85a71eb9d636ed306a99c7decda1ab0eb4064a3975677daea50ab347a10660dc`.
+Final stability continuation JSONL SHA256:
+`f0960d2b215f8627c9cdc2640856d612d4900247f6dc9b33d19e2376625a4120`.
+The earlier sustained-renewal failure is fixed on this live API candidate.
+This permits the requested draft PR, not exhaustive walk completion or merge
+clearance. Historical review holds, final-head CI and fresh merge approval remain.

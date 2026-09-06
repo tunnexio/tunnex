@@ -7,12 +7,15 @@ the focused regression/re-test. Unrun broader qualification remains explicit,
 not a blocker automatically attached to every unrelated fix. The historical
 2/11 and latest-build 0/11 reports are no longer the progress model.
 
-Current checkpoint (2026-09-06): **API `e6a56a4` is deployed to the retained
-licensed CP, including the credential/health and bounded HA wake repairs.
+Current checkpoint (2026-09-06): **API `fa6d851` is deployed to the retained
+licensed CP, including credential/health, HA wake and atomic retired-owner renewal repairs.
 `dc70c9b` node/manager remains installed on all three workers; no gateway or
 chart reinstall was needed. New baseline private-IP/FQDN proof passes 12/12.
-Targeted standby/owner fault and return checks are running; exact-product CI
-is running with native macOS/Windows already green. This is not yet merge-ready.
+Standby absence/return passed 80/80 on the preceding API correction. The repaired
+active-owner sequence now proves sustained renewal: 42/42 requests after takeover
+while the old owner remained absent, then 12/12 final stability requests after
+automatic failback. Measured takeover/failback outages remain explicit. Exact-product
+CI is running with native macOS/Windows already green. This is not yet merge-ready.
 NLB remains explicitly SKIPPED.** See [current HA repair evidence](ha-wake-repair.md).
 The mixed-component candidate is not a unified final release. No PR or merge
 exists yet. Earlier counts below are historical, not current acceptance.
