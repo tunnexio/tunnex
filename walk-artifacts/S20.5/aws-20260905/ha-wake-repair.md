@@ -83,3 +83,17 @@ reviewers found no P1/P2 in the API correction. Exact-source
 [CI run 34009930693](https://github.com/tunnexio/tunnex/actions/runs/34009930693)
 is running in parallel; its result is not yet claimed green. AWS fault proof
 and final story review remain pending.
+
+## Post-deploy baseline
+
+03:53:01.701–03:53:29.374 UTC: six fresh rounds, **12/12 HTTP responses**
+with the expected marker through private IP and normal split-DNS FQDN.
+No curl host override or client DNS/routing modification. A3 remained active,
+generation 3, fenced HA; all gateway deployments Ready 1/1, unchanged images.
+API health was verified healthy. Baseline JSONL SHA256:
+`85693e80e9dbf33adc4a6d820f6b71e0becdb4c5bc886b53c76a6def4f8acc3e`.
+
+At 03:53:53.333 UTC B2 was scaled from one replica to zero after fresh checks
+confirmed A3 owner/generation and all deployments Ready. This is intentionally
+a standby-absence regression, not reverse active-failover evidence. The probe
+has a restoration path; results will be recorded after restoration.
