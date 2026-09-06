@@ -1,0 +1,12 @@
+The Tunnex GitOps operator is installed.
+
+Check readiness:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "tunnex-operator.fullname" . }}
+
+The machine credential is read from Secret {{ .Values.machineToken.existingSecret | quote }}.
+The chart never stores the credential in Helm values.
+
+ROTATION
+  Create a new immutable Secret name, then helm upgrade this release with
+  machineToken.existingSecret set to that name. The name checksum rolls the pod;
+  delete the old Secret only after /readyz proves the new credential and org.

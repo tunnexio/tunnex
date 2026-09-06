@@ -32,9 +32,14 @@ func (a *AgentChannel) withKubernetesOwnershipBaseAuthority(ctx context.Context,
 	}
 	hash, err := nodes.KubernetesOwnershipBaseStateHash(state.DesiredState)
 	if err != nil || authority.NodeID != node.ID.String() || authority.OrgID != node.OrgID.String() || authority.SiteID != siteID.String() ||
-		authority.BaseVersion != state.Version || authority.BaseHash != hash {
+		authority.BaseVersion == 0 || authority.BaseVersion > state.Version || authority.BaseHash != hash {
 		return desiredStateWithGatewayDNSRequest{}, fmt.Errorf("Kubernetes ownership base authority does not match the exact desired base")
 	}
+	// A wake can advance the transport cursor after this immutable authority
+	// was issued. The full base is still exact. Echo its earlier cursor without
+	// rewriting its payload/ACK; the next watch immediately resynchronizes.
+	// Never advance the cursor past the pre-compilation snapshot boundary.
+	state.Version = authority.BaseVersion
 	state.KubernetesOwnershipBaseAuthority = &authority
 	return state, nil
 }

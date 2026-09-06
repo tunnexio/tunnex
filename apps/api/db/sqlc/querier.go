@@ -6,16 +6,19 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	AbortLifecycleJoinToken(ctx context.Context, arg AbortLifecycleJoinTokenParams) (int64, error)
 	// lint:cross-org — authorized by the invitation id obtained via its token, not
 	// by org scope. Single-use: only transitions a pending, unexpired invite.
 	AcceptInvitation(ctx context.Context, id uuid.UUID) (Invitation, error)
 	AccessEventRetentionMorePending(ctx context.Context, arg AccessEventRetentionMorePendingParams) (*bool, error)
+	AcknowledgeLifecycleJoinToken(ctx context.Context, arg AcknowledgeLifecycleJoinTokenParams) (int64, error)
 	AddAgentGroupMember(ctx context.Context, arg AddAgentGroupMemberParams) (int64, error)
 	AddAlertSubscription(ctx context.Context, arg AddAlertSubscriptionParams) (AlertSubscription, error)
 	// ── group_members ───────────────────────────────────────────────────────────────
@@ -56,8 +59,9 @@ type Querier interface {
 	// so a mismatched pair updates zero rows rather than succeeding quietly.
 	AssignMachineCredentialOwner(ctx context.Context, arg AssignMachineCredentialOwnerParams) (int64, error)
 	AuditLogRetentionMorePending(ctx context.Context, arg AuditLogRetentionMorePendingParams) (bool, error)
-	// lint:cross-org — the bearer hash is the credential; its row supplies org/device binding.
-	AuthenticateAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AuthenticateAgentRuntimeCredentialRow, error)
+	// Call only inside the device-locked transaction. This separate statement gets
+	// a fresh READ COMMITTED snapshot after a lock wait; it does not promote.
+	AuthenticateAgentRuntimeCredential(ctx context.Context, arg AuthenticateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
 	// Flip an EXISTING manual group to idp_sync. The WHERE origin='manual' clause makes a re-bind of
 	// an already-synced group a no-row (the app layer maps that + the not-empty check to a 409). The
 	// disjointness (D1) and the not-empty rule are enforced above this; this only flips a clean group.
@@ -120,6 +124,7 @@ type Querier interface {
 	// operation to enable_serving. If any predicate is stale, it returns no row;
 	// it cannot leave a pool CAS without its receipt/audit/phase record.
 	CommitK8sConnectorHandoffCAS(ctx context.Context, arg CommitK8sConnectorHandoffCASParams) (K8sConnectorHandoffOperation, error)
+	CompleteLifecycleInstallOperation(ctx context.Context, arg CompleteLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
 	// lint:cross-org — user-scoped credential.
 	// Arm enrollment: only an UNCONFIRMED row flips to confirmed, stamping the confirming code's
 	// timestep as the replay clock so the very first login can't replay the confirmation code.
@@ -299,6 +304,11 @@ type Querier interface {
 	// "does it have one now" — otherwise deleting every account reopens admin minting, which is the same
 	// re-open CountOrganizationsEver exists to prevent.
 	CountUsers(ctx context.Context) (int64, error)
+	// Generation zero is a credentialless, permanently expired tombstone. The
+	// random hash has no disclosed preimage and exists only because the legacy
+	// token table keeps token_hash NOT NULL/unique during the mixed-version
+	// compatibility window.
+	CreateAbortedLifecycleJoinToken(ctx context.Context, arg CreateAbortedLifecycleJoinTokenParams) (NodeJoinToken, error)
 	// F10 approval-gated temporary access workflow.
 	CreateAgentAccessRequest(ctx context.Context, arg CreateAgentAccessRequestParams) (AgentAccessRequest, error)
 	CreateAgentBootstrapToken(ctx context.Context, arg CreateAgentBootstrapTokenParams) (AgentBootstrapToken, error)
@@ -366,6 +376,11 @@ type Querier interface {
 	CreateK8sConnectorPoolForConfig(ctx context.Context, arg CreateK8sConnectorPoolForConfigParams) (CreateK8sConnectorPoolForConfigRow, error)
 	CreateK8sConnectorPoolHealthState(ctx context.Context, arg CreateK8sConnectorPoolHealthStateParams) (K8sConnectorPoolHealthState, error)
 	CreateK8sService(ctx context.Context, arg CreateK8sServiceParams) (K8sService, error)
+	CreateLifecycleInstallOperation(ctx context.Context, arg CreateLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
+	// S20.5/D13a lifecycle-claim protocol. Every query is org-scoped. The token
+	// credential itself is never selected by these operator endpoints; only the
+	// temporarily sealed response is read by the exact remint transaction.
+	CreateLifecycleJoinToken(ctx context.Context, arg CreateLifecycleJoinTokenParams) (NodeJoinToken, error)
 	// Machine credentials (S10.2): an org-scoped, NON-USER principal for the GitOps operator. Mirror of the
 	// cli_credentials pattern — sha256 hash storage, fingerprint-only display, revoke-severs-on-next-request.
 	// The raw token NEVER reaches SQL. Revoke is org-scoped (a caller can only revoke its own org's creds).
@@ -492,6 +507,9 @@ type Querier interface {
 	// Disenroll (self re-enroll clears via upsert; explicit delete for self-disenroll + admin-reset).
 	DeleteTOTP(ctx context.Context, userID uuid.UUID) (int64, error)
 	DeleteUserGroup(ctx context.Context, arg DeleteUserGroupParams) (int64, error)
+	// Explicitly finish demotion before promotion. A single multi-row UPDATE can
+	// visit the candidate first and violate the immediate one-current index.
+	DemoteAgentRuntimeCredentialPredecessor(ctx context.Context, arg DemoteAgentRuntimeCredentialPredecessorParams) (AgentRuntimeCredential, error)
 	// lint:cross-org — the device was just inserted in this same org-scoped transaction;
 	// the device ID is not an authorization input and this existence check does not
 	// expose or mutate a device outside the caller's already-authorized create.
@@ -639,6 +657,12 @@ type Querier interface {
 	GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K8sService, error)
 	GetLatestAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
 	GetLatestAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error)
+	GetLatestLifecycleInstallOperationForOrg(ctx context.Context, arg GetLatestLifecycleInstallOperationForOrgParams) (NodeLifecycleInstallOperation, error)
+	// D13h install-operation epochs. The caller always locks the lifecycle token
+	// first; every operation mutation follows that same token -> operation order.
+	GetLifecycleDatabaseTime(ctx context.Context) (time.Time, error)
+	GetLifecycleInstallOperationForOrg(ctx context.Context, arg GetLifecycleInstallOperationForOrgParams) (NodeLifecycleInstallOperation, error)
+	GetLifecycleJoinTokenForOrg(ctx context.Context, arg GetLifecycleJoinTokenForOrgParams) (NodeJoinToken, error)
 	// lint:cross-org — an auth lookup by the secret HASH; the row resolves the org (the hash IS the credential).
 	// Returns the row regardless of revoked state — the auth path applies the NO-ORACLE check (revoked /
 	// unknown are indistinguishable at the wire), exactly like the CLI credential path.
@@ -671,6 +695,7 @@ type Querier interface {
 	// lint:cross-org — the mTLS client cert IS the identity; the org comes from the
 	// node row. Used to authorize every agent request.
 	GetNodeByCertSerial(ctx context.Context, certSerial string) (Node, error)
+	GetNodeByLifecycleClaimForOrg(ctx context.Context, arg GetNodeByLifecycleClaimForOrgParams) (Node, error)
 	// ACTIVE rows only (S11 WF-S11-8). Since 0056 a name may be held by several REVOKED rows plus at most one
 	// active one, so an unfiltered name lookup is ambiguous — and a :one query answering "multiple rows" is a
 	// confusing runtime failure rather than a compile-time one. Filtering here makes the query correct by
@@ -794,6 +819,7 @@ type Querier interface {
 	// annotation. Granting deployment-level authority to a soft-deleted account would arm an identity that is
 	// meant to be gone, and a later undelete would restore it silently holding a capability nobody granted it.
 	GrantCPAdmin(ctx context.Context, id uuid.UUID) error
+	HeartbeatLifecycleInstallOperation(ctx context.Context, arg HeartbeatLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
 	IncrementAlertDeliveryCooldown(ctx context.Context, arg IncrementAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	// lint:cross-org — user-scoped login challenge.
 	IncrementMfaChallengeAttempts(ctx context.Context, id uuid.UUID) (int32, error)
@@ -1035,6 +1061,14 @@ type Querier interface {
 	// (D4): on enabling a check, count how many devices' LAST report would fail it
 	// (best-effort, post-commit; the config write itself never blocks anything).
 	ListDeviceHealthForOrg(ctx context.Context, orgID uuid.UUID) ([]DeviceHealth, error)
+	// D14o desktop create recovery. This deliberately reads FULL history: pending
+	// rows are outside the legacy active-only uniqueness index, and revoked / soft-
+	// deleted rows are the durable proof that a retired credential must never be
+	// recreated by an ambiguous-response retry. The caller holds the org advisory
+	// lock, so this read and a following create are one serialized decision.
+	// lint:allow-deleted — DELIBERATELY includes deleted history as refusal evidence;
+	// filtering it would let a response-loss retry recreate a retired credential.
+	ListDevicePublicKeyHistoryForOrg(ctx context.Context, arg ListDevicePublicKeyHistoryForOrgParams) ([]Device, error)
 	// ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
 	// WireGuard peer — the peer set, the pool allocation, the revocation sweep and the liveness upsert all read
 	// this table and MUST keep seeing it. What it is not is a user endpoint: it has no owner carrying it, no
@@ -1156,6 +1190,13 @@ type Querier interface {
 	// membership evidence stable through the active-state CAS and audit append.
 	ListK8sConnectorPoolMembersForPromotion(ctx context.Context, arg ListK8sConnectorPoolMembersForPromotionParams) ([]K8sConnectorPoolMember, error)
 	ListK8sConnectorPoolStatusMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sConnectorPoolStatusMembersForOrgRow, error)
+	// ListK8sHandoffGraphPoolMembersForOrg keeps every eligible fenced-HA pool
+	// member in the private handoff graph. VIP ownership remains a separate,
+	// single-valued decision in ListActiveK8sServicesForOrg: these rows supply only
+	// the member identities needed for a warm WireGuard peer. The nonterminal
+	// operation branch preserves that peer through the post-CAS interval where the
+	// new active member is intentionally not yet resolution-eligible.
+	ListK8sHandoffGraphPoolMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sHandoffGraphPoolMembersForOrgRow, error)
 	// ListK8sServedZonesForOrg is the zones a connector ACTUALLY answers: a cluster with >=1 LIVE exposed Service
 	// AND a resolved connector. A pool-bound cluster resolves only through its
 	// exact org/site/cluster-owned pool and a positive generation; it never falls
@@ -1379,10 +1420,17 @@ type Querier interface {
 	// guard). Resize takes only the org key; allocation takes {owner,org} sorted;
 	// resize never waits on the owner key, so no inversion/deadlock.
 	LockDeviceKey(ctx context.Context, dollar_1 string) error
+	LockLatestLifecycleInstallOperationForOrg(ctx context.Context, arg LockLatestLifecycleInstallOperationForOrgParams) (NodeLifecycleInstallOperation, error)
+	LockLifecycleJoinTokenForOrg(ctx context.Context, arg LockLifecycleJoinTokenForOrgParams) (NodeJoinToken, error)
 	// Settings are user-facing configuration and may only change for a live tenant.
 	LockLiveAccessEventRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
 	// Settings are user-facing configuration and may only change for a live tenant.
 	LockLiveAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	LockNodeByLifecycleClaimForOrg(ctx context.Context, arg LockNodeByLifecycleClaimForOrgParams) (Node, error)
+	// lint:cross-org — the bearer hash supplies only the locking scope, never authentication.
+	// Do not lock a credential before its device: device lifecycle triggers take
+	// those locks in device -> credential order. Re-read below AFTER the device lock.
+	LookupAgentRuntimeCredentialBinding(ctx context.Context, tokenHash []byte) (LookupAgentRuntimeCredentialBindingRow, error)
 	// Delivery is recorded THE FIRST TIME a certificate authenticates, and only then: the WHERE clause makes this a
 	// no-op on every subsequent request, so the agent channel pays one write per credential rather than one per call.
 	//
@@ -1393,6 +1441,7 @@ type Querier interface {
 	MarkCertDelivered(ctx context.Context, id uuid.UUID) error
 	MarkDomainVerified(ctx context.Context, arg MarkDomainVerifiedParams) (DomainClaim, error)
 	MarkEmailVerified(ctx context.Context, id uuid.UUID) error
+	MarkLifecycleInstallOperationAborted(ctx context.Context, arg MarkLifecycleInstallOperationAbortedParams) (NodeLifecycleInstallOperation, error)
 	NextAgentPolicyTemplateVersion(ctx context.Context, arg NextAgentPolicyTemplateVersionParams) (int32, error)
 	// lint:cross-org — the token itself is the credential; the org comes from the returned row.
 	//
@@ -1407,6 +1456,8 @@ type Querier interface {
 	PeekJoinToken(ctx context.Context, tokenHash []byte) (NodeJoinToken, error)
 	PrepareAgentRuntimeCredentialCandidate(ctx context.Context, arg PrepareAgentRuntimeCredentialCandidateParams) (PrepareAgentRuntimeCredentialCandidateRow, error)
 	PrepareAgentWireGuardCandidate(ctx context.Context, arg PrepareAgentWireGuardCandidateParams) (AgentWireguardRotation, error)
+	// Exact successor only; a refusal MUST roll back the preceding demotion.
+	PromoteAgentRuntimeCredentialCandidate(ctx context.Context, arg PromoteAgentRuntimeCredentialCandidateParams) (AgentRuntimeCredential, error)
 	// The security-definer function is the only authorized DELETE path. It locks
 	// the exact live run, verifies its snapshot against the current effective
 	// policy, derives age/cap eligibility, and commits deletion counters atomically.
@@ -1467,6 +1518,8 @@ type Querier interface {
 	// permanently open (if the inherited value were NULL) — and neither state announces itself. One statement, so the
 	// marker cannot disagree with the serial it describes.
 	RekeyNode(ctx context.Context, arg RekeyNodeParams) (Node, error)
+	ReleaseLifecycleInstallOperation(ctx context.Context, arg ReleaseLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
+	RemintLifecycleJoinToken(ctx context.Context, arg RemintLifecycleJoinTokenParams) (NodeJoinToken, error)
 	RemoveAgentGroupMember(ctx context.Context, arg RemoveAgentGroupMemberParams) (int64, error)
 	RemoveAgentGroupMembershipsForDevice(ctx context.Context, arg RemoveAgentGroupMembershipsForDeviceParams) (int64, error)
 	RemoveAlertSubscription(ctx context.Context, arg RemoveAlertSubscriptionParams) (int64, error)
@@ -1491,6 +1544,7 @@ type Querier interface {
 	// rolling back success, and an error at or below an already-applied revision is
 	// cleared rather than resurrected.
 	ReportAgentRuntimeState(ctx context.Context, arg ReportAgentRuntimeStateParams) (ReportAgentRuntimeStateRow, error)
+	RequestAbortLifecycleInstallOperation(ctx context.Context, arg RequestAbortLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
 	RequestAgentRuntimeCredentialRotation(ctx context.Context, arg RequestAgentRuntimeCredentialRotationParams) (AgentRuntimeCredential, error)
 	RequestAgentWireGuardRotation(ctx context.Context, arg RequestAgentWireGuardRotationParams) (AgentWireguardRotation, error)
 	ReserveAlertDeliveryCooldown(ctx context.Context, arg ReserveAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
@@ -1731,6 +1785,7 @@ type Querier interface {
 	// Verification loss: clear verified_at so the domain stops capturing (the claim
 	// is NOT deleted — the org keeps its pending claim and can re-verify).
 	SuspendDomainClaim(ctx context.Context, arg SuspendDomainClaimParams) error
+	TakeOverLifecycleInstallOperationForAbort(ctx context.Context, arg TakeOverLifecycleInstallOperationForAbortParams) (NodeLifecycleInstallOperation, error)
 	TouchCliCredentialUsed(ctx context.Context, id uuid.UUID) error
 	TouchDomainCheckedAt(ctx context.Context, arg TouchDomainCheckedAtParams) error
 	// lint:cross-org — best-effort telemetry keyed by the credential id resolved from the hash lookup above.
@@ -1754,6 +1809,10 @@ type Querier interface {
 	// convention shape as RestoreCascadeRevokedDevice: a caller who skipped the candidate filter still cannot
 	// re-home a revoked device and thereby hand it back onto a live gateway.
 	TransferDeviceToNode(ctx context.Context, arg TransferDeviceToNodeParams) (Device, error)
+	// An operator request already owns the device row. A reporting gateway may
+	// own this rotation row while awaiting that device; never wait in reverse
+	// order. Missing rows permit first rotation, 55P03 is retryable contention.
+	TryLockAgentWireGuardRotation(ctx context.Context, arg TryLockAgentWireGuardRotationParams) (uuid.UUID, error)
 	// Revert an idp_sync group to a plain (empty) manual group. Members are cleared separately.
 	UnbindIdpGroup(ctx context.Context, arg UnbindIdpGroupParams) (UserGroup, error)
 	UnbindNode(ctx context.Context, arg UnbindNodeParams) (int64, error)

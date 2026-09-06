@@ -2,6 +2,7 @@ package ownershiplease
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -69,6 +70,15 @@ func (s *productionWGReadbackSurface) EmergencyWithdraw(ctx context.Context, fen
 	}
 	wg, err := s.wg.Readback(ctx)
 	if err != nil {
+		if isWGInterfaceAbsent(err) {
+			// There is no kernel interface carrying the fenced state. This is a
+			// successful non-serving withdrawal at cold start, not an unknown
+			// readback; still let lower owners remove their Kubernetes state.
+			if downstream, ok := s.domain.(EmergencyDomainSurface); ok {
+				return downstream.EmergencyWithdraw(ctx, fences)
+			}
+			return nil
+		}
 		return fmt.Errorf("read emergency WireGuard ownership: %w", err)
 	}
 	blockedRoutes := map[string]struct{}{}
@@ -139,6 +149,15 @@ func (s *productionWGReadbackSurface) EmergencyWithdraw(ctx context.Context, fen
 	return nil
 }
 
+func isWGInterfaceAbsent(err error) bool {
+	if errors.Is(err, reconcile.ErrWGInterfaceAbsent) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "device") &&
+		(strings.Contains(message, "does not exist") || strings.Contains(message, "cannot find device"))
+}
+
 func (s *productionWGReadbackSurface) Readback(ctx context.Context) (AppliedDomainState, error) {
 	actual, err := s.domain.Readback(ctx)
 	if err != nil {
@@ -182,7 +201,12 @@ func validateStructuredRouteReadback(wg reconcile.WGBackendReadback) error {
 		}
 		destinations[i] = route.Destination
 	}
-	canonicalRoutes := append([]string(nil), wg.Routes...)
+	// Keep an empty owned-route enumeration as an empty slice on both sides.
+	// A cold/non-serving gateway legitimately has no owned routes; comparing a
+	// nil copy against make([]string, 0) would otherwise turn that valid proof
+	// into a false route-ownership mismatch.
+	canonicalRoutes := make([]string, len(wg.Routes))
+	copy(canonicalRoutes, wg.Routes)
 	sort.Strings(canonicalRoutes)
 	sort.Strings(destinations)
 	if !reflect.DeepEqual(canonicalRoutes, destinations) {

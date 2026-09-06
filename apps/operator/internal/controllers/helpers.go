@@ -113,6 +113,27 @@ func resolveSite(ctx context.Context, c *cp.Client, name string) (id string, fou
 	return "", false, nil
 }
 
+// resolveConnector maps the manifest's logical gateway name to an active node
+// bound to the already-resolved site. Node names are unique among active nodes
+// in an org; requiring the site match keeps a valid gateway in another site
+// from silently fronting this cluster.
+func resolveConnector(ctx context.Context, c *cp.Client, name, siteID string) (id string, found, inSite bool, err error) {
+	nodes, err := c.ListNodes(ctx)
+	if err != nil {
+		return "", false, false, err
+	}
+	for _, n := range nodes {
+		if n.Name != name || n.Status != "active" {
+			continue
+		}
+		if n.SiteID == nil || *n.SiteID != siteID {
+			return "", true, false, nil
+		}
+		return n.ID, true, true, nil
+	}
+	return "", false, false, nil
+}
+
 func resolveMember(ctx context.Context, c *cp.Client, email string) (id string, found bool, err error) {
 	members, err := c.ListMembers(ctx)
 	if err != nil {

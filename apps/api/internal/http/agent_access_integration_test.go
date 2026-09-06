@@ -72,7 +72,7 @@ func TestAgentAccessDiagnosticPostgresContract(t *testing.T) {
 	exec(`UPDATE nodes SET capabilities=$2, policy_reported_at=now() WHERE id=$1`, node, caps)
 
 	s := apiServer{nodes: nodeService, devices: devices.NewService(pool, nil, nil), policy: policy,
-		agentRuntime: agentruntime.New(q, agentruntime.OrganizationOptIn(q, func() bool { return true }))}
+		agentRuntime: agentruntime.New(pool, agentruntime.OrganizationOptIn(q, func() bool { return true }))}
 	memberCtx := func(user uuid.UUID, role string) context.Context {
 		return authctx.WithPrincipal(ctx, &authctx.Principal{UserID: user, EmailVerified: true, Roles: map[uuid.UUID]string{org: role}})
 	}

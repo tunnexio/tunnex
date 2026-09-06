@@ -223,6 +223,10 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		// S8.2 H5: a site-link peer has a stale/absent handshake (site-to-site link down).
 		SiteLinkStale         bool `json:"site_link_stale"`
 		SiteSubnetUnreachable bool `json:"site_subnet_unreachable"` // S8.2c D3
+		// Preserve the agent's fail-closed health signals through to capabilities.
+		// Missing fields retain the existing older-agent false default.
+		ConntrackFlushUnavailable bool `json:"conntrack_flush_unavailable"`
+		K8sEndpointsUnavailable   bool `json:"k8s_endpoints_unavailable"`
 		// S8.3 CW: the agent's max-supported policy version (0 when a pre-CW agent omits it → below-ceiling).
 		MaxPolicyVersion int `json:"max_policy_version"`
 		// S9.1 4d: the OpenVPN server's refuse-loudly health kind ("" / ovpn_certs_absent / ovpn_binary_absent).
@@ -242,7 +246,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
+	applied := nodes.AppliedPolicy{Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch

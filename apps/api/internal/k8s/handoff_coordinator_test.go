@@ -81,6 +81,14 @@ func TestHandoffCoordinatorCrashRestartPhases(t *testing.T) {
 	if state.ActiveNodeID != fixture.newNodeID || state.Generation != 2 || state.PreferredNodeID != fixture.oldNodeID {
 		t.Fatalf("only CAS may update active/generation and preserve preferred: %+v", state)
 	}
+	var transitionActive uuid.UUID
+	var transitionGeneration int64
+	if err := pool.QueryRow(ctx, `SELECT active_node_id,promotion_generation FROM k8s_connector_pool_ha_transitions WHERE pool_id=$1`, fixture.poolID).Scan(&transitionActive, &transitionGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if transitionActive != fixture.newNodeID || transitionGeneration != 2 {
+		t.Fatalf("CAS did not synchronize HA transition: active=%s generation=%d", transitionActive, transitionGeneration)
+	}
 	var audits int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='k8s.connector_pool.handoff_applied'`, fixture.orgID).Scan(&audits); err != nil {
 		t.Fatal(err)
@@ -180,6 +188,13 @@ func seedHandoffCoordinatorFixture(t *testing.T, ctx context.Context, pool *pgxp
 	service := NewService(pool)
 	created, err := service.q.CreateK8sConnectorPool(ctx, sqlc.CreateK8sConnectorPoolParams{ClusterID: clusterID, OrgID: orgID, PreferredNodeID: oldNodeID, ActiveNodeID: oldNodeID})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO k8s_connector_pool_ha_transitions
+		(pool_id,org_id,site_id,cluster_id,requested_mode,actual_mode,active_node_id,promotion_generation,
+		 membership_epoch,transition_revision,achieved_authority_revision,reason_code,actor_system,cause,achieved_at)
+		VALUES($1,$2,$3,$4,'fenced_ha','fenced_ha',$5,1,0,1,1,'fenced_ha_active','test','handoff coordinator fixture',now())`,
+		created.ID, orgID, siteID, clusterID, oldNodeID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.q.AddK8sConnectorPoolMember(ctx, sqlc.AddK8sConnectorPoolMemberParams{PoolID: created.ID, OrgID: orgID, NodeID: newNodeID, AdminPriority: 1}); err != nil {

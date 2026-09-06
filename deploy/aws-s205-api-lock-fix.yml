@@ -1,0 +1,6 @@
+# API-only sandbox retest; merge AFTER the retained C7 CP override.
+# API source 1da06bf521d8ca6dc8c7587f0a18052a0a77b7b6; all other components
+# and candidate-bundle metadata remain C7. Not a unified final release.
+services:
+  api:
+    image: 735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/api@sha256:0c33825f3bb23f6e47e51da1cd88feeb3e3a06d98661bf85b5df70df791ab795

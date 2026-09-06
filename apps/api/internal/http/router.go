@@ -15,6 +15,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 	oapimw "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
@@ -60,6 +61,7 @@ type Deps struct {
 	Invites            *invites.Service
 	Nodes              *nodes.Service
 	AgentRuntimeOptIn  agentruntime.OptInFunc
+	AgentRuntimePool   *pgxpool.Pool // explicit transaction owner; nil refuses runtime authentication
 	AgentRuntimeNotify agentruntime.Notifier
 	AlertPublisher     alerts.Publisher
 	AlertConfig        *alerts.ConfigService
@@ -246,7 +248,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	// The same early boundary is needed for the human quota mutation; valid
 	// sessions still proceed to strict validation and receive 400 for malformed
 	// bodies.
-	agentRuntime := agentruntime.New(d.System, d.AgentRuntimeOptIn)
+	agentRuntime := agentruntime.New(d.AgentRuntimePool, d.AgentRuntimeOptIn)
 	agentRuntime.SetNotifier(d.AgentRuntimeNotify)
 	agentRuntime.SetAlertPublisher(d.AlertPublisher)
 	r.Use(runtimeAuthMiddleware(agentRuntime))
@@ -343,7 +345,8 @@ func authBeforeAgentValidation(next http.Handler) http.Handler {
 		// schema validation so an anonymous caller cannot use malformed bodies or
 		// a guessed destination identifier to probe the surface.
 		protectedAlerting := strings.Contains(req.URL.Path, "/alerting-settings") || strings.Contains(req.URL.Path, "/alert-destinations")
-		if orgPath && (protectedAgentMutation || protectedMCPOAuthStart || protectedAlerting || protectedFQDNMutation || protectedRetentionMutation) {
+		protectedNodeLifecycle := strings.Contains(req.URL.Path, "/nodes/lifecycle-claims/")
+		if orgPath && (protectedAgentMutation || protectedMCPOAuthStart || protectedAlerting || protectedFQDNMutation || protectedRetentionMutation || protectedNodeLifecycle) {
 			if _, ok := authctx.PrincipalFrom(req.Context()); !ok {
 				apierr.Write(w, req, apierr.New(http.StatusUnauthorized, "unauthenticated", "authentication required"))
 				return

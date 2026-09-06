@@ -9,43 +9,66 @@
 image:
   registry: ghcr.io/tunnexio
   # The node-agent image. An ENTERPRISE deploy builds its own (TUNNEX_BUILD_TAGS=
-  # enterprise) and overrides registry + repo. The preflight uses a tiny busybox.
+  # enterprise) and overrides registry + repo. The credentialless posture check
+  # and privileged admission preflight both reuse
+  # this same release image by default so it cannot drift independently.
   agent: tunnex-node-agent
-  tag: "0.2.0"
+  # Empty means the chart's appVersion. Release packaging sets appVersion to
+  # the same immutable vX.Y.Z tag as the node-agent image, so the default
+  # install cannot silently drift to a different runtime.
+  tag: ""
+  # Preferred immutable selection. When set, the chart renders
+  # <registry>/<agent>@<digest> and ignores tag.
+  digest: ""
   pullPolicy: IfNotPresent
   pullSecrets: []
-  # The preflight hook image (needs a shell + nslookup + test — busybox suffices). PINNED to a specific
-  # version (M3): the preflight's DNS gate must not depend on a floating tag whose nslookup applet might
-  # regress to exit-0-on-failure. The gate reads answer CONTENT, not the exit code, but a pinned image keeps
-  # the whole probe reproducible. Override with your own mirror if egress to Docker Hub is blocked.
-  preflight: "busybox:1.37.0"
+  # Optional preflight-only override. Empty reuses the node-agent image above.
+  # Because this hook is privileged, an override must be immutable image@sha256.
+  preflight: ""
 
 # ─── CONTROL-PLANE CONNECTION ────────────────────────────────────────────────────
-# Where the agent enrolls + fetches desired state. Point at the tunnex-cp release's
-# agent-mTLS Service (https, port 8443) and its API (http, 8080). Cross-namespace:
-# use the FQDN <svc>.<ns>.svc.cluster.local.
+# Where the agent enrolls + fetches desired state. Both endpoints must use TLS.
+# Point at the tunnex-cp release's externally trusted HTTPS API and agent-mTLS
+# listener. If the API runs on port 8080 internally, terminate TLS in front of it.
 controlPlane:
-  apiURL: ""              # e.g. http://tunnex-cp-api.tunnex.svc.cluster.local:8080  (REQUIRED)
+  apiURL: ""              # e.g. https://internal.tunnex.example.com  (REQUIRED)
   agentURL: ""            # e.g. https://tunnex-cp-api-agent.tunnex.svc.cluster.local:8443  (REQUIRED)
   serverName: "tunnex-control" # the agent-mTLS server name the CP presents
 
-# ─── JOIN TOKEN (F5 — prefer an existing Secret; a token in helm history leaks) ──
-# The one-time join token the agent enrolls with (mints its node cert, then never
-# needs the token again — state persists on the PVC). Provide EITHER:
-#   existingJoinTokenSecret — a Secret YOU created holding key `TUNNEX_JOIN_TOKEN`
-#                             (PREFERRED — keeps the token out of values/helm history)
-#   joinToken               — the raw token; this chart mints the Secret (convenience,
-#                             but the value lands in `helm get values` / release history)
+# ─── ENROLLMENT (external Secret preferred; raw tokens leak to Helm history) ──
+# Enroll requires nodeName and exactly one token source. Reuse requires an
+# existing retained claim and no token. Rotation is deliberately not implicit.
+enrollment:
+  # One release owns one identity. `enroll` creates a new identity on the
+  # chart-managed empty claim; `reuse` reattaches a retained existing claim.
+  mode: enroll             # enroll | reuse
+  # Preferred token transport. `tunnex k8s install` creates this Secret without
+  # putting its value in argv, logs, values, or Helm release history.
+  existingSecret: ""
+  # The token is single-use. Keep this true so the lifecycle command may delete
+  # the consumed Secret and later pod restarts can reuse the PVC.
+  secretOptional: true
+
+# Non-secret binding between a zero-touch install holder and its preflight
+# hook. The lifecycle CLI derives this only after control-plane authority is
+# mirrored in the anchor. Direct/manual Helm installs leave it empty and do not
+# gain proof-bearing orphan-hook recovery.
+lifecycle:
+  installProof: ""
+
+# Backwards-compatible enrollment values. New product flows use
+# enrollment.existingSecret. Raw joinToken is an INSECURE legacy escape hatch:
+# its value is retained by Helm release history.
 existingJoinTokenSecret: ""
 joinTokenKey: TUNNEX_JOIN_TOKEN
 joinToken: ""
 
-# ─── FABRIC ENDPOINT (F6 — REQUIRED; the chart cannot synthesize it) ─────────────
-# The PUBLIC WireGuard endpoint (host:port) peers dial to reach THIS gateway. The
-# LoadBalancer external IP may not exist at install time, so the operator supplies
-# the reserved address (or sets service.loadBalancerIP to a reserved static IP and
-# uses that here). This is a fabric promise the chart can't invent — REQUIRED.
-endpoint: ""             # e.g. 203.0.113.10:51820   (REQUIRED)
+# ─── FABRIC ENDPOINT (explicit, or automatic LoadBalancer discovery) ────────
+# An explicit public WireGuard host:port wins. With a LoadBalancer Service this
+# may be empty: the agent discovers this release's Service status and withholds
+# readiness until its controller publishes an address. NodePort requires an
+# explicit endpoint because the product does not guess a node's public identity.
+endpoint: ""             # e.g. 203.0.113.10:51820; empty = LoadBalancer discovery
 
 # The node name the agent enrolls under. The CP pins each join token to a node name; the agent MUST present
 # exactly that name or enrollment is refused (node_name_mismatch). A hostNetwork pod otherwise defaults to the
@@ -84,12 +107,25 @@ persistence:
   enabled: true
   size: 128Mi
   storageClass: ""        # "" = the cluster default StorageClass
+  # Required by enrollment.mode=reuse and forbidden for enroll. This prevents a
+  # one-time token from silently enrolling over an old identity/fence store.
+  existingClaim: ""
+  # Identity, WireGuard keys, and HA fence evidence survive Helm uninstall by
+  # default. State deletion is a separate, explicitly confirmed operation.
+  retain: true
+  # Token-blind lifecycle provenance for a newly enrolled identity. The
+  # zero-touch CLI supplies both canonical UUIDs from its approved lifecycle
+  # anchor. Direct legacy Helm installs leave both empty; reuse mode must never
+  # invent or overwrite provenance on an existing claim.
+  provenance:
+    organizationID: ""
+    lifecycleClaim: ""
   # For ephemeral clusters you can disable persistence (emptyDir); a restart then
   # re-enrolls (needs a fresh join token) — acceptable only for testing.
 
 # ─── PREFLIGHT (F7 — the guard-before-exec gate) ─────────────────────────────────
-# A pre-install,pre-upgrade hook Job that requests the SAME privileged/hostNetwork/
-# NET_ADMIN//dev/net/tun context and asserts (a) /dev/net/tun is present and (b) the
+# A pre-install,pre-upgrade hook Job that requests the privileged/hostNetwork/
+# NET_ADMIN//dev/net/tun admission context and asserts (a) /dev/net/tun is present and (b) the
 # cluster DNS resolves (the hostNetwork DNS trap — without ClusterFirstWithHostNet a
 # hostNetwork pod inherits the NODE resolv.conf and *.svc never resolves). On a
 # cluster whose PodSecurity/admission blocks the context, the Job pod is REJECTED, so
@@ -102,7 +138,9 @@ preflight:
   dnsProbe: "kubernetes.default.svc.cluster.local"
 
 # ─── PRIVILEGE ACKNOWLEDGEMENT (F7b — REQUIRED) ──────────────────────────────────
-# This chart runs a PRIVILEGED, hostNetwork pod with NET_ADMIN and /dev/net/tun. Set
+# This chart runs a privileged admission hook and a hostNetwork gateway with
+# NET_ADMIN and /dev/net/tun. The long-running privileged posture manager is a
+# separate cluster-singleton release. Set
 # this true to acknowledge that posture — a `required` guard so no one installs the
 # gateway without seeing what it asks for.
 acknowledgePrivileged: false
@@ -123,4 +161,18 @@ serviceAccount:
   create: true
   name: ""
 
+# Create the chart's exact read-only Service/EndpointSlice RBAC and bind it to
+# either the chart-created or explicitly supplied ServiceAccount.
+rbac:
+  create: true
+
 logLevel: info
+
+# Opaque, non-secret rollout input. Change it when external configuration should
+# deliberately recreate the pod; never put the join token in this value.
+rolloutRevision: ""
+
+# HA control-plane liveness cadence. The controller accepts one missed report
+# and then retains three consecutive health ticks before promotion, keeping
+# automatic connector failover within the 30-second recovery budget.
+reportInterval: "5s"

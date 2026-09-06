@@ -123,6 +123,21 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 	if m.log != nil {
 		m.log.Info("k8s_resolve_begin", "vip_mappings", nVIP, "dns_zones", nDNS)
 	}
+	// A standby has no VIP mappings by design, but it still relays client packets
+	// to the active HA owner. Keep the observed CNI mechanism reconciled from this
+	// periodic resolver path as well as the egress path, so a controller refresh
+	// cannot silently break standby transit.
+	if m.kubernetesMode.Load() {
+		subnet, err := m.observeWGSubnet(ctx)
+		if err != nil {
+			m.k8sNetPrepReady.Store(false)
+			if m.log != nil {
+				m.log.Warn("k8s_netprep_subnet_observation_failed", "error", err)
+			}
+		} else if err := m.reconcileK8sNetPrep(ctx, subnet); err != nil && m.log != nil {
+			m.log.Warn("k8s_netprep_reconcile_failed", "error", err)
+		}
+	}
 	if p == nil || len(p.VIPMappings) == 0 {
 		m.resolvedVIPs.Store(&[]resolvedVIP{})
 		m.refusedK8sVIPs.Store(&[]refusedVIP{})
@@ -463,7 +478,7 @@ func (m *Manager) ReadK8sDNATReceiptDigests(ctx context.Context) ([]string, erro
 func (m *Manager) EmergencyWithdrawK8s(ctx context.Context, candidates []string) error {
 	m.SetPolicy(nil)
 	var errs []error
-	if err := m.ReconcileDNSVIPsWithCandidates(ctx, candidates); err != nil {
+	if err := m.ReconcileDNSVIPsWithCandidates(ctx, candidates); err != nil && !m.interfaceAlreadyAbsent(err) {
 		errs = append(errs, err)
 	}
 	observed, err := m.ReadK8sDNATReceiptDigests(ctx)
@@ -479,6 +494,17 @@ func (m *Manager) EmergencyWithdrawK8s(ctx context.Context, candidates []string)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// interfaceAlreadyAbsent is a successful cold-start withdrawal: no address can
+// remain on a kernel interface that does not exist. Emergency cleanup continues
+// with the independent nft readback/sweep, so this never turns a present
+// interface or retained DNAT state into a false success.
+func (m *Manager) interfaceAlreadyAbsent(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, strings.ToLower(m.wgIface)) &&
+		strings.Contains(message, "device") &&
+		(strings.Contains(message, "does not exist") || strings.Contains(message, "cannot find device"))
 }
 
 // EndpointsUnavailable reports the k8s_endpoints_unavailable health kind (this gateway fronts exposed

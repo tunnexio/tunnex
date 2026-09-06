@@ -288,6 +288,8 @@ WITH validated_audit AS (
     FROM k8s_connector_handoff_operations o
     JOIN k8s_connector_pools p
       ON p.id = o.pool_id AND p.org_id = o.org_id AND p.site_id = o.site_id AND p.cluster_id = o.cluster_id
+    JOIN k8s_connector_pool_ha_transitions t
+      ON t.pool_id = p.id AND t.org_id = p.org_id AND t.site_id = p.site_id AND t.cluster_id = p.cluster_id
     CROSS JOIN validated_audit validation
     CROSS JOIN leadership
     WHERE o.id = $4
@@ -297,11 +299,15 @@ WITH validated_audit AS (
       AND o.phase = 'cas_active'
       AND p.active_node_id = o.old_node_id
       AND p.generation = o.expected_generation
+      AND t.requested_mode = 'fenced_ha'
+      AND t.actual_mode = 'fenced_ha'
+      AND t.active_node_id = o.old_node_id
+      AND t.promotion_generation = o.expected_generation
       AND (
         leadership.backend_pid = 0
         OR pg_backend_pid() = leadership.backend_pid
       )
-    FOR UPDATE OF o, p
+    FOR UPDATE OF o, p, t
 ), promoted AS (
     UPDATE k8s_connector_pools p
     SET active_node_id = o.new_node_id,
@@ -315,6 +321,22 @@ WITH validated_audit AS (
       AND p.active_node_id = o.old_node_id
       AND p.generation = o.expected_generation
     RETURNING p.id
+), synchronized_transition AS (
+    UPDATE k8s_connector_pool_ha_transitions t
+    SET active_node_id = o.new_node_id,
+        promotion_generation = o.target_generation,
+        updated_at = now()
+    FROM locked_operation o
+    JOIN promoted p ON p.id = o.pool_id
+    WHERE t.pool_id = o.pool_id
+      AND t.org_id = o.org_id
+      AND t.site_id = o.site_id
+      AND t.cluster_id = o.cluster_id
+      AND t.requested_mode = 'fenced_ha'
+      AND t.actual_mode = 'fenced_ha'
+      AND t.active_node_id = o.old_node_id
+      AND t.promotion_generation = o.expected_generation
+    RETURNING t.pool_id
 ), appended_audit AS (
     INSERT INTO audit_logs (org_id, actor_system, action, target_type, target_id, metadata)
     SELECT o.org_id,
@@ -332,6 +354,7 @@ WITH validated_audit AS (
            )
     FROM locked_operation o
     JOIN promoted p ON p.id = o.pool_id
+    JOIN synchronized_transition t ON t.pool_id = o.pool_id
     CROSS JOIN validated_audit validation
     RETURNING id, org_id
 )
@@ -342,6 +365,7 @@ SET phase = 'enable_serving',
     cas_audit_applied = true
 FROM locked_operation locked
 JOIN promoted p ON p.id = locked.pool_id
+JOIN synchronized_transition t ON t.pool_id = locked.pool_id
 JOIN appended_audit a ON a.org_id = locked.org_id
 WHERE o.id = locked.id
   AND o.phase = 'cas_active'
@@ -2867,6 +2891,99 @@ func (q *Queries) ListK8sConnectorPoolStatusMembersForOrg(ctx context.Context, o
 			&i.NodeCapabilities,
 			&i.OperationID,
 			&i.OperationPhase,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sHandoffGraphPoolMembersForOrg = `-- name: ListK8sHandoffGraphPoolMembersForOrg :many
+SELECT DISTINCT m.node_id, m.site_id, n.wg_public_key, n.endpoint
+FROM k8s_clusters c
+JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+JOIN k8s_connector_pool_members m
+  ON m.pool_id = p.id
+ AND m.org_id = p.org_id
+ AND m.site_id = p.site_id
+JOIN nodes n
+  ON n.id = m.node_id
+ AND n.org_id = m.org_id
+ AND n.site_id = m.site_id
+LEFT JOIN k8s_ha_settings hs ON hs.org_id = p.org_id
+LEFT JOIN k8s_connector_pool_ha_transitions ht
+  ON ht.pool_id = p.id
+ AND ht.org_id = p.org_id
+ AND ht.site_id = p.site_id
+ AND ht.cluster_id = p.cluster_id
+LEFT JOIN k8s_connector_pool_health_states hh
+  ON hh.pool_id = p.id
+ AND hh.org_id = p.org_id
+WHERE p.org_id = $1
+  AND EXISTS (
+    SELECT 1
+    FROM k8s_services service
+    WHERE service.org_id = p.org_id
+      AND service.cluster_id = p.cluster_id
+      AND service.deleted_at IS NULL
+  )
+  AND n.status = 'active'
+  AND n.revoked_at IS NULL
+  AND n.wg_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+  AND btrim(n.endpoint) <> ''
+  AND ((
+    hs.enabled = true
+    AND ht.requested_mode = 'fenced_ha'
+    AND ht.actual_mode = 'fenced_ha'
+    AND hh.id IS NOT NULL
+    AND ht.active_node_id = p.active_node_id
+    AND ht.promotion_generation = p.generation
+    AND ht.membership_epoch = hh.membership_epoch
+  ) OR EXISTS (
+    SELECT 1
+    FROM k8s_connector_handoff_operations pending
+    WHERE pending.pool_id = p.id
+      AND pending.org_id = p.org_id
+      AND pending.phase NOT IN ('complete', 'failed')
+  ))
+ORDER BY m.node_id
+`
+
+type ListK8sHandoffGraphPoolMembersForOrgRow struct {
+	NodeID      uuid.UUID `json:"node_id"`
+	SiteID      uuid.UUID `json:"site_id"`
+	WgPublicKey string    `json:"wg_public_key"`
+	Endpoint    string    `json:"endpoint"`
+}
+
+// ListK8sHandoffGraphPoolMembersForOrg keeps every eligible fenced-HA pool
+// member in the private handoff graph. VIP ownership remains a separate,
+// single-valued decision in ListActiveK8sServicesForOrg: these rows supply only
+// the member identities needed for a warm WireGuard peer. The nonterminal
+// operation branch preserves that peer through the post-CAS interval where the
+// new active member is intentionally not yet resolution-eligible.
+func (q *Queries) ListK8sHandoffGraphPoolMembersForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sHandoffGraphPoolMembersForOrgRow, error) {
+	rows, err := q.db.Query(ctx, listK8sHandoffGraphPoolMembersForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sHandoffGraphPoolMembersForOrgRow{}
+	for rows.Next() {
+		var i ListK8sHandoffGraphPoolMembersForOrgRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.SiteID,
+			&i.WgPublicKey,
+			&i.Endpoint,
 		); err != nil {
 			return nil, err
 		}

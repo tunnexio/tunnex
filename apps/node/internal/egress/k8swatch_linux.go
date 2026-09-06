@@ -28,10 +28,11 @@ import (
 // refusal). This is a thin hand-rolled LIST+WATCH of exactly two read-only resource types.
 //
 // FAIL-CLOSED is the security property (WF-K5 condition 1): the cache is populated ONLY from a SUCCESSFUL
-// API read. A list failure, watch error, 410 Gone, connection drop, or parse failure CLEARS the affected
-// view (Targets returns ok=false) so the render programs NO DNAT — never a stale pod IP (a recycled pod IP
-// reassigned to another workload is the reassignment trap at the datapath tier). Watch death triggers an
-// immediate relist; only a FAILED relist clears.
+// API read. A list failure, watch error, 410 Gone, partition, or parse failure retracts the affected view
+// (Targets returns ok=false) so the render programs NO DNAT — never a stale pod IP (a recycled pod IP
+// reassigned to another workload is the reassignment trap at the datapath tier). The API server's planned
+// clean watch renewal retains the exact last-good snapshot across the immediate relist/re-watch handoff;
+// only an abnormal loss or failed relist retracts it.
 
 // k8sTarget is one ready DNAT destination: a pod IP and the resolved container port (0 = address-only DNAT,
 // preserving the client's destination port — the PortLow==0 "any" exposure edge).
@@ -63,8 +64,12 @@ const (
 	// server never closes — without it sc.Scan() blocks for the TCP-keepalive window (minutes) while the 30s
 	// egress ticker keeps re-applying the frozen (stale) endpoint view. watchMaxDuration > watchServerTimeout
 	// so a healthy server closes first (a clean relist), and the client timeout only fires on a real partition.
-	watchServerTimeoutSec = 270
-	watchMaxDuration      = 6 * time.Minute
+	watchServerTimeoutSec  = 270
+	watchMaxDuration       = 6 * time.Minute
+	watchRenewalFloor      = time.Duration(watchServerTimeoutSec) * time.Second * 9 / 10
+	listRequestTimeout     = 15 * time.Second
+	apiResponseTimeout     = 10 * time.Second
+	apiTLSHandshakeTimeout = 10 * time.Second
 )
 
 type svcPortKey struct {
@@ -124,11 +129,13 @@ type epGroup struct {
 }
 
 type K8sWatcher struct {
-	base   string // https://host:port
-	token  string
-	client *http.Client
-	log    *slog.Logger
-	kick   func() // signal the egress reconcile that the endpoint view changed (watch-driven, not polled)
+	base        string // https://host:port
+	tokenPath   string
+	client      *http.Client
+	listTimeout time.Duration
+	now         func() time.Time
+	log         *slog.Logger
+	kick        func() // signal the egress reconcile that the endpoint view changed (watch-driven, not polled)
 
 	mu       sync.RWMutex
 	services map[string]serviceInfo        // ns/name -> Service identity + port model
@@ -143,6 +150,12 @@ type K8sWatcher struct {
 	// unreachable API.
 	servicesSynced bool
 	slicesSynced   bool
+	// *Watching means the corresponding LIST snapshot earned an HTTP 200 watch
+	// and has not since suffered an abnormal loss. It remains true only across a
+	// provably planned timeout renewal; an initial connection or early EOF is not
+	// readiness evidence.
+	servicesWatching bool
+	slicesWatching   bool
 }
 
 // NewInClusterWatcher returns a watcher wired to the pod's ServiceAccount, or (nil,nil) when NOT running in
@@ -154,8 +167,7 @@ func NewInClusterWatcher(log *slog.Logger, kick func()) (*K8sWatcher, error) {
 	if host == "" || port == "" {
 		return nil, nil // not in a cluster
 	}
-	token, err := os.ReadFile(saTokenPath)
-	if err != nil {
+	if _, err := readServiceAccountToken(saTokenPath); err != nil {
 		return nil, fmt.Errorf("read SA token: %w", err)
 	}
 	caPEM, err := os.ReadFile(saCAPath)
@@ -166,20 +178,63 @@ func NewInClusterWatcher(log *slog.Logger, kick func()) (*K8sWatcher, error) {
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return nil, fmt.Errorf("SA CA bundle contained no certificates")
 	}
-	client := &http.Client{
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}},
-		// No client Timeout: a watch is a long-lived stream. Per-request bounding is via ctx on list.
-	}
+	client := newK8sAPIClient(pool)
 	return &K8sWatcher{
 		base:          "https://" + host + ":" + port,
-		token:         strings.TrimSpace(string(token)),
+		tokenPath:     saTokenPath,
 		client:        client,
+		listTimeout:   listRequestTimeout,
+		now:           time.Now,
 		log:           log,
 		kick:          kick,
 		services:      map[string]serviceInfo{},
 		slices:        map[string]map[string]epGroup{},
 		uidTombstones: map[string]string{},
 	}, nil
+}
+
+func newK8sAPIClient(pool *x509.CertPool) *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig:       &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+			ResponseHeaderTimeout: apiResponseTimeout,
+			TLSHandshakeTimeout:   apiTLSHandshakeTimeout,
+		},
+		CheckRedirect: refuseK8sAPIRedirect,
+		// No client Timeout: a watch is a long-lived stream. LIST calls carry
+		// their own request deadline and watch bodies have watchMaxDuration.
+	}
+}
+
+func refuseK8sAPIRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
+func readServiceAccountToken(path string) (string, error) {
+	token, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	token = []byte(strings.TrimSpace(string(token)))
+	if len(token) == 0 {
+		return "", fmt.Errorf("empty token")
+	}
+	return string(token), nil
+}
+
+// setBearer reloads projected ServiceAccount credentials for every new API request.
+// Kubernetes rotates these files in place; retaining the startup token eventually
+// turns a healthy read-only watch into repeated 401s and must fail closed.
+func (w *K8sWatcher) setBearer(req *http.Request) error {
+	if w.tokenPath == "" { // test watcher: fake API does not require credentials
+		return nil
+	}
+	token, err := readServiceAccountToken(w.tokenPath)
+	if err != nil {
+		return fmt.Errorf("read SA token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
 }
 
 // Targets implements endpointSource — a PURE read of the last-successful cache (no I/O in the render path).
@@ -191,7 +246,7 @@ func (w *K8sWatcher) Targets(namespace, service, protocol string, servicePort in
 	// fail-closed API-down signal. Once BOTH resources have synced, ok=true and the per-Service lookup yields
 	// whatever endpoints exist (possibly zero — a Service with no ready pods is a per-Service refuse upstream,
 	// not an API-down signal).
-	if !w.servicesSynced || !w.slicesSynced {
+	if !w.liveSnapshotLocked() {
 		return nil, false
 	}
 	protocol, supported := normalizeServiceProtocol(protocol)
@@ -234,6 +289,20 @@ func (w *K8sWatcher) Targets(namespace, service, protocol string, servicePort in
 	return out, true
 }
 
+// LiveSnapshotReady is true only after both full resource LISTs have succeeded
+// and both watch streams have been established without a later abnormal loss.
+// A planned timeout handoff retains that last-good evidence. Empty lists are
+// valid live snapshots; they are deliberately distinct from an unavailable API.
+func (w *K8sWatcher) LiveSnapshotReady() bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.liveSnapshotLocked()
+}
+
+func (w *K8sWatcher) liveSnapshotLocked() bool {
+	return w.servicesSynced && w.slicesSynced && w.servicesWatching && w.slicesWatching
+}
+
 // normalizeServiceProtocol implements Kubernetes' omitted-protocol default but
 // admits only protocols the Tunnex datapath can enforce. Unsupported values
 // cannot alias the TCP index.
@@ -254,7 +323,7 @@ func (w *K8sWatcher) ServiceUIDObservations(namespace, service string) ([]Servic
 	key := namespace + "/" + service
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	if !w.servicesSynced {
+	if !w.servicesSynced || !w.servicesWatching {
 		return nil, false
 	}
 	var out []ServiceUIDObservation
@@ -273,7 +342,7 @@ func (w *K8sWatcher) ServiceUIDObservations(namespace, service string) ([]Servic
 func (w *K8sWatcher) ServiceInventory() ([]ServiceInventoryItem, bool) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	if !w.servicesSynced {
+	if !w.servicesSynced || !w.servicesWatching {
 		return nil, false
 	}
 	items := make([]ServiceInventoryItem, 0, len(w.services))
@@ -372,8 +441,10 @@ func (w *K8sWatcher) loop(
 }
 
 // watch streams events from resourceVersion rv. Returns gone=true on a 410 Gone (relist), or an error on a
-// stream/decode fault (the caller relists after a backoff). A clean EOF returns (false, nil) → relist.
+// stream/decode fault (the caller relists immediately). A clean EOF near the configured API timeout is a
+// normal bounded renewal: it returns (false, nil) while retaining the last-good snapshot across replacement.
 func (w *K8sWatcher) watch(ctx context.Context, path, rv string, onEvent func(string, json.RawMessage)) (bool, error) {
+	startedAt := w.nowTime()
 	// H2: bound the watch. timeoutSeconds asks the server to close the stream (clean relist); watchMaxDuration
 	// is the client backstop for a SILENT partition where the server never closes — sc.Scan() would otherwise
 	// block for the TCP-keepalive window while the egress ticker re-applies a frozen (stale) view. On this
@@ -384,21 +455,29 @@ func (w *K8sWatcher) watch(ctx context.Context, path, rv string, onEvent func(st
 		w.base, path, watchServerTimeoutSec, rv)
 	req, err := http.NewRequestWithContext(wctx, http.MethodGet, u, nil)
 	if err != nil {
+		w.setWatching(path, false)
 		return false, err
 	}
-	req.Header.Set("Authorization", "Bearer "+w.token)
+	if err := w.setBearer(req); err != nil {
+		w.setWatching(path, false)
+		return false, err
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := w.client.Do(req)
 	if err != nil {
+		w.setWatching(path, false)
 		return false, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusGone { // 410 at the request itself
+		w.setWatching(path, false)
 		return true, nil
 	}
 	if resp.StatusCode != http.StatusOK {
+		w.setWatching(path, false)
 		return false, fmt.Errorf("watch %s: status %d", path, resp.StatusCode)
 	}
+	w.setWatching(path, true)
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // EndpointSlice objects can be large
 	for sc.Scan() {
@@ -407,6 +486,7 @@ func (w *K8sWatcher) watch(ctx context.Context, path, rv string, onEvent func(st
 			Object json.RawMessage `json:"object"`
 		}
 		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
+			w.setWatching(path, false)
 			return false, fmt.Errorf("decode watch event: %w", err) // parse failure → relist (fail-closed)
 		}
 		if ev.Type == "ERROR" {
@@ -416,8 +496,10 @@ func (w *K8sWatcher) watch(ctx context.Context, path, rv string, onEvent func(st
 			}
 			_ = json.Unmarshal(ev.Object, &st)
 			if st.Code == http.StatusGone {
+				w.setWatching(path, false)
 				return true, nil
 			}
+			w.setWatching(path, false)
 			return false, fmt.Errorf("watch %s: error event code %d", path, st.Code)
 		}
 		if ev.Type == "BOOKMARK" {
@@ -426,18 +508,61 @@ func (w *K8sWatcher) watch(ctx context.Context, path, rv string, onEvent func(st
 		onEvent(ev.Type, ev.Object)
 		w.kick()
 	}
-	return false, sc.Err()
+	if err := sc.Err(); err != nil {
+		w.setWatching(path, false)
+		return false, err
+	}
+	// Kubernetes' configured timeout is the only evidence that an EOF was a
+	// planned renewal. An early body close (proxy reset translated to EOF, API
+	// restart, etc.) is an abnormal loss and must withdraw stale DNAT/readiness.
+	if w.nowTime().Sub(startedAt) < watchRenewalFloor {
+		w.setWatching(path, false)
+		return false, fmt.Errorf("watch %s: stream closed before planned renewal", path)
+	}
+	return false, nil
+}
+
+func (w *K8sWatcher) nowTime() time.Time {
+	if w.now != nil {
+		return w.now()
+	}
+	return time.Now()
+}
+
+func (w *K8sWatcher) setWatching(path string, watching bool) {
+	w.mu.Lock()
+	changed := false
+	switch path {
+	case servicePath:
+		changed = w.servicesWatching != watching
+		w.servicesWatching = watching
+	case epSlicePath:
+		changed = w.slicesWatching != watching
+		w.slicesWatching = watching
+	}
+	w.mu.Unlock()
+	if changed && w.kick != nil {
+		w.kick()
+	}
 }
 
 // ── list + event application ──────────────────────────────────────────────────────────────────────────
 
 // getList GETs a collection and returns its items + the list resourceVersion (the watch start point).
 func (w *K8sWatcher) getList(ctx context.Context, path string) ([]json.RawMessage, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.base+path, nil)
+	timeout := w.listTimeout
+	if timeout <= 0 {
+		timeout = listRequestTimeout
+	}
+	listCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(listCtx, http.MethodGet, w.base+path, nil)
 	if err != nil {
 		return nil, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+w.token)
+	if err := w.setBearer(req); err != nil {
+		return nil, "", err
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := w.client.Do(req)
 	if err != nil {
@@ -563,12 +688,14 @@ func (w *K8sWatcher) clearServices() {
 	w.services = map[string]serviceInfo{}
 	w.uidTombstones = map[string]string{}
 	w.servicesSynced = false
+	w.servicesWatching = false
 	w.mu.Unlock()
 }
 func (w *K8sWatcher) clearSlices() {
 	w.mu.Lock()
 	w.slices = map[string]map[string]epGroup{}
 	w.slicesSynced = false
+	w.slicesWatching = false
 	w.mu.Unlock()
 }
 

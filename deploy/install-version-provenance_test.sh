@@ -139,8 +139,8 @@ fi
 
 grep -Fq 'DOCKER_METADATA_SHORT_SHA_LENGTH: "7"' "$ROOT/.github/workflows/ci.yml" ||
 	fail "CI no longer pins the SHA abbreviation length consumed by installers"
-grep -Fq 'gh release edit "$GITHUB_REF_NAME" --latest' "$ROOT/.github/workflows/ci.yml" ||
-	fail "CI does not explicitly mark a completed versioned release as latest"
+bash "$ROOT/deploy/release-completion-contract_test.sh" ||
+	fail "CI release completion did not preserve versioned-latest and immutable-source behavior"
 grep -Fq 'powershell_installer_url: `https://raw.githubusercontent.com/tunnexio/tunnex/${sha}/deploy/install.ps1`' "$ROOT/.github/workflows/ci.yml" ||
 	fail "installer-site sync does not carry the immutable PowerShell launcher URL"
 grep -Fq 'deploy/install.ps1 deploy/install.ps1.sha256' "$ROOT/.github/workflows/ci.yml" ||

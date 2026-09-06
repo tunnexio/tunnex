@@ -30,8 +30,15 @@ type K8sDNATReceipt struct {
 }
 
 func dnatReceipt(vip, rule string) K8sDNATReceipt {
-	sum := sha256.Sum256([]byte(rule))
+	sum := sha256.Sum256([]byte(canonicalDNATSpelling(rule)))
 	return K8sDNATReceipt{VIP: vip, Digest: hex.EncodeToString(sum[:])}
+}
+
+// nft may print the explicit IPv4 family for the same emitted DNAT expression.
+// Normalize only that spelling; callers must still validate the entire rule.
+// Keep the original emitter representation so existing receipt digests survive.
+func canonicalDNATSpelling(rule string) string {
+	return strings.Replace(rule, " dnat ip to ", " dnat to ", 1)
 }
 
 func attachDNATReceipt(vip, rule string) string {
@@ -47,7 +54,7 @@ func parseK8sDNATReceipts(listing string) ([]string, error) {
 		if match == nil {
 			continue
 		}
-		rule := strings.TrimSpace(line[:match[0]])
+		rule := canonicalDNATSpelling(strings.TrimSpace(line[:match[0]]))
 		digest := line[match[2]:match[3]]
 		trailer := strings.TrimSpace(line[match[1]:])
 		if trailer != "" && !strings.HasPrefix(trailer, "# handle ") {

@@ -1,0 +1,29 @@
+{{- /*
+The CRD release is deliberately separate from the operator release so an
+operator rollback cannot downgrade the Kubernetes schemas. `--take-ownership`
+is allowed for the migration because this chart contains only these three
+cluster-singleton CRDs. Refuse any unexpected Helm owner before adoption, and
+adopt an ownerless CRD only when its normalized spec exactly matches a
+source-controlled Tunnex legacy fingerprint.
+
+Schema generation is monotonic. Every future incompatible/additive CRD change
+must bump the generation in all three source-parity manifests. That makes an
+attempt to install/upgrade an older chart fail before applying an older schema.
+Helm rollback replays a stored manifest and is deliberately unsupported for
+this isolated release.
+*/ -}}
+{{- $release := .Release.Name -}}
+{{- $namespace := .Release.Namespace -}}
+{{- $generation := 1 -}}
+{{- range $name := list "tunnexclusters.tunnex.io" "tunnexexposedservices.tunnex.io" "tunnexgrants.tunnex.io" -}}
+  {{- $existing := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" $name -}}
+  {{- if $existing -}}
+    {{- include "tunnexOperatorCRDs.assertAdoptableExisting" (dict
+      "name" $name
+      "existing" $existing
+      "release" $release
+      "namespace" $namespace
+      "generation" $generation
+    ) -}}
+  {{- end -}}
+{{- end -}}

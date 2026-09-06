@@ -57,6 +57,20 @@ func TestPoolVIPOwnershipOwnedRouteDigestBoundsInputBeforeCopy(t *testing.T) {
 	}
 }
 
+func TestPoolVIPOwnershipOwnedRouteDigestCanonicalizesEmptyRouteSet(t *testing.T) {
+	nilDigest, err := PoolVIPOwnershipOwnedRouteDigest(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyDigest, err := PoolVIPOwnershipOwnedRouteDigest([]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nilDigest != emptyDigest {
+		t.Fatalf("nil and empty routes must produce the same digest: nil=%s empty=%s", nilDigest, emptyDigest)
+	}
+}
+
 type fakeOwnershipApplyReadback struct {
 	applyErr error
 	readErr  error

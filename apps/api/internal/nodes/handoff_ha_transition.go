@@ -29,6 +29,8 @@ const (
 // HandoffBaseStateSource returns the exact ordinary desired state that the
 // authenticated agent route will serve, including its node-push version.
 // Production supplies the existing nodes.Service + nodepush.Hub seam.
+// It may acquire the shared pool: never invoke it inside a lock-owning
+// handoff transaction. Prefetched results still require exact hash/ACK checks.
 type HandoffBaseStateSource interface {
 	HandoffBaseState(context.Context, uuid.UUID, uuid.UUID) (DesiredState, error)
 }
@@ -42,10 +44,13 @@ func (f HandoffBaseStateSourceFunc) HandoffBaseState(ctx context.Context, orgID,
 type HandoffHATransitionConfig struct {
 	MaxAckAge    time.Duration
 	AuthorityTTL time.Duration
+	// Zero retains the strict all-member barrier. Production shares the exact
+	// coordinator margin when enabling retired-owner renewal proof.
+	ClockSkewMargin time.Duration
 }
 
 func (c HandoffHATransitionConfig) valid() bool {
-	return c.MaxAckAge > 0 && c.AuthorityTTL >= time.Minute
+	return c.MaxAckAge > 0 && c.AuthorityTTL >= time.Minute && c.ClockSkewMargin >= 0
 }
 
 // PostgresHandoffOwnershipModeTransition owns P3's closed activation boundary.
@@ -83,6 +88,17 @@ func (t *PostgresHandoffOwnershipModeTransition) ArmHandoffOwnershipBaseWithLead
 	expires := now.UTC().Truncate(t.config.AuthorityTTL).Add(2 * t.config.AuthorityTTL)
 	result := HandoffBaseAuthorityArmSnapshot{TransitionRevision: revision, MembershipEpoch: membershipEpoch, Members: make([]HandoffBaseAuthorityArmMember, 0, len(members))}
 	poolGeneration := KubernetesOwnershipBaseAuthorityPoolGeneration{Scope: classification.Scope, PromotionGeneration: plan.Generation}
+	bases := make(map[uuid.UUID]DesiredState, len(members))
+	for _, nodeID := range members {
+		base, err := t.base.HandoffBaseState(ctx, plan.Scope.OrgID, nodeID)
+		if err != nil {
+			return HandoffBaseAuthorityArmSnapshot{}, false, err
+		}
+		if base.NodeID != nodeID.String() || base.Version == 0 {
+			return HandoffBaseAuthorityArmSnapshot{}, false, ErrHandoffHATransitionRefused
+		}
+		bases[nodeID] = base
+	}
 	issueTx, err := conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return HandoffBaseAuthorityArmSnapshot{}, false, err
@@ -99,13 +115,7 @@ func (t *PostgresHandoffOwnershipModeTransition) ArmHandoffOwnershipBaseWithLead
 		return HandoffBaseAuthorityArmSnapshot{}, false, err
 	}
 	for _, nodeID := range members {
-		base, err := t.base.HandoffBaseState(ctx, plan.Scope.OrgID, nodeID)
-		if err != nil || base.NodeID != nodeID.String() || base.Version == 0 {
-			if err == nil {
-				err = ErrHandoffHATransitionRefused
-			}
-			return HandoffBaseAuthorityArmSnapshot{}, false, err
-		}
+		base := bases[nodeID]
 		hash, err := KubernetesOwnershipBaseStateHash(base)
 		if err != nil {
 			return HandoffBaseAuthorityArmSnapshot{}, false, err
@@ -158,7 +168,7 @@ func (t *PostgresHandoffOwnershipModeTransition) ArmHandoffOwnershipBaseWithLead
 			JOIN k8s_base_authority_delivery_pools p ON p.delivery_id=d.id AND p.org_id=d.org_id AND p.node_id=d.node_id
 			JOIN k8s_base_authority_ack_receipts r ON r.delivery_id=d.id AND r.org_id=d.org_id AND r.node_id=d.node_id
 			WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.authority_revision=$4
-			  AND d.transition_revision=$5 AND d.base_version=$6 AND d.base_hash=$7 AND d.payload_digest=$8
+			  AND d.authority_kind='transition' AND d.transition_revision=$5 AND d.base_version=$6 AND d.base_hash=$7 AND d.payload_digest=$8
 			  AND p.cluster_id=$9 AND p.pool_id=$10 AND p.promotion_generation=$11
 			  AND p.kind='classification' AND p.disposition='arm_fence'`, plan.Scope.OrgID, plan.Scope.SiteID, member.NodeID,
 			int64(member.AuthorityRevision), int64(revision), int64(member.BaseVersion), member.BaseHash, member.PayloadDigest,
@@ -211,7 +221,7 @@ func (t *PostgresHandoffOwnershipModeTransition) advanceRetryableHandoffAuthorit
 		  ON p.delivery_id=d.id AND p.org_id=d.org_id AND p.site_id=d.site_id AND p.node_id=d.node_id
 		LEFT JOIN k8s_base_authority_ack_receipts r
 		  ON r.delivery_id=d.id AND r.org_id=d.org_id AND r.site_id=d.site_id AND r.node_id=d.node_id
-		WHERE d.org_id=$1 AND d.site_id=$2 AND d.transition_revision=$3
+		WHERE d.org_id=$1 AND d.site_id=$2 AND d.authority_kind='transition' AND d.transition_revision=$3
 		  AND p.cluster_id=$4 AND p.pool_id=$5 AND p.promotion_generation=$6
 		  AND p.kind='classification' AND p.disposition='arm_fence'
 		  AND d.node_id=ANY($7)`, plan.Scope.OrgID, plan.Scope.SiteID, int64(revision), plan.Scope.ClusterID, plan.Scope.PoolID,
@@ -284,7 +294,7 @@ func loadHandoffHAAuthorityIssueExpiry(ctx context.Context, q handoffHAQuerier, 
 	rows, err := q.Query(ctx, `SELECT d.expires_at,d.base_version,d.base_hash FROM k8s_base_authority_deliveries d
 		JOIN k8s_base_authority_delivery_pools p
 		 ON p.delivery_id=d.id AND p.org_id=d.org_id AND p.site_id=d.site_id AND p.node_id=d.node_id
-		WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.transition_revision=$4
+		WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.authority_kind='transition' AND d.transition_revision=$4
 		 AND p.cluster_id=$5 AND p.pool_id=$6 AND p.promotion_generation=$7
 		 AND p.kind='classification' AND p.disposition='arm_fence'
 		ORDER BY d.authority_revision`, plan.Scope.OrgID, plan.Scope.SiteID, nodeID, int64(revision),
@@ -358,7 +368,7 @@ func (t *PostgresHandoffOwnershipModeTransition) ConfirmHandoffOwnershipModeTran
 			JOIN k8s_base_authority_delivery_pools p ON p.delivery_id=d.id AND p.org_id=d.org_id AND p.node_id=d.node_id
 			JOIN k8s_base_authority_ack_receipts r ON r.delivery_id=d.id AND r.org_id=d.org_id AND r.node_id=d.node_id
 			WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.authority_revision=$4
-			 AND d.transition_revision=$5 AND d.base_version=$6 AND d.base_hash=$7 AND d.payload_digest=$8
+			 AND d.authority_kind='transition' AND d.transition_revision=$5 AND d.base_version=$6 AND d.base_hash=$7 AND d.payload_digest=$8
 			 AND p.cluster_id=$9 AND p.pool_id=$10 AND p.promotion_generation=$11
 			 AND p.kind='classification' AND p.disposition='arm_fence' FOR SHARE OF d,p,r`, plan.Scope.OrgID, plan.Scope.SiteID,
 			member.NodeID, int64(member.AuthorityRevision), int64(revision), int64(member.BaseVersion), member.BaseHash, member.PayloadDigest,
@@ -452,6 +462,15 @@ func (t *PostgresHandoffOwnershipModeTransition) ReconcileHandoffOwnershipDrainW
 	members, err := loadHandoffHADrainMembers(ctx, conn, scope, false)
 	if err != nil || len(members) < 2 {
 		return false, ErrHandoffHATransitionRefused
+	}
+	// A drain keeps the same fail-closed authority contract as bootstrap: an
+	// expired or stale receipt must advance its durable transition revision,
+	// never mutate the prior authority evidence in place.
+	if next, nextEpoch, nextMembers, err := t.advanceRetryableHandoffDrainAuthorityWithLeadership(ctx, now.UTC(), epoch, conn, scope, uint64(revision), uint64(generation), members); err != nil {
+		return false, err
+	} else if next != uint64(revision) {
+		nextEpochValue := int64(nextEpoch)
+		revision, membershipEpoch, members = int64(next), &nextEpochValue, nextMembers
 	}
 	classification, err := loadHandoffHADrainClassification(ctx, conn, scope, uint64(generation))
 	if err != nil {
@@ -566,6 +585,75 @@ func (t *PostgresHandoffOwnershipModeTransition) ReconcileHandoffOwnershipDrainW
 	return true, nil
 }
 
+// advanceRetryableHandoffDrainAuthorityWithLeadership is the drain equivalent
+// of bootstrap retry. It only advances a persisted transition after its
+// maintain-fence authority expired or its receipt became stale; it never
+// rewrites evidence at the existing revision.
+func (t *PostgresHandoffOwnershipModeTransition) advanceRetryableHandoffDrainAuthorityWithLeadership(ctx context.Context, now time.Time, epoch k8s.HandoffLeadershipEpoch, conn *pgxpool.Conn, scope k8s.HandoffPoolScope, revision, generation uint64, members []uuid.UUID) (uint64, uint64, []uuid.UUID, error) {
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := requireHandoffHALeaderSessionTx(ctx, tx, epoch); err != nil {
+		return 0, 0, nil, err
+	}
+	var currentRevision, membershipEpoch int64
+	if err := tx.QueryRow(ctx, `SELECT transition_revision,membership_epoch FROM k8s_connector_pool_ha_transitions
+		WHERE org_id=$1 AND site_id=$2 AND cluster_id=$3 AND pool_id=$4 AND requested_mode='legacy' AND actual_mode='drain_pending' FOR UPDATE`,
+		scope.OrgID, scope.SiteID, scope.ClusterID, scope.PoolID).Scan(&currentRevision, &membershipEpoch); err != nil || currentRevision <= 0 || membershipEpoch < 0 || uint64(currentRevision) != revision {
+		return 0, 0, nil, ErrHandoffHATransitionRefused
+	}
+	lockedMembers, err := loadHandoffHADrainMembers(ctx, tx, scope, true)
+	if err != nil || !sameUUIDSet(lockedMembers, members) {
+		return 0, 0, nil, ErrHandoffHATransitionRefused
+	}
+	var expiredUnacknowledged, staleReceipt bool
+	err = tx.QueryRow(ctx, `SELECT COALESCE(bool_or(r.delivery_id IS NULL AND d.expires_at <= $8),false),
+		COALESCE(bool_or(r.delivery_id IS NOT NULL AND (r.receipt_time > $8 OR r.receipt_time < $9)),false)
+		FROM k8s_base_authority_deliveries d JOIN k8s_base_authority_delivery_pools p ON p.delivery_id=d.id AND p.org_id=d.org_id AND p.site_id=d.site_id AND p.node_id=d.node_id
+		LEFT JOIN k8s_base_authority_ack_receipts r ON r.delivery_id=d.id AND r.org_id=d.org_id AND r.site_id=d.site_id AND r.node_id=d.node_id
+		WHERE d.org_id=$1 AND d.site_id=$2 AND d.authority_kind='transition' AND d.transition_revision=$3 AND p.cluster_id=$4 AND p.pool_id=$5 AND p.promotion_generation=$6
+		AND p.kind='classification' AND p.disposition='maintain_fence' AND d.node_id=ANY($7)`,
+		scope.OrgID, scope.SiteID, int64(revision), scope.ClusterID, scope.PoolID, int64(generation), lockedMembers, now, now.Add(-t.config.MaxAckAge)).Scan(&expiredUnacknowledged, &staleReceipt)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	_, retry := classifyHandoffHAAuthorityRetry(expiredUnacknowledged, staleReceipt)
+	if !retry {
+		return revision, uint64(membershipEpoch), lockedMembers, nil
+	}
+	if revision == uint64(^uint64(0)>>1) {
+		return 0, 0, nil, ErrHandoffHATransitionRefused
+	}
+	next := revision + 1
+	ct, err := tx.Exec(ctx, `UPDATE k8s_connector_pool_ha_transitions SET transition_revision=$3,reason_code=$4,achieved_authority_revision=NULL,achieved_at=NULL,actor_user_id=NULL,actor_system='k8s-ha-activation',cause='retry stale or expired drain base authority evidence'
+		WHERE pool_id=$1 AND org_id=$2 AND transition_revision=$5 AND requested_mode='legacy' AND actual_mode='drain_pending'`, scope.PoolID, scope.OrgID, int64(next), handoffHAAuthorityRetryReasonCode, int64(revision))
+	if err != nil || ct.RowsAffected() != 1 {
+		return 0, 0, nil, ErrHandoffHATransitionRefused
+	}
+	metadata, err := json.Marshal(map[string]any{
+		"old_transition_revision": revision,
+		"new_transition_revision": next,
+		"promotion_generation":    generation,
+		"membership_epoch":        membershipEpoch,
+	})
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO audit_logs(org_id,actor_system,action,target_type,target_id,metadata)
+		VALUES($1,'k8s-ha-activation','k8s.connector_pool_ha_drain_authority_retried','k8s_connector_pool',$2,$3)`, scope.OrgID, scope.PoolID.String(), metadata); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := requireHandoffHALeaderSessionTx(ctx, tx, epoch); err != nil {
+		return 0, 0, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, 0, nil, err
+	}
+	return next, uint64(membershipEpoch), lockedMembers, nil
+}
+
 func loadHandoffHADrainMembers(ctx context.Context, q handoffHAQuerier, scope k8s.HandoffPoolScope, lock bool) ([]uuid.UUID, error) {
 	suffix := ""
 	if lock {
@@ -611,7 +699,7 @@ func exactHandoffHAAuthorityReceipts(ctx context.Context, q handoffHAQuerier, no
 		err := q.QueryRow(ctx, `SELECT r.receipt_time FROM k8s_base_authority_deliveries d
 			JOIN k8s_base_authority_delivery_pools p ON p.delivery_id=d.id AND p.org_id=d.org_id AND p.node_id=d.node_id
 			JOIN k8s_base_authority_ack_receipts r ON r.delivery_id=d.id AND r.org_id=d.org_id AND r.node_id=d.node_id
-			WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.authority_revision=$4 AND d.transition_revision=$5
+			WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3 AND d.authority_revision=$4 AND d.authority_kind='transition' AND d.transition_revision=$5
 			 AND d.base_version=$6 AND d.base_hash=$7 AND d.payload_digest=$8 AND p.cluster_id=$9 AND p.pool_id=$10
 			 AND p.promotion_generation=$11 AND p.kind=$12 AND (p.disposition=$13 OR ($13='' AND p.disposition IS NULL))`, scope.OrgID, scope.SiteID,
 			member.NodeID, int64(member.AuthorityRevision), int64(transitionRevision), int64(member.BaseVersion), member.BaseHash, member.PayloadDigest,

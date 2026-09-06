@@ -228,7 +228,7 @@ func (c *HandoffCoordinator) start(ctx context.Context, req HandoffCoordinatorRe
 	}
 	q := c.queries(req)
 	create := func(q *sqlc.Queries) error {
-		_, err = q.CreateOrResumeK8sConnectorHandoffOperation(ctx, createOperationParams(req.Plan, req.leadershipEpoch, req.ObservedMembershipEpoch))
+		_, err = q.CreateOrResumeK8sConnectorHandoffOperation(ctx, CreateOperationParams(req.Plan, req.leadershipEpoch, req.ObservedMembershipEpoch))
 		return err
 	}
 	if req.leaderConn != nil {
@@ -648,7 +648,10 @@ func matchesDurableOperation(plan DurableHandoffPlan, op sqlc.K8sConnectorHandof
 	return *observedMembershipEpoch <= uint64(^uint64(0)>>1) && op.ObservedMembershipEpoch != nil && int64(*observedMembershipEpoch) == *op.ObservedMembershipEpoch
 }
 
-func createOperationParams(plan DurableHandoffPlan, epoch HandoffLeadershipEpoch, membershipEpoch *uint64) sqlc.CreateOrResumeK8sConnectorHandoffOperationParams {
+// CreateOperationParams maps a validated durable plan to the single immutable
+// operation row. It is exported so provenance writers can persist the claim
+// and operation atomically in one caller-owned transaction.
+func CreateOperationParams(plan DurableHandoffPlan, epoch HandoffLeadershipEpoch, membershipEpoch *uint64) sqlc.CreateOrResumeK8sConnectorHandoffOperationParams {
 	p := plan.Plan
 	params := sqlc.CreateOrResumeK8sConnectorHandoffOperationParams{OperationID: p.OperationID, OrgID: p.Scope.OrgID, SiteID: p.Scope.SiteID, PoolID: p.Scope.PoolID, ClusterID: p.Scope.ClusterID,
 		OldNodeID: p.ExpectedActiveID, NewNodeID: p.CandidateID, ExpectedGeneration: int64(p.ExpectedGeneration), TargetGeneration: int64(p.TargetGeneration),

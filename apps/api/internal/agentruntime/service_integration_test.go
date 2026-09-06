@@ -4,17 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
 type recordingRuntimeNotifier struct {
@@ -53,20 +52,9 @@ func (n *recordingRuntimeNotifier) snapshot() []uuid.UUID {
 }
 
 func TestRuntimeServicePostgresContract(t *testing.T) {
-	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	defer pool.Close()
-
+	ctx, pool := testpostgres.New(t)
 	q := sqlc.New(pool)
-	svc := New(q, func(context.Context, uuid.UUID) (OptInState, error) { return OptInEnabled, nil })
+	svc := New(pool, func(context.Context, uuid.UUID) (OptInState, error) { return OptInEnabled, nil })
 	org, otherOrg, owner, node := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	agent, human, otherDevice := uuid.New(), uuid.New(), uuid.New()
 	seed := func(sql string, args ...any) {
@@ -79,9 +67,6 @@ func TestRuntimeServicePostgresContract(t *testing.T) {
 	seed(`INSERT INTO users (id,email) VALUES ($1,$2)`, owner, "f04-"+owner.String()[:8]+"@example.com")
 	seed(`INSERT INTO nodes (id,org_id,name,cert_serial,wg_public_key,endpoint) VALUES ($1,$2,'gw',$3,$4,'gateway.example:51820')`, node, org, "f04-cert-"+node.String(), "f04-gateway-key-"+node.String())
 	seed(`INSERT INTO devices (id,org_id,user_id,node_id,name,public_key,assigned_ip,status,kind) VALUES ($1,$2,$3,$4,'agent','f04-agent-key','10.97.0.2','active','agent'),($5,$2,$3,$4,'human','f04-human-key','10.97.0.3','active','human'),($6,$7,$3,$4,'other-org-agent','f04-other-key','10.98.0.2','active','agent')`, agent, org, owner, node, human, otherDevice, otherOrg)
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id IN ($1,$2)`, org, otherOrg)
-	})
 
 	valid := "tnx_runtime_valid_" + agent.String()
 	h := sha256.Sum256([]byte(valid))

@@ -26,7 +26,7 @@ func TestBuildHandoffBootstrapPlanProducesCompleteExactV3Artifacts(t *testing.T)
 		t.Fatalf("serving manifest is incomplete: %+v", serving.Manifest)
 	}
 	for _, prepared := range plan.StandbyEnvelopes {
-		if prepared.Version != 3 || prepared.Role != policyspec.PoolVIPOwnershipPreparedNonServing || len(prepared.Manifest.WGPeers) != 0 || len(prepared.Manifest.Routes) != 0 || len(prepared.Manifest.Services) != 0 || prepared.ExpectedVIPMapDigest != "" {
+		if prepared.Version != 3 || prepared.Role != policyspec.PoolVIPOwnershipPreparedNonServing || prepared.Manifest.WGPeers == nil || len(prepared.Manifest.WGPeers) != 0 || len(prepared.Manifest.Routes) != 0 || len(prepared.Manifest.Services) != 0 || prepared.ExpectedVIPMapDigest != "" {
 			t.Fatalf("prepared manifest owns dataplane state: %+v", prepared)
 		}
 	}

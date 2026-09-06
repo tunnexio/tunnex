@@ -30,6 +30,20 @@ func TestReadAppliedOVPNTunnelRequiresLiveIPv4AndIPv6Semantics(t *testing.T) {
 	}
 }
 
+func TestReadAppliedOVPNTunnelAcceptsRenderedSyntheticVIPExclusion(t *testing.T) {
+	m := New("wg0")
+	live := "chain forward {\n  iifname != \"wg0\" oifname != \"wg0\" ct original ip daddr != 100.64.0.5 counter packets 0 bytes 0 accept comment \"tunnex_native_forward_passthrough\"\n}"
+	m.nftRun = func(_ context.Context, args ...string) (string, error) {
+		if len(args) > 2 && args[2] == "ip6" {
+			return "chain forward {\n  iifname != \"wg0\" oifname != \"wg0\" counter packets 0 bytes 0 accept comment \"tunnex_native_forward_passthrough\"\n}", nil
+		}
+		return live, nil
+	}
+	if _, err := m.ReadAppliedOVPNTunnel(t.Context()); err != nil {
+		t.Fatalf("rendered synthetic-VIP exclusion must pass readback: %v", err)
+	}
+}
+
 func TestParseTunnelIngressInterfacesRejectsTamperedSemantics(t *testing.T) {
 	tests := map[string]string{
 		"inverted ingress": `iifname == { "wg0", "tunnex-ovpn" } oifname != { "wg0", "tunnex-ovpn" } counter accept comment "tunnex_native_forward_passthrough"`,

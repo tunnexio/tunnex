@@ -71,6 +71,8 @@ type HandoffBootstrapPlanSourceConfig struct {
 	LeaseTTL time.Duration
 }
 
+const minimumHandoffBootstrapLeaseTTL = 10 * time.Second
+
 // PostgresHandoffBootstrapPlanSource reads one explicitly named pool through
 // the caller-held scheduler-lock connection. It locks the pool, cluster,
 // membership, node, hub and exposure rows before constructing any manifest;
@@ -86,7 +88,7 @@ func NewPostgresHandoffBootstrapPlanSource(pool *pgxpool.Pool, config HandoffBoo
 }
 
 func (s *PostgresHandoffBootstrapPlanSource) LoadHandoffBootstrapPlanWithLeadership(ctx context.Context, now time.Time, scope k8s.HandoffPoolScope, epoch k8s.HandoffLeadershipEpoch, conn *pgxpool.Conn) (HandoffBootstrapPlan, bool, error) {
-	if s == nil || s.pool == nil || ctx == nil || now.IsZero() || s.config.LeaseTTL < time.Minute || !validHandoffBootstrapScope(scope) ||
+	if s == nil || s.pool == nil || ctx == nil || now.IsZero() || s.config.LeaseTTL < minimumHandoffBootstrapLeaseTTL || !validHandoffBootstrapScope(scope) ||
 		conn == nil || epoch.BackendPID <= 0 || epoch.LockKey != leader.SchedulerLockKey {
 		return HandoffBootstrapPlan{}, false, ErrHandoffBootstrapPlanRefused
 	}
@@ -135,6 +137,23 @@ func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWit
 	if s == nil || s.pool == nil || conn == nil || epoch.BackendPID <= 0 || epoch.LockKey != leader.SchedulerLockKey {
 		return ErrHandoffBootstrapPlanRefused
 	}
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := s.IssueHandoffBootstrapEnvelopeWithLeadershipTx(ctx, epoch, conn, tx, envelope); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// IssueHandoffBootstrapEnvelopeWithLeadershipTx preserves the caller's atomic
+// maintenance/renewal transaction; it does not commit or release its locks.
+func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWithLeadershipTx(ctx context.Context, epoch k8s.HandoffLeadershipEpoch, conn *pgxpool.Conn, tx pgx.Tx, envelope PoolVIPOwnershipDeliveryEnvelopeV3) error {
+	if s == nil || s.pool == nil || conn == nil || tx == nil || epoch.BackendPID <= 0 || epoch.LockKey != leader.SchedulerLockKey {
+		return ErrHandoffBootstrapPlanRefused
+	}
 	input, err := preparePoolVIPOwnershipDeliveryV3Issue(envelope)
 	if err != nil {
 		return err
@@ -154,11 +173,6 @@ func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWit
 		return ErrHandoffBootstrapPlanRefused
 	}
 	sessionEpoch := PoolVIPOwnershipHandoffLeadershipEpoch{BackendPID: epoch.BackendPID, AdvisoryLockKey: epoch.LockKey}
-	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
 	if err := validPoolVIPOwnershipHandoffLeaderSessionTx(ctx, tx, sessionEpoch); err != nil {
 		return err
 	}
@@ -195,7 +209,7 @@ func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWit
 	if err := validPoolVIPOwnershipHandoffLeaderSessionTx(ctx, tx, sessionEpoch); err != nil {
 		return err
 	}
-	return issuePoolVIPOwnershipDeliveryV3Tx(ctx, tx, input)
+	return insertPoolVIPOwnershipDeliveryV3Tx(ctx, tx, input)
 }
 
 func validHandoffBootstrapScope(scope k8s.HandoffPoolScope) bool {
@@ -316,7 +330,7 @@ func loadHandoffBootstrapTopology(ctx context.Context, tx pgx.Tx, scope k8s.Hand
 }
 
 func loadHandoffBootstrapCounters(ctx context.Context, tx pgx.Tx, topology *handoffBootstrapTopology, expires time.Time) error {
-	evidence := handoffBootstrapUIDEvidence(topology.Services)
+	evidence := handoffBootstrapTopologyEvidence(*topology)
 	for _, member := range topology.Members {
 		role := policyspec.PoolVIPOwnershipPreparedNonServing
 		if member.NodeID == topology.ActiveNodeID {
@@ -394,11 +408,11 @@ func buildHandoffBootstrapPlan(topology handoffBootstrapTopology, expires time.T
 			Namespace: service.Namespace, Service: service.Name, UID: service.UID, ObservationRevision: service.ObservationRevision})
 	}
 	sort.Slice(services, func(i, j int) bool { return services[i].ServiceID < services[j].ServiceID })
-	evidence := handoffBootstrapUIDEvidence(topology.Services)
+	evidence := handoffBootstrapTopologyEvidence(topology)
 	operationID := handoffBootstrapUUID("operation", topology.Scope, topology.Generation, uuid.Nil, "", evidence, expires)
 	for _, member := range topology.Members {
 		role, phase, intent := policyspec.PoolVIPOwnershipPreparedNonServing, poolVIPOwnershipPhasePrepare, "non_serving"
-		var peers []PoolVIPOwnershipWGPeerV3
+		peers := []PoolVIPOwnershipWGPeerV3{}
 		var routes []string
 		var ownedServices []PoolVIPOwnershipServiceV3
 		if member.NodeID == topology.ActiveNodeID {
@@ -478,23 +492,42 @@ func handoffBootstrapUUID(kind string, scope k8s.HandoffPoolScope, generation ui
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(name))
 }
 
-func handoffBootstrapUIDEvidence(services []handoffBootstrapService) string {
-	values := append([]handoffBootstrapService(nil), services...)
-	sort.Slice(values, func(i, j int) bool {
-		if values[i].Namespace != values[j].Namespace {
-			return values[i].Namespace < values[j].Namespace
+func handoffBootstrapTopologyEvidence(topology handoffBootstrapTopology) string {
+	services := append([]handoffBootstrapService(nil), topology.Services...)
+	sort.Slice(services, func(i, j int) bool {
+		if services[i].Namespace != services[j].Namespace {
+			return services[i].Namespace < services[j].Namespace
 		}
-		if values[i].Name != values[j].Name {
-			return values[i].Name < values[j].Name
+		if services[i].Name != services[j].Name {
+			return services[i].Name < services[j].Name
 		}
-		return values[i].ID.String() < values[j].ID.String()
+		return services[i].ID.String() < services[j].ID.String()
 	})
+	members := append([]handoffBootstrapMember(nil), topology.Members...)
+	sort.Slice(members, func(i, j int) bool { return members[i].NodeID.String() < members[j].NodeID.String() })
 	h := sha256.New()
-	_, _ = h.Write([]byte("tunnex/handoff-bootstrap-service-uid-evidence/v1\n"))
-	for _, service := range values {
-		_, _ = fmt.Fprintf(h, "%s\t%s\t%s\t%s\t%d\n", service.ID, service.Namespace, service.Name, service.UID, service.ObservationRevision)
+	// v3 also binds the canonical non-serving wire shape (wg_peers: []) so it
+	// cannot collide with older immutable envelopes that encoded it as null.
+	_, _ = h.Write([]byte("tunnex/handoff-bootstrap-topology-evidence/v3\n"))
+	_, _ = fmt.Fprintf(h, "scope\t%s\t%s\t%s\t%s\n", topology.Scope.OrgID, topology.Scope.SiteID, topology.Scope.ClusterID, topology.Scope.PoolID)
+	_, _ = fmt.Fprintf(h, "pool\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", topology.Generation, topology.ActiveNodeID, topology.ClusterName, topology.DNSZone, topology.DNSVIP, topology.ServiceCIDR, topology.DevicePoolCIDR, topology.EdgeWGPublicKey)
+	for _, member := range members {
+		_, _ = fmt.Fprintf(h, "member\t%s\t%s\t%s\t%s\n", member.NodeID, member.SiteID, member.WGPublicKey, member.Endpoint)
+	}
+	for _, service := range services {
+		// ObservationRevision is freshness/provenance, not manifest content. It
+		// advances on identical inventory snapshots and must not churn immutable
+		// delivery IDs when the Service UID and dataplane topology are unchanged.
+		_, _ = fmt.Fprintf(h, "service\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", service.ID, service.Namespace, service.Name, service.VIP, service.Protocol, bootstrapPortEvidence(service.PortLow), bootstrapPortEvidence(service.PortHigh), service.UID)
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func bootstrapPortEvidence(port *int32) string {
+	if port == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("%d", *port)
 }
 
 func handoffBootstrapNonce(deliveryID uuid.UUID) string {

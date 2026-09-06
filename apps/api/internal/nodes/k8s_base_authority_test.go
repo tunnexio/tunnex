@@ -103,13 +103,18 @@ func TestKubernetesOwnershipBaseStateHashUsesStableExplicitView(t *testing.T) {
 	if err != nil || len(digest) != 64 {
 		t.Fatalf("digest=%q err=%v", digest, err)
 	}
-	const crossRuntimeGolden = "ad039cb612f05abdf22eae00d3fe6bb5102c333ddc5fbb3a98d4b4b94e9d7e67"
+	const crossRuntimeGolden = "d65d4f16319796393393cde68d1d2b7258ca0f8e832f251e842ce5e5c113adba"
 	if digest != crossRuntimeGolden {
 		t.Fatalf("base digest=%s want=%s", digest, crossRuntimeGolden)
 	}
 	b, _ := json.Marshal(base)
 	if len(b) == 0 {
 		t.Fatal("fixture did not marshal")
+	}
+	base.Version++
+	watchCursorOnly, _ := KubernetesOwnershipBaseStateHash(base)
+	if watchCursorOnly != digest {
+		t.Fatalf("node-push cursor changed data-plane hash: got=%s want=%s", watchCursorOnly, digest)
 	}
 	base.MTU++
 	changed, _ := KubernetesOwnershipBaseStateHash(base)

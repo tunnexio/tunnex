@@ -1,17 +1,16 @@
-Tunnex in-cluster gateway "{{ .Release.Name }}" installed (chart {{ .Chart.Name }}-{{ .Chart.Version }}).
+Tunnex gateway "{{ .Release.Name }}" rendered as ONE connector identity.
 
-┌─ ALWAYS INSTALL WITH --wait ──────────────────────────────────────────────────┐
-│ helm install {{ .Release.Name }} tunnex/tunnex-gateway --wait ...             │
-│                                                                                │
-│ The preflight hook Job (F7) proves the privileged/hostNetwork context is       │
-│ admitted AND that cluster DNS resolves from the gateway's DNS posture. Without  │
-│ --wait, Helm returns before the hook completes and a blocked context / DNS      │
-│ trap surfaces later as a silent crash-loop instead of a clean install failure.  │
-└────────────────────────────────────────────────────────────────────────────────┘
+INSTALL CONTRACT
+  Use `tunnex k8s install` for the customer flow. It creates the one-time token
+  Secret outside Helm with create-only semantics, rechecks the plan fingerprint,
+  runs `helm install --atomic --wait`, verifies
+  /readyz, and deletes the consumed Secret only after success.
 
-This gateway is PRIVILEGED: hostNetwork, NET_ADMIN, /dev/net/tun (F4). It DNATs each
-exposed Service's VIP to a READY pod endpoint in the node netns ahead of kube-proxy — it
-cannot be an ordinary pod. You acknowledged this with acknowledgePrivileged=true.
+  This chart requires hostNetwork, NET_ADMIN + NET_BIND_SERVICE on the ordinary
+  gateway, /dev/net/tun, and the separate cluster-singleton tunnex-host-posture
+  manager. The manager owns privileged host preparation. The unprivileged
+  gateway admission init only reads its heartbeat and receives NO
+  service-account token, join token, or identity state volume.
 
 Security posture (for your security team's review):
   - Capabilities: the pod drops the ENTIRE default set and adds back ONLY NET_ADMIN and
@@ -31,40 +30,53 @@ Security posture (for your security team's review):
     it removes future Tunnex log clauses without changing allow/drop policy semantics
     or deleting access events already retained by the control plane.
 
-1. FABRIC ENDPOINT (F6). Peers dial `{{ .Values.endpoint }}` to reach this gateway.
-   It must be the PUBLIC address of the WG Service:
-     kubectl get svc {{ include "tunnex-gateway.fullname" . }}-wg
-   {{- if eq .Values.service.type "LoadBalancer" }}
-   Wait for EXTERNAL-IP to be assigned; if it differs from `endpoint`, reserve a
-   static IP, set service.loadBalancerIP + endpoint to it, and `helm upgrade`.
-   {{- end }}
+ENROLLMENT
+{{- if eq .Values.enrollment.mode "enroll" }}
+  Mode: enroll. The token is pinned to node name {{ .Values.nodeName | quote }}.
+  {{- if .Values.enrollment.existingSecret }}
+  Bootstrap Secret: {{ .Values.enrollment.existingSecret | quote }} (preferred;
+  the token body is absent from Helm values and manifests).
+  {{- else if .Values.existingJoinTokenSecret }}
+  Bootstrap Secret: {{ .Values.existingJoinTokenSecret | quote }} (legacy value
+  name; migrate to enrollment.existingSecret).
+  {{- else }}
+  WARNING: joinToken is the INSECURE LEGACY path. Its raw value is retained in
+  Helm release history. Do not use this path for a customer installation.
+  {{- end }}
+  The Secret reference is optional at pod start so the consumed one-time Secret
+  can be deleted after readiness; enrolled identity comes from the retained PVC.
+{{- else }}
+  Mode: reuse. No join token is mounted. Retained identity claim:
+  {{ .Values.persistence.existingClaim }}
+{{- end }}
 
-2. JOIN TOKEN (F5).
-   {{- if .Values.existingJoinTokenSecret }}
-   Using your existing Secret "{{ .Values.existingJoinTokenSecret }}" (preferred —
-   the token stays out of Helm history).
-   {{- else if .Values.joinToken }}
-   The chart minted a join Secret from the raw joinToken value. NOTE: that value is
-   now in this release's Helm history (`helm get values`). Prefer existingJoinTokenSecret.
-   {{- else }}
-   No join token supplied. The gateway can only ENROLL with one — mint a join token
-   in the dashboard (or `tunnex nodes join-token`), create a Secret with key
-   `{{ .Values.joinTokenKey }}`, set existingJoinTokenSecret, and `helm upgrade`.
-   (Not needed once enrolled: the node cert persists on the state volume.)
-   {{- end }}
+ENDPOINT
+{{- if .Values.endpoint }}
+  Explicit WireGuard endpoint: {{ .Values.endpoint }}
+{{- else }}
+  Automatic LoadBalancer discovery is enabled. The gateway reads only Service
+  {{ include "tunnex-gateway.fullname" . }}-wg in this namespace and remains
+  not-ready until status.loadBalancer.ingress publishes a valid address.
+{{- end }}
 
-3. REGISTER THE CLUSTER. Once the gateway is enrolled and bound to a site, register
-   the cluster + its synthetic VIP range in the dashboard (Kubernetes → Register
-   cluster) or the API, then expose Services. The gateway DNATs each VIP to a READY
-   pod endpoint and answers the cluster's DNS zone.
+STATE AND LIFECYCLE
+  Claim: {{ include "tunnex-gateway.stateClaimName" . }}
+{{- if and .Values.persistence.enabled .Values.persistence.retain }}
+  RETAINED: `helm uninstall` does not delete this claim. It contains the node
+  certificate, WireGuard key, HA fences, leases, and authority evidence.
+{{- end }}
+  Never share a Secret, release name, or claim between HA A and B. Install each
+  connector as its own release and let Tunnex own pool promotion/drain.
 
-   K8s API access (posture): to learn ready pod endpoints the gateway performs a
-   READ-ONLY watch of Services + EndpointSlices (ClusterRole
-   {{ include "tunnex-gateway.fullname" . }}-endpoint-reader). That is its ENTIRE
-   Kubernetes API surface — it cannot read Secrets, cannot write, cannot escalate.
-   If the gateway reports k8s_endpoints_unavailable, check its API reachability and
-   that this ClusterRole/binding is present.
+  Upgrade with immutable image.digest and `--atomic --wait`. Change only the
+  non-secret rolloutRevision when an intentional pod recreation is required.
+  Rollback/reinstall must preserve or explicitly reuse the exact retained claim.
 
-4. WIPE-TO-RE-ENROLL. To rotate identity or recover from a lost/corrupt state volume:
-   delete the PVC ({{ include "tunnex-gateway.fullname" . }}-state) and re-install with
-   a FRESH join token. The old node should be revoked in the dashboard first.
+  Identity rotation and state deletion are NOT Helm side effects. Safely detach
+  and revoke the old node first, then use a distinct release and new claim.
+  Deleting the retained claim destroys recovery material and is irreversible.
+
+READINESS
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "tunnex-gateway.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} get svc {{ include "tunnex-gateway.fullname" . }}-wg
+  Kubernetes readiness is the agent's real /readyz result, not pod process state.

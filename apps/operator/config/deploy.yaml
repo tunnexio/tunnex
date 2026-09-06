@@ -51,6 +51,19 @@ spec:
           # Set the tag to the branch-sha build at deploy time (kubectl set image) — the provenance census.
           image: tunnex-operator:REPLACE_IMAGE_TAG
           imagePullPolicy: IfNotPresent # local ctr-imported image; never reaches a registry
+          ports:
+            - name: health
+              containerPort: 8081
+          startupProbe:
+            httpGet: { path: /healthz, port: health }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: { path: /healthz, port: health }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: health }
+            periodSeconds: 5
           env:
             - name: TUNNEX_CP_URL
               value: "https://REPLACE_CP_URL" # the enterprise control plane the operator manages

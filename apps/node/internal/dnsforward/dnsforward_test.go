@@ -72,6 +72,22 @@ func TestAppliedK8sStateNeverClaimsFailedBind(t *testing.T) {
 	}
 }
 
+func TestReconcileK8sBindsOutlivesCallerContext(t *testing.T) {
+	f := New(nil, nil)
+	a := netip.MustParseAddr("100.64.0.2")
+	f.bindSource = func(string) ([]netip.Addr, error) { return []netip.Addr{a}, nil }
+	f.listen = func(netip.Addr) (udpListener, error) { return newFakeListener(), nil }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	f.ReconcileK8sBinds(ctx, "wg0")
+	cancel() // ownership command has completed
+
+	if got := f.AppliedK8sState().Listeners; len(got) != 1 || got[0] != a.String() {
+		t.Fatalf("caller cancellation withdrew forwarder-owned listener: %v", got)
+	}
+	f.closeOwnedBinds()
+}
+
 // TestServeBindReconcileLifecycle (F1) — the forwarder binds when wg0 APPEARS after start (not at boot,
 // where wg0 doesn't exist yet), re-binds after an address flap, and closes listeners when the interface
 // goes. Drives reconcileBinds directly across interface states with injected seams.

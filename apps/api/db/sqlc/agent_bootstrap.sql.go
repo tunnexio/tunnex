@@ -14,54 +14,25 @@ import (
 )
 
 const authenticateAgentRuntimeCredential = `-- name: AuthenticateAgentRuntimeCredential :one
-WITH matched AS (
-  SELECT credential.id, credential.org_id, credential.device_id, credential.token_hash, credential.created_at, credential.revoked_at, credential.revision, credential.state, credential.candidate_expires_at, credential.activated_at, credential.terminal_at, credential.rotation_requested_at, credential.rotation_deadline, credential.rotation_requested_by FROM agent_runtime_credentials credential
-  WHERE credential.token_hash = $1 AND credential.revoked_at IS NULL
-    AND (credential.state = 'current'
-      OR (credential.state = 'candidate' AND credential.candidate_expires_at > now()))
-  FOR UPDATE
-), transitioned AS (
-  UPDATE agent_runtime_credentials credential
-  SET state = CASE WHEN credential.id = matched.id THEN 'current' ELSE 'superseded' END,
-      revoked_at = CASE WHEN credential.id = matched.id THEN NULL ELSE now() END,
-      activated_at = CASE WHEN credential.id = matched.id THEN now() ELSE credential.activated_at END,
-      terminal_at = CASE WHEN credential.id = matched.id THEN NULL ELSE now() END,
-      candidate_expires_at = NULL,
-      rotation_requested_at = NULL, rotation_deadline = NULL,
-      rotation_requested_by = NULL
-  FROM matched
-  WHERE matched.state = 'candidate'
-    AND credential.device_id = matched.device_id
-    AND credential.state IN ('current', 'candidate')
-  RETURNING credential.id, credential.org_id, credential.device_id, credential.token_hash, credential.created_at, credential.revoked_at, credential.revision, credential.state, credential.candidate_expires_at, credential.activated_at, credential.terminal_at, credential.rotation_requested_at, credential.rotation_deadline, credential.rotation_requested_by
-)
-SELECT transitioned.id, transitioned.org_id, transitioned.device_id, transitioned.token_hash, transitioned.created_at, transitioned.revoked_at, transitioned.revision, transitioned.state, transitioned.candidate_expires_at, transitioned.activated_at, transitioned.terminal_at, transitioned.rotation_requested_at, transitioned.rotation_deadline, transitioned.rotation_requested_by FROM transitioned, matched WHERE transitioned.id = matched.id
-UNION ALL
-SELECT id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by FROM matched WHERE state = 'current'
-LIMIT 1
+SELECT id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by FROM agent_runtime_credentials
+WHERE org_id = $1 AND device_id = $2 AND token_hash = $3
+  AND revoked_at IS NULL
+  AND (state = 'current'
+    OR (state = 'candidate' AND candidate_expires_at > statement_timestamp()))
+FOR UPDATE
 `
 
-type AuthenticateAgentRuntimeCredentialRow struct {
-	ID                  uuid.UUID          `json:"id"`
-	OrgID               uuid.UUID          `json:"org_id"`
-	DeviceID            uuid.UUID          `json:"device_id"`
-	TokenHash           []byte             `json:"token_hash"`
-	CreatedAt           time.Time          `json:"created_at"`
-	RevokedAt           pgtype.Timestamptz `json:"revoked_at"`
-	Revision            int64              `json:"revision"`
-	State               string             `json:"state"`
-	CandidateExpiresAt  pgtype.Timestamptz `json:"candidate_expires_at"`
-	ActivatedAt         pgtype.Timestamptz `json:"activated_at"`
-	TerminalAt          pgtype.Timestamptz `json:"terminal_at"`
-	RotationRequestedAt pgtype.Timestamptz `json:"rotation_requested_at"`
-	RotationDeadline    pgtype.Timestamptz `json:"rotation_deadline"`
-	RotationRequestedBy pgtype.UUID        `json:"rotation_requested_by"`
+type AuthenticateAgentRuntimeCredentialParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	TokenHash []byte    `json:"token_hash"`
 }
 
-// lint:cross-org — the bearer hash is the credential; its row supplies org/device binding.
-func (q *Queries) AuthenticateAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AuthenticateAgentRuntimeCredentialRow, error) {
-	row := q.db.QueryRow(ctx, authenticateAgentRuntimeCredential, tokenHash)
-	var i AuthenticateAgentRuntimeCredentialRow
+// Call only inside the device-locked transaction. This separate statement gets
+// a fresh READ COMMITTED snapshot after a lock wait; it does not promote.
+func (q *Queries) AuthenticateAgentRuntimeCredential(ctx context.Context, arg AuthenticateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error) {
+	row := q.db.QueryRow(ctx, authenticateAgentRuntimeCredential, arg.OrgID, arg.DeviceID, arg.TokenHash)
+	var i AgentRuntimeCredential
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -186,13 +157,54 @@ func (q *Queries) CreateAgentRuntimeCredential(ctx context.Context, arg CreateAg
 	return i, err
 }
 
+const demoteAgentRuntimeCredentialPredecessor = `-- name: DemoteAgentRuntimeCredentialPredecessor :one
+UPDATE agent_runtime_credentials
+SET state = 'superseded', revoked_at = statement_timestamp(),
+    terminal_at = statement_timestamp(), candidate_expires_at = NULL,
+    rotation_requested_at = NULL, rotation_deadline = NULL,
+    rotation_requested_by = NULL
+WHERE org_id = $1 AND device_id = $2 AND revision = $3
+  AND state = 'current' AND revoked_at IS NULL
+RETURNING id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by
+`
+
+type DemoteAgentRuntimeCredentialPredecessorParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+	Revision int64     `json:"revision"`
+}
+
+// Explicitly finish demotion before promotion. A single multi-row UPDATE can
+// visit the candidate first and violate the immediate one-current index.
+func (q *Queries) DemoteAgentRuntimeCredentialPredecessor(ctx context.Context, arg DemoteAgentRuntimeCredentialPredecessorParams) (AgentRuntimeCredential, error) {
+	row := q.db.QueryRow(ctx, demoteAgentRuntimeCredentialPredecessor, arg.OrgID, arg.DeviceID, arg.Revision)
+	var i AgentRuntimeCredential
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DeviceID,
+		&i.TokenHash,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.Revision,
+		&i.State,
+		&i.CandidateExpiresAt,
+		&i.ActivatedAt,
+		&i.TerminalAt,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.RotationRequestedBy,
+	)
+	return i, err
+}
+
 const expireAgentRuntimeCredentialRotation = `-- name: ExpireAgentRuntimeCredentialRotation :exec
 WITH expired_candidate AS (
   UPDATE agent_runtime_credentials candidate
   SET state = 'revoked', revoked_at = COALESCE(revoked_at, now()),
       terminal_at = COALESCE(terminal_at, now()), candidate_expires_at = NULL
   WHERE candidate.org_id = $1 AND candidate.device_id = $2
-    AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= now()
+    AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= statement_timestamp()
   RETURNING 1
 )
 SELECT count(*) FROM expired_candidate
@@ -350,13 +362,32 @@ func (q *Queries) GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWir
 	return i, err
 }
 
+const lookupAgentRuntimeCredentialBinding = `-- name: LookupAgentRuntimeCredentialBinding :one
+SELECT org_id, device_id FROM agent_runtime_credentials WHERE token_hash = $1
+`
+
+type LookupAgentRuntimeCredentialBindingRow struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+// lint:cross-org — the bearer hash supplies only the locking scope, never authentication.
+// Do not lock a credential before its device: device lifecycle triggers take
+// those locks in device -> credential order. Re-read below AFTER the device lock.
+func (q *Queries) LookupAgentRuntimeCredentialBinding(ctx context.Context, tokenHash []byte) (LookupAgentRuntimeCredentialBindingRow, error) {
+	row := q.db.QueryRow(ctx, lookupAgentRuntimeCredentialBinding, tokenHash)
+	var i LookupAgentRuntimeCredentialBindingRow
+	err := row.Scan(&i.OrgID, &i.DeviceID)
+	return i, err
+}
+
 const prepareAgentRuntimeCredentialCandidate = `-- name: PrepareAgentRuntimeCredentialCandidate :one
 WITH current_credential AS (
   SELECT current.id, current.org_id, current.device_id, current.token_hash, current.created_at, current.revoked_at, current.revision, current.state, current.candidate_expires_at, current.activated_at, current.terminal_at, current.rotation_requested_at, current.rotation_deadline, current.rotation_requested_by FROM agent_runtime_credentials current
   WHERE current.org_id = $1 AND current.device_id = $2
     AND current.state = 'current' AND current.revoked_at IS NULL
     AND current.rotation_requested_at IS NOT NULL
-    AND current.rotation_deadline > now()
+    AND current.rotation_deadline > statement_timestamp()
     AND $4 = current.revision + 1
   FOR UPDATE
 ), prepared AS (
@@ -369,7 +400,7 @@ WITH current_credential AS (
   DO UPDATE SET token_hash = agent_runtime_credentials.token_hash
   WHERE agent_runtime_credentials.revision = EXCLUDED.revision
     AND agent_runtime_credentials.token_hash = EXCLUDED.token_hash
-    AND agent_runtime_credentials.candidate_expires_at > now()
+    AND agent_runtime_credentials.candidate_expires_at > statement_timestamp()
   RETURNING agent_runtime_credentials.id, agent_runtime_credentials.org_id, agent_runtime_credentials.device_id, agent_runtime_credentials.token_hash, agent_runtime_credentials.created_at, agent_runtime_credentials.revoked_at, agent_runtime_credentials.revision, agent_runtime_credentials.state, agent_runtime_credentials.candidate_expires_at, agent_runtime_credentials.activated_at, agent_runtime_credentials.terminal_at, agent_runtime_credentials.rotation_requested_at, agent_runtime_credentials.rotation_deadline, agent_runtime_credentials.rotation_requested_by
 )
 SELECT id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by FROM prepared
@@ -477,6 +508,55 @@ func (q *Queries) PrepareAgentWireGuardCandidate(ctx context.Context, arg Prepar
 	return i, err
 }
 
+const promoteAgentRuntimeCredentialCandidate = `-- name: PromoteAgentRuntimeCredentialCandidate :one
+UPDATE agent_runtime_credentials
+SET state = 'current', revoked_at = NULL, activated_at = statement_timestamp(),
+    terminal_at = NULL, candidate_expires_at = NULL,
+    rotation_requested_at = NULL, rotation_deadline = NULL,
+    rotation_requested_by = NULL
+WHERE org_id = $1 AND device_id = $2 AND id = $3 AND token_hash = $4
+  AND revision = $5 AND state = 'candidate' AND revoked_at IS NULL
+  AND candidate_expires_at > statement_timestamp()
+RETURNING id, org_id, device_id, token_hash, created_at, revoked_at, revision, state, candidate_expires_at, activated_at, terminal_at, rotation_requested_at, rotation_deadline, rotation_requested_by
+`
+
+type PromoteAgentRuntimeCredentialCandidateParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	DeviceID  uuid.UUID `json:"device_id"`
+	ID        uuid.UUID `json:"id"`
+	TokenHash []byte    `json:"token_hash"`
+	Revision  int64     `json:"revision"`
+}
+
+// Exact successor only; a refusal MUST roll back the preceding demotion.
+func (q *Queries) PromoteAgentRuntimeCredentialCandidate(ctx context.Context, arg PromoteAgentRuntimeCredentialCandidateParams) (AgentRuntimeCredential, error) {
+	row := q.db.QueryRow(ctx, promoteAgentRuntimeCredentialCandidate,
+		arg.OrgID,
+		arg.DeviceID,
+		arg.ID,
+		arg.TokenHash,
+		arg.Revision,
+	)
+	var i AgentRuntimeCredential
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.DeviceID,
+		&i.TokenHash,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.Revision,
+		&i.State,
+		&i.CandidateExpiresAt,
+		&i.ActivatedAt,
+		&i.TerminalAt,
+		&i.RotationRequestedAt,
+		&i.RotationDeadline,
+		&i.RotationRequestedBy,
+	)
+	return i, err
+}
+
 const requestAgentRuntimeCredentialRotation = `-- name: RequestAgentRuntimeCredentialRotation :one
 UPDATE agent_runtime_credentials current
 SET rotation_requested_at = now(), rotation_deadline = $3,
@@ -579,4 +659,25 @@ func (q *Queries) RequestAgentWireGuardRotation(ctx context.Context, arg Request
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const tryLockAgentWireGuardRotation = `-- name: TryLockAgentWireGuardRotation :one
+SELECT device_id FROM agent_wireguard_rotations
+WHERE org_id = $1 AND device_id = $2
+FOR UPDATE NOWAIT
+`
+
+type TryLockAgentWireGuardRotationParams struct {
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+// An operator request already owns the device row. A reporting gateway may
+// own this rotation row while awaiting that device; never wait in reverse
+// order. Missing rows permit first rotation, 55P03 is retryable contention.
+func (q *Queries) TryLockAgentWireGuardRotation(ctx context.Context, arg TryLockAgentWireGuardRotationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, tryLockAgentWireGuardRotation, arg.OrgID, arg.DeviceID)
+	var device_id uuid.UUID
+	err := row.Scan(&device_id)
+	return device_id, err
 }

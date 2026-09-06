@@ -1,0 +1,57 @@
+# tunnex-host-posture is installed exactly once per cluster as the canonical
+# `tunnex-host-posture` release in the `tunnex-system` namespace, before any
+# gateway release. The fixed identity prevents a second privileged manager from
+# being created under another Helm release name or namespace.
+# It is intentionally provider-neutral: eligibility is Kubernetes placement,
+# never a cloud-provider API, node SKU, or provider-specific label.
+
+image:
+  registry: ghcr.io/tunnexio
+  agent: tunnex-node-agent
+  # Empty selects the chart appVersion. Release packaging makes that the same
+  # immutable vX.Y.Z tag as the gateway runtime.
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# REQUIRED acknowledgement: this cluster-singleton DaemonSet is privileged,
+# uses hostNetwork, and mounts the host's /proc/sys plus a Tunnex-owned hostPath.
+acknowledgePrivileged: false
+
+# The zero-touch normal path runs one manager on every Linux node, including
+# tainted nodes. These three placement values are a fixed lifecycle contract,
+# not customer scheduling knobs: schema validation rejects selectors, affinity,
+# or tolerations that could leave an eligible Linux node without its manager.
+# The privileged process remains inert there: host mutation is still gated by
+# an exact, contract-valid live gateway Pod UID on that same node.
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - operator: Exists
+affinity: {}
+
+reconcileInterval: "2s"
+apiRequestTimeout: "10s"
+maxOwners: 32
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+serviceAccount:
+  # Fixed singleton identity; externally supplied or renamed access objects are
+  # not part of the zero-touch lifecycle contract.
+  create: true
+  name: ""
+
+rbac:
+  # The chart always owns the exact read-only Pod get/list ClusterRole and its
+  # fixed binding so uninstall/upgrade provenance remains unambiguous.
+  create: true
+
+# Opaque and non-secret. Change only to request an intentional DaemonSet rollout.
+rolloutRevision: ""

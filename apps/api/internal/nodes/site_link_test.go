@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -217,6 +218,56 @@ func TestK8sHandoffGraphUsesLocalEdgePair(t *testing.T) {
 	}
 	if peers, routes := k8sHandoffGraph(topo, sqlc.Node{ID: ordinary, SiteID: pgtype.UUID{Bytes: site, Valid: true}}); len(peers) != 0 || len(routes) != 0 {
 		t.Fatalf("unselected same-site gateway must not receive the handoff, peers=%+v routes=%+v", peers, routes)
+	}
+}
+
+// TestK8sHandoffGraphKeepsNonHubPoolStandbyWarm models the live HA shape:
+// one client-facing CP edge is the site's only hub, while A and B are pool
+// members outside that hub set. B must still receive the edge peer in its base
+// so a later serving overlay can assign the return CIDR; the edge must retain B
+// only as an empty-AllowedIPs warm peer while A alone owns the service VIP.
+func TestK8sHandoffGraphKeepsNonHubPoolStandbyWarm(t *testing.T) {
+	site := uuid.New()
+	edge, connectorA, connectorB := uuid.New(), uuid.New(), uuid.New()
+	row := func(id uuid.UUID, key, endpoint string) sqlc.ListSiteGatewaysForOrgRow {
+		return sqlc.ListSiteGatewaysForOrgRow{ID: id, SiteID: pgtype.UUID{Bytes: site, Valid: true}, WgPublicKey: key, Endpoint: endpoint}
+	}
+	topo := siteTopology{
+		hubMembers: []sqlc.ListSiteGatewaysForOrgRow{
+			row(edge, "edge-key", "20.0.0.1:51820"),
+		},
+		poolCIDR: "10.99.0.0/24",
+		k8sConnectors: map[uuid.UUID]k8sConnector{
+			connectorA: {nodeID: connectorA, siteID: site, publicKey: "connector-a-key", endpoint: "20.0.0.2:51820", vips: []string{"100.64.64.3/32"}},
+			connectorB: {nodeID: connectorB, siteID: site, publicKey: "connector-b-key", endpoint: "20.0.0.3:51820"},
+		},
+	}
+	findPeer := func(peers []Peer, key string) (Peer, bool) {
+		for _, peer := range peers {
+			if peer.PublicKey == key {
+				return peer, true
+			}
+		}
+		return Peer{}, false
+	}
+
+	edgePeers, edgeRoutes := k8sHandoffGraph(topo, sqlc.Node{ID: edge, SiteID: pgtype.UUID{Bytes: site, Valid: true}})
+	if peer, ok := findPeer(edgePeers, "connector-a-key"); !ok || len(peer.AllowedIPs) != 1 || peer.AllowedIPs[0] != "100.64.64.3/32" {
+		t.Fatalf("edge must route the VIP only to active connector A, peers=%+v", edgePeers)
+	}
+	if peer, ok := findPeer(edgePeers, "connector-b-key"); !ok || len(peer.AllowedIPs) != 0 {
+		t.Fatalf("edge must retain connector B as a warm empty-AllowedIPs peer, peers=%+v", edgePeers)
+	}
+	if len(edgeRoutes) != 1 || edgeRoutes[0].DstCIDR != "100.64.64.3/32" {
+		t.Fatalf("warm connector B must not duplicate the edge VIP route, routes=%+v", edgeRoutes)
+	}
+
+	standbyPeers, standbyRoutes := k8sHandoffGraph(topo, sqlc.Node{ID: connectorB, SiteID: pgtype.UUID{Bytes: site, Valid: true}})
+	if peer, ok := findPeer(standbyPeers, "edge-key"); !ok || len(peer.AllowedIPs) != 1 || peer.AllowedIPs[0] != "10.99.0.0/24" {
+		t.Fatalf("non-hub connector B must contain the edge peer for a serving overlay, peers=%+v", standbyPeers)
+	}
+	if len(standbyRoutes) != 1 || standbyRoutes[0].DstCIDR != "10.99.0.0/24" {
+		t.Fatalf("connector B base must expose the fenceable return route, routes=%+v", standbyRoutes)
 	}
 }
 
@@ -610,6 +661,124 @@ func TestLoadSiteTopologyWithdrawsIneligiblePoolConnector(t *testing.T) {
 			ex(invalidate, connector)
 			assertTopology(t, false)
 		})
+	}
+}
+
+// TestLoadSiteTopologyKeepsPostCASPoolMembersWarm reproduces the live topology
+// gap: CP edge is the only site hub, A/B are connector-pool members, and the
+// durable handoff is post-CAS but nonterminal. Resolution must remain withdrawn
+// until completion, while both member identities remain in the handoff graph so
+// B's serving overlay has an existing edge peer to promote.
+func TestLoadSiteTopologyKeepsPostCASPoolMembersWarm(t *testing.T) {
+	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+
+	org, site, cluster, connectorPool := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	edge, connectorA, connectorB := uuid.New(), uuid.New(), uuid.New()
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, query, args...); err != nil {
+			t.Fatalf("seed post-CAS topology: %v\n%s", err, query)
+		}
+	}
+	exec(`INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'post-CAS topology',$2,'10.99.0.0/24')`, org, "post-cas-"+org.String()[:8])
+	exec(`INSERT INTO sites (id,org_id,name) VALUES ($1,$2,'A')`, site, org)
+	for _, node := range []struct {
+		id            uuid.UUID
+		name          string
+		key, endpoint string
+	}{
+		{edge, "edge", "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=", "20.0.0.1:51820"},
+		{connectorA, "connector-a", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "20.0.0.2:51820"},
+		{connectorB, "connector-b", "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=", "20.0.0.3:51820"},
+	} {
+		exec(`INSERT INTO nodes (id,org_id,site_id,name,cert_serial,agent_version,status,wg_public_key,endpoint)
+			VALUES ($1,$2,$3,$4,$5,'test','active',$6,$7)`, node.id, org, site, node.name+"-"+node.id.String()[:8], "post-cas-"+node.id.String(), node.key, node.endpoint)
+	}
+	exec(`INSERT INTO org_hub_set (org_id,configured,demoted,generation) VALUES ($1,$2,'{}',1)`, org, []uuid.UUID{edge})
+	exec(`INSERT INTO k8s_clusters (id,org_id,site_id,name,vip_range,service_cidr,dns_zone,dns_vip)
+		VALUES ($1,$2,$3,'ha','100.64.64.0/20','10.247.0.0/16','ha.example','100.64.64.2')`, cluster, org, site)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO k8s_connector_pools (id,org_id,site_id,cluster_id,preferred_node_id,active_node_id,generation)
+		VALUES ($1,$2,$3,$4,$5,$5,1)`, connectorPool, org, site, cluster, connectorA); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	for _, connector := range []uuid.UUID{connectorA, connectorB} {
+		if _, err = tx.Exec(ctx, `INSERT INTO k8s_connector_pool_members (pool_id,org_id,site_id,node_id)
+			VALUES ($1,$2,$3,$4)`, connectorPool, org, site, connector); err != nil {
+			_ = tx.Rollback(ctx)
+			t.Fatal(err)
+		}
+	}
+	if _, err = tx.Exec(ctx, `UPDATE k8s_clusters SET connector_pool_id=$1 WHERE id=$2 AND org_id=$3`, connectorPool, cluster, org); err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO k8s_services (id,org_id,cluster_id,name,namespace,protocol,port_low,port_high,vip)
+		VALUES ($1,$2,$3,'ha-echo','default','tcp',80,80,'100.64.64.3')`, uuid.New(), org, cluster)
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
+
+	scope := k8s.HandoffPoolScope{OrgID: org, SiteID: site, ClusterID: cluster, PoolID: connectorPool}
+	plan := testHandoffPlan(HandoffTickIntent{
+		OperationID:        uuid.New(),
+		Scope:              scope,
+		ExpectedActiveID:   connectorA,
+		CandidateID:        connectorB,
+		ExpectedGeneration: 1,
+		TargetGeneration:   2,
+	}, time.Now().UTC())
+	insertTickOperation(t, ctx, pool, plan)
+	advanceTickOperationPastCAS(t, ctx, pool, plan)
+
+	rows, err := sqlc.New(pool).ListActiveK8sServicesForOrg(ctx, org)
+	if err != nil || len(rows) != 1 || rows[0].PoolConnectorEligible {
+		t.Fatalf("post-CAS active connector must remain resolution-ineligible while operation is nonterminal, rows=%+v err=%v", rows, err)
+	}
+	svc := &Service{pool: pool, q: sqlc.New(pool)}
+	topo, err := svc.loadSiteTopology(ctx, org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(topo.vipMappings) != 0 || len(topo.k8sDNS) != 0 {
+		t.Fatalf("nonterminal active connector must not receive VIP/DNS ownership, vip=%+v dns=%+v", topo.vipMappings, topo.k8sDNS)
+	}
+	if len(topo.k8sConnectors) != 2 || len(topo.k8sConnectors[connectorA].vips) != 0 || len(topo.k8sConnectors[connectorB].vips) != 0 {
+		t.Fatalf("A and B must remain warm identities without VIP ownership, connectors=%+v", topo.k8sConnectors)
+	}
+	if len(topo.hubMembers) != 1 || topo.hubMembers[0].ID != edge {
+		t.Fatalf("pool members must not be inferred into the site hub set, hubs=%+v", topo.hubMembers)
+	}
+
+	edgePeers, edgeRoutes := k8sHandoffGraph(topo, sqlc.Node{ID: edge, SiteID: pgtype.UUID{Bytes: site, Valid: true}})
+	if len(edgePeers) != 2 || len(edgeRoutes) != 0 {
+		t.Fatalf("edge must retain A/B warm peers without VIP routes, peers=%+v routes=%+v", edgePeers, edgeRoutes)
+	}
+	for _, peer := range edgePeers {
+		if len(peer.AllowedIPs) != 0 {
+			t.Fatalf("post-CAS warm edge peer acquired VIP ownership: %+v", peer)
+		}
+	}
+	standbyPeers, standbyRoutes := k8sHandoffGraph(topo, sqlc.Node{ID: connectorB, SiteID: pgtype.UUID{Bytes: site, Valid: true}})
+	if len(standbyPeers) != 1 || standbyPeers[0].PublicKey != "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=" || len(standbyPeers[0].AllowedIPs) != 1 || standbyPeers[0].AllowedIPs[0] != "10.99.0.0/24" {
+		t.Fatalf("B must receive the ordinary edge peer required by serving projection, peers=%+v", standbyPeers)
+	}
+	if len(standbyRoutes) != 1 || standbyRoutes[0].DstCIDR != "10.99.0.0/24" {
+		t.Fatalf("B must receive the fenceable ordinary return route, routes=%+v", standbyRoutes)
 	}
 }
 

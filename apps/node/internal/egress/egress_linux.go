@@ -32,6 +32,8 @@ import (
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
+	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
+	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
@@ -42,7 +44,11 @@ import (
 var ifaceRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,15}$`)
 
 var (
-	nativeForwardReadbackRE = regexp.MustCompile(`^\s*iifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+oifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+counter(?:\s+packets\s+\d+\s+bytes\s+\d+)?\s+accept\s+comment\s+"tunnex_native_forward_passthrough"\s*$`)
+	// IPv4 rules may carry the renderer's synthetic-VIP exclusion between the
+	// interface boundary and the terminal counter. That exclusion only makes the
+	// native path narrower; accept it while keeping the tunnel-boundary and
+	// terminal verdict checks exact.
+	nativeForwardReadbackRE = regexp.MustCompile(`^\s*iifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+oifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")(?:\s+ct\s+original\s+ip\s+daddr\s+!=\s+(?:\d{1,3}\.){3}\d{1,3}|\s+ct\s+original\s+ip\s+daddr\s+!=\s+\{\s*(?:\d{1,3}\.){3}\d{1,3}(?:\s*,\s*(?:\d{1,3}\.){3}\d{1,3})*\s*\})?\s+counter(?:\s+packets\s+\d+\s+bytes\s+\d+)?\s+accept\s+comment\s+"tunnex_native_forward_passthrough"\s*$`)
 	quotedIfaceRE           = regexp.MustCompile(`"([A-Za-z0-9._-]{1,15})"`)
 )
 
@@ -141,6 +147,12 @@ type Manager struct {
 	// `apply` (the atomic `-f -` full-table replace) — the Docker-owned chain can't be
 	// flushed, so its rules are managed one at a time by handle.
 	nftRun func(context.Context, ...string) (string, error)
+	// k8sNetPrep owns provider-neutral host/CNI mechanism reconciliation. Its
+	// runner closes over nftRun so existing kernel-test seams remain authoritative.
+	k8sNetPrep       k8sNetPrepReconciler
+	k8sNetPrepStatus atomic.Pointer[string]
+	k8sNetPrepReady  atomic.Bool
+	kubernetesMode   atomic.Bool
 	// forwardBlocked (WF-4 / D-WF4-d): true when this is a Docker host (DOCKER-USER exists),
 	// FORWARD is policy-drop, there ARE remote routes to carry, yet the agent could NOT place
 	// its DOCKER-USER accept — so forwarded site traffic is silently dropped by Docker's chain.
@@ -204,9 +216,20 @@ type Manager struct {
 	fqdnRecoveryImpossible bool
 }
 
+type k8sNetPrepReconciler interface {
+	Reconcile(context.Context, string) (k8snetprep.ReconcileStatus, error)
+	Withdraw(context.Context) (k8snetprep.ReconcileStatus, error)
+}
+
 // New builds a Manager for the given WireGuard interface (e.g. wg0).
 func New(wgIface string) *Manager {
 	m := &Manager{wgIface: wgIface, apply: nftApply, nftRun: nftRun, now: time.Now, maxPolicyVersion: nodepolicy.MaxSupportedVersion}
+	m.k8sNetPrep = k8snetprep.New(wgIface, func(ctx context.Context, args ...string) (string, error) {
+		if m.nftRun == nil {
+			return "", fmt.Errorf("nft runner unavailable")
+		}
+		return m.nftRun(ctx, args...)
+	})
 	// The real conntrack flusher (S8.7 Slice 2); injectable so the scoped-flush wiring is unit-testable
 	// without a live conntrack table (the innocent-neighbor red).
 	m.ctFlush = flushTuples
@@ -480,7 +503,17 @@ func (m *Manager) desiredVersion() int {
 // the tunnex tables. egress_nat is true ONLY when a default route exists (an egress path)
 // AND the IPv4 NAT table applied — so a route-less or NAT-incapable host reports false and
 // full-tunnel is refused there rather than silently blackholing.
-func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
+func (m *Manager) Reconcile(ctx context.Context) (v4Ready, v6Ready bool, err error) {
+	// Keep the last-good Kubernetes posture visible while a new pass is still
+	// observing/reconciling it. Slow successful passes must not create a false
+	// readiness flap. An actual pass error retracts the previous result, while
+	// reconcileK8sNetPrep publishes its final blocked/ready result only after the
+	// adapter has returned a complete observation.
+	defer func() {
+		if err != nil && m.kubernetesMode.Load() {
+			m.k8sNetPrepReady.Store(false)
+		}
+	}()
 	if !ifaceRE.MatchString(m.wgIface) {
 		return false, false, fmt.Errorf("invalid wg interface name %q", m.wgIface)
 	}
@@ -495,7 +528,10 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 	// address — `iifname` is NOT reliable in the nat postrouting hook, whereas `ip saddr`
 	// is (and it restores the pool-source scoping the POC had). Until wg0 exists (the WG
 	// backend brings it up), there is no pool to scope, so egress isn't ready yet.
-	subnet := wgSubnet(ctx, m.wgIface)
+	subnet, err := m.observeWGSubnet(ctx)
+	if err != nil {
+		return false, false, fmt.Errorf("observe WireGuard IPv4 subnet: %w", err)
+	}
 	// Apply the tables. The whole ruleset is ONE `nft -f -` transaction (add;flush;
 	// redefine per family) — an atomic full-chain replace, so there is no empty-chain
 	// window (flush + repopulate commit together), it self-heals a table a prior crashed
@@ -508,6 +544,11 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 	}
 	if err := m.applyAndTrack(ctx, m.rulesetWith(subnet, pol), pol); err != nil {
 		return false, false, err // no nftables / IPv4 NAT support, or a bad ruleset → not egress-capable
+	}
+	if m.kubernetesMode.Load() {
+		if err := m.reconcileK8sNetPrep(ctx, subnet); err != nil {
+			return false, false, err
+		}
 	}
 	m.drainFlush(ctx) // S8.7 Slice 2: tear down established flows of any grant that just left the allow set
 	// WF-4: on a Docker host, clear Docker's `filter FORWARD` DROP for the approved site routes
@@ -544,7 +585,7 @@ func (m *Manager) Reconcile(ctx context.Context) (bool, bool, error) {
 	// and the same atomic nft ruleset contains the NAT66 path. Existing IPv4-only
 	// gateways therefore retain their current capability and never claim v6.
 	subnet6 := wgSubnet6(ctx, m.wgIface)
-	v6Ready := subnet6 != "" && hasDefaultRoute6(ctx) && ensureIPForward6() == nil
+	v6Ready = subnet6 != "" && hasDefaultRoute6(ctx) && ensureIPForward6() == nil
 	return true, v6Ready, nil
 }
 
@@ -590,13 +631,67 @@ func poolCIDRForForward(policyPool, wgPool string) string {
 	return wgPool
 }
 
-// Teardown removes the tunnex tables (agent shutdown / revocation). Best-effort. NOTE: on
-// a crash/SIGKILL the defer doesn't run, but (a) the next agent start's add;flush replaces
-// the tables, and (b) in the compose/container deployment the tables live in the container
-// netns, which is destroyed when the container stops — so a stopped gateway does not leave
-// dangling NAT (review #3).
+// Teardown removes legacy gateway-owned state. Kubernetes host-posture mode is
+// different: the per-node manager owns wg0 plus the nft table markers across a
+// gateway rollout. A terminating gateway withdraws its CNI/Docker rules and
+// atomically reduces the exact manager-owned tables to marker-only state; it
+// never deletes the manager's ownership receipts.
 func (m *Manager) Teardown(ctx context.Context) {
-	_ = nftApply(ctx, "delete table ip tunnex\ndelete table ip6 tunnex\n")
+	if !m.kubernetesMode.Load() {
+		if m.apply != nil {
+			_ = m.apply(ctx, "delete table ip tunnex\ndelete table ip6 tunnex\n")
+		}
+		return
+	}
+	m.k8sNetPrepReady.Store(false)
+	if m.k8sNetPrep != nil {
+		status, err := m.k8sNetPrep.Withdraw(ctx)
+		m.logK8sNetPrepStatus(status)
+		if err != nil && m.log != nil {
+			m.log.Warn("k8s_netprep_withdraw_failed", "error", err)
+		}
+	}
+	// DOCKER-USER belongs to Docker. Reconcile an empty desired set so only
+	// exact comment-marked Tunnex rules are withdrawn; unknown shapes remain for
+	// the manager's bounded, fail-closed last-owner cleanup.
+	m.reconcileDockerForward(ctx, nil, nil, "")
+	if err := m.reduceToHostPostureMarkers(ctx); err != nil && m.log != nil {
+		m.log.Warn("k8s_host_posture_shutdown_blocked", "error", err)
+	}
+}
+
+func (m *Manager) reduceToHostPostureMarkers(ctx context.Context) error {
+	if m.nftRun == nil || m.apply == nil {
+		return fmt.Errorf("nft lifecycle runners are unavailable")
+	}
+	for _, family := range []string{"ip", "ip6"} {
+		out, err := m.nftRun(ctx, "-a", "list", "chain", family, "tunnex", "tunnex_posture_owner")
+		if err != nil {
+			return fmt.Errorf("read %s tunnex posture marker: %w", family, err)
+		}
+		if err := hostposture.ValidateNFTMarkerChain(out, hostposture.NFTMarkerComment); err != nil {
+			return fmt.Errorf("refuse ambiguous %s tunnex posture table: %w", family, err)
+		}
+	}
+	return m.apply(ctx, hostPostureMarkerOnlyRuleset())
+}
+
+func hostPostureMarkerOnlyRuleset() string {
+	return fmt.Sprintf(`add table ip tunnex
+flush table ip tunnex
+table ip tunnex {
+  chain tunnex_posture_owner {
+    counter comment "%[1]s"
+  }
+}
+add table ip6 tunnex
+flush table ip6 tunnex
+table ip6 tunnex {
+  chain tunnex_posture_owner {
+    counter comment "%[1]s"
+  }
+}
+`, hostposture.NFTMarkerComment)
 }
 
 // ruleset is the atomic desired state. IPv4 (table ip): masquerade tunnel→egress + a
@@ -652,6 +747,10 @@ func (m *Manager) rulesetWith(subnet string, pol *nodepolicy.Compiled) string {
 		ifClause("iifname", tun, true), ifClause("oifname", tun, true), m.resolvedVIPOriginalDstExclusion())
 	nativeForward6 := fmt.Sprintf("    %s %s counter accept comment \"tunnex_native_forward_passthrough\"\n",
 		ifClause("iifname", tun, true), ifClause("oifname", tun, true))
+	postureOwnerChain := ""
+	if m.kubernetesMode.Load() {
+		postureOwnerChain = fmt.Sprintf("  chain tunnex_posture_owner {\n    counter comment \"%s\"\n  }\n", hostposture.NFTMarkerComment)
+	}
 	// S8.2 D9 MSS clamp: on the INTRA-TUNNEL forward path (wg0→wg0 — device-to-device and site-to-site,
 	// where a client-WG session can ride a site-WG link and PMTUD fails silently inside the tunnels),
 	// clamp each TCP SYN's MSS down to the path MTU. This is the classic "ping works, large transfer
@@ -667,6 +766,7 @@ func (m *Manager) rulesetWith(subnet string, pol *nodepolicy.Compiled) string {
 	return fmt.Sprintf(`add table ip tunnex
 flush table ip tunnex
 table ip tunnex {
+%[9]s
 %[5]s  chain postrouting {
     type nat hook postrouting priority srcnat - 1; policy accept;
 %[1]s  }
@@ -681,6 +781,7 @@ table ip tunnex {
 add table ip6 tunnex
 flush table ip6 tunnex
 table ip6 tunnex {
+%[9]s
   chain postrouting {
     type nat hook postrouting priority srcnat - 1; policy accept;
 %[6]s  }
@@ -691,7 +792,7 @@ table ip6 tunnex {
 %[8]s
 %[3]s  }
 }
-`, masq, v4fwd, v6fwd, mssClamp, m.preroutingDNAT(), masq6, nativeForward4, nativeForward6)
+`, masq, v4fwd, v6fwd, mssClamp, m.preroutingDNAT(), masq6, nativeForward4, nativeForward6, postureOwnerChain)
 }
 
 // resolvedVIPOriginalDstExclusion returns a fail-closed, nft-safe match suffix
@@ -907,12 +1008,12 @@ func allowMatchFamily(e nodepolicy.AllowEntry, v6 bool) (string, bool) {
 		switch {
 		case !lowSet && !highSet:
 			// Both unset = any port of this protocol (the "no port range" case).
-			clause = fmt.Sprintf(" ip protocol %s", e.Protocol)
+			clause = fmt.Sprintf(" meta l4proto %s", e.Protocol)
 		case lowSet && highSet && e.PortHigh >= e.PortLow:
 			if e.PortHigh > e.PortLow {
-				clause = fmt.Sprintf(" %s dport %d-%d", e.Protocol, e.PortLow, e.PortHigh)
+				clause = fmt.Sprintf(" meta l4proto %s ct original proto-dst %d-%d", e.Protocol, e.PortLow, e.PortHigh)
 			} else {
-				clause = fmt.Sprintf(" %s dport %d", e.Protocol, e.PortLow)
+				clause = fmt.Sprintf(" meta l4proto %s ct original proto-dst %d", e.Protocol, e.PortLow)
 			}
 		default:
 			// A HALF-SET or inverted range (only low, only high, or high<low) is
@@ -1195,6 +1296,100 @@ func nftRun(ctx context.Context, args ...string) (string, error) {
 	return string(out), nil
 }
 
+func (m *Manager) reconcileK8sNetPrep(ctx context.Context, subnet string) error {
+	if m.k8sNetPrep == nil {
+		m.k8sNetPrepReady.Store(false)
+		return fmt.Errorf("Kubernetes network preparation is unavailable")
+	}
+	status, err := m.k8sNetPrep.Reconcile(ctx, subnet)
+	m.logK8sNetPrepStatus(status)
+	ready := subnet != "" && err == nil && status.Host.State == k8snetprep.StateReady
+	activeAdapters := 0
+	for _, adapter := range status.Adapters {
+		switch adapter.State {
+		case k8snetprep.StateReady:
+			activeAdapters++
+		case k8snetprep.StateNotApplicable:
+			// An exactly absent registered mechanism does not negate another
+			// observed ready mechanism. Unknown coverage is reported blocked,
+			// never synthesized as not-applicable by this readiness consumer.
+		default:
+			ready = false
+		}
+	}
+	if activeAdapters == 0 {
+		ready = false
+	}
+	m.k8sNetPrepReady.Store(ready)
+	return err
+}
+
+// K8sNetPrepReady is the finite readiness signal for common host posture plus
+// every observed CNI adapter. Withdrawal and blocked observation are never green.
+func (m *Manager) K8sNetPrepReady() bool { return m.k8sNetPrepReady.Load() }
+
+// SetKubernetesMode enables the Kubernetes-only host/CNI contract. It is set
+// once from the closed agent configuration before the first reconcile; absence
+// preserves the legacy VM/site data plane exactly.
+func (m *Manager) SetKubernetesMode(enabled bool) {
+	m.kubernetesMode.Store(enabled)
+	if !enabled {
+		m.k8sNetPrepReady.Store(false)
+	}
+}
+
+// SetKubernetesCNIAuthority installs the journal-scoped mechanism reconciler
+// before producers start. VM/site mode never acquires host-posture authority.
+// The guard holds the node-local CNI operation lock through each observation
+// and mutation; an unavailable proof cannot fall back to an unguarded adapter.
+func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard) {
+	if !m.kubernetesMode.Load() {
+		return
+	}
+	m.k8sNetPrepReady.Store(false)
+	m.k8sNetPrep = k8snetprep.NewWithAWS(m.wgIface, func(ctx context.Context, args ...string) (string, error) {
+		if m.nftRun == nil {
+			return "", fmt.Errorf("nft runner unavailable")
+		}
+		return m.nftRun(ctx, args...)
+	}, nil, guard)
+}
+
+// ReconcileK8sNetPrep refreshes common host/CNI truth independently of the
+// slower full egress repair. The caller serializes it with other data-plane
+// commands; this method owns only the current WireGuard subnet observation.
+func (m *Manager) ReconcileK8sNetPrep(ctx context.Context) error {
+	if !m.kubernetesMode.Load() {
+		return nil
+	}
+	subnet, err := m.observeWGSubnet(ctx)
+	if err != nil {
+		m.k8sNetPrepReady.Store(false)
+		return fmt.Errorf("observe WireGuard IPv4 subnet: %w", err)
+	}
+	return m.reconcileK8sNetPrep(ctx, subnet)
+}
+
+func (m *Manager) logK8sNetPrepStatus(status k8snetprep.ReconcileStatus) {
+	summary := status.Summary()
+	previous := m.k8sNetPrepStatus.Swap(&summary)
+	if m.log == nil || (previous != nil && *previous == summary) {
+		return
+	}
+	adapter := k8snetprep.ComponentStatus{Name: "none", State: k8snetprep.StateNotApplicable}
+	if len(status.Adapters) > 0 {
+		adapter = status.Adapters[0]
+	}
+	m.log.Info("k8s_netprep_state",
+		"host_state", status.Host.State,
+		"host_reason", status.Host.Reason,
+		"adapter", adapter.Name,
+		"adapter_state", adapter.State,
+		"adapter_reason", adapter.Reason,
+		"owned_rules", adapter.OwnedRules,
+	)
+}
+
 const dockerUserComment = "tunnex-site-fwd" // marks the agent's own DOCKER-USER rules for idempotent find + full-sweep
 
 // captures direction (s|d addr) + the address + the handle, for a comment-marked rule. BOTH directions
@@ -1451,25 +1646,51 @@ func forwardPolicyIsDrop(ctx context.Context, run func(context.Context, ...strin
 	return strings.Contains(out, "policy drop")
 }
 
-// wgSubnet returns the WG interface's IPv4 address+prefix (e.g. "10.99.0.1/24"), used to
-// scope the masquerade by SOURCE (nft masks it to the network). Empty if the interface
-// isn't up yet (the WG backend brings it up shortly after enrollment).
-func wgSubnet(ctx context.Context, iface string) string {
-	out, err := exec.CommandContext(ctx, "ip", "-o", "-4", "addr", "show", "dev", iface).Output()
+// observeWGSubnet returns the WG interface's IPv4 address+prefix (for example
+// "10.99.0.1/24"), used to scope masquerade by source. A successful empty
+// read is known absence; a command or parse failure is unknown and must never
+// be collapsed into the empty string consumed as explicit withdrawal.
+func (m *Manager) observeWGSubnet(ctx context.Context) (string, error) {
+	if !ifaceRE.MatchString(m.wgIface) {
+		return "", fmt.Errorf("invalid wg interface name %q", m.wgIface)
+	}
+	if m.runIPOutput == nil {
+		return "", fmt.Errorf("WireGuard address readback is unavailable")
+	}
+	out, err := m.runIPOutput(ctx, "-o", "-4", "addr", "show", "dev", m.wgIface)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	fields := strings.Fields(string(out)) // "N: wg0    inet 10.99.0.1/24 scope global wg0 ..."
-	for i, f := range fields {
-		if f == "inet" && i+1 < len(fields) {
-			return fields[i+1]
+	return parseWGSubnet(out)
+}
+
+func parseWGSubnet(out string) (string, error) {
+	// `ip -o` emits one address per line and keeps the interface's primary
+	// tunnel address first. Later lines can be Tunnex DNS VIP /32 secondaries;
+	// they are deliberately not competing tunnel-subnet observations.
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return "", nil
+	}
+	fields := strings.Fields(strings.SplitN(out, "\n", 2)[0]) // "N: wg0 inet 10.99.0.1/24 ..."
+	for i, field := range fields {
+		if field != "inet" {
+			continue
 		}
+		if i+1 >= len(fields) {
+			return "", fmt.Errorf("WireGuard IPv4 address readback is malformed")
+		}
+		prefix, err := netip.ParsePrefix(fields[i+1])
+		if err != nil || !prefix.Addr().Is4() {
+			return "", fmt.Errorf("WireGuard IPv4 address readback is malformed")
+		}
+		return prefix.String(), nil
 	}
-	return ""
+	return "", fmt.Errorf("WireGuard IPv4 address readback is malformed")
 }
 
 // wgSubnet6 returns the WireGuard interface's IPv6 address+prefix. It is kept
-// separate from wgSubnet so an IPv4-only deployment never accidentally reports
+// separate from observeWGSubnet so an IPv4-only deployment never accidentally reports
 // dual-stack capability.
 func wgSubnet6(ctx context.Context, iface string) string {
 	out, err := exec.CommandContext(ctx, "ip", "-o", "-6", "addr", "show", "dev", iface, "scope", "global").Output()

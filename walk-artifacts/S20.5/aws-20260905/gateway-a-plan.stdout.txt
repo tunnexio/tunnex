@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "action": "install",
+  "install_intent_digest": "sha256:8a02d4e8f4b40ed8f65cf2e1499c61ea1b1f15ee62b080d09713d8a544009625",
+  "kubernetes": {
+    "context": "tunnex-s205-aws-20260905a",
+    "namespace": "tunnex-s205-aws-20260905a",
+    "release": "tunnex-s205-a"
+  },
+  "organization": {
+    "id": "01a06bff-c3b0-7951-aee6-b41b2f7306ec",
+    "name": "Tunnex AWS Engineering Demo"
+  },
+  "control_plane": {
+    "api_url": "https://cp.13.206.39.40.sslip.io",
+    "agent_url": "https://cp.13.206.39.40.sslip.io:8443",
+    "server_name": "tunnex-control"
+  },
+  "host_posture": {
+    "action": "install",
+    "release": "tunnex-host-posture",
+    "namespace": "tunnex-system",
+    "daemon_set": "tunnex-host-posture",
+    "chart": "oci://735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/tunnex-host-posture",
+    "chart_name": "tunnex-host-posture",
+    "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "artifact_sha256": "sha256:3d11408b21074c1e209543a9a4f9bbaf18e988d0a9cc3957be30e1c4ccc4705c",
+    "contract": "tunnex-host-posture/v1",
+    "image": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/node-agent@sha256:5e525c7046bbdf9b2835be5bce86ad9ee31ebfc0fd92188f73d533b8dfa60f42"
+  },
+  "gateway": {
+    "node_name": "tunnex-s205-a",
+    "mode": "enroll",
+    "service_type": "LoadBalancer",
+    "endpoint": "discover from Service status.loadBalancer.ingress",
+    "wireguard_port": 51820,
+    "service_annotations": {
+      "service.beta.kubernetes.io/aws-load-balancer-attributes": "load_balancing.cross_zone.enabled=true",
+      "service.beta.kubernetes.io/aws-load-balancer-healthcheck-path": "/readyz",
+      "service.beta.kubernetes.io/aws-load-balancer-healthcheck-port": "9091",
+      "service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol": "HTTP",
+      "service.beta.kubernetes.io/aws-load-balancer-healthcheck-success-codes": "200",
+      "service.beta.kubernetes.io/aws-load-balancer-ip-address-type": "ipv4",
+      "service.beta.kubernetes.io/aws-load-balancer-manage-backend-security-group-rules": "false",
+      "service.beta.kubernetes.io/aws-load-balancer-name": "tunnex-s205-a",
+      "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type": "ip",
+      "service.beta.kubernetes.io/aws-load-balancer-scheme": "internet-facing",
+      "service.beta.kubernetes.io/aws-load-balancer-security-groups": "sg-01a26ee7e12ca2297",
+      "service.beta.kubernetes.io/aws-load-balancer-subnets": "subnet-01be85cea381cc1ae,subnet-006997cf153f6259e",
+      "service.beta.kubernetes.io/aws-load-balancer-type": "external"
+    },
+    "node_selector": {
+      "kubernetes.io/hostname": "ip-10-240-10-204.ap-south-1.compute.internal"
+    },
+    "bootstrap_secret": "tunnex-s205-a-bootstrap",
+    "bootstrap_state": "new create-only lifecycle anchor and Secret",
+    "token_transport": "token-blind anchor before control-plane mint; Secret stdin only; value redacted",
+    "image": "735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/node-agent@sha256:5e525c7046bbdf9b2835be5bce86ad9ee31ebfc0fd92188f73d533b8dfa60f42",
+    "lifecycle": {
+      "anchor_name": "tunnex-s205-a-lifecycle",
+      "claim": "b35b39eb-09ef-45d8-b723-73fefc84477c",
+      "request_id": "30e52b39-3545-45e2-a4f3-a7b8afbd8cfc",
+      "expected_generation": 0,
+      "generation": 0,
+      "state": "pending"
+    }
+  },
+  "chart": {
+    "name": "tunnex-gateway",
+    "reference": "oci://735391218823.dkr.ecr.ap-south-1.amazonaws.com/tunnex-s205-aws-20260905a/tunnex-gateway",
+    "version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "app_version": "0.0.0-walk.shad2c9cba653d400e2dab3d7b038796efe",
+    "artifact_sha256": "sha256:68ea7191ddfdd3d34f44ad5eadc4bc55c8884d3fef7aec5f1a24078d2746f5b9",
+    "rollout_revision": "derived from stable install intent digest"
+  },
+  "storage": {
+    "claim": "tunnex-s205-a-tunnex-gateway-state",
+    "state": "create new retained claim",
+    "class": "tunnex-s205-gp3",
+    "provisioner": "ebs.csi.aws.com",
+    "binding_mode": "WaitForFirstConsumer",
+    "retention": "retain on uninstall"
+  },
+  "operations": [
+    "install exact cluster-wide host posture manager before gateway enrollment",
+    "recheck release/Secret/claim/anchor fingerprint",
+    "create namespace only if absent",
+    "create token-blind lifecycle anchor",
+    "mint or redeliver exact claim token",
+    "stream create-only immutable bootstrap Secret to kubectl stdin",
+    "acknowledge Secret CAS",
+    "persist stable install intent and opaque operation UUID in the lifecycle anchor",
+    "Begin exact control-plane install operation before gateway Helm mutation",
+    "CAS-mirror installing epoch and server-bounded hard deadline in the lifecycle anchor",
+    "run Helm atomic install under the approved timeout with bounded control-plane heartbeats",
+    "cancel Helm on abort, lost epoch, or hard deadline",
+    "verify exact consumed claim, release/workload readiness, and persistent provenance",
+    "Complete exact install epoch before deleting bootstrap recovery metadata",
+    "verify Deployment readiness",
+    "verify Service endpoint",
+    "verify exact enrolled lifecycle identity",
+    "delete consumed bootstrap Secret and lifecycle anchor"
+  ]
+}
+Plan digest: sha256:c65005db643e347ab28fde1ac32465521394a8eb8dad2cc281025d32430435e9

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
@@ -24,7 +25,7 @@ func TestPostgresHandoffHATransitionArmsEveryMemberBeforeP2(t *testing.T) {
 	defer cancel()
 	pool := newHandoffEndToEndTestDB(t, ctx, admin)
 	fixture := seedHandoffBootstrapIntegration(t, ctx, pool)
-	if err := db.MigrateTo(pool.Config().ConnString(), 122); err != nil {
+	if err := db.MigrateTo(pool.Config().ConnString(), 134); err != nil {
 		t.Fatal(err)
 	}
 	const membershipEpoch int64 = 0
@@ -41,6 +42,16 @@ func TestPostgresHandoffHATransitionArmsEveryMemberBeforeP2(t *testing.T) {
 		VALUES($1,$2,$3,$4,'fenced_ha','bootstrap_pending',$5,1,$6,'test','integration activation')`, fixture.scope.PoolID, fixture.scope.OrgID, fixture.scope.SiteID, fixture.scope.ClusterID, fixture.active, membershipEpoch); err != nil {
 		t.Fatal(err)
 	}
+	// Match the small production pool. A compiler must not wait behind the
+	// handoff transaction's member locks while acquiring this shared pool.
+	poolConfig := pool.Config()
+	poolConfig.MaxConns = 4
+	limitedPool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(limitedPool.Close)
+	pool = limitedPool
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +69,21 @@ func TestPostgresHandoffHATransitionArmsEveryMemberBeforeP2(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("plan found=%t err=%v", found, err)
 	}
-	base := HandoffBaseStateSourceFunc(func(_ context.Context, orgID, nodeID uuid.UUID) (DesiredState, error) {
+	mutateGenerationDuringCompile := false
+	base := HandoffBaseStateSourceFunc(func(ctx context.Context, orgID, nodeID uuid.UUID) (DesiredState, error) {
+		probe, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		// Models a concurrent liveness/UID writer before the compiler's next
+		// global-pool read. The old callback-inside-transaction ordering blocks.
+		if _, err := pool.Exec(probe, `SELECT id FROM nodes WHERE id=$1 AND org_id=$2 FOR UPDATE`, nodeID, orgID); err != nil {
+			return DesiredState{}, err
+		}
+		if mutateGenerationDuringCompile {
+			mutateGenerationDuringCompile = false
+			if _, err := pool.Exec(probe, `UPDATE k8s_connector_pool_ha_transitions SET promotion_generation=promotion_generation+1 WHERE pool_id=$1`, fixture.scope.PoolID); err != nil {
+				return DesiredState{}, err
+			}
+		}
 		return DesiredState{ProtocolVersion: 9, NodeID: nodeID.String(), InterfaceAddress: "10.44.0.1/16", MTU: 1420, ListenPort: 51820, Version: 17, Peers: []Peer{}}, nil
 	})
 	store := NewPostgresKubernetesOwnershipBaseAuthorityStore(pool)
@@ -125,6 +150,20 @@ func TestPostgresHandoffHATransitionArmsEveryMemberBeforeP2(t *testing.T) {
 		auditedEpoch != membershipEpoch || oldRevision != int64(restarted.TransitionRevision) || newRevision != int64(restarted.TransitionRevision) {
 		t.Fatalf("inexact transition audit old/new requested=%s/%s actual=%s/%s epoch=%d revision=%d/%d", oldRequested, newRequested, oldActual, newActual, auditedEpoch, oldRevision, newRevision)
 	}
+	if _, err := transition.MaintainHandoffOrdinaryBaseAuthorityWithLeadership(ctx, now, epoch, conn, []HandoffBootstrapPlan{plan}); err != nil {
+		t.Fatalf("fenced maintenance compiler must not hold member locks: %v", err)
+	}
+	var before, after int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_base_authority_deliveries WHERE org_id=$1`, fixture.scope.OrgID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	mutateGenerationDuringCompile = true
+	if _, err := transition.MaintainHandoffOrdinaryBaseAuthorityWithLeadership(ctx, now, epoch, conn, []HandoffBootstrapPlan{plan}); !errors.Is(err, ErrHandoffHATransitionRefused) {
+		t.Fatalf("topology changed during prefetch must refuse: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM k8s_base_authority_deliveries WHERE org_id=$1`, fixture.scope.OrgID).Scan(&after); err != nil || after != before {
+		t.Fatalf("stale prefetched topology minted authority: before=%d after=%d err=%v", before, after, err)
+	}
 }
 
 func TestPostgresHandoffHATransitionRetriesStaleAndExpiredAuthorityAtNewRevisions(t *testing.T) {
@@ -136,7 +175,7 @@ func TestPostgresHandoffHATransitionRetriesStaleAndExpiredAuthorityAtNewRevision
 	defer cancel()
 	pool := newHandoffEndToEndTestDB(t, ctx, admin)
 	fixture := seedHandoffBootstrapIntegration(t, ctx, pool)
-	if err := db.MigrateTo(pool.Config().ConnString(), 122); err != nil {
+	if err := db.MigrateTo(pool.Config().ConnString(), 134); err != nil {
 		t.Fatal(err)
 	}
 	const membershipEpoch int64 = 0

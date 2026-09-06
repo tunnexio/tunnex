@@ -7,7 +7,10 @@ COPY apps/node/go.mod apps/node/go.sum* ./
 ENV GOFLAGS=-mod=readonly
 RUN go mod download
 COPY apps/node/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tunnex-node ./cmd/agent
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X main.buildVersion=${VERSION}" \
+    -o /out/tunnex-node ./cmd/agent
 
 FROM alpine:3.20
 # WireGuard data plane (S3.2): wg/wg-quick + ip (iproute2) drive the kernel
@@ -19,7 +22,10 @@ FROM alpine:3.20
 # guarded by an unstated runtime dep breaks silently on a base-image change). The FEATURE is
 # what the org opts into; the binary is always here. Absent-at-runtime → ovpn_binary_absent
 # (refuse-loudly on the health surface), never a crash.
-RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables openvpn
+# AWS compat-rule inspection uses the explicit iptables-nft-save binary only;
+# the alternative-selected iptables wrapper is never part of the authority proof.
+RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables openvpn \
+    && iptables-nft-save -V
 COPY --from=build /out/tunnex-node /usr/local/bin/tunnex-node
 EXPOSE 9091
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \

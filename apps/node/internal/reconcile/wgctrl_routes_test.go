@@ -5,6 +5,7 @@ package reconcile
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"strings"
 	"testing"
@@ -251,5 +252,179 @@ func TestBackendCloseDeletesInterface(t *testing.T) {
 	}}
 	if err := absent.Close(ctx); err != nil {
 		t.Fatalf("Close on an absent interface must be idempotent (no error), got %v", err)
+	}
+}
+
+func TestKubernetesBackendAdoptsAndPreservesExactHostPostureInterface(t *testing.T) {
+	ctx := context.Background()
+	linkJSON := `[{"ifindex":41,"ifname":"wg0","ifalias":"tunnex-host-posture/v1","linkinfo":{"info_kind":"wireguard"}}]`
+	var calls [][]string
+	backend := &wgctrlBackend{
+		iface:                  "wg0",
+		preserveInterfaceAlias: "tunnex-host-posture/v1",
+		runFn: func(_ context.Context, name string, args ...string) (string, error) {
+			calls = append(calls, append([]string{name}, args...))
+			switch {
+			case name == "ip" && len(args) >= 2 && args[0] == "-j" && args[1] == "-d":
+				return linkJSON, nil
+			case name == "ip" && len(args) >= 2 && args[0] == "-j" && args[1] == "address":
+				return `[{"ifname":"wg0","addr_info":[]}]`, nil
+			case name == "wg" && len(args) >= 2 && args[0] == "show":
+				return "(none)\t(none)\t0\toff\n", nil
+			case name == "ip" && len(args) >= 2 && args[0] == "link" && args[1] == "show":
+				return "wg0: mtu 1420 state UP", nil
+			default:
+				return "", nil
+			}
+		},
+	}
+	if err := backend.Configure(ctx, InterfaceConfig{}); err != nil {
+		t.Fatalf("Configure did not adopt exact manager-owned interface: %v", err)
+	}
+	if err := backend.Close(ctx); err != nil {
+		t.Fatalf("Close did not preserve exact manager-owned interface: %v", err)
+	}
+	if err := backend.Configure(ctx, InterfaceConfig{}); err != nil {
+		t.Fatalf("Configure did not reuse the drained manager-owned shell: %v", err)
+	}
+	for _, call := range calls {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "link add") || strings.Contains(joined, "link del") {
+			t.Fatalf("gateway mutated manager-owned interface lifecycle: calls=%v", calls)
+		}
+	}
+}
+
+func TestKubernetesBackendShutdownDrainsDataplaneAndReusesCleanShell(t *testing.T) {
+	linkJSON := `[{"ifindex":41,"ifname":"wg0","ifalias":"tunnex-host-posture/v1","linkinfo":{"info_kind":"wireguard"}}]`
+	keyPresent, peerPresent, addressPresent, routePresent, rulePresent, linkUp := true, true, true, true, true, true
+	listenPort := 51820
+	var calls []string
+	backend := &wgctrlBackend{
+		iface:                  "wg0",
+		preserveInterfaceAlias: "tunnex-host-posture/v1",
+		interfacePrefixes:      []netip.Prefix{netip.MustParsePrefix("10.99.0.0/24")},
+		interfaceAddresses:     []netip.Prefix{netip.MustParsePrefix("10.99.0.1/24")},
+	}
+	backend.runFn = func(_ context.Context, name string, args ...string) (string, error) {
+		joined := name + " " + strings.Join(args, " ")
+		calls = append(calls, joined)
+		switch {
+		case joined == "ip -j -d link show dev wg0":
+			return linkJSON, nil
+		case joined == "ip link set dev wg0 down":
+			linkUp = false
+			return "", nil
+		case joined == "ip link set dev wg0 mtu 1420 up" || joined == "ip link set dev wg0 up":
+			linkUp = true
+			return "", nil
+		case joined == "ip link show wg0":
+			state := "DOWN"
+			if linkUp {
+				state = "UP"
+			}
+			return "wg0: mtu 1420 state " + state, nil
+		case joined == "wg show wg0 dump":
+			privateKey, publicKey := "(none)", "(none)"
+			if keyPresent {
+				privateKey, publicKey = "private", "new-public"
+			}
+			out := fmt.Sprintf("%s\t%s\t%d\toff\n", privateKey, publicKey, listenPort)
+			if peerPresent {
+				out += "peer-public\t(none)\t198.51.100.2:51820\t10.99.0.2/32\t1\t2\t3\t25\n"
+			}
+			return out, nil
+		case strings.HasPrefix(joined, "wg set wg0 private-key "):
+			keyPresent = !strings.HasSuffix(joined, " /dev/null")
+			return "", nil
+		case joined == "wg set wg0 listen-port 0":
+			listenPort = 0
+			return "", nil
+		case joined == "wg set wg0 listen-port 51820":
+			listenPort = 51820
+			return "", nil
+		case joined == "wg set wg0 peer peer-public remove":
+			peerPresent = false
+			return "", nil
+		case joined == "ip -o addr show dev wg0":
+			if addressPresent {
+				return "1: wg0 inet 10.99.0.1/24 scope global wg0", nil
+			}
+			return "", nil
+		case joined == "ip address del 10.99.0.1/24 dev wg0":
+			addressPresent = false
+			return "", nil
+		case joined == "ip address replace 10.99.0.1/24 dev wg0":
+			addressPresent = true
+			return "", nil
+		case joined == "ip -4 route show":
+			if routePresent {
+				return "10.2.0.0/24 dev wg0 proto static metric 8021", nil
+			}
+			return "", nil
+		case joined == "ip -6 route show":
+			return "", nil
+		case joined == "ip -4 route del 10.2.0.0/24 dev wg0 proto static metric 8021":
+			routePresent = false
+			return "", nil
+		case joined == "ip -4 rule show pref 100":
+			if rulePresent {
+				return "100: from all to 10.99.0.0/24 lookup main", nil
+			}
+			return "", nil
+		case joined == "ip -6 rule show pref 100":
+			return "", nil
+		case joined == "ip -4 rule del pref 100 to 10.99.0.0/24 lookup main":
+			rulePresent = false
+			return "", nil
+		case joined == "ip -j address show dev wg0":
+			if addressPresent {
+				return `[{"ifname":"wg0","addr_info":[{"family":"inet","local":"10.99.0.1","prefixlen":24}]}]`, nil
+			}
+			return `[{"ifname":"wg0","addr_info":[]}]`, nil
+		default:
+			return "", fmt.Errorf("unexpected command: %s", joined)
+		}
+	}
+
+	if err := backend.Close(t.Context()); err != nil {
+		t.Fatalf("Kubernetes shutdown did not drain the manager shell: %v\ncalls=%v", err, calls)
+	}
+	if keyPresent || peerPresent || addressPresent || routePresent || rulePresent || linkUp || listenPort != 0 {
+		t.Fatalf("shutdown residue key=%v peer=%v address=%v route=%v rule=%v linkUp=%v port=%d", keyPresent, peerPresent, addressPresent, routePresent, rulePresent, linkUp, listenPort)
+	}
+	for _, call := range calls {
+		if call == "ip link del wg0" {
+			t.Fatal("manager-owned WireGuard interface was deleted")
+		}
+	}
+
+	if err := backend.Configure(t.Context(), InterfaceConfig{
+		PrivateKey: "private", PublicKey: "new-public", ListenPort: 51820, Address: "10.99.0.1/24", MTU: 1420,
+	}); err != nil {
+		t.Fatalf("next gateway could not reuse clean manager shell: %v\ncalls=%v", err, calls)
+	}
+	if !keyPresent || !addressPresent || !linkUp || listenPort != 51820 {
+		t.Fatalf("clean shell did not reconfigure key=%v address=%v linkUp=%v port=%d", keyPresent, addressPresent, linkUp, listenPort)
+	}
+}
+
+func TestKubernetesBackendRefusesAmbiguousHostPostureInterfaceWithoutDeleting(t *testing.T) {
+	var calls [][]string
+	backend := &wgctrlBackend{
+		iface:                  "wg0",
+		preserveInterfaceAlias: "tunnex-host-posture/v1",
+		runFn: func(_ context.Context, name string, args ...string) (string, error) {
+			calls = append(calls, append([]string{name}, args...))
+			return `[{"ifindex":41,"ifname":"wg0","ifalias":"foreign","linkinfo":{"info_kind":"wireguard"}}]`, nil
+		},
+	}
+	if err := backend.Close(context.Background()); err == nil {
+		t.Fatal("ambiguous interface ownership was accepted on shutdown")
+	}
+	for _, call := range calls {
+		if strings.Contains(strings.Join(call, " "), "link del") {
+			t.Fatalf("ambiguous interface was deleted: calls=%v", calls)
+		}
 	}
 }

@@ -4,9 +4,11 @@ package egress
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
+	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
@@ -17,6 +19,20 @@ type Manager struct{}
 func New(_ string) *Manager { return &Manager{} }
 
 func (m *Manager) Reconcile(_ context.Context) (bool, bool, error) { return false, false, nil }
+
+// K8sNetPrepReady is false off Linux because the gateway data plane is Linux-only.
+func (m *Manager) K8sNetPrepReady() bool { return false }
+
+// SetKubernetesMode is a no-op off Linux; readiness remains fail-closed there.
+func (m *Manager) SetKubernetesMode(bool) {}
+
+// SetKubernetesCNIAuthority cannot enable a non-Linux gateway data plane.
+func (m *Manager) SetKubernetesCNIAuthority(k8snetprep.AuthorityGuard) {}
+
+// ReconcileK8sNetPrep fails closed off Linux; the gateway data plane is Linux-only.
+func (m *Manager) ReconcileK8sNetPrep(context.Context) error {
+	return fmt.Errorf("Kubernetes network preparation requires Linux")
+}
 
 func (m *Manager) Teardown(_ context.Context) {}
 

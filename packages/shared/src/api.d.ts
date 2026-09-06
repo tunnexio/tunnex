@@ -1074,6 +1074,215 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        /** Read token-blind Kubernetes gateway lifecycle-claim state */
+        get: operations["getNodeLifecycleClaim"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/remint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** CAS-mint or remint an exact Kubernetes gateway lifecycle claim */
+        post: operations["remintNodeLifecycleClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge Kubernetes CAS persistence of an exact remint response */
+        post: operations["acknowledgeNodeLifecycleClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** CAS-abort an exact Kubernetes gateway lifecycle claim and revoke its partial node */
+        post: operations["abortNodeLifecycleClaim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/install-operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read the latest token-blind install operation for an immutable lifecycle claim
+         * @description Returns the durable latest operation projection used to prove an already-completed zero-touch install after Kubernetes success metadata has been removed. Domain absence is `lifecycle_install_operation_not_found`; it is distinct from a mixed-version route miss.
+         */
+        get: operations["getLatestNodeLifecycleInstall"];
+        put?: never;
+        /** Linearize an exact provider-neutral Kubernetes install operation before Helm mutation */
+        post: operations["beginNodeLifecycleInstall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/install-operations/{operationId}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Heartbeat an exact active install epoch without extending its absolute deadline */
+        post: operations["heartbeatNodeLifecycleInstall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/install-operations/{operationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release an exact install epoch after stopping all Helm mutation */
+        post: operations["cancelNodeLifecycleInstall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/install-operations/{operationId}/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Durably request abort and take over an exact released or expired install epoch */
+        post: operations["requestNodeLifecycleInstallAbort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/install-operations/{operationId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete an exact active install after consumed-claim and release-ready proof */
+        post: operations["completeNodeLifecycleInstall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/nodes/lifecycle-claims/{claim}/install-operations/{operationId}/finalize-abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomically abort the exact claim after taken-over release-absence proof */
+        post: operations["finalizeNodeLifecycleInstallAbort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/nodes/{nodeId}/revoke": {
         parameters: {
             query?: never;
@@ -2987,6 +3196,33 @@ export interface paths {
          * @description Selects an active gateway already bound to this cluster's site. Only this connector receives Kubernetes EndpointSlice resolution and synthetic VIP DNAT; existing site edge gateways receive the private handoff route and enforce client policy. Replacing the connector is a reconciled control-plane change.
          */
         put: operations["setK8sClusterConnector"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/connector-pool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read one cluster's explicit connector-pool configuration (S20.3b; k8s_ha:view)
+         * @description A missing pool is returned as connector_pool_not_found; direct single-connector clusters remain unchanged until an authorized operator explicitly configures a pool.
+         */
+        get: operations["getK8sConnectorPoolConfiguration"];
+        /**
+         * Create or reconcile one cluster's exact connector-pool membership (S20.3b; k8s_ha:manage)
+         * @description Creation retains the cluster's current direct connector as active and preferred. An existing pool changes only when expected_membership_epoch matches its current durable epoch. This request does not promote a member, change ownership generation, or enable fenced HA.
+         */
+        put: operations["configureK8sConnectorPool"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5080,6 +5316,33 @@ export interface components {
             /** Format: int64 */
             expected_transition_revision: number;
         };
+        K8sConnectorPoolMember: {
+            /** Format: uuid */
+            node_id: string;
+            /** Format: int32 */
+            admin_priority: number;
+        };
+        K8sConnectorPoolConfiguration: {
+            /** Format: uuid */
+            pool_id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            /** Format: uuid */
+            preferred_node_id: string;
+            /** Format: uuid */
+            active_node_id: string;
+            /** Format: int64 */
+            generation: number;
+            membership_epoch_known: boolean;
+            /** Format: int64 */
+            membership_epoch: number | null;
+            members: components["schemas"]["K8sConnectorPoolMember"][];
+        };
+        ConfigureK8sConnectorPoolRequest: {
+            members: components["schemas"]["K8sConnectorPoolMember"][];
+            /** Format: int64 */
+            expected_membership_epoch?: number | null;
+        };
         K8sClusterScopeSettings: {
             enabled: boolean;
             /** Format: int64 */
@@ -5749,6 +6012,144 @@ export interface components {
         };
         JoinTokenResponse: {
             join_token: string;
+        };
+        /** @enum {string} */
+        NodeLifecycleClaimState: "issued" | "acknowledged" | "expired" | "consumed" | "aborted";
+        NodeLifecycleClaimStatus: {
+            /** Format: uuid */
+            claim: string;
+            state: components["schemas"]["NodeLifecycleClaimState"];
+            node_name: string;
+            /** @description Zero is reserved for a credentialless claim tombstone created by pre-mint abort. */
+            generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            acknowledged_at?: string | null;
+            /** Format: date-time */
+            consumed_at?: string | null;
+            /** Format: date-time */
+            aborted_at?: string | null;
+            /**
+             * Format: uuid
+             * @description Exact lifecycle-claim node identity, present only after enrollment.
+             */
+            node_id?: string | null;
+        };
+        NodeLifecycleClaimRemintRequest: {
+            node_name: string;
+            /** @description Zero creates the claim; an expired retry names the exact current generation. */
+            expected_generation: number;
+            /**
+             * Format: uuid
+             * @description Idempotency identity persisted token-blind in Kubernetes before this request.
+             */
+            request_id: string;
+        };
+        NodeLifecycleClaimRemintResponse: {
+            /** Format: uuid */
+            claim: string;
+            join_token: string;
+            generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        NodeLifecycleClaimCASRequest: {
+            expected_generation: number;
+            /** Format: uuid */
+            request_id: string;
+        };
+        NodeLifecycleClaimAbortRequest: {
+            /** @description Zero atomically abandons the exact pre-mint claim; positive values abort an existing generation. */
+            expected_generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** @description Required when expected_generation is zero and checked when supplied for an existing generation. */
+            node_name?: string;
+        };
+        /** @enum {string} */
+        NodeLifecycleInstallOperationState: "active" | "abort_requested" | "expired" | "released" | "aborting" | "completed" | "aborted";
+        NodeLifecycleInstallOperationStatus: {
+            /** Format: uuid */
+            claim: string;
+            generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** Format: uuid */
+            operation_id: string;
+            /** Format: int64 */
+            epoch: number;
+            state: components["schemas"]["NodeLifecycleInstallOperationState"];
+            release_namespace: string;
+            release_name: string;
+            /** @description Canonical digest of the exact install intent; distinct from any human-readable display-plan digest. */
+            install_intent_digest: string;
+            /** @description Requested total install budget. The immutable not_after may be earlier when the lifecycle token expires; clients must refuse unless not_after - server_time covers Helm plus deterministic verification/completion margin. */
+            requested_duration_seconds: number;
+            /**
+             * Format: date-time
+             * @description Immutable absolute deadline chosen from the PostgreSQL clock; heartbeat never extends it.
+             */
+            not_after: string;
+            /**
+             * Format: date-time
+             * @description PostgreSQL time sampled after the operation transition/read. Clients derive a conservative monotonic timeout from request-start plus not_after - server_time and never compare the deadline to their wall clock.
+             */
+            server_time: string;
+            /** Format: date-time */
+            heartbeat_at: string;
+            /** Format: date-time */
+            abort_requested_at: string | null;
+            /** Format: date-time */
+            released_at: string | null;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** Format: date-time */
+            taken_over_at: string | null;
+            /** Format: date-time */
+            aborted_at: string | null;
+        };
+        NodeLifecycleInstallBeginRequest: {
+            expected_generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** Format: uuid */
+            operation_id: string;
+            release_namespace: string;
+            release_name: string;
+            /** @description Canonical digest of the exact install intent; display-plan digests are not accepted here. */
+            install_intent_digest: string;
+            /** @description Total Helm plus verification/completion budget; values outside the server cap are refused, never clipped. */
+            requested_duration_seconds: number;
+        };
+        NodeLifecycleInstallCASRequest: {
+            expected_generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** Format: int64 */
+            expected_epoch: number;
+        };
+        NodeLifecycleInstallCompleteRequest: {
+            expected_generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** Format: int64 */
+            expected_epoch: number;
+            /** @description Explicit CLI attestation for the exact operation's approved release scope; false is refused. */
+            release_ready: boolean;
+        };
+        NodeLifecycleInstallAbortFinalizeRequest: {
+            expected_generation: number;
+            /** Format: uuid */
+            request_id: string;
+            /** Format: int64 */
+            expected_epoch: number;
+            /** @description Explicit CLI attestation that the exact approved release and workloads are absent; false is refused. */
+            release_absent: boolean;
         };
         Device: {
             /** Format: uuid */
@@ -8404,6 +8805,352 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JoinTokenResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getNodeLifecycleClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact claim state; never includes a token, token hash, or sealed value. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleClaimStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    remintNodeLifecycleClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleClaimRemintRequest"];
+            };
+        };
+        responses: {
+            /** @description Idempotent one-time token response, sealed only until acknowledgement or consumption. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleClaimRemintResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    acknowledgeNodeLifecycleClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleClaimCASRequest"];
+            };
+        };
+        responses: {
+            /** @description Token-blind acknowledged claim state. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleClaimStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    abortNodeLifecycleClaim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleClaimAbortRequest"];
+            };
+        };
+        responses: {
+            /** @description Token-blind aborted claim state. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleClaimStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getLatestNodeLifecycleInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Latest lifecycle install operation, including terminal state and DB server time. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleInstallOperationStatus"];
+                };
+            };
+            /** @description No lifecycle install operation exists for this immutable claim (`lifecycle_install_operation_not_found`). */
+            404: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    beginNodeLifecycleInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleInstallBeginRequest"];
+            };
+        };
+        responses: {
+            /** @description Exact idempotent operation epoch with a DB-clock-bounded absolute deadline. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleInstallOperationStatus"];
+                };
+            };
+            /** @description Lifecycle state conflict. Only `lifecycle_install_operation_absent_after_expiry` proves that the exact persisted operation is absent after DB-clock expiry and can authorize the separately fenced Kubernetes recovery protocol. */
+            409: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    heartbeatNodeLifecycleInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleInstallCASRequest"];
+            };
+        };
+        responses: {
+            /** @description Current operation state, including any durable abort request. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleInstallOperationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelNodeLifecycleInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleInstallCASRequest"];
+            };
+        };
+        responses: {
+            /** @description Idempotent released operation state. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleInstallOperationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    requestNodeLifecycleInstallAbort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleInstallCASRequest"];
+            };
+        };
+        responses: {
+            /** @description Idempotent terminal claim state when this exact operation was already finalized aborted. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleClaimStatus"];
+                };
+            };
+            /** @description Abort is durably requested but the holder must release/deadline, or the returned taken-over epoch must reconcile the exact release to absence and call finalize-abort. This response never authorizes Secret or anchor deletion. */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleInstallOperationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    completeNodeLifecycleInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleInstallCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Idempotent successful install result. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleInstallOperationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    finalizeNodeLifecycleInstallAbort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                claim: string;
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeLifecycleInstallAbortFinalizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Token-blind terminal claim state; only this result authorizes recovery-metadata cleanup. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeLifecycleClaimStatus"];
                 };
             };
             default: components["responses"]["Error"];
@@ -11766,6 +12513,60 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getK8sConnectorPoolConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact configured membership and its concurrency epoch. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sConnectorPoolConfiguration"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    configureK8sConnectorPool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigureK8sConnectorPoolRequest"];
+            };
+        };
+        responses: {
+            /** @description The committed exact connector-pool configuration. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sConnectorPoolConfiguration"];
+                };
             };
             default: components["responses"]["Error"];
         };

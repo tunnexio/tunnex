@@ -830,9 +830,10 @@ type K8sBaseAuthorityDelivery struct {
 	BaseHash           string    `json:"base_hash"`
 	PayloadDigest      string    `json:"payload_digest"`
 	Payload            []byte    `json:"payload"`
-	TransitionRevision int64     `json:"transition_revision"`
+	TransitionRevision *int64    `json:"transition_revision"`
 	ExpiresAt          time.Time `json:"expires_at"`
 	CreatedAt          time.Time `json:"created_at"`
+	AuthorityKind      string    `json:"authority_kind"`
 }
 
 type K8sBaseAuthorityDeliveryPool struct {
@@ -1069,6 +1070,16 @@ type K8sHaSetting struct {
 	Cause       string      `json:"cause"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
+}
+
+type K8sLifecycleClaimUsage struct {
+	Singleton        bool      `json:"singleton"`
+	FirstPersistedAt time.Time `json:"first_persisted_at"`
+}
+
+type K8sLifecycleInstallOperationUsage struct {
+	Singleton        bool      `json:"singleton"`
+	FirstPersistedAt time.Time `json:"first_persisted_at"`
 }
 
 type K8sPoolOwnershipV2Capability struct {
@@ -1310,22 +1321,62 @@ type Node struct {
 	// When the CURRENT cert_serial was first seen authenticating on the agent channel. NULL = issued but never used, which is the only state the D3 redelivery carve-out authorizes. Cleared by RekeyNode in the same statement that replaces cert_serial (S13.1).
 	CertDeliveredAt pgtype.Timestamptz `json:"cert_delivered_at"`
 	// FALSE only while the CURRENT cert_serial has never authenticated — the only state the D3 redelivery carve-out authorizes. DEFAULT TRUE so any writer that does not know this column (an older control-plane replica mid-roll, or CreateNode) lands in the CLOSED state (S13.1).
-	CertDelivered bool        `json:"cert_delivered"`
-	OwnerUserID   pgtype.UUID `json:"owner_user_id"`
-	EnrolledKind  *string     `json:"enrolled_kind"`
+	CertDelivered  bool        `json:"cert_delivered"`
+	OwnerUserID    pgtype.UUID `json:"owner_user_id"`
+	EnrolledKind   *string     `json:"enrolled_kind"`
+	LifecycleClaim pgtype.UUID `json:"lifecycle_claim"`
 }
 
 type NodeJoinToken struct {
-	ID             uuid.UUID          `json:"id"`
-	OrgID          uuid.UUID          `json:"org_id"`
-	NodeName       *string            `json:"node_name"`
-	TokenHash      []byte             `json:"token_hash"`
-	ExpiresAt      time.Time          `json:"expires_at"`
-	ConsumedAt     pgtype.Timestamptz `json:"consumed_at"`
-	ConsumedNodeID pgtype.UUID        `json:"consumed_node_id"`
-	CreatedAt      time.Time          `json:"created_at"`
-	IssuedBy       pgtype.UUID        `json:"issued_by"`
-	EnrolsKind     string             `json:"enrols_kind"`
+	ID                      uuid.UUID          `json:"id"`
+	OrgID                   uuid.UUID          `json:"org_id"`
+	NodeName                *string            `json:"node_name"`
+	TokenHash               []byte             `json:"token_hash"`
+	ExpiresAt               time.Time          `json:"expires_at"`
+	ConsumedAt              pgtype.Timestamptz `json:"consumed_at"`
+	ConsumedNodeID          pgtype.UUID        `json:"consumed_node_id"`
+	CreatedAt               time.Time          `json:"created_at"`
+	IssuedBy                pgtype.UUID        `json:"issued_by"`
+	EnrolsKind              string             `json:"enrols_kind"`
+	LifecycleClaim          pgtype.UUID        `json:"lifecycle_claim"`
+	LifecycleGeneration     int32              `json:"lifecycle_generation"`
+	LifecycleRequestID      pgtype.UUID        `json:"lifecycle_request_id"`
+	LifecycleTokenSealed    *string            `json:"lifecycle_token_sealed"`
+	LifecycleAcknowledgedAt pgtype.Timestamptz `json:"lifecycle_acknowledged_at"`
+	LifecycleAbortedAt      pgtype.Timestamptz `json:"lifecycle_aborted_at"`
+}
+
+type NodeLifecycleEnrollmentAuthorization struct {
+	BackendPid     int32     `json:"backend_pid"`
+	TransactionID  int64     `json:"transaction_id"`
+	TokenID        uuid.UUID `json:"token_id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	NodeName       string    `json:"node_name"`
+	LifecycleClaim uuid.UUID `json:"lifecycle_claim"`
+}
+
+type NodeLifecycleInstallOperation struct {
+	OperationID              uuid.UUID          `json:"operation_id"`
+	TokenID                  uuid.UUID          `json:"token_id"`
+	OrgID                    uuid.UUID          `json:"org_id"`
+	LifecycleClaim           uuid.UUID          `json:"lifecycle_claim"`
+	LifecycleGeneration      int32              `json:"lifecycle_generation"`
+	LifecycleRequestID       uuid.UUID          `json:"lifecycle_request_id"`
+	Epoch                    int64              `json:"epoch"`
+	ReleaseNamespace         string             `json:"release_namespace"`
+	ReleaseName              string             `json:"release_name"`
+	InstallIntentDigest      string             `json:"install_intent_digest"`
+	RequestedDurationSeconds int32              `json:"requested_duration_seconds"`
+	State                    string             `json:"state"`
+	NotAfter                 time.Time          `json:"not_after"`
+	HeartbeatAt              time.Time          `json:"heartbeat_at"`
+	AbortRequestedAt         pgtype.Timestamptz `json:"abort_requested_at"`
+	ReleasedAt               pgtype.Timestamptz `json:"released_at"`
+	CompletedAt              pgtype.Timestamptz `json:"completed_at"`
+	TakenOverAt              pgtype.Timestamptz `json:"taken_over_at"`
+	AbortedAt                pgtype.Timestamptz `json:"aborted_at"`
+	CreatedAt                time.Time          `json:"created_at"`
+	UpdatedAt                time.Time          `json:"updated_at"`
 }
 
 type NodePeerStatus struct {

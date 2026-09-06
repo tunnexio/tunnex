@@ -39,6 +39,9 @@ jobs:
       - name: Installer version provenance contract
         run: sh deploy/install-version-provenance_test.sh
 
+      - name: Local gate cache isolation contract
+        run: bash deploy/gate-cache-isolation-contract_test.sh
+
       - name: Installer fresh-host bootstrap contract
         run: sh deploy/install-host-bootstrap_test.sh
 
@@ -59,6 +62,15 @@ jobs:
 
       - name: Kubernetes HA deployment gate contract
         run: sh deploy/k8s-ha-deployment-gate-contract_test.sh
+
+      - name: Set up Go for reproducible chart artifacts
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.13'
+          cache: false
+
+      - name: Kubernetes zero-touch chart contracts
+        run: make test-k8s-charts
 
       - name: E2E heading locator contract
         run: node e2e/check-heading-locators.mjs
@@ -251,7 +263,7 @@ jobs:
           mkdir -p ../../cli-artifacts ../../runtime-artifacts
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${GITHUB_REF_NAME:-dev}" \
               -o "../../cli-artifacts/tnx-linux-$arch" ./cmd/tunnex
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
               go build -trimpath -buildvcs=false -ldflags="-s -w -X main.version=${GITHUB_REF_NAME:-dev}" \
@@ -444,6 +456,193 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # A published release version is immutable. Refuse a deleted/recreated or
+  # moved tag before any matrix image or chart can overwrite its public tag.
+  release-version-guard:
+    if: >-
+      vars.TUNNEX_RELEASE_PUBLISH_ENABLED == 'true' &&
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.gates.result == 'success' &&
+      needs.e2e.result == 'success' &&
+      needs.e2e-enterprise.result == 'success'
+    needs: [gates, e2e, e2e-enterprise]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # The authenticated GHCR token service needs create-capable scope to
+      # distinguish a truly absent first-version ref from an inaccessible one.
+      # The guard itself performs only manifest GETs.
+      packages: write
+    steps:
+      - name: Refuse published tag reuse before any artifact publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/tags/v*)
+              if ! [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+                echo "::error::release tags must use exact stable vMAJOR.MINOR.PATCH syntax; prerelease/build metadata cannot preserve byte-identical image and chart tags"
+                exit 1
+              fi
+              CURRENT_TAG_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}" --jq .sha)"
+              if [[ "$CURRENT_TAG_SHA" != "$GITHUB_SHA" ]]; then
+                echo "::error::release tag ${GITHUB_REF_NAME} moved from workflow source ${GITHUB_SHA} to ${CURRENT_TAG_SHA}; refusing publication"
+                exit 1
+              fi
+              RELEASE_TAG="$GITHUB_REF_NAME"
+              IMAGE_TAG="$GITHUB_REF_NAME"
+              IS_VERSION=true
+              ;;
+            refs/heads/main)
+              RELEASE_TAG="tunnex-build-${GITHUB_SHA}"
+              IMAGE_TAG="sha-${GITHUB_SHA::7}"
+              IS_VERSION=false
+              ;;
+            *) exit 0 ;;
+          esac
+          MARKER_NAME="Tunnex-release-source.json"
+          MARKER_DIR="$(mktemp -d)"
+          trap 'rm -rf "$MARKER_DIR"' EXIT
+          MARKER_PATH="${MARKER_DIR}/${MARKER_NAME}"
+          jq -cn \
+            --arg tag "$RELEASE_TAG" \
+            --arg source_sha "$GITHUB_SHA" \
+            '{schema_version:1,tag:$tag,source_sha:$source_sha}' >"$MARKER_PATH"
+
+          registry_ref_exists() {
+            local repo="$1"
+            local tag="$2"
+            local token code
+            token="$(curl -fsS --user "${GITHUB_ACTOR}:${GH_TOKEN}" --get \
+              --data-urlencode "scope=repository:${repo}:pull,push" \
+              --data-urlencode 'service=ghcr.io' \
+              https://ghcr.io/token | jq -er '.token')"
+            code="$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${token}" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json' \
+              "https://ghcr.io/v2/${repo}/manifests/${tag}")"
+            case "$code" in
+              200) return 0 ;;
+              404) return 1 ;;
+              *)
+                echo "::error::GHCR probe for ${repo}:${tag} returned HTTP ${code}; refusing an ambiguous version publish"
+                exit 1
+                ;;
+            esac
+          }
+
+          assert_artifact_refs_absent() {
+            local repo
+            for repo in \
+              "${GITHUB_REPOSITORY}-api" \
+              "${GITHUB_REPOSITORY}-web" \
+              "${GITHUB_REPOSITORY}-nginx" \
+              "${GITHUB_REPOSITORY}-node-agent" \
+              "${GITHUB_REPOSITORY}-migrate" \
+              "${GITHUB_REPOSITORY}-operator"; do
+              if registry_ref_exists "$repo" "$IMAGE_TAG"; then
+                echo "::error::GHCR already contains ${repo}:${IMAGE_TAG} but its release/source ledger is absent; the immutable ref is burned and must not be overwritten"
+                exit 1
+              fi
+            done
+            if [[ "$IS_VERSION" == true ]]; then
+              local chart_version="${GITHUB_REF_NAME#v}"
+              for repo in \
+                "${GITHUB_REPOSITORY_OWNER}/charts/tunnex-host-posture" \
+                "${GITHUB_REPOSITORY_OWNER}/charts/tunnex-gateway" \
+                "${GITHUB_REPOSITORY_OWNER}/charts/tunnex-operator" \
+                "${GITHUB_REPOSITORY_OWNER}/charts/tunnex-operator-crds"; do
+                if registry_ref_exists "$repo" "$chart_version"; then
+                  echo "::error::GHCR already contains ${repo}:${chart_version} but its release/source ledger is absent; the version is burned and must not be overwritten"
+                  exit 1
+                fi
+              done
+            fi
+          }
+
+          RELEASE_RESPONSE="${MARKER_DIR}/release.json"
+          RELEASE_REF_RESPONSE="${MARKER_DIR}/release-ref.json"
+          ENCODED_RELEASE_TAG="$(jq -rn --arg value "$RELEASE_TAG" '$value | @uri')"
+          RELEASE_REF_STATUS="$(curl -sS -o "$RELEASE_REF_RESPONSE" -w '%{http_code}' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/ref/tags/${ENCODED_RELEASE_TAG}")"
+          case "$RELEASE_REF_STATUS" in
+            200)
+              CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+              if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
+                echo "::error::release source ref ${RELEASE_TAG} already points to ${CURRENT_RELEASE_SHA}, not workflow source ${GITHUB_SHA}; refusing draft creation or adoption"
+                exit 1
+              fi
+              ;;
+            404)
+              if [[ "$IS_VERSION" == true ]]; then
+                echo "::error::release source ref ${RELEASE_TAG} disappeared after workflow dispatch; refusing publication"
+                exit 1
+              fi
+              ;;
+            *)
+              cat "$RELEASE_REF_RESPONSE" >&2
+              echo "::error::GitHub release source-ref lookup for ${RELEASE_TAG} returned HTTP ${RELEASE_REF_STATUS}; refusing an ambiguous publish"
+              exit 1
+              ;;
+          esac
+          RELEASE_STATUS="$(curl -sS -o "$RELEASE_RESPONSE" -w '%{http_code}' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${ENCODED_RELEASE_TAG}")"
+          case "$RELEASE_STATUS" in
+            200)
+              IS_DRAFT="$(jq -er '.draft' "$RELEASE_RESPONSE")"
+              if [[ "$IS_DRAFT" != true ]]; then
+                echo "::error::release ${RELEASE_TAG} is already published and immutable; refusing source reuse before any image or chart publication"
+                exit 1
+              fi
+              ACTUAL_MARKER="${MARKER_DIR}/actual/${MARKER_NAME}"
+              mkdir -p "${MARKER_DIR}/actual"
+              if gh release download "$RELEASE_TAG" --pattern "$MARKER_NAME" --dir "${MARKER_DIR}/actual" >/dev/null 2>&1; then
+                if ! cmp -s "$MARKER_PATH" "$ACTUAL_MARKER"; then
+                  echo "::error::draft release ${RELEASE_TAG} belongs to a different source; refusing moved-ref publication"
+                  exit 1
+                fi
+              else
+                ASSET_COUNT="$(jq -er '.assets | length' "$RELEASE_RESPONSE")"
+                if [[ "$ASSET_COUNT" != 0 ]]; then
+                  echo "::error::draft release ${RELEASE_TAG} has assets but no source ledger; refusing ambiguous adoption"
+                  exit 1
+                fi
+                assert_artifact_refs_absent
+                gh release upload "$RELEASE_TAG" "$MARKER_PATH"
+              fi
+              ;;
+            404)
+              assert_artifact_refs_absent
+              if [[ "$IS_VERSION" == true ]]; then
+                gh release create "$RELEASE_TAG" "$MARKER_PATH" \
+                  --title "$RELEASE_TAG" --generate-notes --draft --verify-tag
+              else
+                gh release create "$RELEASE_TAG" "$MARKER_PATH" \
+                  --target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes \
+                  --draft --prerelease --latest=false
+              fi
+              ;;
+            *)
+              cat "$RELEASE_RESPONSE" >&2
+              echo "::error::GitHub release lookup for ${RELEASE_TAG} returned HTTP ${RELEASE_STATUS}; refusing an ambiguous publish"
+              exit 1
+              ;;
+          esac
+          CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+          if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::release source ref ${RELEASE_TAG} moved from workflow source ${GITHUB_SHA} to ${CURRENT_RELEASE_SHA}; refusing publication"
+            exit 1
+          fi
+
   # S6.6 zero-build deploy: publish the prebuilt, MULTI-ARCH (amd64+arm64) service images to ghcr
   # so a customer never builds from source. Runs ONLY on a push (never PRs) and ONLY after gates,
   # and both behavioural E2E jobs pass. A failed build must not keep publishing for minutes
@@ -455,10 +654,12 @@ jobs:
     if: >-
       vars.TUNNEX_RELEASE_PUBLISH_ENABLED == 'true' &&
       github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.release-version-guard.result == 'success' &&
       needs.gates.result == 'success' &&
       needs.e2e.result == 'success' &&
       needs.e2e-enterprise.result == 'success'
-    needs: [gates, e2e, e2e-enterprise]
+    needs: [release-version-guard, gates, e2e, e2e-enterprise]
     runs-on: ubuntu-latest
     timeout-minutes: 20 # observed max ~10m (API/QEMU); cache makes the common case shorter
     permissions:
@@ -466,15 +667,40 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      artifact-metadata: write
     strategy:
       matrix:
         image:
-          - { name: api, dockerfile: deploy/docker/api.Dockerfile }
-          - { name: web, dockerfile: deploy/docker/web.Dockerfile }
-          - { name: nginx, dockerfile: deploy/docker/nginx.Dockerfile }
-          - { name: node-agent, dockerfile: deploy/docker/node.Dockerfile }
-          - { name: migrate, dockerfile: deploy/docker/migrate.Dockerfile }
+          - { name: api, dockerfile: deploy/docker/api.Dockerfile, context: . }
+          - { name: web, dockerfile: deploy/docker/web.Dockerfile, context: . }
+          - { name: nginx, dockerfile: deploy/docker/nginx.Dockerfile, context: . }
+          - { name: node-agent, dockerfile: deploy/docker/node.Dockerfile, context: . }
+          - { name: migrate, dockerfile: deploy/docker/migrate.Dockerfile, context: . }
+          - { name: operator, dockerfile: apps/operator/Dockerfile, context: apps/operator }
     steps:
+      - name: Revalidate release source ledger immediately before image publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/tags/v*) RELEASE_TAG="$GITHUB_REF_NAME" ;;
+            refs/heads/main) RELEASE_TAG="tunnex-build-${GITHUB_SHA}" ;;
+            *) exit 1 ;;
+          esac
+          CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+          if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::release source ref ${RELEASE_TAG} moved from workflow source ${GITHUB_SHA} to ${CURRENT_RELEASE_SHA}; refusing image publication"
+            exit 1
+          fi
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          EXPECTED="$(jq -cn --arg tag "$RELEASE_TAG" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
+          ACTUAL="$(gh release download "$RELEASE_TAG" --pattern Tunnex-release-source.json --output -)"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::release source ledger changed before image publication"
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3 # arm64 emulation for the multi-arch build
       - uses: docker/setup-buildx-action@v3
@@ -487,6 +713,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}-${{ matrix.image.name }}
+          # A version tag must not roll the main-tracking `latest` tag backward.
+          # `latest` is emitted only by the explicit default-branch raw rule.
+          flavor: latest=false
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short,prefix=sha-,enable={{is_default_branch}}
@@ -495,13 +724,16 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.image.context }}
           file: ${{ matrix.image.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Per-image scopes prevent five concurrent exporters overwriting one shared `buildkit` cache.
+          # Tag builds report the exact vX release; main builds report the exact
+          # source SHA. The binary owns this provenance, not a chart label/env.
+          build-args: VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          # Per-image scopes prevent concurrent exporters overwriting one shared `buildkit` cache.
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
       - name: Attest ${{ matrix.image.name }} image provenance
@@ -542,14 +774,14 @@ jobs:
           # `sha-<short>` on the default branch (docker/metadata-action type=sha,format=short).
           # The installer PINS the sha- tag, so checking only `latest` would miss the tag that matters.
           # ⚠ THE TAG SET DEPENDS ON THE EVENT, and getting that wrong makes this gate fail on exactly
-          # the builds that matter most. A branch push publishes `latest` + `sha-<short>`; a v* TAG push
-          # publishes `latest` + the version (`v0.1.2`) and NO sha- tag. Checking a fixed list would have
+          # the builds that matter most. A main push publishes `latest` + `sha-<short>`; a v* TAG push
+          # publishes only the version (`v0.1.2`) because is_default_branch is false on a tag ref.
+          # Checking a fixed list would have
           # red-flagged every release build for a tag that was never pushed.
-          IMAGES="api web nginx node-agent migrate"
-          TAGS="latest"
+          IMAGES="api web nginx node-agent migrate operator"
           case "$GITHUB_REF" in
-            refs/tags/*) TAGS="$TAGS ${GITHUB_REF#refs/tags/}" ;;
-            *)           TAGS="$TAGS sha-${GITHUB_SHA::7}" ;;
+            refs/tags/*) TAGS="${GITHUB_REF#refs/tags/}" ;;
+            *)           TAGS="latest sha-${GITHUB_SHA::7}" ;;
           esac
           echo ">> checking tags: $TAGS"
           FAILED=0
@@ -603,8 +835,9 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
-      needs.publish.result == 'success'
-    needs: [publish]
+      needs.publish.result == 'success' &&
+      needs.publish-pullable.result == 'success'
+    needs: [publish, publish-pullable]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -634,17 +867,21 @@ jobs:
   release-assets:
     # Main builds are installable by immutable SHA as well as version tags. Publish a
     # matching build release so get.tunnex.io can fetch the descriptor it names.
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    # A release asset that appears before its five image tags finish is a broken release. The matrix result
+    if: >-
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.publish.result == 'success' &&
+      needs.publish-pullable.result == 'success'
+    # A release asset that appears before all image tags finish is a broken release. The matrix result
     # becomes success only after every architecture of every service has been pushed.
-    needs: [publish, cli-release]
+    needs: [publish, publish-pullable, cli-release]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
-      packages: read
+      packages: write
       id-token: write
       attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -657,6 +894,32 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Helm for release charts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+      - name: Refuse published tag reuse before chart publication
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}" --jq .sha)" = "$GITHUB_SHA"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            IS_DRAFT="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)"
+            if [[ "$IS_DRAFT" != true ]]; then
+              echo "::error::release ${GITHUB_REF_NAME} is already published and immutable; refusing tag reuse before any OCI chart publication"
+              exit 1
+            fi
+          fi
+          EXPECTED="$(jq -cn --arg tag "$GITHUB_REF_NAME" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
+          ACTUAL="$(gh release download "$GITHUB_REF_NAME" --pattern Tunnex-release-source.json --output -)"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::release source ledger changed before chart publication"
+            exit 1
+          fi
       - name: Download Linux CLI artifacts
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/download-artifact@v4
@@ -674,6 +937,85 @@ jobs:
         run: |
           sha256sum install.sh > install.sh.sha256
           sha256sum install.ps1 > install.ps1.sha256
+      - name: Package and publish version-matched Helm charts
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CHART_VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p chart-artifacts
+          bash deploy/helm-package-reproducible.sh deploy/helm/tunnex-host-posture \
+            "$CHART_VERSION" "$GITHUB_REF_NAME" chart-artifacts
+          bash deploy/helm-package-reproducible.sh deploy/helm/tunnex-gateway \
+            "$CHART_VERSION" "$GITHUB_REF_NAME" chart-artifacts
+          bash deploy/helm-package-reproducible.sh deploy/helm/tunnex-operator \
+            "$CHART_VERSION" "$GITHUB_REF_NAME" chart-artifacts
+          bash deploy/helm-package-reproducible.sh deploy/helm/tunnex-operator-crds \
+            "$CHART_VERSION" "$GITHUB_REF_NAME" chart-artifacts
+          (cd chart-artifacts && sha256sum ./*.tgz > Tunnex-Helm-SHA256SUMS)
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          EXISTING_CHART_DIR="$(mktemp -d)"
+          trap 'rm -rf "$EXISTING_CHART_DIR"' EXIT
+          publish_or_verify_chart() {
+            local chart="$1"
+            local package="chart-artifacts/${chart}-${CHART_VERSION}.tgz"
+            local remote="oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/${chart}"
+            local existing="${EXISTING_CHART_DIR}/${chart}-${CHART_VERSION}.tgz"
+            local pull_log="${EXISTING_CHART_DIR}/${chart}.pull.log"
+            if helm pull "$remote" --version "$CHART_VERSION" --destination "$EXISTING_CHART_DIR" >"$pull_log" 2>&1; then
+              if ! cmp -s "$package" "$existing"; then
+                echo "::error::refusing to overwrite existing OCI chart ${chart}:${CHART_VERSION} with different bytes; publish a new version"
+                exit 1
+              fi
+              echo "Reusing exact matching OCI chart ${chart}:${CHART_VERSION}"
+              return
+            fi
+            if ! grep -Eqi 'manifest unknown|not found' "$pull_log"; then
+              cat "$pull_log" >&2
+              echo "::error::could not prove whether OCI chart ${chart}:${CHART_VERSION} exists; refusing to publish"
+              exit 1
+            fi
+            helm push "$package" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts"
+          }
+          publish_or_verify_chart tunnex-host-posture
+          publish_or_verify_chart tunnex-gateway
+          publish_or_verify_chart tunnex-operator
+          publish_or_verify_chart tunnex-operator-crds
+      - name: Prove published Helm charts are anonymously pullable
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          CHART_VERSION="${GITHUB_REF_NAME#v}"
+          ANON_REGISTRY_DIR="$(mktemp -d)"
+          ANON_DOCKER_DIR="$(mktemp -d)"
+          ANON_HELM_DIR="$(mktemp -d)"
+          ANON_REGISTRY_CONFIG="${ANON_REGISTRY_DIR}/config.json"
+          trap 'rm -rf "$ANON_REGISTRY_DIR" "$ANON_DOCKER_DIR" "$ANON_HELM_DIR"' EXIT
+          for chart in tunnex-host-posture tunnex-gateway tunnex-operator tunnex-operator-crds; do
+            ok=false
+            for _ in 1 2 3 4 5; do
+              # Helm falls back to Docker's credential store. Isolate BOTH
+              # configs/caches so the docker/login-action credential above
+              # cannot make a private chart look anonymously pullable.
+              if DOCKER_CONFIG="$ANON_DOCKER_DIR" \
+                HELM_REGISTRY_CONFIG="$ANON_REGISTRY_CONFIG" \
+                HELM_CONFIG_HOME="$ANON_HELM_DIR/config" \
+                HELM_CACHE_HOME="$ANON_HELM_DIR/cache" \
+                HELM_DATA_HOME="$ANON_HELM_DIR/data" \
+                helm pull \
+                "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/${chart}" \
+                --version "$CHART_VERSION" --destination /tmp; then
+                ok=true
+                break
+              fi
+              sleep 6
+            done
+            if [[ "$ok" != true ]]; then
+              echo "::error::Helm chart ${chart}:${CHART_VERSION} is not anonymously pullable; set the GHCR package visibility to Public"
+              exit 1
+            fi
+          done
       - name: Build and sign the immutable release manifest
         env:
           TUNNEX_RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.TUNNEX_RELEASE_SIGNING_PRIVATE_KEY }}
@@ -714,6 +1056,7 @@ jobs:
           nginx_amd64=$(digest "${image_prefix}-nginx" amd64); nginx_arm64=$(digest "${image_prefix}-nginx" arm64)
           node_amd64=$(digest "${image_prefix}-node-agent" amd64); node_arm64=$(digest "${image_prefix}-node-agent" arm64)
           migrate_amd64=$(digest "${image_prefix}-migrate" amd64); migrate_arm64=$(digest "${image_prefix}-migrate" arm64)
+          operator_amd64=$(digest "${image_prefix}-operator" amd64); operator_arm64=$(digest "${image_prefix}-operator" arm64)
           jq -n \
             --argjson sequence "$RUN_NUMBER" --arg version "$RELEASE_VERSION" --arg source_sha "$SOURCE_SHA" \
             --arg published_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -721,32 +1064,38 @@ jobs:
             --arg api_amd64 "$api_amd64" --arg api_arm64 "$api_arm64" --arg web_amd64 "$web_amd64" --arg web_arm64 "$web_arm64" \
             --arg nginx_amd64 "$nginx_amd64" --arg nginx_arm64 "$nginx_arm64" --arg node_amd64 "$node_amd64" --arg node_arm64 "$node_arm64" \
             --arg migrate_amd64 "$migrate_amd64" --arg migrate_arm64 "$migrate_arm64" \
+            --arg operator_amd64 "$operator_amd64" --arg operator_arm64 "$operator_arm64" \
             --arg runtime_amd64_sha "$runtime_amd64_sha" --arg runtime_arm64_sha "$runtime_arm64_sha" \
             --arg runtime_unit_sha "$runtime_unit_sha" \
-            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
+            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64},operator:{linux_amd64_digest:$operator_amd64,linux_arm64_digest:$operator_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
           (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
           rm release-unsigned.json
           sha256sum release.json > release.json.sha256
       - name: Attach platform installers + checksums to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             RELEASE_TAG="$GITHUB_REF_NAME"
-            BUILD_RELEASE=false
           else
             RELEASE_TAG="tunnex-build-${GITHUB_SHA}"
-            BUILD_RELEASE=true
           fi
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            if [[ "$BUILD_RELEASE" == true ]]; then
-              gh release edit "$RELEASE_TAG" --prerelease
-            fi
-          elif [[ "$BUILD_RELEASE" == true ]]; then
-            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --prerelease
-          else
-            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes
+          CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+          if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::release source ref ${RELEASE_TAG} moved from workflow source ${GITHUB_SHA} to ${CURRENT_RELEASE_SHA}; refusing asset publication"
+            exit 1
+          fi
+          if [[ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" != true ]]; then
+            echo "::error::release ${RELEASE_TAG} is absent or no longer the source-ledger draft; refusing asset publication"
+            exit 1
+          fi
+          EXPECTED="$(jq -cn --arg tag "$RELEASE_TAG" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
+          ACTUAL="$(gh release download "$RELEASE_TAG" --pattern Tunnex-release-source.json --output -)"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::release source ledger changed before asset publication"
+            exit 1
           fi
           gh release upload "$RELEASE_TAG" \
             deploy/install.sh deploy/install.sh.sha256 \
@@ -774,6 +1123,28 @@ jobs:
           sha256sum "$amd64" "$arm64" > cli-artifacts/Tunnex-CLI-SHA256SUMS
           gh release upload "$GITHUB_REF_NAME" \
             "$amd64" "$arm64" cli-artifacts/Tunnex-CLI-SHA256SUMS --clobber
+      - name: Attach Helm charts + checksum to tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -s chart-artifacts/Tunnex-Helm-SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" \
+            chart-artifacts/tunnex-host-posture-*.tgz \
+            chart-artifacts/tunnex-gateway-*.tgz \
+            chart-artifacts/tunnex-operator-[0-9]*.tgz \
+            chart-artifacts/tunnex-operator-crds-*.tgz \
+            chart-artifacts/Tunnex-Helm-SHA256SUMS --clobber
+      - name: Attest versioned Helm charts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            chart-artifacts/tunnex-host-posture-*.tgz
+            chart-artifacts/tunnex-gateway-*.tgz
+            chart-artifacts/tunnex-operator-[0-9]*.tgz
+            chart-artifacts/tunnex-operator-crds-*.tgz
       - name: Attach Linux managed-agent runtime binaries + checksum to tagged release
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         env:
@@ -788,23 +1159,74 @@ jobs:
           test -s "$unit"
           sha256sum "$amd64" "$arm64" "$unit" > runtime-artifacts/Tunnex-Agent-Runtime-SHA256SUMS
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then RELEASE_TAG="$GITHUB_REF_NAME"; else RELEASE_TAG="tunnex-build-${GITHUB_SHA}"; fi
+          CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+          if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::release source ref ${RELEASE_TAG} moved from workflow source ${GITHUB_SHA} to ${CURRENT_RELEASE_SHA}; refusing runtime asset publication"
+            exit 1
+          fi
           gh release upload "$RELEASE_TAG" \
             "$amd64" "$arm64" "$unit" runtime-artifacts/Tunnex-Agent-Runtime-SHA256SUMS --clobber
-      - name: Mark completed versioned release as latest
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish only the completed source-ledger release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --latest
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            RELEASE_TAG="tunnex-build-${GITHUB_SHA}"
+          fi
+          CURRENT_RELEASE_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+          if [[ "$CURRENT_RELEASE_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error::release source ref ${RELEASE_TAG} moved from workflow source ${GITHUB_SHA} to ${CURRENT_RELEASE_SHA}; refusing final publication"
+            exit 1
+          fi
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          EXPECTED="$(jq -cn --arg tag "$RELEASE_TAG" --arg source_sha "$GITHUB_SHA" '{schema_version:1,tag:$tag,source_sha:$source_sha}')"
+          ACTUAL="$(gh release download "$RELEASE_TAG" --pattern Tunnex-release-source.json --output -)"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::release source ledger changed before final publication"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          fi
+
+  # Catalog publication is independently retryable. A catalog failure must not
+  # rerun or mutate the now-immutable version release and its image/chart tags.
+  publish-update-catalog:
+    if: startsWith(github.ref, 'refs/tags/v') && needs.release-assets.result == 'success'
+    needs: [release-assets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download and verify the completed release descriptor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p catalog-artifacts
+          gh release download "$GITHUB_REF_NAME" \
+            --pattern release.json --pattern release.json.sha256 \
+            --dir catalog-artifacts
+          (cd catalog-artifacts && sha256sum -c release.json.sha256)
       - name: Publish signed update catalog
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           if gh release view tunnex-updates >/dev/null 2>&1; then
-            gh release upload tunnex-updates release.json release.json.sha256 --clobber
+            gh release upload tunnex-updates \
+              catalog-artifacts/release.json catalog-artifacts/release.json.sha256 --clobber
           else
-            gh release create tunnex-updates release.json release.json.sha256 \
+            gh release create tunnex-updates \
+              catalog-artifacts/release.json catalog-artifacts/release.json.sha256 \
               --target "$GITHUB_SHA" \
               --title "Tunnex update catalog" \
               --notes "Moving signed update catalog consumed by installed control planes." \

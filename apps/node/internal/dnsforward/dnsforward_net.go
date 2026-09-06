@@ -363,7 +363,12 @@ func (f *Forwarder) reconcileBinds(
 			}
 			continue // retry next tick
 		}
-		cctx, cancel := context.WithCancel(ctx)
+		// A reconciliation command may use a short-lived request context. The DNS
+		// socket is owned by this forwarder, not that command: cancelling the
+		// request after ApplyStage returns must not tear down an otherwise healthy
+		// listener before readback. Withdrawal and shutdown explicitly cancel the
+		// entry kept in live/ownedLive.
+		cctx, cancel := context.WithCancel(context.Background())
 		generation := f.registerListener(addr, pc)
 		live[addr] = cancel
 		f.listenerWG.Add(1)

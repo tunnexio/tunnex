@@ -60,7 +60,7 @@ func TestAgentRuntimeRoutesPostgresContract(t *testing.T) {
 	})
 
 	principal := &authctx.Principal{UserID: owner, Email: "owner@example.com", EmailVerified: true, Roles: map[uuid.UUID]string{org: rbac.RoleOwner}}
-	router, err := NewRouter(slog.Default(), Deps{System: q, Orgs: tenancy.NewService(pool), Devices: devices.NewService(pool, nil, slog.Default()), Licence: licence.NewTestManager("growth", time.Now().Add(time.Hour)), Policy: NewPolicyPort(pool, nil), AgentRuntimeOptIn: agentruntime.OrganizationOptIn(q, func() bool { return true }), AuthFn: func(*http.Request) *authctx.Principal { return principal }})
+	router, err := NewRouter(slog.Default(), Deps{System: q, AgentRuntimePool: pool, Orgs: tenancy.NewService(pool), Devices: devices.NewService(pool, nil, slog.Default()), Licence: licence.NewTestManager("growth", time.Now().Add(time.Hour)), Policy: NewPolicyPort(pool, nil), AgentRuntimeOptIn: agentruntime.OrganizationOptIn(q, func() bool { return true }), AuthFn: func(*http.Request) *authctx.Principal { return principal }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestAgentRuntimeRoutesPostgresContract(t *testing.T) {
 	// Base agent inventory and runtime are available on Community. A missing
 	// runtime dependency remains an operational service error, never a plan gate.
 	openRouter, err := NewRouter(slog.Default(), Deps{
-		System: q, Orgs: tenancy.NewService(pool), Nodes: nodes.NewService(pool, nil, nil), Licence: licence.NewTestManager("community", time.Now().Add(time.Hour)),
+		System: q, AgentRuntimePool: pool, Orgs: tenancy.NewService(pool), Nodes: nodes.NewService(pool, nil, nil), Licence: licence.NewTestManager("community", time.Now().Add(time.Hour)),
 		Policy: NewPolicyPort(pool, nil), AuthFn: func(*http.Request) *authctx.Principal { return principal },
 	})
 	if err != nil {

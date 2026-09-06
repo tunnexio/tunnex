@@ -1,0 +1,51 @@
+# One-shot pre-Tunnex baseline only; not a VPN acceptance leg.
+# Official BusyBox 1.37.0 Linux/amd64 manifest resolved before creation.
+# Retain the completed Pod as evidence; no TTL controller or cleanup implied.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: s205-native-network-probe
+  namespace: default
+  labels:
+    app.kubernetes.io/name: s205-native-network-probe
+    tunnex.io/walk-session: tunnex-s205-aws-20260905a
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  activeDeadlineSeconds: 120
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: false
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    eks.amazonaws.com/nodegroup: tunnex-s205-aws-20260905a-worker-a
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: probe
+      image: docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-ec"]
+      args:
+        - |
+          nslookup -type=A kubernetes.default.svc.cluster.local
+          printf 'NATIVE_SERVICE_DNS_OK\n'
+          nslookup -type=A checkip.amazonaws.com
+          printf 'NATIVE_EXTERNAL_DNS_OK\n'
+          wget -T 15 -O /dev/null http://checkip.amazonaws.com
+          printf 'NATIVE_HTTP_EGRESS_OK\n'
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

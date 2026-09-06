@@ -1,0 +1,105 @@
+# One isolated candidate on the retained CP host; not an override for tunnex.yml.
+# Use an explicit -p tunnex-s205-walk and a new private --env-file. All images
+# must be explicitly pulled by registry digest before use; see
+# docs/S20.5-aws-isolated-cp-plan.md. Local image IDs do not qualify the walk.
+name: tunnex-s205-walk
+
+services:
+  postgres:
+    image: ${S205_POSTGRES_IMAGE:?set verified sha256-pinned PostgreSQL 16 Alpine image}
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tunnex_s205
+      POSTGRES_DB: tunnex_s205
+      POSTGRES_PASSWORD: ${S205_POSTGRES_PASSWORD:?set a fresh 64-character hexadecimal password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tunnex_s205", "-d", "tunnex_s205"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: ${S205_REDIS_IMAGE:?set verified sha256-pinned Redis 7 Alpine image}
+    pull_policy: never
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: ${S205_API_IMAGE:?set verified sha256-pinned candidate API image}
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      TUNNEX_ENV: production
+      TUNNEX_LOG_LEVEL: info
+      TUNNEX_API_ADDR: ":8080"
+      TUNNEX_SECRETS_DIR: /var/lib/tunnex/secrets
+      TUNNEX_AUTO_MIGRATE: "true" # only the new candidate database
+      APP_BASE_URL: https://s205.13.206.39.40.sslip.io
+      TUNNEX_COOKIE_SECURE: "true"
+      TUNNEX_GATEWAY_CONTROL_URL: https://s205.13.206.39.40.sslip.io:18443
+      TUNNEX_NODE_AGENT_IMAGE: ${S205_NODE_AGENT_IMAGE:?set candidate registry digest accessible to EKS}
+      # Composition available; fresh organization HA opt-in stays OFF.
+      TUNNEX_K8S_HA_ENABLED: "true"
+      DATABASE_URL: postgres://tunnex_s205:${S205_POSTGRES_PASSWORD:?set a fresh 64-character hexadecimal password}@postgres:5432/tunnex_s205?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      TUNNEX_ADMIN_EMAIL: ${S205_ADMIN_EMAIL:-admin@tunnex.local}
+      # Private candidate, not a signed release or a host-updater installation.
+      TUNNEX_RELEASE_UPDATE_CHECK: "false"
+      TUNNEX_RELEASE_MANIFEST_PATH: ""
+      TUNNEX_RELEASE_MANIFEST_URL: ""
+      TUNNEX_RELEASE_CATALOG_URL: ""
+      TUNNEX_HOST_UPGRADE_REQUEST_PATH: ""
+      TUNNEX_HOST_UPGRADE_STATUS_PATH: ""
+    volumes:
+      - tunnex_secrets:/var/lib/tunnex/secrets
+    ports:
+      - "18443:8443" # end-to-end agent mTLS; SG allows exact worker public /32s
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: ${S205_WEB_IMAGE:?set verified sha256-pinned candidate web image}
+    pull_policy: never
+    restart: unless-stopped
+
+  nginx:
+    image: ${S205_NGINX_IMAGE:?set verified sha256-pinned candidate nginx image}
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      # Measured gateway of retained tunnex_default, not the public interface.
+      # Caddy remains on that network; candidate services do not join it.
+      - "172.18.0.1:18080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  tunnex_secrets:
+
+networks:
+  default:
+    driver: bridge

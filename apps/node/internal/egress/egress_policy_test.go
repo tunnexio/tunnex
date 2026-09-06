@@ -145,7 +145,7 @@ func TestRulesetEnforcingDefaultDenyNoBlanket(t *testing.T) {
 	if !strings.Contains(rs, "policy drop") {
 		t.Fatal("enforcing must keep the forward policy drop base")
 	}
-	if !strings.Contains(rs, "ip saddr 10.99.0.10 ct original ip daddr 10.0.5.0/24 tcp dport 5432 counter accept") {
+	if !strings.Contains(rs, "ip saddr 10.99.0.10 ct original ip daddr 10.0.5.0/24 meta l4proto tcp ct original proto-dst 5432 counter accept") {
 		t.Fatalf("missing the resource allow; got:\n%s", rs)
 	}
 	if !strings.Contains(rs, "ip saddr 10.99.0.10 ct original ip daddr 10.99.0.20/32 counter accept") {
@@ -251,13 +251,16 @@ func TestForwardRulesRenderDualStackExactHosts(t *testing.T) {
 		{SrcIP: "fd42:99::7", DstCIDR: "2001:db8:21::41/128", Protocol: "udp", PortLow: 53, PortHigh: 53},
 	}}
 	v4, v6 := m.forwardRules(pol, true)
-	if !strings.Contains(v4, "ip saddr 10.99.0.7 ct original ip daddr 203.0.113.41/32 tcp dport 443") {
+	// Policy ports use the conntrack-original tuple. This is identical to the
+	// current destination off DNAT, and preserves the client-dialed Service port
+	// when Kubernetes DNAT remaps it to a different pod targetPort.
+	if !strings.Contains(v4, "ip saddr 10.99.0.7 ct original ip daddr 203.0.113.41/32 meta l4proto tcp ct original proto-dst 443") {
 		t.Fatalf("v4 exact-host allow missing: %s", v4)
 	}
 	if strings.Contains(v4, "2001:db8:21::41") {
 		t.Fatalf("v6 tuple leaked into ip table: %s", v4)
 	}
-	if !strings.Contains(v6, "ip6 saddr fd42:99::7 ct original ip6 daddr 2001:db8:21::41/128 udp dport 53") {
+	if !strings.Contains(v6, "ip6 saddr fd42:99::7 ct original ip6 daddr 2001:db8:21::41/128 meta l4proto udp ct original proto-dst 53") {
 		t.Fatalf("v6 exact-host allow missing: %s", v6)
 	}
 	if strings.Contains(v6, "203.0.113.41") {
@@ -399,14 +402,15 @@ func TestRenderAllowSanitizesAndSkips(t *testing.T) {
 	if !strings.Contains(line, "ip daddr 10.0.5.0/24") {
 		t.Fatalf("dst not canonicalized: %q", line)
 	}
-	// tcp with no ports -> ip protocol clause.
+	// tcp with no ports -> family-neutral L4 protocol clause. `ip protocol`
+	// would be IPv4-only and would diverge from the dual-stack grant renderer.
 	line, _ = renderAllow(nodepolicy.AllowEntry{SrcIP: "10.0.0.1", DstCIDR: "10.0.5.0/24", Protocol: "tcp"})
-	if !strings.Contains(line, "ip protocol tcp counter accept") {
+	if !strings.Contains(line, "meta l4proto tcp counter accept") {
 		t.Fatalf("tcp-no-ports mis-rendered: %q", line)
 	}
 	// port range.
 	line, _ = renderAllow(nodepolicy.AllowEntry{SrcIP: "10.0.0.1", DstCIDR: "10.0.5.0/24", Protocol: "tcp", PortLow: 8000, PortHigh: 9000})
-	if !strings.Contains(line, "tcp dport 8000-9000 counter accept") {
+	if !strings.Contains(line, "meta l4proto tcp ct original proto-dst 8000-9000 counter accept") {
 		t.Fatalf("port range mis-rendered: %q", line)
 	}
 }
@@ -682,7 +686,7 @@ func TestRenderAllowHalfSetPortRangeFailsClosed(t *testing.T) {
 		t.Fatal("inverted range must be skipped")
 	}
 	// both unset -> any-port (valid).
-	if line, ok := renderAllow(nodepolicy.AllowEntry{SrcIP: "10.0.0.1", DstCIDR: "10.0.5.0/24", Protocol: "tcp"}); !ok || !strings.Contains(line, "ip protocol tcp") {
+	if line, ok := renderAllow(nodepolicy.AllowEntry{SrcIP: "10.0.0.1", DstCIDR: "10.0.5.0/24", Protocol: "tcp"}); !ok || !strings.Contains(line, "meta l4proto tcp") {
 		t.Fatalf("both-unset must be any-port, got %q ok=%v", line, ok)
 	}
 }
@@ -788,7 +792,7 @@ func TestB1EnforcingGrantHasNoInterfacePredicate(t *testing.T) {
 	rs := m.ruleset("10.99.0.1/24")
 
 	// the grant is present, address-keyed.
-	if !strings.Contains(rs, "ip saddr 10.99.0.10 ct original ip daddr 10.0.5.0/24 tcp dport 5432 counter accept") {
+	if !strings.Contains(rs, "ip saddr 10.99.0.10 ct original ip daddr 10.0.5.0/24 meta l4proto tcp ct original proto-dst 5432 counter accept") {
 		t.Fatalf("enforcing grant must be address-keyed; got:\n%s", rs)
 	}
 	// no line carrying this grant's source may be scoped by an interface predicate.

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: tunnex-host-posture
+description: >-
+  Cluster-singleton, provider-neutral Linux host lifecycle manager for Tunnex
+  Kubernetes gateways. One privileged DaemonSet manager per eligible node
+  journals exact pre-Tunnex sysctls and bounded dataplane ownership, admits only
+  live contract-valid gateway Pod UIDs, continuously enforces active posture,
+  and restores or cleans only proven Tunnex-owned state after the last owner.
+type: application
+version: 0.1.0
+appVersion: "0.2.0"
+kubeVersion: ">=1.24.0-0"
+keywords: [vpn, wireguard, zero-trust, kubernetes, lifecycle]
+home: https://github.com/tunnexio/tunnex
+sources: [https://github.com/tunnexio/tunnex]
+annotations:
+  artifacthub.io/license: Apache-2.0

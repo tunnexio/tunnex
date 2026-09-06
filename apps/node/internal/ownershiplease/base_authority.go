@@ -60,8 +60,9 @@ func poolScopeFromWire(value reconcile.KubernetesOwnershipPoolScope) PoolScope {
 }
 
 // BaseStateHash is the canonical ordinary data-plane snapshot hash. The
-// authority object is self-referential and the DNS RPC is a transient control
-// request, so neither belongs to the ordinary base it authorizes.
+// authority object is self-referential, the DNS RPC is a transient control
+// request, and Version is only the node-push watch cursor, so none belongs to
+// the ordinary data-plane base it authorizes.
 func BaseStateHash(base reconcile.DesiredState) (string, error) {
 	// Keep this explicit view mirrored by the control plane. It makes the hash
 	// independent of incidental field ordering in either side's larger desired
@@ -72,13 +73,12 @@ func BaseStateHash(base reconcile.DesiredState) (string, error) {
 		InterfaceAddress string                        `json:"interface_address"`
 		MTU              int                           `json:"mtu"`
 		ListenPort       int                           `json:"listen_port"`
-		Version          uint64                        `json:"version"`
 		Peers            []reconcile.Peer              `json:"peers"`
 		Policy           *nodepolicy.Compiled          `json:"policy,omitempty"`
 		OVPNEnabled      bool                          `json:"ovpn_enabled,omitempty"`
 		OVPNClients      []reconcile.OVPNClient        `json:"ovpn_clients,omitempty"`
 		OVPNServer       *reconcile.OVPNServerMaterial `json:"ovpn_server,omitempty"`
-	}{base.ProtocolVersion, base.NodeID, base.InterfaceAddress, base.MTU, base.ListenPort, base.Version,
+	}{base.ProtocolVersion, base.NodeID, base.InterfaceAddress, base.MTU, base.ListenPort,
 		base.Peers, base.Policy, base.OVPNEnabled, base.OVPNClients, base.OVPNServer}
 	b, err := json.Marshal(view)
 	if err != nil {

@@ -183,6 +183,14 @@ PG_DB ?= tunnex
 # key produces a secret THAT STACK CANNOT UNSEAL, with no error at seal time.
 SECRETS_VOL := $(if $(COMPOSE_PROJECT_NAME),$(COMPOSE_PROJECT_NAME)_tunnex_secrets,tunnex_tunnex_secrets)
 
+# Dependency caches are independent of Compose networks/stores. Keep existing
+# developer defaults, but allow isolated gates to avoid mutating another lane's
+# installed dependency tree. Set this together with COMPOSE_PROJECT_NAME.
+GATE_CACHE_PREFIX ?= tunnex
+ROOT_NM_VOL := $(GATE_CACHE_PREFIX)-nm
+SHARED_NM_VOL := $(GATE_CACHE_PREFIX)-shared-nm
+WEB_NM_VOL := $(GATE_CACHE_PREFIX)-web-nm
+
 .PHONY: generate
 generate: generate-go generate-ts generate-rbac generate-tokens sqlc ## Regenerate all code from openapi/openapi.yaml
 
@@ -193,7 +201,7 @@ generate-tokens: ## S14.1: emit the design-token artifacts from packages/shared/
 	# Committing the artifacts and drift-guarding them is this repo's established pattern (api.d.ts,
 	# rbac-policy.json) rather than a new one.
 	docker run --rm -v "$(PWD)":/w -w /w/packages/shared \
-	  -v tunnex-nm:/w/node_modules -v tunnex-shared-nm:/w/packages/shared/node_modules \
+	  -v $(ROOT_NM_VOL):/w/node_modules -v $(SHARED_NM_VOL):/w/packages/shared/node_modules \
 	  node:20-alpine sh -c 'corepack enable && pnpm install --filter @tunnex/shared --no-frozen-lockfile >/dev/null && \
 	    ./node_modules/.bin/tsc -p tsconfig.tokens.json && node scripts/emit-tokens.mjs'
 
@@ -277,13 +285,22 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# netlink to init its cache — needs NET_ADMIN even in check-only mode. Without the cap that one test SKIPS
 	# (never false-fails), so the render-valid proof only holds when the cap is present (it is, here + in CI).
 	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)/apps/node":/src -w /src -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables && go test ./..."
+	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables iptables && go test ./..."
 
 .PHONY: test-operator
 test-operator: ## Build the GitOps operator + run the no-DB-import census (S10.2). Edition-agnostic (one build; the operator is open deployment tooling, no enterprise tag).
 	# THE HARD RULE red: `go test` runs the no-DB-import census (hardrule_test.go) over the full dep graph.
 	docker run --rm -v "$(PWD)/apps/operator":/src -w /src -e GOFLAGS=-mod=readonly \
 	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go test ./..."
+
+.PHONY: test-k8s-charts
+test-k8s-charts: ## Lint and semantically render host posture, gateway, GitOps operator, and monotonic CRD charts.
+	bash deploy/helm-package-reproducible-contract_test.sh
+	bash deploy/k8s-host-posture-chart-contract_test.sh
+	bash deploy/k8s-gateway-chart-contract_test.sh
+	bash deploy/k8s-operator-crd-chart-contract_test.sh
+	bash deploy/k8s-operator-chart-contract_test.sh
+	bash deploy/k8s-walk-candidate-package-contract_test.sh
 
 .PHONY: web-gate
 web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 20 — works on any host (S11 debt repayment)
@@ -293,9 +310,9 @@ web-gate: ## Run the FULL web gate (typecheck + test + build) in Node 20 — wor
 	# node_modules are CONTAINER-LOCAL named volumes (never the bind mount): pnpm links platform-specific
 	# binaries (esbuild/rollup/vitest), and sharing them with a macOS host yields wrong-arch failures.
 	docker run --rm -v "$(PWD)":/w -w /w \
-	  -v tunnex-nm:/w/node_modules \
-	  -v tunnex-web-nm:/w/apps/web/node_modules \
-	  -v tunnex-shared-nm:/w/packages/shared/node_modules \
+	  -v $(ROOT_NM_VOL):/w/node_modules \
+	  -v $(WEB_NM_VOL):/w/apps/web/node_modules \
+	  -v $(SHARED_NM_VOL):/w/packages/shared/node_modules \
 	  node:20-alpine sh -c 'apk add --no-cache jq >/dev/null && corepack enable && pnpm install --filter @tunnex/web... --no-frozen-lockfile && \
 	    pnpm --filter @tunnex/web typecheck && pnpm --filter @tunnex/web test && pnpm --filter @tunnex/web build'
 

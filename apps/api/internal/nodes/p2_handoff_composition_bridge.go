@@ -198,13 +198,17 @@ func newHandoffSchedulerComposition(enabled bool, pool *pgxpool.Pool, elector *l
 		return nil, fmt.Errorf("topology-fenced bootstrap issuer is required")
 	}
 	const (
-		referenceFreshness = time.Minute
-		referenceClockSkew = time.Second
+		// In-cluster gateways report every five seconds. Ten seconds permits one
+		// missed report without a false stale verdict while retaining the pure
+		// model's three-tick hysteresis inside the 30-second HA recovery budget.
+		referenceReportFreshness = 10 * time.Second
+		referenceAckFreshness    = time.Minute
+		referenceClockSkew       = time.Second
 	)
-	history := NewPostgresHandoffHealthHistory(pool, policy, referenceFreshness)
+	history := NewPostgresHandoffHealthHistory(pool, policy, referenceReportFreshness)
 	plans := NewPostgresHandoffPlanResolverWithLeadershipProvenance(pool, provenance)
 	source := NewPostgresHandoffTickSource(pool, policy, history, plans, HandoffTickSourceConfig{
-		ReportFreshness: referenceFreshness, MaxAckAge: referenceFreshness, ClockSkewMargin: referenceClockSkew,
+		ReportFreshness: referenceReportFreshness, MaxAckAge: referenceAckFreshness, ClockSkewMargin: referenceClockSkew,
 	})
 	serverConfig := HandoffSchedulerServerConfig{
 		Enabled: enabled, Cadence: 5 * time.Second, PerTickTimeout: 4 * time.Second, MaxBackoff: time.Minute,
@@ -226,15 +230,15 @@ func newHandoffSchedulerComposition(enabled bool, pool *pgxpool.Pool, elector *l
 		return nil, fmt.Errorf("handoff scheduler dependency graph is incomplete")
 	}
 	runtime := NewHandoffSchedulerServerRuntime(serverConfig, dependencies)
-	bootstrapSource := NewPostgresHandoffBootstrapPlanSource(pool, HandoffBootstrapPlanSourceConfig{LeaseTTL: 5 * time.Minute})
+	bootstrapSource := NewPostgresHandoffBootstrapPlanSource(pool, HandoffBootstrapPlanSourceConfig{LeaseTTL: 30 * time.Second})
 	var transition HandoffOwnershipModeTransition
 	if enabled {
-		transition, err = NewPostgresHandoffOwnershipModeTransition(pool, base, authority, HandoffHATransitionConfig{MaxAckAge: referenceFreshness, AuthorityTTL: 5 * time.Minute})
+		transition, err = NewPostgresHandoffOwnershipModeTransition(pool, base, authority, HandoffHATransitionConfig{MaxAckAge: referenceAckFreshness, AuthorityTTL: 5 * time.Minute, ClockSkewMargin: referenceClockSkew})
 		if err != nil {
 			return nil, err
 		}
 	}
 	bootstrap := NewHandoffBootstrapReconciler(HandoffBootstrapConfig{}, bootstrapSource, bootstrapIssuer, bridge, transition)
-	activation := NewHandoffHAActivationRuntime(HandoffHAActivationRuntimeConfig{Enabled: enabled, Cadence: 5 * time.Second, MaxAckAge: referenceFreshness}, pool, elector, bootstrapSource, bootstrapIssuer, bridge, transition)
+	activation := NewHandoffHAActivationRuntime(HandoffHAActivationRuntimeConfig{Enabled: enabled, Cadence: 5 * time.Second, MaxAckAge: referenceAckFreshness}, pool, elector, bootstrapSource, bootstrapIssuer, bridge, transition)
 	return &HandoffSchedulerDefaultOffComposition{Runtime: runtime, P2: bridge, Bootstrap: bootstrap, Activation: activation}, nil
 }

@@ -520,7 +520,7 @@ func (q *Queries) GetDeviceForUpdate(ctx context.Context, arg GetDeviceForUpdate
 }
 
 const getOrgNode = `-- name: GetOrgNode :one
-SELECT id, org_id, name, status, cert_serial, agent_version, enrolled_at, last_seen_at, revoked_at, created_at, updated_at, wg_public_key, endpoint, capabilities, policy_desync_since, policy_reported_at, site_id, hub_priority, cert_not_after, cert_public_key, cert_key_fingerprint, cert_delivered_at, cert_delivered, owner_user_id, enrolled_kind FROM nodes
+SELECT id, org_id, name, status, cert_serial, agent_version, enrolled_at, last_seen_at, revoked_at, created_at, updated_at, wg_public_key, endpoint, capabilities, policy_desync_since, policy_reported_at, site_id, hub_priority, cert_not_after, cert_public_key, cert_key_fingerprint, cert_delivered_at, cert_delivered, owner_user_id, enrolled_kind, lifecycle_claim FROM nodes
 WHERE id = $1 AND org_id = $2 AND status = 'active'
 `
 
@@ -559,6 +559,7 @@ func (q *Queries) GetOrgNode(ctx context.Context, arg GetOrgNodeParams) (Node, e
 		&i.CertDelivered,
 		&i.OwnerUserID,
 		&i.EnrolledKind,
+		&i.LifecycleClaim,
 	)
 	return i, err
 }
@@ -852,6 +853,71 @@ func (q *Queries) ListCascadeRevokedDevicesForNode(ctx context.Context, nodeID u
 			&i.PublicKey,
 			&i.Transport,
 			&i.RevokedPrevStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDevicePublicKeyHistoryForOrg = `-- name: ListDevicePublicKeyHistoryForOrg :many
+SELECT id, org_id, user_id, node_id, name, platform, public_key, assigned_ip, status, created_at, updated_at, revoked_at, deleted_at, full_tunnel, approved_by, health_blocked, transport, provisioning_mode, provisioned_ranges, revoked_cause, provisioned_ip, revoked_prev_status, provisioned_node_id, kind FROM devices
+WHERE org_id = $1
+  AND public_key = $2
+  AND public_key <> ''
+ORDER BY created_at, id
+`
+
+type ListDevicePublicKeyHistoryForOrgParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	PublicKey string    `json:"public_key"`
+}
+
+// D14o desktop create recovery. This deliberately reads FULL history: pending
+// rows are outside the legacy active-only uniqueness index, and revoked / soft-
+// deleted rows are the durable proof that a retired credential must never be
+// recreated by an ambiguous-response retry. The caller holds the org advisory
+// lock, so this read and a following create are one serialized decision.
+// lint:allow-deleted — DELIBERATELY includes deleted history as refusal evidence;
+// filtering it would let a response-loss retry recreate a retired credential.
+func (q *Queries) ListDevicePublicKeyHistoryForOrg(ctx context.Context, arg ListDevicePublicKeyHistoryForOrgParams) ([]Device, error) {
+	rows, err := q.db.Query(ctx, listDevicePublicKeyHistoryForOrg, arg.OrgID, arg.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Device{}
+	for rows.Next() {
+		var i Device
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.UserID,
+			&i.NodeID,
+			&i.Name,
+			&i.Platform,
+			&i.PublicKey,
+			&i.AssignedIp,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RevokedAt,
+			&i.DeletedAt,
+			&i.FullTunnel,
+			&i.ApprovedBy,
+			&i.HealthBlocked,
+			&i.Transport,
+			&i.ProvisioningMode,
+			&i.ProvisionedRanges,
+			&i.RevokedCause,
+			&i.ProvisionedIp,
+			&i.RevokedPrevStatus,
+			&i.ProvisionedNodeID,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

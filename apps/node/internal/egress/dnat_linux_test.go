@@ -74,6 +74,22 @@ func TestReconcileDNSVIPsCandidatesStillRequireKernelReadback(t *testing.T) {
 	}
 }
 
+func TestEmergencyWithdrawK8sTreatsAbsentWGInterfaceAsAlreadyWithdrawn(t *testing.T) {
+	m := New("wg0")
+	m.runIPOutput = func(context.Context, ...string) (string, error) {
+		return "", errors.New(`ip -o -4 addr show dev wg0: exit status 1: Device "wg0" does not exist`)
+	}
+	m.nftRun = func(_ context.Context, args ...string) (string, error) {
+		if strings.Join(args, " ") != "list table ip tunnex" {
+			t.Fatalf("unexpected nft operation: %v", args)
+		}
+		return "table ip tunnex {}", nil
+	}
+	if err := m.EmergencyWithdrawK8s(t.Context(), nil); err != nil {
+		t.Fatalf("absent WireGuard interface is already withdrawn: %v", err)
+	}
+}
+
 func (f *fakeSource) Targets(ns, svc, _ string, _ int) ([]k8sTarget, bool) {
 	e, found := f.m[ns+"/"+svc]
 	if !found {
@@ -306,8 +322,8 @@ func TestVIPGrantAndDNATKeyedOnSameVIP(t *testing.T) {
 	}
 	// The grant (forward) matches the PRE-DNAT VIP via ct-original — so the client dialing the VIP is admitted
 	// even though its packet's dst is the pod IP by the time the forward chain runs.
-	if !strings.Contains(rs, "ip saddr 10.99.0.7 ct original ip daddr 100.64.0.5/32 tcp dport 80 counter accept") {
-		t.Fatalf("VIP grant must render `ct original ip daddr <VIP>` (keyed on the VIP the client dialed):\n%s", rs)
+	if !strings.Contains(rs, "ip saddr 10.99.0.7 ct original ip daddr 100.64.0.5/32 meta l4proto tcp ct original proto-dst 80 counter accept") {
+		t.Fatalf("VIP grant must render the pre-DNAT VIP and service port from ct-original (keyed on what the client dialed):\n%s", rs)
 	}
 	// A grant to the POD CIDR renders against the pod CIDR, never the VIP → cannot admit a VIP flow.
 	m.SetPolicy(&nodepolicy.Compiled{

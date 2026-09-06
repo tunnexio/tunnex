@@ -71,6 +71,20 @@ func TestProductionWGReadbackSurfaceRejectsDestinationOnlyRouteProof(t *testing.
 	}
 }
 
+func TestProductionWGReadbackSurfaceAcceptsEmptyOwnedRouteProof(t *testing.T) {
+	wg := &fakeWGReadbackOwner{value: reconcile.WGBackendReadback{
+		Routes:       []string{},
+		RouteDetails: []reconcile.OwnedRoute{},
+	}}
+	surface, err := NewProductionWGReadbackSurface(&fakeDomainSurface{}, wg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := surface.Readback(t.Context()); err != nil {
+		t.Fatalf("a non-serving gateway with no owned routes must read back cleanly: %v", err)
+	}
+}
+
 func TestProductionWGReadbackSurfaceFailsClosedOnBackendReadError(t *testing.T) {
 	readErr := errors.New("WG enumeration failed")
 	wg := &fakeWGReadbackOwner{err: readErr}
@@ -81,6 +95,42 @@ func TestProductionWGReadbackSurfaceFailsClosedOnBackendReadError(t *testing.T) 
 	actual, err := surface.Readback(t.Context())
 	if !errors.Is(err, readErr) || !reflect.DeepEqual(actual, AppliedDomainState{}) || wg.calls != 1 {
 		t.Fatalf("readback error must return no desired echo: actual=%+v err=%v calls=%d", actual, err, wg.calls)
+	}
+}
+
+func TestProductionWGReadbackEmergencyWithdrawalAcceptsAbsentInterface(t *testing.T) {
+	domain := &emergencyDomain{}
+	wg := &fakeWGReadbackOwner{err: reconcile.ErrWGInterfaceAbsent}
+	surface, err := NewProductionWGReadbackSurface(domain, wg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emergency, ok := surface.(EmergencyDomainSurface)
+	if !ok {
+		t.Fatal("production surface must expose emergency withdrawal")
+	}
+	fences := []PoolFence{{}}
+	if err := emergency.EmergencyWithdraw(t.Context(), fences); err != nil {
+		t.Fatalf("missing interface is already withdrawn: %v", err)
+	}
+	if !reflect.DeepEqual(domain.fences, fences) {
+		t.Fatalf("downstream withdrawal was skipped: got %+v want %+v", domain.fences, fences)
+	}
+}
+
+func TestProductionWGReadbackEmergencyWithdrawalAcceptsRawAbsentDeviceError(t *testing.T) {
+	domain := &emergencyDomain{}
+	wg := &fakeWGReadbackOwner{err: errors.New(`ip -o -4 addr show dev wg0: Device "wg0" does not exist`)}
+	surface, err := NewProductionWGReadbackSurface(domain, wg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emergency := surface.(EmergencyDomainSurface)
+	if err := emergency.EmergencyWithdraw(t.Context(), []PoolFence{{}}); err != nil {
+		t.Fatalf("raw missing-device error is already withdrawn: %v", err)
+	}
+	if len(domain.fences) != 1 {
+		t.Fatal("downstream withdrawal was skipped")
 	}
 }
 

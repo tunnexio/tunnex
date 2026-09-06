@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -285,56 +286,66 @@ type baseAuthorityAckClient interface {
 	AcknowledgeKubernetesOwnershipBaseAuthority(context.Context, reconcile.KubernetesOwnershipBaseAuthorityAck) error
 }
 
-func produceDesiredStateCommands(ctx context.Context, lane *dataplaneCommandLane, r *reconcile.Reconciler, client reconcile.ControlClient, ownership *ownershiplease.Coordinator, interval, backoff time.Duration, logger *slog.Logger) {
-	submit := func(name string) bool {
-		desired, err := client.FetchDesired(ctx)
-		if err != nil {
-			logger.Warn("desired_state_fetch_failed", slog.String("command", name), slog.String("error", err.Error()))
-			return ctx.Err() == nil
+func submitDesiredStateCommand(ctx context.Context, lane *dataplaneCommandLane, r *reconcile.Reconciler, client reconcile.ControlClient, ownership *ownershiplease.Coordinator, backoff time.Duration, logger *slog.Logger, name string) error {
+	desired, err := client.FetchDesired(ctx)
+	if err != nil {
+		logger.Warn("desired_state_fetch_failed", slog.String("command", name), slog.String("error", err.Error()))
+		return err
+	}
+	var ack reconcile.KubernetesOwnershipBaseAuthorityAck
+	var ackReady bool
+	err = lane.submitAndWait(ctx, name, func(commandCtx context.Context) error {
+		if _, err := r.ApplyDesiredState(commandCtx, desired); err != nil {
+			return err
 		}
-		var ack reconcile.KubernetesOwnershipBaseAuthorityAck
-		var ackReady bool
-		err = lane.submitAndWait(ctx, name, func(commandCtx context.Context) error {
-			if _, err := r.ApplyDesiredState(commandCtx, desired); err != nil {
+		if ownership == nil {
+			return nil
+		}
+		if desired.KubernetesOwnershipBaseAuthority != nil {
+			if err := ownership.ReconcileCurrent(commandCtx); err != nil {
 				return err
 			}
-			if ownership == nil {
-				return nil
-			}
-			var err error
-			ack, ackReady, err = ownership.PrepareBaseAuthorityAck(commandCtx, desired, time.Now())
-			return err
-		})
-		if err != nil {
-			return ctx.Err() == nil
 		}
-		if ackReady {
-			transport, ok := client.(baseAuthorityAckClient)
-			if !ok {
-				logger.Warn("base_authority_ack_transport_unavailable")
-				return ctx.Err() == nil
-			}
-			transportCtx, cancel := context.WithTimeout(ctx, backoff)
-			postErr := transport.AcknowledgeKubernetesOwnershipBaseAuthority(transportCtx, ack)
-			cancel()
-			if postErr != nil {
-				if ctx.Err() == nil {
-					logger.Warn("base_authority_ack_failed", slog.String("error", postErr.Error()))
-				}
-				return ctx.Err() == nil
-			}
-			if err := lane.submitAndWait(ctx, "base_authority_ack_checkpoint", func(commandCtx context.Context) error {
-				return ownership.MarkBaseAuthorityAckDelivered(commandCtx, ack)
-			}); err != nil {
-				if ctx.Err() == nil {
-					logger.Warn("base_authority_ack_checkpoint_failed", slog.String("error", err.Error()))
-				}
-				return ctx.Err() == nil
-			}
-		}
-		return ctx.Err() == nil
+		var err error
+		ack, ackReady, err = ownership.PrepareBaseAuthorityAck(commandCtx, desired, time.Now())
+		return err
+	})
+	if err != nil {
+		return err
 	}
-	if !submit("desired_state_initial") {
+	if ackReady {
+		transport, ok := client.(baseAuthorityAckClient)
+		if !ok {
+			logger.Warn("base_authority_ack_transport_unavailable")
+			return errors.New("base authority ACK transport unavailable")
+		}
+		transportCtx, cancel := context.WithTimeout(ctx, backoff)
+		postErr := transport.AcknowledgeKubernetesOwnershipBaseAuthority(transportCtx, ack)
+		cancel()
+		if postErr != nil {
+			if ctx.Err() == nil {
+				logger.Warn("base_authority_ack_failed", slog.String("error", postErr.Error()))
+			}
+			return postErr
+		}
+		if err := lane.submitAndWait(ctx, "base_authority_ack_checkpoint", func(commandCtx context.Context) error {
+			return ownership.MarkBaseAuthorityAckDelivered(commandCtx, ack)
+		}); err != nil {
+			if ctx.Err() == nil {
+				logger.Warn("base_authority_ack_checkpoint_failed", slog.String("error", err.Error()))
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func produceDesiredStateCommands(ctx context.Context, lane *dataplaneCommandLane, r *reconcile.Reconciler, client reconcile.ControlClient, ownership *ownershiplease.Coordinator, interval, backoff time.Duration, logger *slog.Logger) {
+	submit := func(name string) error {
+		return submitDesiredStateCommand(ctx, lane, r, client, ownership, backoff, logger, name)
+	}
+	_ = submit("desired_state_initial")
+	if ctx.Err() != nil {
 		return
 	}
 
@@ -364,12 +375,14 @@ func produceDesiredStateCommands(ctx context.Context, lane *dataplaneCommandLane
 				}
 				continue
 			}
-			if !submit("desired_state_push") {
+			_ = submit("desired_state_push")
+			if ctx.Err() != nil {
 				return
 			}
 		case <-ticker.C:
 			cancelWatch()
-			if !submit("desired_state_interval") {
+			_ = submit("desired_state_interval")
+			if ctx.Err() != nil {
 				return
 			}
 		}
