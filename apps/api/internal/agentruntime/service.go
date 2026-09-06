@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
@@ -82,6 +83,7 @@ func OrganizationOptIn(q *sqlc.Queries, unlocked func() bool) OptInFunc {
 }
 
 type Service struct {
+	pool     *pgxpool.Pool
 	q        *sqlc.Queries
 	optIn    OptInFunc
 	notify   Notifier
@@ -97,8 +99,12 @@ type Service struct {
 // flows with the previous revision.
 type Notifier interface{ Notify(nodeID uuid.UUID) }
 
-func New(q *sqlc.Queries, optIn OptInFunc) *Service {
-	return &Service{q: q, optIn: optIn, now: time.Now, pollTick: time.Second, alerts: alerts.NoopPublisher{}}
+func New(pool *pgxpool.Pool, optIn OptInFunc) *Service {
+	var q *sqlc.Queries
+	if pool != nil {
+		q = sqlc.New(pool)
+	}
+	return &Service{pool: pool, q: q, optIn: optIn, now: time.Now, pollTick: time.Second, alerts: alerts.NoopPublisher{}}
 }
 
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
@@ -117,40 +123,72 @@ func (s *Service) SetAlertPublisher(p alerts.Publisher) {
 }
 
 func (s *Service) Authenticate(ctx context.Context, raw string) (Identity, error) {
-	if s == nil || s.q == nil || !strings.HasPrefix(raw, RuntimeCredentialPrefix) {
-		return Identity{}, ErrUnauthorized
-	}
-	h := sha256.Sum256([]byte(raw))
-	cred, err := s.q.AuthenticateAgentRuntimeCredential(ctx, h[:])
-	if err != nil || cred.RevokedAt.Valid || cred.State != "current" || cred.DeviceID == uuid.Nil || cred.OrgID == uuid.Nil {
-		return Identity{}, ErrUnauthorized
-	}
-	return s.validateCredentialIdentity(ctx, cred.OrgID, cred.DeviceID, cred.Revision, cred.State, cred.RevokedAt.Valid)
+	return s.authenticate(ctx, raw, true)
 }
 
 // AuthenticateCurrent is used only by prepare: a candidate may promote on its
 // first poll/report, never by calling the preparation endpoint itself.
 func (s *Service) AuthenticateCurrent(ctx context.Context, raw string) (Identity, error) {
-	if s == nil || s.q == nil || !strings.HasPrefix(raw, RuntimeCredentialPrefix) {
+	return s.authenticate(ctx, raw, false)
+}
+
+func (s *Service) authenticate(ctx context.Context, raw string, allowPromotion bool) (Identity, error) {
+	if s == nil || s.pool == nil || !strings.HasPrefix(raw, RuntimeCredentialPrefix) {
 		return Identity{}, ErrUnauthorized
 	}
 	h := sha256.Sum256([]byte(raw))
-	cred, err := s.q.GetAgentRuntimeCredential(ctx, h[:])
-	if err != nil || cred.State != "current" {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
 		return Identity{}, ErrUnauthorized
 	}
-	return s.validateCredentialIdentity(ctx, cred.OrgID, cred.DeviceID, cred.Revision, cred.State, cred.RevokedAt.Valid)
+	defer rollbackRuntimeTx(tx)
+	q := sqlc.New(tx)
+	binding, err := q.LookupAgentRuntimeCredentialBinding(ctx, h[:])
+	if err != nil || binding.OrgID == uuid.Nil || binding.DeviceID == uuid.Nil {
+		return Identity{}, ErrUnauthorized
+	}
+	// Lifecycle UPDATEs hold this same device row before their credential
+	// triggers run. Never invert that order by locking the bearer first.
+	dev, err := q.GetDeviceForUpdate(ctx, sqlc.GetDeviceForUpdateParams{ID: binding.DeviceID, OrgID: binding.OrgID})
+	if err != nil || dev.Kind != "agent" || dev.DeletedAt.Valid || (dev.Status != "active" && dev.Status != "pending") {
+		return Identity{}, ErrUnauthorized
+	}
+	// This is a NEW statement after the lock wait, not a sibling CTE using the
+	// old snapshot. Expiry is evaluated at this statement, not transaction start.
+	cred, err := q.AuthenticateAgentRuntimeCredential(ctx, sqlc.AuthenticateAgentRuntimeCredentialParams{
+		OrgID: binding.OrgID, DeviceID: binding.DeviceID, TokenHash: h[:],
+	})
+	if err != nil || cred.RevokedAt.Valid || cred.OrgID != dev.OrgID || cred.DeviceID != dev.ID {
+		return Identity{}, ErrUnauthorized
+	}
+	if cred.State == "candidate" {
+		if !allowPromotion || dev.Status != "active" || cred.Revision <= 1 {
+			return Identity{}, ErrUnauthorized
+		}
+		if _, err := q.DemoteAgentRuntimeCredentialPredecessor(ctx, sqlc.DemoteAgentRuntimeCredentialPredecessorParams{
+			OrgID: cred.OrgID, DeviceID: cred.DeviceID, Revision: cred.Revision - 1,
+		}); err != nil {
+			return Identity{}, ErrUnauthorized
+		}
+		cred, err = q.PromoteAgentRuntimeCredentialCandidate(ctx, sqlc.PromoteAgentRuntimeCredentialCandidateParams{
+			OrgID: cred.OrgID, DeviceID: cred.DeviceID, ID: cred.ID, TokenHash: h[:], Revision: cred.Revision,
+		})
+		if err != nil {
+			return Identity{}, ErrUnauthorized
+		}
+	}
+	if cred.State != "current" || tx.Commit(ctx) != nil {
+		return Identity{}, ErrUnauthorized
+	}
+	return Identity{OrgID: cred.OrgID, DeviceID: cred.DeviceID, CredentialRevision: cred.Revision, CredentialState: cred.State}, nil
 }
 
-func (s *Service) validateCredentialIdentity(ctx context.Context, orgID, deviceID uuid.UUID, revision int64, state string, revoked bool) (Identity, error) {
-	if revoked || orgID == uuid.Nil || deviceID == uuid.Nil {
-		return Identity{}, ErrUnauthorized
-	}
-	dev, err := s.q.GetDevice(ctx, sqlc.GetDeviceParams{ID: deviceID, OrgID: orgID})
-	if err != nil || dev.OrgID != orgID || dev.ID != deviceID || dev.Kind != "agent" || dev.DeletedAt.Valid || (dev.Status != "active" && dev.Status != "pending") {
-		return Identity{}, ErrUnauthorized
-	}
-	return Identity{OrgID: orgID, DeviceID: deviceID, CredentialRevision: revision, CredentialState: state}, nil
+func rollbackRuntimeTx(tx pgx.Tx) {
+	// The request context may already be cancelled; still release this bounded
+	// transaction and its locks. pgx treats rollback-after-commit as closed.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = tx.Rollback(ctx)
 }
 
 func (s *Service) requireOptIn(ctx context.Context, orgID uuid.UUID) error {
@@ -191,17 +229,30 @@ type Config struct {
 // PrepareCredentialCandidate stores only a locally generated successor hash.
 // Repeating the same requested revision/hash is idempotent in PostgreSQL.
 func (s *Service) PrepareCredentialCandidate(ctx context.Context, id Identity, revision int64, hashHex string) error {
-	if s == nil || s.q == nil || id.CredentialState != "current" || revision != id.CredentialRevision+1 {
+	if s == nil || s.pool == nil || id.CredentialState != "current" || revision != id.CredentialRevision+1 {
 		return ErrUnauthorized
 	}
 	hash, err := hex.DecodeString(hashHex)
 	if err != nil || len(hash) != sha256.Size {
 		return ErrInvalidReport
 	}
-	prepared, err := s.q.PrepareAgentRuntimeCredentialCandidate(ctx, sqlc.PrepareAgentRuntimeCredentialCandidateParams{
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return ErrRuntimeStateMissing
+	}
+	defer rollbackRuntimeTx(tx)
+	q := sqlc.New(tx)
+	dev, err := q.GetDeviceForUpdate(ctx, sqlc.GetDeviceForUpdateParams{ID: id.DeviceID, OrgID: id.OrgID})
+	if err != nil || dev.Kind != "agent" || dev.Status != "active" || dev.DeletedAt.Valid {
+		return ErrRuntimeStateMissing
+	}
+	prepared, err := q.PrepareAgentRuntimeCredentialCandidate(ctx, sqlc.PrepareAgentRuntimeCredentialCandidateParams{
 		OrgID: id.OrgID, DeviceID: id.DeviceID, TokenHash: hash, Revision: revision,
 	})
 	if err != nil || prepared.Revision != revision || prepared.State != "candidate" {
+		return ErrRuntimeStateMissing
+	}
+	if tx.Commit(ctx) != nil {
 		return ErrRuntimeStateMissing
 	}
 	return nil

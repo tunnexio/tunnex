@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/nodepush"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
 func TestManagedAgentBootstrapIsHashedSingleUseAndClientKeyed(t *testing.T) {
@@ -69,7 +69,7 @@ func TestManagedAgentBootstrapIsHashedSingleUseAndClientKeyed(t *testing.T) {
 		t.Fatalf("consumed token must be rejected uniformly, got %v", err)
 	}
 
-	expired := "expired-f03-token"
+	expired := "expired-f03-token-" + uuid.NewString()
 	eh := sha256.Sum256([]byte(expired))
 	if _, err := f.pool.Exec(f.ctx, `INSERT INTO agent_bootstrap_tokens (org_id,gateway_node_id,agent_name,token_hash,expires_at,created_at,issued_by) VALUES ($1,$2,'expired',$3,now()-interval '1 hour',now()-interval '2 hours',$4)`, f.org, f.node, eh[:], f.owner); err != nil {
 		t.Fatal(err)
@@ -251,17 +251,8 @@ type agentBootstrapTestFixture struct {
 
 func agentBootstrapFixture(t *testing.T) *agentBootstrapTestFixture {
 	t.Helper()
-	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL to run this integration test")
-	}
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ctx, pool := testpostgres.New(t)
 	f := &agentBootstrapTestFixture{ctx: ctx, pool: pool, org: uuid.New(), owner: uuid.New(), node: uuid.New(), deviceSeed: 10}
-	t.Cleanup(pool.Close)
 	ex := func(q string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, q, args...); err != nil {
@@ -272,7 +263,6 @@ func agentBootstrapFixture(t *testing.T) *agentBootstrapTestFixture {
 	ex("INSERT INTO users (id,email,name,status) VALUES ($1,$2,'F03','active')", f.owner, f.owner.String()+"@f03.test")
 	ex("INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')", f.org, f.owner)
 	ex("INSERT INTO nodes (id,org_id,name,cert_serial,wg_public_key,endpoint,status) VALUES ($1,$2,'f03-gw',$3,$4,'gw.example:51820','active')", f.node, f.org, "f03-"+f.node.String(), "c2VydmVycHVia2V5MDAwMDAwMDAwMDAwMDAwMDAwMD0=")
-	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), "DELETE FROM organizations WHERE id=$1", f.org) })
 	f.svc = NewService(pool, nodepush.New(), nil)
 	return f
 }

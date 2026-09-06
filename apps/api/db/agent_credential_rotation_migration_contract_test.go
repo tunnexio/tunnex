@@ -51,14 +51,20 @@ func TestAgentCredentialRotationQueryContract(t *testing.T) {
 	}
 	s := string(source)
 	for _, required := range []string{
-		"PrepareAgentRuntimeCredentialCandidate", "current.rotation_deadline > now()",
+		"PrepareAgentRuntimeCredentialCandidate", "current.rotation_deadline > statement_timestamp()",
 		"agent_runtime_credentials.token_hash = EXCLUDED.token_hash", "AuthenticateAgentRuntimeCredential",
-		"ELSE 'superseded'", "credential.id = matched.id THEN 'current'",
+		"DemoteAgentRuntimeCredentialPredecessor", "SET state = 'superseded'",
+		"PromoteAgentRuntimeCredentialCandidate", "SET state = 'current'",
+		"LookupAgentRuntimeCredentialBinding", "candidate_expires_at > statement_timestamp()",
+		"TryLockAgentWireGuardRotation", "FOR UPDATE NOWAIT",
 		"PrepareAgentWireGuardCandidate", "candidate_public_key = $3",
 		"candidate_public_key IS NULL OR r.candidate_public_key = $3",
 	} {
 		if !strings.Contains(s, required) {
 			t.Fatalf("rotation query contract missing %q", required)
 		}
+	}
+	if strings.Contains(s, "CASE WHEN credential.id = matched.id") {
+		t.Fatal("runtime promotion must not depend on multi-row UPDATE visitation order")
 	}
 }

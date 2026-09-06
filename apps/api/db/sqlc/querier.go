@@ -59,8 +59,9 @@ type Querier interface {
 	// so a mismatched pair updates zero rows rather than succeeding quietly.
 	AssignMachineCredentialOwner(ctx context.Context, arg AssignMachineCredentialOwnerParams) (int64, error)
 	AuditLogRetentionMorePending(ctx context.Context, arg AuditLogRetentionMorePendingParams) (bool, error)
-	// lint:cross-org — the bearer hash is the credential; its row supplies org/device binding.
-	AuthenticateAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AuthenticateAgentRuntimeCredentialRow, error)
+	// Call only inside the device-locked transaction. This separate statement gets
+	// a fresh READ COMMITTED snapshot after a lock wait; it does not promote.
+	AuthenticateAgentRuntimeCredential(ctx context.Context, arg AuthenticateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
 	// Flip an EXISTING manual group to idp_sync. The WHERE origin='manual' clause makes a re-bind of
 	// an already-synced group a no-row (the app layer maps that + the not-empty check to a 409). The
 	// disjointness (D1) and the not-empty rule are enforced above this; this only flips a clean group.
@@ -506,6 +507,9 @@ type Querier interface {
 	// Disenroll (self re-enroll clears via upsert; explicit delete for self-disenroll + admin-reset).
 	DeleteTOTP(ctx context.Context, userID uuid.UUID) (int64, error)
 	DeleteUserGroup(ctx context.Context, arg DeleteUserGroupParams) (int64, error)
+	// Explicitly finish demotion before promotion. A single multi-row UPDATE can
+	// visit the candidate first and violate the immediate one-current index.
+	DemoteAgentRuntimeCredentialPredecessor(ctx context.Context, arg DemoteAgentRuntimeCredentialPredecessorParams) (AgentRuntimeCredential, error)
 	// lint:cross-org — the device was just inserted in this same org-scoped transaction;
 	// the device ID is not an authorization input and this existence check does not
 	// expose or mutate a device outside the caller's already-authorized create.
@@ -1423,6 +1427,10 @@ type Querier interface {
 	// Settings are user-facing configuration and may only change for a live tenant.
 	LockLiveAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
 	LockNodeByLifecycleClaimForOrg(ctx context.Context, arg LockNodeByLifecycleClaimForOrgParams) (Node, error)
+	// lint:cross-org — the bearer hash supplies only the locking scope, never authentication.
+	// Do not lock a credential before its device: device lifecycle triggers take
+	// those locks in device -> credential order. Re-read below AFTER the device lock.
+	LookupAgentRuntimeCredentialBinding(ctx context.Context, tokenHash []byte) (LookupAgentRuntimeCredentialBindingRow, error)
 	// Delivery is recorded THE FIRST TIME a certificate authenticates, and only then: the WHERE clause makes this a
 	// no-op on every subsequent request, so the agent channel pays one write per credential rather than one per call.
 	//
@@ -1448,6 +1456,8 @@ type Querier interface {
 	PeekJoinToken(ctx context.Context, tokenHash []byte) (NodeJoinToken, error)
 	PrepareAgentRuntimeCredentialCandidate(ctx context.Context, arg PrepareAgentRuntimeCredentialCandidateParams) (PrepareAgentRuntimeCredentialCandidateRow, error)
 	PrepareAgentWireGuardCandidate(ctx context.Context, arg PrepareAgentWireGuardCandidateParams) (AgentWireguardRotation, error)
+	// Exact successor only; a refusal MUST roll back the preceding demotion.
+	PromoteAgentRuntimeCredentialCandidate(ctx context.Context, arg PromoteAgentRuntimeCredentialCandidateParams) (AgentRuntimeCredential, error)
 	// The security-definer function is the only authorized DELETE path. It locks
 	// the exact live run, verifies its snapshot against the current effective
 	// policy, derives age/cap eligibility, and commits deletion counters atomically.
@@ -1799,6 +1809,10 @@ type Querier interface {
 	// convention shape as RestoreCascadeRevokedDevice: a caller who skipped the candidate filter still cannot
 	// re-home a revoked device and thereby hand it back onto a live gateway.
 	TransferDeviceToNode(ctx context.Context, arg TransferDeviceToNodeParams) (Device, error)
+	// An operator request already owns the device row. A reporting gateway may
+	// own this rotation row while awaiting that device; never wait in reverse
+	// order. Missing rows permit first rotation, 55P03 is retryable contention.
+	TryLockAgentWireGuardRotation(ctx context.Context, arg TryLockAgentWireGuardRotationParams) (uuid.UUID, error)
 	// Revert an idp_sync group to a plain (empty) manual group. Members are cleared separately.
 	UnbindIdpGroup(ctx context.Context, arg UnbindIdpGroupParams) (UserGroup, error)
 	UnbindNode(ctx context.Context, arg UnbindNodeParams) (int64, error)

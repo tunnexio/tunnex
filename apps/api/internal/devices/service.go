@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -144,7 +145,31 @@ func (s *Service) GetAgentCredentialRotation(ctx context.Context, orgID, deviceI
 
 func (s *Service) RequestAgentCredentialRotation(ctx context.Context, actorID, orgID, deviceID uuid.UUID) (AgentCredentialRotationStatus, error) {
 	var result AgentCredentialRotationStatus
+	if s == nil || s.pool == nil {
+		return result, errors.New("agent credential rotation database unavailable")
+	}
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		// The same device -> credential order is used by runtime authentication,
+		// preparation and device-lifecycle triggers. Expiry is a credential write
+		// too, so acquire the device before touching even an expired candidate.
+		dev, err := q.GetDeviceForUpdate(ctx, sqlc.GetDeviceForUpdateParams{ID: deviceID, OrgID: orgID})
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && (dev.Kind != "agent" || dev.Status != "active")) {
+			return apierr.Conflict("agent_credential_rotation_unavailable", "credential rotation requires one active agent with no pending candidate")
+		}
+		if err != nil {
+			return err
+		}
+		// ReportStatus stages the WireGuard row before its handshake commit
+		// locks the device. Refuse contention without waiting while we own the
+		// device; no runtime credential has been changed at this point.
+		_, err = q.TryLockAgentWireGuardRotation(ctx, sqlc.TryLockAgentWireGuardRotationParams{OrgID: orgID, DeviceID: deviceID})
+		var lockErr *pgconn.PgError
+		if errors.As(err, &lockErr) && lockErr.Code == "55P03" {
+			return apierr.Conflict("agent_credential_rotation_unavailable", "credential rotation requires one active agent with no pending candidate")
+		}
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
 		if err := q.ExpireAgentRuntimeCredentialRotation(ctx, sqlc.ExpireAgentRuntimeCredentialRotationParams{OrgID: orgID, DeviceID: deviceID}); err != nil {
 			return err
 		}

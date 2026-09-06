@@ -47,7 +47,7 @@ WITH expired_candidate AS (
   SET state = 'revoked', revoked_at = COALESCE(revoked_at, now()),
       terminal_at = COALESCE(terminal_at, now()), candidate_expires_at = NULL
   WHERE candidate.org_id = $1 AND candidate.device_id = $2
-    AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= now()
+    AND candidate.state = 'candidate' AND candidate.candidate_expires_at <= statement_timestamp()
   RETURNING 1
 )
 SELECT count(*) FROM expired_candidate;
@@ -90,6 +90,14 @@ JOIN devices d ON d.id = r.device_id AND d.org_id = r.org_id
 WHERE r.org_id = $1 AND r.device_id = $2
   AND d.kind = 'agent' AND d.deleted_at IS NULL;
 
+-- name: TryLockAgentWireGuardRotation :one
+-- An operator request already owns the device row. A reporting gateway may
+-- own this rotation row while awaiting that device; never wait in reverse
+-- order. Missing rows permit first rotation, 55P03 is retryable contention.
+SELECT device_id FROM agent_wireguard_rotations
+WHERE org_id = $1 AND device_id = $2
+FOR UPDATE NOWAIT;
+
 -- name: ExpireAgentWireGuardRotation :exec
 UPDATE agent_wireguard_rotations
 SET state = 'current', requested_revision = NULL,
@@ -122,7 +130,7 @@ WITH current_credential AS (
   WHERE current.org_id = $1 AND current.device_id = $2
     AND current.state = 'current' AND current.revoked_at IS NULL
     AND current.rotation_requested_at IS NOT NULL
-    AND current.rotation_deadline > now()
+    AND current.rotation_deadline > statement_timestamp()
     AND $4 = current.revision + 1
   FOR UPDATE
 ), prepared AS (
@@ -135,35 +143,47 @@ WITH current_credential AS (
   DO UPDATE SET token_hash = agent_runtime_credentials.token_hash
   WHERE agent_runtime_credentials.revision = EXCLUDED.revision
     AND agent_runtime_credentials.token_hash = EXCLUDED.token_hash
-    AND agent_runtime_credentials.candidate_expires_at > now()
+    AND agent_runtime_credentials.candidate_expires_at > statement_timestamp()
   RETURNING agent_runtime_credentials.*
 )
 SELECT * FROM prepared;
 
+-- name: LookupAgentRuntimeCredentialBinding :one
+-- lint:cross-org — the bearer hash supplies only the locking scope, never authentication.
+-- Do not lock a credential before its device: device lifecycle triggers take
+-- those locks in device -> credential order. Re-read below AFTER the device lock.
+SELECT org_id, device_id FROM agent_runtime_credentials WHERE token_hash = $1;
+
 -- name: AuthenticateAgentRuntimeCredential :one
--- lint:cross-org — the bearer hash is the credential; its row supplies org/device binding.
-WITH matched AS (
-  SELECT credential.* FROM agent_runtime_credentials credential
-  WHERE credential.token_hash = $1 AND credential.revoked_at IS NULL
-    AND (credential.state = 'current'
-      OR (credential.state = 'candidate' AND credential.candidate_expires_at > now()))
-  FOR UPDATE
-), transitioned AS (
-  UPDATE agent_runtime_credentials credential
-  SET state = CASE WHEN credential.id = matched.id THEN 'current' ELSE 'superseded' END,
-      revoked_at = CASE WHEN credential.id = matched.id THEN NULL ELSE now() END,
-      activated_at = CASE WHEN credential.id = matched.id THEN now() ELSE credential.activated_at END,
-      terminal_at = CASE WHEN credential.id = matched.id THEN NULL ELSE now() END,
-      candidate_expires_at = NULL,
-      rotation_requested_at = NULL, rotation_deadline = NULL,
-      rotation_requested_by = NULL
-  FROM matched
-  WHERE matched.state = 'candidate'
-    AND credential.device_id = matched.device_id
-    AND credential.state IN ('current', 'candidate')
-  RETURNING credential.*
-)
-SELECT transitioned.* FROM transitioned, matched WHERE transitioned.id = matched.id
-UNION ALL
-SELECT * FROM matched WHERE state = 'current'
-LIMIT 1;
+-- Call only inside the device-locked transaction. This separate statement gets
+-- a fresh READ COMMITTED snapshot after a lock wait; it does not promote.
+SELECT * FROM agent_runtime_credentials
+WHERE org_id = $1 AND device_id = $2 AND token_hash = $3
+  AND revoked_at IS NULL
+  AND (state = 'current'
+    OR (state = 'candidate' AND candidate_expires_at > statement_timestamp()))
+FOR UPDATE;
+
+-- name: DemoteAgentRuntimeCredentialPredecessor :one
+-- Explicitly finish demotion before promotion. A single multi-row UPDATE can
+-- visit the candidate first and violate the immediate one-current index.
+UPDATE agent_runtime_credentials
+SET state = 'superseded', revoked_at = statement_timestamp(),
+    terminal_at = statement_timestamp(), candidate_expires_at = NULL,
+    rotation_requested_at = NULL, rotation_deadline = NULL,
+    rotation_requested_by = NULL
+WHERE org_id = $1 AND device_id = $2 AND revision = $3
+  AND state = 'current' AND revoked_at IS NULL
+RETURNING *;
+
+-- name: PromoteAgentRuntimeCredentialCandidate :one
+-- Exact successor only; a refusal MUST roll back the preceding demotion.
+UPDATE agent_runtime_credentials
+SET state = 'current', revoked_at = NULL, activated_at = statement_timestamp(),
+    terminal_at = NULL, candidate_expires_at = NULL,
+    rotation_requested_at = NULL, rotation_deadline = NULL,
+    rotation_requested_by = NULL
+WHERE org_id = $1 AND device_id = $2 AND id = $3 AND token_hash = $4
+  AND revision = $5 AND state = 'candidate' AND revoked_at IS NULL
+  AND candidate_expires_at > statement_timestamp()
+RETURNING *;

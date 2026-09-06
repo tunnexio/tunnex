@@ -453,7 +453,8 @@ func main() {
 	}
 	alertPublisher := alerts.NewOutboxPublisher(alerts.NewPostgresOutbox(pool))
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
-		System: systemQueries,
+		System:           systemQueries,
+		AgentRuntimePool: pool,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
 		}),
