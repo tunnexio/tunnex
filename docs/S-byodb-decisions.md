@@ -69,6 +69,22 @@ refuse. No live release or tag has been created by this work.
 
 ## Deferred scope
 
+### Approved compatibility expansion — 2026-09-06
+
+User explicitly approved implementing and testing PG16/17/18 and required channel
+binding against the existing Neon PG18 database. This supersedes the initial
+PG16-only qualification target, but is not a claim that the new matrix passed.
+Use pgx/v5 for both runtime and the golang-migrate database/sql adapter, preserving
+the existing migration table and session advisory-lock mechanism. Preserve
+channel_binding through preflight and native backup-client environment mapping.
+Ship versioned PostgreSQL 16/17/18 clients; select pg_dump from the detected server
+major so a newer dump client does not introduce restore incompatibilities for PG16.
+Archive listing may use the newest pg_restore offline; actual restore drills must
+use the appropriate versioned client against an isolated target. Keep the bundled
+server at PG16; do not change customer server versions or drop security parameters.
+Require migration/runtime/dump/restore matrix proof and fresh live Neon proof before
+claiming compatibility. No automatic major upgrade or migration of customer data.
+
 Native cloud IAM token renewal, DB provisioning, arbitrary engine support, automatic
 network creation and moving existing bundled data are separate follow-ups. Reuse
 customer-managed secret synchronization without requiring a new secret operator.
