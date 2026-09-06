@@ -26,3 +26,12 @@ token behavior; the next approved main publication is the real qualification.
 No merge, release, cloud changes or cleanup authorized by this repair alone.
 
 Reference: https://docs.github.com/en/rest/releases/releases
+
+## Local regression evidence
+
+The new permission-aware guard fixture fails twice against main's workflow:
+publish has contents:read, and matching-draft validation returns release not found.
+On the fix it passes 5 tests / 35 assertions, covering main and version-tag paths
+and all named refusals. Signed-main release, source-ref lifecycle and 42 CI
+aggregation/wiring tests also pass. This is explicitly an offline fixture proof;
+no release was created, changed, published or retried during the repair.
