@@ -5,12 +5,52 @@ package egress
 import (
 	"context"
 	"net/netip"
+	"os"
 	"os/exec"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
+
+// Explicit opt-in: unshare creates a fresh network namespace before any nft
+// mutation. Failure to isolate or apply is a failure, never a silent skip.
+func TestK8sDNATKernelPrinterRoundTrip(t *testing.T) {
+	if os.Getenv("TUNNEX_TEST_NFT_ROUNDTRIP") != "1" {
+		t.Skip("set TUNNEX_TEST_NFT_ROUNDTRIP=1 in an isolated Linux test container")
+	}
+	fixtures := []resolvedVIP{
+		{vip: "100.96.0.3", proto: "tcp", svcPort: 8080, targets: []k8sTarget{{ip: "10.240.10.149", port: 8080}}},
+		{vip: "100.96.0.4", proto: "tcp", svcPort: 8080, targets: []k8sTarget{{ip: "10.240.10.98", port: 8080}, {ip: "10.240.10.149", port: 8080}}},
+	}
+	m := New("wg0")
+	m.resolvedVIPs.Store(&fixtures)
+	var rendered, want []string
+	for _, fixture := range fixtures {
+		rendered = append(rendered, dnatRule(fixture))
+	}
+	for _, receipt := range m.RequestedK8sDNATReceipts() {
+		want = append(want, receipt.Digest)
+	}
+	if len(want) != len(fixtures) {
+		t.Fatalf("requested receipt count=%d want=%d", len(want), len(fixtures))
+	}
+	input := "table ip tunnex {\nchain prerouting {\ntype nat hook prerouting priority dstnat; policy accept;\n" + strings.Join(rendered, "\n") + "\n}\n}\n"
+	cmd := exec.Command("unshare", "--net", "sh", "-c", "nft -f - && nft list table ip tunnex")
+	cmd.Stdin = strings.NewReader(input)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("isolated nft apply/list failed: %v\n%s", err, out)
+	}
+	got, err := parseK8sDNATReceipts(string(out))
+	sort.Strings(want)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("kernel receipts=%v want=%v err=%v\n%s", got, want, err, out)
+	}
+	t.Logf("kernel apply/list/receipt proof:\n%s", out)
+}
 
 // TestRenderedRulesetIsValidNft (WF-K5 L11) proves the rendered ruleset is one `nft` ACCEPTS — the
 // artifact-WORKS probe applied to the render itself, so the multi-endpoint jhash LB map + the `ct original`

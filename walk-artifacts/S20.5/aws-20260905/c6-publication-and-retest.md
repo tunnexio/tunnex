@@ -91,3 +91,11 @@ Independent review raised **P2 (HOLD)**: that kernel test uses hardcoded rules
 in an inet table, whereas production uses the actual emitter in an ip table
 and different listing options. Repair the test to exercise the production
 path after disposition; do not treat the current probe as full path coverage.
+
+P2 disposition approved and folded on 2026-09-06. The corrected isolated test
+uses resolvedVIP → dnatRule and RequestedK8sDNATReceipts, `table ip tunnex`,
+and plain `nft list table ip tunnex`. It passed: single-target output used
+`dnat to`, while the two-target map used `dnat ip to`, both matching their
+requested digests. Egress race rerun passed. Full `make test-node` passed
+for the product correction before this test-only fold; no AWS HA acceptance
+is inferred from these local results.

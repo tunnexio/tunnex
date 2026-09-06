@@ -58,6 +58,32 @@ func TestK8sDNATReceiptParserAcceptsCanonicalBalancedRule(t *testing.T) {
 	}
 }
 
+func TestK8sDNATReceiptAcceptsExactIPv4PrinterSpelling(t *testing.T) {
+	for _, rule := range []string{
+		"ip daddr 100.96.0.3 tcp dport 8080 dnat to 10.240.10.149:8080",
+		"ip daddr 100.96.0.3 tcp dport 8080 dnat to jhash ip saddr . ip daddr mod 2 map { 0 : 10.240.10.149 . 8080, 1 : 10.240.10.98 . 8080 }",
+	} {
+		printed := strings.Replace(attachDNATReceipt("100.96.0.3", rule), " dnat to ", " dnat ip to ", 1)
+		got, err := parseK8sDNATReceipts(printed)
+		want := []string{dnatReceipt("100.96.0.3", rule).Digest}
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("typed IPv4 printer receipt: got=%v want=%v err=%v", got, want, err)
+		}
+		for _, change := range [][2]string{{"dnat ip to", "dnat ip6 to"}, {"10.240.10.149", "10.240.10.150"}, {"dport 8080", "dport 8081"}, {"dnat ip to", "dnat ip ip to"}} {
+			if _, err := parseK8sDNATReceipts(strings.Replace(printed, change[0], change[1], 1)); err == nil {
+				t.Fatalf("alteration accepted: %v", change)
+			}
+		}
+		if strings.Contains(rule, "jhash") {
+			for _, change := range [][2]string{{"mod 2", "mod 3"}, {"0 :", "2 :"}, {"ip saddr . ip daddr", "ip daddr . ip saddr"}} {
+				if _, err := parseK8sDNATReceipts(strings.Replace(printed, change[0], change[1], 1)); err == nil {
+					t.Fatalf("map alteration accepted: %v", change)
+				}
+			}
+		}
+	}
+}
+
 func TestParseInterfaceIPv4sAndIntersectExplicitOwnershipCandidates(t *testing.T) {
 	listing := "7: wg0    inet 10.99.0.1/24 scope global wg0\\       valid_lft forever preferred_lft forever\n" +
 		"7: wg0    inet 100.64.0.2/32 scope global secondary wg0\\       valid_lft forever preferred_lft forever\n" +
