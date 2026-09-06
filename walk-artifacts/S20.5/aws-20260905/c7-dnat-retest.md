@@ -1,0 +1,29 @@
+# C7 DNAT receipt correction and AWS retest
+
+Source: `3081f63a0338ed95a444ba69665ca1e8de1ef42e` (clean immutable worktree).
+Version: `0.0.0-walk.sha3081f63a0338ed95a444ba69665ca1e8`.
+
+User approved the P2 test correction and explicitly authorized essential
+continuation without routine approval pauses. Same private ECR account
+`735391218823`, region `ap-south-1`, prefix `tunnex-s205-aws-20260905a`;
+STS verified exact `aws-cli` principal. No new cloud resources or Azure use.
+
+Corrected production-path Linux nft round-trip PASS; egress race PASS;
+full final `make test-node` PASS. Independent source re-review closed P2
+with no new concrete P1/P2 findings. This is scoped review, not story-end
+multi-finder completion. Exact source SHA had zero GitHub check runs.
+
+Six linux/amd64 images (including enterprise API) built and published with
+remote digest equality checked, plus four private Helm charts. All four
+charts were privately pulled and SHA256 compared with the bundle: PASS.
+Private build logs and credentials remain outside Git.
+
+The laptop public IP changed. Exact existing CP operator SSH rule
+`sgr-0548dd638d19b896f` was updated from `122.183.45.166/32` to
+`223.181.44.79/32`, TCP22 only. SSH recovered; CP HTTPS stayed healthy.
+No other firewall rule was changed at this entry.
+
+Effective CP configuration comparison PASS: only API/web/nginx images and
+three candidate API metadata values differ from C6; stores and other
+services unchanged. Native CP candidate rollout started. Gateway upgrades
+and fresh HA/client proof are pending; not a walk PASS or merge-ready claim.
