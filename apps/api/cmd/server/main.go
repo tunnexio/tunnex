@@ -561,6 +561,9 @@ func main() {
 	// organization settings. The base compiler deliberately does not stamp node
 	// liveness; authority preparation for a disconnected standby is not a report.
 	handoffBase := nodes.HandoffBaseStateSourceFunc(func(ctx context.Context, orgID, nodeID uuid.UUID) (nodes.DesiredState, error) {
+		// Match HTTP desired-state fetch-gap ordering: a notification during
+		// compilation must remain visible to the following watch.
+		version := pushHub.Version(nodeID)
 		node, err := sqlc.New(pool).GetNodeForOrg(ctx, sqlc.GetNodeForOrgParams{ID: nodeID, OrgID: orgID})
 		if err != nil {
 			return nodes.DesiredState{}, err
@@ -569,7 +572,7 @@ func main() {
 		if err != nil {
 			return nodes.DesiredState{}, err
 		}
-		state.Version = pushHub.Version(nodeID)
+		state.Version = version
 		return state, nil
 	})
 	handoffComposition, err := nodes.NewHandoffSchedulerProductionComposition(cfg.K8sHAEnabled, pool, elector, nodeSvc, k8sSvc, poolVIPOwnershipStore, handoffBase, baseAuthorityStore)

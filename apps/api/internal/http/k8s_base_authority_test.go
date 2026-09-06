@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -134,5 +135,53 @@ func TestBaseAuthorityAckRouteRequiresMTLSAndStore(t *testing.T) {
 	channel.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/agent/kubernetes-ownership-base-authority/ack", nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated status=%d", w.Code)
+	}
+}
+
+func TestPendingBaseAuthorityKeepsOriginalTupleAcrossWake(t *testing.T) {
+	base := nodes.DesiredState{ProtocolVersion: 9, NodeID: "99999999-9999-9999-9999-999999999999", Version: 17, Peers: []nodes.Peer{}}
+	authority, digest := baseAuthorityHTTPFixture(t, base)
+	node := sqlc.Node{ID: uuid.MustParse(authority.NodeID), OrgID: uuid.MustParse(authority.OrgID), SiteID: pgtype.UUID{Bytes: uuid.MustParse(authority.SiteID), Valid: true}}
+	store := &baseAuthorityHTTPStore{authority: authority, digest: digest, found: true}
+	channel := &AgentChannel{baseAuthorityStore: store}
+	base.Version = 23 // a wake changed no canonical base bytes
+	got, err := channel.withKubernetesOwnershipBaseAuthority(t.Context(), node, desiredStateWithGatewayDNSRequest{DesiredState: base})
+	if err != nil || got.Version != 17 || !reflect.DeepEqual(got.KubernetesOwnershipBaseAuthority, &authority) {
+		t.Fatalf("pending tuple changed or was refused: version=%d err=%v", got.Version, err)
+	}
+	agent := nodes.KubernetesOwnershipBaseAuthorityAgentIdentity{NodeID: node.ID, OrgID: node.OrgID, SiteID: uuid.UUID(node.SiteID.Bytes)}
+	ack := nodes.KubernetesOwnershipBaseAuthorityAck{WireVersion: 1, AuthorityRevision: authority.AuthorityRevision, NodeID: authority.NodeID, OrgID: authority.OrgID,
+		SiteID: authority.SiteID, BaseVersion: got.Version, BaseHash: authority.BaseHash, AuthorityDigest: digest, AppliedAt: "2026-08-28T10:11:12.000000345Z"}
+	if _, err := store.AcknowledgeKubernetesOwnershipBaseAuthority(t.Context(), agent, ack, time.Now().UTC()); err != nil {
+		t.Fatalf("original pending receipt refused: %v", err)
+	}
+	store.found = false // real store omits the acknowledged delivery
+	got, err = channel.withKubernetesOwnershipBaseAuthority(t.Context(), node, desiredStateWithGatewayDNSRequest{DesiredState: base})
+	if err != nil || got.Version != 23 || got.KubernetesOwnershipBaseAuthority != nil {
+		t.Fatalf("ordinary cursor did not resume after ACK: version=%d err=%v", got.Version, err)
+	}
+
+	for _, name := range []string{"future_cursor", "zero_cursor", "changed_content", "wrong_node", "wrong_org", "wrong_site"} {
+		t.Run(name, func(t *testing.T) {
+			bad, changed := authority, base
+			switch name {
+			case "future_cursor":
+				bad.BaseVersion = base.Version + 1
+			case "zero_cursor":
+				bad.BaseVersion = 0
+			case "changed_content":
+				changed.MTU = 1300
+			case "wrong_node":
+				bad.NodeID = uuid.NewString()
+			case "wrong_org":
+				bad.OrgID = uuid.NewString()
+			case "wrong_site":
+				bad.SiteID = uuid.NewString()
+			}
+			channel := &AgentChannel{baseAuthorityStore: &baseAuthorityHTTPStore{authority: bad, found: true}}
+			if _, err := channel.withKubernetesOwnershipBaseAuthority(t.Context(), node, desiredStateWithGatewayDNSRequest{DesiredState: changed}); err == nil {
+				t.Fatal("non-exact pending authority was accepted")
+			}
+		})
 	}
 }

@@ -70,8 +70,10 @@ Complete logs remain task-local; they are not credentials or walk acceptance.
 Manual [CI run 34007847193](https://github.com/tunnexio/tunnex/actions/runs/34007847193)
 is verified against the exact product SHA above. It was dispatched on the
 story branch while local full tests continued. Native macOS, native Windows
-and the Linux CLI job have passed; the composite gate is still IN PROGRESS,
-so required CI is not yet green. The workflow's non-PR classifier runs all gate families. Image
+and the Linux CLI job have passed. Fresh readback on 2026-09-06 confirms the
+completed run is SUCCESS, including composite gates, both end-to-end suites
+and visual advisory. This is green for `48f96b0`, not for subsequent HA edits
+or the eventual PR head. The workflow's non-PR classifier runs all gate families. Image
 publication/release/site-sync require push/main-or-tag conditions and are not
 authorized or activated by this branch workflow dispatch. No PR was opened.
 

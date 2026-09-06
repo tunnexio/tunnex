@@ -182,6 +182,13 @@ func issueKubernetesOwnershipBaseAuthorityTx(ctx context.Context, tx pgx.Tx, iss
 	if found {
 		candidate := issue.Authority
 		candidate.AuthorityRevision = existing.Authority.AuthorityRevision
+		if issue.OrdinaryBaseUpdate && existing.AuthorityKind == "ordinary_base" && existing.Acknowledged {
+			// The watch cursor is not base content. Reuse only the latest exact
+			// acknowledged ordinary authority; keep its immutable version/digest
+			// and still compare all content, classifications and generations.
+			// Pending deliveries and transition/unfence replay remain exact.
+			candidate.BaseVersion = existing.Authority.BaseVersion
+		}
 		candidate, _, err = CanonicalKubernetesOwnershipBaseAuthority(candidate)
 		sameCandidate := err == nil && sameKubernetesOwnershipBaseAuthority(existing.Authority, candidate) &&
 			sameKubernetesOwnershipIssuePools(existing.Pools, issue.Pools)
@@ -414,9 +421,10 @@ func (s *PostgresKubernetesOwnershipBaseAuthorityStore) AcknowledgeKubernetesOwn
 
 type loadedKubernetesOwnershipIssueReplay struct {
 	KubernetesOwnershipBaseAuthorityIssueResult
-	ExpiresAt    time.Time
-	Pools        []KubernetesOwnershipBaseAuthorityPoolGeneration
-	Acknowledged bool
+	AuthorityKind string
+	ExpiresAt     time.Time
+	Pools         []KubernetesOwnershipBaseAuthorityPoolGeneration
+	Acknowledged  bool
 }
 
 func loadLatestKubernetesOwnershipBaseAuthorityIssue(ctx context.Context, tx pgx.Tx, orgID, siteID, nodeID uuid.UUID) (loadedKubernetesOwnershipIssueReplay, bool, error) {
@@ -424,12 +432,12 @@ func loadLatestKubernetesOwnershipBaseAuthorityIssue(ctx context.Context, tx pgx
 	var payload []byte
 	var authorityRevision int64
 	err := tx.QueryRow(ctx, `
-		SELECT d.id,d.payload,d.payload_digest,d.expires_at,d.authority_revision,(r.delivery_id IS NOT NULL)
+		SELECT d.id,d.payload,d.payload_digest,d.expires_at,d.authority_revision,(r.delivery_id IS NOT NULL),d.authority_kind
 		FROM k8s_base_authority_deliveries d
 		LEFT JOIN k8s_base_authority_ack_receipts r ON r.delivery_id=d.id
 		WHERE d.org_id=$1 AND d.site_id=$2 AND d.node_id=$3
 		ORDER BY d.authority_revision DESC LIMIT 1`, orgID, siteID, nodeID).
-		Scan(&value.DeliveryID, &payload, &value.PayloadDigest, &value.ExpiresAt, &authorityRevision, &value.Acknowledged)
+		Scan(&value.DeliveryID, &payload, &value.PayloadDigest, &value.ExpiresAt, &authorityRevision, &value.Acknowledged, &value.AuthorityKind)
 	if err == pgx.ErrNoRows {
 		return loadedKubernetesOwnershipIssueReplay{}, false, nil
 	}
