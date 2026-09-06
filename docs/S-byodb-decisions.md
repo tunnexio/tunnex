@@ -91,6 +91,17 @@ customer-managed secret synchronization without requiring a new secret operator.
 
 ## Acceptance
 
+### Completion scope approved — 2026-09-06
+
+User requested completion of the remaining development and qualification, not just
+the two compatibility fixes. Fix the macOS web-test fixture without weakening its
+assertions. Give first-start CP migrations a bounded 15-minute health grace and
+installer wait budget so dependencies wait automatically; healthy starts still
+complete immediately. Prove slow startup and non-ready timeout behavior. Preserve
+signature verification and production trust roots while determining the correct
+private-candidate installer/upgrade qualification path. No public release, merge,
+or silent trust-anchor override is authorized by this completion request.
+
 ### Review disposition — 2026-09-06
 
 User approved fixing both held P1 findings and testing them. Preserve the legacy
