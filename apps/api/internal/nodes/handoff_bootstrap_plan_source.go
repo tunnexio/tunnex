@@ -137,6 +137,23 @@ func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWit
 	if s == nil || s.pool == nil || conn == nil || epoch.BackendPID <= 0 || epoch.LockKey != leader.SchedulerLockKey {
 		return ErrHandoffBootstrapPlanRefused
 	}
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := s.IssueHandoffBootstrapEnvelopeWithLeadershipTx(ctx, epoch, conn, tx, envelope); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// IssueHandoffBootstrapEnvelopeWithLeadershipTx preserves the caller's atomic
+// maintenance/renewal transaction; it does not commit or release its locks.
+func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWithLeadershipTx(ctx context.Context, epoch k8s.HandoffLeadershipEpoch, conn *pgxpool.Conn, tx pgx.Tx, envelope PoolVIPOwnershipDeliveryEnvelopeV3) error {
+	if s == nil || s.pool == nil || conn == nil || tx == nil || epoch.BackendPID <= 0 || epoch.LockKey != leader.SchedulerLockKey {
+		return ErrHandoffBootstrapPlanRefused
+	}
 	input, err := preparePoolVIPOwnershipDeliveryV3Issue(envelope)
 	if err != nil {
 		return err
@@ -156,11 +173,6 @@ func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWit
 		return ErrHandoffBootstrapPlanRefused
 	}
 	sessionEpoch := PoolVIPOwnershipHandoffLeadershipEpoch{BackendPID: epoch.BackendPID, AdvisoryLockKey: epoch.LockKey}
-	tx, err := conn.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
 	if err := validPoolVIPOwnershipHandoffLeaderSessionTx(ctx, tx, sessionEpoch); err != nil {
 		return err
 	}
@@ -197,7 +209,7 @@ func (s *PostgresPoolVIPOwnershipDeliveryStore) IssueHandoffBootstrapEnvelopeWit
 	if err := validPoolVIPOwnershipHandoffLeaderSessionTx(ctx, tx, sessionEpoch); err != nil {
 		return err
 	}
-	return issuePoolVIPOwnershipDeliveryV3Tx(ctx, tx, input)
+	return insertPoolVIPOwnershipDeliveryV3Tx(ctx, tx, input)
 }
 
 func validHandoffBootstrapScope(scope k8s.HandoffPoolScope) bool {

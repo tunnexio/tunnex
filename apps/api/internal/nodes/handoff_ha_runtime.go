@@ -149,6 +149,14 @@ func (r *HandoffHAActivationRuntime) reconcileFencedPools(ctx context.Context, n
 	if len(plans) == 0 {
 		return nil
 	}
+	if atomic, ok := r.transition.(HandoffAtomicOrdinaryBaseMaintainer); ok {
+		issuer, ok := r.issuer.(HandoffBootstrapEnvelopeTxIssuer)
+		if !ok || !handoffActivationDependencyPresent(issuer) {
+			return ErrHandoffHATransitionRefused
+		}
+		_, err := atomic.MaintainAndRenewHandoffOrdinaryBaseWithLeadership(ctx, now, epoch, conn, plans, issuer)
+		return err
+	}
 	maintainer, ok := r.transition.(HandoffOrdinaryBaseAuthorityMaintainer)
 	if !ok || !handoffActivationDependencyPresent(maintainer) {
 		return ErrHandoffHATransitionRefused

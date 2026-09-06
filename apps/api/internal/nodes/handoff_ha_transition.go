@@ -44,10 +44,13 @@ func (f HandoffBaseStateSourceFunc) HandoffBaseState(ctx context.Context, orgID,
 type HandoffHATransitionConfig struct {
 	MaxAckAge    time.Duration
 	AuthorityTTL time.Duration
+	// Zero retains the strict all-member barrier. Production shares the exact
+	// coordinator margin when enabling retired-owner renewal proof.
+	ClockSkewMargin time.Duration
 }
 
 func (c HandoffHATransitionConfig) valid() bool {
-	return c.MaxAckAge > 0 && c.AuthorityTTL >= time.Minute
+	return c.MaxAckAge > 0 && c.AuthorityTTL >= time.Minute && c.ClockSkewMargin >= 0
 }
 
 // PostgresHandoffOwnershipModeTransition owns P3's closed activation boundary.

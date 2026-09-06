@@ -52,6 +52,16 @@ func preparePoolVIPOwnershipDeliveryV3Issue(envelope PoolVIPOwnershipDeliveryEnv
 
 func issuePoolVIPOwnershipDeliveryV3Tx(ctx context.Context, tx pgx.Tx, input poolVIPOwnershipDeliveryV3IssueInput) error {
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := insertPoolVIPOwnershipDeliveryV3Tx(ctx, tx, input); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// insertPoolVIPOwnershipDeliveryV3Tx never commits its caller's transaction.
+// Atomic fenced renewal keeps base receipts, exclusion proof and every
+// resulting prepared/serving delivery under the same locked snapshot.
+func insertPoolVIPOwnershipDeliveryV3Tx(ctx context.Context, tx pgx.Tx, input poolVIPOwnershipDeliveryV3IssueInput) error {
 	if err := requirePoolVIPOwnershipScope(ctx, tx, input.ids); err != nil {
 		return err
 	}
@@ -86,7 +96,7 @@ func issuePoolVIPOwnershipDeliveryV3Tx(ctx context.Context, tx pgx.Tx, input poo
 			return fmt.Errorf("%w: delivery ID replay", ErrPoolVIPOwnershipDeliveryImmutableConflict)
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s *PostgresPoolVIPOwnershipDeliveryStore) LoadIssuedPoolVIPOwnershipDeliveryV3(ctx context.Context, agent PoolVIPOwnershipAgentIdentity) (PoolVIPOwnershipDeliveryEnvelopeV3, bool, error) {

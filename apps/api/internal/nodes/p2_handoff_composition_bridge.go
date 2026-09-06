@@ -233,7 +233,7 @@ func newHandoffSchedulerComposition(enabled bool, pool *pgxpool.Pool, elector *l
 	bootstrapSource := NewPostgresHandoffBootstrapPlanSource(pool, HandoffBootstrapPlanSourceConfig{LeaseTTL: 30 * time.Second})
 	var transition HandoffOwnershipModeTransition
 	if enabled {
-		transition, err = NewPostgresHandoffOwnershipModeTransition(pool, base, authority, HandoffHATransitionConfig{MaxAckAge: referenceAckFreshness, AuthorityTTL: 5 * time.Minute})
+		transition, err = NewPostgresHandoffOwnershipModeTransition(pool, base, authority, HandoffHATransitionConfig{MaxAckAge: referenceAckFreshness, AuthorityTTL: 5 * time.Minute, ClockSkewMargin: referenceClockSkew})
 		if err != nil {
 			return nil, err
 		}

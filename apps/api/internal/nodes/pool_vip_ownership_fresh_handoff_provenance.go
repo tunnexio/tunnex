@@ -735,6 +735,9 @@ func loadPoolVIPOwnershipFreshHandoffServiceUIDs(ctx context.Context, tx pgx.Tx,
 // is deliberately not an input to this path. The receipt and expiry window is
 // checked again by the 0085 trigger and during leader-bound resolve.
 func loadPoolVIPOwnershipFreshHandoffCapabilities(ctx context.Context, tx pgx.Tx, plan k8s.HandoffPlan) ([]PoolVIPOwnershipFreshHandoffCapability, error) {
+	if err := requireRetiredOwnerCandidateBaseTx(ctx, tx, plan); err != nil {
+		return nil, err
+	}
 	values := make([]PoolVIPOwnershipFreshHandoffCapability, 0, 2)
 	for _, node := range []uuid.UUID{plan.ExpectedActiveID, plan.CandidateID} {
 		expectedRole := string(k8s.PreparedNonServing)
@@ -1006,6 +1009,9 @@ func validPoolVIPOwnershipFreshHandoffMembershipSnapshot(ctx context.Context, tx
 }
 
 func validStoredPoolVIPOwnershipFreshHandoffCapabilities(ctx context.Context, tx pgx.Tx, plan k8s.DurableHandoffPlan) bool {
+	if err := requireRetiredOwnerCandidateBaseTx(ctx, tx, plan.Plan); err != nil {
+		return false
+	}
 	p := plan.Plan
 	rows, err := tx.Query(ctx, `SELECT node_id,wire_version,delivery_row_id,receipt_time,expires_at FROM pool_vip_ownership_handoff_provenance_capabilities WHERE operation_id=$1 AND org_id=$2 AND site_id=$3 AND cluster_id=$4 AND pool_id=$5 ORDER BY node_id`, p.OperationID, p.Scope.OrgID, p.Scope.SiteID, p.Scope.ClusterID, p.Scope.PoolID)
 	if err != nil {

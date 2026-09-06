@@ -59,6 +59,9 @@ func TestHandoffWakeVersionChurnPreservesServingRenewal(t *testing.T) {
 // every other standby ACK, and its eventual exact ACK must release that barrier.
 func TestHandoffChangedBaseStillRequiresEveryMemberACK(t *testing.T) {
 	f := newWakeVersionRenewalFixture(t)
+	// Even with retired-owner proof enabled, an ordinary missing standby ACK
+	// without a completed handoff must retain the full-member barrier.
+	f.runtime.transition.(*PostgresHandoffOwnershipModeTransition).config.ClockSkewMargin = time.Second
 	beforeHash, err := KubernetesOwnershipBaseStateHash(f.baseFor(f.fixture.active))
 	if err != nil {
 		t.Fatal(err)

@@ -21,6 +21,14 @@ type HandoffOrdinaryBaseAuthorityMaintainer interface {
 	MaintainHandoffOrdinaryBaseAuthorityWithLeadership(context.Context, time.Time, k8s.HandoffLeadershipEpoch, *pgxpool.Conn, []HandoffBootstrapPlan) (bool, error)
 }
 
+type HandoffBootstrapEnvelopeTxIssuer interface {
+	IssueHandoffBootstrapEnvelopeWithLeadershipTx(context.Context, k8s.HandoffLeadershipEpoch, *pgxpool.Conn, pgx.Tx, PoolVIPOwnershipDeliveryEnvelopeV3) error
+}
+
+type HandoffAtomicOrdinaryBaseMaintainer interface {
+	MaintainAndRenewHandoffOrdinaryBaseWithLeadership(context.Context, time.Time, k8s.HandoffLeadershipEpoch, *pgxpool.Conn, []HandoffBootstrapPlan, HandoffBootstrapEnvelopeTxIssuer) (bool, error)
+}
+
 type handoffOrdinaryBaseMaintenanceNode struct {
 	nodeID             uuid.UUID
 	orgID              uuid.UUID
@@ -28,6 +36,11 @@ type handoffOrdinaryBaseMaintenanceNode struct {
 	transitionRevision uint64
 	classifications    []KubernetesOwnershipPoolClassification
 	pools              []KubernetesOwnershipBaseAuthorityPoolGeneration
+	renewalExcluded    bool
+}
+
+func (n *handoffOrdinaryBaseMaintenanceNode) includeRenewalScope(active, retired uuid.UUID, canExclude bool) {
+	n.renewalExcluded = n.renewalExcluded && canExclude && n.nodeID == retired && n.nodeID != active
 }
 
 // MaintainHandoffOrdinaryBaseAuthorityWithLeadership batches by node, not by
@@ -35,6 +48,20 @@ type handoffOrdinaryBaseMaintenanceNode struct {
 // at a time would make the later delivery scope-incomplete and cause the node
 // to reject it (or strand the omitted fence on the old base hash).
 func (t *PostgresHandoffOwnershipModeTransition) MaintainHandoffOrdinaryBaseAuthorityWithLeadership(ctx context.Context, now time.Time, epoch k8s.HandoffLeadershipEpoch, conn *pgxpool.Conn, plans []HandoffBootstrapPlan) (bool, error) {
+	return t.maintainHandoffOrdinaryBase(ctx, now, epoch, conn, plans, nil)
+}
+
+// MaintainAndRenewHandoffOrdinaryBaseWithLeadership holds exact base receipts,
+// retired-owner proof and every renewed envelope in one transaction. No
+// exclusion can escape those locks as a reusable readiness boolean.
+func (t *PostgresHandoffOwnershipModeTransition) MaintainAndRenewHandoffOrdinaryBaseWithLeadership(ctx context.Context, now time.Time, epoch k8s.HandoffLeadershipEpoch, conn *pgxpool.Conn, plans []HandoffBootstrapPlan, issuer HandoffBootstrapEnvelopeTxIssuer) (bool, error) {
+	if !handoffActivationDependencyPresent(issuer) {
+		return false, ErrHandoffHATransitionRefused
+	}
+	return t.maintainHandoffOrdinaryBase(ctx, now, epoch, conn, plans, issuer)
+}
+
+func (t *PostgresHandoffOwnershipModeTransition) maintainHandoffOrdinaryBase(ctx context.Context, now time.Time, epoch k8s.HandoffLeadershipEpoch, conn *pgxpool.Conn, plans []HandoffBootstrapPlan, issuer HandoffBootstrapEnvelopeTxIssuer) (bool, error) {
 	if t == nil || !t.config.valid() || now.IsZero() || len(plans) == 0 {
 		return false, ErrHandoffHATransitionRefused
 	}
@@ -112,6 +139,14 @@ func (t *PostgresHandoffOwnershipModeTransition) MaintainHandoffOrdinaryBaseAuth
 		if err != nil || !reflect.DeepEqual(lockedPlan, plan) {
 			return false, ErrHandoffHATransitionRefused
 		}
+		var retiredOwner uuid.UUID
+		var canExclude bool
+		if issuer != nil && t.config.ClockSkewMargin > 0 {
+			retiredOwner, canExclude, err = loadHandoffRetiredOwnerRenewalExemptionTx(ctx, tx, lockedPlan, now.UTC(), t.config.ClockSkewMargin)
+			if err != nil {
+				return false, err
+			}
+		}
 		classification, err := bootstrapBaseClassification(lockedPlan)
 		if err != nil {
 			return false, err
@@ -121,12 +156,15 @@ func (t *PostgresHandoffOwnershipModeTransition) MaintainHandoffOrdinaryBaseAuth
 		for _, nodeID := range members {
 			entry := byNode[nodeID]
 			if entry == nil {
-				entry = &handoffOrdinaryBaseMaintenanceNode{nodeID: nodeID, orgID: plan.Scope.OrgID, siteID: plan.Scope.SiteID}
+				entry = &handoffOrdinaryBaseMaintenanceNode{nodeID: nodeID, orgID: plan.Scope.OrgID, siteID: plan.Scope.SiteID, renewalExcluded: true}
 				byNode[nodeID] = entry
 			}
 			if entry.orgID != plan.Scope.OrgID || entry.siteID != plan.Scope.SiteID {
 				return false, ErrHandoffHATransitionRefused
 			}
+			// A node's full-base ACK is still required if any one of its armed
+			// scopes lacks its own exact retired-owner extinguishment proof.
+			entry.includeRenewalScope(plan.ActiveNodeID, retiredOwner, canExclude)
 			if revision > entry.transitionRevision {
 				entry.transitionRevision = revision
 			}
@@ -142,6 +180,7 @@ func (t *PostgresHandoffOwnershipModeTransition) MaintainHandoffOrdinaryBaseAuth
 	sort.Slice(nodeIDs, func(i, j int) bool { return nodeIDs[i].String() < nodeIDs[j].String() })
 	expires := now.UTC().Truncate(t.config.AuthorityTTL).Add(2 * t.config.AuthorityTTL)
 	allAccepted := true
+	unacceptedRetired := make(map[string]bool)
 	for _, nodeID := range nodeIDs {
 		entry := byNode[nodeID]
 		acceptedPools, err := loadAcceptedKubernetesOwnershipClassificationPools(ctx, tx, entry.orgID, entry.siteID, nodeID)
@@ -194,7 +233,26 @@ func (t *PostgresHandoffOwnershipModeTransition) MaintainHandoffOrdinaryBaseAuth
 			return false, err
 		}
 		if !accepted {
-			allAccepted = false
+			if entry.renewalExcluded {
+				unacceptedRetired[nodeID.String()] = true
+			} else {
+				allAccepted = false
+			}
+		}
+	}
+	if allAccepted && issuer != nil {
+		for _, plan := range plans {
+			for _, envelope := range plan.StandbyEnvelopes {
+				if unacceptedRetired[envelope.TargetNodeID] {
+					continue // no new preparation credit before exact base ACK
+				}
+				if err := issuer.IssueHandoffBootstrapEnvelopeWithLeadershipTx(ctx, epoch, conn, tx, envelope); err != nil {
+					return false, err
+				}
+			}
+			if err := issuer.IssueHandoffBootstrapEnvelopeWithLeadershipTx(ctx, epoch, conn, tx, plan.CurrentOwnerEnvelope); err != nil {
+				return false, err
+			}
 		}
 	}
 	if err := requireHandoffHALeaderSessionTx(ctx, tx, epoch); err != nil {
