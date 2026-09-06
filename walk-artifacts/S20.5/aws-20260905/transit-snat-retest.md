@@ -181,3 +181,55 @@ Observed scale-to-first-success is about 83.6 seconds; the scheduler/lease
 convergence outage is recorded, not represented as seamless failover.
 No intervention occurred between scale-down and automatic client recovery.
 A3 restoration and reverse-direction proof remain next.
+
+## Member return, reverse-test correction and current blockers
+
+A3 was restored to one replica at 02:16:50 UTC. Its returning container exited
+once at 02:17:01.456 after startup desired-state HTTP 500; CP attributed this
+to `Kubernetes ownership base authority does not match the exact desired base`.
+Kubernetes restarted it automatically, and it became Ready with its original
+identity. Requests were interrupted again from samples 02:17:00.963 through
+02:17:22.380, recovering at 02:17:29.510 while B2 was still reported active.
+No remedial restart or host repair was performed.
+
+A3 automatically became active again, generation 3, by 02:18:22.425. B2 was
+then mistakenly scaled to zero at 02:18:48 before that readback was used as
+a mutation guard. This removed a standby, not the active connector: **it is
+NOT reverse-direction failover proof**. B2 was restored at 02:19:32; its
+original identity became Ready without a container restart. Requests were
+interrupted from 02:19:33.077 through 02:20:22.933, recovering at 02:20:30.051
+while A3 remained active, generation 3. Both connectors are restored to one
+replica. Any next fault must condition mutation on fresh expected-owner,
+readiness and working IP/FQDN checks, not merely print them first.
+
+Fresh post-trial readback confirms A3/B2/edge each 1/1 Ready on the published
+node digest and both local IP/FQDN requests return the expected marker.
+Automatic first-direction recovery is demonstrated, but returning-member
+interruptions and startup HTTP 500 are unresolved. Leg 9 is not complete.
+No general startup-retry feature or named lifecycle deferral is implemented.
+
+## Exact product-source local gates
+
+At clean `dc70c9bc847925f43d19bff59306ebb63ef5c7ec`, generation, both-edition
+builds, five non-packaging chart contracts, web typecheck/1,377 tests/build
+and client typecheck/292 tests/build pass. The client's first disposable
+Linux harness lacked Git; installing Git and mounting existing Git metadata
+read-only corrected the harness and the full client rerun passed. This is
+not native macOS/Windows CI or live CRD matrix acceptance.
+
+Migration passed at schema 136. `make test-editions` remains RED: open passed,
+enterprise failed in runtime credential promotion and bootstrap fixture
+cleanup. Ranked findings held separately from the transit fix:
+
+1. P1: unordered candidate promotion/current demotion can violate the immediate
+   one-current credential index; authentication returns unauthorized.
+2. P2: fixed bootstrap fixture hash collides after ignored cleanup failure;
+   immutable audit records prevent the fixture's hard organization delete.
+3. P2: runtime fixture closes its pool before registered cleanup, ignoring
+   deletion errors and leaking test organizations.
+
+Affected source is unchanged from main baseline `0f3d9b0`; that comparison is
+not a full baseline test run. No index, audit trigger or assertion was relaxed,
+and no fixture deletion or lucky-green retry was used. Redacted diagnosis and
+logs are retained in the task-local API gate directory. Exact-SHA required CI,
+the remaining lifecycle legs and story-end review still block acceptance.

@@ -1,6 +1,17 @@
 # S20.5 AWS walk — live session ledger, 2026-09-05
 
-Status: **three-worker EKS ready; retained CP uses its verified valid Scale
+Current checkpoint (2026-09-06): **dc70c9b node/manager candidate is installed
+on all three workers through native retained-state lifecycle operations.
+Local private IP and normal split-DNS FQDN access pass. Automatic A3-to-B2
+recovery is demonstrated, but member-return interruptions and a startup 500
+remain unresolved; the reverse fault trial was invalid and is not counted.
+Enterprise API gates remain red. The walk is NOT complete or merge-ready;
+NLB remains explicitly SKIPPED.** See [current transit and HA evidence](transit-snat-retest.md).
+CP currently runs the separate API lock correction, not a unified final image
+set. No PR or merge exists. Earlier counts below are historical, not current
+final-candidate acceptance.
+
+Historical status: **three-worker EKS ready; retained CP uses its verified valid Scale
 license; six immutable candidate images and four chart OCI pull proofs complete.
 Legs 0 and 1 passed for candidate `d2c9cba`; Leg 2 failed on runtime CNI startup
 admission. The scoped LBC discovery-permission correction is deployed, but
