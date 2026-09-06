@@ -2152,23 +2152,21 @@ function SsoProvider({
               removed it. Both are annotated for that reason.
               `new-password` (not `off`) is what actually suppresses saved-password fill in
               Chrome — `off` is widely ignored on password inputs. */}
-          {provider === "microsoft" && (
-            <Field label={`${providerName} client ID`}>
-              <Input
-                name={`${provider}-oauth-client-id`}
-                autoComplete="off"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                required
-                disabled={!canEdit}
-              />
-            </Field>
-          )}
+          <Field label={`${providerName} client ID`}>
+            <Input
+              name={`${provider}-oauth-client-id`}
+              autoComplete="off"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              required
+              disabled={!canEdit}
+            />
+          </Field>
           {/* WRITE-ONLY secret: the current secret is NEVER fetched or shown. We
               display only its keyed fingerprint as proof-of-storage, and the
               input is a "replace" affordance (blank = leave unchanged is not
               supported by the API, so a save requires re-entering it). */}
-          {provider === "microsoft" && <Field
+          <Field
             label={
               configured
                 ? `${providerName} client secret (enter to replace)`
@@ -2185,7 +2183,7 @@ function SsoProvider({
               disabled={!canEdit}
               placeholder={secretPlaceholder(configured)}
             />
-          </Field>}
+          </Field>
           {configured && view?.secret_fingerprint && (
             <p className="font-sans text-xs text-slate-500">
               stored secret fingerprint: {view.secret_fingerprint}
