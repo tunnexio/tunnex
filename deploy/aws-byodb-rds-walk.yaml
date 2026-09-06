@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Disposable private RDS PostgreSQL BYODB test, paid Single-AZ
+Parameters:
+  VPC: {Type: AWS::EC2::VPC::Id}
+  ExistingPrivateSubnet: {Type: AWS::EC2::Subnet::Id}
+  DBSecurityGroup: {Type: AWS::EC2::SecurityGroup::Id}
+Resources:
+  SecondPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.245.3.0/24
+      AvailabilityZone: ap-south-1b
+      MapPublicIpOnLaunch: false
+  SubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private BYODB test subnets
+      SubnetIds: [!Ref ExistingPrivateSubnet, !Ref SecondPrivateSubnet]
+  Parameters:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Family: postgres16
+      Description: Require encrypted PostgreSQL connections
+      Parameters: {rds.force_ssl: '1'}
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: tunnex-byodb-rds-20260906a
+      Engine: postgres
+      EngineVersion: '16.14'
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: '20'
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBName: tunnex
+      MasterUsername: tunnexadmin
+      ManageMasterUserPassword: true
+      DBSubnetGroupName: !Ref SubnetGroup
+      DBParameterGroupName: !Ref Parameters
+      VPCSecurityGroups: [!Ref DBSecurityGroup]
+      BackupRetentionPeriod: 0
+      DeletionProtection: false
+      AutoMinorVersionUpgrade: false
+      CopyTagsToSnapshot: true
+Outputs:
+  Endpoint: {Value: !GetAtt Database.Endpoint.Address}
+  MasterSecret: {Value: !GetAtt Database.MasterUserSecret.SecretArn}

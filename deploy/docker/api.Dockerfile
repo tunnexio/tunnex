@@ -28,8 +28,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -tags "$TUNNEX_BUILD_TAGS" -trimpath -ldfl
     && CGO_ENABLED=0 GOOS=linux go build -tags "$TUNNEX_BUILD_TAGS" -trimpath -ldflags="-s -w" -o /out/backupctl ./cmd/backupctl \
     && CGO_ENABLED=0 GOOS=linux go build -tags "$TUNNEX_BUILD_TAGS" -trimpath -ldflags="-s -w" -o /out/releaseverify ./cmd/releaseverify
 
-FROM alpine:3.20
-RUN apk add --no-cache ca-certificates wget && adduser -D -u 10001 tunnex
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates wget postgresql16-client postgresql17-client postgresql18-client && adduser -D -u 10001 tunnex
 # Pre-own the secrets mountpoint as uid 10001 so the named volume inherits uid-10001 on first
 # init and the non-root process can write 0600 files.
 RUN mkdir -p /var/lib/tunnex/secrets \
@@ -41,6 +41,8 @@ COPY --from=build /out/preflight /usr/local/bin/preflight
 COPY --from=build /out/backupctl /usr/local/bin/backupctl
 COPY --from=build /out/releaseverify /usr/local/bin/releaseverify
 EXPOSE 8080
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
+# Fresh external schemas may need minutes of cross-region migration round trips.
+# A successful check ends the grace immediately; running instances retain fast checks.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=900s --retries=5 \
   CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
 ENTRYPOINT ["/usr/local/bin/tunnex-api"]

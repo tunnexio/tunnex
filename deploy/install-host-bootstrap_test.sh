@@ -75,6 +75,9 @@ case "$url" in
 services:
   api:
     image: ${TUNNEX_API_IMAGE}
+    environment:
+      TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}
+# bundled-db
 YAML
 	;;
 */deploy/upgrade.sh)
@@ -288,6 +291,25 @@ grep -Fq 'TUNNEX_PORTABLE_CONTROL_PLANE=true' "$TMP/windows-portable/.env" ||
 grep -Fq 'compose --project-name windows-portable --env-file .env -f tunnex.yml up -d --wait --scale node-agent=0' "$WINDOWS_DOCKER_LOG" ||
 	fail 'Windows/Git Bash install attempted to start the privileged node-agent'
 
+# Execute the complete installer with external inputs and mocked release/host
+# commands. Runtime connectivity itself is covered by the private-container walk.
+printf '%s\n' 'postgres://fixture:byodb-file-secret@db.internal/cp?sslmode=verify-full' >"$TMP/db-url"
+BYODB_LOG="$TMP/byodb-compose.log"
+PATH="$TEST_PATH" TUNNEX_TEST_DOCKER_LOG="$BYODB_LOG" \
+  TUNNEX_VERSION=v9.9.9 TUNNEX_SOURCE_REF="$SOURCE_SHA" \
+  TUNNEX_PUBLIC_BASE_URL=https://preview.tunnex.test TUNNEX_TLS_MODE=terminated \
+  TUNNEX_ADMIN_EMAIL=owner@preview.tunnex.test TUNNEX_SMTP=skip \
+  TUNNEX_DATABASE_MODE=external TUNNEX_DATABASE_URL_FILE="$TMP/db-url" \
+  TUNNEX_DIR="$TMP/byodb-control-plane" \
+  sh "$INSTALLER" --yes >"$TMP/byodb-output.txt"
+grep -Fq 'COMPOSE_PROFILES=external-db' "$TMP/byodb-control-plane/.env" || fail 'external profile not persisted'
+grep -Fq 'TUNNEX_DATABASE_MODE=external' "$TMP/byodb-control-plane/.env" || fail 'external mode not persisted'
+grep -Fq "TUNNEX_DATABASE_URL='postgres://fixture:byodb-file-secret@db.internal/cp?sslmode=verify-full'" "$TMP/byodb-control-plane/.env" || fail 'external URL not persisted literally'
+! grep -Fq byodb-file-secret "$TMP/byodb-output.txt" || fail 'external credential leaked to installer output'
+check_line=$(grep -n -- '--entrypoint preflight api --database-only' "$BYODB_LOG" | cut -d: -f1)
+start_line=$(grep -n -- 'up -d --wait' "$BYODB_LOG" | cut -d: -f1)
+[ -n "$check_line" ] && [ "$check_line" -lt "$start_line" ] || fail 'database preflight did not precede CP startup'
+
 # Drive the actual customer path through a pseudo-terminal. Unlike the
 # environment-only fixture above, this exercises each visible question, masked
 # secret entry, review, confirmation, fresh-host Docker plan, and final handoff.
@@ -295,6 +317,7 @@ cat >"$TMP/pty-walkthrough.py" <<'PYTHON'
 import errno
 import os
 import pty
+import select
 import sys
 import time
 
@@ -309,6 +332,7 @@ dialogue = [
     (b"SMTP username:", b"support@preview.tunnex.test\r"),
     (b"SMTP password:", b"preview-smtp-secret\r"),
     (b"From address [no-reply@preview.tunnex.test]:", b"support@preview.tunnex.test\r"),
+    (b"CP database: bundled or external PostgreSQL? [bundled]:", b"bundled\r"),
     (b"Proceed with this installation? [Y/n]:", b"y\r"),
 ]
 
@@ -326,6 +350,11 @@ def abort(message):
     raise SystemExit(message + "\n--- installer transcript tail ---\n" + tail)
 
 def read_chunk():
+    # os.read alone blocks forever on an unexpected new prompt, defeating the
+    # deadline in the caller. Bound the read as well as the dialogue loop.
+    if not select.select([fd], [], [], 30)[0]:
+        os.kill(pid, 9)
+        abort("installer produced no output for 30 seconds")
     try:
         return os.read(fd, 4096)
     except OSError as exc:
@@ -421,6 +450,7 @@ for expected in \
 	'SMTP username:' \
 	'SMTP password:' \
 	'From address [no-reply@preview.tunnex.test]:' \
+	'CP database: bundled or external PostgreSQL? [bundled]:' \
 	'Proceed with this installation? [Y/n]:' \
 	'Downloading the signed release verifier' \
 	'Pulling verified Tunnex images' \

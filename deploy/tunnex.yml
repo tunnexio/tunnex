@@ -12,6 +12,7 @@ name: tunnex
 
 services:
   postgres:
+    profiles: [bundled-db]
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -60,6 +61,7 @@ services:
       # unlocks HA; each organization must also opt in before a pool can arm.
       TUNNEX_K8S_HA_ENABLED: ${TUNNEX_K8S_HA_ENABLED:-false}
       DATABASE_URL: ${DATABASE_URL:?set by install.sh}
+      TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       # SMTP: install.sh sets these when configured; empty = email features disabled (the dashboard
       # surfaces "SMTP not configured" rather than silently failing).
@@ -82,6 +84,7 @@ services:
       TUNNEX_HOST_UPGRADE_REQUEST_PATH: /var/lib/tunnex/upgrade/requests/request
       TUNNEX_HOST_UPGRADE_STATUS_PATH: /var/lib/tunnex/upgrade/status/status
     volumes:
+      - ${TUNNEX_DATABASE_TLS_SOURCE:-tunnex_database_tls}:/etc/tunnex/database-tls:ro
       - tunnex_secrets:/var/lib/tunnex/secrets # master key / JWT / session — auto-generated on first boot (S0.3)
       - ./release.json:/var/lib/tunnex/release.json:ro
       # The API can request one fixed-purpose host upgrade and read sanitized
@@ -93,6 +96,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
 
@@ -163,6 +167,7 @@ services:
       - api
 
 volumes:
+  tunnex_database_tls:
   postgres_data:
   redis_data:
   tunnex_secrets:

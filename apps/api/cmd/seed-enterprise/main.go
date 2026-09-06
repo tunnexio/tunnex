@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
@@ -66,7 +66,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := dbconn.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("seed_enterprise_connect_failed", slog.String("error", err.Error()))
 		os.Exit(1)

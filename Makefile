@@ -161,6 +161,10 @@ sqlc: ## Regenerate typed query code from db/queries
 # Keep -mod=readonly so builds remain reproducible and cannot silently rewrite
 # go.mod/go.sum while resolving dependencies.
 GO_IMAGE := golang:1.25.13-alpine
+# Opt-in host directories for disposable CI runners; never cache database state.
+# Empty preserves local behavior. CI keys these by OS/arch/toolchain and go.sum.
+GO_CACHE_DIR ?=
+GO_DOCKER_CACHE = $(if $(GO_CACHE_DIR),-v "$(GO_CACHE_DIR)/mod":/go/pkg/mod -v "$(GO_CACHE_DIR)/build":/root/.cache/go-build)
 NODE_IMAGE := node:20-alpine
 PW_IMAGE := mcr.microsoft.com/playwright:v1.48.2-jammy
 OAPI_CODEGEN_VERSION := v2.4.1
@@ -207,16 +211,16 @@ generate-tokens: ## S14.1: emit the design-token artifacts from packages/shared/
 
 .PHONY: generate-rbac
 generate-rbac: ## Emit the RBAC grant table (rbac.Policy) as JSON for the web client mirror
-	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=mod $(GO_IMAGE) \
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=mod $(GO_IMAGE) \
 	  go run ./cmd/rbac-policy-gen /repo/apps/web/src/lib/rbac-policy.json
 
 .PHONY: generate-go
 generate-go: ## Generate the Go server (api) + Go client (cli) from the spec
 	@mkdir -p apps/api/internal/api apps/cli/internal/api
-	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=mod $(GO_IMAGE) \
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=mod $(GO_IMAGE) \
 	  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) \
 	  -config oapi-codegen.yaml ../../openapi/openapi.yaml
-	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli -e GOFLAGS=-mod=mod $(GO_IMAGE) \
+	docker run --rm -v "$(PWD)":/repo -w /repo/apps/cli $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=mod $(GO_IMAGE) \
 	  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) \
 	  -config oapi-codegen.yaml ../../openapi/openapi.yaml
 
@@ -250,9 +254,9 @@ cli-dist: ## Cross-compile the tunnex CLI for release + SHA256SUMS (S5.1)
 .PHONY: build-editions
 build-editions: ## Compile both open and enterprise builds (catches edition rot)
 	@echo ">> open build"
-	docker run --rm -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build ./...
+	docker run --rm -v "$(PWD)/apps/api":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build ./...
 	@echo ">> enterprise build (-tags enterprise)"
-	docker run --rm -v "$(PWD)/apps/api":/src -w /src -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build -tags enterprise ./...
+	docker run --rm -v "$(PWD)/apps/api":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly $(GO_IMAGE) go build -tags enterprise ./...
 
 .PHONY: test-editions
 # -p 1: api packages run SERIALLY. The integration suites share ONE live DB and several commit
@@ -261,6 +265,13 @@ build-editions: ## Compile both open and enterprise builds (catches edition rot)
 # sites suite on CI). Serial execution kills the class structurally; per-test scoping can't
 # (the org limit is a GLOBAL count by product semantics).
 test-editions: ## Run the suite in BOTH editions against the live DB
+	$(MAKE) test-edition TEST_EDITION=open
+	$(MAKE) test-edition TEST_EDITION=enterprise
+
+.PHONY: test-edition
+TEST_EDITION ?= open
+test-edition: ## One edition on its isolated CI database; test-editions remains the local full gate
+	@case "$(TEST_EDITION)" in open|enterprise) ;; *) echo "invalid TEST_EDITION" >&2; exit 1 ;; esac
 	$(COMPOSE) up -d --wait postgres
 	@# The REPO ROOT is mounted, not just apps/api (S11). Several guards deliberately read files OUTSIDE the
 	@# module — the api Dockerfile (TestEveryOperatorToolShipsInTheImage), openapi.yaml and the web health
@@ -268,14 +279,10 @@ test-editions: ## Run the suite in BOTH editions against the live DB
 	@# surfaces, which is precisely what a module-scoped test cannot see. Mounting only apps/api made those
 	@# guards fail here while passing locally; the alternative, skipping when the file is absent, would have
 	@# made them pass here while checking nothing, which is the worse failure (see the witness-liveness law).
-	@echo ">> open edition tests"
-	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
+	@echo ">> $(TEST_EDITION) edition build and tests"
+	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
 	  -e TUNNEX_TEST_DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
-	  $(GO_IMAGE) go test -p 1 ./...
-	@echo ">> enterprise edition tests (-tags enterprise)"
-	docker run --rm --network $(NET) -v "$(PWD)":/repo -w /repo/apps/api -e GOFLAGS=-mod=readonly \
-	  -e TUNNEX_TEST_DATABASE_URL="postgres://$(PG_USER):$(PG_PASS)@postgres:5432/$(PG_DB)?sslmode=disable" \
-	  $(GO_IMAGE) go test -p 1 -tags enterprise ./...
+	  $(GO_IMAGE) sh -ec 'go build $(if $(filter enterprise,$(TEST_EDITION)),-tags enterprise) ./...; go test -count=1 -p 1 $(if $(filter enterprise,$(TEST_EDITION)),-tags enterprise) ./...'
 
 .PHONY: test-node
 test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
@@ -284,14 +291,14 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# --cap-add=NET_ADMIN: the L11 nft-render-check (TestRenderedRulesetIsValidNft) runs `nft -c` which opens
 	# netlink to init its cache — needs NET_ADMIN even in check-only mode. Without the cap that one test SKIPS
 	# (never false-fails), so the render-valid proof only holds when the cap is present (it is, here + in CI).
-	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)/apps/node":/src -w /src -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables iptables && go test ./..."
+	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)/apps/node":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	  $(GO_IMAGE) sh -c "apk add --no-cache git openvpn nftables iptables && go test -count=1 ./..."
 
 .PHONY: test-operator
 test-operator: ## Build the GitOps operator + run the no-DB-import census (S10.2). Edition-agnostic (one build; the operator is open deployment tooling, no enterprise tag).
 	# THE HARD RULE red: `go test` runs the no-DB-import census (hardrule_test.go) over the full dep graph.
-	docker run --rm -v "$(PWD)/apps/operator":/src -w /src -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go test ./..."
+	docker run --rm -v "$(PWD)/apps/operator":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go test -count=1 ./..."
 
 .PHONY: test-k8s-charts
 test-k8s-charts: ## Lint and semantically render host posture, gateway, GitOps operator, and monotonic CRD charts.
@@ -322,8 +329,8 @@ test-cli: ## Build + vet + test the tunnex CLI (S11-2: this module had NO gate c
 	# never COMPILES it, so a generated-code defect (an openapi schema name colliding with an oapi-codegen
 	# response-wrapper type) shipped to main and sat there undetected. A shipped module with no gate is the
 	# extreme case of the degraded-signal class this epic repays; build+vet+test closes it.
-	docker run --rm -v "$(PWD)/apps/cli":/src -w /src -e GOFLAGS=-mod=readonly \
-	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go vet ./... && go test ./..."
+	docker run --rm -v "$(PWD)/apps/cli":/src -w /src $(GO_DOCKER_CACHE) -e GOFLAGS=-mod=readonly \
+	  $(GO_IMAGE) sh -c "apk add --no-cache git && go build ./... && go vet ./... && go test -count=1 ./..."
 
 .PHONY: seed
 seed: ## Seed the demo org/user (idempotent, non-destructive)

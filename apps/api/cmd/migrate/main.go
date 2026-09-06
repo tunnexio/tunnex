@@ -8,10 +8,12 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
 	"github.com/tunnexio/tunnex/apps/api/db"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbcheck"
 )
 
 func main() {
@@ -30,8 +32,12 @@ func main() {
 
 	switch cmd {
 	case "up":
+		if err := dbcheck.Run(context.Background(), databaseURL, os.Getenv("TUNNEX_DATABASE_REQUIRE_TLS") == "true", true); err != nil {
+			logger.Error("database_preflight_failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 		if err := db.Up(databaseURL); err != nil {
-			logger.Error("migrate_failed", slog.String("cmd", cmd), slog.String("error", err.Error()))
+			logger.Error("migrate_failed", slog.String("cmd", cmd), slog.String("error", dbcheck.SafeError(err)))
 			os.Exit(1)
 		}
 		v, dirty, _, _ := db.Version(databaseURL)

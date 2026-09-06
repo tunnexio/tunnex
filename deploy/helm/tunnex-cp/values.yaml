@@ -19,14 +19,28 @@ image:
   pullSecrets: []
 
 # ─── EXTERNAL STORE (S10.1 Slice 2 — URL-WINS, validate-never-generate) ──────────
-# A K8s deploy points at a MANAGED Postgres + Redis. These become TUNNEX_DATABASE_URL
+# A K8s deploy points at customer-provided Postgres + Redis. These become TUNNEX_DATABASE_URL
 # / TUNNEX_REDIS_URL, which win over any bundled default and flag the store external;
 # the API pings both at boot and FAILS LOUD if unreachable. This chart never runs a
-# bundled Postgres/Redis — provide reachable URLs. Prefer referencing an existing
+# bundled Postgres/Redis — URLs must be reachable from the pods, not the public
+# internet. Private DNS endpoints are supported. Prefer referencing an existing
 # Secret (urlSecret) over inlining the URL (which lands in values/helm history).
 database:
-  url: ""                 # e.g. postgres://user:pass@host:5432/tunnex?sslmode=require
+  url: ""                 # e.g. postgres://user:pass@db.internal:5432/tunnex?sslmode=verify-full
   urlSecret: ""           # name of a Secret holding key `TUNNEX_DATABASE_URL` (preferred)
+  urlSecretKey: TUNNEX_DATABASE_URL
+  # Optional DDL role; runtime pods continue using urlSecret. Existing Secrets
+  # must exist before the pre-install hook. Both roles use the same TLS mount.
+  migrationURLSecret: ""
+  migrationURLSecretKey: TUNNEX_DATABASE_URL
+  requireTLS: true
+  tls:
+    # Existing Secret mounted read-only at /etc/tunnex/database-tls in BOTH API
+    # and migration pods. Reference files explicitly in the connection URL:
+    # sslrootcert=/etc/tunnex/database-tls/ca.crt
+    # Optional mTLS: sslcert=.../tls.crt&sslkey=.../tls.key
+    # Mounting a CA alone does not enable verification; use sslmode=verify-full.
+    existingSecret: ""
 redis:
   url: ""                 # e.g. redis://:pass@host:6379/0
   urlSecret: ""           # name of a Secret holding key `TUNNEX_REDIS_URL` (preferred)

@@ -14,11 +14,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbcheck"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -34,11 +37,52 @@ func main() {
 	cfg := config.Load()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "--database-only":
+			if err := dbcheck.Run(ctx, cfg.DatabaseURL, cfg.ExternalDatabase, true); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			fmt.Println("Database preflight passed: connectivity, TLS/authentication, supported writable PostgreSQL (16-18) and migration prerequisites")
+			return
+		case "--database-dump", "--database-verify-archive":
+			// Never place the DSN in argv or forward pg_dump stderr (server text may contain secrets).
+			var tool string
+			var err error
+			args := []string{"--format=custom", "--no-owner"}
+			if os.Args[1] == "--database-verify-archive" {
+				// Offline listing: newest reader understands all supported archive formats.
+				tool, err = dbcheck.NativeToolPath(180000, "pg_restore")
+				args = []string{"--list"}
+			} else {
+				tool, err = dbcheck.DumpTool(ctx, cfg.DatabaseURL, cfg.ExternalDatabase)
+			}
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			backupCtx, stop := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer stop()
+			cmd := exec.CommandContext(backupCtx, tool, args...)
+			cmd.Env, err = dbcheck.DumpEnvironment(cfg.DatabaseURL, os.Environ())
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			cmd.Stdin, cmd.Stdout = os.Stdin, os.Stdout
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintln(os.Stderr, "database_backup_failed: check database permissions, connection and PostgreSQL client compatibility")
+				os.Exit(1)
+			}
+			return
+		}
+	}
 
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	pool, err := dbconn.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		refuse([]check{{"database reachable", false,
-			"cannot connect: " + err.Error() + " — an upgrade cannot be assessed, let alone performed"}})
+			dbcheck.SafeError(err)}})
 	}
 	defer pool.Close()
 
@@ -77,7 +121,7 @@ func main() {
 
 func databaseReachable(ctx context.Context, pool *pgxpool.Pool) check {
 	if err := pool.Ping(ctx); err != nil {
-		return check{"database reachable", false, err.Error()}
+		return check{"database reachable", false, dbcheck.SafeError(err)}
 	}
 	return check{"database reachable", true, "connected"}
 }

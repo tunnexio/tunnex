@@ -19,7 +19,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbconn"
 
 	"github.com/google/uuid"
 
@@ -35,6 +35,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/config"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/dbcheck"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
@@ -163,13 +164,19 @@ func main() {
 	_ = mailer
 
 	// --- S0.4: self-provision the schema so `docker compose up` just works ---
+	if cfg.ExternalDatabase {
+		if err := dbcheck.Run(context.Background(), cfg.DatabaseURL, os.Getenv("TUNNEX_DATABASE_REQUIRE_TLS") != "false", cfg.AutoMigrate); err != nil {
+			logger.Error("database_preflight_failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}
 	if cfg.AutoMigrate {
 		if cfg.DatabaseURL == "" {
 			logger.Error("auto_migrate_failed", slog.String("error", "DATABASE_URL is empty"))
 			os.Exit(1)
 		}
 		if err := db.Up(cfg.DatabaseURL); err != nil {
-			logger.Error("auto_migrate_failed", slog.String("error", err.Error()))
+			logger.Error("auto_migrate_failed", slog.String("error", dbcheck.SafeError(err)))
 			os.Exit(1)
 		}
 		if v, dirty, ok, _ := db.Version(cfg.DatabaseURL); ok {
@@ -178,9 +185,9 @@ func main() {
 	}
 
 	// Database connection pool (used by the tenancy services).
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	pool, err := dbconn.NewPool(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		logger.Error("db_pool_failed", slog.String("error", err.Error()))
+		logger.Error("db_pool_failed", slog.String("error", dbcheck.SafeError(err)))
 		os.Exit(1)
 	}
 	defer pool.Close()

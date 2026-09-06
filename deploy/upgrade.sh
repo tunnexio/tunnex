@@ -148,6 +148,8 @@ verify_release_env() {
   fi || fail_verification
 }
 compose() {
+  case "$(dotenv_value TUNNEX_DATABASE_MODE)" in external) COMPOSE_PROFILES=external-db ;; *) COMPOSE_PROFILES=bundled-db ;; esac
+  export COMPOSE_PROFILES
   if [ -n "$PROJECT" ]; then
     docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
   else
@@ -218,7 +220,21 @@ BACKUP_BASE="tunnex-${BACKUP_STAMP}-${REQUEST_ID}"
 BACKUP_DUMP="$BACKUP_DIR/${BACKUP_BASE}.dump"
 BACKUP_MANIFEST="$BACKUP_DIR/${BACKUP_BASE}.manifest.json"
 write_status backing_up
-compose exec -T postgres sh -c 'pg_dump --format=custom --no-owner --username "$POSTGRES_USER" "$POSTGRES_DB"' >"${BACKUP_DUMP}.next" || {
+database_dump() {
+  if [ "$(dotenv_value TUNNEX_DATABASE_MODE)" = external ]; then
+    compose exec -T api preflight --database-dump
+  else
+    compose exec -T postgres sh -c 'pg_dump --format=custom --no-owner --username "$POSTGRES_USER" "$POSTGRES_DB"'
+  fi
+}
+database_verify_archive() {
+  if [ "$(dotenv_value TUNNEX_DATABASE_MODE)" = external ]; then
+    compose exec -T api preflight --database-verify-archive <"$BACKUP_DUMP"
+  else
+    pg_restore --list "$BACKUP_DUMP"
+  fi
+}
+database_dump >"${BACKUP_DUMP}.next" || {
   rm -f "${BACKUP_DUMP}.next"
   write_status failed backup_failed
   echo "error: upgrade blocked; database backup failed" >&2
@@ -231,7 +247,7 @@ compose exec -T postgres sh -c 'pg_dump --format=custom --no-owner --username "$
   exit 13
 }
 mv "${BACKUP_DUMP}.next" "$BACKUP_DUMP"
-pg_restore --list "$BACKUP_DUMP" >/dev/null 2>&1 || {
+database_verify_archive >/dev/null 2>&1 || {
   write_status failed backup_verification_failed
   echo "error: upgrade blocked; database backup is not a valid PostgreSQL archive" >&2
   exit 13
@@ -313,6 +329,11 @@ curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/depl
 grep -q 'TUNNEX_ENV: production' "$TMPDIR/tunnex.yml" && ! grep -qi 'mailpit' "$TMPDIR/tunnex.yml" || {
   echo "error: signed release points to a non-production deployment manifest" >&2; exit 13;
 }
+if [ "$(dotenv_value TUNNEX_DATABASE_MODE)" = external ]; then
+  grep -Fq 'TUNNEX_DATABASE_URL:' "$TMPDIR/tunnex.yml" && grep -Fq 'bundled-db' "$TMPDIR/tunnex.yml" || {
+    echo 'error: upgrade blocked; target release does not support the existing external database' >&2; exit 13;
+  }
+fi
 if [ "${TUNNEX_UPGRADE_PRIVILEGED:-}" = 1 ]; then
   curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/upgrade.sh" -o "$TMPDIR/upgrade.sh" || {
     echo "error: could not fetch the verified host upgrade helper" >&2; exit 13;
@@ -345,6 +366,10 @@ set_dotenv TUNNEX_RELEASE_VERSION "$VERSION"
 set_dotenv TUNNEX_RELEASE_SOURCE_SHA "$SOURCE_SHA"
 set_dotenv TUNNEX_VERSION "$VERSION"
 set_dotenv TUNNEX_SOURCE_REF "$SOURCE_SHA"
+case "$(dotenv_value TUNNEX_DATABASE_MODE)" in
+  external) set_dotenv COMPOSE_PROFILES external-db ;;
+  *) set_dotenv COMPOSE_PROFILES bundled-db ;;
+esac
 set_dotenv TUNNEX_RELEASE_MANIFEST_PATH /var/lib/tunnex/release.json
 mv "$TMPDIR/tunnex.yml" "$COMPOSE"
 mv "$TMPDIR/release.json" "$DIR/release.json"
@@ -356,7 +381,7 @@ ensure_edge_config
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
 compose pull
 write_status restarting
-compose_up -d
+compose_up -d --wait --wait-timeout 900
 compose ps --all
 write_status health_check
 if ! healthcheck; then
