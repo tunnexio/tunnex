@@ -40,3 +40,7 @@ grep -qx postgres "$TMP/bundled"
 ! grep -qx postgres "$TMP/external"
 grep -qx api "$TMP/external"
 echo 'BYODB installer contracts passed: selection, secret file, redaction, rerun preservation and Compose profiles'
+grep -Fq -- '--start-period=900s' "$ROOT/deploy/docker/api.Dockerfile"
+[ "$(grep -c -- '--wait-timeout 900' "$ROOT/deploy/install.sh")" -eq 2 ]
+grep -Fq 'compose_up -d --wait --wait-timeout 900' "$ROOT/deploy/upgrade.sh"
+echo 'BYODB startup grace and bounded installer/upgrade waits passed'

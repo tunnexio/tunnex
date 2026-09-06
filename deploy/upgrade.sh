@@ -381,7 +381,7 @@ ensure_edge_config
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
 compose pull
 write_status restarting
-compose_up -d
+compose_up -d --wait --wait-timeout 900
 compose ps --all
 write_status health_check
 if ! healthcheck; then

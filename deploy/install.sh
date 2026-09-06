@@ -1163,10 +1163,10 @@ if [ "$DB_MODE" = external ]; then
 		die 'External database preflight failed; CP was not started. Fix the installed database configuration and rerun.'
 fi
 if [ "$PORTABLE_CONTROL_PLANE" = true ]; then
-	run_with_loader 'Starting the portable control plane' tunnex_compose up -d --wait --scale node-agent=0 ||
+	run_with_loader 'Starting the portable control plane (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --scale node-agent=0 --wait-timeout 900 ||
 		die 'control plane did not become healthy'
 else
-	run_with_loader 'Starting the control plane and Linux gateway' tunnex_compose up -d --wait ||
+	run_with_loader 'Starting the control plane and Linux gateway (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --wait-timeout 900 ||
 		die 'control plane and Linux gateway did not become healthy'
 fi
 

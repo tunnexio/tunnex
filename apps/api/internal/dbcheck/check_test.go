@@ -143,3 +143,30 @@ func TestDumpEnvironmentPreservesEffectiveChannelBinding(t *testing.T) {
 		}
 	}
 }
+
+func TestDumpEnvironmentPreservesEffectiveTrust(t *testing.T) {
+	t.Setenv("PGSSLROOTCERT", "")
+	env, err := DumpEnvironment("postgres://fixture@localhost/fixture?sslmode=verify-full", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "PGSSLROOTCERT=system") {
+		t.Fatal("system trust lost")
+	}
+	t.Setenv("PGSSLROOTCERT", "system")
+	env, err = DumpEnvironment("postgres://fixture@localhost/fixture?sslmode=verify-full", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "PGSSLROOTCERT=system") {
+		t.Fatal("environment trust lost")
+	}
+	t.Setenv("PGSSLROOTCERT", "/nonexistent/environment-root.crt")
+	env, err = DumpEnvironment("postgres://fixture@localhost/fixture?sslmode=verify-full&sslrootcert=system", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "PGSSLROOTCERT=system") {
+		t.Fatal("URL trust precedence lost")
+	}
+}

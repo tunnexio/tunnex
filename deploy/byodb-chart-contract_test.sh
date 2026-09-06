@@ -21,6 +21,10 @@ for mode in legacy tls custom-key no-migration migration-role; do
     workloads.each do |w|
       pod = w.fetch("spec").fetch("template").fetch("spec")
       container = pod.fetch("containers").first
+      if w["kind"] == "Deployment"
+        probe = container.fetch("startupProbe")
+        abort "startup grace drift" unless probe["failureThreshold"] * probe["periodSeconds"] == 900 && probe.dig("httpGet", "path") == "/healthz"
+      end
       env = container.fetch("env").find { |e| ["DATABASE_URL", "TUNNEX_DATABASE_URL"].include?(e["name"]) }
       expected_key = mode == "custom-key" ? "connection-uri" : "TUNNEX_DATABASE_URL"
       expected_secret = "customer-db"

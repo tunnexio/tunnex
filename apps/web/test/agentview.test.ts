@@ -244,6 +244,14 @@ esac`);
     executable("wg-quick", "exit 0");
     executable("resolvconf", "exit 0");
     executable("uname", "printf '%s\\n' x86_64");
+    // The generated command targets Linux, but the fixture also runs on macOS,
+    // where GNU sha256sum is not guaranteed on PATH. Still hash the actual bytes.
+    executable("sha256sum", `exec "$MOCK_NODE" -e '
+const fs = require("node:fs");
+const crypto = require("node:crypto");
+const file = process.argv[1];
+console.log(crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") + "  " + file);
+' "$@"`);
     executable("systemctl", `printf '%s\n' "$*" >> "$MOCK_SYSTEMCTL_CALLS"
 case "\${1:-}" in
   is-active|is-enabled) exit 1 ;;
@@ -319,6 +327,7 @@ esac`);
           MOCK_CURL_ARGS: curlArgs,
           MOCK_EPHEMERAL: ephemeral,
           MOCK_MANIFEST: manifest,
+          MOCK_NODE: process.execPath,
           MOCK_PRIVATE_KEY: privateKey,
           MOCK_RESPONSE: response,
           MOCK_RUNTIME: runtime,
@@ -330,11 +339,26 @@ esac`);
           stdio: ["pipe", "pipe", "pipe"],
         }).toString();
 
-      expect(() => execute(true)).toThrow();
+      let startupError: unknown;
+      try {
+        execute(true);
+      } catch (error) {
+        startupError = error;
+      }
+      // An unrelated missing tool must not masquerade as the intended service
+      // startup failure and leave this rollback proof testing the wrong path.
+      expect(startupError).toMatchObject({ status: 42 });
       expect(() => accessSync(join(captured, "etc/wireguard/runtime.conf"))).toThrow();
       expect(() => accessSync(join(captured, "etc/tunnex-agent/runtime-credential"))).toThrow();
       expect(() => accessSync(ephemeral)).toThrow();
       expect(readGeneratedFile(systemctlCalls, dir)).toContain("daemon-reload");
+
+      const callsAfterRollback = readGeneratedFile(systemctlCalls, dir);
+      writeFileSync(runtime, `${runtimeBytes}tampered`);
+      expect(() => execute(false)).toThrow(/runtime byte digest refused/);
+      expect(readGeneratedFile(systemctlCalls, dir)).toBe(callsAfterRollback);
+      expect(() => accessSync(ephemeral)).toThrow();
+      writeFileSync(runtime, runtimeBytes);
 
       const stdout = execute(false);
 

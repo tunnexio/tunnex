@@ -38,5 +38,10 @@ for major in 16 17 18; do
   docker exec -i "$container" pg_restore -U postgres --exit-on-error --no-owner -d restored < "$scratch/pg$major.dump"
   docker exec "$container" psql -U postgres -d restored -Atc 'SELECT version,dirty FROM schema_migrations'
   echo "PG$major required-channel-binding migration/up-down-up/dump/restore PASS"
+  system_url="postgres://postgres:matrix-only-disposable@$host/tunnex?sslmode=verify-full&channel_binding=require"
+  docker run "${common[@]}" -e "TUNNEX_DATABASE_URL=$system_url" -e SSL_CERT_FILE=/fixture/server.crt --entrypoint preflight "$BYODB_MATRIX_IMAGE" --database-only
+  docker run "${common[@]}" -e "TUNNEX_DATABASE_URL=$system_url" -e SSL_CERT_FILE=/fixture/server.crt --entrypoint preflight "$BYODB_MATRIX_IMAGE" --database-dump > "$scratch/pg$major-system-trust.dump"
+  test -s "$scratch/pg$major-system-trust.dump"
+  echo "PG$major default-system-trust preflight and dump PASS"
 done
 echo "Retained test network: $BYODB_MATRIX_PROJECT; fixtures: $scratch"

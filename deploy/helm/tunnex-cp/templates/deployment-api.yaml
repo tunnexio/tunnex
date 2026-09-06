@@ -107,6 +107,12 @@ spec:
               readOnly: true
             - name: secrets
               mountPath: {{ .Values.api.secretsDir }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 180
           readinessProbe:
             httpGet:
               path: /healthz

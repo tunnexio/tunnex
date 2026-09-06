@@ -41,6 +41,8 @@ COPY --from=build /out/preflight /usr/local/bin/preflight
 COPY --from=build /out/backupctl /usr/local/bin/backupctl
 COPY --from=build /out/releaseverify /usr/local/bin/releaseverify
 EXPOSE 8080
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
+# Fresh external schemas may need minutes of cross-region migration round trips.
+# A successful check ends the grace immediately; running instances retain fast checks.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=900s --retries=5 \
   CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
 ENTRYPOINT ["/usr/local/bin/tunnex-api"]

@@ -102,6 +102,12 @@ signature verification and production trust roots while determining the correct
 private-candidate installer/upgrade qualification path. No public release, merge,
 or silent trust-anchor override is authorized by this completion request.
 
+User explicitly chose **keep current scope; signed walk at release**. Do not add
+private-distribution mode. Signed installer/upgrade wire proof is deferred to the
+first BYODB-capable production-signed release, before general-availability claims
+or advancing the website launcher pin. Candidate runtime/contract tests remain
+substitutes, not satisfaction of that release qualification.
+
 ### Review disposition — 2026-09-06
 
 User approved fixing both held P1 findings and testing them. Preserve the legacy
