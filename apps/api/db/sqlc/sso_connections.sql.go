@@ -84,6 +84,7 @@ type GetSSOConnectionIdentityParams struct {
 	Subject      string    `json:"subject"`
 }
 
+// lint:cross-org — identity namespace is the explicit connection plus issuer and subject; callback checks flow ownership, and directory sync resolves the connection from its tenant-scoped config.
 func (q *Queries) GetSSOConnectionIdentity(ctx context.Context, arg GetSSOConnectionIdentityParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getSSOConnectionIdentity, arg.ConnectionID, arg.IssuerUrl, arg.Subject)
 	var user_id uuid.UUID
@@ -95,6 +96,7 @@ const hasSSOConnectionIdentities = `-- name: HasSSOConnectionIdentities :one
 SELECT EXISTS(SELECT 1 FROM sso_connection_identities WHERE connection_id=$1)
 `
 
+// lint:cross-org — SaveConnection checks the locked connection owner before inspecting this exact identity namespace.
 func (q *Queries) HasSSOConnectionIdentities(ctx context.Context, connectionID uuid.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, hasSSOConnectionIdentities, connectionID)
 	var exists bool
@@ -133,6 +135,7 @@ type IsDirectoryImportedIdentityParams struct {
 	Subject      string    `json:"subject"`
 }
 
+// lint:cross-org — callback checks its locked connection and active organization membership before reading provenance for this exact issuer and subject.
 func (q *Queries) IsDirectoryImportedIdentity(ctx context.Context, arg IsDirectoryImportedIdentityParams) (bool, error) {
 	row := q.db.QueryRow(ctx, isDirectoryImportedIdentity, arg.ConnectionID, arg.IssuerUrl, arg.Subject)
 	var directory_imported bool
@@ -144,6 +147,7 @@ const isDirectoryManagedConnection = `-- name: IsDirectoryManagedConnection :one
 SELECT EXISTS(SELECT 1 FROM idp_sync_configs WHERE sso_connection_id=$1)
 `
 
+// lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
 func (q *Queries) IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, isDirectoryManagedConnection, ssoConnectionID)
 	var exists bool
@@ -323,6 +327,7 @@ type VerifySSOConnectionParams struct {
 	Revision int64     `json:"revision"`
 }
 
+// lint:cross-org — callback validates the locked connection against its server-side flow and rechecks administrator membership before marking this exact revision tested.
 func (q *Queries) VerifySSOConnection(ctx context.Context, arg VerifySSOConnectionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, verifySSOConnection, arg.ID, arg.Revision)
 	if err != nil {

@@ -806,6 +806,7 @@ type Querier interface {
 	GetSSOConfig(ctx context.Context, arg GetSSOConfigParams) (SsoConfig, error)
 	// lint:cross-org — public login selects an explicit globally unique connection; no tenant guessing.
 	GetSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)
+	// lint:cross-org — identity namespace is the explicit connection plus issuer and subject; callback checks flow ownership, and directory sync resolves the connection from its tenant-scoped config.
 	GetSSOConnectionIdentity(ctx context.Context, arg GetSSOConnectionIdentityParams) (uuid.UUID, error)
 	GetSite(ctx context.Context, arg GetSiteParams) (Site, error)
 	// lint:cross-org — org-scoped via the join to sites.org_id.
@@ -825,6 +826,7 @@ type Querier interface {
 	// annotation. Granting deployment-level authority to a soft-deleted account would arm an identity that is
 	// meant to be gone, and a later undelete would restore it silently holding a capability nobody granted it.
 	GrantCPAdmin(ctx context.Context, id uuid.UUID) error
+	// lint:cross-org — SaveConnection checks the locked connection owner before inspecting this exact identity namespace.
 	HasSSOConnectionIdentities(ctx context.Context, connectionID uuid.UUID) (bool, error)
 	HeartbeatLifecycleInstallOperation(ctx context.Context, arg HeartbeatLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
 	ImportSSOConnectionIdentity(ctx context.Context, arg ImportSSOConnectionIdentityParams) error
@@ -875,7 +877,9 @@ type Querier interface {
 	IsAccessEventRetentionDue(ctx context.Context, arg IsAccessEventRetentionDueParams) (*bool, error)
 	IsAgentTemplateManagedRule(ctx context.Context, arg IsAgentTemplateManagedRuleParams) (bool, error)
 	IsAuditLogRetentionDue(ctx context.Context, arg IsAuditLogRetentionDueParams) (*bool, error)
+	// lint:cross-org — callback checks its locked connection and active organization membership before reading provenance for this exact issuer and subject.
 	IsDirectoryImportedIdentity(ctx context.Context, arg IsDirectoryImportedIdentityParams) (bool, error)
+	// lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
 	IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error)
 	LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConnectionIdentityParams) error
 	// The security-focused feed: deny + deny_aggregate + terminated + gap, same keyset shape.
@@ -1945,6 +1949,7 @@ type Querier interface {
 	// The D8/D5 enforcement predicate (local-auth users only; SSO is exempt at the login seam).
 	UserInEnforcingOrg(ctx context.Context, userID uuid.UUID) (bool, error)
 	UserIsCPAdmin(ctx context.Context, id uuid.UUID) (bool, error)
+	// lint:cross-org — callback validates the locked connection against its server-side flow and rechecks administrator membership before marking this exact revision tested.
 	VerifySSOConnection(ctx context.Context, arg VerifySSOConnectionParams) (int64, error)
 }
 

@@ -18,18 +18,23 @@ RETURNING *;
 UPDATE sso_connections SET enabled=$3 WHERE org_id=$1 AND id=$2 AND revision=$4
 AND (NOT $3::boolean OR tested_revision=revision) RETURNING *;
 -- name: VerifySSOConnection :execrows
+-- lint:cross-org — callback validates the locked connection against its server-side flow and rechecks administrator membership before marking this exact revision tested.
 UPDATE sso_connections SET tested_revision=revision,tested_at=now() WHERE id=$1 AND revision=$2;
 -- name: GetSSOConnectionIdentity :one
+-- lint:cross-org — identity namespace is the explicit connection plus issuer and subject; callback checks flow ownership, and directory sync resolves the connection from its tenant-scoped config.
 SELECT user_id FROM sso_connection_identities WHERE connection_id=$1 AND issuer_url=$2 AND subject=$3;
 -- name: LinkSSOConnectionIdentity :exec
 INSERT INTO sso_connection_identities (connection_id,issuer_url,subject,user_id) VALUES ($1,$2,$3,$4);
 -- name: HasSSOConnectionIdentities :one
+-- lint:cross-org — SaveConnection checks the locked connection owner before inspecting this exact identity namespace.
 SELECT EXISTS(SELECT 1 FROM sso_connection_identities WHERE connection_id=$1);
 
 -- name: IsDirectoryManagedConnection :one
+-- lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
 SELECT EXISTS(SELECT 1 FROM idp_sync_configs WHERE sso_connection_id=$1);
 
 -- name: IsDirectoryImportedIdentity :one
+-- lint:cross-org — callback checks its locked connection and active organization membership before reading provenance for this exact issuer and subject.
 SELECT directory_imported FROM sso_connection_identities WHERE connection_id=$1 AND issuer_url=$2 AND subject=$3;
 
 -- name: ImportSSOConnectionIdentity :exec
