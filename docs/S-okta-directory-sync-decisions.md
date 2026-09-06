@@ -39,3 +39,46 @@ Managed login must not fall back to JIT for an unknown subject. A previously imp
 The first-login decision is now resolved; no further user sign-off is needed for this selected implementation. Okta adapter/import implementation and isolated database proof are still outstanding.
 
 Primary identity reference: https://support.okta.com/help/s/article/sub-claim-limitation?language=en_US — the ID-token sub is the immutable Okta user ID. This contract does not apply to access-token sub, which may be customized.
+
+## Direct-login draft review — findings held for user disposition
+
+The source implementation is a draft, not acceptance-ready. Two independent bounded reviewers found:
+
+1. P1: default membership-insert trigger gives imported users manual/legacy provenance, preventing last-group revocation. Use a dedicated source-owned membership transaction and preserve legitimate provenance on pre-existing users.
+2. P1: an expected joiner/email conflict aborts the group before unrelated leaver removals. Separate additive import errors from authoritative membership resolution and continue safe revocations.
+3. P1: Okta API still inherits enabled=true default. Require explicit Okta opt-in, preserving legacy provider defaults.
+4. P2: direct first SSO callback must mark imported email verified only after verified subject and matching account-email checks.
+5. P2: concurrent first configs on different connections can replace the namespace. Guard immutable org/provider binding atomically.
+6. P2: return safe enabled/configuration state and preserve it during credential rotation, with explicit enable/disable controls.
+7. P2: new safe configuration error messages and working connection-load retry/rejection handling.
+
+User disposition requested together via the in-app question. Do not report this draft as complete or wire-proven. Docker remains unavailable; migration, concurrency and full import-to-browser-login proof are outstanding.
+
+## Review disposition
+User approved all recommended fixes. Apply all seven held findings, then re-review the folded implementation. The existing-user ownership boundary and no-email-takeover rule remain locked.
+
+## Approved fixes folded and local verification — 2026-09-06
+
+All seven approved findings have been folded. The follow-up UI pending-mutation finding is also fixed: one synchronous guard covers save, activation, sync, map and unmap through refresh; forced-submit regression passes. Targeted independent UI re-review reports no remaining blocker. Backend source re-review resolved its four reported findings; neither bounded review is a production qualification.
+
+The earlier Docker blocker is resolved with a dedicated Colima profile `tunnex-sso-review`, without changing the default Docker context. Every DB-capable validation verifies `COMPOSE_PROJECT_NAME=tunnexssoreview0906`, container `tunnexssoreview0906-postgres-1`, and network `tunnexssoreview0906_default`. Migration 138 applied cleanly. Runtime credentials and compose configuration remain ignored under walk-artifacts/sso-improvement/local-runtime.
+
+Database integration verifies source-owned imported membership (no accidental manual/legacy grant), repeat import, expiry refusal and last-group revocation invocation. A signed local IdP token exchange plus real database test verifies direct imported-user first login, matching-email verification, refusal of unknown subjects, and revoked-membership refusal. Existing active imported identities can sign in after licence expiry. The deprovision integration uses a recording delegate: this proves invocation, not live gateway/session removal.
+
+Adapter tests verify RS256 private_key_jwt signature, kid, issuer/subject, token audience and expiry, read-only scopes, cached token use across complete pagination, and no partial membership output on continuation 401/403/404/429/500 errors. Unknown lifecycle statuses intentionally retain prior state with an error; ACTIVE, SUSPENDED and DEPROVISIONED are supported.
+
+Web: 60 focused tests pass, typecheck and production build pass (existing large-bundle warning). Rendered real Directory sync component checked with simulated expired licence: provisioning paused while polling stays enabled; dialog styles and spacing verified. This browser preview is explicitly simulated.
+
+Remaining qualification: a full browser-to-running-CP import/login/session walk and real Okta service-app tenant. These are not satisfied by the signed-token service/database test. Full repository gate suite and remote CI are not claimed. No remote publication performed.
+
+Final focused API checks passed in open and enterprise editions for internal/idpsync, internal/sso and internal/http; both API editions build. The auth walk now supplies valid SSO bodies and connection UUIDs so it verifies the intended unauthenticated 401 boundary. See walk-artifacts/sso-improvement/okta-local-verification.md.
+
+## Running fixture walk follow-up
+
+User authorized local CP plus fixture data. Full local browser first login now
+passes through the running HTTP callback and session into the real CP dashboard.
+Walk found a sessionless callback nil-principal panic; regression reproduced it,
+then the narrow nil guard passed in both editions and the browser retry succeeded.
+See the running-CP section of the walk record for isolated runtime identities,
+test-only overlays and proof limits. This closes local first-login wire proof,
+not real Okta tenant or signed licence deployment qualification.
