@@ -407,6 +407,17 @@ type AgentWorkflowSigningKey struct {
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
 }
 
+type AiGatewayCredential struct {
+	TokenHash       []byte             `json:"token_hash"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	DeviceID        uuid.UUID          `json:"device_id"`
+	RuntimeRevision int64              `json:"runtime_revision"`
+	Audience        string             `json:"audience"`
+	CreatedAt       time.Time          `json:"created_at"`
+	ExpiresAt       time.Time          `json:"expires_at"`
+	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type AlertDelivery struct {
 	ID              uuid.UUID          `json:"id"`
 	OrgID           uuid.UUID          `json:"org_id"`
@@ -1448,6 +1459,8 @@ type Organization struct {
 	AgentJitAccessEnabled       bool               `json:"agent_jit_access_enabled"`
 	AlertingEnabled             bool               `json:"alerting_enabled"`
 	FqdnResourcesEnabled        bool               `json:"fqdn_resources_enabled"`
+	AiGatewayEnabled            bool               `json:"ai_gateway_enabled"`
+	AiGatewayRevision           int64              `json:"ai_gateway_revision"`
 }
 
 type OvpnClientCert struct {

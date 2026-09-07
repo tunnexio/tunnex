@@ -1,0 +1,49 @@
+# Optional override; use with repository-root docker-compose.yml and --profile ai.
+# All relative paths are resolved from the first (root) Compose file.
+services:
+  api:
+    environment:
+      TUNNEX_AI_GATEWAY_URL: http://bifrost:8080
+      TUNNEX_AI_GATEWAY_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?Set a private Bifrost admin username}
+      TUNNEX_AI_GATEWAY_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?Set a private Bifrost admin password}
+    networks:
+      default: {}
+      ai_engine: {}
+
+  bifrost:
+    # Official v2.0.0 multi-architecture OCI index, verified 2026-09-07.
+    image: maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208
+    profiles: [ai]
+    restart: unless-stopped
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8080"
+      APP_DIR: /app/data
+      LOG_LEVEL: error
+      BIFROST_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?Set a private Bifrost admin username}
+      BIFROST_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?Set a private Bifrost admin password}
+      OPENROUTER_API_KEY: ${TUNNEX_AI_OPENROUTER_API_KEY:?Set the gateway-owned OpenRouter key}
+      BIFROST_ENCRYPTION_KEY: ${TUNNEX_AI_ENGINE_ENCRYPTION_KEY:?Set a durable private encryption key}
+    volumes:
+      - ai_engine_config:/app/data
+      - ai_engine_logs:/app/data/logs
+      - ./deploy/ai-gateway/config.json:/app/data/config.json:ro
+    networks:
+      - ai_engine
+    # No host ports. Only the API shares this network; Bifrost needs HTTPS egress.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  ai_engine: {}
+
+volumes:
+  ai_engine_config: {}
+  ai_engine_logs: {}

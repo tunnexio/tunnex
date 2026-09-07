@@ -19,9 +19,15 @@ import (
 )
 
 const (
+	AiBearerAuthScopes  = "aiBearerAuth.Scopes"
 	BearerAuthScopes    = "bearerAuth.Scopes"
 	CookieAuthScopes    = "cookieAuth.Scopes"
 	RuntimeBearerScopes = "runtimeBearer.Scopes"
+)
+
+// Defines values for AICredentialAudience.
+const (
+	TunnexAi AICredentialAudience = "tunnex-ai"
 )
 
 // Defines values for AccessEventDecision.
@@ -1184,6 +1190,44 @@ const (
 	Tcp TestAgentAccessParamsProtocol = "tcp"
 	Udp TestAgentAccessParamsProtocol = "udp"
 )
+
+// AICredential defines model for AICredential.
+type AICredential struct {
+	Audience  AICredentialAudience `json:"audience"`
+	Endpoint  string               `json:"endpoint"`
+	ExpiresAt time.Time            `json:"expires_at"`
+
+	// Token One-time secret; never returned by read APIs.
+	Token string `json:"token"`
+}
+
+// AICredentialAudience defines model for AICredential.Audience.
+type AICredentialAudience string
+
+// AIGatewayOptIn defines model for AIGatewayOptIn.
+type AIGatewayOptIn struct {
+	Enabled bool `json:"enabled"`
+}
+
+// AIGatewaySettings defines model for AIGatewaySettings.
+type AIGatewaySettings struct {
+	// Available Server has the qualified private engine configuration.
+	Available bool  `json:"available"`
+	Enabled   bool  `json:"enabled"`
+	Revision  int64 `json:"revision"`
+}
+
+// AIInferenceRequest defines model for AIInferenceRequest.
+type AIInferenceRequest struct {
+	MaxTokens *int                     `json:"max_tokens,omitempty"`
+	Messages  []map[string]interface{} `json:"messages"`
+
+	// Model Exact provider/model identifier; aliases and caller fallback are not supported.
+	Model       string   `json:"model"`
+	Stream      *bool    `json:"stream,omitempty"`
+	System      *string  `json:"system,omitempty"`
+	Temperature *float32 `json:"temperature,omitempty"`
+}
 
 // AcceptInviteRequest defines model for AcceptInviteRequest.
 type AcceptInviteRequest struct {
@@ -4929,6 +4973,12 @@ type ListRoutedRangesParams struct {
 	DeviceId *openapi_types.UUID `form:"device_id,omitempty" json:"device_id,omitempty"`
 }
 
+// AiAnthropicMessageJSONRequestBody defines body for AiAnthropicMessage for application/json ContentType.
+type AiAnthropicMessageJSONRequestBody = AIInferenceRequest
+
+// AiChatCompletionJSONRequestBody defines body for AiChatCompletion for application/json ContentType.
+type AiChatCompletionJSONRequestBody = AIInferenceRequest
+
 // UpdateGatewayEndpointJSONRequestBody defines body for UpdateGatewayEndpoint for application/json ContentType.
 type UpdateGatewayEndpointJSONRequestBody = UpdateGatewayEndpointRequest
 
@@ -5096,6 +5146,9 @@ type StartAgentMCPOAuthConnectionJSONRequestBody = StartAgentMCPOAuthConnectionR
 
 // ReplaceAgentMCPToolPolicyJSONRequestBody defines body for ReplaceAgentMCPToolPolicy for application/json ContentType.
 type ReplaceAgentMCPToolPolicyJSONRequestBody = ReplaceAgentMCPToolPolicyRequest
+
+// SetAIGatewaySettingsJSONRequestBody defines body for SetAIGatewaySettings for application/json ContentType.
+type SetAIGatewaySettingsJSONRequestBody = AIGatewayOptIn
 
 // CreateAlertDestinationJSONRequestBody defines body for CreateAlertDestination for application/json ContentType.
 type CreateAlertDestinationJSONRequestBody = CreateAlertDestinationRequest
@@ -5383,6 +5436,16 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// AiAnthropicMessageWithBody request with any body
+	AiAnthropicMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiAnthropicMessage(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AiChatCompletionWithBody request with any body
+	AiChatCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AiChatCompletion(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetGatewayEndpoint request
 	GetGatewayEndpoint(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -5426,6 +5489,9 @@ type ClientInterface interface {
 	RekeyChallengeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// IssueAICredential request
+	IssueAICredential(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PrepareAgentRuntimeCredentialWithBody request with any body
 	PrepareAgentRuntimeCredentialWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5836,6 +5902,14 @@ type ClientInterface interface {
 
 	// ListAgentWorkflowProvenance request
 	ListAgentWorkflowProvenance(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAIGatewaySettings request
+	GetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAIGatewaySettingsWithBody request with any body
+	SetAIGatewaySettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAlertDeliveries request
 	ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6463,6 +6537,54 @@ type ClientInterface interface {
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
+func (c *Client) AiAnthropicMessageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiAnthropicMessageRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiAnthropicMessage(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiAnthropicMessageRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiChatCompletionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiChatCompletionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AiChatCompletion(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAiChatCompletionRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetGatewayEndpoint(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetGatewayEndpointRequest(c.Server)
 	if err != nil {
@@ -6657,6 +6779,18 @@ func (c *Client) RekeyChallengeWithBody(ctx context.Context, contentType string,
 
 func (c *Client) RekeyChallenge(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRekeyChallengeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) IssueAICredential(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewIssueAICredentialRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -8493,6 +8627,42 @@ func (c *Client) TestAgentAccess(ctx context.Context, orgId openapi_types.UUID, 
 
 func (c *Client) ListAgentWorkflowProvenance(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentWorkflowProvenanceRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIGatewaySettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetAIGatewaySettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAIGatewaySettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAIGatewaySettingsRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -11287,6 +11457,86 @@ func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (
 	return c.Client.Do(req)
 }
 
+// NewAiAnthropicMessageRequest calls the generic AiAnthropicMessage builder with application/json body
+func NewAiAnthropicMessageRequest(server string, body AiAnthropicMessageJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiAnthropicMessageRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiAnthropicMessageRequestWithBody generates requests for AiAnthropicMessage with any type of body
+func NewAiAnthropicMessageRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/anthropic/v1/messages")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAiChatCompletionRequest calls the generic AiChatCompletion builder with application/json body
+func NewAiChatCompletionRequest(server string, body AiChatCompletionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAiChatCompletionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewAiChatCompletionRequestWithBody generates requests for AiChatCompletion with any type of body
+func NewAiChatCompletionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/ai/v1/chat/completions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetGatewayEndpointRequest generates requests for GetGatewayEndpoint
 func NewGetGatewayEndpointRequest(server string) (*http.Request, error) {
 	var err error
@@ -11665,6 +11915,33 @@ func NewRekeyChallengeRequestWithBody(server string, contentType string, body io
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewIssueAICredentialRequest generates requests for IssueAICredential
+func NewIssueAICredentialRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/agent/runtime/ai-credential")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -16538,6 +16815,87 @@ func NewListAgentWorkflowProvenanceRequest(server string, orgId openapi_types.UU
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetAIGatewaySettingsRequest generates requests for GetAIGatewaySettings
+func NewGetAIGatewaySettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAIGatewaySettingsRequest calls the generic SetAIGatewaySettings builder with application/json body
+func NewSetAIGatewaySettingsRequest(server string, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAIGatewaySettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetAIGatewaySettingsRequestWithBody generates requests for SetAIGatewaySettings with any type of body
+func NewSetAIGatewaySettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -24099,6 +24457,16 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// AiAnthropicMessageWithBodyWithResponse request with any body
+	AiAnthropicMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error)
+
+	AiAnthropicMessageWithResponse(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error)
+
+	// AiChatCompletionWithBodyWithResponse request with any body
+	AiChatCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error)
+
+	AiChatCompletionWithResponse(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error)
+
 	// GetGatewayEndpointWithResponse request
 	GetGatewayEndpointWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGatewayEndpointResponse, error)
 
@@ -24142,6 +24510,9 @@ type ClientWithResponsesInterface interface {
 	RekeyChallengeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RekeyChallengeResponse, error)
 
 	RekeyChallengeWithResponse(ctx context.Context, body RekeyChallengeJSONRequestBody, reqEditors ...RequestEditorFn) (*RekeyChallengeResponse, error)
+
+	// IssueAICredentialWithResponse request
+	IssueAICredentialWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*IssueAICredentialResponse, error)
 
 	// PrepareAgentRuntimeCredentialWithBodyWithResponse request with any body
 	PrepareAgentRuntimeCredentialWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PrepareAgentRuntimeCredentialResponse, error)
@@ -24552,6 +24923,14 @@ type ClientWithResponsesInterface interface {
 
 	// ListAgentWorkflowProvenanceWithResponse request
 	ListAgentWorkflowProvenanceWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentWorkflowProvenanceResponse, error)
+
+	// GetAIGatewaySettingsWithResponse request
+	GetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewaySettingsResponse, error)
+
+	// SetAIGatewaySettingsWithBodyWithResponse request with any body
+	SetAIGatewaySettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error)
+
+	SetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error)
 
 	// ListAlertDeliveriesWithResponse request
 	ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error)
@@ -25179,6 +25558,52 @@ type ClientWithResponsesInterface interface {
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
 }
 
+type AiAnthropicMessageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiAnthropicMessageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiAnthropicMessageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AiChatCompletionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *map[string]interface{}
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AiChatCompletionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AiChatCompletionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetGatewayEndpointResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -25401,6 +25826,29 @@ func (r RekeyChallengeResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RekeyChallengeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type IssueAICredentialResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AICredential
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r IssueAICredentialResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r IssueAICredentialResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -27790,6 +28238,52 @@ func (r ListAgentWorkflowProvenanceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListAgentWorkflowProvenanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAIGatewaySettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIGatewaySettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIGatewaySettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIGatewaySettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetAIGatewaySettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIGatewaySettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAIGatewaySettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAIGatewaySettingsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -31467,6 +31961,40 @@ func (r GetHealthResponse) StatusCode() int {
 	return 0
 }
 
+// AiAnthropicMessageWithBodyWithResponse request with arbitrary body returning *AiAnthropicMessageResponse
+func (c *ClientWithResponses) AiAnthropicMessageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error) {
+	rsp, err := c.AiAnthropicMessageWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiAnthropicMessageResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiAnthropicMessageWithResponse(ctx context.Context, body AiAnthropicMessageJSONRequestBody, reqEditors ...RequestEditorFn) (*AiAnthropicMessageResponse, error) {
+	rsp, err := c.AiAnthropicMessage(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiAnthropicMessageResponse(rsp)
+}
+
+// AiChatCompletionWithBodyWithResponse request with arbitrary body returning *AiChatCompletionResponse
+func (c *ClientWithResponses) AiChatCompletionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error) {
+	rsp, err := c.AiChatCompletionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiChatCompletionResponse(rsp)
+}
+
+func (c *ClientWithResponses) AiChatCompletionWithResponse(ctx context.Context, body AiChatCompletionJSONRequestBody, reqEditors ...RequestEditorFn) (*AiChatCompletionResponse, error) {
+	rsp, err := c.AiChatCompletion(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAiChatCompletionResponse(rsp)
+}
+
 // GetGatewayEndpointWithResponse request returning *GetGatewayEndpointResponse
 func (c *ClientWithResponses) GetGatewayEndpointWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGatewayEndpointResponse, error) {
 	rsp, err := c.GetGatewayEndpoint(ctx, reqEditors...)
@@ -31611,6 +32139,15 @@ func (c *ClientWithResponses) RekeyChallengeWithResponse(ctx context.Context, bo
 		return nil, err
 	}
 	return ParseRekeyChallengeResponse(rsp)
+}
+
+// IssueAICredentialWithResponse request returning *IssueAICredentialResponse
+func (c *ClientWithResponses) IssueAICredentialWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*IssueAICredentialResponse, error) {
+	rsp, err := c.IssueAICredential(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssueAICredentialResponse(rsp)
 }
 
 // PrepareAgentRuntimeCredentialWithBodyWithResponse request with arbitrary body returning *PrepareAgentRuntimeCredentialResponse
@@ -32939,6 +33476,32 @@ func (c *ClientWithResponses) ListAgentWorkflowProvenanceWithResponse(ctx contex
 		return nil, err
 	}
 	return ParseListAgentWorkflowProvenanceResponse(rsp)
+}
+
+// GetAIGatewaySettingsWithResponse request returning *GetAIGatewaySettingsResponse
+func (c *ClientWithResponses) GetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewaySettingsResponse, error) {
+	rsp, err := c.GetAIGatewaySettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIGatewaySettingsResponse(rsp)
+}
+
+// SetAIGatewaySettingsWithBodyWithResponse request with arbitrary body returning *SetAIGatewaySettingsResponse
+func (c *ClientWithResponses) SetAIGatewaySettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error) {
+	rsp, err := c.SetAIGatewaySettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAIGatewaySettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error) {
+	rsp, err := c.SetAIGatewaySettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAIGatewaySettingsResponse(rsp)
 }
 
 // ListAlertDeliveriesWithResponse request returning *ListAlertDeliveriesResponse
@@ -34958,6 +35521,78 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 	return ParseGetHealthResponse(rsp)
 }
 
+// ParseAiAnthropicMessageResponse parses an HTTP response from a AiAnthropicMessageWithResponse call
+func ParseAiAnthropicMessageResponse(rsp *http.Response) (*AiAnthropicMessageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiAnthropicMessageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
+// ParseAiChatCompletionResponse parses an HTTP response from a AiChatCompletionWithResponse call
+func ParseAiChatCompletionResponse(rsp *http.Response) (*AiChatCompletionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AiChatCompletionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	case rsp.StatusCode == 200:
+		// Content-type (text/event-stream) unsupported
+
+	}
+
+	return response, nil
+}
+
 // ParseGetGatewayEndpointResponse parses an HTTP response from a GetGatewayEndpointWithResponse call
 func ParseGetGatewayEndpointResponse(rsp *http.Response) (*GetGatewayEndpointResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -35261,6 +35896,39 @@ func ParseRekeyChallengeResponse(rsp *http.Response) (*RekeyChallengeResponse, e
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseIssueAICredentialResponse parses an HTTP response from a IssueAICredentialWithResponse call
+func ParseIssueAICredentialResponse(rsp *http.Response) (*IssueAICredentialResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &IssueAICredentialResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AICredential
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -38668,6 +39336,72 @@ func ParseListAgentWorkflowProvenanceResponse(rsp *http.Response) (*ListAgentWor
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []AgentWorkflowProvenanceRecord
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAIGatewaySettingsResponse parses an HTTP response from a GetAIGatewaySettingsWithResponse call
+func ParseGetAIGatewaySettingsResponse(rsp *http.Response) (*GetAIGatewaySettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIGatewaySettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIGatewaySettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetAIGatewaySettingsResponse parses an HTTP response from a SetAIGatewaySettingsWithResponse call
+func ParseSetAIGatewaySettingsResponse(rsp *http.Response) (*SetAIGatewaySettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAIGatewaySettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIGatewaySettings
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -308,10 +308,14 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 				next.ServeHTTP(w, r)
 				return
 			}
+			if r.URL.Path == "/api/v1/agent/runtime/ai-credential" && (len(r.Header.Values("Authorization")) != 1 || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")) {
+				apierr.Write(w, r, runtimeUnauthorized())
+				return
+			}
 			raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			var id agentruntime.Identity
 			var err error
-			if r.URL.Path == "/api/v1/agent/runtime/credential-candidate" || r.URL.Path == "/api/v1/agent/runtime/wireguard-candidate" || r.URL.Path == "/api/v1/agent/runtime/workflow-signing-key" || r.URL.Path == "/api/v1/agent/runtime/workflow-provenance" {
+			if r.URL.Path == "/api/v1/agent/runtime/ai-credential" || r.URL.Path == "/api/v1/agent/runtime/credential-candidate" || r.URL.Path == "/api/v1/agent/runtime/wireguard-candidate" || r.URL.Path == "/api/v1/agent/runtime/workflow-signing-key" || r.URL.Path == "/api/v1/agent/runtime/workflow-provenance" {
 				id, err = svc.AuthenticateCurrent(r.Context(), strings.TrimSpace(raw))
 			} else {
 				id, err = svc.Authenticate(r.Context(), strings.TrimSpace(raw))
@@ -320,11 +324,15 @@ func runtimeAuthMiddleware(svc *agentruntime.Service) func(http.Handler) http.Ha
 				apierr.Write(w, r, runtimeUnauthorized())
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(agentruntime.WithIdentity(r.Context(), id)))
+			ctx := agentruntime.WithIdentity(r.Context(), id)
+			if r.URL.Path == "/api/v1/agent/runtime/ai-credential" {
+				ctx = context.WithValue(ctx, aiRuntimeBearerContextKey{}, strings.TrimSpace(raw))
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 func isRuntimeChannelPath(path string) bool {
-	return path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate" || path == "/api/v1/agent/runtime/mcp-tool-policy" || path == "/api/v1/agent/runtime/mcp-oauth-lease" || path == "/api/v1/agent/runtime/mcp-tool-approval-permit" || path == "/api/v1/agent/runtime/workflow-signing-key" || path == "/api/v1/agent/runtime/workflow-provenance"
+	return path == "/api/v1/agent/runtime/ai-credential" || path == "/api/v1/agent/runtime/poll" || path == "/api/v1/agent/runtime/report" || path == "/api/v1/agent/runtime/credential-candidate" || path == "/api/v1/agent/runtime/wireguard-candidate" || path == "/api/v1/agent/runtime/mcp-tool-policy" || path == "/api/v1/agent/runtime/mcp-oauth-lease" || path == "/api/v1/agent/runtime/mcp-tool-approval-permit" || path == "/api/v1/agent/runtime/workflow-signing-key" || path == "/api/v1/agent/runtime/workflow-provenance"
 }

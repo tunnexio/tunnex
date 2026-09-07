@@ -1,0 +1,52 @@
+{
+  "encryption_key": "env.BIFROST_ENCRYPTION_KEY",
+  "client": {
+    "enforce_auth_on_inference": true,
+    "enable_logging": true,
+    "disable_content_logging": true,
+    "max_request_body_size_mb": 1,
+    "log_retention_days": 7
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "/app/data/config.db"
+    }
+  },
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "/app/data/logs/logs.db"
+    },
+    "retention_days": 7
+  },
+  "governance": {
+    "auth_config": {
+      "is_enabled": true,
+      "admin_username": "env.BIFROST_ADMIN_USER",
+      "admin_password": "env.BIFROST_ADMIN_PASSWORD",
+      "disable_auth_on_inference": false
+    },
+    "virtual_keys": []
+  },
+  "providers": {
+    "openrouter": {
+      "network_config": {
+        "max_retries": 0
+      },
+      "keys": [
+        {
+          "id": "openrouter-primary",
+          "name": "openrouter-primary",
+          "value": "env.OPENROUTER_API_KEY",
+          "models": [
+            "openai/gpt-4o-mini"
+          ],
+          "weight": 1
+        }
+      ]
+    }
+  }
+}

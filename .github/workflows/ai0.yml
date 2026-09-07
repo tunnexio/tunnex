@@ -3,7 +3,7 @@ name: AI-0 adapter qualification
 on:
   pull_request:
     paths:
-      - "experiments/ai0/**"
+      - "apps/api/internal/aigateway/**"
       - ".github/workflows/ai0.yml"
   workflow_dispatch:
 
@@ -20,13 +20,13 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
-          go-version-file: experiments/ai0/go.mod
+          go-version-file: apps/api/go.mod
           cache: false
       - name: Verify local adapter boundaries (no provider credentials)
-        working-directory: experiments/ai0
+        working-directory: apps/api
         env:
           GOWORK: "off"
           GOFLAGS: "-mod=readonly"
         run: |
-          go test -race ./...
-          go vet ./...
+          go test -race ./internal/aigateway
+          go vet ./internal/aigateway

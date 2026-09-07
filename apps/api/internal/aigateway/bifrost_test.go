@@ -1,4 +1,4 @@
-package ai0
+package aigateway
 
 import (
 	"bytes"
@@ -88,8 +88,10 @@ func TestBifrostNative(t *testing.T) {
 		"config_store": map[string]any{"enabled": true, "type": "sqlite", "config": map[string]any{"path": filepath.Join(dir, "config.db")}},
 		"governance": map[string]any{
 			"auth_config": map[string]any{"is_enabled": true, "admin_username": "ai0", "admin_password": "fixture-admin-only", "disable_auth_on_inference": false},
-			"virtual_keys": []any{map[string]any{"id": "ai0-agent-a", "name": "ai0-agent-a", "value": nativeVK, "is_active": true,
-				"provider_configs": []any{map[string]any{"provider": "openrouter", "allowed_models": []string{"allowed"}, "key_ids": []string{"ai0-provider"}, "weight": 1}}}},
+			"virtual_keys": []any{
+				map[string]any{"id": "ai0-agent-a", "name": "ai0-agent-a", "value": nativeVK, "is_active": true, "provider_configs": []any{map[string]any{"provider": "openrouter", "allowed_models": []string{"allowed"}, "key_ids": []string{"ai0-provider"}, "weight": 1}}},
+				map[string]any{"id": "ai0-agent-b", "name": "ai0-agent-b", "value": nativeVK + "-independent", "is_active": true, "provider_configs": []any{map[string]any{"provider": "openrouter", "allowed_models": []string{"allowed"}, "key_ids": []string{"ai0-provider"}, "weight": 1}}},
+			},
 		},
 		"providers": map[string]any{"openrouter": map[string]any{
 			"network_config": map[string]any{"base_url": provider.URL, "allow_private_network": true, "max_retries": 0},
@@ -103,7 +105,7 @@ func TestBifrostNative(t *testing.T) {
 	base, stop := startEngine(t, binary, dir)
 	defer stop()
 	client := &http.Client{Timeout: 15 * time.Second}
-	call := func(path, model, key string, stream bool) (int, string) {
+	call := func(path, model, key string, stream bool) (int, string, string) {
 		payload, _ := json.Marshal(map[string]any{"model": model, "messages": []any{map[string]string{"role": "user", "content": "Reply OK"}}, "max_tokens": 8, "stream": stream})
 		r, _ := http.NewRequest("POST", base+path, bytes.NewReader(payload))
 		r.Header.Set("Content-Type", "application/json")
@@ -116,26 +118,40 @@ func TestBifrostNative(t *testing.T) {
 		}
 		defer res.Body.Close()
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-		return res.StatusCode, string(b)
+		return res.StatusCode, res.Header.Get("Content-Type"), string(b)
 	}
-	for _, key := range []string{"", "sk-bf-invalid", nativeVK} {
-		model := "openrouter/allowed"
-		if key == nativeVK {
-			model = "openrouter/denied"
+	assertDenial := func(status int, body string, wantStatus int, wantMessage string) {
+		t.Helper()
+		var response struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
 		}
-		status, _ := call("/v1/chat/completions", model, key, false)
-		if status < 400 {
-			t.Fatalf("native refusal returned %d", status)
+		if status != wantStatus || json.Unmarshal([]byte(body), &response) != nil || response.Error.Message != wantMessage {
+			t.Fatalf("native refusal status=%d body=%s; want status=%d message=%q", status, body, wantStatus, wantMessage)
 		}
+	}
+	for _, tc := range []struct {
+		key, model string
+		status     int
+		message    string
+	}{
+		{"", "openrouter/allowed", 401, "virtual key is required. Provide a virtual key via the x-bf-vk header."},
+		{"sk-bf-invalid", "openrouter/allowed", 401, "virtual key not found. The provided virtual key does not exist or has been revoked."},
+		{nativeVK, "openrouter/denied", 403, "Model 'denied' is not allowed for this virtual key"},
+	} {
+		status, _, body := call("/v1/chat/completions", tc.model, tc.key, false)
+		assertDenial(status, body, tc.status, tc.message)
 	}
 	if arrivals.Load() != 0 {
 		t.Fatalf("native refusal had %d provider arrivals", arrivals.Load())
 	}
 	for _, path := range []string{"/v1/chat/completions", "/anthropic/v1/messages"} {
-		status, body := call(path, "openrouter/allowed", nativeVK, true)
-		if status != 200 || !strings.Contains(body, "OK") {
+		status, contentType, body := call(path, "openrouter/allowed", nativeVK, true)
+		if status != 200 {
 			t.Fatalf("native stream %s status=%d body=%s", path, status, body)
 		}
+		assertQualifiedSSE(t, path, contentType, body)
 	}
 	if arrivals.Load() != 2 {
 		t.Fatalf("expected two allowed arrivals, got %d", arrivals.Load())
@@ -160,16 +176,39 @@ func TestBifrostNative(t *testing.T) {
 	if res.StatusCode != 200 {
 		t.Fatalf("native revocation failed: %d", res.StatusCode)
 	}
-	status, _ := call("/v1/chat/completions", "openrouter/allowed", nativeVK, false)
-	if status < 400 || arrivals.Load() != 2 {
+	status, _, body := call("/v1/chat/completions", "openrouter/allowed", nativeVK, false)
+	assertDenial(status, body, 403, "Virtual key is inactive")
+	if arrivals.Load() != 2 {
 		t.Fatal("revoked key reached provider")
 	}
 	stop()
 	base, stop = startEngine(t, binary, dir)
 	defer stop()
-	status, _ = call("/v1/chat/completions", "openrouter/allowed", nativeVK, false)
-	if status < 400 || arrivals.Load() != 2 {
+	status, _, body = call("/v1/chat/completions", "openrouter/allowed", nativeVK, false)
+	assertDenial(status, body, 403, "Virtual key is inactive")
+	if arrivals.Load() != 2 {
 		t.Fatal("revocation did not survive restart")
+	}
+	readback, _ := http.NewRequest("GET", base+"/api/governance/virtual-keys/ai0-agent-a", nil)
+	readback.SetBasicAuth("ai0", "fixture-admin-only")
+	res, err = client.Do(readback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readBody, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	res.Body.Close()
+	var persisted struct {
+		VirtualKey struct {
+			ID       string `json:"id"`
+			IsActive *bool  `json:"is_active"`
+		} `json:"virtual_key"`
+	}
+	if err != nil || res.StatusCode != 200 || json.Unmarshal(readBody, &persisted) != nil || persisted.VirtualKey.ID != "ai0-agent-a" || persisted.VirtualKey.IsActive == nil || *persisted.VirtualKey.IsActive {
+		t.Fatalf("persisted revocation readback failed: status=%d body=%s", res.StatusCode, readBody)
+	}
+	status, _, body = call("/v1/chat/completions", "openrouter/allowed", nativeVK+"-independent", false)
+	if status != 200 || !strings.Contains(body, "OK") || arrivals.Load() != 3 {
+		t.Fatalf("independent active key failed after restart: status=%d body=%s arrivals=%d", status, body, arrivals.Load())
 	}
 	t.Log("admin API revoked virtual key; new requests refused before and after restart")
 }

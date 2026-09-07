@@ -1,12 +1,13 @@
 # AI-0 qualification harness
 
-Experimental, not a production endpoint. No control-plane route imports this
-module. See [decision paper](../../docs/S-AI-0-decisions.md).
+Shared transport, credential service and private-engine client used by the
+control-plane AI integration. The feature remains opt-in and unavailable until
+production policy composition is configured. See [decision paper](../../../../docs/S-AI-0-decisions.md).
 
 ## Local adapter boundary
 
 ```sh
-cd experiments/ai0
+cd apps/api/internal/aigateway
 GOWORK=off GOFLAGS=-mod=readonly go test -race ./...
 GOWORK=off GOFLAGS=-mod=readonly go vet ./...
 ```
@@ -20,10 +21,10 @@ identities are synthetic and deliberately are not a new enrollment/token
 implementation. Supported experimental payload fields are `model`, `messages`,
 `stream`, `max_tokens`, `temperature`, `system`; other fields are refused.
 Bodies are limited to 256 KiB; upstream requests/streams have a 30-second timeout
-or grant expiry, whichever occurs first. Inbound reads/downstream writes do not
-yet enforce that bound (held review finding). Only the two tested inference paths are accepted.
+or grant expiry, whichever occurs first. Inbound reads and downstream writes enforce that bound using connection deadlines. Only the two tested inference paths are accepted.
 Upstream request/response headers are allowlisted, redirects and environment
-proxies are disabled. There is no production concurrency admission policy yet.
+proxies are disabled. Admission is bounded to four active requests per agent and 64 per API process;
+the qualified deployment is single-instance.
 
 ## Pinned native engine
 
@@ -43,9 +44,8 @@ AI0_BIFROST_BINARY=/absolute/path/to/verified/bifrost-http \
 The native test checks the binary digest, creates a dedicated temporary SQLite
 store, launches a loopback engine and a synthetic provider, verifies native
 denial/streaming/admin authentication, revokes a virtual key through the admin
-API and observes refusal after restart. Active-key controls and exact denial
-contracts remain held review findings, so this is not conclusive persistence
-proof yet. It does not inherit provider secrets.
+API and observes refusal after restart. Active-key controls, inactive readback and exact denial contracts distinguish
+persisted policy refusal from general engine failure. It does not inherit provider secrets.
 Child processes and test-owned temporary files are released when the test ends.
 Engine default catalog/pricing initialization can contact public upstream
 services; inference targets the instrumented loopback provider only.
@@ -68,15 +68,17 @@ The test sends one request per supported path through the local adapter and
 Bifrost to `openai/gpt-4o-mini`, with 16 output tokens per request. It does not
 retry deliberately or assert exact provider billing. It reports status/path
 and streaming-request results, not prompts, response bodies or credentials.
-Incremental/terminal-event assertions remain a held review finding. Do not run
+Incremental and complete terminal-event assertions now reject buffered/truncated fixtures. Do not run
 it repeatedly as a regression suite. Synthetic identity means this is engine
 and provider compatibility evidence, not enrolled-agent acceptance.
 
-## Remaining AI-0 acceptance
+## Further production acceptance
 
-- Real Tunnex enrollment/identity integration and current policy authorization.
-- Measured budget concurrency/overshoot, retries, missing usage and persisted
-  accounting across restart. Revocation persistence is not accounting persistence.
+- Real enrollment/OpenRouter proof is recorded in the qualification addendum;
+  production scoped credential and policy wiring needs its own acceptance.
+- Native concurrent overshoot and graceful restart accounting are proven in
+  `docs/AI-0-budget-qualification.md`; forced-crash and provider-specific partial
+  usage remain outside those claims.
 - Complete secret rotation/listener bypass matrix and tenant/team accounting.
 - Engine selection disposition, independent findings disposition, and final
   repository gates/CI before merge. No production or beta readiness claim.

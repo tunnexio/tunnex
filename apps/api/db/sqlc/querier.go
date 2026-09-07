@@ -217,6 +217,7 @@ type Querier interface {
 	CountDevicesForUserCap(ctx context.Context, arg CountDevicesForUserCapParams) (int64, error)
 	// Any origin — the refuse-unless-empty guard (D1) must see a hand-added member too.
 	CountGroupMembers(ctx context.Context, arg CountGroupMembersParams) (int64, error)
+	CountLiveAICredentials(ctx context.Context, arg CountLiveAICredentialsParams) (int64, error)
 	CountLiveAgentAccessRequests(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountLiveAgentAccessRequestsByDestination(ctx context.Context, arg CountLiveAgentAccessRequestsByDestinationParams) (int64, error)
 	CountLiveAgentAccessRequestsByDevice(ctx context.Context, arg CountLiveAgentAccessRequestsByDeviceParams) (int64, error)
@@ -543,6 +544,7 @@ type Querier interface {
 	// Returns a fresh time-ordered UUIDv7 from the database. Demonstrates the sqlc
 	// pipeline and the uuid override; callers may also generate v7 ids in Go.
 	GenerateID(ctx context.Context) (uuid.UUID, error)
+	GetAIGatewaySettings(ctx context.Context, id uuid.UUID) (GetAIGatewaySettingsRow, error)
 	GetAccessEventRetentionSettings(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error)
 	GetAccessEventRetentionSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error)
 	GetActiveAgentPolicyTemplateAssignment(ctx context.Context, arg GetActiveAgentPolicyTemplateAssignmentParams) (AgentPolicyTemplateAssignment, error)
@@ -1702,6 +1704,7 @@ type Querier interface {
 	// upstream, mirrors RevokeDevicesForNode).
 	RevokeOVPNClientCertsForNode(ctx context.Context, nodeID uuid.UUID) ([]uuid.UUID, error)
 	SaveSSOConnection(ctx context.Context, arg SaveSSOConnectionParams) (SsoConnection, error)
+	SetAIGatewayEnabled(ctx context.Context, arg SetAIGatewayEnabledParams) (SetAIGatewayEnabledRow, error)
 	SetAgentManagingGroup(ctx context.Context, arg SetAgentManagingGroupParams) (AgentProfile, error)
 	SetAgentOwner(ctx context.Context, arg SetAgentOwnerParams) (Device, error)
 	// The deployment-administrator capability, both directions (S12.11).

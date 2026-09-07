@@ -1,7 +1,7 @@
 # AI-0 first qualification slice — 2026-09-07
 
-Status: partial evidence with four held P2 review findings; AI-0 remains incomplete. No production endpoint,
-release, deployment, cloud change or upstream fork.
+Status: initial evidence below is historical. The continuation addendum records
+completed fixes and stronger native/enrolled proof. No release or cloud change.
 
 ## Provenance
 
@@ -57,8 +57,9 @@ Final local validation and review status are recorded in the handoff below.
 ## Independent review — ranked and held
 
 Two independent reviewers completed the adapter and native/paid harness scopes.
-The overlapping streaming findings are combined below. No review finding has
-been folded into code; all four are HELD for user disposition under CLAUDE.md.
+The overlapping streaming findings are combined below. User disposition on
+2026-09-07: continue through the entire epic without routine stops. All four
+recommended fixes are ACCEPTED for implementation and re-review.
 
 1. **P2 — End-to-end lifetime not bounded.** Inbound body reads precede the
    timeout context; downstream writes have no deadlines. Recommendation: enforce
@@ -93,3 +94,39 @@ all fixes), implement their regression proofs, and re-review the changed scope.
 Then wire the minimal qualification adapter to a real enrolled Tunnex agent
 identity in an isolated CP fixture and complete accounting/engine-fit qualification.
 Do not restart engine comparison or treat this partial result as AI-0 acceptance.
+
+## Continuation evidence — 2026-09-07
+
+The four original findings were accepted for fixes under the user's instruction
+to continue the epic. All four fixes are implemented: real connection read/write
+deadlines; incremental SSE delivery with delta/finish/terminal validation and
+truncation refusal; persisted inactive-key readback with an independent active
+control after restart; exact pinned denial contracts plus zero provider arrivals.
+Short authorization expiry and blocked downstream cancellation have focused
+real-socket regression coverage. These supersede the initial acceptance gaps,
+not the record of what the earlier run proved.
+
+The qualification transport now lives in `apps/api/internal/aigateway`; production
+HTTP integration reuses it. No second proxy or provider SDK implementation was
+introduced.
+
+- Relocated transport/native/accounting race suite passed in 29.291 seconds.
+- Real CP bootstrap enrollment and current runtime authentication were exercised
+  against isolated PostgreSQL, including revoke-before-dispatch.
+- An authorized enrolled-agent OpenRouter walk passed both streaming protocols
+  in 5.14 seconds (package 5.833 seconds), with at most 16 output tokens each.
+  These are two additional calls after the initial two-call smoke. No provider
+  credential or raw prompt/response is included in committed evidence.
+- Community bootstrap/current-auth proof passed while paid managed-runtime access
+  remained unavailable. AI-1 adds independent default-off policy and scoped TTL.
+- Native accounting qualification is recorded in
+  [AI-0-budget-qualification.md](AI-0-budget-qualification.md): concurrent
+  overshoot, exact post-charge refusal, per-key metadata and graceful restart.
+- User approved honest **soft usage thresholds**. Unknown prices must refuse
+  monetary-policy admission. This is not a hard cap or an exact invoice.
+- Native admin client create/update/persistent-and-memory readback/disable passed
+  against the pinned binary. Updates preserve native key/config identity.
+
+Bifrost remains the selected engine. Production policy/team reconciliation,
+complete customer walkthrough, final repository gates and exact-head remote CI
+are still separate acceptance requirements. No push, PR, merge or release.

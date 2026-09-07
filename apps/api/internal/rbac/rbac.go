@@ -120,6 +120,8 @@ const (
 	// organization metadata: enabling it opens an unattended configuration
 	// channel to every eligible managed agent in the organization.
 	PermAgentRuntimeManage Permission = "agent_runtime:manage"
+	PermAIGatewayView      Permission = "ai_gateway:view"
+	PermAIGatewayManage    Permission = "ai_gateway:manage"
 	// PermAgentCredentialRotate authorizes the one human checkpoint that asks
 	// an active managed agent to replace its machine bearer. It is deliberately
 	// narrower than runtime opt-in, device lifecycle, and future F06 delegation.
@@ -221,6 +223,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sScopeManage:              true,
 		PermK8sScopeApprove:             true,
 		PermAgentRuntimeManage:          true,
+		PermAIGatewayView:               true,
+		PermAIGatewayManage:             true,
 		PermAgentCredentialRotate:       true,
 		PermAgentEnroll:                 true,
 		PermAgentViewPrivileged:         true,
@@ -263,6 +267,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermLicenseManage:               true,
 		PermMachineManage:               true, // owner-only: minting a non-human org principal is org-delete-grade
 		PermAgentRuntimeManage:          true,
+		PermAIGatewayView:               true,
+		PermAIGatewayManage:             true,
 		PermAgentCredentialRotate:       true,
 		PermAgentEnroll:                 true,
 		PermAgentViewPrivileged:         true,

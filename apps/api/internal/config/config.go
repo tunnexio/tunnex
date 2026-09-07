@@ -47,6 +47,10 @@ type Config struct {
 	// GatewayControlURL is the optional deployment-wide raw mTLS endpoint used in new gateway commands.
 	// Empty keeps the backward-compatible derivation from AppBaseURL:8443.
 	GatewayControlURL string
+	// Optional private AI engine. Empty URL leaves AI unavailable in every edition.
+	AIGatewayURL           string
+	AIGatewayAdminUser     string
+	AIGatewayAdminPassword string
 	// AdminEmail receives the one-time first-run administrator credential when SMTP is configured.
 	// Empty falls back to bootstrap's local address for non-installer deployments.
 	AdminEmail string
@@ -158,6 +162,9 @@ func Load() Config {
 		AutoMigrate:            getbool("TUNNEX_AUTO_MIGRATE", true),
 		AppBaseURL:             getenv("APP_BASE_URL", "http://localhost"),
 		GatewayControlURL:      getenv("TUNNEX_GATEWAY_CONTROL_URL", ""),
+		AIGatewayURL:           getenv("TUNNEX_AI_GATEWAY_URL", ""),
+		AIGatewayAdminUser:     getenv("TUNNEX_AI_GATEWAY_ADMIN_USER", ""),
+		AIGatewayAdminPassword: getenv("TUNNEX_AI_GATEWAY_ADMIN_PASSWORD", ""),
 		AdminEmail:             getenv("TUNNEX_ADMIN_EMAIL", ""),
 		NodeAgentImage:         getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
 		K8sHAEnabled:           getbool("TUNNEX_K8S_HA_ENABLED", false),

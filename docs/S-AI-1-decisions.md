@@ -67,3 +67,27 @@ with paid runtime still locked, default-off and CP-loss refusal. Preserve existi
 ordinary VPN and MCP regressions. Run generated-contract drift checks and required
 final gates/CI before any merge. AI-2 resolver integration is required before the
 customer endpoint is considered complete.
+
+## Implementation and review addendum
+
+Credential resolvers receive the caller-owned `pgx.Tx`. This preserves canonical
+device-lock serialization without requiring a second pool connection; a real
+PostgreSQL MaxConns=1 test verifies issuance and authorization. Refresh removes
+expired, revoked and superseded-revision credentials for only that locked device.
+Usable current credentials remain subject to the four-token cap. Idle rows remain
+until the next successful refresh or canonical device/organization deletion.
+
+Independent review found refresh accumulation and the inference error-envelope
+mismatch; both were accepted as routine fixes and re-reviewed. Error responses
+before streaming now use sanitized canonical JSON. A full spec auth walk also
+found missing-bearer/unconfigured and settings-validation ordering defects; fixes
+retain 401 before availability/body validation for unauthenticated callers.
+
+Real database lock-wait tests demonstrate that issuance and authorization waiting
+behind committed runtime revocation refuse. Key envelopes are tested against
+cross-org/device/key/revision substitution and master-key mismatch.
+
+The HTTP dependency seam is implemented and tested. **Production composition
+remains unavailable until AI-2 supplies the verified policy resolver.** Config
+fields, private-engine admin client and deployment overlay do not by themselves
+make a production grant. Do not describe this checkpoint as a finished gateway.

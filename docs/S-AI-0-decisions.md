@@ -49,7 +49,9 @@ Strategy: [AI gateway epic](EPIC-ai-gateway.md). NAT is independent.
 The last two bullets describe the initial state only. Subsequently, the user
 authorized the two OpenRouter smoke requests recorded above. A pinned standalone
 engine ran locally without Docker. See [qualification evidence](AI-0-qualification-20260907.md)
-and its held review findings; AI-0 is not complete.
+and its continuation addendum. The original four findings are fixed. The enrolled
+provider walk and native soft-threshold/restart proof select Bifrost for AI-1.
+Production reconciliation, customer installation and final CI remain later gates.
 
 ## References
 

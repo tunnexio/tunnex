@@ -20,6 +20,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -53,6 +54,8 @@ type AuthFunc func(r *http.Request) *authctx.Principal
 
 // Deps are the router's dependencies.
 type Deps struct {
+	AICredentials      *aigateway.Credentials
+	AIAdapter          *aigateway.Adapter
 	System             *sqlc.Queries // deployment-wide settings (gateway control endpoint, licence, etc.)
 	Orgs               *tenancy.Service
 	CliAuth            *cliauth.Service
@@ -252,6 +255,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	agentRuntime.SetNotifier(d.AgentRuntimeNotify)
 	agentRuntime.SetAlertPublisher(d.AlertPublisher)
 	r.Use(runtimeAuthMiddleware(agentRuntime))
+	r.Use(aiInferenceMiddleware(d.AIAdapter))
 	r.Use(authBeforeAgentValidation)
 
 	// Validate every request against the spec; render failures as the envelope.
@@ -271,7 +275,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		},
 	}))
 
-	srv := apiServer{system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{aiCredentials: d.AICredentials, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
 	// principal; a gated user is restricted to enrollment. Registered before the routes so it
 	// wraps every operation (self-arming — a new endpoint is gated by construction).
@@ -336,7 +340,7 @@ func authBeforeAgentValidation(next http.Handler) http.Handler {
 		}
 		orgPath := strings.HasPrefix(req.URL.Path, "/api/v1/organizations/")
 		protectedAgentMutation := req.Method == http.MethodPut &&
-			(strings.HasSuffix(req.URL.Path, "/agent-quota") || strings.HasSuffix(req.URL.Path, "/agent-runtime-settings") || strings.HasSuffix(req.URL.Path, "/mcp-tool-policy"))
+			(strings.HasSuffix(req.URL.Path, "/ai-gateway") || strings.HasSuffix(req.URL.Path, "/agent-quota") || strings.HasSuffix(req.URL.Path, "/agent-runtime-settings") || strings.HasSuffix(req.URL.Path, "/mcp-tool-policy"))
 		protectedMCPOAuthStart := req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/mcp-oauth-connections")
 		protectedFQDNMutation := strings.Contains(req.URL.Path, "/fqdn-resources") && req.Method != http.MethodGet
 		protectedRetentionMutation := req.Method != http.MethodGet &&

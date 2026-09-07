@@ -18,6 +18,76 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/agent/runtime/ai-credential:
+    post:
+      operationId: issueAICredential
+      summary: Exchange current enrolled-agent identity for a five-minute AI credential
+      description: Community supported. Requires independent organization AI opt-in and an applied AI policy. Tenant, device and audience are server-bound. No provider key is returned.
+      tags: [ai-gateway]
+      security: [{ runtimeBearer: [] }]
+      responses:
+        "201":
+          description: One-time AI credential. Store securely and renew before expiry.
+          headers:
+            Cache-Control: { schema: { type: string, enum: [no-store] } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AICredential" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIGatewaySettings
+      summary: Read AI gateway opt-in and installation availability
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Organization settings; absent configuration is disabled.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewaySettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setAIGatewaySettings
+      summary: Explicitly enable or disable the organization's AI gateway
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewayOptIn" } } }
+      responses:
+        "200":
+          description: Updated opt-in. Disabling denies new AI requests.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewaySettings" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /ai/v1/chat/completions:
+    post:
+      operationId: aiChatCompletion
+      summary: Execute an allowed model using a short-lived AI credential
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed. No automatic retry or fallback. Accepted work may continue until the 30-second request bound after revocation.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
+  /ai/anthropic/v1/messages:
+    post:
+      operationId: aiAnthropicMessage
+      summary: Execute an allowed model through the qualified Anthropic-compatible path
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed; same identity and model policy as chat completions.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
   /healthz:
     get:
       operationId: getHealth
@@ -5430,6 +5500,10 @@ paths:
 
 components:
   securitySchemes:
+    aiBearerAuth:
+      type: http
+      scheme: bearer
+      description: Five-minute org/device/current-runtime bound credential with fixed tunnex-ai audience. Provider keys and runtime bearers are not accepted for inference.
     cookieAuth:
       type: apiKey
       in: cookie
@@ -5453,6 +5527,44 @@ components:
       required: true
 
   schemas:
+    AICredential:
+      type: object
+      additionalProperties: false
+      required: [token, audience, expires_at, endpoint]
+      properties:
+        token: { type: string, description: One-time secret; never returned by read APIs. }
+        audience: { type: string, enum: [tunnex-ai] }
+        expires_at: { type: string, format: date-time }
+        endpoint: { type: string }
+    AIGatewayOptIn:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+    AIGatewaySettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, available, revision]
+      properties:
+        enabled: { type: boolean }
+        available: { type: boolean, description: Server has the qualified private engine configuration. }
+        revision: { type: integer, format: int64 }
+    AIInferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [model, messages]
+      properties:
+        model: { type: string, minLength: 3, maxLength: 256, description: Exact provider/model identifier; aliases and caller fallback are not supported. }
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items: { type: object, additionalProperties: true }
+        stream: { type: boolean, default: false }
+        max_tokens: { type: integer, minimum: 1, maximum: 4096, default: 1024 }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        system: { type: string, maxLength: 65536 }
     HealthResponse:
       type: object
       required: [status, service]

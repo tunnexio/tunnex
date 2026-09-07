@@ -1,4 +1,4 @@
-package ai0
+package aigateway
 
 import (
 	"context"
@@ -72,12 +72,13 @@ func TestOpenRouterSmoke(t *testing.T) {
 	for _, path := range []string{"/v1/chat/completions", "/anthropic/v1/messages"} {
 		r := httptest.NewRequest("POST", path, strings.NewReader(`{"model":"openrouter/openai/gpt-4o-mini","messages":[{"role":"user","content":"Reply with OK only."}],"max_tokens":16,"stream":true}`))
 		r.Header.Set("Authorization", "Bearer fixture-smoke-agent")
-		w := httptest.NewRecorder()
+		w := newDeadlineRecorder()
 		adapter.ServeHTTP(w, r)
 		body, _ := io.ReadAll(w.Result().Body)
 		if w.Code != 200 || !w.Flushed || !strings.Contains(string(body), "OK") {
 			t.Fatalf("OpenRouter smoke path=%s status=%d bytes=%d; content withheld", path, w.Code, len(body))
 		}
+		assertQualifiedSSE(t, path, w.Header().Get("Content-Type"), string(body))
 		if strings.Contains(string(body), string(key)) || strings.Contains(string(body), nativeVK) {
 			t.Fatal("credential leaked in response")
 		}
