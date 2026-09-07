@@ -45,3 +45,9 @@ No schema, storage, routing or authorization change is included.
 
 Validation covers the initial endpoint field, explicit custom transition, direct
 credential test/create payloads, return destination, and draft disposal.
+
+The subsequent Existing Credentials reference tightens the form rule: selecting
+saved credentials hides both API key and Upstream API Base inputs in Add Model.
+The saved credential identity remains visible; its provider/endpoint stay fixed
+on the server. Selecting None restores new-credential fields with an empty key
+and invalidated test proof. Endpoint readback remains in Edit Credentials.
