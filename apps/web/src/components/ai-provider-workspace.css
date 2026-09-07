@@ -77,3 +77,26 @@
 .ai-provider-picker [role=option] button{color:var(--tnx-text-primary)}
 .ai-provider-picker [role=option] button > span:last-child:empty{display:none}
 .ai-provider-picker label{color:var(--tnx-text-primary)}
+.ai-provider-model-dropdown{position:relative;background:none;border:0;padding:0!important}
+.ai-provider-model-options{position:absolute;top:100%;left:0;right:0;z-index:35;border:1px solid var(--tnx-border);border-radius:10px;background:var(--tnx-surface);padding:14px;box-shadow:0 16px 35px #0005;max-height:380px;overflow:auto}
+.ai-provider-model-options .ai-provider-catalog-items{max-height:210px}
+.ai-provider-selected-models{display:flex;flex-wrap:wrap;gap:7px}
+.ai-provider-selected-models:empty{display:none}
+.ai-provider-selected-models>span{display:flex;align-items:center;gap:8px;max-width:100%;border:1px solid var(--tnx-border);border-radius:6px;padding:4px 8px;background:var(--tnx-surface-inset)}
+.ai-provider-selected-models code{margin:0;color:var(--tnx-text-primary);font-size:11px}
+.ai-provider-selected-models button{font-size:17px;color:var(--tnx-text-secondary);line-height:1;padding:3px}
+.ai-provider-manual-model{display:grid;grid-template-columns:1fr auto;align-items:end;gap:10px}
+.ai-provider-model-help{margin-top:-10px;font-size:11px!important}
+.ai-provider-editor{gap:16px}
+@media(max-width:650px){.ai-provider-manual-model{grid-template-columns:1fr}}
+@media(min-width:651px){
+.ai-provider-editor>.block,.ai-provider-editor .ai-provider-form-grid>.block,.ai-provider-catalog-search>.block,.ai-provider-manual-model>.block{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:center}
+.ai-provider-editor>.block>span,.ai-provider-editor .ai-provider-form-grid>.block>span,.ai-provider-catalog-search>.block>span,.ai-provider-manual-model>.block>span{margin-top:0}
+.ai-provider-picker>.relative{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:center}
+.ai-provider-picker input{margin-top:0}
+.ai-provider-picker [role=listbox]{left:166px;top:100%;width:calc(100% - 166px)}
+.ai-provider-picker .pointer-events-none{left:178px;top:8px}
+.ai-provider-selected-models{padding-left:166px}
+.ai-provider-model-options{left:166px}
+.ai-provider-model-help{padding-left:166px}
+}

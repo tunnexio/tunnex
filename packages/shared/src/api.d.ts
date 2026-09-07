@@ -58,8 +58,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Validate provider credentials without inference or model spend
-         * @description A successful credential and catalog check does not prove inference access to every model.
+         * Check saved provider catalog access without inference or model spend
+         * @description Public catalogs may not validate API keys. A successful connection check does not prove model inference access.
          */
         post: operations["testAIProvider"];
         delete?: never;

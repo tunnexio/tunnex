@@ -36,7 +36,7 @@ describe("AI provider onboarding", () => {
     expect(screen.getByRole("listbox").querySelectorAll("img")).toHaveLength(4);
     fireEvent.keyDown(picker, { key: "Escape" }); expect(screen.getByRole("dialog")).toBeTruthy();
     selectProvider("Gemini"); expect(picker.value).toBe("Gemini");
-    expect((screen.getByLabelText("Exact model IDs (one per line)") as HTMLTextAreaElement).placeholder).toBe("gemini/gemini-2.5-flash");
+    expect((screen.getByLabelText("Exact model name") as HTMLTextAreaElement).placeholder).toBe("gemini/gemini-2.5-flash");
   });
   it("renders approved expanded provider definitions with actual logos and submits their exact provider", async () => {
     const extras = ["groq", "mistral", "cerebras", "xai", "deepseek"].map((id) => ({ id, name: id, credential_label: "API key", model_placeholder: `${id}/model` }));
@@ -47,13 +47,26 @@ describe("AI provider onboarding", () => {
     expect(screen.getByRole("listbox").querySelectorAll("img")).toHaveLength(9);
     for (const provider of extras) {
       selectProvider(provider.name);
-      expect((screen.getByLabelText("Exact model IDs (one per line)") as HTMLTextAreaElement).placeholder).toBe(provider.model_placeholder);
+      expect((screen.getByLabelText("Exact model name") as HTMLTextAreaElement).placeholder).toBe(provider.model_placeholder);
     }
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Research" } });
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-fixture" } });
-    fireEvent.change(screen.getByLabelText("Exact model IDs (one per line)"), { target: { value: "deepseek/deepseek-chat" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "deepseek/deepseek-chat" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ provider: "deepseek", models: ["deepseek/deepseek-chat"] }) })));
+  });
+  it("adds and removes model chips and closes the compact catalog without dismissing the drawer", async () => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider();
+    expect(document.querySelector("textarea")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Search models" }));
+    await screen.findByRole("region", { name: "Model suggestions" });
+    fireEvent.click(screen.getByLabelText(/GPT-4o mini/));
+    expect(screen.getByRole("button", { name: `Remove model ${c.models[0]}` })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done selecting models" }));
+    expect(screen.queryByRole("region", { name: "Model suggestions" })).toBeNull();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: `Remove model ${c.models[0]}` }));
+    expect(screen.queryByRole("button", { name: `Remove model ${c.models[0]}` })).toBeNull();
   });
   it("opens a portalled drawer and clears drafts on Escape with focus returned", async () => {
     render(show()); await screen.findByText("Engineering");
@@ -93,9 +106,11 @@ describe("AI provider onboarding", () => {
     await act(async () => finish({ data: c, response: response() }));
     expect(api.POST.mock.calls.every(([path]) => !path.includes("/chat/completions"))).toBe(true);
   });
-  it("uses revisions for credential tests, disable and rotation without secret readback", async () => {
-    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Test Engineering" }));
+  it("uses revisions for connection tests, disable and rotation without secret readback", async () => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Test connection Engineering" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test$/), expect.objectContaining({ body: { expected_revision: 3 } })));
+    expect(screen.getByRole("columnheader", { name: "Connection check" })).toBeTruthy();
+    expect(screen.getAllByText(/Public catalogs may not validate API keys/).length).toBeGreaterThan(0);
     await waitFor(() => expect((screen.getByRole("button", { name: "Disable Engineering" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Disable Engineering" }));
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "openrouter", name: "Engineering", models: c.models, enabled: false, expected_revision: 3 } })));
@@ -118,26 +133,26 @@ describe("AI provider onboarding", () => {
   });
   it("keeps exact model entry when suggestions fail", async () => {
     api.GET.mockImplementation((path: string) => path.endsWith("/models") ? Promise.reject(Error()) : Promise.resolve({ data: inventory })); render(show()); await screen.findByText("Engineering");
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider(); fireEvent.click(screen.getByRole("button", { name: "Search models" })); await screen.findByText(/Model suggestions are unavailable/); expect(screen.getByLabelText("Exact model IDs (one per line)")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider(); fireEvent.click(screen.getByRole("button", { name: "Search models" })); await screen.findByText(/Model suggestions are unavailable/); expect(screen.getByLabelText("Exact model name")).toBeTruthy();
   });
   it("uses backend provider definitions and clears secret/model drafts and stale catalog on provider changes", async () => {
     let finish!: (v: unknown) => void;
     api.GET.mockImplementation((path: string) => path.endsWith("/models") ? new Promise((resolve) => { finish = resolve; }) : Promise.resolve({ data: inventory, response: response() }));
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider();
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "discard-me" } });
-    fireEvent.change(screen.getByLabelText("Exact model IDs (one per line)"), { target: { value: c.models[0] } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: c.models[0] } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     selectProvider();
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("discard-me");
     fireEvent.click(screen.getByRole("button", { name: "Search models" }));
     expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "openrouter" }) }) }));
     selectProvider("Anthropic");
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Exact model IDs (one per line)") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByLabelText("Exact model name") as HTMLTextAreaElement).value).toBe("");
     await act(async () => finish({ data: { items: [{ id: c.models[0], name: "Stale OpenRouter model" }], total: 1, offset: 0, limit: 50 } }));
     expect(screen.queryByText("Stale OpenRouter model")).toBeNull();
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Research" } });
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-key" } });
-    fireEvent.change(screen.getByLabelText("Exact model IDs (one per line)"), { target: { value: "anthropic/claude-sonnet-4" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "anthropic/claude-sonnet-4" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ provider: "anthropic", models: ["anthropic/claude-sonnet-4"] }) })));
   });
@@ -155,7 +170,7 @@ describe("AI provider onboarding", () => {
     expect(screen.queryByRole("option", { name: /Pending key|Failed key/ })).toBeNull();
     fireEvent.change(screen.getByLabelText("Credential connection"), { target: { value: c.id } });
     expect(screen.queryByLabelText("API key")).toBeNull();
-    fireEvent.change(screen.getByLabelText("Exact model IDs (one per line)"), { target: { value: "openrouter/anthropic/claude-sonnet-4" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "openrouter/anthropic/claude-sonnet-4" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     fireEvent.click(screen.getByRole("button", { name: "Add models to connection" }));
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "openrouter", name: c.name, models: [...c.models, "openrouter/anthropic/claude-sonnet-4"], enabled: true, expected_revision: 3 } })));
     expect(api.POST).not.toHaveBeenCalled();
@@ -186,11 +201,12 @@ describe("custom provider approved endpoints", () => {
     api.GET.mockResolvedValue({ data: customInventory }); render(show()); await screen.findByText(custom.name);
     fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider("Custom");
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "New private" } });
+    expect(screen.getByLabelText("Approved upstream endpoint").compareDocumentPosition(screen.getByLabelText("API key")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Approved upstream endpoint"), { target: { value: custom.endpoint_url } });
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-custom-key" } });
-    fireEvent.change(screen.getByLabelText("Exact model IDs (one per line)"), { target: { value: "custom-00000000-0000-4000-8000-000000000001/model" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "custom-00000000-0000-4000-8000-000000000001/model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     expect((screen.getByRole("button", { name: "Create connection" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Exact model IDs (one per line)"), { target: { value: "custom-model" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "custom-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     expect((screen.getByRole("button", { name: "Search models" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "custom", endpoint_url: custom.endpoint_url, name: "New private", enabled: true, models: ["custom-model"], api_key: "synthetic-custom-key" } })));
@@ -203,7 +219,7 @@ describe("custom provider approved endpoints", () => {
     expect((screen.getByLabelText("Upstream endpoint") as HTMLInputElement).readOnly).toBe(true);
     expect(screen.queryByLabelText("API key")).toBeNull(); fireEvent.click(screen.getByRole("button", { name: "Search models" }));
     await waitFor(() => expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "custom", connection_id: custom.id }) }) })));
-    fireEvent.change(screen.getByLabelText("Exact model IDs (one per line)"), { target: { value: "model-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add models to connection" }));
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "model-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); fireEvent.click(screen.getByRole("button", { name: "Add models to connection" }));
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "custom", endpoint_url: custom.endpoint_url, name: custom.name, enabled: true, models: [...custom.models, "model-b"], expected_revision: 4 } })));
   });
 });

@@ -29,15 +29,16 @@ redaction cannot prove full secret equality; connection health is separate.
 The requested **Test connection before Add** is NOT delivered in this checkpoint.
 The surfaced design proposes a transient ten-second, zero-inference
 credential/catalog request without creating a native draft key. It is pending
-user disposition. The existing saved-connection Test remains functional. A plain
+user disposition. The existing saved-connection Test remains functional; its UI/API description says
+connection/catalog access, because public catalogs cannot prove key validity. A plain
 HTTP 200 alone must not be labeled valid credentials without a valid authenticated
 provider response. Reference: LiteLLM `168a0055a244acdcf97c330c52e085ab40b1424c`,
 `ui/litellm-dashboard/src/components/add_model/model_connection_test.tsx`.
 
 ## Validation
 
-- Web: **1,347 tests / 118 files**, typecheck and production build pass. Existing
-  bundle-size warning remains. Final log: `/private/tmp/tunnex-expanded-web-final.log`.
+- Web: **1,348 tests / 118 files**, typecheck and production build pass. Existing
+  bundle-size warning remains. Final log: `/private/tmp/tunnex-provider-ui-final.log`.
 - Both API editions build. Focused PostgreSQL custom races pass open **9.436s** and
   enterprise **8.800s**; added-provider/custom/mixed regressions pass open **8.025s**
   and enterprise **15.156s**. Includes isolation, immutable endpoints, owned model
@@ -72,7 +73,7 @@ The rendered dropdown exposes nine logos plus searchable Custom. Created
 **Private proxy demo (fixture)**, connection
 `f8e40d46-00ed-4aae-be79-9d905a562151`, against the inspected private fixture
 `http://fixture:8091` with its /32 explicitly approved. Revision1 applied and
-saved-credential Test reports success. The edit drawer shows the immutable endpoint,
+saved-connection Test reports catalog success. The edit drawer shows the immutable endpoint,
 keeps the replacement key blank and returns the owned private-demo catalog entry.
 Fixture recorded authenticated
 `GET /v1/models` arrivals through the actual production proxy process. This is a
@@ -82,7 +83,11 @@ observed usage (8 requests, 56 tokens, $0.000170) unchanged.
 
 Screenshots in `docs/walk-artifacts/ai-gateway-20260907/`:
 `branded-provider-dropdown-local.jpg`, `custom-provider-form-local.jpg`,
-`custom-private-connection-local.jpg`. These are implementation evidence, not
+`custom-private-connection-local.jpg`, `compact-model-form-local.jpg`. The final
+model form uses compact suggestions, removable chips, manual exact-name entry and
+existing-credential reuse. Browser verification selected the owned OpenRouter
+fixture without requesting a new secret; no model/policy mutation was submitted.
+These are implementation evidence, not
 user visual approval.
 
 ## Independent review dispositions
@@ -97,6 +102,9 @@ user visual approval.
 - UI P2: Enter on empty/unavailable picker results could submit the old provider
   form. Disposition: consume Enter while open, select only eligible options;
   enclosing-form regression added, peer re-review resolved.
+- Follow-up screenshot-guided model form received a bounded independent review
+  with no actionable findings; final web suite/typecheck/build passed. Custom
+  endpoint selection precedes API-key entry, preserving safe key clearing on change.
 - Bounded independent CP/HTTP/schema and expanded-native review found no additional
   actionable issue. This is not a full-epic or production-security certification.
 

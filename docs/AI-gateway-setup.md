@@ -9,9 +9,9 @@ The qualified engine is Bifrost v2.0.0. `deploy/ai-gateway/compose.yml` pins the
 ### UI-managed providers
 
 The **AI gateway → Providers & models** workspace lets an owner/admin add an
-OpenAI, Anthropic, Gemini or OpenRouter connection, select exact models, test
-credentials, rotate the key and
-disable or remove an unreferenced connection. Credential tests make no inference
+OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, Cerebras, xAI or DeepSeek
+connection, select exact models, check catalog access, rotate the key and
+disable or remove an unreferenced connection. Connection checks make no inference
 request; catalog inclusion does not guarantee inference access to every model.
 Provider keys are write-only and encrypted only in the private engine database.
 Use the site's TLS URL; never put provider secrets in team policies or agent config.
@@ -60,7 +60,7 @@ editing a connection cannot transfer its secret to another provider.
 
 The provider picker is supplied by the server's supported registry. Azure,
 Bedrock, Vertex, arbitrary upstream URLs and public model aliases are outside
-this slice. Catalog/credential checks do not generate model tokens. Real-account
+this slice. Catalog checks do not generate model tokens. Public catalogs may not validate API keys. Real-account
 inference qualification remains distinct from local synthetic protocol tests.
 
 For existing deployments, take a consistent backup, upgrade every CP replica and
