@@ -142,3 +142,9 @@
 .ai-provider-inline .ai-provider-model-options{left:calc(var(--ai-form-label-width) + 16px)}
 }
 @media(max-width:650px){.ai-provider-inline-card{padding:16px}.ai-provider-inline-actions{flex-wrap:wrap}.ai-provider-inline-actions button{flex:1}}
+
+.ai-provider-credential-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.ai-provider-credential-actions>span{font-size:11px;color:var(--tnx-text-secondary)}
+.ai-provider-endpoint-help{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ai-provider-endpoint-help p{flex:1;min-width:200px;font-size:12px;line-height:1.65;color:var(--tnx-text-secondary)}
+.ai-provider-endpoint-help button{flex-shrink:0}
