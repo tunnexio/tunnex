@@ -89,3 +89,26 @@ Next implementation action: extend the imported provider metadata into additiona
 real credential/routing families per AI-litellm-coverage.md, preserving tenant
 boundaries. This slice does not deliver all117 providers, aliases/fallbacks,
 playground, every modality or the full LiteLLM dashboard.
+
+
+## Subsequent approved live OpenRouter preflight
+
+Following explicit approval of one possibly billable OpenRouter request with the
+existing burner key, the authenticated local CP probe completed successfully:
+HTTP200, status=success, duration5647ms, modelopenrouter/openai/gpt-4o-mini,
+maximum16 output tokens, no SDK retries. The fixed SDK OpenRouter adapter made
+real external inference. No connection was saved, no team/agent policy changed,
+and the key remained in its existing0600 temporary file. Actual invoice cost was
+not measured; pre-save tests are excluded from gateway usage totals.
+
+The first attempt was rejected by the local CSRF guard before provider dispatch;
+adding the required X-Tunnex-CSRF client header allowed the approved single live
+inference. Prior automatic approval review rejections executed no commands;
+the live call occurred only after the user explicitly approved the exact action.
+Sanitized result: walk-artifacts/ai-gateway-20260907/openrouter-live-preflight.json.
+
+This closes the live OpenRouter pre-save probe proof only. A real SageMaker walk
+remains blocked on the designated control-plane host, existing endpoint name,
+region and installation IAM configuration; approval alone does not identify
+those resources. Enrolled-agent forwarding with the new bridge and full remote
+CI/image/release qualification remain separate from this preflight result.
