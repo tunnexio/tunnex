@@ -61,3 +61,11 @@ identity/tenant boundaries. Do not advertise all117 providers or full parity unt
 configuration, routing, authorization and tests for those surfaces are complete.
 Current first slice is SageMaker routing + real pre-save Test Connect; subsequent
 feature coverage and omissions must remain explicit in the handoff.
+
+## Reproducible SDK artifact
+
+The reviewed source commit declares unpublished version1.101.0 and a Rust build
+backend. Runtime packaging uses the official1.100.0 wheel pinned by SHA256;
+relevant health, SageMaker and HTTP behavior must be checked against the reviewed
+source and tested in the actual installed wheel. The UI metadata source pin and
+runtime wheel are different artifacts and must not be reported as byte-identical.
