@@ -166,6 +166,22 @@ describe("AI team and agent policy workspace", () => {
     );
     await waitFor(() => expect(mocks.POST).toHaveBeenCalled());
   });
+  it("saves an empty override as inheritance with the authoritative revision", async () => {
+    render(show());
+    await screen.findByLabelText("Agent");
+    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "agent-a" } });
+    await screen.findByText(/Current group membership verified/);
+    fireEvent.change(screen.getByLabelText("Agent models (must narrow the team policy)"), { target: { value: "  \n" } });
+    const save = screen.getByRole("button", { name: "Save agent access" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(mocks.PUT).toHaveBeenCalledWith(
+      expect.stringContaining("/agents/{deviceId}"),
+      { params: { path: { orgId: "org-a", deviceId: "agent-a" } }, body: {
+        team_id: "group-a", enabled: true, models_override: [], expected_revision: 4,
+      } },
+    ));
+  });
   it("refuses agent overrides outside its team", async () => {
     render(show());
     await screen.findByLabelText("Agent");

@@ -179,7 +179,7 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
         {data.groups.length === 0 ? (
           <p>
             No Agent Groups yet.{" "}
-            <Link to="/agents/policies">Create a group</Link> first.
+            <Link to="/access/groups?type=agents">Create a group</Link> first.
           </p>
         ) : (
           <>
@@ -412,7 +412,6 @@ function AssignmentEditor({
   const valid =
     team &&
     membership === "member" &&
-    lines(models).length > 0 &&
     lines(models).every((m) => team.models.includes(m));
   return (
     <div className="mt-3 space-y-3">
@@ -464,6 +463,7 @@ function AssignmentEditor({
           onChange={(e) => setModels(e.target.value)}
         />
       </Field>
+      <p className="text-xs text-ink-secondary">Leave agent models blank to inherit all models from the selected team.</p>
       {team && (
         <p className="text-xs text-ink-secondary">
           Team models: {team.models.join(", ")}

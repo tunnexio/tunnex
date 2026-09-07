@@ -13,17 +13,20 @@ function GatewaySettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }
   const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
+    let live = true;
+    setError(null);
     void api.GET("/api/v1/organizations/{orgId}/ai-gateway", { params: { path: { orgId } } })
       .then(({ data, error }) => {
-        if (!mounted.current) return;
+        if (!live) return;
         if (error || !data) setError("Could not load AI gateway settings.");
         else setSettings(data);
-      }).catch(() => { if (mounted.current) setError("Could not load AI gateway settings."); });
-    return () => { mounted.current = false; };
-  }, [orgId]);
+      }).catch(() => { if (live) setError("Could not load AI gateway settings."); });
+    return () => { live = false; mounted.current = false; };
+  }, [orgId, attempt]);
 
   async function toggle() {
     if (!settings || busy) return;
@@ -54,5 +57,6 @@ function GatewaySettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }
       {canEdit && <Button className="mt-3" disabled={busy || (!settings.available && !settings.enabled)} onClick={() => void toggle()}>{busy ? "Saving…" : settings.enabled ? "Disable AI gateway" : "Enable AI gateway"}</Button>}
     </>}
     {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
+    {error && !settings && <Button className="mt-3" onClick={() => setAttempt((value) => value + 1)}>Retry AI gateway settings</Button>}
   </Card>;
 }

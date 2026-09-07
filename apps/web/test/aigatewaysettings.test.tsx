@@ -24,6 +24,16 @@ beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);
 
 describe("AI gateway organization settings", () => {
+  it("retries an initial settings load failure without a browser refresh", async () => {
+    api.GET.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(result(false));
+    render(view());
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Retry AI gateway settings" }));
+    await state(false);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(api.GET).toHaveBeenCalledTimes(2);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
   it("prevents enable when the installation is unavailable", async () => {
     api.GET.mockResolvedValue(result(false, false));
     render(view());
