@@ -71,7 +71,9 @@ export interface paths {
     "/api/v1/organizations/{orgId}/ai-gateway/models": {
         parameters: {
             query?: {
-                provider?: "openai" | "anthropic" | "gemini" | "openrouter";
+                /** @description Same-organization custom connection required when provider is custom. */
+                connection_id?: string;
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
                 query?: string;
                 limit?: number;
                 offset?: number;
@@ -4601,13 +4603,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update. */
+        AIProviderInputModels: string[];
+        AICustomEndpoint: {
+            name: string;
+            /** Format: uri */
+            url: string;
+        };
         AIProviderConnection: {
             /** Format: uuid */
             id: string;
             /** @description Non-secret owned policy reference. */
             key_id: string;
+            /**
+             * Format: uri
+             * @description Immutable installation-approved custom base URL; omit for standard providers.
+             */
+            endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
             name: string;
             models: components["schemas"]["AIModelNames"];
             enabled: boolean;
@@ -4624,32 +4638,44 @@ export interface components {
         };
         AIProviderDefinition: {
             /** @enum {string} */
-            id: "openai" | "anthropic" | "gemini" | "openrouter";
+            id: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
             name: string;
             credential_label: string;
             model_placeholder: string;
         };
         AIProviderList: {
             management_available: boolean;
+            custom_available?: boolean;
+            custom_endpoints?: components["schemas"]["AICustomEndpoint"][];
             /** @description Supported provider forms; absence indicates an older server without provider discovery. */
             definitions?: components["schemas"]["AIProviderDefinition"][];
             items: components["schemas"]["AIProviderConnection"][];
             legacy_key_ids: string[];
         };
         AIProviderCreate: {
+            /**
+             * Format: uri
+             * @description Immutable installation-approved custom base URL; omit for standard providers.
+             */
+            endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
             name: string;
-            models: components["schemas"]["AIModelNames"];
+            models: components["schemas"]["AIProviderInputModels"];
             enabled: boolean;
             /** @description Transient write-only secret stored only by the encrypted private engine. */
             api_key: string;
         };
         AIProviderUpdate: {
+            /**
+             * Format: uri
+             * @description Immutable installation-approved custom base URL; omit for standard providers.
+             */
+            endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
             name: string;
-            models: components["schemas"]["AIModelNames"];
+            models: components["schemas"]["AIProviderInputModels"];
             enabled: boolean;
             /** @description Omit to preserve the secret; supply a new value to rotate. */
             api_key?: string;
@@ -8142,7 +8168,9 @@ export interface operations {
     listAIProviderModels: {
         parameters: {
             query?: {
-                provider?: "openai" | "anthropic" | "gemini" | "openrouter";
+                /** @description Same-organization custom connection required when provider is custom. */
+                connection_id?: string;
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
                 query?: string;
                 limit?: number;
                 offset?: number;

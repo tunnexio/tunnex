@@ -55,9 +55,15 @@ const (
 // Defines values for AIProviderConnectionProvider.
 const (
 	AIProviderConnectionProviderAnthropic  AIProviderConnectionProvider = "anthropic"
+	AIProviderConnectionProviderCerebras   AIProviderConnectionProvider = "cerebras"
+	AIProviderConnectionProviderCustom     AIProviderConnectionProvider = "custom"
+	AIProviderConnectionProviderDeepseek   AIProviderConnectionProvider = "deepseek"
 	AIProviderConnectionProviderGemini     AIProviderConnectionProvider = "gemini"
+	AIProviderConnectionProviderGroq       AIProviderConnectionProvider = "groq"
+	AIProviderConnectionProviderMistral    AIProviderConnectionProvider = "mistral"
 	AIProviderConnectionProviderOpenai     AIProviderConnectionProvider = "openai"
 	AIProviderConnectionProviderOpenrouter AIProviderConnectionProvider = "openrouter"
+	AIProviderConnectionProviderXai        AIProviderConnectionProvider = "xai"
 )
 
 // Defines values for AIProviderConnectionStatus.
@@ -71,25 +77,43 @@ const (
 // Defines values for AIProviderCreateProvider.
 const (
 	AIProviderCreateProviderAnthropic  AIProviderCreateProvider = "anthropic"
+	AIProviderCreateProviderCerebras   AIProviderCreateProvider = "cerebras"
+	AIProviderCreateProviderCustom     AIProviderCreateProvider = "custom"
+	AIProviderCreateProviderDeepseek   AIProviderCreateProvider = "deepseek"
 	AIProviderCreateProviderGemini     AIProviderCreateProvider = "gemini"
+	AIProviderCreateProviderGroq       AIProviderCreateProvider = "groq"
+	AIProviderCreateProviderMistral    AIProviderCreateProvider = "mistral"
 	AIProviderCreateProviderOpenai     AIProviderCreateProvider = "openai"
 	AIProviderCreateProviderOpenrouter AIProviderCreateProvider = "openrouter"
+	AIProviderCreateProviderXai        AIProviderCreateProvider = "xai"
 )
 
 // Defines values for AIProviderDefinitionId.
 const (
 	AIProviderDefinitionIdAnthropic  AIProviderDefinitionId = "anthropic"
+	AIProviderDefinitionIdCerebras   AIProviderDefinitionId = "cerebras"
+	AIProviderDefinitionIdCustom     AIProviderDefinitionId = "custom"
+	AIProviderDefinitionIdDeepseek   AIProviderDefinitionId = "deepseek"
 	AIProviderDefinitionIdGemini     AIProviderDefinitionId = "gemini"
+	AIProviderDefinitionIdGroq       AIProviderDefinitionId = "groq"
+	AIProviderDefinitionIdMistral    AIProviderDefinitionId = "mistral"
 	AIProviderDefinitionIdOpenai     AIProviderDefinitionId = "openai"
 	AIProviderDefinitionIdOpenrouter AIProviderDefinitionId = "openrouter"
+	AIProviderDefinitionIdXai        AIProviderDefinitionId = "xai"
 )
 
 // Defines values for AIProviderUpdateProvider.
 const (
 	AIProviderUpdateProviderAnthropic  AIProviderUpdateProvider = "anthropic"
+	AIProviderUpdateProviderCerebras   AIProviderUpdateProvider = "cerebras"
+	AIProviderUpdateProviderCustom     AIProviderUpdateProvider = "custom"
+	AIProviderUpdateProviderDeepseek   AIProviderUpdateProvider = "deepseek"
 	AIProviderUpdateProviderGemini     AIProviderUpdateProvider = "gemini"
+	AIProviderUpdateProviderGroq       AIProviderUpdateProvider = "groq"
+	AIProviderUpdateProviderMistral    AIProviderUpdateProvider = "mistral"
 	AIProviderUpdateProviderOpenai     AIProviderUpdateProvider = "openai"
 	AIProviderUpdateProviderOpenrouter AIProviderUpdateProvider = "openrouter"
+	AIProviderUpdateProviderXai        AIProviderUpdateProvider = "xai"
 )
 
 // Defines values for AIUsageReportSemantics.
@@ -1294,6 +1318,12 @@ type AICredential struct {
 // AICredentialAudience defines model for AICredential.Audience.
 type AICredentialAudience string
 
+// AICustomEndpoint defines model for AICustomEndpoint.
+type AICustomEndpoint struct {
+	Name string `json:"name"`
+	Url  string `json:"url"`
+}
+
 // AIGatewayOptIn defines model for AIGatewayOptIn.
 type AIGatewayOptIn struct {
 	Enabled bool `json:"enabled"`
@@ -1333,9 +1363,12 @@ type AIModelNames = []string
 
 // AIProviderConnection defines model for AIProviderConnection.
 type AIProviderConnection struct {
-	AppliedRevision int64              `json:"applied_revision"`
-	Enabled         bool               `json:"enabled"`
-	Id              openapi_types.UUID `json:"id"`
+	AppliedRevision int64 `json:"applied_revision"`
+	Enabled         bool  `json:"enabled"`
+
+	// EndpointUrl Immutable installation-approved custom base URL; omit for standard providers.
+	EndpointUrl *string            `json:"endpoint_url,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
 
 	// KeyId Non-secret owned policy reference.
 	KeyId          string                             `json:"key_id"`
@@ -1360,9 +1393,14 @@ type AIProviderConnectionStatus string
 // AIProviderCreate defines model for AIProviderCreate.
 type AIProviderCreate struct {
 	// ApiKey Transient write-only secret stored only by the encrypted private engine.
-	ApiKey   *string                  `json:"api_key,omitempty"`
-	Enabled  bool                     `json:"enabled"`
-	Models   AIModelNames             `json:"models"`
+	ApiKey  *string `json:"api_key,omitempty"`
+	Enabled bool    `json:"enabled"`
+
+	// EndpointUrl Immutable installation-approved custom base URL; omit for standard providers.
+	EndpointUrl *string `json:"endpoint_url,omitempty"`
+
+	// Models Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+	Models   AIProviderInputModels    `json:"models"`
 	Name     string                   `json:"name"`
 	Provider AIProviderCreateProvider `json:"provider"`
 }
@@ -1381,8 +1419,14 @@ type AIProviderDefinition struct {
 // AIProviderDefinitionId defines model for AIProviderDefinition.Id.
 type AIProviderDefinitionId string
 
+// AIProviderInputModels Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+type AIProviderInputModels = []string
+
 // AIProviderList defines model for AIProviderList.
 type AIProviderList struct {
+	CustomAvailable *bool               `json:"custom_available,omitempty"`
+	CustomEndpoints *[]AICustomEndpoint `json:"custom_endpoints,omitempty"`
+
 	// Definitions Supported provider forms; absence indicates an older server without provider discovery.
 	Definitions         *[]AIProviderDefinition `json:"definitions,omitempty"`
 	Items               []AIProviderConnection  `json:"items"`
@@ -1412,12 +1456,17 @@ type AIProviderRevision struct {
 // AIProviderUpdate defines model for AIProviderUpdate.
 type AIProviderUpdate struct {
 	// ApiKey Omit to preserve the secret; supply a new value to rotate.
-	ApiKey           *string                  `json:"api_key,omitempty"`
-	Enabled          bool                     `json:"enabled"`
-	ExpectedRevision int64                    `json:"expected_revision"`
-	Models           AIModelNames             `json:"models"`
-	Name             string                   `json:"name"`
-	Provider         AIProviderUpdateProvider `json:"provider"`
+	ApiKey  *string `json:"api_key,omitempty"`
+	Enabled bool    `json:"enabled"`
+
+	// EndpointUrl Immutable installation-approved custom base URL; omit for standard providers.
+	EndpointUrl      *string `json:"endpoint_url,omitempty"`
+	ExpectedRevision int64   `json:"expected_revision"`
+
+	// Models Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
+	Models   AIProviderInputModels    `json:"models"`
+	Name     string                   `json:"name"`
+	Provider AIProviderUpdateProvider `json:"provider"`
 }
 
 // AIProviderUpdateProvider defines model for AIProviderUpdate.Provider.
@@ -5181,10 +5230,12 @@ type TestAgentAccessParamsProtocol string
 
 // ListAIProviderModelsParams defines parameters for ListAIProviderModels.
 type ListAIProviderModelsParams struct {
-	Provider *string `form:"provider,omitempty" json:"provider,omitempty"`
-	Query    *string `form:"query,omitempty" json:"query,omitempty"`
-	Limit    *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
+	// ConnectionId Same-organization custom connection required when provider is custom.
+	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
+	Provider     *string             `form:"provider,omitempty" json:"provider,omitempty"`
+	Query        *string             `form:"query,omitempty" json:"query,omitempty"`
+	Limit        *int                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset       *int                `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetAIUsageParams defines parameters for GetAIUsage.
@@ -17625,6 +17676,22 @@ func NewListAIProviderModelsRequest(server string, orgId openapi_types.UUID, par
 
 	if params != nil {
 		queryValues := queryURL.Query()
+
+		if params.ConnectionId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "connection_id", runtime.ParamLocationQuery, *params.ConnectionId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
 
 		if params.Provider != nil {
 
