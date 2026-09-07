@@ -1,0 +1,32 @@
+name: AI-0 adapter qualification
+
+on:
+  pull_request:
+    paths:
+      - "experiments/ai0/**"
+      - ".github/workflows/ai0.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: experiments/ai0/go.mod
+          cache: false
+      - name: Verify local adapter boundaries (no provider credentials)
+        working-directory: experiments/ai0
+        env:
+          GOWORK: "off"
+          GOFLAGS: "-mod=readonly"
+        run: |
+          go test -race ./...
+          go vet ./...

@@ -10,7 +10,7 @@ Strategy: [AI gateway epic](EPIC-ai-gateway.md). NAT is independent.
 | --- | --- |
 | Engine ownership | Locked by epic: reuse private Bifrost, no fork, provider SDK engine, competing usage ledger, or upstream dashboard clone. |
 | Qualification candidate | Bifrost `transports/v2.0.0`, source commit `e4a30d6041c0446603aea615bc5da340dac001b1`, resolved from the official annotated tag. Candidate only; source inspection and runtime tests must qualify it. Record artifact digest before runtime acceptance. |
-| Live provider | OpenRouter, selected by user. Exact model, spend ceiling and secure credential location remain prerequisites for paid smoke requests. No secret values in Git, logs or evidence. |
+| Live provider | OpenRouter, selected by user; user supplied a burner credential and explicitly authorized use. This slice ran two tiny `openai/gpt-4o-mini` requests with 16 output tokens each. No standing bulk-spend authorization or exact billing claim. No secret values in Git, logs or evidence. |
 | Scope of first slice | Local qualification harness and minimal adapter boundary, separate from production routes. Deterministic instrumented upstreams incur no provider spend. No CP schema or generated API changes in this slice. |
 | Identity boundary | Tunnex owns authentication. Existing `agentruntime.Service.Authenticate` returns tenant/device identity and checks credential lifecycle; it does not itself establish AI-specific permission or audience. Harness credentials are synthetic fixtures, never a production identity scheme or proof of enrollment. |
 | Adapter forwarding | Only explicitly supported inference paths; bounded bodies and lifetime; propagate cancellation and streaming. Construct upstream headers from an allowlist, inject only server-selected virtual key. Never forward caller cookies, credentials, identity, provider-selection or Bifrost control headers. No redirects or retries to alternative destinations. |
@@ -45,6 +45,11 @@ Strategy: [AI gateway epic](EPIC-ai-gateway.md). NAT is independent.
 - Docker reports no daemon at its configured Colima socket.
 - `OPENROUTER_API_KEY` is absent from the current process environment (value not read).
 - No cloud, provider-spend, production configuration or release action performed.
+
+The last two bullets describe the initial state only. Subsequently, the user
+authorized the two OpenRouter smoke requests recorded above. A pinned standalone
+engine ran locally without Docker. See [qualification evidence](AI-0-qualification-20260907.md)
+and its held review findings; AI-0 is not complete.
 
 ## References
 
