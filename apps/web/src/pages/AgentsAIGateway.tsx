@@ -54,7 +54,7 @@ export default function AgentsAIGateway() {
       />
       <AgentsTabRail />
       <nav aria-label="AI gateway views" className="flex gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1 w-fit">
-        {(["usage", "providers", "configuration"] as const).map((v) => <button key={v} type="button" aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${view === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{v === "usage" ? "Usage & cost" : v === "providers" ? "Providers & models" : "Configuration"}</button>)}
+        {(["usage", "providers", "configuration"] as const).map((v) => <button key={v} type="button" aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${view === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{v === "usage" ? "Usage & cost" : v === "providers" ? "Models & endpoints" : "Configuration"}</button>)}
       </nav>
       <AgentsManagementGate key={org?.id}>
         {(orgId) => (

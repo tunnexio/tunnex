@@ -81,3 +81,25 @@ Rendered evidence:
 `walk-artifacts/ai-gateway-20260907/litellm-add-model-native-url-local.jpg`.
 Azure Foundry is still unimplemented; the new saved-request routing contract was
 surfaced for user disposition. No schema, backend or cloud changes in this slice.
+
+## Follow-up screenshot alignment
+
+User's latest screenshots require page-inline Add Model. Creation now opens in
+the All Models / Add Model / LLM Credentials tab strip, with a two-column form,
+read-only model mapping and supported chat mode. The compact model table shows
+provider logos. Editing existing credentials retains the drawer. Switching tabs
+or cancelling unmounts drafts; submission returns to All Models.
+
+Full final web suite still passes1,354 tests/118 files, TypeScript and Vite build
+pass, with only the existing bundle-size warning. Focused22 tests now include
+inline tab navigation, discarded key/late result, native/custom mappings and
+the retained credential edit drawer. Independent static review found no new
+actionable issue. Root inspected actual browser screenshots and verified that
+an unsent synthetic key disappears after switching to LLM Credentials and back.
+No additional provider request or persisted mutation was made for this layout.
+
+Evidence in `walk-artifacts/ai-gateway-20260907/`:
+`litellm-inline-add-model-local.jpg`, `litellm-inline-model-table-local.jpg`,
+and `litellm-inline-endpoint-local.jpg`. Unsupported aliases/modes and Foundry
+routing remain unimplemented; the reference screenshots are not a backend
+routing approval. Existing cloud/CI/image-build limitations remain unchanged.

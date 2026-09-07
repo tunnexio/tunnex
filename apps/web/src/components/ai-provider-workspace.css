@@ -114,3 +114,31 @@
 .ai-provider-endpoint-entry>.block{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:center}
 .ai-provider-endpoint-entry>.block>span{margin-top:0}
 }
+
+.ai-provider-model-table{padding:16px;border-radius:8px}
+.ai-provider-model-table th,.ai-provider-model-table td{padding:9px 10px;vertical-align:middle}
+.ai-provider-model-table code{margin:0;font-size:11px}
+.ai-provider-table-brand{display:inline-flex!important;align-items:center;gap:7px}
+.ai-provider-table-brand .ai-provider-logo{width:18px;height:18px;border-radius:3px}
+.ai-provider-inline{min-width:0}
+.ai-provider-inline>h3{font-size:23px;font-weight:600;margin:4px 0 18px}
+.ai-provider-inline-card{border:1px solid var(--tnx-border);border-radius:8px;padding:24px;background:var(--tnx-surface)}
+.ai-provider-inline .ai-provider-panel-heading{display:none}
+.ai-provider-inline-actions{display:flex;gap:9px;justify-content:flex-end;border-top:1px solid var(--tnx-border);padding-top:18px;margin-top:20px}
+.ai-provider-inline .ai-provider-editor{gap:20px}
+.ai-provider-inline .ai-provider-editor>p,.ai-provider-inline .ai-provider-endpoint-entry p{font-size:12px}
+.ai-provider-mappings{display:grid;gap:12px;font-size:13px;align-items:start}
+.ai-provider-mappings table{min-width:0;font-size:12px}
+.ai-provider-mappings th,.ai-provider-mappings td{padding:10px 8px;max-width:none}
+.ai-provider-mappings th{background:var(--tnx-surface-inset)}
+.ai-provider-mappings p{font-size:12px;color:var(--tnx-text-secondary);line-height:1.6;margin-top:10px}
+.ai-provider-mapping-empty{padding:24px 8px;text-align:center}
+@media(min-width:851px){
+.ai-provider-inline{--ai-form-label-width:clamp(180px,28vw,500px)}
+.ai-provider-inline .ai-provider-editor>.block,.ai-provider-inline .ai-provider-form-grid>.block,.ai-provider-inline .ai-provider-catalog-search>.block,.ai-provider-inline .ai-provider-manual-model>.block,.ai-provider-inline .ai-provider-endpoint-entry>.block,.ai-provider-inline .ai-provider-picker>.relative,.ai-provider-inline .ai-provider-mappings{grid-template-columns:var(--ai-form-label-width) minmax(0,1fr);gap:16px}
+.ai-provider-inline .ai-provider-selected-models,.ai-provider-inline .ai-provider-model-help{padding-left:calc(var(--ai-form-label-width) + 16px)}
+.ai-provider-inline .ai-provider-picker [role=listbox]{left:calc(var(--ai-form-label-width) + 16px);width:calc(100% - var(--ai-form-label-width) - 16px)}
+.ai-provider-inline .ai-provider-picker .pointer-events-none{left:calc(var(--ai-form-label-width) + 28px)}
+.ai-provider-inline .ai-provider-model-options{left:calc(var(--ai-form-label-width) + 16px)}
+}
+@media(max-width:650px){.ai-provider-inline-card{padding:16px}.ai-provider-inline-actions{flex-wrap:wrap}.ai-provider-inline-actions button{flex:1}}
