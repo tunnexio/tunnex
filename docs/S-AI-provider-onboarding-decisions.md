@@ -137,3 +137,53 @@ status tones. API/state/security behavior is unchanged. Verify portal placement,
 Escape/cancel clearing unsent keys, focus return, existing form submission and
 actual local rendering. The user requested this visual refinement; Docker capacity
 expansion remains unapproved and outside this change.
+
+## Multi-provider follow-up — user disposition (2026-09-07)
+
+The user's explicit request for LiteLLM-like provider selection supersedes the
+OpenRouter-only decision above. Locked slice: actual OpenAI, Anthropic, Gemini
+and OpenRouter connections, using their native Bifrost adapters and literal API
+keys. No UI-only provider choices or silent routing through OpenRouter.
+
+- Provider definitions come from a CP-owned supported registry exposed in the
+  existing authorized provider inventory: id, name, credential label, model
+  placeholder. The generated OpenAPI enum is the public supported contract.
+  Catalog requests accept provider, defaulting to openrouter for old callers.
+- Each connection's provider is immutable. API keys remain transient/write-only;
+  current encrypted-native ownership, CAS and revocation rules remain intact.
+  Migration 0142 expands the provider constraint; down migration refuses retained
+  non-OpenRouter connections/policies, including tombstones. No data rewrite.
+- Canonical names split exactly once: provider/upstream-model. OpenRouter's vendor
+  segment remains part of its upstream model. All allowlists, cost lookup and
+  inference retain the canonical name. Legacy key ACL covers OpenRouter only.
+- Reconciliation groups same-org keys by their stored provider and effective exact
+  models. Native virtual keys retain stable identity and one exact provider config
+  per selected provider. Removed configs disappear; unrelated providers/keys never
+  become implicit allow-all. Persisted and runtime readback must match every scope.
+- Shared native contract: ProviderKeySpec gains Provider; EnsureProvider(ctx,
+  provider); ProviderModels(ctx, provider, query, limit, offset). Add
+  EngineProviderScope{Provider, Models, KeyIDs} and optional ScopedPolicyEngine
+  EnsureScopedKey(ctx, name, scopes). Existing EnsureKey is a single-scope wrapper;
+  older test engines can handle only one scope, never silently merge providers.
+- UI: searchable provider picker in the shared right drawer, provider-specific
+  key label/catalog/model placeholder, clearing draft key/models/catalog on
+  provider switch. Add model can reuse an existing same-provider connection via
+  revisioned update without re-entering its key. Model inventory lists exact API
+  model ID, provider, credential connection and state, with search/filter and
+  edit/test actions. Theme tokens and shared badges stay consistent.
+- Arbitrary public aliases, custom upstream URLs, Azure deployments, AWS/Vertex
+  workload credentials are deferred to a separately dispositioned mapping/origin
+  and authentication contract. This slice preserves exact-model authorization;
+  provider names alone are not proof of those additional capabilities.
+- Verify provider mismatch/immutability, mixed-provider policy scopes and pricing,
+  legacy coverage isolation, model catalog isolation, key-rotation/refusal paths,
+  native protocol fixtures, generated drift, both API editions and rendered UI.
+  Native fixture qualification is explicitly distinct from paid provider smoke.
+
+Reference: official LiteLLM revision 168a0055a244acdcf97c330c52e085ab40b1424c,
+`ui/litellm-dashboard/src/components/add_model/AddModelForm.tsx`,
+`provider_specific_fields.tsx`, `handle_add_model_submit.tsx`, and
+`provider_info_helpers.tsx`. Its backend provider-field metadata, credential reuse
+and model table inform this workflow. Implement with Tunnex components; no source
+copy or new LiteLLM runtime dependency. UI source is MIT; enterprise source is
+outside the reference scope.
