@@ -171,6 +171,17 @@ aiGateway:
   enabled: false
   # Explicit transition to database-owned providers; preserve volumes and encryption key.
   providerManagementEnabled: false
+  litellmBridge:
+    enabled: false
+    image: "" # Operator-built apps/ai-bridge image, repository@sha256:<64 hex>.
+    existingSecret: "" # Dedicated bridge secrets only, never the CP master/database Secret.
+    adminTokenKey: admin-token
+    # Config fields reference keys of the same name in existingSecret.
+    models: [] # [{alias: model-a, endpoint: aws-endpoint, region: us-east-1, access_key_id_env: AWS_ACCESS, secret_access_key_env: AWS_SECRET}]
+    clients: [] # [{key_env: CLIENT_KEY, models: [model-a]}]
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 1Gi}
   customProviders:
     enabled: false
     # Nonsecret installation policy. Required protected service names are added by template.

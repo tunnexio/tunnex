@@ -63,6 +63,7 @@ const (
 	AIProviderConnectionProviderMistral    AIProviderConnectionProvider = "mistral"
 	AIProviderConnectionProviderOpenai     AIProviderConnectionProvider = "openai"
 	AIProviderConnectionProviderOpenrouter AIProviderConnectionProvider = "openrouter"
+	AIProviderConnectionProviderSagemaker  AIProviderConnectionProvider = "sagemaker"
 	AIProviderConnectionProviderXai        AIProviderConnectionProvider = "xai"
 )
 
@@ -85,6 +86,7 @@ const (
 	AIProviderCreateProviderMistral    AIProviderCreateProvider = "mistral"
 	AIProviderCreateProviderOpenai     AIProviderCreateProvider = "openai"
 	AIProviderCreateProviderOpenrouter AIProviderCreateProvider = "openrouter"
+	AIProviderCreateProviderSagemaker  AIProviderCreateProvider = "sagemaker"
 	AIProviderCreateProviderXai        AIProviderCreateProvider = "xai"
 )
 
@@ -99,21 +101,44 @@ const (
 	AIProviderDefinitionIdMistral    AIProviderDefinitionId = "mistral"
 	AIProviderDefinitionIdOpenai     AIProviderDefinitionId = "openai"
 	AIProviderDefinitionIdOpenrouter AIProviderDefinitionId = "openrouter"
+	AIProviderDefinitionIdSagemaker  AIProviderDefinitionId = "sagemaker"
 	AIProviderDefinitionIdXai        AIProviderDefinitionId = "xai"
+)
+
+// Defines values for AIProviderProbeProvider.
+const (
+	AIProviderProbeProviderAnthropic  AIProviderProbeProvider = "anthropic"
+	AIProviderProbeProviderCerebras   AIProviderProbeProvider = "cerebras"
+	AIProviderProbeProviderCustom     AIProviderProbeProvider = "custom"
+	AIProviderProbeProviderDeepseek   AIProviderProbeProvider = "deepseek"
+	AIProviderProbeProviderGemini     AIProviderProbeProvider = "gemini"
+	AIProviderProbeProviderGroq       AIProviderProbeProvider = "groq"
+	AIProviderProbeProviderMistral    AIProviderProbeProvider = "mistral"
+	AIProviderProbeProviderOpenai     AIProviderProbeProvider = "openai"
+	AIProviderProbeProviderOpenrouter AIProviderProbeProvider = "openrouter"
+	AIProviderProbeProviderSagemaker  AIProviderProbeProvider = "sagemaker"
+	AIProviderProbeProviderXai        AIProviderProbeProvider = "xai"
+)
+
+// Defines values for AIProviderProbeResultStatus.
+const (
+	AIProviderProbeResultStatusError   AIProviderProbeResultStatus = "error"
+	AIProviderProbeResultStatusSuccess AIProviderProbeResultStatus = "success"
 )
 
 // Defines values for AIProviderUpdateProvider.
 const (
-	AIProviderUpdateProviderAnthropic  AIProviderUpdateProvider = "anthropic"
-	AIProviderUpdateProviderCerebras   AIProviderUpdateProvider = "cerebras"
-	AIProviderUpdateProviderCustom     AIProviderUpdateProvider = "custom"
-	AIProviderUpdateProviderDeepseek   AIProviderUpdateProvider = "deepseek"
-	AIProviderUpdateProviderGemini     AIProviderUpdateProvider = "gemini"
-	AIProviderUpdateProviderGroq       AIProviderUpdateProvider = "groq"
-	AIProviderUpdateProviderMistral    AIProviderUpdateProvider = "mistral"
-	AIProviderUpdateProviderOpenai     AIProviderUpdateProvider = "openai"
-	AIProviderUpdateProviderOpenrouter AIProviderUpdateProvider = "openrouter"
-	AIProviderUpdateProviderXai        AIProviderUpdateProvider = "xai"
+	Anthropic  AIProviderUpdateProvider = "anthropic"
+	Cerebras   AIProviderUpdateProvider = "cerebras"
+	Custom     AIProviderUpdateProvider = "custom"
+	Deepseek   AIProviderUpdateProvider = "deepseek"
+	Gemini     AIProviderUpdateProvider = "gemini"
+	Groq       AIProviderUpdateProvider = "groq"
+	Mistral    AIProviderUpdateProvider = "mistral"
+	Openai     AIProviderUpdateProvider = "openai"
+	Openrouter AIProviderUpdateProvider = "openrouter"
+	Sagemaker  AIProviderUpdateProvider = "sagemaker"
+	Xai        AIProviderUpdateProvider = "xai"
 )
 
 // Defines values for AIUsageReportSemantics.
@@ -1181,11 +1206,11 @@ const (
 
 // Defines values for UpgradeStatusRollbackState.
 const (
-	UpgradeStatusRollbackStateAvailable         UpgradeStatusRollbackState = "available"
-	UpgradeStatusRollbackStateFailed            UpgradeStatusRollbackState = "failed"
-	UpgradeStatusRollbackStateInProgress        UpgradeStatusRollbackState = "in_progress"
-	UpgradeStatusRollbackStateNotNeeded         UpgradeStatusRollbackState = "not_needed"
-	UpgradeStatusRollbackStateRestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
+	Available         UpgradeStatusRollbackState = "available"
+	Failed            UpgradeStatusRollbackState = "failed"
+	InProgress        UpgradeStatusRollbackState = "in_progress"
+	NotNeeded         UpgradeStatusRollbackState = "not_needed"
+	RestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
 )
 
 // Defines values for UpgradeStatusState.
@@ -1366,7 +1391,7 @@ type AIProviderConnection struct {
 	AppliedRevision int64 `json:"applied_revision"`
 	Enabled         bool  `json:"enabled"`
 
-	// EndpointUrl Immutable installation-approved custom base URL; omit for standard providers.
+	// EndpointUrl Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
 	EndpointUrl *string            `json:"endpoint_url,omitempty"`
 	Id          openapi_types.UUID `json:"id"`
 
@@ -1396,7 +1421,7 @@ type AIProviderCreate struct {
 	ApiKey  *string `json:"api_key,omitempty"`
 	Enabled bool    `json:"enabled"`
 
-	// EndpointUrl Immutable installation-approved custom base URL; omit for standard providers.
+	// EndpointUrl Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
 	EndpointUrl *string `json:"endpoint_url,omitempty"`
 
 	// Models Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
@@ -1432,6 +1457,11 @@ type AIProviderList struct {
 	Items               []AIProviderConnection  `json:"items"`
 	LegacyKeyIds        []string                `json:"legacy_key_ids"`
 	ManagementAvailable bool                    `json:"management_available"`
+	SagemakerAvailable  *bool                   `json:"sagemaker_available,omitempty"`
+	SagemakerEndpoints  *[]AICustomEndpoint     `json:"sagemaker_endpoints,omitempty"`
+
+	// TestAvailable Private inference test adapter is configured.
+	TestAvailable *bool `json:"test_available,omitempty"`
 }
 
 // AIProviderModel defines model for AIProviderModel.
@@ -1448,6 +1478,28 @@ type AIProviderModelList struct {
 	Total  int               `json:"total"`
 }
 
+// AIProviderProbe defines model for AIProviderProbe.
+type AIProviderProbe struct {
+	ApiKey *string `json:"api_key,omitempty"`
+
+	// EndpointUrl Installation-approved custom or SageMaker bridge endpoint.
+	EndpointUrl *string                 `json:"endpoint_url,omitempty"`
+	Model       string                  `json:"model"`
+	Provider    AIProviderProbeProvider `json:"provider"`
+}
+
+// AIProviderProbeProvider defines model for AIProviderProbe.Provider.
+type AIProviderProbeProvider string
+
+// AIProviderProbeResult defines model for AIProviderProbeResult.
+type AIProviderProbeResult struct {
+	DurationMs int64                       `json:"duration_ms"`
+	Status     AIProviderProbeResultStatus `json:"status"`
+}
+
+// AIProviderProbeResultStatus defines model for AIProviderProbeResult.Status.
+type AIProviderProbeResultStatus string
+
 // AIProviderRevision defines model for AIProviderRevision.
 type AIProviderRevision struct {
 	ExpectedRevision int64 `json:"expected_revision"`
@@ -1459,7 +1511,7 @@ type AIProviderUpdate struct {
 	ApiKey  *string `json:"api_key,omitempty"`
 	Enabled bool    `json:"enabled"`
 
-	// EndpointUrl Immutable installation-approved custom base URL; omit for standard providers.
+	// EndpointUrl Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
 	EndpointUrl      *string `json:"endpoint_url,omitempty"`
 	ExpectedRevision int64   `json:"expected_revision"`
 
@@ -5230,7 +5282,7 @@ type TestAgentAccessParamsProtocol string
 
 // ListAIProviderModelsParams defines parameters for ListAIProviderModels.
 type ListAIProviderModelsParams struct {
-	// ConnectionId Same-organization custom connection required when provider is custom.
+	// ConnectionId Same-organization connection required for custom and SageMaker catalogs.
 	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
 	Provider     *string             `form:"provider,omitempty" json:"provider,omitempty"`
 	Query        *string             `form:"query,omitempty" json:"query,omitempty"`
@@ -5492,6 +5544,9 @@ type PutAIAssignmentJSONRequestBody = AIAssignmentWrite
 
 // CreateAIProviderJSONRequestBody defines body for CreateAIProvider for application/json ContentType.
 type CreateAIProviderJSONRequestBody = AIProviderCreate
+
+// TestAIProviderConnectionJSONRequestBody defines body for TestAIProviderConnection for application/json ContentType.
+type TestAIProviderConnectionJSONRequestBody = AIProviderProbe
 
 // DeleteAIProviderJSONRequestBody defines body for DeleteAIProvider for application/json ContentType.
 type DeleteAIProviderJSONRequestBody = AIProviderRevision
@@ -6287,6 +6342,11 @@ type ClientInterface interface {
 	CreateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAIProviderConnectionWithBody request with any body
+	TestAIProviderConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestAIProviderConnection(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteAIProviderWithBody request with any body
 	DeleteAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -9162,6 +9222,30 @@ func (c *Client) CreateAIProviderWithBody(ctx context.Context, orgId openapi_typ
 
 func (c *Client) CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateAIProviderRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProviderConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderConnectionRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProviderConnection(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderConnectionRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17849,6 +17933,53 @@ func NewCreateAIProviderRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewTestAIProviderConnectionRequest calls the generic TestAIProviderConnection builder with application/json body
+func NewTestAIProviderConnectionRequest(server string, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestAIProviderConnectionRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewTestAIProviderConnectionRequestWithBody generates requests for TestAIProviderConnection with any type of body
+func NewTestAIProviderConnectionRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/test-connection", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteAIProviderRequest calls the generic DeleteAIProvider builder with application/json body
 func NewDeleteAIProviderRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -26273,6 +26404,11 @@ type ClientWithResponsesInterface interface {
 
 	CreateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error)
 
+	// TestAIProviderConnectionWithBodyWithResponse request with any body
+	TestAIProviderConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error)
+
+	TestAIProviderConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error)
+
 	// DeleteAIProviderWithBodyWithResponse request with any body
 	DeleteAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error)
 
@@ -29789,6 +29925,29 @@ func (r CreateAIProviderResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestAIProviderConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderProbeResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAIProviderConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAIProviderConnectionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -35214,6 +35373,23 @@ func (c *ClientWithResponses) CreateAIProviderWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseCreateAIProviderResponse(rsp)
+}
+
+// TestAIProviderConnectionWithBodyWithResponse request with arbitrary body returning *TestAIProviderConnectionResponse
+func (c *ClientWithResponses) TestAIProviderConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error) {
+	rsp, err := c.TestAIProviderConnectionWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderConnectionResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestAIProviderConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error) {
+	rsp, err := c.TestAIProviderConnection(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderConnectionResponse(rsp)
 }
 
 // DeleteAIProviderWithBodyWithResponse request with arbitrary body returning *DeleteAIProviderResponse
@@ -41402,6 +41578,39 @@ func ParseCreateAIProviderResponse(rsp *http.Response) (*CreateAIProviderRespons
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAIProviderConnectionResponse parses an HTTP response from a TestAIProviderConnectionWithResponse call
+func ParseTestAIProviderConnectionResponse(rsp *http.Response) (*TestAIProviderConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAIProviderConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderProbeResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

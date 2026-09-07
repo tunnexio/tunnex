@@ -18,6 +18,7 @@ func ProviderDefinitions() []ProviderDefinition {
 		{"cerebras", "Cerebras", "Cerebras API key", "cerebras/llama-3.3-70b"},
 		{"xai", "xAI", "xAI API key", "xai/grok-3-mini"},
 		{"deepseek", "DeepSeek", "DeepSeek API key", "deepseek/deepseek-chat"},
+		{"sagemaker", "AWS SageMaker", "Bridge client key", "operator-model-alias"},
 		{"custom", "Custom provider", "API key", "upstream-model"},
 	}
 }

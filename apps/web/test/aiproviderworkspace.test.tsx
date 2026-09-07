@@ -11,18 +11,24 @@ const definitions = [
   { id: "anthropic", name: "Anthropic", credential_label: "Anthropic API key", model_placeholder: "anthropic/claude-sonnet-4" },
   { id: "gemini", name: "Gemini", credential_label: "Gemini API key", model_placeholder: "gemini/gemini-2.5-flash" },
 ];
-const inventory = { management_available: true, definitions, items: [c], legacy_key_ids: ["operator-key"] };
+const inventory = { management_available: true, test_available: true, definitions, items: [c], legacy_key_ids: ["operator-key"] };
 const response = (status = 200) => new Response(null, { status });
 const selectProvider = (name = "OpenRouter") => {
   const input = screen.getByRole("combobox", { name: "Provider" });
   fireEvent.focus(input); fireEvent.change(input, { target: { value: name } });
   fireEvent.keyDown(input, { key: "Enter" });
 };
+const passTest = async () => {
+  const button = screen.queryByRole("button", { name: "Test Connect" });
+  if (button && !(button as HTMLButtonElement).disabled) {
+    fireEvent.click(button); await screen.findByText(/Test succeeded for/);
+  }
+};
 const show = (orgId = "org-a") => createElement(AIProviderWorkspace, { orgId });
 beforeEach(() => {
   vi.resetAllMocks();
   api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/models") ? { items: [{ id: c.models[0], name: "GPT-4o mini" }], total: 1, limit: 50, offset: 0 } : inventory, response: response() }));
-  api.POST.mockResolvedValue({ data: c, response: response() }); api.PUT.mockResolvedValue({ data: c, response: response() }); api.DELETE.mockResolvedValue({ response: response(204) });
+  api.POST.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/test-connection") ? { status: "success", duration_ms: 20 } : c, response: response() })); api.PUT.mockResolvedValue({ data: c, response: response() }); api.DELETE.mockResolvedValue({ response: response(204) });
 });
 afterEach(cleanup);
 describe("AI provider onboarding", () => {
@@ -52,7 +58,7 @@ describe("AI provider onboarding", () => {
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Research" } });
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-fixture" } });
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "deepseek/deepseek-chat" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
+    await passTest(); fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ provider: "deepseek", models: ["deepseek/deepseek-chat"] }) })));
   });
   it("adds and removes model chips and closes the compact catalog without dismissing the drawer", async () => {
@@ -95,28 +101,28 @@ describe("AI provider onboarding", () => {
     expect(screen.getByText("operator-key")).toBeTruthy(); expect(api.POST).not.toHaveBeenCalled();
   });
   it("creates from catalog suggestions and clears the write-only key before response", async () => {
-    let finish!: (v: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    let finish!: (v: unknown) => void; api.POST.mockImplementation((path: string) => path.endsWith("/test-connection") ? Promise.resolve({ data: { status: "success", duration_ms: 20 }, response: response() }) : new Promise((resolve) => { finish = resolve; }));
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider();
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Team B" } });
     const key = screen.getByLabelText("API key") as HTMLInputElement; expect(key.type).toBe("password");
     fireEvent.change(key, { target: { value: "fixture-key-not-real" } }); fireEvent.click(screen.getByRole("button", { name: "Search models" }));
-    await screen.findByLabelText(/GPT-4o mini/); fireEvent.click(screen.getByLabelText(/GPT-4o mini/)); fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
+    await screen.findByLabelText(/GPT-4o mini/); fireEvent.click(screen.getByLabelText(/GPT-4o mini/)); await passTest(); fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     expect(screen.queryByLabelText("API key")).toBeNull(); expect(document.body.textContent).not.toContain("fixture-key-not-real");
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: { provider: "openrouter", name: "Team B", models: c.models, enabled: true, api_key: "fixture-key-not-real" } }));
     await act(async () => finish({ data: c, response: response() }));
     expect(api.POST.mock.calls.every(([path]) => !path.includes("/chat/completions"))).toBe(true);
   });
   it("uses revisions for connection tests, disable and rotation without secret readback", async () => {
-    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Test connection Engineering" }));
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Check catalog Engineering" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test$/), expect.objectContaining({ body: { expected_revision: 3 } })));
-    expect(screen.getByRole("columnheader", { name: "Connection check" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Catalog check" })).toBeTruthy();
     expect(screen.getAllByText(/Public catalogs may not validate API keys/).length).toBeGreaterThan(0);
     await waitFor(() => expect((screen.getByRole("button", { name: "Disable Engineering" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Disable Engineering" }));
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "openrouter", name: "Engineering", models: c.models, enabled: false, expected_revision: 3 } })));
     await waitFor(() => expect((screen.getByRole("button", { name: "Edit Engineering" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Edit Engineering" })); const key = screen.getByLabelText("Replacement API key (optional)") as HTMLInputElement; expect(key.value).toBe("");
-    fireEvent.change(key, { target: { value: "fixture-rotated-key" } }); fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    fireEvent.change(key, { target: { value: "fixture-rotated-key" } }); await passTest(); fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
     await waitFor(() => expect(api.PUT).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ expected_revision: 3, api_key: "fixture-rotated-key" }) })));
     expect(screen.queryByLabelText("Replacement API key (optional)")).toBeNull();
   });
@@ -153,7 +159,7 @@ describe("AI provider onboarding", () => {
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Research" } });
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-key" } });
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "anthropic/claude-sonnet-4" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
+    await passTest(); fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ provider: "anthropic", models: ["anthropic/claude-sonnet-4"] }) })));
   });
   it("reuses a same-provider connection for new models with its revision and preserves existing models without a secret", async () => {
@@ -208,7 +214,7 @@ describe("custom provider approved endpoints", () => {
     expect((screen.getByRole("button", { name: "Create connection" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "custom-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     expect((screen.getByRole("button", { name: "Search models" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
+    await passTest(); fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "custom", endpoint_url: custom.endpoint_url, name: "New private", enabled: true, models: ["custom-model"], api_key: "synthetic-custom-key" } })));
     expect(api.GET.mock.calls.some(([path]) => path.endsWith("/models"))).toBe(false);
   });
@@ -221,5 +227,47 @@ describe("custom provider approved endpoints", () => {
     await waitFor(() => expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "custom", connection_id: custom.id }) }) })));
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "model-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); fireEvent.click(screen.getByRole("button", { name: "Add models to connection" }));
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "custom", endpoint_url: custom.endpoint_url, name: custom.name, enabled: true, models: [...custom.models, "model-b"], expected_revision: 4 } })));
+  });
+});
+
+describe("pre-save inference check", () => {
+  const prepare = async () => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider();
+    fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Tested connection" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-key" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: c.models[0] } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+  };
+  it("requires result success, rejects HTTP200 error and invalidates changed credentials", async () => {
+    await prepare(); const save = screen.getByRole("button", { name: "Create connection" }) as HTMLButtonElement; expect(save.disabled).toBe(true);
+    api.POST.mockResolvedValueOnce({ data: { status: "error", duration_ms: 20 }, response: response() });
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); await screen.findByText(/Connection test failed/); expect(save.disabled).toBe(true);
+    await passTest(); expect(save.disabled).toBe(false);
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "openrouter", model: c.models[0], api_key: "synthetic-key" } }));
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "changed-key" } }); expect(save.disabled).toBe(true); expect(screen.queryByText(/Test succeeded for/)).toBeNull();
+  });
+  it("ignores late success after model changes", async () => {
+    await prepare(); let finish!: (v: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "openrouter/another-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    await act(async () => finish({ data: { status: "success", duration_ms: 20 }, response: response() }));
+    expect(screen.queryByText(/Test succeeded for/)).toBeNull(); expect((screen.getByRole("button", { name: "Create connection" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("expires success at five minutes and explains missing bridge setup", async () => {
+    await prepare(); await passTest(); const now = Date.now(); const clock = vi.spyOn(Date, "now").mockReturnValue(now + 300001);
+    fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Same settings" } });
+    expect((screen.getByRole("button", { name: "Create connection" }) as HTMLButtonElement).disabled).toBe(true); clock.mockRestore(); cleanup();
+    api.GET.mockResolvedValue({ data: { ...inventory, test_available: false } }); await prepare();
+    expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(true); expect(screen.getByText(/Test Connect requires installation setup/)).toBeTruthy();
+  });
+  it("tests and creates SageMaker with an approved bridge, gateway key and raw alias", async () => {
+    api.GET.mockResolvedValue({ data: { ...inventory, sagemaker_available: true, sagemaker_endpoints: [{ name: "AWS bridge", url: "https://aws-bridge.internal" }], definitions: [...definitions, { id: "sagemaker", name: "AWS SageMaker", credential_label: "Gateway API key", model_placeholder: "production-model" }] } });
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider("AWS SageMaker");
+    fireEvent.change(screen.getByLabelText("Approved upstream endpoint"), { target: { value: "https://aws-bridge.internal" } });
+    fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "AWS models" } }); fireEvent.change(screen.getByLabelText("Gateway API key"), { target: { value: "synthetic-gateway-key" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "production-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    await passTest(); expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "sagemaker", model: "production-model", api_key: "synthetic-gateway-key", endpoint_url: "https://aws-bridge.internal" } }));
+    fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: expect.objectContaining({ provider: "sagemaker", models: ["production-model"], endpoint_url: "https://aws-bridge.internal" }) })));
+    expect(screen.queryByLabelText("AWS Secret Access Key")).toBeNull();
   });
 });

@@ -61,10 +61,10 @@ func providerConflict() error {
 }
 func validateProviderInput(in ProviderInput, required bool) (ProviderInput, error) {
 	in.Name = strings.TrimSpace(in.Name)
-	if (!supportedProvider(in.Provider) && in.Provider != "custom") || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
+	if (!supportedProvider(in.Provider) && !endpointProvider(in.Provider)) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
 		return in, providerInvalid()
 	}
-	if in.Provider == "custom" {
+	if endpointProvider(in.Provider) {
 		if in.EndpointURL == nil || len(*in.EndpointURL) > 2048 {
 			return in, providerInvalid()
 		}
@@ -148,11 +148,11 @@ func (s *Policies) providerScopes(ctx context.Context, tx pgx.Tx, org uuid.UUID,
 			}
 			return nil, aiUnavailable()
 		}
-		if p.DeletedAt != nil || !p.Enabled || p.Status != "applied" || p.Revision != p.AppliedRevision || (!supportedProvider(p.Provider) && p.Provider != "custom") {
+		if p.DeletedAt != nil || !p.Enabled || p.Status != "applied" || p.Revision != p.AppliedRevision || (!supportedProvider(p.Provider) && !endpointProvider(p.Provider)) {
 			return nil, policyDenied()
 		}
 		nativeProvider := nativeConnectionProvider(p)
-		if p.Provider == "custom" && !s.customConnectionEligible(p) {
+		if endpointProvider(p.Provider) && !s.customConnectionEligible(p) {
 			return nil, policyDenied()
 		}
 		keys[nativeProvider] = append(keys[nativeProvider], id)
@@ -434,7 +434,7 @@ func (s *Policies) TestProvider(ctx context.Context, org, actor, id uuid.UUID, e
 	if p.Revision != expected || p.AppliedRevision != expected || p.Status == "pending" || p.Status == "error" {
 		return p, providerConflict()
 	}
-	if p.Provider == "custom" && !s.customConnectionEligible(p) {
+	if endpointProvider(p.Provider) && !s.customConnectionEligible(p) {
 		return p, providerMissing()
 	}
 	ok, testErr := s.engine.(ProviderEngine).TestProviderKey(ctx, providerSpec(p))
@@ -465,33 +465,60 @@ func (s *Policies) ProviderModels(ctx context.Context, provider, query string, l
 // ConfigureCustomProviders is called at startup only after the engine's
 // authenticated proxy has been configured. No request can modify these rules.
 func (s *Policies) ConfigureCustomProviders(policy *aiegress.Policy) { s.customPolicy = policy }
-func (s *Policies) CustomAvailable() bool {
-	return s != nil && s.ProviderManagementAvailable() && s.customPolicy != nil && len(s.customPolicy.Endpoints) > 0
-}
-func (s *Policies) ApprovedCustomEndpoints() []aiegress.Endpoint {
+func endpointProvider(provider string) bool                          { return provider == "custom" || provider == "sagemaker" }
+func (s *Policies) approvedEndpoints(provider string) []aiegress.Endpoint {
 	out := []aiegress.Endpoint{}
-	if !s.CustomAvailable() {
+	if s == nil || !s.ProviderManagementAvailable() || s.customPolicy == nil {
 		return out
 	}
 	for _, e := range s.customPolicy.Endpoints {
-		out = append(out, aiegress.Endpoint{Name: e.Name, URL: e.URL})
+		kind := e.Provider
+		if kind == "" {
+			kind = "custom"
+		}
+		if kind == provider {
+			out = append(out, aiegress.Endpoint{Name: e.Name, URL: e.URL, Provider: kind})
+		}
 	}
 	return out
 }
+func (s *Policies) CustomAvailable() bool    { return len(s.approvedEndpoints("custom")) > 0 }
+func (s *Policies) SageMakerAvailable() bool { return len(s.approvedEndpoints("sagemaker")) > 0 }
+func (s *Policies) ApprovedCustomEndpoints() []aiegress.Endpoint {
+	return s.approvedEndpoints("custom")
+}
+func (s *Policies) ApprovedSageMakerEndpoints() []aiegress.Endpoint {
+	return s.approvedEndpoints("sagemaker")
+}
+func (s *Policies) endpointEligible(provider, raw string) bool {
+	if s == nil || s.customPolicy == nil || !s.customPolicy.AllowsEndpoint(raw) {
+		return false
+	}
+	normalized, err := aiegress.NormalizeEndpoint(raw)
+	if err != nil {
+		return false
+	}
+	for _, ep := range s.approvedEndpoints(provider) {
+		if ep.URL == normalized {
+			return true
+		}
+	}
+	return false
+}
 func nativeConnectionProvider(p ProviderConnection) string {
-	if p.Provider == "custom" {
+	if endpointProvider(p.Provider) {
 		return "custom-" + p.ID.String()
 	}
 	return p.Provider
 }
 func (s *Policies) customConnectionEligible(p ProviderConnection) bool {
-	return s.customPolicy != nil && p.EndpointURL != nil && s.customPolicy.AllowsEndpoint(*p.EndpointURL)
+	return p.EndpointURL != nil && s.endpointEligible(p.Provider, *p.EndpointURL)
 }
 func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error {
-	if in.Provider != "custom" {
+	if !endpointProvider(in.Provider) {
 		return nil
 	}
-	if !s.CustomAvailable() || in.EndpointURL == nil || !s.customPolicy.AllowsEndpoint(*in.EndpointURL) {
+	if in.EndpointURL == nil || !s.endpointEligible(in.Provider, *in.EndpointURL) {
 		return providerInvalid()
 	}
 	prefix := "custom-" + id.String() + "/"
@@ -516,7 +543,7 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 	return nil
 }
 func (s *Policies) CustomProviderModels(ctx context.Context, org, id uuid.UUID, query string, limit, offset int) (ProviderModelPage, error) {
-	if !s.CustomAvailable() {
+	if !s.CustomAvailable() && !s.SageMakerAvailable() {
 		return ProviderModelPage{}, aiUnavailable()
 	}
 	if len(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
@@ -534,7 +561,7 @@ func (s *Policies) CustomProviderModels(ctx context.Context, org, id uuid.UUID, 
 	if err != nil {
 		return ProviderModelPage{}, aiUnavailable()
 	}
-	if p.Provider != "custom" || !p.Enabled || p.Status != "applied" || p.AppliedRevision != p.Revision || !s.customConnectionEligible(p) {
+	if !endpointProvider(p.Provider) || !p.Enabled || p.Status != "applied" || p.AppliedRevision != p.Revision || !s.customConnectionEligible(p) {
 		return ProviderModelPage{}, providerMissing()
 	}
 	result, err := s.engine.(ProviderEngine).ProviderModels(ctx, nativeConnectionProvider(p), query, limit, offset)

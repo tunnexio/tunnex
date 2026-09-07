@@ -55,6 +55,8 @@ type Config struct {
 	AIProviderManagementEnabled bool
 	AICustomEndpointsFile       string
 	AICustomProxyURL            string
+	AILiteLLMURL                string
+	AILiteLLMAdminToken         string
 	// AdminEmail receives the one-time first-run administrator credential when SMTP is configured.
 	// Empty falls back to bootstrap's local address for non-installer deployments.
 	AdminEmail string
@@ -172,6 +174,8 @@ func Load() Config {
 		AIProviderManagementEnabled: getbool("TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED", false),
 		AICustomEndpointsFile:       getenv("TUNNEX_AI_CUSTOM_ENDPOINTS_FILE", ""),
 		AICustomProxyURL:            getenv("TUNNEX_AI_CUSTOM_PROXY_URL", ""),
+		AILiteLLMURL:                getenv("TUNNEX_AI_LITELLM_URL", ""),
+		AILiteLLMAdminToken:         getenv("TUNNEX_AI_LITELLM_ADMIN_TOKEN", ""),
 		AdminEmail:                  getenv("TUNNEX_ADMIN_EMAIL", ""),
 		NodeAgentImage:              getenv("TUNNEX_NODE_AGENT_IMAGE", "ghcr.io/tunnexio/tunnex-node-agent:latest"),
 		K8sHAEnabled:                getbool("TUNNEX_K8S_HA_ENABLED", false),

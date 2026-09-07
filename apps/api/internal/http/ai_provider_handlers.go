@@ -52,7 +52,13 @@ func (s apiServer) ListAIProviders(ctx context.Context, r api.ListAIProvidersReq
 	for _, endpoint := range s.aiPolicies.ApprovedCustomEndpoints() {
 		customEndpoints = append(customEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
 	}
-	out := api.AIProviderList{CustomAvailable: &customAvailable, CustomEndpoints: &customEndpoints, Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
+	sageMakerAvailable := s.aiPolicies.SageMakerAvailable()
+	testAvailable := s.aiPolicies.LiteLLMBridgeAvailable()
+	sageMakerEndpoints := []api.AICustomEndpoint{}
+	for _, endpoint := range s.aiPolicies.ApprovedSageMakerEndpoints() {
+		sageMakerEndpoints = append(sageMakerEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
+	}
+	out := api.AIProviderList{SagemakerAvailable: &sageMakerAvailable, SagemakerEndpoints: &sageMakerEndpoints, TestAvailable: &testAvailable, CustomAvailable: &customAvailable, CustomEndpoints: &customEndpoints, Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
 	for _, p := range items {
 		out.Items = append(out.Items, toAIProvider(p))
 	}
@@ -142,14 +148,14 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		provider = string(*r.Params.Provider)
 	}
 	var p aigateway.ProviderModelPage
-	if provider == "custom" {
+	if provider == "custom" || provider == "sagemaker" {
 		if r.Params.ConnectionId == nil {
-			return nil, apierr.BadRequest("invalid_ai_provider", "Select a custom connection before browsing its models")
+			return nil, apierr.BadRequest("invalid_ai_provider", "Select a connection before browsing its models")
 		}
 		p, err = s.aiPolicies.CustomProviderModels(ctx, r.OrgId, *r.Params.ConnectionId, query, limit, offset)
 	} else {
 		if r.Params.ConnectionId != nil {
-			return nil, apierr.BadRequest("invalid_ai_provider", "Connection-scoped catalog requires a custom provider")
+			return nil, apierr.BadRequest("invalid_ai_provider", "Connection-scoped catalog requires a custom or SageMaker provider")
 		}
 		p, err = s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
 	}
@@ -161,4 +167,22 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		out.Items = append(out.Items, api.AIProviderModel{Id: m.ID, Name: m.Name})
 	}
 	return api.ListAIProviderModels200JSONResponse(out), nil
+}
+
+func (s apiServer) TestAIProviderConnection(ctx context.Context, r api.TestAIProviderConnectionRequestObject) (api.TestAIProviderConnectionResponseObject, error) {
+	ctx, err := s.aiProviderContext(ctx, r.OrgId, true)
+	if err != nil {
+		return nil, err
+	}
+	if r.Body == nil || r.Body.ApiKey == nil {
+		return nil, apierr.BadRequest("invalid_ai_provider", "AI provider configuration is not acceptable")
+	}
+	actor, _ := aiManagementActor(ctx)
+	b := r.Body
+	result, err := s.aiPolicies.ProbeProvider(ctx, r.OrgId, actor, aigateway.ProviderProbeInput{Provider: string(b.Provider), Model: b.Model, Secret: *b.ApiKey, EndpointURL: b.EndpointUrl})
+	b.ApiKey = nil
+	if err != nil {
+		return nil, err
+	}
+	return api.TestAIProviderConnection200JSONResponse(api.AIProviderProbeResult{Status: api.AIProviderProbeResultStatus(result.Status), DurationMs: result.DurationMS}), nil
 }

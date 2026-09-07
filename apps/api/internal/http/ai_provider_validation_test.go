@@ -50,7 +50,7 @@ func TestAIProviderSchemasAcceptSupportedProvidersOnly(t *testing.T) {
 		return &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: "owner"}}
 	}})
 	base := "/api/v1/organizations/" + org.String() + "/ai-gateway/"
-	for _, provider := range []string{"openai", "anthropic", "gemini", "openrouter", "groq", "mistral", "cerebras", "xai", "deepseek", "custom", "unsupported"} {
+	for _, provider := range []string{"openai", "anthropic", "gemini", "openrouter", "groq", "mistral", "cerebras", "xai", "deepseek", "custom", "sagemaker", "unsupported"} {
 		t.Run(provider, func(t *testing.T) {
 			want := http.StatusServiceUnavailable // Valid input reaches the absent engine.
 			if provider == "unsupported" {
@@ -63,6 +63,7 @@ func TestAIProviderSchemasAcceptSupportedProvidersOnly(t *testing.T) {
 			for _, request := range []struct{ method, path, body string }{
 				{"POST", base + "providers", body},
 				{"GET", base + "models?provider=" + provider, ""},
+				{"POST", base + "providers/test-connection", `{"provider":"` + provider + `","model":"exact-model","api_key":"synthetic-only-key"}`},
 			} {
 				res := aiSocketRequest(t, srv, request.method, request.path, request.body, "", "owner")
 				res.Body.Close()
@@ -71,5 +72,33 @@ func TestAIProviderSchemasAcceptSupportedProvidersOnly(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAIProviderProbeAuthorizationBeforeValidation(t *testing.T) {
+	org := uuid.New()
+	srv := aiSocketServer(t, Deps{AuthFn: func(r *http.Request) *authctx.Principal {
+		role := r.Header.Get("X-Fixture-Role")
+		if role == "" {
+			return nil
+		}
+		return &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: role}}
+	}})
+	for _, tc := range []struct {
+		role string
+		org  uuid.UUID
+		want int
+	}{
+		{"", org, 401}, {"member", org, 403}, {"owner", uuid.New(), 404}, {"owner", org, 400},
+	} {
+		res := aiSocketRequest(t, srv, "POST", "/api/v1/organizations/"+tc.org.String()+"/ai-gateway/providers/test-connection", `{"provider":"custom","model":"demo","api_key":{"secret":"PROBE_SECRET_MARKER"}}`, "", tc.role)
+		raw, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != tc.want {
+			t.Errorf("role=%s status=%d want=%d", tc.role, res.StatusCode, tc.want)
+		}
+		if strings.Contains(string(raw), "PROBE_SECRET_MARKER") {
+			t.Fatal("probe secret reflected")
+		}
 	}
 }

@@ -139,6 +139,13 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "custom",
+                      "sagemaker"
+                    ]
                   }
                 }
               }
@@ -177,6 +184,101 @@
                   "minLength": 1
                 }
               }
+            }
+          }
+        },
+        "litellmBridge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "adminTokenKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "models": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "alias",
+                  "endpoint",
+                  "region",
+                  "access_key_id_env",
+                  "secret_access_key_env"
+                ],
+                "properties": {
+                  "alias": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "endpoint": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "region": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "access_key_id_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "secret_access_key_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "session_token_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "role_arn": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "external_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "clients": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key_env",
+                  "models"
+                ],
+                "properties": {
+                  "key_env": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "models": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            },
+            "resources": {
+              "type": "object"
             }
           }
         }

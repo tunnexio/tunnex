@@ -1,0 +1,32 @@
+# Opt-in after compose.yml, compose-managed.yml and compose-custom.yml.
+# No host ports or provider secrets are added to the control plane database.
+services:
+  api:
+    environment:
+      TUNNEX_AI_LITELLM_URL: http://litellm-bridge:8200
+      TUNNEX_AI_LITELLM_ADMIN_TOKEN: ${TUNNEX_AI_BRIDGE_ADMIN_TOKEN:?Set a dedicated private bridge admin token}
+  litellm-bridge:
+    build:
+      context: ./apps/ai-bridge
+      dockerfile: Dockerfile
+    profiles: [ai]
+    restart: unless-stopped
+    environment:
+      TUNNEX_AI_BRIDGE_LISTEN: 0.0.0.0:8200
+      TUNNEX_AI_BRIDGE_ADMIN_TOKEN: ${TUNNEX_AI_BRIDGE_ADMIN_TOKEN:?Set a dedicated private bridge admin token}
+      TUNNEX_AI_BRIDGE_CONFIG_FILE: /etc/tunnex/ai-bridge.json
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
+      TUNNEX_AI_CUSTOM_PROXY_URL: ${TUNNEX_AI_CUSTOM_PROXY_URL:?Set authenticated private CONNECT proxy URL}
+    # Only installation-declared credentials belong in this private file.
+    env_file:
+      - ${TUNNEX_AI_BRIDGE_ENV_FILE:?Set absolute private bridge credential env file path}
+    volumes:
+      - ${TUNNEX_AI_BRIDGE_CONFIG_FILE:?Set absolute bridge model/client config path}:/etc/tunnex/ai-bridge.json:ro
+      - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?Set absolute approved policy file path}:/etc/tunnex/ai-custom-policy.json:ro
+    networks: [ai_engine]
+    read_only: true
+    tmpfs: [/tmp:size=64m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 1g

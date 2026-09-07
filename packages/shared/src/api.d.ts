@@ -24,6 +24,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test unsaved provider credentials with one bounded model request
+         * @description Performs real inference and may incur provider charges. HTTP 200 alone does not indicate success; inspect status. No connection or secret is persisted.
+         */
+        post: operations["testAIProviderConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}": {
         parameters: {
             query?: never;
@@ -71,9 +93,9 @@ export interface paths {
     "/api/v1/organizations/{orgId}/ai-gateway/models": {
         parameters: {
             query?: {
-                /** @description Same-organization custom connection required when provider is custom. */
+                /** @description Same-organization connection required for custom and SageMaker catalogs. */
                 connection_id?: string;
-                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
                 query?: string;
                 limit?: number;
                 offset?: number;
@@ -4617,11 +4639,11 @@ export interface components {
             key_id: string;
             /**
              * Format: uri
-             * @description Immutable installation-approved custom base URL; omit for standard providers.
+             * @description Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
              */
             endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
             name: string;
             models: components["schemas"]["AIModelNames"];
             enabled: boolean;
@@ -4638,13 +4660,17 @@ export interface components {
         };
         AIProviderDefinition: {
             /** @enum {string} */
-            id: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
+            id: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
             name: string;
             credential_label: string;
             model_placeholder: string;
         };
         AIProviderList: {
             management_available: boolean;
+            /** @description Private inference test adapter is configured. */
+            test_available?: boolean;
+            sagemaker_available?: boolean;
+            sagemaker_endpoints?: components["schemas"]["AICustomEndpoint"][];
             custom_available?: boolean;
             custom_endpoints?: components["schemas"]["AICustomEndpoint"][];
             /** @description Supported provider forms; absence indicates an older server without provider discovery. */
@@ -4655,11 +4681,11 @@ export interface components {
         AIProviderCreate: {
             /**
              * Format: uri
-             * @description Immutable installation-approved custom base URL; omit for standard providers.
+             * @description Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
              */
             endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
             name: string;
             models: components["schemas"]["AIProviderInputModels"];
             enabled: boolean;
@@ -4669,11 +4695,11 @@ export interface components {
         AIProviderUpdate: {
             /**
              * Format: uri
-             * @description Immutable installation-approved custom base URL; omit for standard providers.
+             * @description Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
              */
             endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
             name: string;
             models: components["schemas"]["AIProviderInputModels"];
             enabled: boolean;
@@ -4681,6 +4707,23 @@ export interface components {
             api_key?: string;
             /** Format: int64 */
             expected_revision: number;
+        };
+        AIProviderProbe: {
+            /** @enum {string} */
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+            model: string;
+            api_key: string;
+            /**
+             * Format: uri
+             * @description Installation-approved custom or SageMaker bridge endpoint.
+             */
+            endpoint_url?: string;
+        };
+        AIProviderProbeResult: {
+            /** @enum {string} */
+            status: "success" | "error";
+            /** Format: int64 */
+            duration_ms: number;
         };
         AIProviderRevision: {
             /** Format: int64 */
@@ -8083,6 +8126,33 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    testAIProviderConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderProbe"];
+            };
+        };
+        responses: {
+            /** @description Sanitized result for the selected model only. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderProbeResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     updateAIProvider: {
         parameters: {
             query?: never;
@@ -8168,9 +8238,9 @@ export interface operations {
     listAIProviderModels: {
         parameters: {
             query?: {
-                /** @description Same-organization custom connection required when provider is custom. */
+                /** @description Same-organization connection required for custom and SageMaker catalogs. */
                 connection_id?: string;
-                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom";
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
                 query?: string;
                 limit?: number;
                 offset?: number;

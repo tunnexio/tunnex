@@ -1,0 +1,1 @@
+Pinned reference metadata from BerriAI/litellm commit 168a0055a244acdcf97c330c52e085ab40b1424c, litellm/proxy/public_endpoints/provider_create_fields.json. 117 definitions; reference for future generic forms, not a declaration of implemented Tunnex provider support. Preserve registry provider IDs separately from litellm_provider runtime slugs. MIT license alongside.

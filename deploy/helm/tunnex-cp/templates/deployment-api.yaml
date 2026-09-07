@@ -104,6 +104,15 @@ spec:
                   name: {{ .Values.aiGateway.customProviders.existingSecret }}
                   key: {{ .Values.aiGateway.customProviders.secretKeys.proxyURL | quote }}
             {{- end }}
+            {{- if .Values.aiGateway.litellmBridge.enabled }}
+            - name: TUNNEX_AI_LITELLM_URL
+              value: http://litellm-bridge:8200
+            - name: TUNNEX_AI_LITELLM_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiGateway.litellmBridge.existingSecret }}
+                  key: {{ .Values.aiGateway.litellmBridge.adminTokenKey | quote }}
+            {{- end }}
             # External store (URL-wins; API pings both at boot, fails loud if unreachable).
             {{- if .Values.database.urlSecret }}
             - name: TUNNEX_DATABASE_URL

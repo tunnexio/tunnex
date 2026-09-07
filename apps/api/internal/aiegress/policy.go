@@ -19,6 +19,7 @@ import (
 var ErrDenied = errors.New("custom endpoint denied")
 
 type Endpoint struct {
+	Provider     string   `json:"provider,omitempty"`
 	Name         string   `json:"name"`
 	URL          string   `json:"url"`
 	AllowedCIDRs []string `json:"allowed_cidrs"`
@@ -125,6 +126,12 @@ func (p *Policy) validate() error {
 	}
 	for i := range p.Endpoints {
 		ep := &p.Endpoints[i]
+		if ep.Provider == "" {
+			ep.Provider = "custom"
+		}
+		if ep.Provider != "custom" && ep.Provider != "sagemaker" {
+			return ErrDenied
+		}
 		u, e := NormalizeEndpoint(ep.URL)
 		if e != nil || ep.Name == "" || len(ep.Name) > 100 || seen[u] || len(ep.AllowedCIDRs) == 0 || len(ep.AllowedCIDRs) > 64 {
 			return ErrDenied

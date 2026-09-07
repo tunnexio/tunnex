@@ -71,7 +71,7 @@
 .ai-provider-picker{display:grid;gap:12px}
 @media(max-width:650px){.ai-provider-model-filters{grid-template-columns:1fr}}
 
-.ai-provider-logo{width:24px;height:24px;object-fit:contain;flex-shrink:0;background:#fff;border-radius:5px;padding:2px}
+.ai-provider-logo{color:#111;width:24px;height:24px;object-fit:contain;flex-shrink:0;background:#fff;border-radius:5px;padding:2px}
 .ai-provider-fixed-brand{display:flex;align-items:center;gap:10px}
 .ai-provider-picker [role=listbox]{background:var(--tnx-surface);border-color:var(--tnx-border);z-index:40}
 .ai-provider-picker [role=option] button{color:var(--tnx-text-primary)}
@@ -100,3 +100,8 @@
 .ai-provider-model-options{left:166px}
 .ai-provider-model-help{padding-left:166px}
 }
+.ai-provider-preflight{border-top:1px solid var(--tnx-border);padding-top:16px;display:grid;gap:10px}
+.ai-provider-preflight>button{justify-self:start}
+.ai-provider-preflight p{font-size:12px;line-height:1.6;color:var(--tnx-text-secondary)}
+.ai-provider-preflight [role=status]{color:var(--tnx-text-primary)}
+.ai-provider-preflight [role=alert]{color:var(--tnx-danger)}

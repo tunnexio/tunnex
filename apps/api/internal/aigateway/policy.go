@@ -41,6 +41,7 @@ type Policies struct {
 	engine             PolicyEngine
 	providerManagement bool
 	customPolicy       *aiegress.Policy
+	bridge             *providerBridge
 }
 
 func NewPolicies(pool *pgxpool.Pool, sealer *crypto.Sealer, engine PolicyEngine) *Policies {

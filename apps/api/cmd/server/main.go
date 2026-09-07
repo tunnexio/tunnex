@@ -483,6 +483,12 @@ func main() {
 			}
 			aiPolicies.ConfigureCustomProviders(customPolicy)
 		}
+		if cfg.AILiteLLMURL != "" || cfg.AILiteLLMAdminToken != "" {
+			if !cfg.AIProviderManagementEnabled || aiPolicies.ConfigureLiteLLMBridge(cfg.AILiteLLMURL, cfg.AILiteLLMAdminToken) != nil {
+				logger.Error("ai_litellm_invalid_configuration")
+				os.Exit(1)
+			}
+		}
 		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
 		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aiCredentials.Authorize)
 		if engineErr != nil {
