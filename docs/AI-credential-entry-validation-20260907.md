@@ -43,3 +43,18 @@ this full LiteLLM parity. Concrete recommended state/protocol changes are in
 S-AI-credential-modes-decisions.md pending disposition; Foundry saved routing
 remains unresolved. Full composite gates retain the earlier VM-capacity blocker;
 exact-head remote CI, push, merge and release were not performed.
+
+## Single endpoint field follow-up
+
+The redundant Approved upstream endpoint selector is removed. A typed
+Upstream API Base still normalizes to the installation-approved URL and rejects
+unapproved destinations. Server-side egress enforcement is unchanged. Actual
+local DOM and screenshot `single-upstream-api-base-local.jpg` show one URL
+field, no duplicate chooser, and the derived fixture chat URL.27 focused and1359
+full web tests, TypeScript and Vite build pass after this refinement. No provider
+request or saved-data mutation was needed for this UI check.
+
+The user's subsequent direction is an actual LiteLLM OSS model proxy, beyond the
+SDK preflight bridge. See S-AI-litellm-proxy-decisions.md for independent runtime
+preparation and the proposed compatibility-safe engine transition. This does
+not mean the current CP has switched engines or gained extra inference modes.

@@ -282,8 +282,9 @@ describe("custom provider approved endpoints", () => {
     api.GET.mockResolvedValue({ data: customInventory }); render(show()); await screen.findByText(custom.name);
     fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider("Custom");
     fireEvent.change(screen.getByLabelText("Credential name (optional)"), { target: { value: "New private" } });
-    expect(screen.getByLabelText("Approved upstream endpoint").compareDocumentPosition(screen.getByLabelText("API key")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Approved upstream endpoint"), { target: { value: custom.endpoint_url } });
+    expect(screen.queryByLabelText("Approved upstream endpoint")).toBeNull();
+    expect(screen.getByLabelText("Upstream API Base").compareDocumentPosition(screen.getByLabelText("API key")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: custom.endpoint_url } });
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-custom-key" } });
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "custom-00000000-0000-4000-8000-000000000001/model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
@@ -376,7 +377,8 @@ describe("pre-save inference check", () => {
   it("tests and creates SageMaker with an approved bridge, gateway key and raw alias", async () => {
     api.GET.mockResolvedValue({ data: { ...inventory, sagemaker_available: true, sagemaker_endpoints: [{ name: "AWS bridge", url: "https://aws-bridge.internal" }], definitions: [...definitions, { id: "sagemaker", name: "AWS SageMaker", credential_label: "Gateway API key", model_placeholder: "production-model" }] } });
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider("AWS SageMaker");
-    fireEvent.change(screen.getByLabelText("Approved upstream endpoint"), { target: { value: "https://aws-bridge.internal" } });
+    expect(screen.queryByLabelText("Approved upstream endpoint")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://aws-bridge.internal" } });
     fireEvent.change(screen.getByLabelText("Credential name (optional)"), { target: { value: "AWS models" } }); fireEvent.change(screen.getByLabelText("Gateway API key"), { target: { value: "synthetic-gateway-key" } });
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "production-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
     await passTest(); expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "sagemaker", model: "production-model", api_key: "synthetic-gateway-key", endpoint_url: "https://aws-bridge.internal" } }));

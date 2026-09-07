@@ -52,3 +52,17 @@ attribution are material state/security choices still requiring disposition
 before schema or engine admission changes. Runtime packaging and the authorized
 UI simplification can be completed independently. No cloud action, existing-stack
 restart, secret migration, engine cutover, merge or release is implied.
+
+## Verified distribution constraint
+
+Released litellm1.100.0 proxy-extra metadata requires litellm-enterprise0.1.62.
+The exact enterprise wheel (SHA256
+337697160896d52079290ffe8051c3dee450653d271cb29723af6db8546eb7d9)
+contains dist-info/licenses/LICENSE.md requiring a valid BerriAI enterprise
+license for production and restricting redistribution. It cannot be bundled as
+Community OSS merely because enterprise endpoints are unused.
+
+Use the MIT base LiteLLM proxy code with an explicit OSS server dependency set,
+omitting the optional enterprise distribution. Upstream optional-import/error
+behavior and license checks remain intact. Verify actual server import/startup
+with that set. Do not claim parity with licensed upstream enterprise features.
