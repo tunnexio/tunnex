@@ -39,3 +39,20 @@ test both preflight and saved inference. No Azure resource operations authorized
 Validation: model-first create with automatic credential name, saved credential
 reuse preserving models and revisions, management actions, stale test refusal,
 focused/full web checks and actual local rendered preview.
+
+## Screenshot refinement: inline Add Model
+
+Latest user reference shows Add Model as a full-width page tab, with a compact
+All Models table. This supersedes the earlier drawer preference for creation.
+All Models / Add Model / LLM Credentials remain in one tab strip; selecting a
+different tab or cancelling unmounts the creation form and discards unsent keys
+and stale test results. Editing existing credentials retains its existing drawer.
+Successful creation returns to All Models; loading/error feedback remains visible.
+
+Match the two-column label/input form and compact table using Tunnex theme
+tokens. Show a read-only model mapping preview (gateway model name versus upstream
+model name) and the currently supported chat-completions mode. Custom model IDs
+are assigned when saved; do not fabricate their connection UUID or editable
+public aliases. Unsupported modes, aliases, auto-routing and missing backend
+metadata must not appear as working controls. No endpoint/authentication or
+saved-inference contract changes are inferred from these reference screenshots.
