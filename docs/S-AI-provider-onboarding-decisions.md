@@ -262,3 +262,11 @@ routing, foreign namespace/endpoint refusal, immutable endpoint, approval remova
 rotation, catalog and model UI. Native and egress fixtures are zero-paid-call
 qualification; actual customer private endpoint trust/certificate checks remain
 installation-specific.
+
+Native representation verification: proxy URL readback is masked. Lock the native
+value to `env.TUNNEX_AI_CUSTOM_PROXY_URL` and deliver the same authenticated URL
+to CP and Bifrost through the installation secret mechanism. Require exact env
+reference plus resolved masked-value evidence, no alternate proxy credentials or
+TLS overrides. Pinned code explicitly errors for an unresolved secret reference;
+verify absent/malformed values never fall back to direct egress. This changes the
+native representation, not the approved proxy/origin boundary.
