@@ -407,6 +407,19 @@ type AgentWorkflowSigningKey struct {
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
 }
 
+type AiGatewayAssignment struct {
+	OrgID               uuid.UUID          `json:"org_id"`
+	DeviceID            uuid.UUID          `json:"device_id"`
+	TeamID              uuid.UUID          `json:"team_id"`
+	Enabled             bool               `json:"enabled"`
+	ModelsOverride      []string           `json:"models_override"`
+	Revision            int64              `json:"revision"`
+	AppliedRevision     int64              `json:"applied_revision"`
+	AppliedTeamRevision int64              `json:"applied_team_revision"`
+	Status              string             `json:"status"`
+	LastReconcileAt     pgtype.Timestamptz `json:"last_reconcile_at"`
+}
+
 type AiGatewayCredential struct {
 	TokenHash       []byte             `json:"token_hash"`
 	OrgID           uuid.UUID          `json:"org_id"`
@@ -416,6 +429,27 @@ type AiGatewayCredential struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	ExpiresAt       time.Time          `json:"expires_at"`
 	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
+}
+
+// Stable native accounting identities; retained across team moves, not a second usage ledger.
+type AiGatewayKeyBinding struct {
+	OrgID           uuid.UUID `json:"org_id"`
+	DeviceID        uuid.UUID `json:"device_id"`
+	TeamID          uuid.UUID `json:"team_id"`
+	NativeKeyID     string    `json:"native_key_id"`
+	SealedKey       string    `json:"sealed_key"`
+	BindingRevision int64     `json:"binding_revision"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type AiGatewayTeamPolicy struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	TeamID         uuid.UUID `json:"team_id"`
+	Models         []string  `json:"models"`
+	KeyIds         []string  `json:"key_ids"`
+	DailyCostLimit *float64  `json:"daily_cost_limit"`
+	Revision       int64     `json:"revision"`
 }
 
 type AlertDelivery struct {

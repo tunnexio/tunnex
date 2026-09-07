@@ -1,0 +1,11 @@
+{{- if .Values.aiGateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tunnex-cp.fullname" . }}-ai-edge
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    {{- .Files.Get "files/edge-ai-nginx.conf" | nindent 4 }}
+{{- end }}

@@ -4,12 +4,13 @@ const items = [
   { href: "/agents", label: "Agents" },
   { href: "/agents/policies", label: "Policy templates" },
   { href: "/agents/mcp", label: "MCP profiles" },
+  { href: "/agents/ai-gateway", label: "AI gateway" },
 ] as const;
 
 /** The primary-domain rail for every AI Agents workspace, including detail. */
 export function AgentsTabRail() {
   const { pathname } = useLocation();
-  const activeHref = pathname === "/agents/policies" || pathname === "/agents/mcp"
+  const activeHref = pathname === "/agents/policies" || pathname === "/agents/mcp" || pathname === "/agents/ai-gateway"
     ? pathname
     : "/agents";
   return <nav aria-label="AI Agents sections" className="overflow-x-auto border-b border-white/[0.08]">

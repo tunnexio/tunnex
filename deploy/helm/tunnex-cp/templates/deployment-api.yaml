@@ -79,6 +79,20 @@ spec:
             # and also defaults OFF.
             - name: TUNNEX_K8S_HA_ENABLED
               value: {{ .Values.kubernetesHA.enabled | quote }}
+            {{- if .Values.aiGateway.enabled }}
+            - name: TUNNEX_AI_GATEWAY_URL
+              value: "http://bifrost:8080"
+            - name: TUNNEX_AI_GATEWAY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "aiGateway.existingSecret is required" .Values.aiGateway.existingSecret }}
+                  key: {{ .Values.aiGateway.secretKeys.adminUser | quote }}
+            - name: TUNNEX_AI_GATEWAY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiGateway.existingSecret }}
+                  key: {{ .Values.aiGateway.secretKeys.adminPassword | quote }}
+            {{- end }}
             # External store (URL-wins; API pings both at boot, fails loud if unreachable).
             {{- if .Values.database.urlSecret }}
             - name: TUNNEX_DATABASE_URL

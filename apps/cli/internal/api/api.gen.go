@@ -25,9 +25,29 @@ const (
 	RuntimeBearerScopes = "runtimeBearer.Scopes"
 )
 
+// Defines values for AIAssignmentStatus.
+const (
+	AIAssignmentStatusApplied  AIAssignmentStatus = "applied"
+	AIAssignmentStatusDisabled AIAssignmentStatus = "disabled"
+	AIAssignmentStatusError    AIAssignmentStatus = "error"
+	AIAssignmentStatusPending  AIAssignmentStatus = "pending"
+)
+
 // Defines values for AICredentialAudience.
 const (
 	TunnexAi AICredentialAudience = "tunnex-ai"
+)
+
+// Defines values for AIInferenceRequestMessagesRole.
+const (
+	AIInferenceRequestMessagesRoleAssistant AIInferenceRequestMessagesRole = "assistant"
+	AIInferenceRequestMessagesRoleSystem    AIInferenceRequestMessagesRole = "system"
+	AIInferenceRequestMessagesRoleUser      AIInferenceRequestMessagesRole = "user"
+)
+
+// Defines values for AIUsageReportSemantics.
+const (
+	ObservedEstimate AIUsageReportSemantics = "observed_estimate"
 )
 
 // Defines values for AccessEventDecision.
@@ -1090,11 +1110,11 @@ const (
 
 // Defines values for UpgradeStatusRollbackState.
 const (
-	Available         UpgradeStatusRollbackState = "available"
-	Failed            UpgradeStatusRollbackState = "failed"
-	InProgress        UpgradeStatusRollbackState = "in_progress"
-	NotNeeded         UpgradeStatusRollbackState = "not_needed"
-	RestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
+	UpgradeStatusRollbackStateAvailable         UpgradeStatusRollbackState = "available"
+	UpgradeStatusRollbackStateFailed            UpgradeStatusRollbackState = "failed"
+	UpgradeStatusRollbackStateInProgress        UpgradeStatusRollbackState = "in_progress"
+	UpgradeStatusRollbackStateNotNeeded         UpgradeStatusRollbackState = "not_needed"
+	UpgradeStatusRollbackStateRestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
 )
 
 // Defines values for UpgradeStatusState.
@@ -1191,6 +1211,29 @@ const (
 	Udp TestAgentAccessParamsProtocol = "udp"
 )
 
+// AIAssignment defines model for AIAssignment.
+type AIAssignment struct {
+	AppliedRevision     int64              `json:"applied_revision"`
+	AppliedTeamRevision int64              `json:"applied_team_revision"`
+	DeviceId            openapi_types.UUID `json:"device_id"`
+	Enabled             bool               `json:"enabled"`
+	ModelsOverride      AIModelNames       `json:"models_override"`
+	Revision            int64              `json:"revision"`
+	Status              AIAssignmentStatus `json:"status"`
+	TeamId              openapi_types.UUID `json:"team_id"`
+}
+
+// AIAssignmentStatus defines model for AIAssignment.Status.
+type AIAssignmentStatus string
+
+// AIAssignmentWrite defines model for AIAssignmentWrite.
+type AIAssignmentWrite struct {
+	Enabled          bool               `json:"enabled"`
+	ExpectedRevision int64              `json:"expected_revision"`
+	ModelsOverride   AIModelNames       `json:"models_override"`
+	TeamId           openapi_types.UUID `json:"team_id"`
+}
+
 // AICredential defines model for AICredential.
 type AICredential struct {
 	Audience  AICredentialAudience `json:"audience"`
@@ -1219,8 +1262,14 @@ type AIGatewaySettings struct {
 
 // AIInferenceRequest defines model for AIInferenceRequest.
 type AIInferenceRequest struct {
-	MaxTokens *int                     `json:"max_tokens,omitempty"`
-	Messages  []map[string]interface{} `json:"messages"`
+	MaxTokens *int `json:"max_tokens,omitempty"`
+	Messages  []struct {
+		// Content Text only; multimodal blocks and tool calls are not qualified.
+		Content string `json:"content"`
+
+		// Role Anthropic messages accept user or assistant; its system text is top-level.
+		Role AIInferenceRequestMessagesRole `json:"role"`
+	} `json:"messages"`
 
 	// Model Exact provider/model identifier; aliases and caller fallback are not supported.
 	Model       string   `json:"model"`
@@ -1228,6 +1277,48 @@ type AIInferenceRequest struct {
 	System      *string  `json:"system,omitempty"`
 	Temperature *float32 `json:"temperature,omitempty"`
 }
+
+// AIInferenceRequestMessagesRole Anthropic messages accept user or assistant; its system text is top-level.
+type AIInferenceRequestMessagesRole string
+
+// AIModelNames defines model for AIModelNames.
+type AIModelNames = []string
+
+// AITeamPolicy defines model for AITeamPolicy.
+type AITeamPolicy struct {
+	DailyCostLimit *float64           `json:"daily_cost_limit"`
+	KeyIds         []string           `json:"key_ids"`
+	Models         AIModelNames       `json:"models"`
+	Revision       int64              `json:"revision"`
+	TeamId         openapi_types.UUID `json:"team_id"`
+}
+
+// AITeamPolicyWrite defines model for AITeamPolicyWrite.
+type AITeamPolicyWrite struct {
+	// DailyCostLimit Optional daily USD soft threshold based on native observed usage since midnight UTC. Concurrent work can exceed it.
+	DailyCostLimit   *float64     `json:"daily_cost_limit"`
+	ExpectedRevision int64        `json:"expected_revision"`
+	KeyIds           []string     `json:"key_ids"`
+	Models           AIModelNames `json:"models"`
+}
+
+// AIUsageReport defines model for AIUsageReport.
+type AIUsageReport struct {
+	CompletionTokens int64     `json:"completion_tokens"`
+	From             time.Time `json:"from"`
+	PromptTokens     int64     `json:"prompt_tokens"`
+
+	// Semantics Native reported usage estimates; not a provider invoice or hard spending cap.
+	Semantics        AIUsageReportSemantics `json:"semantics"`
+	To               time.Time              `json:"to"`
+	TotalCost        float64                `json:"total_cost"`
+	TotalRequests    int64                  `json:"total_requests"`
+	TotalTokens      int64                  `json:"total_tokens"`
+	UncostedRequests int64                  `json:"uncosted_requests"`
+}
+
+// AIUsageReportSemantics Native reported usage estimates; not a provider invoice or hard spending cap.
+type AIUsageReportSemantics string
 
 // AcceptInviteRequest defines model for AcceptInviteRequest.
 type AcceptInviteRequest struct {
@@ -4912,6 +5003,14 @@ type TestAgentAccessParams struct {
 // TestAgentAccessParamsProtocol defines parameters for TestAgentAccess.
 type TestAgentAccessParamsProtocol string
 
+// GetAIUsageParams defines parameters for GetAIUsage.
+type GetAIUsageParams struct {
+	TeamId   *openapi_types.UUID `form:"team_id,omitempty" json:"team_id,omitempty"`
+	DeviceId *openapi_types.UUID `form:"device_id,omitempty" json:"device_id,omitempty"`
+	From     *time.Time          `form:"from,omitempty" json:"from,omitempty"`
+	To       *time.Time          `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // ListAlertOccurrencesParams defines parameters for ListAlertOccurrences.
 type ListAlertOccurrencesParams struct {
 	State *AlertOccurrenceState `form:"state,omitempty" json:"state,omitempty"`
@@ -5149,6 +5248,12 @@ type ReplaceAgentMCPToolPolicyJSONRequestBody = ReplaceAgentMCPToolPolicyRequest
 
 // SetAIGatewaySettingsJSONRequestBody defines body for SetAIGatewaySettings for application/json ContentType.
 type SetAIGatewaySettingsJSONRequestBody = AIGatewayOptIn
+
+// PutAIAssignmentJSONRequestBody defines body for PutAIAssignment for application/json ContentType.
+type PutAIAssignmentJSONRequestBody = AIAssignmentWrite
+
+// PutAITeamPolicyJSONRequestBody defines body for PutAITeamPolicy for application/json ContentType.
+type PutAITeamPolicyJSONRequestBody = AITeamPolicyWrite
 
 // CreateAlertDestinationJSONRequestBody defines body for CreateAlertDestination for application/json ContentType.
 type CreateAlertDestinationJSONRequestBody = CreateAlertDestinationRequest
@@ -5910,6 +6015,28 @@ type ClientInterface interface {
 	SetAIGatewaySettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIAssignments request
+	ListAIAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAIAssignmentWithBody request with any body
+	PutAIAssignmentWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReconcileAIAssignment request
+	ReconcileAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAITeamPolicies request
+	ListAITeamPolicies(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAITeamPolicyWithBody request with any body
+	PutAITeamPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAITeamPolicy(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAIUsage request
+	GetAIUsage(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAlertDeliveries request
 	ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8663,6 +8790,102 @@ func (c *Client) SetAIGatewaySettingsWithBody(ctx context.Context, orgId openapi
 
 func (c *Client) SetAIGatewaySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetAIGatewaySettingsRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIAssignments(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIAssignmentsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIAssignmentWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIAssignmentRequestWithBody(c.Server, orgId, deviceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIAssignmentRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReconcileAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReconcileAIAssignmentRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAITeamPolicies(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAITeamPoliciesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAITeamPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAITeamPolicyRequestWithBody(c.Server, orgId, teamId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAITeamPolicy(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAITeamPolicyRequest(c.Server, orgId, teamId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAIUsage(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIUsageRequest(c.Server, orgId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -16900,6 +17123,327 @@ func NewSetAIGatewaySettingsRequestWithBody(server string, orgId openapi_types.U
 	return req, nil
 }
 
+// NewListAIAssignmentsRequest generates requests for ListAIAssignments
+func NewListAIAssignmentsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/agents", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAIAssignmentRequest calls the generic PutAIAssignment builder with application/json body
+func NewPutAIAssignmentRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAIAssignmentRequestWithBody(server, orgId, deviceId, "application/json", bodyReader)
+}
+
+// NewPutAIAssignmentRequestWithBody generates requests for PutAIAssignment with any type of body
+func NewPutAIAssignmentRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/agents/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewReconcileAIAssignmentRequest generates requests for ReconcileAIAssignment
+func NewReconcileAIAssignmentRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/agents/%s/reconcile", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAITeamPoliciesRequest generates requests for ListAITeamPolicies
+func NewListAITeamPoliciesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/teams", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAITeamPolicyRequest calls the generic PutAITeamPolicy builder with application/json body
+func NewPutAITeamPolicyRequest(server string, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAITeamPolicyRequestWithBody(server, orgId, teamId, "application/json", bodyReader)
+}
+
+// NewPutAITeamPolicyRequestWithBody generates requests for PutAITeamPolicy with any type of body
+func NewPutAITeamPolicyRequestWithBody(server string, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "teamId", runtime.ParamLocationPath, teamId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/teams/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAIUsageRequest generates requests for GetAIUsage
+func NewGetAIUsageRequest(server string, orgId openapi_types.UUID, params *GetAIUsageParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/usage", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.TeamId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "team_id", runtime.ParamLocationQuery, *params.TeamId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DeviceId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "device_id", runtime.ParamLocationQuery, *params.DeviceId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "from", runtime.ParamLocationQuery, *params.From); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "to", runtime.ParamLocationQuery, *params.To); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListAlertDeliveriesRequest generates requests for ListAlertDeliveries
 func NewListAlertDeliveriesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -24932,6 +25476,28 @@ type ClientWithResponsesInterface interface {
 
 	SetAIGatewaySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetAIGatewaySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAIGatewaySettingsResponse, error)
 
+	// ListAIAssignmentsWithResponse request
+	ListAIAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIAssignmentsResponse, error)
+
+	// PutAIAssignmentWithBodyWithResponse request with any body
+	PutAIAssignmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error)
+
+	PutAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error)
+
+	// ReconcileAIAssignmentWithResponse request
+	ReconcileAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReconcileAIAssignmentResponse, error)
+
+	// ListAITeamPoliciesWithResponse request
+	ListAITeamPoliciesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAITeamPoliciesResponse, error)
+
+	// PutAITeamPolicyWithBodyWithResponse request with any body
+	PutAITeamPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error)
+
+	PutAITeamPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error)
+
+	// GetAIUsageWithResponse request
+	GetAIUsageWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*GetAIUsageResponse, error)
+
 	// ListAlertDeliveriesWithResponse request
 	ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error)
 
@@ -28284,6 +28850,144 @@ func (r SetAIGatewaySettingsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetAIGatewaySettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIAssignmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AIAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIAssignmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIAssignmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAIAssignmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAIAssignmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAIAssignmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReconcileAIAssignmentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIAssignment
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReconcileAIAssignmentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReconcileAIAssignmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAITeamPoliciesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]AITeamPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAITeamPoliciesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAITeamPoliciesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAITeamPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AITeamPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAITeamPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAITeamPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAIUsageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIUsageReport
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIUsageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIUsageResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -33502,6 +34206,76 @@ func (c *ClientWithResponses) SetAIGatewaySettingsWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseSetAIGatewaySettingsResponse(rsp)
+}
+
+// ListAIAssignmentsWithResponse request returning *ListAIAssignmentsResponse
+func (c *ClientWithResponses) ListAIAssignmentsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIAssignmentsResponse, error) {
+	rsp, err := c.ListAIAssignments(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIAssignmentsResponse(rsp)
+}
+
+// PutAIAssignmentWithBodyWithResponse request with arbitrary body returning *PutAIAssignmentResponse
+func (c *ClientWithResponses) PutAIAssignmentWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error) {
+	rsp, err := c.PutAIAssignmentWithBody(ctx, orgId, deviceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIAssignmentResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body PutAIAssignmentJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIAssignmentResponse, error) {
+	rsp, err := c.PutAIAssignment(ctx, orgId, deviceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIAssignmentResponse(rsp)
+}
+
+// ReconcileAIAssignmentWithResponse request returning *ReconcileAIAssignmentResponse
+func (c *ClientWithResponses) ReconcileAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReconcileAIAssignmentResponse, error) {
+	rsp, err := c.ReconcileAIAssignment(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReconcileAIAssignmentResponse(rsp)
+}
+
+// ListAITeamPoliciesWithResponse request returning *ListAITeamPoliciesResponse
+func (c *ClientWithResponses) ListAITeamPoliciesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAITeamPoliciesResponse, error) {
+	rsp, err := c.ListAITeamPolicies(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAITeamPoliciesResponse(rsp)
+}
+
+// PutAITeamPolicyWithBodyWithResponse request with arbitrary body returning *PutAITeamPolicyResponse
+func (c *ClientWithResponses) PutAITeamPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error) {
+	rsp, err := c.PutAITeamPolicyWithBody(ctx, orgId, teamId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAITeamPolicyResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAITeamPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, teamId openapi_types.UUID, body PutAITeamPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAITeamPolicyResponse, error) {
+	rsp, err := c.PutAITeamPolicy(ctx, orgId, teamId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAITeamPolicyResponse(rsp)
+}
+
+// GetAIUsageWithResponse request returning *GetAIUsageResponse
+func (c *ClientWithResponses) GetAIUsageWithResponse(ctx context.Context, orgId openapi_types.UUID, params *GetAIUsageParams, reqEditors ...RequestEditorFn) (*GetAIUsageResponse, error) {
+	rsp, err := c.GetAIUsage(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIUsageResponse(rsp)
 }
 
 // ListAlertDeliveriesWithResponse request returning *ListAlertDeliveriesResponse
@@ -39402,6 +40176,204 @@ func ParseSetAIGatewaySettingsResponse(rsp *http.Response) (*SetAIGatewaySetting
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AIGatewaySettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIAssignmentsResponse parses an HTTP response from a ListAIAssignmentsWithResponse call
+func ParseListAIAssignmentsResponse(rsp *http.Response) (*ListAIAssignmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIAssignmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AIAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAIAssignmentResponse parses an HTTP response from a PutAIAssignmentWithResponse call
+func ParsePutAIAssignmentResponse(rsp *http.Response) (*PutAIAssignmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAIAssignmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReconcileAIAssignmentResponse parses an HTTP response from a ReconcileAIAssignmentWithResponse call
+func ParseReconcileAIAssignmentResponse(rsp *http.Response) (*ReconcileAIAssignmentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReconcileAIAssignmentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAITeamPoliciesResponse parses an HTTP response from a ListAITeamPoliciesWithResponse call
+func ParseListAITeamPoliciesResponse(rsp *http.Response) (*ListAITeamPoliciesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAITeamPoliciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []AITeamPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAITeamPolicyResponse parses an HTTP response from a PutAITeamPolicyWithResponse call
+func ParsePutAITeamPolicyResponse(rsp *http.Response) (*PutAITeamPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAITeamPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AITeamPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAIUsageResponse parses an HTTP response from a GetAIUsageWithResponse call
+func ParseGetAIUsageResponse(rsp *http.Response) (*GetAIUsageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIUsageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIUsageReport
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

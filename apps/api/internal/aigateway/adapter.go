@@ -107,7 +107,7 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	model, err := requestModel(body)
+	model, err := requestModelForPath(body, r.URL.Path)
 	if err != nil {
 		writeAdapterError(w, r, 400)
 		return
@@ -262,6 +262,10 @@ func validKey(key string) bool {
 // cannot create a second route around the selected model. Broader SDK payloads
 // need their own compatibility qualification before they are accepted.
 func requestModel(body []byte) (string, error) {
+	return requestModelForPath(body, "/v1/chat/completions")
+}
+
+func requestModelForPath(body []byte, path string) (string, error) {
 	d := json.NewDecoder(bytes.NewReader(body))
 	t, err := d.Token()
 	if err != nil || t != json.Delim('{') {
@@ -315,9 +319,14 @@ func requestModel(body []byte) (string, error) {
 				return "", errors.New("invalid system")
 			}
 		case "messages":
-			var messages []map[string]json.RawMessage
+			var messages []json.RawMessage
 			if json.Unmarshal(raw, &messages) != nil || len(messages) < 1 || len(messages) > 128 {
 				return "", errors.New("invalid messages")
+			}
+			for _, message := range messages {
+				if err := validateTextMessage(message, path); err != nil {
+					return "", err
+				}
 			}
 		}
 	}
@@ -331,4 +340,54 @@ func requestModel(body []byte) (string, error) {
 		return "", errors.New("model required")
 	}
 	return model, nil
+}
+
+// Validate before authorization so unqualified modalities and nested routing
+// controls cannot reach either cost admission or the upstream engine. Decode
+// fields individually to refuse duplicate keys rather than silently overwrite.
+func validateTextMessage(raw json.RawMessage, path string) error {
+	invalid := errors.New("invalid text message")
+	d := json.NewDecoder(bytes.NewReader(raw))
+	if token, err := d.Token(); err != nil || token != json.Delim('{') {
+		return invalid
+	}
+	seen := map[string]bool{}
+	for d.More() {
+		token, err := d.Token()
+		if err != nil {
+			return invalid
+		}
+		key, ok := token.(string)
+		if !ok || seen[key] || (key != "role" && key != "content") {
+			return invalid
+		}
+		seen[key] = true
+		// Token preserves the distinction between JSON null and an empty string.
+		token, err = d.Token()
+		value, ok := token.(string)
+		if err != nil || !ok {
+			return invalid
+		}
+		if key == "role" {
+			switch value {
+			case "user", "assistant":
+			case "system":
+				if path == "/anthropic/v1/messages" {
+					return invalid
+				}
+			default:
+				return invalid
+			}
+		}
+	}
+	if token, err := d.Token(); err != nil || token != json.Delim('}') {
+		return invalid
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return invalid
+	}
+	if !seen["role"] || !seen["content"] {
+		return invalid
+	}
+	return nil
 }

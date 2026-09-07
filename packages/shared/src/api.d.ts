@@ -4,6 +4,128 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/ai-gateway/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List configured AI team policies */
+        get: operations["listAITeamPolicies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Set exact model policy for an existing Agent Group */
+        put: operations["putAITeamPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List explicit AI team assignments and synchronization status */
+        get: operations["listAIAssignments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign one AI team or disable access for an agent */
+        put: operations["putAIAssignment"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry verified private-engine policy synchronization */
+        post: operations["reconcileAIAssignment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/usage": {
+        parameters: {
+            query?: {
+                team_id?: string;
+                device_id?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read scoped native usage estimates over at most 31 days */
+        get: operations["getAIUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/runtime/ai-credential": {
         parameters: {
             query?: never;
@@ -4389,6 +4511,75 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIModelNames: string[];
+        AITeamPolicyWrite: {
+            models: components["schemas"]["AIModelNames"];
+            key_ids: string[];
+            /**
+             * Format: double
+             * @description Optional daily USD soft threshold based on native observed usage since midnight UTC. Concurrent work can exceed it.
+             */
+            daily_cost_limit?: number | null;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AITeamPolicy: {
+            /** Format: uuid */
+            team_id: string;
+            models: components["schemas"]["AIModelNames"];
+            key_ids: string[];
+            /** Format: double */
+            daily_cost_limit?: number | null;
+            /** Format: int64 */
+            revision: number;
+        };
+        AIAssignmentWrite: {
+            /** Format: uuid */
+            team_id: string;
+            enabled: boolean;
+            models_override: components["schemas"]["AIModelNames"];
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIAssignment: {
+            /** Format: uuid */
+            device_id: string;
+            /** Format: uuid */
+            team_id: string;
+            enabled: boolean;
+            models_override: components["schemas"]["AIModelNames"];
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** Format: int64 */
+            applied_team_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "error" | "disabled";
+        };
+        AIUsageReport: {
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** Format: int64 */
+            total_requests: number;
+            /** Format: int64 */
+            total_tokens: number;
+            /** Format: int64 */
+            prompt_tokens: number;
+            /** Format: int64 */
+            completion_tokens: number;
+            /** Format: double */
+            total_cost: number;
+            /** Format: int64 */
+            uncosted_requests: number;
+            /**
+             * @description Native reported usage estimates; not a provider invoice or hard spending cap.
+             * @enum {string}
+             */
+            semantics: "observed_estimate";
+        };
         AICredential: {
             /** @description One-time secret; never returned by read APIs. */
             token: string;
@@ -4412,7 +4603,13 @@ export interface components {
             /** @description Exact provider/model identifier; aliases and caller fallback are not supported. */
             model: string;
             messages: {
-                [key: string]: unknown;
+                /**
+                 * @description Anthropic messages accept user or assistant; its system text is top-level.
+                 * @enum {string}
+                 */
+                role: "user" | "assistant" | "system";
+                /** @description Text only; multimodal blocks and tool calls are not qualified. */
+                content: string;
             }[];
             /** @default false */
             stream: boolean;
@@ -7609,6 +7806,160 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAITeamPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITeamPolicy"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAITeamPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                teamId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AITeamPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AITeamPolicy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIAssignments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAssignment"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAIAssignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIAssignmentWrite"];
+            };
+        };
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAssignment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    reconcileAIAssignment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAssignment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAIUsage: {
+        parameters: {
+            query?: {
+                team_id?: string;
+                device_id?: string;
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current authoritative result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUsageReport"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     issueAICredential: {
         parameters: {
             query?: never;

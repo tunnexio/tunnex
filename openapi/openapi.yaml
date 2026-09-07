@@ -18,6 +18,91 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/ai-gateway/teams:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAITeamPolicies
+      summary: List configured AI team policies
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AITeamPolicy" } } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: teamId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: putAITeamPolicy
+      summary: Set exact model policy for an existing Agent Group
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AITeamPolicyWrite" } } }
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AITeamPolicy" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/agents:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIAssignments
+      summary: List explicit AI team assignments and synchronization status
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AIAssignment" } } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: putAIAssignment
+      summary: Assign one AI team or disable access for an agent
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIAssignmentWrite" } } }
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIAssignment" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}/reconcile:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: reconcileAIAssignment
+      summary: Retry verified private-engine policy synchronization
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIAssignment" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/usage:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: team_id, in: query, schema: { type: string, format: uuid } }
+      - { name: device_id, in: query, schema: { type: string, format: uuid } }
+      - { name: from, in: query, schema: { type: string, format: date-time } }
+      - { name: to, in: query, schema: { type: string, format: date-time } }
+    get:
+      operationId: getAIUsage
+      summary: Read scoped native usage estimates over at most 31 days
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Current authoritative result.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIUsageReport" } } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/agent/runtime/ai-credential:
     post:
       operationId: issueAICredential
@@ -5527,6 +5612,71 @@ components:
       required: true
 
   schemas:
+    AIModelNames:
+      type: array
+      maxItems: 32
+      uniqueItems: true
+      items: { type: string, pattern: '^openrouter/[A-Za-z0-9][A-Za-z0-9_./:-]*$', maxLength: 255 }
+    AITeamPolicyWrite:
+      type: object
+      additionalProperties: false
+      required: [models, key_ids, expected_revision]
+      properties:
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        key_ids:
+          type: array
+          minItems: 1
+          maxItems: 8
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]*$' }
+        daily_cost_limit: { type: number, format: double, nullable: true, minimum: 0, exclusiveMinimum: true, maximum: 100000, description: Optional daily USD soft threshold based on native observed usage since midnight UTC. Concurrent work can exceed it. }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AITeamPolicy:
+      type: object
+      additionalProperties: false
+      required: [team_id, models, key_ids, revision]
+      properties:
+        team_id: { type: string, format: uuid }
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        key_ids: { type: array, items: { type: string } }
+        daily_cost_limit: { type: number, format: double, nullable: true }
+        revision: { type: integer, format: int64 }
+    AIAssignmentWrite:
+      type: object
+      additionalProperties: false
+      required: [team_id, enabled, models_override, expected_revision]
+      properties:
+        team_id: { type: string, format: uuid }
+        enabled: { type: boolean }
+        models_override: { $ref: '#/components/schemas/AIModelNames' }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AIAssignment:
+      type: object
+      additionalProperties: false
+      required: [device_id, team_id, enabled, models_override, revision, applied_revision, applied_team_revision, status]
+      properties:
+        device_id: { type: string, format: uuid }
+        team_id: { type: string, format: uuid }
+        enabled: { type: boolean }
+        models_override: { $ref: '#/components/schemas/AIModelNames' }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        applied_team_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, error, disabled] }
+    AIUsageReport:
+      type: object
+      additionalProperties: false
+      required: [from, to, total_requests, total_tokens, prompt_tokens, completion_tokens, total_cost, uncosted_requests, semantics]
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        total_requests: { type: integer, format: int64 }
+        total_tokens: { type: integer, format: int64 }
+        prompt_tokens: { type: integer, format: int64 }
+        completion_tokens: { type: integer, format: int64 }
+        total_cost: { type: number, format: double }
+        uncosted_requests: { type: integer, format: int64 }
+        semantics: { type: string, enum: [observed_estimate], description: Native reported usage estimates; not a provider invoice or hard spending cap. }
     AICredential:
       type: object
       additionalProperties: false
@@ -5560,7 +5710,16 @@ components:
           type: array
           minItems: 1
           maxItems: 128
-          items: { type: object, additionalProperties: true }
+          items:
+            type: object
+            additionalProperties: false
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [user, assistant, system]
+                description: Anthropic messages accept user or assistant; its system text is top-level.
+              content: { type: string, description: Text only; multimodal blocks and tool calls are not qualified. }
         stream: { type: boolean, default: false }
         max_tokens: { type: integer, minimum: 1, maximum: 4096, default: 1024 }
         temperature: { type: number, minimum: 0, maximum: 2 }

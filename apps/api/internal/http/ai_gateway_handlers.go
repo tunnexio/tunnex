@@ -8,7 +8,6 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
-	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
@@ -52,8 +51,11 @@ func (s apiServer) SetAIGatewaySettings(ctx context.Context, req api.SetAIGatewa
 	if s.aiCredentials == nil {
 		return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
 	}
-	p, _ := authctx.PrincipalFrom(ctx)
-	v, err := s.aiCredentials.SetEnabled(ctx, req.OrgId, p.UserID, req.Body.Enabled)
+	actor, err := aiManagementActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := s.aiCredentials.SetEnabled(ctx, req.OrgId, actor, req.Body.Enabled)
 	if err != nil {
 		return nil, err
 	}

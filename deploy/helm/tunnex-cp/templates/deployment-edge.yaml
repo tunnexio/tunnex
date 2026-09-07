@@ -16,6 +16,10 @@ spec:
       app.kubernetes.io/component: edge
   template:
     metadata:
+      {{- if .Values.aiGateway.enabled }}
+      annotations:
+        checksum/ai-edge: {{ .Files.Get "files/edge-ai-nginx.conf" | sha256sum }}
+      {{- end }}
       labels:
         {{- include "tunnex-cp.labels" . | nindent 8 }}
         app.kubernetes.io/component: edge
@@ -31,6 +35,13 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          {{- if .Values.aiGateway.enabled }}
+          volumeMounts:
+            - name: ai-edge-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /healthz
@@ -41,6 +52,12 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- if .Values.aiGateway.enabled }}
+      volumes:
+        - name: ai-edge-config
+          configMap:
+            name: {{ include "tunnex-cp.fullname" . }}-ai-edge
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

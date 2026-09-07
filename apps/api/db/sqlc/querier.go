@@ -884,6 +884,9 @@ type Querier interface {
 	// lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
 	IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error)
 	LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConnectionIdentityParams) error
+	ListAIGatewayAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayAssignmentsRow, error)
+	ListAIGatewayNativeBindings(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayNativeBindingsRow, error)
+	ListAIGatewayTeamPolicies(ctx context.Context, orgID uuid.UUID) ([]ListAIGatewayTeamPoliciesRow, error)
 	// The security-focused feed: deny + deny_aggregate + terminated + gap, same keyset shape.
 	ListAccessDenies(ctx context.Context, arg ListAccessDeniesParams) ([]AccessEvent, error)
 	ListAccessDeniesByAgent(ctx context.Context, arg ListAccessDeniesByAgentParams) ([]AccessEvent, error)

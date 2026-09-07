@@ -1,26 +1,89 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Loading } from "../components/ui";
+import { Button, Loading } from "../components/ui";
 import { api, type Member } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
 
-export function AgentsManagementGate({ children }: { children: (orgId: string) => ReactNode }) {
+export function AgentsManagementGate({
+  children,
+}: {
+  children: (orgId: string) => ReactNode;
+}) {
   const { org } = useOrg();
   const { state } = useAuth();
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const userId = state.status === "authed" ? state.user.id : "";
+  const scope = `${org?.id ?? ""}/${userId}`;
+  const [result, setResult] = useState<{
+    scope: string;
+    status: "allowed" | "denied" | "error";
+  } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    if (!org || state.status !== "authed") { setAllowed(false); return; }
-    setAllowed(null);
-    void api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId: org.id } } }).then(({ data, error }) => {
-      if (cancelled) return;
-      const member = !error && data ? (data as Member[]).find((value) => value.user_id === state.user.id) : undefined;
-      setAllowed(member?.role === "owner" || member?.role === "admin");
-    });
-    return () => { cancelled = true; };
-  }, [org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
+    setResult(null);
+    if (!org || !userId) return;
+    void api
+      .GET("/api/v1/organizations/{orgId}/members", {
+        params: { path: { orgId: org.id } },
+      })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data) {
+          setResult({ scope, status: "error" });
+          return;
+        }
+        const member = (data as Member[]).find(
+          (value) => value.user_id === userId,
+        );
+        setResult({
+          scope,
+          status:
+            member?.role === "owner" || member?.role === "admin"
+              ? "allowed"
+              : "denied",
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setResult({ scope, status: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [org?.id, userId, scope, attempt]);
   if (!org) return <Loading label="Loading organization…" />;
-  if (allowed === null) return <Loading label="Checking AI Agents management permissions…" />;
-  if (!allowed) return <p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage AI Agent groups or policy templates.</p>;
+  if (!userId)
+    return (
+      <p role="alert" className="text-cell text-ink-tertiary">
+        You do not have permission to manage AI Agent groups or policy
+        templates.
+      </p>
+    );
+  // Do not render children with the previous organization's permission while a
+  // new effect is pending. Scope is checked during render, not only on response.
+  if (!result || result.scope !== scope)
+    return <Loading label="Checking AI Agents management permissions…" />;
+  if (result.status === "error")
+    return (
+      <div className="space-y-2">
+        <p role="alert" className="text-cell text-ink-tertiary">
+          Could not check AI Agents management permissions.
+        </p>
+        <Button
+          onClick={() => {
+            setResult(null);
+            setAttempt((value) => value + 1);
+          }}
+        >
+          Retry permissions
+        </Button>
+      </div>
+    );
+  if (result.status !== "allowed")
+    return (
+      <p role="alert" className="text-cell text-ink-tertiary">
+        You do not have permission to manage AI Agent groups or policy
+        templates.
+      </p>
+    );
   return <>{children(org.id)}</>;
 }

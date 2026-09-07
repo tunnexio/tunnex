@@ -34,6 +34,7 @@ import Kubernetes from "./pages/Kubernetes";
 import AgentsIndex from "./pages/AgentsIndex";
 import AgentDetail from "./pages/AgentDetail";
 import AgentsMCP from "./pages/AgentsMCP";
+import AgentsAIGateway from "./pages/AgentsAIGateway";
 import AgentsPolicyTemplates from "./pages/AgentsPolicyTemplates";
 import AccessGroups from "./pages/AccessGroups";
 import AccessResources, { FQDNResourceDetail } from "./pages/AccessResources";
@@ -178,6 +179,7 @@ function ProductApp() {
             <Route path="/kubernetes" element={<Kubernetes />} />
             <Route path="/agents" element={<AgentsIndex />} />
             <Route path="/agents/mcp" element={<AgentsMCP />} />
+            <Route path="/agents/ai-gateway" element={<AgentsAIGateway />} />
             <Route path="/agents/groups" element={<Navigate to="/access/groups?type=agents" replace />} />
             <Route path="/agents/policies" element={<AgentsPolicyTemplates />} />
             <Route path="/agents/:agentId" element={<AgentDetail />} />

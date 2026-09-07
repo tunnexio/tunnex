@@ -197,6 +197,7 @@ type apiServer struct {
 	nodes              *nodes.Service
 	agentRuntime       *agentruntime.Service
 	aiCredentials      *aigateway.Credentials
+	aiPolicies         *aigateway.Policies
 	alertConfig        *alerts.ConfigService
 	devices            *devices.Service
 	ovpn               *ovpn.Service // OPEN (D-S9.1-6): OpenVPN PKI + export; nil in a stripped build

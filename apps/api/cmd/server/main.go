@@ -28,6 +28,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/auditretention"
 	"github.com/tunnexio/tunnex/apps/api/internal/auth"
@@ -459,8 +460,32 @@ func main() {
 		}
 	}
 	alertPublisher := alerts.NewOutboxPublisher(alerts.NewPostgresOutbox(pool))
+	// Configuration makes AI available; independent org opt-in and applied
+	// policies grant access. Community requires no paid runtime entitlement.
+	var aiPolicies *aigateway.Policies
+	var aiAdapter *aigateway.Adapter
+	aiRuntime := agentruntime.New(pool, nil)
+	aiCredentials := aigateway.NewCredentials(pool, aiRuntime, nil)
+	if cfg.AIGatewayURL != "" {
+		engine, engineErr := aigateway.NewEngine(cfg.AIGatewayURL, cfg.AIGatewayAdminUser, cfg.AIGatewayAdminPassword)
+		if engineErr != nil {
+			logger.Error("ai_gateway_invalid_configuration")
+			os.Exit(1)
+		}
+		aiPolicies = aigateway.NewPolicies(pool, sealer, engine)
+		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
+		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aiCredentials.Authorize)
+		if engineErr != nil {
+			logger.Error("ai_gateway_invalid_configuration")
+			os.Exit(1)
+		}
+		aiCredentials.SetAvailable(true)
+	}
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		System:           systemQueries,
+		AICredentials:    aiCredentials,
+		AIPolicies:       aiPolicies,
+		AIAdapter:        aiAdapter,
 		AgentRuntimePool: pool,
 		AgentRuntimeOptIn: agentruntime.OrganizationOptIn(systemQueries, func() bool {
 			return licenceMgr.Evaluate(time.Now()).Tier != licence.TierCommunity
@@ -564,6 +589,28 @@ func main() {
 	defer stopElector()
 	elector := &leader.Elector{}
 	go elector.Run(electorCtx, pool, logger)
+	if aiPolicies != nil {
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-electorCtx.Done():
+					return
+				case <-ticker.C:
+					if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+						continue
+					}
+					workCtx, cancel := context.WithTimeout(electorCtx, 20*time.Second)
+					if aiPolicies.ReconcilePending(workCtx, 16) != nil {
+						logger.Warn("ai_gateway_reconcile_incomplete")
+					}
+					cancel()
+				}
+			}
+		}()
+	}
+
 	// S20.3b P3: the deployment composition gate defaults OFF independently of
 	// organization settings. The base compiler deliberately does not stamp node
 	// liveness; authority preparation for a disconnected standby is not a report.

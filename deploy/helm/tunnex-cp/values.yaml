@@ -164,3 +164,32 @@ migrations:
   # therefore boot with TUNNEX_AUTO_MIGRATE=false.
   enabled: true
   backoffLimit: 3
+
+# Optional single-instance AI engine. Organization access remains separately OFF.
+# One control-plane release per namespace; the private Service name bifrost is reserved.
+aiGateway:
+  enabled: false
+  # Existing Secret only; never put secret values in Helm values/history.
+  existingSecret: ""
+  secretKeys:
+    adminUser: admin-user
+    adminPassword: admin-password
+    providerKey: openrouter-api-key
+    encryptionKey: encryption-key
+  providerKeyID: openrouter-primary
+  models: [openai/gpt-4o-mini]
+  persistence:
+    storageClassName: "" # empty uses cluster default; PVCs are retained on uninstall
+    configSize: 1Gi
+    logsSize: 5Gi
+  dns:
+    namespaceLabels:
+      kubernetes.io/metadata.name: kube-system
+    podLabels:
+      k8s-app: kube-dns
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi

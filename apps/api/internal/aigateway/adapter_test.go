@@ -653,3 +653,65 @@ func TestAdapterGatewayFailureJSONEnvelope(t *testing.T) {
 		t.Fatalf("wrong public message %q", message)
 	}
 }
+
+func TestAdapterRejectsUnqualifiedMessagesBeforeAuthorization(t *testing.T) {
+	var authorized, arrived atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { arrived.Add(1) }))
+	defer up.Close()
+	a, err := NewAdapter(up.URL, func(ctx context.Context, token, model string) (Grant, error) {
+		authorized.Add(1)
+		return fixture(ctx, token, model)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := []string{
+		`[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.invalid/image.png"}}]}]`,
+		`[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AA==","format":"wav"}}]}]`,
+		`[{"role":"user","content":[{"type":"text","text":"OK"}]}]`,
+		`[{"role":"user","content":"OK","tool_calls":[]}]`,
+		`[{"role":"user","content":"OK","name":"override"}]`,
+		`[{"role":"user","content":"OK","provider":{"key":"override"}}]`,
+		`[{"role":"tool","content":"OK"}]`,
+		`[{"role":"developer","content":"OK"}]`,
+		`[{"role":"function","content":"OK"}]`,
+		`[{"role":"USER","content":"OK"}]`,
+		`[{"role":"user","role":"assistant","content":"OK"}]`,
+		`[{"role":"user","content":"OK","content":"other"}]`,
+		`[{"role":"user","content":null}]`,
+		`[{"role":null,"content":"OK"}]`,
+		`[{"role":"user","content":42}]`,
+		`[{"role":"user"}]`, `[{"content":"OK"}]`, `[null]`, `[{}]`, `[]`,
+	}
+	for _, path := range []string{"/v1/chat/completions", "/anthropic/v1/messages"} {
+		cases := append([]string(nil), invalid...)
+		if path == "/anthropic/v1/messages" {
+			cases = append(cases, `[{"role":"system","content":"OK"}]`)
+		}
+		for i, messages := range cases {
+			t.Run(fmt.Sprintf("%s/%d", path, i), func(t *testing.T) {
+				r := httptest.NewRequest("POST", path, strings.NewReader(`{"model":"openrouter/allowed","messages":`+messages+`}`))
+				r.Header.Set("Authorization", "Bearer fixture-agent-a")
+				w := newDeadlineRecorder()
+				a.ServeHTTP(w, r)
+				if w.Code != http.StatusBadRequest {
+					t.Errorf("status=%d", w.Code)
+				}
+				if authorized.Load() != 0 || arrived.Load() != 0 {
+					t.Fatal("invalid message reached authorization or provider")
+				}
+			})
+		}
+	}
+}
+
+func TestAdapterQualifiedTextMessages(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"openrouter/allowed","messages":[{"role":"system","content":"Be concise."},{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"},{"role":"user","content":""}]}`,
+		`{"model":"openrouter/allowed","system":"Be concise.","messages":[{"role":"user","content":"Reply with OK only."}],"max_tokens":16,"stream":true}`,
+	} {
+		if model, err := requestModel([]byte(body)); err != nil || model != "openrouter/allowed" {
+			t.Fatalf("qualified text refused: %v", err)
+		}
+	}
+}

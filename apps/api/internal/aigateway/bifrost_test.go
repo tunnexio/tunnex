@@ -16,9 +16,12 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/tunnexio/tunnex/apps/api/internal/testbifrost"
 )
 
-const binarySHA256 = "31ac451d83706069e580dd1dedf099aa518d1bc47c3c481d20f97203f799275e"
+var binarySHA256 = testbifrost.BinarySHA256
+
 const nativeVK = "sk-bf-ai0-fixture-key-only"
 
 // TestBifrostNative uses a real pinned engine and synthetic provider. It never
@@ -27,7 +30,7 @@ const nativeVK = "sk-bf-ai0-fixture-key-only"
 func TestBifrostNative(t *testing.T) {
 	binary := os.Getenv("AI0_BIFROST_BINARY")
 	if binary == "" {
-		t.Skip("set AI0_BIFROST_BINARY to the pinned darwin/arm64 binary")
+		t.Skip("set AI0_BIFROST_BINARY to the pinned platform binary")
 	}
 	f, err := os.Open(binary)
 	if err != nil {
