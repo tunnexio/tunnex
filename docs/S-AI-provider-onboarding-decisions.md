@@ -270,3 +270,36 @@ reference plus resolved masked-value evidence, no alternate proxy credentials or
 TLS overrides. Pinned code explicitly errors for an unresolved secret reference;
 verify absent/malformed values never fall back to direct egress. This changes the
 native representation, not the approved proxy/origin boundary.
+
+Readback qualification: native redaction exposes only a prefix/suffix, so it cannot
+prove equality of the full resolved proxy secret. Applied confirms the immutable
+endpoint, operation restrictions and fixed proxy environment reference with the
+expected nonempty redacted shape. It does not certify proxy authentication or
+provider health. Test connection reports credential/catalog reachability separately;
+missing, malformed or unavailable proxy configuration must refuse without direct
+upstream arrival. This preserves the existing distinction between configuration
+application and connection health.
+
+## Expanded branded provider inventory — 2026-09-07
+
+User requested the LiteLLM reference flow, more branded providers and pre-save
+connection testing. Expand the verified native API-key inventory with Groq,
+Mistral, Cerebras, xAI and DeepSeek. The pinned Bifrost source has dedicated
+adapters with authenticated catalogs and chat/streaming support. Preserve the
+same connection ownership, exact model scope, secret handling and unknown-price
+refusal contracts; qualify the added adapters with native fixtures before claiming
+support. Migration 0144 extends the provider constraint, preserving existing
+custom migration 0143 already applied to the local preview.
+
+Do not add Together as a selectable native option: it has no adapter in this pin.
+Do not advertise Perplexity's public model-catalog HTTP 200 as credential proof.
+Its documented catalog does not authenticate the key; defer that adapter until a
+suitable check is qualified. Custom remains available for approved compatible
+endpoints. Logos reuse attributed actual SVG assets from pinned LiteLLM sources.
+
+Pre-save check implementation is pending the surfaced decision on a transient,
+zero-inference credential/catalog probe; no unsaved key is to be silently stored
+as a native draft connection. LiteLLM reference uses response success semantics,
+not HTTP status alone, and keeps Test Connect separate from Add Model. The user
+requested a successful check before saving; changes to tested credentials,
+provider or endpoint invalidate the UI result.
