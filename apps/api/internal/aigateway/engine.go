@@ -23,6 +23,7 @@ type Engine struct {
 	base           *url.URL
 	user, password string
 	client         *http.Client
+	customProxy    *url.URL
 }
 type EngineKey struct {
 	ID    string
@@ -235,12 +236,12 @@ type ScopedPolicyEngine interface {
 }
 
 func validEngineScopes(scopes []EngineProviderScope) bool {
-	if len(scopes) == 0 || len(scopes) > 4 {
+	if len(scopes) == 0 || len(scopes) > 8 {
 		return false
 	}
 	providers, keys := map[string]bool{}, map[string]bool{}
 	for _, s := range scopes {
-		if !supportedProvider(s.Provider) || providers[s.Provider] || !validEngineList(s.Models, true) || !validEngineList(s.KeyIDs, false) {
+		if !nativeSupportedProvider(s.Provider) || providers[s.Provider] || !validEngineList(s.Models, true) || !validEngineList(s.KeyIDs, false) {
 			return false
 		}
 		providers[s.Provider] = true
@@ -254,13 +255,13 @@ func validEngineScopes(scopes []EngineProviderScope) bool {
 	return len(keys) <= 64
 }
 func engineIdentity(vk engineVK, name string) bool {
-	if !engineIdentifier.MatchString(vk.ID) || vk.Name != name || vk.Value == "" || vk.IsActive == nil || len(vk.MCPConfigs) != 0 || vk.TeamID != nil || vk.CustomerID != nil || vk.ExpiresAt != nil || len(vk.ProviderConfigs) > 4 {
+	if !engineIdentifier.MatchString(vk.ID) || vk.Name != name || vk.Value == "" || vk.IsActive == nil || len(vk.MCPConfigs) != 0 || vk.TeamID != nil || vk.CustomerID != nil || vk.ExpiresAt != nil || len(vk.ProviderConfigs) > 8 {
 		return false
 	}
 	seen := map[string]bool{}
 	ids := map[uint]bool{}
 	for _, p := range vk.ProviderConfigs {
-		if !supportedProvider(p.Provider) || seen[p.Provider] || p.ID == 0 || ids[p.ID] {
+		if !nativeSupportedProvider(p.Provider) || seen[p.Provider] || p.ID == 0 || ids[p.ID] {
 			return false
 		}
 		seen[p.Provider] = true

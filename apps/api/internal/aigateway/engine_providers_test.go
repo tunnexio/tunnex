@@ -179,16 +179,16 @@ func TestProviderEngineInitAndCancelledWrite(t *testing.T) {
 	}))
 	defer srv.Close()
 	e, _ := NewEngine(srv.URL, "admin", "fixture")
-	if e.EnsureProvider(context.Background(), "openrouter") != nil || !created {
+	if e.EnsureProvider(context.Background(), "openrouter", "") != nil || !created {
 		t.Fatal("initialization failed")
 	}
-	if e.EnsureProvider(context.Background(), "openrouter") != nil {
+	if e.EnsureProvider(context.Background(), "openrouter", "") != nil {
 		t.Fatal("existing provider failed")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	start := time.Now()
-	if e.EnsureProvider(ctx, "openrouter") == nil || time.Since(start) > time.Second {
+	if e.EnsureProvider(ctx, "openrouter", "") == nil || time.Since(start) > time.Second {
 		t.Fatal("cancel ignored")
 	}
 }

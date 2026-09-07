@@ -9,10 +9,10 @@ import (
 )
 
 func TestProviderRegistryModelAndCostIsolation(t *testing.T) {
-	if len(ProviderDefinitions()) != 4 {
+	if len(ProviderDefinitions()) != 10 {
 		t.Fatal("registry")
 	}
-	for _, canonical := range []string{"openai/gpt-4o-mini", "anthropic/claude-fixture", "gemini/gemini-fixture", "openrouter/openai/gpt-4o-mini"} {
+	for _, canonical := range []string{"openai/gpt-4o-mini", "anthropic/claude-fixture", "gemini/gemini-fixture", "openrouter/openai/gpt-4o-mini", "groq/fixture", "mistral/fixture", "cerebras/fixture", "xai/fixture", "deepseek/fixture"} {
 		provider, model, ok := splitProviderModel(canonical)
 		if !ok {
 			t.Fatal(canonical)
@@ -41,7 +41,7 @@ func TestProviderRegistryModelAndCostIsolation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, bad := range []string{"gpt-4o", "unknown/a", "openai/", "openai/*", "openai/a b"} {
+	for _, bad := range []string{"gpt-4o", "unknown/a", "together/a", "perplexity/a", "openai/", "openai/*", "openai/a b"} {
 		if _, _, ok := splitProviderModel(bad); ok {
 			t.Fatalf("bad model %q", bad)
 		}

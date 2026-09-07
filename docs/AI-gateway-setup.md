@@ -226,3 +226,64 @@ old secret refused, new secret accepted, unchanged native key and retained histo
 See [rotation evidence](AI-gateway-provider-rotation-20260907.md). The full installed
 API process walkthrough, including streaming and soft threshold refusal, is recorded
 in [AI-5 evidence](AI-5-installed-process-walk-20260907.md).
+
+## Custom OpenAI-compatible endpoints (opt-in)
+
+Custom connections require provider management plus an installation-approved
+endpoint policy and authenticated egress proxy. The UI cannot expand that policy.
+Keep custom support disabled until the installation administrator has reviewed
+both the endpoint URLs and their allowed destination CIDRs. HTTP is permitted only
+when explicitly approved in that policy; HTTPS retains certificate verification.
+
+Store a nonsecret JSON policy outside the repository, for example:
+
+```json
+{
+  "endpoints": [{
+    "name": "Private inference",
+    "url": "https://inference.internal",
+    "allowed_cidrs": ["10.20.0.0/24"]
+  }],
+  "protected_hosts": ["api", "bifrost", "postgres", "redis", "control.internal"],
+  "denied_cidrs": ["10.21.0.0/24"]
+}
+```
+
+Use the upstream base URL without `/v1`: the native OpenAI-compatible adapter
+appends that API prefix. A `/v1` path segment is rejected to prevent duplication.
+Replace these example names/CIDRs with verified installation inventory; include all
+control-plane, engine and other protected hosts/addresses. Loopback, link-local,
+metadata, unspecified and multicast addresses remain prohibited regardless of
+allowlist. All DNS answers must match the approved CIDRs on each proxy dial.
+
+For Compose, append `-f deploy/ai-gateway/compose-custom.yml` after the base AI and
+managed-provider overlays. Continue using the existing explicitly named project
+and retained engine volumes. Securely supply `TUNNEX_AI_CUSTOM_ENDPOINTS_FILE`
+(an absolute path), `TUNNEX_AI_CUSTOM_PROXY_USERNAME`,
+`TUNNEX_AI_CUSTOM_PROXY_PASSWORD`, and `TUNNEX_AI_CUSTOM_PROXY_URL`. The URL is
+`http://<encoded-user>:<encoded-password>@ai-egress:8190`; percent-encode its userinfo
+and ensure it matches the separate username/password. CP and Bifrost receive the
+same URL. No proxy host port is published; no database or master key is passed to
+the egress service. Its API-image HTTP healthcheck is disabled because the proxy
+only accepts CONNECT. Use container/process status and explicit credential checks;
+do not interpret the absence of that healthcheck as upstream health.
+
+For Helm, set `aiGateway.enabled`, `aiGateway.providerManagementEnabled` and
+`aiGateway.customProviders.enabled` to true. Configure
+`aiGateway.customProviders.endpoints`, `protectedHosts` and `deniedCIDRs` with the
+same policy entries. The chart always adds API/Bifrost service names to protected
+hosts. Set `aiGateway.customProviders.existingSecret` to a pre-created Secret with
+`proxy-url`, `proxy-username`, and `proxy-password` keys. The URL uses `api:8190`,
+not localhost, so the separate engine pod can reach it. Secret values belong in
+secure Secret delivery, never Helm values/history. Both containers mount the same
+policy ConfigMap read-only; the sidecar receives only proxy credentials. Its TCP
+probe proves listener readiness only. The private API Service conditionally adds
+8190, and the engine's NetworkPolicy permits that port only to this release's API
+pods in the same namespace. Standard provider HTTPS egress remains available.
+
+Policy changes require coordinated CP/egress restarts with the same policy. Drain
+or disable affected custom assignments before removing an approved endpoint.
+Keep database-owned native state, encryption keys and ownership tombstones during
+rollback. These manifests have static render verification; installation-specific
+CNI enforcement, private DNS reachability and certificate trust require a local
+qualification walk before enabling customer traffic.

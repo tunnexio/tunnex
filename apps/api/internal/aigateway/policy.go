@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/aiegress"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 )
@@ -39,6 +40,7 @@ type Policies struct {
 	sealer             *crypto.Sealer
 	engine             PolicyEngine
 	providerManagement bool
+	customPolicy       *aiegress.Policy
 }
 
 func NewPolicies(pool *pgxpool.Pool, sealer *crypto.Sealer, engine PolicyEngine) *Policies {

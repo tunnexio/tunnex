@@ -12,11 +12,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/tunnexio/tunnex/apps/api/internal/aiegress"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
 type ProviderConnection struct {
 	ID                        uuid.UUID
+	EndpointURL               *string
 	KeyID, Provider, Name     string
 	Models                    []string
 	Enabled                   bool
@@ -27,16 +29,17 @@ type ProviderConnection struct {
 }
 type ProviderInput struct {
 	Name, Provider string
+	EndpointURL    *string
 	Models         []string
 	Enabled        bool
 	Secret         *string
 }
 
-const providerColumns = `id,key_id,provider,name,models,enabled,revision,applied_revision,status,last_test_status,last_test_at,deleted_at`
+const providerColumns = `id,key_id,provider,name,models,enabled,revision,applied_revision,status,last_test_status,last_test_at,deleted_at,endpoint_url`
 
 func scanProvider(row pgx.Row) (ProviderConnection, error) {
 	var p ProviderConnection
-	err := row.Scan(&p.ID, &p.KeyID, &p.Provider, &p.Name, &p.Models, &p.Enabled, &p.Revision, &p.AppliedRevision, &p.Status, &p.LastTestStatus, &p.LastTestAt, &p.DeletedAt)
+	err := row.Scan(&p.ID, &p.KeyID, &p.Provider, &p.Name, &p.Models, &p.Enabled, &p.Revision, &p.AppliedRevision, &p.Status, &p.LastTestStatus, &p.LastTestAt, &p.DeletedAt, &p.EndpointURL)
 	return p, err
 }
 func (s *Policies) EnableProviderManagement(enabled bool) { s.providerManagement = enabled }
@@ -58,17 +61,39 @@ func providerConflict() error {
 }
 func validateProviderInput(in ProviderInput, required bool) (ProviderInput, error) {
 	in.Name = strings.TrimSpace(in.Name)
-	if !supportedProvider(in.Provider) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
+	if (!supportedProvider(in.Provider) && in.Provider != "custom") || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
 		return in, providerInvalid()
 	}
-	var ok bool
-	in.Models, ok = canonicalModels(in.Models, false)
-	if !ok {
-		return in, providerInvalid()
-	}
-	for _, model := range in.Models {
-		if provider, _, ok := splitProviderModel(model); !ok || provider != in.Provider {
+	if in.Provider == "custom" {
+		if in.EndpointURL == nil || len(*in.EndpointURL) > 2048 {
 			return in, providerInvalid()
+		}
+		normalized, err := aiegress.NormalizeEndpoint(*in.EndpointURL)
+		if err != nil {
+			return in, providerInvalid()
+		}
+		in.EndpointURL = &normalized
+		if len(in.Models) < 1 || len(in.Models) > 32 {
+			return in, providerInvalid()
+		}
+		for _, model := range in.Models {
+			if !engineModel.MatchString(model) {
+				return in, providerInvalid()
+			}
+		}
+	} else {
+		if in.EndpointURL != nil {
+			return in, providerInvalid()
+		}
+		var ok bool
+		in.Models, ok = canonicalModels(in.Models, false)
+		if !ok {
+			return in, providerInvalid()
+		}
+		for _, model := range in.Models {
+			if provider, _, ok := splitProviderModel(model); !ok || provider != in.Provider {
+				return in, providerInvalid()
+			}
 		}
 	}
 	if required && in.Secret == nil {
@@ -80,7 +105,11 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 	return in, nil
 }
 func providerSpec(p ProviderConnection) ProviderKeySpec {
-	return ProviderKeySpec{Provider: p.Provider, ID: p.KeyID, Revision: p.Revision, Models: p.Models, Enabled: p.Enabled}
+	base := ""
+	if p.EndpointURL != nil {
+		base = *p.EndpointURL
+	}
+	return ProviderKeySpec{Provider: nativeConnectionProvider(p), BaseURL: base, ID: p.KeyID, Revision: p.Revision, Models: p.Models, Enabled: p.Enabled}
 }
 
 // validateProviderAccess is called under the team lock. Sorted provider locks are
@@ -119,13 +148,17 @@ func (s *Policies) providerScopes(ctx context.Context, tx pgx.Tx, org uuid.UUID,
 			}
 			return nil, aiUnavailable()
 		}
-		if p.DeletedAt != nil || !p.Enabled || p.Status != "applied" || p.Revision != p.AppliedRevision || !supportedProvider(p.Provider) {
+		if p.DeletedAt != nil || !p.Enabled || p.Status != "applied" || p.Revision != p.AppliedRevision || (!supportedProvider(p.Provider) && p.Provider != "custom") {
 			return nil, policyDenied()
 		}
-		keys[p.Provider] = append(keys[p.Provider], id)
+		nativeProvider := nativeConnectionProvider(p)
+		if p.Provider == "custom" && !s.customConnectionEligible(p) {
+			return nil, policyDenied()
+		}
+		keys[nativeProvider] = append(keys[nativeProvider], id)
 		for _, m := range p.Models {
 			provider, _, ok := splitProviderModel(m)
-			if !ok || provider != p.Provider {
+			if !ok || provider != nativeProvider {
 				return nil, policyDenied()
 			}
 			covered[m] = true
@@ -220,7 +253,10 @@ func (s *Policies) CreateProvider(ctx context.Context, org, actor uuid.UUID, in 
 		return ProviderConnection{}, providerConflict()
 	}
 	id := uuid.New()
-	p, err := scanProvider(tx.QueryRow(ctx, `INSERT INTO ai_provider_connections(id,org_id,key_id,provider,name,models,enabled,revision,status) VALUES($1,$2,$3,$7,$4,$5,$6,1,'pending') RETURNING `+providerColumns, id, org, "tnx-managed-"+id.String(), in.Name, in.Models, in.Enabled, in.Provider))
+	if err = s.normalizeCustomModels(&in, id); err != nil {
+		return ProviderConnection{}, err
+	}
+	p, err := scanProvider(tx.QueryRow(ctx, `INSERT INTO ai_provider_connections(id,org_id,key_id,provider,name,models,enabled,revision,status,endpoint_url) VALUES($1,$2,$3,$7,$4,$5,$6,1,'pending',$8) RETURNING `+providerColumns, id, org, "tnx-managed-"+id.String(), in.Name, in.Models, in.Enabled, in.Provider, in.EndpointURL))
 	if err != nil {
 		return p, aiUnavailable()
 	}
@@ -248,6 +284,12 @@ func (s *Policies) UpdateProvider(ctx context.Context, org, actor, id uuid.UUID,
 	}
 	if err != nil {
 		return p, aiUnavailable()
+	}
+	if err = s.normalizeCustomModels(&in, id); err != nil {
+		return p, err
+	}
+	if (p.EndpointURL == nil) != (in.EndpointURL == nil) || (p.EndpointURL != nil && *p.EndpointURL != *in.EndpointURL) {
+		return p, providerInvalid()
 	}
 	if p.Provider != in.Provider {
 		return p, providerInvalid()
@@ -299,7 +341,7 @@ func (s *Policies) syncProvider(ctx context.Context, org, id uuid.UUID, revision
 	// Shared provider initialization is serialized across CP replicas.
 	_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(71410001)`)
 	if err == nil {
-		err = engine.EnsureProvider(ctx, p.Provider)
+		err = engine.EnsureProvider(ctx, providerSpec(p).Provider, providerSpec(p).BaseURL)
 	}
 	deleted := false
 	if err == nil && remove {
@@ -392,6 +434,9 @@ func (s *Policies) TestProvider(ctx context.Context, org, actor, id uuid.UUID, e
 	if p.Revision != expected || p.AppliedRevision != expected || p.Status == "pending" || p.Status == "error" {
 		return p, providerConflict()
 	}
+	if p.Provider == "custom" && !s.customConnectionEligible(p) {
+		return p, providerMissing()
+	}
 	ok, testErr := s.engine.(ProviderEngine).TestProviderKey(ctx, providerSpec(p))
 	status := "failed"
 	if testErr == nil && ok {
@@ -415,4 +460,86 @@ func (s *Policies) ProviderModels(ctx context.Context, provider, query string, l
 		return ProviderModelPage{}, aiUnavailable()
 	}
 	return p, nil
+}
+
+// ConfigureCustomProviders is called at startup only after the engine's
+// authenticated proxy has been configured. No request can modify these rules.
+func (s *Policies) ConfigureCustomProviders(policy *aiegress.Policy) { s.customPolicy = policy }
+func (s *Policies) CustomAvailable() bool {
+	return s != nil && s.ProviderManagementAvailable() && s.customPolicy != nil && len(s.customPolicy.Endpoints) > 0
+}
+func (s *Policies) ApprovedCustomEndpoints() []aiegress.Endpoint {
+	out := []aiegress.Endpoint{}
+	if !s.CustomAvailable() {
+		return out
+	}
+	for _, e := range s.customPolicy.Endpoints {
+		out = append(out, aiegress.Endpoint{Name: e.Name, URL: e.URL})
+	}
+	return out
+}
+func nativeConnectionProvider(p ProviderConnection) string {
+	if p.Provider == "custom" {
+		return "custom-" + p.ID.String()
+	}
+	return p.Provider
+}
+func (s *Policies) customConnectionEligible(p ProviderConnection) bool {
+	return s.customPolicy != nil && p.EndpointURL != nil && s.customPolicy.AllowsEndpoint(*p.EndpointURL)
+}
+func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error {
+	if in.Provider != "custom" {
+		return nil
+	}
+	if !s.CustomAvailable() || in.EndpointURL == nil || !s.customPolicy.AllowsEndpoint(*in.EndpointURL) {
+		return providerInvalid()
+	}
+	prefix := "custom-" + id.String() + "/"
+	out := make([]string, 0, len(in.Models))
+	for _, model := range in.Models {
+		if namespace, _, hasSlash := strings.Cut(model, "/"); hasSlash && customProviderName(namespace) {
+			if !strings.HasPrefix(model, prefix) {
+				return providerInvalid()
+			}
+			model = strings.TrimPrefix(model, prefix)
+		}
+		if !engineModel.MatchString(model) {
+			return providerInvalid()
+		}
+		out = append(out, prefix+model)
+	}
+	models, ok := canonicalModels(out, false)
+	if !ok {
+		return providerInvalid()
+	}
+	in.Models = models
+	return nil
+}
+func (s *Policies) CustomProviderModels(ctx context.Context, org, id uuid.UUID, query string, limit, offset int) (ProviderModelPage, error) {
+	if !s.CustomAvailable() {
+		return ProviderModelPage{}, aiUnavailable()
+	}
+	if len(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
+		return ProviderModelPage{}, providerInvalid()
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ProviderModelPage{}, aiUnavailable()
+	}
+	defer rollbackAI(tx)
+	p, err := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE`, org, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProviderModelPage{}, providerMissing()
+	}
+	if err != nil {
+		return ProviderModelPage{}, aiUnavailable()
+	}
+	if p.Provider != "custom" || !p.Enabled || p.Status != "applied" || p.AppliedRevision != p.Revision || !s.customConnectionEligible(p) {
+		return ProviderModelPage{}, providerMissing()
+	}
+	result, err := s.engine.(ProviderEngine).ProviderModels(ctx, nativeConnectionProvider(p), query, limit, offset)
+	if err != nil {
+		return ProviderModelPage{}, aiUnavailable()
+	}
+	return result, nil
 }

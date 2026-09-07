@@ -22,7 +22,7 @@ type providerFixtureEngine struct {
 func newProviderFixtureEngine() *providerFixtureEngine {
 	return &providerFixtureEngine{policyEngineFixture: newPolicyEngineFixture(), values: map[string]ProviderKeySpec{}}
 }
-func (e *providerFixtureEngine) EnsureProvider(context.Context, string) error { return nil }
+func (e *providerFixtureEngine) EnsureProvider(context.Context, string, string) error { return nil }
 func (e *providerFixtureEngine) PutProviderKey(_ context.Context, s ProviderKeySpec, secret *string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -330,6 +330,58 @@ func TestAIProvidersMixedScopesPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = tx.Exec(ctx, string(down)); err == nil || !strings.Contains(err.Error(), "retained non-OpenRouter") {
+		t.Fatal("rollback erased retained provider ownership", err)
+	}
+}
+
+func TestAIExpandedProvidersPostgres(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	f := newPolicyFixture(t, ctx, pool)
+	engine := &scopedProviderFixture{providerFixtureEngine: newProviderFixtureEngine()}
+	f.policies.engine = engine
+	f.policies.EnableProviderManagement(true)
+	secret := "fixture-expanded"
+	var stable string
+	revision := int64(1)
+	for _, provider := range []string{"openai", "anthropic", "gemini", "openrouter", "groq", "mistral", "cerebras", "xai", "deepseek"} {
+		model := provider + "/fixture"
+		in := ProviderInput{Provider: provider, Name: provider, Models: []string{model}, Enabled: true, Secret: &secret}
+		p, err := f.policies.CreateProvider(ctx, f.org, f.owner, in)
+		if err != nil || p.Status != "applied" {
+			t.Fatalf("%s create %+v %v", provider, p, err)
+		}
+		if _, err = f.policies.PutTeam(ctx, f.org, f.owner, f.team, []string{model}, []string{"provider-key"}, nil, revision); provider != "openrouter" && err == nil {
+			t.Fatal("legacy covered direct provider")
+		} else if err == nil {
+			revision++
+		}
+		if _, err = f.policies.PutTeam(ctx, f.org, f.owner, f.team, []string{model}, []string{p.KeyID}, nil, revision); err != nil {
+			t.Fatal(err)
+		}
+		revision++
+		f.reconcile()
+		id, _ := f.binding(f.team)
+		if stable != "" && stable != id {
+			t.Fatal("provider change reset accounting identity")
+		}
+		stable = id
+		if len(engine.scopes) != 1 || engine.scopes[0].Provider != provider || engine.scopes[0].KeyIDs[0] != p.KeyID || engine.scopes[0].Models[0] != "fixture" {
+			t.Fatal("provider routing mismatch")
+		}
+	}
+	down, err := os.ReadFile("../../db/migrations/0144_ai_provider_inventory.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rollbackAI(tx)
+	if _, err = tx.Exec(ctx, `UPDATE ai_provider_connections SET deleted_at=statement_timestamp() WHERE org_id=$1`, f.org); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err == nil || !strings.Contains(err.Error(), "retained added-provider") {
 		t.Fatal("rollback erased retained provider ownership", err)
 	}
 }

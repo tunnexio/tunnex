@@ -1,0 +1,18 @@
+{{- if .Values.aiGateway.customProviders.enabled }}
+{{- if not (and .Values.aiGateway.enabled .Values.aiGateway.providerManagementEnabled) }}
+{{- fail "customProviders requires aiGateway.enabled and providerManagementEnabled" }}
+{{- end }}
+{{- if not .Values.aiGateway.customProviders.endpoints }}
+{{- fail "customProviders requires approved endpoints" }}
+{{- end }}
+{{- $secret := required "customProviders.existingSecret is required" .Values.aiGateway.customProviders.existingSecret }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tunnex-cp.fullname" . }}-ai-custom
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+data:
+  policy.json: |
+    {{- dict "endpoints" .Values.aiGateway.customProviders.endpoints "protected_hosts" (concat (list "api" "bifrost" (printf "api.%s.svc" .Release.Namespace) (printf "bifrost.%s.svc" .Release.Namespace) (printf "api.%s.svc.cluster.local" .Release.Namespace) (printf "bifrost.%s.svc.cluster.local" .Release.Namespace)) .Values.aiGateway.customProviders.protectedHosts) "denied_cidrs" .Values.aiGateway.customProviders.deniedCIDRs | toJson | nindent 4 }}
+{{- end }}

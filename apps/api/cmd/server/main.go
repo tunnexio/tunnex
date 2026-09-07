@@ -28,6 +28,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/accesslog"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentca"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
+	"github.com/tunnexio/tunnex/apps/api/internal/aiegress"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/auditretention"
@@ -474,6 +475,14 @@ func main() {
 		}
 		aiPolicies = aigateway.NewPolicies(pool, sealer, engine)
 		aiPolicies.EnableProviderManagement(cfg.AIProviderManagementEnabled)
+		if cfg.AICustomEndpointsFile != "" || cfg.AICustomProxyURL != "" {
+			customPolicy, customErr := aiegress.LoadPolicy(cfg.AICustomEndpointsFile)
+			if customErr != nil || !cfg.AIProviderManagementEnabled || engine.ConfigureCustomProxy(cfg.AICustomProxyURL) != nil {
+				logger.Error("ai_custom_invalid_configuration")
+				os.Exit(1)
+			}
+			aiPolicies.ConfigureCustomProviders(customPolicy)
+		}
 		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
 		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aiCredentials.Authorize)
 		if engineErr != nil {

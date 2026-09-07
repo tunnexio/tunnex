@@ -171,6 +171,17 @@ aiGateway:
   enabled: false
   # Explicit transition to database-owned providers; preserve volumes and encryption key.
   providerManagementEnabled: false
+  customProviders:
+    enabled: false
+    # Nonsecret installation policy. Required protected service names are added by template.
+    endpoints: [] # [{name: Private inference, url: https://inference.example, allowed_cidrs: [10.20.0.0/24]}]
+    protectedHosts: []
+    deniedCIDRs: []
+    existingSecret: ""
+    secretKeys:
+      proxyURL: proxy-url # http://percent-encoded-user:password@api:8190
+      proxyUsername: proxy-username
+      proxyPassword: proxy-password
   # Existing Secret only; never put secret values in Helm values/history.
   existingSecret: ""
   secretKeys:

@@ -75,7 +75,7 @@ func TestProviderEngineNativeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err = engine.EnsureProvider(ctx, "openrouter"); err != nil {
+	if err = engine.EnsureProvider(ctx, "openrouter", ""); err != nil {
 		t.Fatal(err)
 	}
 	spec := ProviderKeySpec{Provider: "openrouter", ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openrouter/openai/gpt-4o-mini"}, Enabled: true}
@@ -184,10 +184,10 @@ func TestProviderEngineNativeLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = engine.EnsureProvider(ctx, "openrouter"); err != nil {
+	if err = engine.EnsureProvider(ctx, "openrouter", ""); err != nil {
 		t.Fatal("fresh empty-provider initialization failed", err)
 	}
-	if err = engine.EnsureProvider(ctx, "openrouter"); err != nil {
+	if err = engine.EnsureProvider(ctx, "openrouter", ""); err != nil {
 		t.Fatal("provider initialization was not idempotent", err)
 	}
 	var keys struct {

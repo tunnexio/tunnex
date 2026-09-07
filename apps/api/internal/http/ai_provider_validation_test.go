@@ -50,13 +50,16 @@ func TestAIProviderSchemasAcceptSupportedProvidersOnly(t *testing.T) {
 		return &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: "owner"}}
 	}})
 	base := "/api/v1/organizations/" + org.String() + "/ai-gateway/"
-	for _, provider := range []string{"openai", "anthropic", "gemini", "openrouter", "unsupported"} {
+	for _, provider := range []string{"openai", "anthropic", "gemini", "openrouter", "groq", "mistral", "cerebras", "xai", "deepseek", "custom", "unsupported"} {
 		t.Run(provider, func(t *testing.T) {
 			want := http.StatusServiceUnavailable // Valid input reaches the absent engine.
 			if provider == "unsupported" {
 				want = http.StatusBadRequest
 			}
 			body := `{"provider":"` + provider + `","name":"fixture","models":["` + provider + `/exact-model"],"enabled":true,"api_key":"synthetic-only-key"}`
+			if provider == "custom" {
+				body = `{"provider":"custom","endpoint_url":"http://inference.internal:8080","name":"fixture","models":["exact-model"],"enabled":true,"api_key":"synthetic-only-key"}`
+			}
 			for _, request := range []struct{ method, path, body string }{
 				{"POST", base + "providers", body},
 				{"GET", base + "models?provider=" + provider, ""},

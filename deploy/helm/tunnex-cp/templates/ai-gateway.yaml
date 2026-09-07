@@ -98,6 +98,13 @@ spec:
                   optional: true
                   {{- end }}
             {{- end }}
+            {{- if .Values.aiGateway.customProviders.enabled }}
+            - name: TUNNEX_AI_CUSTOM_PROXY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.aiGateway.customProviders.existingSecret }}
+                  key: {{ .Values.aiGateway.customProviders.secretKeys.proxyURL | quote }}
+            {{- end }}
           volumeMounts:
             - {name: config-state, mountPath: /app/data}
             - {name: log-state, mountPath: /app/data/logs}
@@ -171,6 +178,15 @@ spec:
       ports:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
+    {{- if .Values.aiGateway.customProviders.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: api
+      ports:
+        - {protocol: TCP, port: 8190}
+    {{- end }}
     # Standard NetworkPolicy cannot enforce provider FQDNs. Permit public HTTPS
     # only, excluding private/link-local/loopback/multicast address spaces.
     - to:

@@ -469,6 +469,7 @@ type AiProviderConnection struct {
 	DeletedAt       pgtype.Timestamptz `json:"deleted_at"`
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
+	EndpointUrl     *string            `json:"endpoint_url"`
 }
 
 type AiProviderLegacyKey struct {

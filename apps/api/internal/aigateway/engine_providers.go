@@ -16,7 +16,7 @@ import (
 // ProviderEngine contains no secret-bearing result types. Secrets are transient
 // write-only arguments; errors must never include native payloads or messages.
 type ProviderEngine interface {
-	EnsureProvider(context.Context, string) error
+	EnsureProvider(context.Context, string, string) error
 	PutProviderKey(context.Context, ProviderKeySpec, *string) error
 	VerifyProviderKey(context.Context, ProviderKeySpec) error
 	TestProviderKey(context.Context, ProviderKeySpec) (bool, error)
@@ -25,6 +25,7 @@ type ProviderEngine interface {
 }
 type ProviderKeySpec struct {
 	Provider string
+	BaseURL  string
 	ID       string
 	Revision int64
 	Models   []string
@@ -57,7 +58,7 @@ func nativeProviderSpec(s ProviderKeySpec) (string, []string, error) {
 	if err != nil || id == uuid.Nil || s.ID != "tnx-managed-"+id.String() || s.Revision < 1 {
 		return "", nil, errEngineScope
 	}
-	if !supportedProvider(s.Provider) {
+	if !nativeSupportedProvider(s.Provider) {
 		return "", nil, errEngineScope
 	}
 	models, ok := canonicalModels(s.Models, false)
@@ -102,24 +103,34 @@ func (e *Engine) providerKey(ctx context.Context, provider, id string) (provider
 
 // EnsureProvider must be called under the CP's shared provider-init lock. Existing
 // provider configuration is never replaced, so unrelated keys remain untouched.
-func (e *Engine) EnsureProvider(ctx context.Context, provider string) error {
-	if !supportedProvider(provider) {
+func (e *Engine) EnsureProvider(ctx context.Context, provider, baseURL string) error {
+	if !nativeSupportedProvider(provider) {
 		return errEngineScope
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var read struct {
-		Name    string `json:"name"`
+		Base    json.RawMessage `json:"custom_provider_config"`
+		Proxy   json.RawMessage `json:"proxy_config"`
+		Name    string          `json:"name"`
 		Network struct {
-			Retries *int `json:"max_retries"`
+			Retries  *int              `json:"max_retries"`
+			URL      string            `json:"base_url"`
+			Private  bool              `json:"allow_private_network"`
+			Insecure bool              `json:"insecure_skip_verify"`
+			Headers  map[string]string `json:"extra_headers"`
 		} `json:"network_config"`
+	}
+	payload, valid := e.providerConfigPayload(provider, baseURL)
+	if !valid {
+		return errEngineScope
 	}
 	status, err := e.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &read)
 	if err != nil {
 		if status != 404 {
 			return errEngine
 		}
-		_, err = e.request(ctx, http.MethodPost, "/api/providers", nil, map[string]any{"provider": provider, "keys": []any{}, "network_config": map[string]any{"max_retries": 0}}, nil)
+		_, err = e.request(ctx, http.MethodPost, "/api/providers", nil, payload, nil)
 		if err != nil {
 			return errEngine
 		}
@@ -128,6 +139,9 @@ func (e *Engine) EnsureProvider(ctx context.Context, provider string) error {
 		}
 	}
 	if read.Name != provider || read.Network.Retries == nil || *read.Network.Retries != 0 {
+		return errEngineScope
+	}
+	if strings.HasPrefix(provider, "custom-") && (!e.customConfigExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy)) {
 		return errEngineScope
 	}
 	return nil
@@ -179,6 +193,11 @@ func (e *Engine) PutProviderKey(ctx context.Context, s ProviderKeySpec, secret *
 	return e.VerifyProviderKey(ctx, s)
 }
 func (e *Engine) VerifyProviderKey(ctx context.Context, s ProviderKeySpec) error {
+	if strings.HasPrefix(s.Provider, "custom-") {
+		if err := e.EnsureProvider(ctx, s.Provider, s.BaseURL); err != nil {
+			return err
+		}
+	}
 	if _, _, err := nativeProviderSpec(s); err != nil {
 		return err
 	}
@@ -248,7 +267,7 @@ func (e *Engine) DeleteProviderKey(ctx context.Context, s ProviderKeySpec) error
 }
 func (e *Engine) ProviderModels(ctx context.Context, provider, query string, limit, offset int) (ProviderModelPage, error) {
 	out := ProviderModelPage{Models: []ProviderModel{}}
-	if !supportedProvider(provider) || len(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
+	if !nativeSupportedProvider(provider) || len(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
 		return out, errEngineScope
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

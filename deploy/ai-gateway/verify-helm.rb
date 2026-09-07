@@ -67,3 +67,34 @@ raise 'fresh managed install requires legacy provider key' unless provider_ref.d
 raise 'legacy references not preserved' unless provider_ref.dig('valueFrom','secretKeyRef','key') == 'openrouter-api-key'
 raise 'legacy management unexpectedly on' unless api_env.any? { |e| e['name'] == 'TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED' && e['value'] == 'false' }
 puts 'PASS: managed Helm opt-in removes provider stanza, preserves optional legacy key references and persistent state'
+
+require 'tempfile'
+Tempfile.create(['ai-custom', '.json']) do |file|
+  file.write(JSON.generate({'aiGateway'=>{'enabled'=>true, 'existingSecret'=>'ai-fixture', 'providerManagementEnabled'=>true, 'customProviders'=>{'enabled'=>true, 'existingSecret'=>'proxy-fixture', 'endpoints'=>[{'name'=>'Private fixture','url'=>'https://inference.internal','allowed_cidrs'=>['10.20.0.0/24']}], 'protectedHosts'=>['control.internal'], 'deniedCIDRs'=>['10.21.0.0/24']}}})); file.flush
+  custom = render.call(['-f',file.path])
+  api = custom.find { |d| d['kind']=='Deployment' && d.dig('metadata','name')=='api' }
+  containers = api.dig('spec','template','spec','containers')
+  proxy = containers.find { |c| c['name']=='ai-egress' }
+  raise 'missing private sidecar' unless proxy && proxy['image']==containers[0]['image'] && proxy['command']==['/usr/local/bin/tunnex-ai-egress']
+  raise 'proxy received CP secrets' unless proxy['env'].map { |e| e['name'] }.sort==%w[TUNNEX_AI_CUSTOM_ENDPOINTS_FILE TUNNEX_AI_CUSTOM_PROXY_LISTEN TUNNEX_AI_CUSTOM_PROXY_PASSWORD TUNNEX_AI_CUSTOM_PROXY_USERNAME]
+  raise 'proxy received secret mounts' unless proxy['volumeMounts']==[{'name'=>'ai-custom-policy','mountPath'=>'/etc/tunnex/ai-custom','readOnly'=>true}]
+  engine = custom.find { |d| d['kind']=='Deployment' && d.dig('metadata','name')=='ai-contract-tunnex-cp-ai' }
+  [containers[0],engine.dig('spec','template','spec','containers')[0]].each do |c|
+    ref=c['env'].find { |e| e['name']=='TUNNEX_AI_CUSTOM_PROXY_URL' }
+    raise 'proxy URL not shared secret ref' unless ref.dig('valueFrom','secretKeyRef')=={'name'=>'proxy-fixture','key'=>'proxy-url'}
+  end
+  cfg=custom.find { |d| d['kind']=='ConfigMap' && d.dig('metadata','name')=='ai-contract-tunnex-cp-ai-custom' }
+  policy=JSON.parse(cfg['data']['policy.json'])
+  raise 'mandatory protected services missing' unless %w[api bifrost control.internal].all? { |h| policy['protected_hosts'].include?(h) }
+  svc=custom.find { |d| d['kind']=='Service' && d.dig('metadata','name')=='api' }
+  raise 'proxy service not private' unless svc.dig('spec','type')=='ClusterIP' && svc.dig('spec','ports').any? { |p| p['port']==8190 && !p['nodePort'] }
+  net=custom.find { |d| d['kind']=='NetworkPolicy' }
+  proxy_rule=net.dig('spec','egress').find { |r| r['ports']==[{'protocol'=>'TCP','port'=>8190}] }
+  raise 'proxy egress broadened' unless proxy_rule['to']==[{'podSelector'=>{'matchLabels'=>{'app.kubernetes.io/instance'=>'ai-contract','app.kubernetes.io/component'=>'api'}}}]
+end
+[['aiGateway.enabled=false'], ['aiGateway.enabled=true','aiGateway.providerManagementEnabled=false'], ['aiGateway.enabled=true','aiGateway.providerManagementEnabled=true']].each do |settings|
+  flags=settings.flat_map { |s| ['--set',s] }
+  _, _, status=Open3.capture3('helm','template','ai-contract',chart,*args,'--set','aiGateway.customProviders.enabled=true','--set','aiGateway.existingSecret=ai-fixture',*flags)
+  raise 'incomplete custom setup accepted' if status.success?
+end
+puts 'PASS: custom opt-in sidecar isolation, shared secret refs, protected policy, private service and scoped egress; incomplete setup refused'

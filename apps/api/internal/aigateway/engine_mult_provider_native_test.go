@@ -20,6 +20,12 @@ import (
 
 // Only local provider protocol fixtures are used; this is not a paid-provider smoke.
 func TestEngineNativeCoreFourScopes(t *testing.T) {
+	nativeProviderScopeQualification(t, []string{"openai", "anthropic", "gemini", "openrouter"}, []string{"gpt-4o-mini", "claude-sonnet-4-20250514", "gemini-2.0-flash", "openai/gpt-4o-mini"}, false)
+}
+func TestEngineNativeExpandedProviders(t *testing.T) {
+	nativeProviderScopeQualification(t, []string{"groq", "mistral", "cerebras", "xai", "deepseek"}, []string{"llama-3.3-70b-versatile", "mistral-small-latest", "llama3.1-8b", "grok-3-mini", "deepseek-chat"}, true)
+}
+func nativeProviderScopeQualification(t *testing.T, names, models []string, strictAuth bool) {
 	binary := os.Getenv("AI0_BIFROST_BINARY")
 	if binary == "" {
 		t.Skip("explicit pinned native binary required")
@@ -32,14 +38,34 @@ func TestEngineNativeCoreFourScopes(t *testing.T) {
 	if hex.EncodeToString(sum[:]) != binarySHA256 {
 		t.Fatal("pin mismatch")
 	}
-	names := []string{"openai", "anthropic", "gemini", "openrouter"}
-	models := []string{"gpt-4o-mini", "claude-sonnet-4-20250514", "gemini-2.0-flash", "openai/gpt-4o-mini"}
 	providers := map[string]any{}
-	var arrivals [4]atomic.Int32
+	arrivals := make([]atomic.Int32, len(names))
 	for i, name := range names {
 		i, name := i, name
 		fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+			if strictAuth {
+				prefix := ""
+				if name == "groq" {
+					prefix = "/openai"
+				}
+				path := prefix + "/v1/chat/completions"
+				if r.Method == "GET" {
+					path = prefix + "/v1/models"
+				}
+				if name == "deepseek" {
+					path = "/chat/completions"
+					if r.Method == "GET" {
+						path = "/models"
+					}
+				}
+				if r.URL.Path != path {
+					t.Errorf("%s unexpected native route %s", name, r.URL.Path)
+					w.WriteHeader(404)
+					return
+				}
+			}
+
 			credential := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if name == "anthropic" {
 				credential = r.Header.Get("x-api-key")
@@ -49,7 +75,7 @@ func TestEngineNativeCoreFourScopes(t *testing.T) {
 			}
 			// Unauthenticated catalog fetches are allowed by some native adapters, but
 			// authenticated refresh and every inference must carry the actual key.
-			if credential != "fixture-"+name && (credential != "" || r.Method != "GET") {
+			if credential != "fixture-"+name && (strictAuth || credential != "" || r.Method != "GET") {
 				w.WriteHeader(401)
 				io.WriteString(w, `{"error":{"message":"fixture refused","type":"authentication_error","code":401}}`)
 				return
@@ -96,7 +122,11 @@ func TestEngineNativeCoreFourScopes(t *testing.T) {
 			}
 		}))
 		defer fixture.Close()
-		providers[name] = map[string]any{"network_config": map[string]any{"base_url": fixture.URL, "allow_private_network": true, "max_retries": 0}, "keys": []any{}}
+		fixtureBase := fixture.URL
+		if name == "groq" {
+			fixtureBase += "/openai"
+		}
+		providers[name] = map[string]any{"network_config": map[string]any{"base_url": fixtureBase, "allow_private_network": true, "max_retries": 0}, "keys": []any{}}
 	}
 	dir := t.TempDir()
 	write := func(name string, v any) {
@@ -122,7 +152,7 @@ func TestEngineNativeCoreFourScopes(t *testing.T) {
 	ctx := context.Background()
 	scopes := []EngineProviderScope{}
 	for i, name := range names {
-		if err = engine.EnsureProvider(ctx, name); err != nil {
+		if err = engine.EnsureProvider(ctx, name, ""); err != nil {
 			t.Fatalf("%s init: %v", name, err)
 		}
 		spec := ProviderKeySpec{Provider: name, ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{name + "/" + models[i]}, Enabled: true}
@@ -181,7 +211,7 @@ func TestEngineNativeCoreFourScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, pc := range readback.ProviderConfigs {
-		if pc.Provider == "openai" && pc.ID != originalConfigID {
+		if pc.Provider == names[0] && pc.ID != originalConfigID {
 			t.Fatal("retained provider config ID changed")
 		}
 	}
@@ -265,5 +295,5 @@ func TestEngineNativeCoreFourScopes(t *testing.T) {
 	}
 	infer(0, true)
 	infer(2, false)
-	t.Log("core-four authenticated native protocols and refresh refusal passed; mixed-provider scope add/remove/restart preserved virtual-key identity; no external requests or spend")
+	t.Logf("%d native provider protocols (JSON + SSE), catalog and refresh refusal passed; scope add/remove/restart preserved identity; synthetic fixtures only", len(names))
 }

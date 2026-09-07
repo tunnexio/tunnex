@@ -67,3 +67,26 @@ assert not managed_engine.get("ports")
 assert managed_engine["environment"]["OPENROUTER_API_KEY"] == ""
 assert "TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED" not in config["services"]["api"]["environment"]
 print("PASS: explicit self-service overlay uses database-owned provider configuration, preserves volumes and does not require a preinstalled provider key")
+
+custom_env = dict(managed_env)
+custom_env.update({
+    "TUNNEX_AI_CUSTOM_ENDPOINTS_FILE": "/tmp/static-only-policy.json",
+    "TUNNEX_AI_CUSTOM_PROXY_URL": "http://fixture:fixture@ai-egress:8190",
+    "TUNNEX_AI_CUSTOM_PROXY_USERNAME": "fixture",
+    "TUNNEX_AI_CUSTOM_PROXY_PASSWORD": "fixture",
+})
+custom_command = managed_command[:-5] + ["-f", str(root / "deploy/ai-gateway/compose-custom.yml")] + managed_command[-5:]
+custom = json.loads(subprocess.check_output(custom_command, cwd=root, env=custom_env, text=True))
+proxy = custom["services"]["ai-egress"]
+assert not proxy.get("ports") and set(proxy["networks"]) == {"ai_engine"}
+assert proxy["entrypoint"] == ["/usr/local/bin/tunnex-ai-egress"]
+assert proxy["healthcheck"]["disable"] and proxy["read_only"]
+assert set(proxy["environment"]) == {"TUNNEX_AI_CUSTOM_ENDPOINTS_FILE", "TUNNEX_AI_CUSTOM_PROXY_LISTEN", "TUNNEX_AI_CUSTOM_PROXY_USERNAME", "TUNNEX_AI_CUSTOM_PROXY_PASSWORD"}
+assert len(proxy["volumes"]) == 1 and proxy["volumes"][0]["read_only"]
+assert proxy["volumes"][0]["target"] == "/etc/tunnex/ai-custom-policy.json"
+assert proxy["build"]["dockerfile"] == custom["services"]["api"]["build"]["dockerfile"]
+for name in ("api", "bifrost"):
+    assert custom["services"][name]["environment"]["TUNNEX_AI_CUSTOM_PROXY_URL"] == custom_env["TUNNEX_AI_CUSTOM_PROXY_URL"]
+api_policy = next(v for v in custom["services"]["api"]["volumes"] if v["target"] == "/etc/tunnex/ai-custom-policy.json")
+assert api_policy["read_only"] and api_policy["source"] == proxy["volumes"][0]["source"]
+print("PASS: custom Compose is private/opt-in; isolated proxy env/mount; same API build; shared CP/native proxy URL; inherited API healthcheck disabled")

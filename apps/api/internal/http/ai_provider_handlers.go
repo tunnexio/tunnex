@@ -32,7 +32,7 @@ func (s apiServer) aiProviderContext(ctx context.Context, org uuid.UUID, mutate 
 	return ctx, nil
 }
 func toAIProvider(p aigateway.ProviderConnection) api.AIProviderConnection {
-	return api.AIProviderConnection{Id: p.ID, KeyId: p.KeyID, Provider: api.AIProviderConnectionProvider(p.Provider), Name: p.Name, Models: p.Models, Enabled: p.Enabled, Revision: p.Revision, AppliedRevision: p.AppliedRevision, Status: api.AIProviderConnectionStatus(p.Status), LastTestStatus: api.AIProviderConnectionLastTestStatus(p.LastTestStatus), LastTestAt: p.LastTestAt}
+	return api.AIProviderConnection{Id: p.ID, KeyId: p.KeyID, EndpointUrl: p.EndpointURL, Provider: api.AIProviderConnectionProvider(p.Provider), Name: p.Name, Models: p.Models, Enabled: p.Enabled, Revision: p.Revision, AppliedRevision: p.AppliedRevision, Status: api.AIProviderConnectionStatus(p.Status), LastTestStatus: api.AIProviderConnectionLastTestStatus(p.LastTestStatus), LastTestAt: p.LastTestAt}
 }
 func (s apiServer) ListAIProviders(ctx context.Context, r api.ListAIProvidersRequestObject) (api.ListAIProvidersResponseObject, error) {
 	ctx, err := s.aiProviderContext(ctx, r.OrgId, false)
@@ -47,7 +47,12 @@ func (s apiServer) ListAIProviders(ctx context.Context, r api.ListAIProvidersReq
 	for _, d := range aigateway.ProviderDefinitions() {
 		definitions = append(definitions, api.AIProviderDefinition{Id: api.AIProviderDefinitionId(d.ID), Name: d.Name, CredentialLabel: d.CredentialLabel, ModelPlaceholder: d.ModelPlaceholder})
 	}
-	out := api.AIProviderList{Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
+	customAvailable := s.aiPolicies.CustomAvailable()
+	customEndpoints := []api.AICustomEndpoint{}
+	for _, endpoint := range s.aiPolicies.ApprovedCustomEndpoints() {
+		customEndpoints = append(customEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
+	}
+	out := api.AIProviderList{CustomAvailable: &customAvailable, CustomEndpoints: &customEndpoints, Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
 	for _, p := range items {
 		out.Items = append(out.Items, toAIProvider(p))
 	}
@@ -63,7 +68,7 @@ func (s apiServer) CreateAIProvider(ctx context.Context, r api.CreateAIProviderR
 	}
 	b := r.Body
 	actor, _ := aiManagementActor(ctx)
-	p, err := s.aiPolicies.CreateProvider(ctx, r.OrgId, actor, aigateway.ProviderInput{Provider: string(b.Provider), Name: b.Name, Models: b.Models, Enabled: b.Enabled, Secret: b.ApiKey})
+	p, err := s.aiPolicies.CreateProvider(ctx, r.OrgId, actor, aigateway.ProviderInput{Provider: string(b.Provider), Name: b.Name, Models: b.Models, Enabled: b.Enabled, Secret: b.ApiKey, EndpointURL: b.EndpointUrl})
 	b.ApiKey = nil
 	if err != nil {
 		return nil, err
@@ -80,7 +85,7 @@ func (s apiServer) UpdateAIProvider(ctx context.Context, r api.UpdateAIProviderR
 	}
 	b := r.Body
 	actor, _ := aiManagementActor(ctx)
-	p, err := s.aiPolicies.UpdateProvider(ctx, r.OrgId, actor, r.ConnectionId, aigateway.ProviderInput{Provider: string(b.Provider), Name: b.Name, Models: b.Models, Enabled: b.Enabled, Secret: b.ApiKey}, b.ExpectedRevision)
+	p, err := s.aiPolicies.UpdateProvider(ctx, r.OrgId, actor, r.ConnectionId, aigateway.ProviderInput{Provider: string(b.Provider), Name: b.Name, Models: b.Models, Enabled: b.Enabled, Secret: b.ApiKey, EndpointURL: b.EndpointUrl}, b.ExpectedRevision)
 	b.ApiKey = nil
 	if err != nil {
 		return nil, err
@@ -136,7 +141,18 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 	if r.Params.Provider != nil {
 		provider = string(*r.Params.Provider)
 	}
-	p, err := s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
+	var p aigateway.ProviderModelPage
+	if provider == "custom" {
+		if r.Params.ConnectionId == nil {
+			return nil, apierr.BadRequest("invalid_ai_provider", "Select a custom connection before browsing its models")
+		}
+		p, err = s.aiPolicies.CustomProviderModels(ctx, r.OrgId, *r.Params.ConnectionId, query, limit, offset)
+	} else {
+		if r.Params.ConnectionId != nil {
+			return nil, apierr.BadRequest("invalid_ai_provider", "Connection-scoped catalog requires a custom provider")
+		}
+		p, err = s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
+	}
 	if err != nil {
 		return nil, err
 	}

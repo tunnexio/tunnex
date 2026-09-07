@@ -1,0 +1,33 @@
+# Apply after compose.yml and compose-managed.yml; all features stay opt-in.
+services:
+  api:
+    environment:
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
+      TUNNEX_AI_CUSTOM_PROXY_URL: ${TUNNEX_AI_CUSTOM_PROXY_URL:?Set authenticated http://user:password@ai-egress:8190 proxy URL}
+    volumes:
+      - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?Set absolute approved policy file path}:/etc/tunnex/ai-custom-policy.json:ro
+  bifrost:
+    environment:
+      TUNNEX_AI_CUSTOM_PROXY_URL: ${TUNNEX_AI_CUSTOM_PROXY_URL:?Set authenticated private proxy URL}
+  ai-egress:
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+      args:
+        TUNNEX_BUILD_TAGS: ${TUNNEX_BUILD_TAGS:-}
+    profiles: [ai]
+    entrypoint: [/usr/local/bin/tunnex-ai-egress]
+    restart: unless-stopped
+    environment:
+      TUNNEX_AI_CUSTOM_ENDPOINTS_FILE: /etc/tunnex/ai-custom-policy.json
+      TUNNEX_AI_CUSTOM_PROXY_LISTEN: ":8190"
+      TUNNEX_AI_CUSTOM_PROXY_USERNAME: ${TUNNEX_AI_CUSTOM_PROXY_USERNAME:?Set private proxy username}
+      TUNNEX_AI_CUSTOM_PROXY_PASSWORD: ${TUNNEX_AI_CUSTOM_PROXY_PASSWORD:?Set private proxy password}
+    volumes:
+      - ${TUNNEX_AI_CUSTOM_ENDPOINTS_FILE:?Set absolute approved policy file path}:/etc/tunnex/ai-custom-policy.json:ro
+    networks: [ai_engine]
+    healthcheck:
+      disable: true # API-image HTTP health endpoint does not exist on CONNECT proxy.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
