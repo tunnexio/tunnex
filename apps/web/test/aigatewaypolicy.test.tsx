@@ -125,6 +125,22 @@ describe("AI team and agent policy workspace", () => {
     expect((screen.getByLabelText("Agent") as HTMLSelectElement).value).toBe("");
     expect(screen.queryByRole("button", { name: "Save agent access" })).toBeNull();
   });
+  it.each([
+    [1e-12, "0.000000000001"],
+    [1e-20, "0.00000000000000000001"],
+    [25.5, "25.5"],
+  ])("shows threshold %s as decimal without changing its saved value", async (amount, displayed) => {
+    mocks.GET.mockImplementation((path: string) => path.endsWith("/teams") ? Promise.resolve({ data: [{ ...team, daily_cost_limit: amount }] }) : get(path));
+    render(show());
+    await screen.findByLabelText("Policy team");
+    fireEvent.change(screen.getByLabelText("Policy team"), { target: { value: "group-a" } });
+    const input = screen.getByLabelText("Daily USD soft threshold (optional)") as HTMLInputElement;
+    expect(input.value).toBe(displayed);
+    expect(input.validity.rangeUnderflow).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Save team policy" }));
+    await waitFor(() => expect(mocks.PUT).toHaveBeenCalled());
+    expect(mocks.PUT.mock.calls[0][1].body.daily_cost_limit).toBe(amount);
+  });
   it("sends exact team models, key IDs and expected revision with a soft threshold", async () => {
     render(show());
     await screen.findByLabelText("Policy team");

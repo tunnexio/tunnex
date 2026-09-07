@@ -67,3 +67,16 @@ independent Tunnex implementation with no added UI dependency or copied source.
 
 User visual approval and exact-head remote CI remain pending. No push, merge,
 release, external infrastructure action or provider spending was performed.
+
+## Threshold display correction
+
+The retained installed-walk fixture deliberately sets its first team's daily
+threshold to `0.000000000001` to prove priced refusal. JavaScript `toString()`
+rendered this as `1e-12`. The configuration input now uses ungrouped decimal
+formatting with sufficient significant digits and matches the API's positive
+amount validation. Saving preserves the numerical value; no budget was changed.
+Regression: tiny amounts failed before the fix; all 11 policy tests and TypeScript
+pass afterward. Live form reads `0.000000000001` without range-underflow.
+Provider/key onboarding remains private engine configuration, as described in
+`AI-gateway-setup.md`; the UI references key IDs and does not yet add provider
+secrets. This is distinct from the implemented authenticated inference proxy.

@@ -37,6 +37,10 @@ const lines = (v: string) => [
 ];
 const area =
   "w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-ink-heading";
+const thresholdDecimal = new Intl.NumberFormat("en-US", {
+  useGrouping: false,
+  maximumSignificantDigits: 21,
+});
 export default function AgentsAIGateway() {
   const { org } = useOrg();
   const [view, setView] = useState<"usage" | "configuration">("usage");
@@ -337,7 +341,7 @@ function TeamEditor({
 }) {
   const [models, setModels] = useState(team?.models.join("\n") ?? ""),
     [keys, setKeys] = useState(team?.key_ids.join("\n") ?? ""),
-    [limit, setLimit] = useState(team?.daily_cost_limit?.toString() ?? "");
+    [limit, setLimit] = useState(team?.daily_cost_limit == null ? "" : thresholdDecimal.format(team.daily_cost_limit));
   const valid =
     lines(models).length > 0 &&
     lines(keys).length > 0 &&
@@ -369,7 +373,7 @@ function TeamEditor({
       <Field label="Daily USD soft threshold (optional)">
         <Input
           type="number"
-          min="0.01"
+          min="0"
           max="100000"
           step="any"
           value={limit}
