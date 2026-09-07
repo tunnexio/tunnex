@@ -42,3 +42,13 @@ Status: implementation requested by user on 2026-09-07; local visual review pend
 Scoped native adapter refusal tests, tenant/attribution integration tests, both
 API editions, generated drift check, web filter/stale-result/error/chart tests,
 and actual local CP browser inspection. Visual approval remains pending.
+
+## Configuration visual refinement
+
+User additionally requested the configuration view follow the LiteLLM-inspired
+theme on 2026-09-07. Apply the usage dashboard's visual language to organization
+status, team policy and agent access: compact selectors, clear section/status
+hierarchy, balanced responsive forms and consistent controls. This is a scoped
+presentation change; preserve API payloads, optimistic revisions, permissions,
+default-OFF behavior, membership checks and every existing action. Shared settings
+outside this view retain their presentation. Local browser review follows.
