@@ -81,6 +81,13 @@ needed to develop the stronger deterministic assertions.
 
 ## Handoff
 
+Implementation/evidence content tip: `5509c6ab`; decision paper: `70741779`.
+Final local validation: complete current zero-spend suite with pinned native
+binary passed under `go test -race -count=1 ./...` (9.355s); `go vet ./...` passed.
+Paid smoke skipped in that final run; its earlier two-request run passed once.
+Known proof gaps remain open despite these green test results. Full repository
+gates and remote CI were not run; no push, PR, merge or release performed.
+
 Next action: obtain disposition of the four held findings (recommend accepting
 all fixes), implement their regression proofs, and re-review the changed scope.
 Then wire the minimal qualification adapter to a real enrolled Tunnex agent
