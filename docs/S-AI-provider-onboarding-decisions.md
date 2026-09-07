@@ -187,3 +187,16 @@ Reference: official LiteLLM revision 168a0055a244acdcf97c330c52e085ab40b1424c,
 and model table inform this workflow. Implement with Tunnex components; no source
 copy or new LiteLLM runtime dependency. UI source is MIT; enterprise source is
 outside the reference scope.
+
+## Provider selector refinement (2026-09-07)
+
+User-dispositioned: replace provider cards with a searchable, keyboard-accessible
+brand-logo dropdown. Use real provider SVG artwork with attribution, existing
+popover/combobox primitives and theme tokens. New forms begin with no provider
+selected instead of an implicit OpenRouter choice. Credential caption is the
+standard “API key”; selected-provider context is shown in the dropdown. Preserve
+immutable provider on edit and secret/model/catalog clearing when provider changes.
+Custom-provider support is explicitly requested; its separate origin and routing
+contract is being verified and the public-HTTPS boundary has been surfaced for
+user disposition. Do not ship a custom option that silently routes through an
+existing provider or accepts unvalidated destinations.
