@@ -127,3 +127,13 @@ References checked 2026-09-07:
   thresholds can overshoot too; broader identity/window limits remain a gap.
 - [NetBird connectivity](https://docs.netbird.io/about-netbird/understanding-nat-and-connectivity):
   transport lifecycle is separate NAT work, not proven by this AI slice.
+
+## User-requested UI follow-up (2026-09-07)
+
+Locked: Add/edit provider opens a right-side modal drawer instead of an inline
+form below the inventory. Reuse the existing shared Modal focus/dismiss contract,
+keep save/cancel in its fixed footer, and use existing theme tokens and Badge
+status tones. API/state/security behavior is unchanged. Verify portal placement,
+Escape/cancel clearing unsent keys, focus return, existing form submission and
+actual local rendering. The user requested this visual refinement; Docker capacity
+expansion remains unapproved and outside this change.
