@@ -200,3 +200,65 @@ Custom-provider support is explicitly requested; its separate origin and routing
 contract is being verified and the public-HTTPS boundary has been surfaced for
 user disposition. Do not ship a custom option that silently routes through an
 existing provider or accepts unvalidated destinations.
+
+## Custom provider contract — approved 2026-09-07
+
+User explicitly approved private/internal endpoints and the recommended extra
+mandatory egress proxy plus installation-controlled host/IP allowlist. Locked:
+
+1. Custom uses the pinned native OpenAI-compatible adapter with a unique provider
+   name `custom-<connection UUID>`. Stored/public provider is `custom`. Accept raw
+   upstream model names in custom connection writes; return canonical
+   `custom-UUID/model` names. Never let a caller choose another connection's native
+   namespace. Provider and normalized endpoint_url are immutable. Limit native
+   scopes to eight, matching the existing selected-key bound.
+2. Installation file `TUNNEX_AI_CUSTOM_ENDPOINTS_FILE` supplies approved endpoints
+   and per-endpoint address CIDRs. No API/UI can mutate that allowlist. The API
+   exposes approved endpoint URLs to authorized provider administrators. Only an
+   exact normalized origin/base path match may be registered; no URL credentials,
+   query, fragment, ambiguous encoded path, or /v1 duplication. Both HTTP and HTTPS
+   are supported through the native custom adapter and mandatory CONNECT tunnel.
+   Private HTTP is explicit operator approval; TLS verification stays on for HTTPS.
+3. A dedicated private egress process validates proxy authentication, exact target
+   host/port, every resolved destination address and configured allowed CIDRs on
+   each dial. Dial the validated IP directly, never resolve it a second time.
+   Mixed allowed/forbidden DNS answers refuse. Always block loopback, unspecified,
+   multicast, link-local/cloud metadata, and configured control-plane/protected
+   hosts and CIDRs. IPv4-mapped IPv6 must not bypass checks. CONNECT only, bounded
+   headers/concurrency/dial/connection lifetime; no arbitrary forwarding or logs
+   containing keys, bodies or proxy credentials. No TLS interception.
+4. Shared egress policy file schema: endpoints array of {name, url, allowed_cidrs},
+   protected_hosts array, denied_cidrs array. All are operator-controlled. Custom
+   availability requires valid nonempty rules plus an authenticated private proxy
+   URL `TUNNEX_AI_CUSTOM_PROXY_URL`. Recheck endpoint approval on every admission
+   and reconciliation. Proxy policy changes require restarting the custom egress
+   process and CP with the same file; drain/disable custom assignments before
+   removing an endpoint. Standard providers remain compatible/default behavior.
+5. Native custom provider readback must match immutable base URL, exact configured
+   proxy and operation allowlist (list_models, chat_completion,
+   chat_completion_stream). Initialize only when absent; do not overwrite global
+   provider config. Targeted key CRUD/rotation/delete remains existing mechanism;
+   retain empty custom provider config and CP ownership tombstone on key deletion.
+   Verify missing/dead proxy fails without direct upstream arrival. Existing native
+   localhost exception must never substitute for proxy address enforcement.
+6. API inventory adds custom_available and custom_endpoints; custom definition is
+   discoverable but unavailable until setup is valid. Create/update accept optional
+   endpoint_url, required for custom. Connection response exposes endpoint_url for
+   custom only. Custom model catalog requires same-org connection_id; pre-create
+   custom model entry is manual. Exact unknown custom prices continue to refuse
+   monetary policies. No price or hard-cap claim.
+7. Migration 0143 adds endpoint_url and the custom provider value; no secret or
+   existing model rewrite. Down refuses retained custom connections/tombstones.
+   Rollback preserves ownership and encrypted native state and disables custom
+   assignments before reverting CP/egress configuration.
+8. Deploy the egress executable with the existing API image as an opt-in private
+   service/sidecar; proxy credentials use existing secret delivery mechanisms.
+   No host port by default. Default custom support OFF; four standard providers
+   and previously approved organization opt-in remain unchanged.
+
+Prove literal and DNS-rebinding refusals (metadata/control-plane/loopback), explicit
+private-address allowance, failed-proxy no-direct-fallback, custom native CRUD and
+routing, foreign namespace/endpoint refusal, immutable endpoint, approval removal,
+rotation, catalog and model UI. Native and egress fixtures are zero-paid-call
+qualification; actual customer private endpoint trust/certificate checks remain
+installation-specific.
