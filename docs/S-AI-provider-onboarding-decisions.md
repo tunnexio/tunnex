@@ -303,3 +303,15 @@ as a native draft connection. LiteLLM reference uses response success semantics,
 not HTTP status alone, and keeps Test Connect separate from Add Model. The user
 requested a successful check before saving; changes to tested credentials,
 provider or endpoint invalidate the UI result.
+
+## Screenshot-guided model form — 2026-09-07
+
+Use the supplied LiteLLM screenshots to refine the already authorized model
+configuration flow within Tunnex's drawer/theme: provider selector, searchable
+model selection with explicit manual exact-name entry, reusable existing
+connection or a new credential, clear endpoint information, then actions. Reuse
+existing APIs and ownership rules; do not imply that screenshot-only aliases,
+wildcard grants, embeddings/audio/video modes or team-BYOK semantics have been
+implemented. The supported inference mode remains chat completions. The pending
+pre-save check decision remains separate; no misleading enabled Test button or
+fabricated success is introduced while its backend contract is unresolved.
