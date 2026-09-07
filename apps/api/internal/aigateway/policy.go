@@ -36,9 +36,10 @@ type Assignment struct {
 	Status                                         string
 }
 type Policies struct {
-	pool   *pgxpool.Pool
-	sealer *crypto.Sealer
-	engine PolicyEngine
+	pool               *pgxpool.Pool
+	sealer             *crypto.Sealer
+	engine             PolicyEngine
+	providerManagement bool
 }
 
 func NewPolicies(pool *pgxpool.Pool, sealer *crypto.Sealer, engine PolicyEngine) *Policies {
@@ -187,6 +188,9 @@ func (s *Policies) PutTeam(ctx context.Context, org, actor, teamID uuid.UUID, mo
 	} else if previous.Revision != expectedRev {
 		return TeamPolicy{}, policyConflict()
 	}
+	if err = s.validateProviderAccess(ctx, tx, org, keyIDs, models); err != nil {
+		return TeamPolicy{}, err
+	}
 	var out TeamPolicy
 	if expectedRev == 0 {
 		out, err = scanTeam(tx.QueryRow(ctx, `INSERT INTO ai_gateway_team_policies(org_id,team_id,models,key_ids,daily_cost_limit,revision) VALUES($1,$2,$3,$4,$5,1) ON CONFLICT DO NOTHING RETURNING `+teamColumns, org, teamID, models, keyIDs, limit))
@@ -279,6 +283,9 @@ func (s *Policies) authorizedPolicy(ctx context.Context, tx pgx.Tx, id agentrunt
 	p, err := scanTeam(tx.QueryRow(ctx, `SELECT `+teamColumns+` FROM ai_gateway_team_policies WHERE org_id=$1 AND team_id=$2 FOR SHARE`, id.OrgID, a.TeamID))
 	if err != nil || p.Revision != a.AppliedTeamRevision || !liveTeamMember(ctx, tx, id.OrgID, a.TeamID, id.DeviceID) {
 		return Assignment{}, TeamPolicy{}, "", 0, "", policyDenied()
+	}
+	if err = s.validateProviderAccess(ctx, tx, id.OrgID, p.KeyIDs, p.Models); err != nil {
+		return Assignment{}, TeamPolicy{}, "", 0, "", err
 	}
 	var keyID, sealed string
 	var rev int64

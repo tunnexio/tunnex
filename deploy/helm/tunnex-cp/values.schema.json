@@ -7,6 +7,9 @@
       "required": ["enabled"],
       "additionalProperties": false,
       "properties": {
+        "providerManagementEnabled": {
+          "type": "boolean"
+        },
         "enabled": {"type": "boolean"},
         "existingSecret": {"type": "string"},
         "secretKeys": {"type": "object", "additionalProperties": false, "required": ["adminUser", "adminPassword", "providerKey", "encryptionKey"], "properties": {

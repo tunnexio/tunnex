@@ -55,3 +55,15 @@ end
 _, error, status = Open3.capture3('helm', 'lint', chart, *args, '--set', 'aiGateway.enabled=true', '--set', 'aiGateway.existingSecret=ai-fixture')
 raise error unless status.success?
 puts 'PASS: default-off Helm; pinned private single engine; secret refs; retained PVCs; CP-only ingress; required DNS/public HTTPS egress; SSE edge; missing secret/HA refused; helm lint'
+
+managed = render.call(['--set', 'aiGateway.enabled=true', '--set', 'aiGateway.existingSecret=ai-fixture', '--set', 'aiGateway.providerManagementEnabled=true'])
+managed_config = managed.find { |d| d['kind'] == 'ConfigMap' && d.dig('metadata','name') == 'ai-contract-tunnex-cp-ai' }
+raise 'managed providers remain file-owned' if JSON.parse(managed_config['data']['config.json']).key?('providers')
+managed_api = managed.find { |d| d['kind'] == 'Deployment' && d.dig('metadata','name') == 'api' }
+raise 'management not explicitly enabled' unless managed_api.dig('spec','template','spec','containers')[0]['env'].any? { |e| e['name'] == 'TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED' && e['value'] == 'true' }
+managed_engine = managed.find { |d| d['kind'] == 'Deployment' && d.dig('metadata','name') == 'ai-contract-tunnex-cp-ai' }
+provider_ref = managed_engine.dig('spec','template','spec','containers')[0]['env'].find { |e| e['name'] == 'OPENROUTER_API_KEY' }
+raise 'fresh managed install requires legacy provider key' unless provider_ref.dig('valueFrom','secretKeyRef','optional') == true
+raise 'legacy references not preserved' unless provider_ref.dig('valueFrom','secretKeyRef','key') == 'openrouter-api-key'
+raise 'legacy management unexpectedly on' unless api_env.any? { |e| e['name'] == 'TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED' && e['value'] == 'false' }
+puts 'PASS: managed Helm opt-in removes provider stanza, preserves optional legacy key references and persistent state'

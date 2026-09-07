@@ -77,6 +77,7 @@ type policyFixture struct {
 func newPolicyFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) *policyFixture {
 	f := &policyFixture{aiCredentialFixture: newAICredentialFixture(t, ctx, pool), engine: newPolicyEngineFixture(), team: uuid.New()}
 	f.enable()
+	f.exec(`INSERT INTO ai_provider_legacy_keys(org_id,key_id) VALUES($1,'provider-key')`, f.org)
 	sealer, _ := crypto.NewSealer(bytes.Repeat([]byte{9}, 32))
 	f.policies = NewPolicies(pool, sealer, f.engine)
 	f.service.resolver = f.policies

@@ -45,7 +45,8 @@ func (s *Policies) reconcileTeamDevice(ctx context.Context, org, device, expecte
 	if err != nil {
 		return Assignment{}, policyNotFound()
 	}
-	// Device -> team-policy -> org is the sole allocation lock order. Team
+	providerEligible := s.validateProviderAccess(ctx, tx, org, p.KeyIDs, p.Models) == nil
+	// Device -> team-policy -> provider -> org is the sole allocation lock order. Team
 	// writes never wait on devices or orgs while holding their policy row.
 	var orgEnabled bool
 	if err = tx.QueryRow(ctx, `SELECT ai_gateway_enabled FROM organizations WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, org).Scan(&orgEnabled); err != nil {
@@ -86,7 +87,7 @@ func (s *Policies) reconcileTeamDevice(ctx context.Context, org, device, expecte
 	}
 	member := liveTeamMember(ctx, tx, org, a.TeamID, device)
 	models, subset := effectiveModels(p.Models, a.ModelsOverride)
-	active := a.Enabled && orgEnabled && deviceLive && member && subset
+	active := a.Enabled && orgEnabled && deviceLive && member && subset && providerEligible
 	var current *policyBinding
 	for i := range bindings {
 		b := &bindings[i]

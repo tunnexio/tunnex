@@ -169,6 +169,8 @@ migrations:
 # One control-plane release per namespace; the private Service name bifrost is reserved.
 aiGateway:
   enabled: false
+  # Explicit transition to database-owned providers; preserve volumes and encryption key.
+  providerManagementEnabled: false
   # Existing Secret only; never put secret values in Helm values/history.
   existingSecret: ""
   secretKeys:

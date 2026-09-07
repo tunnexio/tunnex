@@ -80,3 +80,8 @@ pass afterward. Live form reads `0.000000000001` without range-underflow.
 Provider/key onboarding remains private engine configuration, as described in
 `AI-gateway-setup.md`; the UI references key IDs and does not yet add provider
 secrets. This is distinct from the implemented authenticated inference proxy.
+
+Subsequent provider onboarding is now implemented and locally walked; see
+[provider validation](AI-provider-onboarding-validation-20260907.md). Its full API
+qualification remains capacity-blocked; the earlier provider-onboarding limitation
+above records the state at that older dashboard checkpoint.

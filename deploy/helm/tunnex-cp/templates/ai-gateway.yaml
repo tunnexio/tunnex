@@ -3,11 +3,15 @@
 {{- $secret := required "aiGateway.existingSecret is required; never generate engine/provider credentials" .Values.aiGateway.existingSecret }}
 {{- $name := printf "%s-ai" (include "tunnex-cp.fullname" .) }}
 {{- $config := .Files.Get "files/bifrost-config.json" | fromJson }}
+{{- if .Values.aiGateway.providerManagementEnabled }}
+{{- $_ := unset $config "providers" }}
+{{- else }}
 {{- $provider := index $config.providers "openrouter" }}
 {{- $key := index $provider.keys 0 }}
 {{- $_ := set $key "id" .Values.aiGateway.providerKeyID }}
 {{- $_ := set $key "name" .Values.aiGateway.providerKeyID }}
 {{- $_ := set $key "models" .Values.aiGateway.models }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -90,6 +94,9 @@ spec:
                 secretKeyRef:
                   name: {{ $secret }}
                   key: {{ $secretKey | quote }}
+                  {{- if and $.Values.aiGateway.providerManagementEnabled (eq $envName "OPENROUTER_API_KEY") }}
+                  optional: true
+                  {{- end }}
             {{- end }}
           volumeMounts:
             - {name: config-state, mountPath: /app/data}

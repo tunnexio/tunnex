@@ -103,6 +103,7 @@ func TestAIGatewayNativeEnrolledWalk(t *testing.T) {
 		}
 	}
 	seed(`INSERT INTO organizations(id,name,slug,pool_cidr,max_devices_per_user,ai_gateway_enabled,agent_policy_templates_enabled) VALUES($1,'AI native walk',$2,'10.99.0.0/24',0,true,true)`, org, "ai-walk-"+org.String())
+	seed(`INSERT INTO ai_provider_legacy_keys(org_id,key_id) VALUES($1,'walk-provider')`, org)
 	seed(`INSERT INTO users(id,email,name,status) VALUES($1,$2,'walk owner','active')`, owner, owner.String()+"@ai-walk.test")
 	seed(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'owner')`, org, owner)
 	seed(`INSERT INTO nodes(id,org_id,name,cert_serial,wg_public_key,endpoint,status) VALUES($1,$2,'walk gateway',$3,$4,'gateway.example:51820','active')`, node, org, node.String(), base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{11}, 32)))

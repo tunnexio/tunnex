@@ -46,3 +46,24 @@ ai_route = nginx.split("location /ai/ {", 1)[1].split("}", 1)[0]
 for directive in ("set $tunnex_api api:8080;", "proxy_pass http://$tunnex_api;", "proxy_buffering off;", "proxy_read_timeout 35s;"):
     assert directive in ai_route
 print("PASS: pinned opt-in engine, private network/no host ports, distinct persistent state, secret references, enforced authentication, content logging off")
+
+# The explicit managed overlay is usable without a provider secret at install
+# time and replaces only startup configuration, retaining the same state volumes.
+managed_command = command[:-5] + ["-f", str(root / "deploy/ai-gateway/compose-managed.yml")] + command[-5:]
+managed_env = dict(env)
+managed_env.pop("TUNNEX_AI_OPENROUTER_API_KEY")
+managed = json.loads(subprocess.check_output(managed_command, cwd=root, env=managed_env, text=True))
+managed_engine = managed["services"]["bifrost"]
+assert managed["services"]["api"]["environment"]["TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED"] == "true"
+managed_volumes = {v["target"]: v for v in managed_engine["volumes"]}
+assert managed_volumes["/app/data"] == volumes["/app/data"]
+assert managed_volumes["/app/data/logs"] == volumes["/app/data/logs"]
+assert managed_volumes["/app/data/config.json"]["source"].endswith("/config-managed.json")
+assert managed_volumes["/app/data/config.json"]["read_only"]
+managed_bootstrap = json.loads((root / "deploy/ai-gateway/config-managed.json").read_text())
+assert "providers" not in managed_bootstrap
+assert managed_bootstrap == {k: v for k, v in bootstrap.items() if k != "providers"}
+assert not managed_engine.get("ports")
+assert managed_engine["environment"]["OPENROUTER_API_KEY"] == ""
+assert "TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED" not in config["services"]["api"]["environment"]
+print("PASS: explicit self-service overlay uses database-owned provider configuration, preserves volumes and does not require a preinstalled provider key")

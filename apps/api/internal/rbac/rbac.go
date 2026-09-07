@@ -120,6 +120,8 @@ const (
 	// organization metadata: enabling it opens an unattended configuration
 	// channel to every eligible managed agent in the organization.
 	PermAgentRuntimeManage Permission = "agent_runtime:manage"
+	PermAIProviderView     Permission = "ai_provider:view"
+	PermAIProviderManage   Permission = "ai_provider:manage"
 	PermAIGatewayView      Permission = "ai_gateway:view"
 	PermAIGatewayManage    Permission = "ai_gateway:manage"
 	// PermAgentCredentialRotate authorizes the one human checkpoint that asks
@@ -223,6 +225,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sScopeManage:              true,
 		PermK8sScopeApprove:             true,
 		PermAgentRuntimeManage:          true,
+		PermAIProviderView:              true,
+		PermAIProviderManage:            true,
 		PermAIGatewayView:               true,
 		PermAIGatewayManage:             true,
 		PermAgentCredentialRotate:       true,
@@ -267,6 +271,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermLicenseManage:               true,
 		PermMachineManage:               true, // owner-only: minting a non-human org principal is org-delete-grade
 		PermAgentRuntimeManage:          true,
+		PermAIProviderView:              true,
+		PermAIProviderManage:            true,
 		PermAIGatewayView:               true,
 		PermAIGatewayManage:             true,
 		PermAgentCredentialRotate:       true,
@@ -347,7 +353,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

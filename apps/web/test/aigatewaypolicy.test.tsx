@@ -55,6 +55,7 @@ function get(path: string) {
     return Promise.resolve({
       data: member ? [{ device_id: "agent-a", status: "active" }] : [],
     });
+  if (path.endsWith("/providers")) return Promise.resolve({ data: { management_available: false, items: [], legacy_key_ids: ["provider-id"] } });
   if (path.endsWith("/teams")) return Promise.resolve({ data: [team] });
   if (path.endsWith("/agents")) return Promise.resolve({ data: [assignment] });
   return Promise.resolve({
@@ -140,6 +141,22 @@ describe("AI team and agent policy workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save team policy" }));
     await waitFor(() => expect(mocks.PUT).toHaveBeenCalled());
     expect(mocks.PUT.mock.calls[0][1].body.daily_cost_limit).toBe(amount);
+  });
+  it("selects owned connections by label while refusing unapplied additions", async () => {
+    mocks.GET.mockImplementation((path: string) => path.endsWith("/providers") ? Promise.resolve({ data: {
+      management_available: true, legacy_key_ids: ["provider-id"], items: [
+        { id: "connection-a", key_id: "tnx-managed-a", name: "Team OpenRouter", enabled: true, status: "applied", revision: 2, applied_revision: 2, models: ["openrouter/allowed"] },
+        { id: "connection-b", key_id: "tnx-managed-b", name: "Pending connection", enabled: true, status: "pending", revision: 2, applied_revision: 1, models: ["openrouter/allowed"] },
+      ],
+    } }) : get(path));
+    render(show()); await screen.findByLabelText("Policy team");
+    fireEvent.change(screen.getByLabelText("Policy team"), { target: { value: "group-a" } });
+    expect((screen.getByRole("checkbox", { name: /Pending connection/ }) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByLabelText("Provider key IDs (one per line)")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Team OpenRouter/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Legacy operator-managed reference/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save team policy" }));
+    await waitFor(() => expect(mocks.PUT).toHaveBeenCalledWith(expect.stringContaining("/teams/{teamId}"), expect.objectContaining({ body: expect.objectContaining({ key_ids: ["tnx-managed-a"], expected_revision: 3 }) })));
   });
   it("sends exact team models, key IDs and expected revision with a soft threshold", async () => {
     render(show());

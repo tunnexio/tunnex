@@ -15,6 +15,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	oapimw "github.com/oapi-codegen/nethttp-middleware"
 
@@ -41,6 +42,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/mfa"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/ovpn"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
@@ -266,7 +268,13 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
 	r.Use(oapimw.OapiRequestValidatorWithOptions(swagger, &oapimw.Options{
-		ErrorHandler: validationErrorHandler,
+		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, req *http.Request, opts oapimw.ErrorHandlerOpts) {
+			message := "AI provider request is invalid"
+			if !isAIProviderRequest(req) {
+				message = err.Error()
+			}
+			validationErrorHandler(w, message, opts.StatusCode)
+		},
 		Options: openapi3filter.Options{
 			// The validator must NOT enforce security itself — authentication and
 			// authorization are done in our handlers (authorize/requireVerifiedUser),
@@ -331,6 +339,13 @@ func validationErrorHandler(w http.ResponseWriter, message string, statusCode in
 	})
 }
 
+// Provider bodies carry write-only secrets. Keep route detection independent of
+// parameter binding so authorization and safe validation also cover malformed IDs.
+func isAIProviderRequest(req *http.Request) bool {
+	parts := strings.Split(req.URL.Path, "/")
+	return len(parts) >= 7 && parts[1] == "api" && parts[2] == "v1" && parts[3] == "organizations" && parts[5] == "ai-gateway" && (parts[6] == "providers" || parts[6] == "models")
+}
+
 func authBeforeAgentValidation(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, "/api/v1/agent/runtime/") {
@@ -338,6 +353,31 @@ func authBeforeAgentValidation(next http.Handler) http.Handler {
 				apierr.Write(w, req, runtimeUnauthorized())
 				return
 			}
+		}
+		if isAIProviderRequest(req) {
+			if _, ok := authctx.PrincipalFrom(req.Context()); !ok {
+				apierr.Write(w, req, apierr.New(401, "unauthenticated", "authentication required"))
+				return
+			}
+			parts := strings.Split(req.URL.Path, "/")
+			org, err := uuid.Parse(parts[4])
+			if err != nil {
+				apierr.Write(w, req, apierr.BadRequest("validation_failed", "AI provider request is invalid"))
+				return
+			}
+			permission := rbac.PermAIProviderView
+			if req.Method != http.MethodGet {
+				permission = rbac.PermAIProviderManage
+			}
+			ctx, err := authorize(req.Context(), org, permission)
+			if err == nil && req.Method != http.MethodGet {
+				_, err = aiManagementActor(ctx)
+			}
+			if err != nil {
+				apierr.Write(w, req, err)
+				return
+			}
+			req = req.WithContext(ctx)
 		}
 		orgPath := strings.HasPrefix(req.URL.Path, "/api/v1/organizations/")
 		protectedAgentMutation := req.Method == http.MethodPut &&

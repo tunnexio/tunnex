@@ -452,6 +452,30 @@ type AiGatewayTeamPolicy struct {
 	Revision       int64     `json:"revision"`
 }
 
+// Ownership and desired state only. Provider secrets live exclusively in private engine storage. Tombstones reserve ownership.
+type AiProviderConnection struct {
+	ID              uuid.UUID          `json:"id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	KeyID           string             `json:"key_id"`
+	Provider        string             `json:"provider"`
+	Name            string             `json:"name"`
+	Models          []string           `json:"models"`
+	Enabled         bool               `json:"enabled"`
+	Revision        int64              `json:"revision"`
+	AppliedRevision int64              `json:"applied_revision"`
+	Status          string             `json:"status"`
+	LastTestStatus  string             `json:"last_test_status"`
+	LastTestAt      pgtype.Timestamptz `json:"last_test_at"`
+	DeletedAt       pgtype.Timestamptz `json:"deleted_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+type AiProviderLegacyKey struct {
+	OrgID uuid.UUID `json:"org_id"`
+	KeyID string    `json:"key_id"`
+}
+
 type AlertDelivery struct {
 	ID              uuid.UUID          `json:"id"`
 	OrgID           uuid.UUID          `json:"org_id"`

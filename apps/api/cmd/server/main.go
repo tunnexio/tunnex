@@ -473,6 +473,7 @@ func main() {
 			os.Exit(1)
 		}
 		aiPolicies = aigateway.NewPolicies(pool, sealer, engine)
+		aiPolicies.EnableProviderManagement(cfg.AIProviderManagementEnabled)
 		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
 		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aiCredentials.Authorize)
 		if engineErr != nil {

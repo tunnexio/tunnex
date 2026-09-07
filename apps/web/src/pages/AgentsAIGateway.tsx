@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
+import { AIProviderWorkspace } from "../components/AIProviderWorkspace";
 import { AIUsageWorkspace } from "../components/AIUsageWorkspace";
 import {
   Button,
@@ -26,6 +27,7 @@ type Inventory = {
   nextAgentCursor: string | null;
   teams: S["AITeamPolicy"][];
   assignments: S["AIAssignment"][];
+  providers: S["AIProviderList"];
 };
 const lines = (v: string) => [
   ...new Set(
@@ -43,7 +45,7 @@ const thresholdDecimal = new Intl.NumberFormat("en-US", {
 });
 export default function AgentsAIGateway() {
   const { org } = useOrg();
-  const [view, setView] = useState<"usage" | "configuration">("usage");
+  const [view, setView] = useState<"usage" | "providers" | "configuration">("usage");
   return (
     <div className="network-management agents-workspace space-y-5">
       <PageHeader
@@ -52,11 +54,11 @@ export default function AgentsAIGateway() {
       />
       <AgentsTabRail />
       <nav aria-label="AI gateway views" className="flex gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1 w-fit">
-        {(["usage", "configuration"] as const).map((v) => <button key={v} type="button" aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${view === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{v === "usage" ? "Usage & cost" : "Configuration"}</button>)}
+        {(["usage", "providers", "configuration"] as const).map((v) => <button key={v} type="button" aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${view === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{v === "usage" ? "Usage & cost" : v === "providers" ? "Providers & models" : "Configuration"}</button>)}
       </nav>
       <AgentsManagementGate key={org?.id}>
         {(orgId) => (
-          view === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} /> : <div className="ai-gateway-configuration">
+          view === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} /> : view === "providers" ? <AIProviderWorkspace key={orgId} orgId={orgId} /> : <div className="ai-gateway-configuration">
             <div className="ai-config-heading"><div><p className="ai-config-eyebrow">AI GATEWAY / CONFIGURATION</p><h2>Gateway configuration</h2><p>Define team policies, then choose which agents can use them.</p></div><span className="ai-config-pill">Community available</span></div>
             <div className="ai-config-organization"><AIGatewaySettings orgId={orgId} canEdit /></div>
             {org?.agent_policy_templates_enabled ? (
@@ -91,18 +93,19 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
     setError("");
     try {
       const params = { params: { path: { orgId } } };
-      const [g, d, t, a] = await Promise.all([
+      const [g, d, t, a, p] = await Promise.all([
         api.GET("/api/v1/organizations/{orgId}/agent-groups", params),
         api.GET("/api/v1/organizations/{orgId}/agents", { params: { path: { orgId }, query: { limit: 100 } } }),
         api.GET("/api/v1/organizations/{orgId}/ai-gateway/teams", params),
         api.GET("/api/v1/organizations/{orgId}/ai-gateway/agents", params),
+        api.GET("/api/v1/organizations/{orgId}/ai-gateway/providers", params),
       ]);
       if (!alive.current || n !== generation.current) return;
       if (
         g.error ||
         d.error ||
         t.error ||
-        a.error ||
+        a.error || p.error || !p.data ||
         !g.data ||
         !d.data ||
         !t.data ||
@@ -117,6 +120,7 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
         nextAgentCursor: d.data.next_cursor ?? null,
         teams: t.data,
         assignments: a.data,
+        providers: p.data!,
       });
     } catch {
       if (alive.current && n === generation.current)
@@ -241,6 +245,7 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
               <TeamEditor
                 key={`${teamID}:${team?.revision ?? 0}`}
                 team={team}
+                providers={data.providers}
                 busy={busy}
                 save={(body) =>
                   mutate(() =>
@@ -332,10 +337,12 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
 }
 function TeamEditor({
   team,
+  providers,
   busy,
   save,
 }: {
   team?: S["AITeamPolicy"];
+  providers: S["AIProviderList"];
   busy: boolean;
   save: (body: S["AITeamPolicyWrite"]) => Promise<void>;
 }) {
@@ -361,15 +368,12 @@ function TeamEditor({
           placeholder="openrouter/openai/gpt-4o-mini"
         />
       </Field>
-      <Field label="Provider key IDs (one per line)">
-        <textarea
-          className={area}
-          rows={2}
-          value={keys}
-          onChange={(e) => setKeys(e.target.value)}
-          placeholder="openrouter-primary"
-        />
-      </Field>
+      <fieldset><legend className="mb-2 text-xs text-ink-secondary">Provider connections</legend><div className="ai-config-provider-options">
+        {providers.items.map((c) => <label key={c.id}><input type="checkbox" checked={lines(keys).includes(c.key_id)} disabled={busy || (!lines(keys).includes(c.key_id) && (!c.enabled || c.status !== "applied" || c.applied_revision !== c.revision || lines(keys).length >= 8))} onChange={(e) => setKeys((e.target.checked ? [...lines(keys), c.key_id] : lines(keys).filter((key) => key !== c.key_id)).join("\n"))} /><span>{c.name}<small>OpenRouter · {c.status} · {c.models.length} models</small></span></label>)}
+        {providers.legacy_key_ids.map((id) => <label key={id}><input type="checkbox" checked={lines(keys).includes(id)} disabled={busy || (!lines(keys).includes(id) && lines(keys).length >= 8)} onChange={(e) => setKeys((e.target.checked ? [...lines(keys), id] : lines(keys).filter((key) => key !== id)).join("\n"))} /><span>{id}<small>Legacy operator-managed reference</small></span></label>)}
+        {lines(keys).filter((id) => !providers.items.some((c) => c.key_id === id) && !providers.legacy_key_ids.includes(id)).map((id) => <label key={id}><input type="checkbox" checked disabled={busy} onChange={() => setKeys(lines(keys).filter((key) => key !== id).join("\n"))} /><span>Unavailable policy reference ({id})<small>Remove this reference or refresh provider inventory.</small></span></label>)}
+        {!providers.items.length && !providers.legacy_key_ids.length && <p>No owned provider connections are available. Add one in Providers &amp; models.</p>}
+      </div><p className="mt-2 text-xs text-ink-secondary">Choose up to eight applied connections. Selected models must be covered by the chosen connections.</p></fieldset>
       <Field label="Daily USD soft threshold (optional)">
         <Input
           type="number"

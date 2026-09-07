@@ -6,6 +6,71 @@ The qualified engine is Bifrost v2.0.0. `deploy/ai-gateway/compose.yml` pins the
 
 ## Configure and install
 
+### UI-managed providers
+
+The **AI gateway → Providers & models** workspace lets an owner/admin add an
+OpenRouter connection, select exact models, test credentials, rotate the key and
+disable or remove an unreferenced connection. Credential tests make no inference
+request; catalog inclusion does not guarantee inference access to every model.
+Provider keys are write-only and encrypted only in the private engine database.
+Use the site's TLS URL; never put provider secrets in team policies or agent config.
+
+For a new Compose installation, add the managed override:
+
+```sh
+: "${COMPOSE_PROJECT_NAME:?Select the verified installation project}"
+: "${AI_ENV_FILE:?Set the absolute private environment-file path}"
+docker compose --env-file "$AI_ENV_FILE" -p "$COMPOSE_PROJECT_NAME" \
+  -f docker-compose.yml -f deploy/ai-gateway/compose.yml \
+  -f deploy/ai-gateway/compose-managed.yml --profile ai config --quiet
+docker compose --env-file "$AI_ENV_FILE" -p "$COMPOSE_PROJECT_NAME" \
+  -f docker-compose.yml -f deploy/ai-gateway/compose.yml \
+  -f deploy/ai-gateway/compose-managed.yml --profile ai up -d bifrost api
+```
+
+This sets `TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED=true` and mounts
+`config-managed.json`, which has no `providers` stanza: the native provider
+configuration database is authoritative. Admin credentials and the durable
+engine encryption key remain mandatory. A fresh installation needs no provider
+key in its environment file; enter it when creating the connection in the UI.
+For Helm, set `aiGateway.providerManagementEnabled: true` with the normal AI
+settings. Only the legacy provider Secret entry becomes optional; admin and
+encryption-key references remain required. AI remains single-instance.
+
+1. Open **Providers & models**, add a name, OpenRouter key and exact models, then
+   save. Wait for the connection's applied status.
+2. Run **Test connection**. If a save is uncertain, resubmit the key explicitly;
+   the CP cannot recover a secret it does not store.
+3. In **Configuration**, enable the org AI setting, select a team, its provider
+   connections and allowed models, then assign agents. Creating a connection
+   alone does not grant access.
+4. Use the enrolled-agent credential exchange and proxy routes below; inspect
+   **Usage & cost** for observed estimates.
+
+For existing deployments, take a consistent backup, upgrade every CP replica and
+apply migration 0141 before enabling management. It snapshots existing team key
+references into explicit per-org legacy ownership. New arbitrary key IDs cannot
+be used in policy: create an owned connection instead. Reserved `tnx-managed-`
+prefix collisions refuse migration and require operator review. Keep the same
+engine volumes, encryption key and environment variables used by legacy keys.
+Never restore a file-managed provider stanza after this transition: native
+startup reconciliation can remove UI-created keys. The pinned-engine transition
+has been tested with a retained legacy key, new encrypted key and scoped virtual key.
+
+Rotation preserves the key ID and usage history. Disable blocks new requests;
+previously accepted work retains its 30-second bound. Delete refuses any retained
+team reference; remove references first. Connection deletion preserves teams and
+historical usage, while failed deletion stays disabled and visible for retry.
+Rollback requires disabling managed assignments before reverting the CP binary;
+preserve ownership tables and database-owned native config. Do not automatically
+apply down migrations or restore an old file-managed provider stanza.
+
+### Existing file-managed providers
+
+The remaining file-managed instructions preserve existing deployments. For new
+installations prefer the managed flow above. Existing org/key references are
+preserved by migration; newly created policies must select explicitly owned keys.
+
 Use the existing installation's explicitly verified Compose project and root environment file. Never change the project name during an upgrade: it selects persisted state. Examples below assume the operator has exported `COMPOSE_PROJECT_NAME` and `AI_ENV_FILE`; the latter names a private environment file containing the existing stack settings and the four additional variables in `deploy/ai-gateway/.env.example`. Give that file owner-only permissions. Do not put it in Git, paste its contents into support logs, or print resolved Compose configuration with real credentials.
 
 Populate these values through the customer's normal secret-management process:
@@ -106,7 +171,7 @@ With AI enabled, the edge mounts a chart-specific nginx configuration. ClusterIP
 
 ## Apply one explicit AI team
 
-Create an ordinary Agent Group and explicitly add the enrolled agent through the existing group workflow. A device may belong to several ordinary groups but chooses exactly one AI team. The following management calls require an owner/admin with `ai_gateway:manage` in the named organization. Examples show non-secret JSON bodies; use the existing authenticated administration client and never put provider credentials in these requests.
+Create an ordinary Agent Group and explicitly add the enrolled agent through the existing group workflow. A device may belong to several ordinary groups but chooses exactly one AI team. The following management calls require an owner/admin with `ai_gateway:manage` in the named organization. Examples show non-secret JSON bodies; use the existing authenticated administration client and never put provider credentials in these team-policy requests. Use an owned connection key ID from Providers & models; `openrouter-primary` below is an existing legacy-reference example.
 
 1. Enable access with `PUT /api/v1/organizations/{orgId}/ai-gateway` and `{"enabled":true}`.
 2. Create the group's AI policy with `PUT /api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}`:
@@ -127,6 +192,9 @@ Create an ordinary Agent Group and explicitly add the enrolled agent through the
 The current limit is 64 retained agent bindings per organization. Daily soft thresholds use native observed usage since midnight UTC. An agent override can only narrow the team's exact model set. Disabling access or losing required group membership refuses new requests; it does not promise cancellation of an already accepted stream.
 
 ## Rotate provider credentials
+
+For UI-managed connections, edit the connection and supply a new key; no engine
+restart is required. The procedure below applies only to legacy environment keys.
 
 Disable the affected organizations during maintenance, update the provider secret
 in the private environment file or existing Kubernetes Secret, and recreate the

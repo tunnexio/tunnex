@@ -22,7 +22,8 @@ services:
       LOG_LEVEL: error
       BIFROST_ADMIN_USER: ${TUNNEX_AI_GATEWAY_ADMIN_USER:?Set a private Bifrost admin username}
       BIFROST_ADMIN_PASSWORD: ${TUNNEX_AI_GATEWAY_ADMIN_PASSWORD:?Set a private Bifrost admin password}
-      OPENROUTER_API_KEY: ${TUNNEX_AI_OPENROUTER_API_KEY:?Set the gateway-owned OpenRouter key}
+      # Required by legacy config.json; optional for database-owned self-service.
+      OPENROUTER_API_KEY: ${TUNNEX_AI_OPENROUTER_API_KEY:-}
       BIFROST_ENCRYPTION_KEY: ${TUNNEX_AI_ENGINE_ENCRYPTION_KEY:?Set a durable private encryption key}
     volumes:
       - ai_engine_config:/app/data

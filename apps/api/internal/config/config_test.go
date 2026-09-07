@@ -101,3 +101,18 @@ func TestKubernetesHADeploymentGateDefaultsOffAndRequiresExplicitOptIn(t *testin
 		t.Fatal("explicit Kubernetes HA deployment opt-in was ignored")
 	}
 }
+
+func TestAIProviderManagementRequiresExplicitDeploymentOptIn(t *testing.T) {
+	t.Setenv("TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED", "")
+	if Load().AIProviderManagementEnabled {
+		t.Fatal("provider management must default off")
+	}
+	t.Setenv("TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED", "true")
+	if !Load().AIProviderManagementEnabled {
+		t.Fatal("explicit managed-provider opt-in ignored")
+	}
+	t.Setenv("TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED", "invalid")
+	if Load().AIProviderManagementEnabled {
+		t.Fatal("invalid deployment setting must not enable management")
+	}
+}

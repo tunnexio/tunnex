@@ -1,0 +1,9 @@
+# Add AFTER compose.yml to opt into durable provider management from the UI.
+# Preserve existing engine volumes, encryption key and legacy environment keys.
+services:
+  api:
+    environment:
+      TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED: "true"
+  bifrost:
+    volumes:
+      - ./deploy/ai-gateway/config-managed.json:/app/data/config.json:ro
