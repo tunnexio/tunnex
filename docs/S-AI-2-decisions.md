@@ -1,6 +1,7 @@
 # AI-2: team and model reconciliation
 
-Status: LOCKED for implementation after user approval on 2026-09-07.
+Status: LOCKED and locally implemented after user approval on 2026-09-07.
+Qualification: [AI ledger](AI-2-5-validation-20260907.md); remote CI remains pending.
 
 ## User disposition
 
@@ -72,5 +73,4 @@ honest soft thresholds remain approved.
 - Qualified topology is one CP admission process and one engine. Do not advertise
   shared-budget HA or a strict maximum invoice.
 
-Next action: implement this OpenAPI-first contract, then qualify real native
-reconciliation, tenant isolation, team moves and scoped soft-threshold behavior.
+Next action: submit the committed candidate for exact-head remote validation.

@@ -60,7 +60,10 @@ Usage thresholds are soft admission thresholds based on asynchronous accounting,
 
 ## Disable, preserve and upgrade
 
-Disable the organization's AI setting first to refuse new work. To stop the optional engine, use the same project, environment file and both Compose files with `stop bifrost`. This preserves both named volumes. If removing installation support completely, recreate the API using the base configuration without this override after removing AI engine environment settings. Existing organizations must remain disabled until the engine and policy are intentionally restored.
+Disable the organization's AI setting first to refuse new work. This is an eligibility
+toggle: explicitly re-enabling it can resume still-unexpired tokens when identity
+and policy remain current. Use canonical agent revocation to permanently invalidate
+that runtime identity. To stop the optional engine, use the same project, environment file and both Compose files with `stop bifrost`. This preserves both named volumes. If removing installation support completely, recreate the API using the base configuration without this override after removing AI engine environment settings. Existing organizations must remain disabled until the engine and policy are intentionally restored.
 
 The project-scoped `ai_engine_config` volume holds Bifrost SQLite configuration and persisted virtual-key revocations. The distinct `ai_engine_logs` volume holds accounting metadata. Back up these volumes with the matching encryption key and configuration under the customer's backup process. Use a consistent SQLite backup or a stopped-engine snapshot. No `down -v`, volume deletion, or database reset is part of disable, restart or upgrade.
 
@@ -122,3 +125,20 @@ Create an ordinary Agent Group and explicitly add the enrolled agent through the
 5. Exchange the current runtime credential at `/api/v1/agent/runtime/ai-credential`, then call the AI routes described above. AI does not require the paid managed-runtime feature to be enabled.
 
 The current limit is 64 retained agent bindings per organization. Daily soft thresholds use native observed usage since midnight UTC. An agent override can only narrow the team's exact model set. Disabling access or losing required group membership refuses new requests; it does not promise cancellation of an already accepted stream.
+
+## Rotate provider credentials
+
+Disable the affected organizations during maintenance, update the provider secret
+in the private environment file or existing Kubernetes Secret, and recreate the
+engine through the normal installation lifecycle. Keep the provider key ID, engine
+encryption key and configuration/accounting volumes unchanged. After a successful
+scoped request and retained-usage check, retire the old credential through the
+provider's normal management process and intentionally restore organization access.
+No provider secret is copied into CP or agent configuration. Native hot reload and
+changing the provider key ID are not covered by this procedure.
+
+The pinned Linux engine passed a synthetic provider-authentication rotation test:
+old secret refused, new secret accepted, unchanged native key and retained history.
+See [rotation evidence](AI-gateway-provider-rotation-20260907.md). The full installed
+API process walkthrough, including streaming and soft threshold refusal, is recorded
+in [AI-5 evidence](AI-5-installed-process-walk-20260907.md).

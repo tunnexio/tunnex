@@ -1,0 +1,21 @@
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 context=colima-tunnex-sso-review dedicated network=tunnexaiwalk0907repro4_engine
+API binary SHA256=50a934be80995529d94513257d869f7c07f5ee20f3afd7b3c261395c2aff3e37
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified pre-start container=tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine volume=tunnexaiwalk0907repro4_pg
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine
+PASS actual bootstrap admin login and required password rotation; organization=01a07ac6-0fdf-7ddf-a1f2-2c4e8b164dc1
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine
+Gateway row only seeded; no gateway dataplane claim
+PASS canonical HTTP bootstrap-token issuance and agent enrollment twice under real human session
+PASS canonical group opt-in, creation and memberships
+PASS Community defaultoff and unapplied refusal; canonical team+assignment apply; scoped credentials and2synthetic completions; forbidden model403;14tokens scoped public usage
+PASS canonical device revocation refused existing AI bearer401 while independent healthy identity remained200
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine
+PASS actual API process restart retained human Redis session, revoked identity refusal and healthy runtime credential exchange/inference
+PASS distinct-team model isolation denies before provider; real installed SSE has complete text/finish/terminal frames and no errors
+Exact native pricing known=True
+PASS observed priced soft threshold refusal before provider while independent team allows
+PASS organization disable refuses existing token; explicit reenable/reconcile permits still-valid token and fresh scoped exchange
+PASS full installed stream/nonstream SQLite logical/raw content omission
+PASS actual installed API process walkthrough; no AuthFn bypass or provider spend
+Stopped own containers; retained every project volume and network

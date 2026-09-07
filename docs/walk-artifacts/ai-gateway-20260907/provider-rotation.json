@@ -1,0 +1,22 @@
+{
+  "project": "tunnexairotate0907",
+  "image": "maximhq/bifrost:v2.0.0@sha256:cf71be9fad4e0749b6e26cbb774c687413dad9a0970b83f4e1dadb6f503ea208",
+  "architecture": "arm64",
+  "provider_accepted": 2,
+  "old_secret_rejected": 1,
+  "scoped_key_unchanged": true,
+  "same_config_and_log_volumes": true,
+  "total_requests": 2,
+  "total_tokens": 10,
+  "provider_spend": 0,
+  "containers": [
+    "0b425d2a8de0eba8dc71fd96998ceff9549370ea6416f1f59d04acc2520fa5b6",
+    "d4ea0613be343a184e5f8a6da639baa7f10d3a7b6eec076e5d092aad2f285347",
+    "6d61c3db8768761735bf7445dd80c9e07e3ef44525e9e0ed3941ae5c5c957e43"
+  ],
+  "volumes": [
+    "tunnexairotate0907_config",
+    "tunnexairotate0907_logs"
+  ],
+  "network": "tunnexairotate0907_default"
+}
