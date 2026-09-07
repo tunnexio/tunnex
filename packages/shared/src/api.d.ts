@@ -4,6 +4,93 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/ai-gateway/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List organization-owned provider connections and legacy key references */
+        get: operations["listAIProviders"];
+        put?: never;
+        /** Add an encrypted private-engine provider connection */
+        post: operations["createAIProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit, rotate or disable an owned provider connection */
+        put: operations["updateAIProvider"];
+        post?: never;
+        /** Remove an unreferenced connection while retaining its ownership tombstone */
+        delete: operations["deleteAIProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate provider credentials without inference or model spend
+         * @description A successful credential and catalog check does not prove inference access to every model.
+         */
+        post: operations["testAIProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/models": {
+        parameters: {
+            query?: {
+                query?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Browse cached qualified-provider model suggestions without a provider key */
+        get: operations["listAIProviderModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/teams": {
         parameters: {
             query?: never;
@@ -4513,6 +4600,66 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIProviderConnection: {
+            /** Format: uuid */
+            id: string;
+            /** @description Non-secret owned policy reference. */
+            key_id: string;
+            /** @enum {string} */
+            provider: "openrouter";
+            name: string;
+            models: components["schemas"]["AIModelNames"];
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "error" | "disabled";
+            /** @enum {string} */
+            last_test_status: "untested" | "success" | "failed";
+            /** Format: date-time */
+            last_test_at?: string;
+        };
+        AIProviderList: {
+            management_available: boolean;
+            items: components["schemas"]["AIProviderConnection"][];
+            legacy_key_ids: string[];
+        };
+        AIProviderCreate: {
+            /** @enum {string} */
+            provider: "openrouter";
+            name: string;
+            models: components["schemas"]["AIModelNames"];
+            enabled: boolean;
+            /** @description Transient write-only secret stored only by the encrypted private engine. */
+            api_key: string;
+        };
+        AIProviderUpdate: {
+            /** @enum {string} */
+            provider: "openrouter";
+            name: string;
+            models: components["schemas"]["AIModelNames"];
+            enabled: boolean;
+            /** @description Omit to preserve the secret; supply a new value to rotate. */
+            api_key?: string;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIProviderRevision: {
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIProviderModelList: {
+            items: components["schemas"]["AIProviderModel"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        AIProviderModel: {
+            id: string;
+            name: string;
+        };
         AIModelNames: string[];
         AITeamPolicyWrite: {
             models: components["schemas"]["AIModelNames"];
@@ -7850,6 +7997,165 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAIProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe connection metadata; no provider secrets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Durable desired connection. Inspect status before assigning access. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Durable desired connection with synchronization status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderRevision"];
+            };
+        };
+        responses: {
+            /** @description Connection removed; team policies and usage are preserved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testAIProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderRevision"];
+            };
+        };
+        responses: {
+            /** @description Connection metadata including last check result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIProviderModels: {
+        parameters: {
+            query?: {
+                query?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model suggestions; catalog inclusion does not prove entitlement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderModelList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listAITeamPolicies: {
         parameters: {
             query?: never;

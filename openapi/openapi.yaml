@@ -18,6 +18,88 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/ai-gateway/providers:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIProviders
+      summary: List organization-owned provider connections and legacy key references
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Safe connection metadata; no provider secrets.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderList' } } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createAIProvider
+      summary: Add an encrypted private-engine provider connection
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderCreate' } } }
+      responses:
+        "201":
+          description: Durable desired connection. Inspect status before assigning access.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderConnection' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateAIProvider
+      summary: Edit, rotate or disable an owned provider connection
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderUpdate' } } }
+      responses:
+        "200":
+          description: Durable desired connection with synchronization status.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderConnection' } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteAIProvider
+      summary: Remove an unreferenced connection while retaining its ownership tombstone
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderRevision' } } }
+      responses:
+        "204": { description: Connection removed; team policies and usage are preserved. }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}/test:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: connectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: testAIProvider
+      summary: Validate provider credentials without inference or model spend
+      description: A successful credential and catalog check does not prove inference access to every model.
+      tags: [ai-gateway]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderRevision' } } }
+      responses:
+        "200":
+          description: Connection metadata including last check result.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderConnection' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/models:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: query, in: query, schema: { type: string, maxLength: 100 } }
+      - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+    get:
+      operationId: listAIProviderModels
+      summary: Browse cached qualified-provider model suggestions without a provider key
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Model suggestions; catalog inclusion does not prove entitlement.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderModelList' } } }
+        default: { $ref: '#/components/responses/Error' }
   /api/v1/organizations/{orgId}/ai-gateway/teams:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -5613,6 +5695,75 @@ components:
       required: true
 
   schemas:
+    AIProviderConnection:
+      type: object
+      additionalProperties: false
+      required: [id, key_id, provider, name, models, enabled, revision, applied_revision, status, last_test_status]
+      properties:
+        id: { type: string, format: uuid }
+        key_id: { type: string, description: Non-secret owned policy reference. }
+        provider: { type: string, enum: [openrouter] }
+        name: { type: string }
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, error, disabled] }
+        last_test_status: { type: string, enum: [untested, success, failed] }
+        last_test_at: { type: string, format: date-time }
+    AIProviderList:
+      type: object
+      additionalProperties: false
+      required: [management_available, items, legacy_key_ids]
+      properties:
+        management_available: { type: boolean }
+        items: { type: array, items: { $ref: '#/components/schemas/AIProviderConnection' } }
+        legacy_key_ids: { type: array, items: { type: string } }
+    AIProviderCreate:
+      type: object
+      additionalProperties: false
+      required: [provider, name, models, enabled, api_key]
+      properties:
+        provider: { type: string, enum: [openrouter] }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        enabled: { type: boolean }
+        api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true, description: Transient write-only secret stored only by the encrypted private engine. }
+    AIProviderUpdate:
+      type: object
+      additionalProperties: false
+      required: [provider, name, models, enabled, expected_revision]
+      properties:
+        provider: { type: string, enum: [openrouter] }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        models: { $ref: '#/components/schemas/AIModelNames' }
+        enabled: { type: boolean }
+        api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true, description: Omit to preserve the secret; supply a new value to rotate. }
+        expected_revision: { type: integer, format: int64, minimum: 1 }
+    AIProviderRevision:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      properties:
+        expected_revision: { type: integer, format: int64, minimum: 1 }
+    AIProviderModelList:
+      type: object
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AIProviderModel' }
+        total: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        offset: { type: integer, minimum: 0, maximum: 10000 }
+    AIProviderModel:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
     AIModelNames:
       type: array
       maxItems: 32

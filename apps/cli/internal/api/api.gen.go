@@ -45,6 +45,36 @@ const (
 	AIInferenceRequestMessagesRoleUser      AIInferenceRequestMessagesRole = "user"
 )
 
+// Defines values for AIProviderConnectionLastTestStatus.
+const (
+	AIProviderConnectionLastTestStatusFailed   AIProviderConnectionLastTestStatus = "failed"
+	AIProviderConnectionLastTestStatusSuccess  AIProviderConnectionLastTestStatus = "success"
+	AIProviderConnectionLastTestStatusUntested AIProviderConnectionLastTestStatus = "untested"
+)
+
+// Defines values for AIProviderConnectionProvider.
+const (
+	AIProviderConnectionProviderOpenrouter AIProviderConnectionProvider = "openrouter"
+)
+
+// Defines values for AIProviderConnectionStatus.
+const (
+	AIProviderConnectionStatusApplied  AIProviderConnectionStatus = "applied"
+	AIProviderConnectionStatusDisabled AIProviderConnectionStatus = "disabled"
+	AIProviderConnectionStatusError    AIProviderConnectionStatus = "error"
+	AIProviderConnectionStatusPending  AIProviderConnectionStatus = "pending"
+)
+
+// Defines values for AIProviderCreateProvider.
+const (
+	AIProviderCreateProviderOpenrouter AIProviderCreateProvider = "openrouter"
+)
+
+// Defines values for AIProviderUpdateProvider.
+const (
+	Openrouter AIProviderUpdateProvider = "openrouter"
+)
+
 // Defines values for AIUsageReportSemantics.
 const (
 	ObservedEstimate AIUsageReportSemantics = "observed_estimate"
@@ -1283,6 +1313,85 @@ type AIInferenceRequestMessagesRole string
 
 // AIModelNames defines model for AIModelNames.
 type AIModelNames = []string
+
+// AIProviderConnection defines model for AIProviderConnection.
+type AIProviderConnection struct {
+	AppliedRevision int64              `json:"applied_revision"`
+	Enabled         bool               `json:"enabled"`
+	Id              openapi_types.UUID `json:"id"`
+
+	// KeyId Non-secret owned policy reference.
+	KeyId          string                             `json:"key_id"`
+	LastTestAt     *time.Time                         `json:"last_test_at,omitempty"`
+	LastTestStatus AIProviderConnectionLastTestStatus `json:"last_test_status"`
+	Models         AIModelNames                       `json:"models"`
+	Name           string                             `json:"name"`
+	Provider       AIProviderConnectionProvider       `json:"provider"`
+	Revision       int64                              `json:"revision"`
+	Status         AIProviderConnectionStatus         `json:"status"`
+}
+
+// AIProviderConnectionLastTestStatus defines model for AIProviderConnection.LastTestStatus.
+type AIProviderConnectionLastTestStatus string
+
+// AIProviderConnectionProvider defines model for AIProviderConnection.Provider.
+type AIProviderConnectionProvider string
+
+// AIProviderConnectionStatus defines model for AIProviderConnection.Status.
+type AIProviderConnectionStatus string
+
+// AIProviderCreate defines model for AIProviderCreate.
+type AIProviderCreate struct {
+	// ApiKey Transient write-only secret stored only by the encrypted private engine.
+	ApiKey   *string                  `json:"api_key,omitempty"`
+	Enabled  bool                     `json:"enabled"`
+	Models   AIModelNames             `json:"models"`
+	Name     string                   `json:"name"`
+	Provider AIProviderCreateProvider `json:"provider"`
+}
+
+// AIProviderCreateProvider defines model for AIProviderCreate.Provider.
+type AIProviderCreateProvider string
+
+// AIProviderList defines model for AIProviderList.
+type AIProviderList struct {
+	Items               []AIProviderConnection `json:"items"`
+	LegacyKeyIds        []string               `json:"legacy_key_ids"`
+	ManagementAvailable bool                   `json:"management_available"`
+}
+
+// AIProviderModel defines model for AIProviderModel.
+type AIProviderModel struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// AIProviderModelList defines model for AIProviderModelList.
+type AIProviderModelList struct {
+	Items  []AIProviderModel `json:"items"`
+	Limit  int               `json:"limit"`
+	Offset int               `json:"offset"`
+	Total  int               `json:"total"`
+}
+
+// AIProviderRevision defines model for AIProviderRevision.
+type AIProviderRevision struct {
+	ExpectedRevision int64 `json:"expected_revision"`
+}
+
+// AIProviderUpdate defines model for AIProviderUpdate.
+type AIProviderUpdate struct {
+	// ApiKey Omit to preserve the secret; supply a new value to rotate.
+	ApiKey           *string                  `json:"api_key,omitempty"`
+	Enabled          bool                     `json:"enabled"`
+	ExpectedRevision int64                    `json:"expected_revision"`
+	Models           AIModelNames             `json:"models"`
+	Name             string                   `json:"name"`
+	Provider         AIProviderUpdateProvider `json:"provider"`
+}
+
+// AIProviderUpdateProvider defines model for AIProviderUpdate.Provider.
+type AIProviderUpdateProvider string
 
 // AITeamPolicy defines model for AITeamPolicy.
 type AITeamPolicy struct {
@@ -5040,6 +5149,13 @@ type TestAgentAccessParams struct {
 // TestAgentAccessParamsProtocol defines parameters for TestAgentAccess.
 type TestAgentAccessParamsProtocol string
 
+// ListAIProviderModelsParams defines parameters for ListAIProviderModels.
+type ListAIProviderModelsParams struct {
+	Query  *string `form:"query,omitempty" json:"query,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetAIUsageParams defines parameters for GetAIUsage.
 type GetAIUsageParams struct {
 	TeamId   *openapi_types.UUID `form:"team_id,omitempty" json:"team_id,omitempty"`
@@ -5291,6 +5407,18 @@ type SetAIGatewaySettingsJSONRequestBody = AIGatewayOptIn
 
 // PutAIAssignmentJSONRequestBody defines body for PutAIAssignment for application/json ContentType.
 type PutAIAssignmentJSONRequestBody = AIAssignmentWrite
+
+// CreateAIProviderJSONRequestBody defines body for CreateAIProvider for application/json ContentType.
+type CreateAIProviderJSONRequestBody = AIProviderCreate
+
+// DeleteAIProviderJSONRequestBody defines body for DeleteAIProvider for application/json ContentType.
+type DeleteAIProviderJSONRequestBody = AIProviderRevision
+
+// UpdateAIProviderJSONRequestBody defines body for UpdateAIProvider for application/json ContentType.
+type UpdateAIProviderJSONRequestBody = AIProviderUpdate
+
+// TestAIProviderJSONRequestBody defines body for TestAIProvider for application/json ContentType.
+type TestAIProviderJSONRequestBody = AIProviderRevision
 
 // PutAITeamPolicyJSONRequestBody defines body for PutAITeamPolicy for application/json ContentType.
 type PutAITeamPolicyJSONRequestBody = AITeamPolicyWrite
@@ -6066,6 +6194,32 @@ type ClientInterface interface {
 
 	// ReconcileAIAssignment request
 	ReconcileAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIProviderModels request
+	ListAIProviderModels(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIProviders request
+	ListAIProviders(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAIProviderWithBody request with any body
+	CreateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAIProviderWithBody request with any body
+	DeleteAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DeleteAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAIProviderWithBody request with any body
+	UpdateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestAIProviderWithBody request with any body
+	TestAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAITeamPolicies request
 	ListAITeamPolicies(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8878,6 +9032,126 @@ func (c *Client) PutAIAssignment(ctx context.Context, orgId openapi_types.UUID, 
 
 func (c *Client) ReconcileAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReconcileAIAssignmentRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIProviderModels(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIProviderModelsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIProviders(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIProvidersRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIProviderRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIProviderRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAIProviderRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIProviderRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderRequestWithBody(c.Server, orgId, connectionId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestAIProviderRequest(c.Server, orgId, connectionId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17292,6 +17566,337 @@ func NewReconcileAIAssignmentRequest(server string, orgId openapi_types.UUID, de
 	return req, nil
 }
 
+// NewListAIProviderModelsRequest generates requests for ListAIProviderModels
+func NewListAIProviderModelsRequest(server string, orgId openapi_types.UUID, params *ListAIProviderModelsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/models", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Query != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "query", runtime.ParamLocationQuery, *params.Query); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "offset", runtime.ParamLocationQuery, *params.Offset); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAIProvidersRequest generates requests for ListAIProviders
+func NewListAIProvidersRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAIProviderRequest calls the generic CreateAIProvider builder with application/json body
+func NewCreateAIProviderRequest(server string, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAIProviderRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewCreateAIProviderRequestWithBody generates requests for CreateAIProvider with any type of body
+func NewCreateAIProviderRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAIProviderRequest calls the generic DeleteAIProvider builder with application/json body
+func NewDeleteAIProviderRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteAIProviderRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewDeleteAIProviderRequestWithBody generates requests for DeleteAIProvider with any type of body
+func NewDeleteAIProviderRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateAIProviderRequest calls the generic UpdateAIProvider builder with application/json body
+func NewUpdateAIProviderRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAIProviderRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewUpdateAIProviderRequestWithBody generates requests for UpdateAIProvider with any type of body
+func NewUpdateAIProviderRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTestAIProviderRequest calls the generic TestAIProvider builder with application/json body
+func NewTestAIProviderRequest(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTestAIProviderRequestWithBody(server, orgId, connectionId, "application/json", bodyReader)
+}
+
+// NewTestAIProviderRequestWithBody generates requests for TestAIProvider with any type of body
+func NewTestAIProviderRequestWithBody(server string, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/%s/test", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListAITeamPoliciesRequest generates requests for ListAITeamPolicies
 func NewListAITeamPoliciesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -25543,6 +26148,32 @@ type ClientWithResponsesInterface interface {
 	// ReconcileAIAssignmentWithResponse request
 	ReconcileAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReconcileAIAssignmentResponse, error)
 
+	// ListAIProviderModelsWithResponse request
+	ListAIProviderModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*ListAIProviderModelsResponse, error)
+
+	// ListAIProvidersWithResponse request
+	ListAIProvidersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIProvidersResponse, error)
+
+	// CreateAIProviderWithBodyWithResponse request with any body
+	CreateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error)
+
+	CreateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error)
+
+	// DeleteAIProviderWithBodyWithResponse request with any body
+	DeleteAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error)
+
+	DeleteAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error)
+
+	// UpdateAIProviderWithBodyWithResponse request with any body
+	UpdateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error)
+
+	UpdateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error)
+
+	// TestAIProviderWithBodyWithResponse request with any body
+	TestAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
+
+	TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
+
 	// ListAITeamPoliciesWithResponse request
 	ListAITeamPoliciesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAITeamPoliciesResponse, error)
 
@@ -28975,6 +29606,143 @@ func (r ReconcileAIAssignmentResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ReconcileAIAssignmentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIProviderModelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderModelList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIProviderModelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIProviderModelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIProvidersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIProvidersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIProvidersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AIProviderConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestAIProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestAIProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestAIProviderResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -34297,6 +35065,92 @@ func (c *ClientWithResponses) ReconcileAIAssignmentWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParseReconcileAIAssignmentResponse(rsp)
+}
+
+// ListAIProviderModelsWithResponse request returning *ListAIProviderModelsResponse
+func (c *ClientWithResponses) ListAIProviderModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*ListAIProviderModelsResponse, error) {
+	rsp, err := c.ListAIProviderModels(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIProviderModelsResponse(rsp)
+}
+
+// ListAIProvidersWithResponse request returning *ListAIProvidersResponse
+func (c *ClientWithResponses) ListAIProvidersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIProvidersResponse, error) {
+	rsp, err := c.ListAIProviders(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIProvidersResponse(rsp)
+}
+
+// CreateAIProviderWithBodyWithResponse request with arbitrary body returning *CreateAIProviderResponse
+func (c *ClientWithResponses) CreateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error) {
+	rsp, err := c.CreateAIProviderWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error) {
+	rsp, err := c.CreateAIProvider(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIProviderResponse(rsp)
+}
+
+// DeleteAIProviderWithBodyWithResponse request with arbitrary body returning *DeleteAIProviderResponse
+func (c *ClientWithResponses) DeleteAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error) {
+	rsp, err := c.DeleteAIProviderWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) DeleteAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body DeleteAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteAIProviderResponse, error) {
+	rsp, err := c.DeleteAIProvider(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAIProviderResponse(rsp)
+}
+
+// UpdateAIProviderWithBodyWithResponse request with arbitrary body returning *UpdateAIProviderResponse
+func (c *ClientWithResponses) UpdateAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error) {
+	rsp, err := c.UpdateAIProviderWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body UpdateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIProviderResponse, error) {
+	rsp, err := c.UpdateAIProvider(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIProviderResponse(rsp)
+}
+
+// TestAIProviderWithBodyWithResponse request with arbitrary body returning *TestAIProviderResponse
+func (c *ClientWithResponses) TestAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error) {
+	rsp, err := c.TestAIProviderWithBody(ctx, orgId, connectionId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderResponse(rsp)
+}
+
+func (c *ClientWithResponses) TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error) {
+	rsp, err := c.TestAIProvider(ctx, orgId, connectionId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestAIProviderResponse(rsp)
 }
 
 // ListAITeamPoliciesWithResponse request returning *ListAITeamPoliciesResponse
@@ -40331,6 +41185,197 @@ func ParseReconcileAIAssignmentResponse(rsp *http.Response) (*ReconcileAIAssignm
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AIAssignment
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIProviderModelsResponse parses an HTTP response from a ListAIProviderModelsWithResponse call
+func ParseListAIProviderModelsResponse(rsp *http.Response) (*ListAIProviderModelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIProviderModelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderModelList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIProvidersResponse parses an HTTP response from a ListAIProvidersWithResponse call
+func ParseListAIProvidersResponse(rsp *http.Response) (*ListAIProvidersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIProvidersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAIProviderResponse parses an HTTP response from a CreateAIProviderWithResponse call
+func ParseCreateAIProviderResponse(rsp *http.Response) (*CreateAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAIProviderResponse parses an HTTP response from a DeleteAIProviderWithResponse call
+func ParseDeleteAIProviderResponse(rsp *http.Response) (*DeleteAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAIProviderResponse parses an HTTP response from a UpdateAIProviderWithResponse call
+func ParseUpdateAIProviderResponse(rsp *http.Response) (*UpdateAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestAIProviderResponse parses an HTTP response from a TestAIProviderWithResponse call
+func ParseTestAIProviderResponse(rsp *http.Response) (*TestAIProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestAIProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderConnection
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
