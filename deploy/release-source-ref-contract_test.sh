@@ -59,6 +59,9 @@ for scenario in missing matching moved published; do
   else
     [[ "$scenario" == moved || "$scenario" == published ]] || { cat "$TMP/$scenario/output"; exit 1; }
   fi
+  if [[ "$scenario" == published ]]; then
+    grep -q "already published and immutable" "$TMP/$scenario/output"
+  fi
   if [[ "$scenario" == missing ]]; then
     grep -q 'api --method POST .*git/refs' "$TMP/$scenario/calls"
   elif [[ -f "$TMP/$scenario/calls" ]]; then

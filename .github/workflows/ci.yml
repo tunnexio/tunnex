@@ -626,7 +626,7 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${ENCODED_RELEASE_TAG}")"
           case "$RELEASE_STATUS" in
             200)
-              IS_DRAFT="$(jq -er '.draft' "$RELEASE_RESPONSE")"
+              IS_DRAFT="$(jq -er '.draft | if type == "boolean" then tostring else error("release draft flag must be boolean") end' "$RELEASE_RESPONSE")"
               if [[ "$IS_DRAFT" != true ]]; then
                 echo "::error::release ${RELEASE_TAG} is already published and immutable; refusing source reuse before any image or chart publication"
                 exit 1
