@@ -200,8 +200,8 @@ describe("custom provider approved endpoints", () => {
     api.GET.mockResolvedValue({ data: { ...customInventory, custom_available: false } }); render(show()); await screen.findByText(custom.name);
     fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider("Custom");
     expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLInputElement).value).toBe("Custom");
-    expect(screen.getByText("Installation setup required")).toBeTruthy();
-    expect(screen.queryByLabelText("Approved upstream endpoint")).toBeNull(); expect(api.POST).not.toHaveBeenCalled();
+    expect(screen.getByText(/Installation setup required: approve this endpoint/)).toBeTruthy();
+    expect(screen.getByLabelText("API base URL")).toBeTruthy(); expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(true); expect(api.POST).not.toHaveBeenCalled();
   });
   it("creates only an approved custom endpoint using raw names and no precreation catalog request", async () => {
     api.GET.mockResolvedValue({ data: customInventory }); render(show()); await screen.findByText(custom.name);
@@ -217,6 +217,24 @@ describe("custom provider approved endpoints", () => {
     await passTest(); fireEvent.click(screen.getByRole("button", { name: "Create connection" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "custom", endpoint_url: custom.endpoint_url, name: "New private", enabled: true, models: ["custom-model"], api_key: "synthetic-custom-key" } })));
     expect(api.GET.mock.calls.some(([path]) => path.endsWith("/models"))).toBe(false);
+  });
+  it("tests a typed API base URL, invalidates edits and refuses unapproved destinations", async () => {
+    const base = "https://inference.internal";
+    api.GET.mockResolvedValue({ data: { ...customInventory, custom_endpoints: [{ name: "Internal inference", url: base }] } });
+    render(show()); await screen.findByText(custom.name); fireEvent.click(screen.getByRole("button", { name: "Add provider" })); selectProvider("Custom");
+    fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Typed endpoint" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "model-a" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    fireEvent.change(screen.getByLabelText("API base URL"), { target: { value: base + "/v1/" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-custom-key" } });
+    expect(screen.getByText(base + "/v1/chat/completions")).toBeTruthy(); await passTest();
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "custom", model: "model-a", api_key: "synthetic-custom-key", endpoint_url: base } }));
+    fireEvent.change(screen.getByLabelText("API base URL"), { target: { value: "https://unapproved.internal" } });
+    expect(screen.getByText(/This endpoint is not approved/)).toBeTruthy(); expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByText(/Test succeeded/)).toBeNull(); expect((screen.getByRole("button", { name: "Create connection" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-secret" } }); fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); expect(api.POST).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("API base URL"), { target: { value: "https://user:secret@inference.internal" } }); expect(screen.getByText(/without embedded credentials/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("API base URL"), { target: { value: base } }); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-custom-key" } }); await passTest();
+    fireEvent.click(screen.getByRole("button", { name: "Create connection" })); await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: expect.objectContaining({ endpoint_url: base }) })));
   });
   it("reuses custom credentials with immutable endpoint and scopes catalog to the connection", async () => {
     api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/models") ? { items: [], total: 0, limit: 50, offset: 0 } : customInventory }));
