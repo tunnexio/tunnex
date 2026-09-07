@@ -47,12 +47,9 @@ let member = true;
 function get(path: string) {
   if (path.endsWith("/agent-groups"))
     return Promise.resolve({ data: [{ id: "group-a", name: "Team A" }] });
-  if (path.endsWith("/devices"))
+  if (path === "/api/v1/organizations/{orgId}/agents")
     return Promise.resolve({
-      data: [
-        { id: "agent-a", name: "Agent A", kind: "agent", status: "active" },
-        { id: "human", name: "Human", kind: "device", status: "active" },
-      ],
+      data: { items: [{ device_id: "agent-a", name: "Agent A", status: "active" }], next_cursor: null },
     });
   if (path.endsWith("/members"))
     return Promise.resolve({
@@ -68,7 +65,8 @@ function get(path: string) {
       completion_tokens: 3,
       total_cost: 0.01,
       uncosted_requests: 1,
-      semantics: "observed estimates",
+      semantics: "observed_estimate",
+      dashboard: {successful_requests: 2, failed_requests: 0, cancelled_requests: 0, daily: [], models: [], teams: [], agents: []},
     },
   });
 }
@@ -92,9 +90,40 @@ describe("AI team and agent policy workspace", () => {
   it("does not fetch policy inventory or enable groups when the prerequisite is off", async () => {
     mocks.org.agent_policy_templates_enabled = false;
     render(createElement(MemoryRouter, null, createElement(AgentsAIGateway)));
+    await screen.findByText("$0.01");
+    expect(screen.queryByText("Agent groups are turned off")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Configuration" }));
     expect(screen.getByText("Agent groups are turned off")).toBeTruthy();
-    expect(mocks.GET).not.toHaveBeenCalled();
+    expect(mocks.GET.mock.calls.every(([path]) => path.endsWith("/ai-gateway/usage"))).toBe(true);
     expect(mocks.PUT).not.toHaveBeenCalled();
+  });
+  it("loads organization agents across pages and preserves selection after a failed page", async () => {
+    let attempts = 0;
+    mocks.GET.mockImplementation((path: string, options: { params: { query?: { cursor?: string; limit?: number } } }) => {
+      if (path !== "/api/v1/organizations/{orgId}/agents") return get(path);
+      expect(options.params.query?.limit).toBe(100);
+      if (!options.params.query?.cursor) return Promise.resolve({ data: { items: [{ device_id: "agent-a", name: "Other owner's agent", status: "active" }], next_cursor: "page-two" } });
+      expect(options.params.query.cursor).toBe("page-two");
+      if (++attempts === 1) return Promise.reject(new Error("offline"));
+      return Promise.resolve({ data: { items: [{ device_id: "agent-b", name: "Second page agent", status: "revoked" }], next_cursor: null } });
+    });
+    render(show());
+    await screen.findByRole("option", { name: "Other owner's agent (active)" });
+    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "agent-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load more agents" }));
+    await screen.findByText(/Could not load more agents/);
+    expect((screen.getByLabelText("Agent") as HTMLSelectElement).value).toBe("agent-a");
+    fireEvent.click(screen.getByRole("button", { name: "Load more agents" }));
+    await screen.findByRole("option", { name: "Second page agent (revoked)" });
+    expect((screen.getByLabelText("Agent") as HTMLSelectElement).value).toBe("agent-a");
+    expect(screen.queryByRole("button", { name: "Load more agents" })).toBeNull();
+    expect(mocks.GET.mock.calls.some(([path]) => path.endsWith("/devices"))).toBe(false);
+    fireEvent.change(screen.getByLabelText("Agent"), { target: { value: "agent-b" } });
+    await screen.findByRole("button", { name: "Save agent access" });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh AI policies" }));
+    await screen.findByLabelText("Agent");
+    expect((screen.getByLabelText("Agent") as HTMLSelectElement).value).toBe("");
+    expect(screen.queryByRole("button", { name: "Save agent access" })).toBeNull();
   });
   it("sends exact team models, key IDs and expected revision with a soft threshold", async () => {
     render(show());
@@ -201,22 +230,6 @@ describe("AI team and agent policy workspace", () => {
       ).disabled,
     ).toBe(true);
     expect(mocks.PUT).not.toHaveBeenCalled();
-  });
-  it("displays uncosted requests and clears stale usage when scope changes", async () => {
-    render(show());
-    await screen.findByRole("button", { name: "Load usage" });
-    fireEvent.change(screen.getByLabelText("From (UTC)"), {
-      target: { value: "2026-09-07T00:00" },
-    });
-    fireEvent.change(screen.getByLabelText("To (UTC)"), {
-      target: { value: "2026-09-07T01:00" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Load usage" }));
-    await screen.findByText(/Requests without cost: 1/);
-    fireEvent.change(screen.getByLabelText("Usage team"), {
-      target: { value: "group-a" },
-    });
-    expect(screen.queryByText(/Requests without cost: 1/)).toBeNull();
   });
   it("ignores a stale organization load", async () => {
     let resolve!: (v: unknown) => void;

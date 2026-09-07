@@ -1,10 +1,12 @@
 import "../network-workspaces.css";
 import "../agents-workspace.css";
+import "../components/ai-gateway-configuration.css";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
+import { AIUsageWorkspace } from "../components/AIUsageWorkspace";
 import {
   Button,
   Card,
@@ -20,7 +22,8 @@ import { AgentsManagementGate } from "./AgentsManagementGate";
 type S = components["schemas"];
 type Inventory = {
   groups: S["AgentGroup"][];
-  devices: S["Device"][];
+  devices: { id: string; name: string; status: string }[];
+  nextAgentCursor: string | null;
   teams: S["AITeamPolicy"][];
   assignments: S["AIAssignment"][];
 };
@@ -36,32 +39,32 @@ const area =
   "w-full rounded-lg border border-white/10 bg-ink-900 px-3 py-2 text-sm text-ink-heading";
 export default function AgentsAIGateway() {
   const { org } = useOrg();
+  const [view, setView] = useState<"usage" | "configuration">("usage");
   return (
     <div className="network-management agents-workspace space-y-5">
       <PageHeader
         title="AI gateway"
-        subtitle="Choose exact models for enrolled agents. Provider secrets stay on your gateway."
+        subtitle="Understand AI spend, monitor usage, and manage agent access."
       />
       <AgentsTabRail />
+      <nav aria-label="AI gateway views" className="flex gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1 w-fit">
+        {(["usage", "configuration"] as const).map((v) => <button key={v} type="button" aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${view === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{v === "usage" ? "Usage & cost" : "Configuration"}</button>)}
+      </nav>
       <AgentsManagementGate key={org?.id}>
         {(orgId) => (
-          <>
-            <AIGatewaySettings orgId={orgId} canEdit />
+          view === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} /> : <div className="ai-gateway-configuration">
+            <div className="ai-config-heading"><div><p className="ai-config-eyebrow">AI GATEWAY / CONFIGURATION</p><h2>Gateway configuration</h2><p>Define team policies, then choose which agents can use them.</p></div><span className="ai-config-pill">Community available</span></div>
+            <div className="ai-config-organization"><AIGatewaySettings orgId={orgId} canEdit /></div>
             {org?.agent_policy_templates_enabled ? (
               <AIGatewayWorkspace key={orgId} orgId={orgId} />
             ) : (
               <Card>
                 <h2>Agent groups are turned off</h2>
-                <p>
-                  Enable the Agent Groups organization setting before
-                  configuring AI teams. Paid managed runtime is not required.
-                </p>
-                <Link to="/settings?section=ai-agents">
-                  Configure Agent Group settings
-                </Link>
+                <p>Enable the Agent Groups organization setting before configuring AI teams. Paid managed runtime is not required.</p>
+                <Link to="/settings?section=ai-agents">Configure Agent Group settings</Link>
               </Card>
             )}
-          </>
+          </div>
         )}
       </AgentsManagementGate>
     </div>
@@ -71,7 +74,8 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
   const [data, setData] = useState<Inventory | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [loadingAgents, setLoadingAgents] = useState(false);
   const [teamID, setTeamID] = useState(""),
     [deviceID, setDeviceID] = useState("");
   const alive = useRef(true),
@@ -79,12 +83,13 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
   async function reload() {
     const n = ++generation.current;
     setLoading(true);
+    setLoadingAgents(false);
     setError("");
     try {
       const params = { params: { path: { orgId } } };
       const [g, d, t, a] = await Promise.all([
         api.GET("/api/v1/organizations/{orgId}/agent-groups", params),
-        api.GET("/api/v1/organizations/{orgId}/devices", params),
+        api.GET("/api/v1/organizations/{orgId}/agents", { params: { path: { orgId }, query: { limit: 100 } } }),
         api.GET("/api/v1/organizations/{orgId}/ai-gateway/teams", params),
         api.GET("/api/v1/organizations/{orgId}/ai-gateway/agents", params),
       ]);
@@ -100,9 +105,12 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
         !a.data
       )
         throw Error();
+      setDeviceID((selected) => d.data.items.some((agent) => agent.device_id === selected) ? selected : "");
+      setTeamID((selected) => g.data.some((group) => group.id === selected) ? selected : "");
       setData({
         groups: g.data,
-        devices: d.data.filter((d) => d.kind === "agent"),
+        devices: d.data.items.map((d) => ({ id: d.device_id, name: d.name, status: d.status })),
+        nextAgentCursor: d.data.next_cursor ?? null,
         teams: t.data,
         assignments: a.data,
       });
@@ -113,6 +121,31 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
         );
     } finally {
       if (alive.current && n === generation.current) setLoading(false);
+    }
+  }
+  async function loadMoreAgents() {
+    if (!data?.nextAgentCursor || loadingAgents || busy) return;
+    const n = generation.current;
+    const cursor = data.nextAgentCursor;
+    setLoadingAgents(true);
+    setError("");
+    try {
+      const result = await api.GET("/api/v1/organizations/{orgId}/agents", {
+        params: { path: { orgId }, query: { limit: 100, cursor } },
+      });
+      if (!alive.current || n !== generation.current) return;
+      if (result.error || !result.data || result.data.next_cursor === cursor) throw Error();
+      const page = result.data;
+      setData((current) => current ? {
+        ...current,
+        devices: [...new Map([...current.devices, ...page.items.map((d) => ({ id: d.device_id, name: d.name, status: d.status }))].map((d) => [d.id, d])).values()],
+        nextAgentCursor: page.next_cursor ?? null,
+      } : current);
+    } catch {
+      if (alive.current && n === generation.current)
+        setError("Could not load more agents. Your selection is preserved; retry loading more agents.");
+    } finally {
+      if (alive.current && n === generation.current) setLoadingAgents(false);
     }
   }
   useEffect(() => {
@@ -165,14 +198,16 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
     data.groups.find((g) => g.id === id)?.name ??
     `Archived/unavailable group (${id})`;
   return (
-    <div className="space-y-5">
+    <div className="ai-config-workspace">
+      <div className="ai-config-workspace-summary"><span><strong>{data.teams.length}</strong> team policies</span><span><strong>{data.assignments.length}</strong> agent assignments</span><span><strong>{data.devices.length}</strong> loaded agents{data.nextAgentCursor ? " · more available" : ""}</span></div>
       {error && (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="ai-config-error">
           {error}
         </p>
       )}
-      <Card>
-        <h2 className="text-sm font-semibold">Team model policy</h2>
+      <div className="ai-config-grid">
+      <Card className="ai-config-card">
+        <div className="ai-config-section-heading"><span className="ai-config-section-number" aria-hidden="true">01</span><div><p className="ai-config-eyebrow">MODEL ACCESS</p><h2 className="text-sm font-semibold">Team model policy</h2></div><span className="ai-config-pill">Team scope</span></div>
         <p className="my-2 text-sm">
           Use exact models and provider key IDs, never provider secrets.
         </p>
@@ -197,6 +232,7 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
                 ))}
               </Select>
             </Field>
+            {!teamID && <div className="ai-config-selection-note"><span className="ai-config-note-symbol" aria-hidden="true">↗</span><h3>Select a team to configure its models</h3><p>Set exact models, provider key IDs and an optional daily soft threshold.</p></div>}
             {teamID && (
               <TeamEditor
                 key={`${teamID}:${team?.revision ?? 0}`}
@@ -222,8 +258,8 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
             </p>
           ))}
       </Card>
-      <Card>
-        <h2 className="text-sm font-semibold">Agent access</h2>
+      <Card className="ai-config-card">
+        <div className="ai-config-section-heading"><span className="ai-config-section-number" aria-hidden="true">02</span><div><p className="ai-config-eyebrow">WORKLOAD ACCESS</p><h2 className="text-sm font-semibold">Agent access</h2></div><span className="ai-config-pill">One team per agent</span></div>
         <p className="my-2 text-sm">
           Disabling blocks new requests. Accepted streams may finish within 30
           seconds.
@@ -246,6 +282,8 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
             </Select>
           </Field>
         )}
+        {data.nextAgentCursor && <Button disabled={busy || loadingAgents} onClick={() => void loadMoreAgents()}>{loadingAgents ? "Loading more agents…" : "Load more agents"}</Button>}
+        {!deviceID && data.devices.length > 0 && <div className="ai-config-selection-note"><span className="ai-config-note-symbol" aria-hidden="true">↗</span><h3>Select an agent to manage access</h3><p>Choose its team, narrow model access and review synchronization.</p></div>}
         {deviceID && (
           <AssignmentEditor
             key={`${deviceID}:${assignment?.revision ?? 0}`}
@@ -276,15 +314,15 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
           .filter((a) => !data.devices.some((d) => d.id === a.device_id))
           .map((a) => (
             <p key={a.device_id}>
-              Archived/unavailable agent ({a.device_id}): {a.status}; retained
+              Agent not in loaded inventory ({a.device_id}): {a.status}; retained
               usage history.
             </p>
           ))}
       </Card>
-      <UsagePanel orgId={orgId} inventory={data} />
-      <Button disabled={busy} onClick={() => void reload()}>
+      </div>
+      <div className="ai-config-footer"><p>Changes apply to new requests. Existing accepted streams may finish within 30 seconds.</p><Button disabled={busy} onClick={() => void reload()}>
         Refresh AI policies
-      </Button>
+      </Button></div>
     </div>
   );
 }
@@ -308,7 +346,8 @@ function TeamEditor({
         Number(limit) > 0 &&
         Number(limit) <= 100000));
   return (
-    <div className="mt-3 space-y-3">
+    <div className="ai-config-editor">
+      <div className="ai-config-policy-summary"><span className="ai-config-pill">{team ? `Revision ${team.revision}` : "New policy"}</span>{team && <span>{team.models.length} model{team.models.length === 1 ? "" : "s"} · {team.key_ids.length} provider key ID{team.key_ids.length === 1 ? "" : "s"}</span>}</div>
       <Field label="Exact models (one per line)">
         <textarea
           className={area}
@@ -414,14 +453,9 @@ function AssignmentEditor({
     membership === "member" &&
     lines(models).every((m) => team.models.includes(m));
   return (
-    <div className="mt-3 space-y-3">
+    <div className="ai-config-editor">
       {assignment && (
-        <p role="status">
-          Synchronization: {assignment.status}. Desired revision{" "}
-          {assignment.revision}; applied revision {assignment.applied_revision};
-          applied team revision {assignment.applied_team_revision}.{" "}
-          {assignment.enabled ? "Access requested." : "Access disabled."}
-        </p>
+        <div role="status" className={`ai-config-sync ai-config-sync-${assignment.status}`}><div className="ai-config-sync-heading"><span className="ai-config-pill">Synchronization: {assignment.status}</span><span>{assignment.enabled ? "Access requested." : "Access disabled."}</span></div><p>Desired revision {assignment.revision}; applied revision {assignment.applied_revision}; applied team revision {assignment.applied_team_revision}.</p></div>
       )}
       <Field label="Agent AI team">
         <Select
@@ -441,7 +475,7 @@ function AssignmentEditor({
           ))}
         </Select>
       </Field>
-      <p className="text-xs text-ink-secondary">
+      <p className={`ai-config-membership ai-config-membership-${membership}`}>
         {membership === "member"
           ? "Current group membership verified; the server rechecks it on every request."
           : membership === "loading"
@@ -465,11 +499,11 @@ function AssignmentEditor({
       </Field>
       <p className="text-xs text-ink-secondary">Leave agent models blank to inherit all models from the selected team.</p>
       {team && (
-        <p className="text-xs text-ink-secondary">
+        <p className="ai-config-model-summary">
           Team models: {team.models.join(", ")}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="ai-config-actions">
         <Button
           disabled={busy || !valid}
           onClick={() =>
@@ -505,148 +539,5 @@ function AssignmentEditor({
         )}
       </div>
     </div>
-  );
-}
-function UsagePanel({
-  orgId,
-  inventory,
-}: {
-  orgId: string;
-  inventory: Inventory;
-}) {
-  const [team, setTeam] = useState(""),
-    [device, setDevice] = useState(""),
-    [from, setFrom] = useState(
-      new Date().toISOString().slice(0, 10) + "T00:00",
-    ),
-    [to, setTo] = useState(new Date().toISOString().slice(0, 16));
-  const [report, setReport] = useState<S["AIUsageReport"] | null>(null),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const serial = useRef(0);
-  useEffect(
-    () => () => {
-      serial.current++;
-    },
-    [],
-  );
-  const change = (set: (v: string) => void, v: string) => {
-    serial.current++;
-    set(v);
-    setReport(null);
-    setError("");
-    setBusy(false);
-  };
-  async function load() {
-    const start = new Date(from + "Z"),
-      end = new Date(to + "Z"),
-      span = end.getTime() - start.getTime();
-    if (!Number.isFinite(span) || span <= 0 || span > 31 * 86400000) {
-      setError("Choose a positive UTC range of at most 31 days.");
-      return;
-    }
-    const n = ++serial.current;
-    setBusy(true);
-    setError("");
-    setReport(null);
-    try {
-      const { data, error } = await api.GET(
-        "/api/v1/organizations/{orgId}/ai-gateway/usage",
-        {
-          params: {
-            path: { orgId },
-            query: {
-              from: start.toISOString(),
-              to: end.toISOString(),
-              ...(team ? { team_id: team } : {}),
-              ...(device ? { device_id: device } : {}),
-            },
-          },
-        },
-      );
-      if (n !== serial.current) return;
-      if (error || !data)
-        setError("Usage is unavailable. No zero-spend claim can be made.");
-      else setReport(data);
-    } catch {
-      if (n === serial.current)
-        setError("Usage is unavailable. No zero-spend claim can be made.");
-    } finally {
-      if (n === serial.current) setBusy(false);
-    }
-  }
-  return (
-    <Card>
-      <h2 className="text-sm font-semibold">Observed usage</h2>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <Field label="Usage team">
-          <Select
-            value={team}
-            onChange={(e) => change(setTeam, e.target.value)}
-          >
-            <option value="">All teams</option>
-            {inventory.teams.map((t) => (
-              <option key={t.team_id} value={t.team_id}>
-                {inventory.groups.find((g) => g.id === t.team_id)?.name ??
-                  `Archived group (${t.team_id})`}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Usage agent">
-          <Select
-            value={device}
-            onChange={(e) => change(setDevice, e.target.value)}
-          >
-            <option value="">All agents</option>
-            {inventory.assignments.map((a) => (
-              <option key={a.device_id} value={a.device_id}>
-                {inventory.devices.find((d) => d.id === a.device_id)?.name ??
-                  `Archived agent (${a.device_id})`}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="From (UTC)">
-          <Input
-            type="datetime-local"
-            value={from}
-            onChange={(e) => change(setFrom, e.target.value)}
-          />
-        </Field>
-        <Field label="To (UTC)">
-          <Input
-            type="datetime-local"
-            value={to}
-            onChange={(e) => change(setTo, e.target.value)}
-          />
-        </Field>
-      </div>
-      <Button className="mt-3" disabled={busy} onClick={() => void load()}>
-        {busy ? "Loading usage…" : "Load usage"}
-      </Button>
-      {error && (
-        <p role="alert" className="mt-2 text-danger">
-          {error}
-        </p>
-      )}
-      {report && (
-        <div className="mt-3 space-y-1 text-sm">
-          <p>
-            Requests: {report.total_requests}. Tokens: {report.total_tokens}{" "}
-            (input {report.prompt_tokens}, output {report.completion_tokens}).
-          </p>
-          <p>
-            Observed estimated cost: ${report.total_cost.toFixed(6)}. Requests
-            without cost: {report.uncosted_requests}.
-          </p>
-          <p>
-            {report.semantics}. Soft thresholds are not strict caps. Historical
-            totals reflect retained native metadata, including archived bindings
-            where available.
-          </p>
-        </div>
-      )}
-    </Card>
   );
 }

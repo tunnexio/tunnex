@@ -109,6 +109,8 @@ export interface paths {
                 device_id?: string;
                 from?: string;
                 to?: string;
+                /** @description Include bounded native daily and historical attribution aggregates. */
+                dashboard?: boolean;
             };
             header?: never;
             path: {
@@ -4574,11 +4576,53 @@ export interface components {
             total_cost: number;
             /** Format: int64 */
             uncosted_requests: number;
+            dashboard?: components["schemas"]["AIUsageDashboard"];
             /**
              * @description Native reported usage estimates; not a provider invoice or hard spending cap.
              * @enum {string}
              */
             semantics: "observed_estimate";
+        };
+        AIUsageDashboard: {
+            /** Format: int64 */
+            successful_requests: number;
+            /** Format: int64 */
+            failed_requests: number;
+            /** Format: int64 */
+            cancelled_requests: number;
+            daily: components["schemas"]["AIUsageDay"][];
+            models: components["schemas"]["AIUsageModel"][];
+            teams: components["schemas"]["AIUsageAttribution"][];
+            agents: components["schemas"]["AIUsageAttribution"][];
+        };
+        AIUsageDay: {
+            date: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            tokens: number;
+            /** Format: double */
+            cost: number;
+            /** Format: int64 */
+            uncosted_requests: number;
+        };
+        AIUsageModel: {
+            name: string;
+            /** Format: double */
+            cost: number;
+        };
+        AIUsageAttribution: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            tokens: number;
+            /** Format: double */
+            cost: number;
+            /** Format: int64 */
+            uncosted_requests: number;
         };
         AICredential: {
             /** @description One-time secret; never returned by read APIs. */
@@ -7939,6 +7983,8 @@ export interface operations {
                 device_id?: string;
                 from?: string;
                 to?: string;
+                /** @description Include bounded native daily and historical attribution aggregates. */
+                dashboard?: boolean;
             };
             header?: never;
             path: {

@@ -94,6 +94,7 @@ paths:
       - { name: device_id, in: query, schema: { type: string, format: uuid } }
       - { name: from, in: query, schema: { type: string, format: date-time } }
       - { name: to, in: query, schema: { type: string, format: date-time } }
+      - { name: dashboard, in: query, schema: { type: boolean, default: false }, description: Include bounded native daily and historical attribution aggregates. }
     get:
       operationId: getAIUsage
       summary: Read scoped native usage estimates over at most 31 days
@@ -5676,7 +5677,48 @@ components:
         completion_tokens: { type: integer, format: int64 }
         total_cost: { type: number, format: double }
         uncosted_requests: { type: integer, format: int64 }
+        dashboard: { $ref: "#/components/schemas/AIUsageDashboard" }
         semantics: { type: string, enum: [observed_estimate], description: Native reported usage estimates; not a provider invoice or hard spending cap. }
+    AIUsageDashboard:
+      type: object
+      additionalProperties: false
+      required: [successful_requests, failed_requests, cancelled_requests, daily, models, teams, agents]
+      properties:
+        successful_requests: { type: integer, format: int64, minimum: 0 }
+        failed_requests: { type: integer, format: int64, minimum: 0 }
+        cancelled_requests: { type: integer, format: int64, minimum: 0 }
+        daily: { type: array, items: { $ref: "#/components/schemas/AIUsageDay" } }
+        models: { type: array, items: { $ref: "#/components/schemas/AIUsageModel" } }
+        teams: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
+        agents: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
+    AIUsageDay:
+      type: object
+      additionalProperties: false
+      required: [date, requests, tokens, cost, uncosted_requests]
+      properties:
+        date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        requests: { type: integer, format: int64, minimum: 0 }
+        tokens: { type: integer, format: int64, minimum: 0 }
+        cost: { type: number, format: double, minimum: 0 }
+        uncosted_requests: { type: integer, format: int64, minimum: 0 }
+    AIUsageModel:
+      type: object
+      additionalProperties: false
+      required: [name, cost]
+      properties:
+        name: { type: string }
+        cost: { type: number, format: double, minimum: 0 }
+    AIUsageAttribution:
+      type: object
+      additionalProperties: false
+      required: [id, name, requests, tokens, cost, uncosted_requests]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        requests: { type: integer, format: int64, minimum: 0 }
+        tokens: { type: integer, format: int64, minimum: 0 }
+        cost: { type: number, format: double, minimum: 0 }
+        uncosted_requests: { type: integer, format: int64, minimum: 0 }
     AICredential:
       type: object
       additionalProperties: false

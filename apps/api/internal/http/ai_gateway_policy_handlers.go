@@ -142,9 +142,17 @@ func (s apiServer) GetAIUsage(ctx context.Context, r api.GetAIUsageRequestObject
 	if r.Params.To != nil {
 		to = *r.Params.To
 	}
-	v, err := s.aiPolicies.Usage(ctx, r.OrgId, r.Params.TeamId, r.Params.DeviceId, from, to)
+	var v aigateway.Usage
+	var dashboard *api.AIUsageDashboard
+	if r.Params.Dashboard != nil && *r.Params.Dashboard {
+		var d api.AIUsageDashboard
+		v, d, err = s.aiPolicies.UsageDashboard(ctx, r.OrgId, r.Params.TeamId, r.Params.DeviceId, from, to)
+		dashboard = &d
+	} else {
+		v, err = s.aiPolicies.Usage(ctx, r.OrgId, r.Params.TeamId, r.Params.DeviceId, from, to)
+	}
 	if err != nil {
 		return nil, err
 	}
-	return api.GetAIUsage200JSONResponse{From: from, To: to, TotalRequests: v.TotalRequests, TotalTokens: v.TotalTokens, PromptTokens: v.PromptTokens, CompletionTokens: v.CompletionTokens, TotalCost: v.TotalCost, UncostedRequests: v.UncostedRequests, Semantics: api.ObservedEstimate}, nil
+	return api.GetAIUsage200JSONResponse{From: from, To: to, TotalRequests: v.TotalRequests, TotalTokens: v.TotalTokens, PromptTokens: v.PromptTokens, CompletionTokens: v.CompletionTokens, TotalCost: v.TotalCost, UncostedRequests: v.UncostedRequests, Semantics: api.ObservedEstimate, Dashboard: dashboard}, nil
 }

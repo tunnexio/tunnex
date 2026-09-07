@@ -1302,11 +1302,48 @@ type AITeamPolicyWrite struct {
 	Models           AIModelNames `json:"models"`
 }
 
+// AIUsageAttribution defines model for AIUsageAttribution.
+type AIUsageAttribution struct {
+	Cost             float64            `json:"cost"`
+	Id               openapi_types.UUID `json:"id"`
+	Name             string             `json:"name"`
+	Requests         int64              `json:"requests"`
+	Tokens           int64              `json:"tokens"`
+	UncostedRequests int64              `json:"uncosted_requests"`
+}
+
+// AIUsageDashboard defines model for AIUsageDashboard.
+type AIUsageDashboard struct {
+	Agents             []AIUsageAttribution `json:"agents"`
+	CancelledRequests  int64                `json:"cancelled_requests"`
+	Daily              []AIUsageDay         `json:"daily"`
+	FailedRequests     int64                `json:"failed_requests"`
+	Models             []AIUsageModel       `json:"models"`
+	SuccessfulRequests int64                `json:"successful_requests"`
+	Teams              []AIUsageAttribution `json:"teams"`
+}
+
+// AIUsageDay defines model for AIUsageDay.
+type AIUsageDay struct {
+	Cost             float64 `json:"cost"`
+	Date             string  `json:"date"`
+	Requests         int64   `json:"requests"`
+	Tokens           int64   `json:"tokens"`
+	UncostedRequests int64   `json:"uncosted_requests"`
+}
+
+// AIUsageModel defines model for AIUsageModel.
+type AIUsageModel struct {
+	Cost float64 `json:"cost"`
+	Name string  `json:"name"`
+}
+
 // AIUsageReport defines model for AIUsageReport.
 type AIUsageReport struct {
-	CompletionTokens int64     `json:"completion_tokens"`
-	From             time.Time `json:"from"`
-	PromptTokens     int64     `json:"prompt_tokens"`
+	CompletionTokens int64             `json:"completion_tokens"`
+	Dashboard        *AIUsageDashboard `json:"dashboard,omitempty"`
+	From             time.Time         `json:"from"`
+	PromptTokens     int64             `json:"prompt_tokens"`
 
 	// Semantics Native reported usage estimates; not a provider invoice or hard spending cap.
 	Semantics        AIUsageReportSemantics `json:"semantics"`
@@ -5009,6 +5046,9 @@ type GetAIUsageParams struct {
 	DeviceId *openapi_types.UUID `form:"device_id,omitempty" json:"device_id,omitempty"`
 	From     *time.Time          `form:"from,omitempty" json:"from,omitempty"`
 	To       *time.Time          `form:"to,omitempty" json:"to,omitempty"`
+
+	// Dashboard Include bounded native daily and historical attribution aggregates.
+	Dashboard *bool `form:"dashboard,omitempty" json:"dashboard,omitempty"`
 }
 
 // ListAlertOccurrencesParams defines parameters for ListAlertOccurrences.
@@ -17420,6 +17460,22 @@ func NewGetAIUsageRequest(server string, orgId openapi_types.UUID, params *GetAI
 		if params.To != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "to", runtime.ParamLocationQuery, *params.To); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Dashboard != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dashboard", runtime.ParamLocationQuery, *params.Dashboard); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
