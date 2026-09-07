@@ -71,6 +71,7 @@ export interface paths {
     "/api/v1/organizations/{orgId}/ai-gateway/models": {
         parameters: {
             query?: {
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter";
                 query?: string;
                 limit?: number;
                 offset?: number;
@@ -4606,7 +4607,7 @@ export interface components {
             /** @description Non-secret owned policy reference. */
             key_id: string;
             /** @enum {string} */
-            provider: "openrouter";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter";
             name: string;
             models: components["schemas"]["AIModelNames"];
             enabled: boolean;
@@ -4621,14 +4622,23 @@ export interface components {
             /** Format: date-time */
             last_test_at?: string;
         };
+        AIProviderDefinition: {
+            /** @enum {string} */
+            id: "openai" | "anthropic" | "gemini" | "openrouter";
+            name: string;
+            credential_label: string;
+            model_placeholder: string;
+        };
         AIProviderList: {
             management_available: boolean;
+            /** @description Supported provider forms; absence indicates an older server without provider discovery. */
+            definitions?: components["schemas"]["AIProviderDefinition"][];
             items: components["schemas"]["AIProviderConnection"][];
             legacy_key_ids: string[];
         };
         AIProviderCreate: {
             /** @enum {string} */
-            provider: "openrouter";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter";
             name: string;
             models: components["schemas"]["AIModelNames"];
             enabled: boolean;
@@ -4637,7 +4647,7 @@ export interface components {
         };
         AIProviderUpdate: {
             /** @enum {string} */
-            provider: "openrouter";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter";
             name: string;
             models: components["schemas"]["AIModelNames"];
             enabled: boolean;
@@ -8132,6 +8142,7 @@ export interface operations {
     listAIProviderModels: {
         parameters: {
             query?: {
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter";
                 query?: string;
                 limit?: number;
                 offset?: number;

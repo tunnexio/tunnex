@@ -54,6 +54,9 @@ const (
 
 // Defines values for AIProviderConnectionProvider.
 const (
+	AIProviderConnectionProviderAnthropic  AIProviderConnectionProvider = "anthropic"
+	AIProviderConnectionProviderGemini     AIProviderConnectionProvider = "gemini"
+	AIProviderConnectionProviderOpenai     AIProviderConnectionProvider = "openai"
 	AIProviderConnectionProviderOpenrouter AIProviderConnectionProvider = "openrouter"
 )
 
@@ -67,12 +70,26 @@ const (
 
 // Defines values for AIProviderCreateProvider.
 const (
+	AIProviderCreateProviderAnthropic  AIProviderCreateProvider = "anthropic"
+	AIProviderCreateProviderGemini     AIProviderCreateProvider = "gemini"
+	AIProviderCreateProviderOpenai     AIProviderCreateProvider = "openai"
 	AIProviderCreateProviderOpenrouter AIProviderCreateProvider = "openrouter"
+)
+
+// Defines values for AIProviderDefinitionId.
+const (
+	AIProviderDefinitionIdAnthropic  AIProviderDefinitionId = "anthropic"
+	AIProviderDefinitionIdGemini     AIProviderDefinitionId = "gemini"
+	AIProviderDefinitionIdOpenai     AIProviderDefinitionId = "openai"
+	AIProviderDefinitionIdOpenrouter AIProviderDefinitionId = "openrouter"
 )
 
 // Defines values for AIProviderUpdateProvider.
 const (
-	Openrouter AIProviderUpdateProvider = "openrouter"
+	AIProviderUpdateProviderAnthropic  AIProviderUpdateProvider = "anthropic"
+	AIProviderUpdateProviderGemini     AIProviderUpdateProvider = "gemini"
+	AIProviderUpdateProviderOpenai     AIProviderUpdateProvider = "openai"
+	AIProviderUpdateProviderOpenrouter AIProviderUpdateProvider = "openrouter"
 )
 
 // Defines values for AIUsageReportSemantics.
@@ -1353,11 +1370,24 @@ type AIProviderCreate struct {
 // AIProviderCreateProvider defines model for AIProviderCreate.Provider.
 type AIProviderCreateProvider string
 
+// AIProviderDefinition defines model for AIProviderDefinition.
+type AIProviderDefinition struct {
+	CredentialLabel  string                 `json:"credential_label"`
+	Id               AIProviderDefinitionId `json:"id"`
+	ModelPlaceholder string                 `json:"model_placeholder"`
+	Name             string                 `json:"name"`
+}
+
+// AIProviderDefinitionId defines model for AIProviderDefinition.Id.
+type AIProviderDefinitionId string
+
 // AIProviderList defines model for AIProviderList.
 type AIProviderList struct {
-	Items               []AIProviderConnection `json:"items"`
-	LegacyKeyIds        []string               `json:"legacy_key_ids"`
-	ManagementAvailable bool                   `json:"management_available"`
+	// Definitions Supported provider forms; absence indicates an older server without provider discovery.
+	Definitions         *[]AIProviderDefinition `json:"definitions,omitempty"`
+	Items               []AIProviderConnection  `json:"items"`
+	LegacyKeyIds        []string                `json:"legacy_key_ids"`
+	ManagementAvailable bool                    `json:"management_available"`
 }
 
 // AIProviderModel defines model for AIProviderModel.
@@ -5151,9 +5181,10 @@ type TestAgentAccessParamsProtocol string
 
 // ListAIProviderModelsParams defines parameters for ListAIProviderModels.
 type ListAIProviderModelsParams struct {
-	Query  *string `form:"query,omitempty" json:"query,omitempty"`
-	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int    `form:"offset,omitempty" json:"offset,omitempty"`
+	Provider *string `form:"provider,omitempty" json:"provider,omitempty"`
+	Query    *string `form:"query,omitempty" json:"query,omitempty"`
+	Limit    *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset   *int    `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetAIUsageParams defines parameters for GetAIUsage.
@@ -17594,6 +17625,22 @@ func NewListAIProviderModelsRequest(server string, orgId openapi_types.UUID, par
 
 	if params != nil {
 		queryValues := queryURL.Query()
+
+		if params.Provider != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "provider", runtime.ParamLocationQuery, *params.Provider); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
 
 		if params.Query != nil {
 

@@ -87,6 +87,7 @@ paths:
         default: { $ref: '#/components/responses/Error' }
   /api/v1/organizations/{orgId}/ai-gateway/models:
     parameters:
+      - { name: provider, in: query, schema: { type: string, enum: [openai, anthropic, gemini, openrouter], default: openrouter } }
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
       - { name: query, in: query, schema: { type: string, maxLength: 100 } }
       - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
@@ -5702,7 +5703,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         key_id: { type: string, description: Non-secret owned policy reference. }
-        provider: { type: string, enum: [openrouter] }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter] }
         name: { type: string }
         models: { $ref: '#/components/schemas/AIModelNames' }
         enabled: { type: boolean }
@@ -5711,12 +5712,22 @@ components:
         status: { type: string, enum: [pending, applied, error, disabled] }
         last_test_status: { type: string, enum: [untested, success, failed] }
         last_test_at: { type: string, format: date-time }
+    AIProviderDefinition:
+      type: object
+      additionalProperties: false
+      required: [id, name, credential_label, model_placeholder]
+      properties:
+        id: { type: string, enum: [openai, anthropic, gemini, openrouter] }
+        name: { type: string }
+        credential_label: { type: string }
+        model_placeholder: { type: string }
     AIProviderList:
       type: object
       additionalProperties: false
       required: [management_available, items, legacy_key_ids]
       properties:
         management_available: { type: boolean }
+        definitions: { type: array, items: { $ref: '#/components/schemas/AIProviderDefinition' }, description: Supported provider forms; absence indicates an older server without provider discovery. }
         items: { type: array, items: { $ref: '#/components/schemas/AIProviderConnection' } }
         legacy_key_ids: { type: array, items: { type: string } }
     AIProviderCreate:
@@ -5724,7 +5735,7 @@ components:
       additionalProperties: false
       required: [provider, name, models, enabled, api_key]
       properties:
-        provider: { type: string, enum: [openrouter] }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter] }
         name: { type: string, minLength: 1, maxLength: 80 }
         models: { $ref: '#/components/schemas/AIModelNames' }
         enabled: { type: boolean }
@@ -5734,7 +5745,7 @@ components:
       additionalProperties: false
       required: [provider, name, models, enabled, expected_revision]
       properties:
-        provider: { type: string, enum: [openrouter] }
+        provider: { type: string, enum: [openai, anthropic, gemini, openrouter] }
         name: { type: string, minLength: 1, maxLength: 80 }
         models: { $ref: '#/components/schemas/AIModelNames' }
         enabled: { type: boolean }
@@ -5768,7 +5779,7 @@ components:
       type: array
       maxItems: 32
       uniqueItems: true
-      items: { type: string, pattern: '^openrouter/[A-Za-z0-9][A-Za-z0-9_./:-]*$', maxLength: 255 }
+      items: { type: string, pattern: '^(openai|anthropic|gemini|openrouter)/[A-Za-z0-9][A-Za-z0-9_./:-]*$', maxLength: 255 }
     AITeamPolicyWrite:
       type: object
       additionalProperties: false
