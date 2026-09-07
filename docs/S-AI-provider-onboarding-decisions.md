@@ -315,3 +315,22 @@ wildcard grants, embeddings/audio/video modes or team-BYOK semantics have been
 implemented. The supported inference mode remains chat completions. The pending
 pre-save check decision remains separate; no misleading enabled Test button or
 fabricated success is introduced while its backend contract is unresolved.
+
+Pre-save probe proposal (not yet approved or implemented): use one shared
+10-second deadline, fixed nine-provider catalog/authentication URLs, no redirects,
+no environment proxy inheritance, no caller-supplied headers, bounded JSON
+responses, and no native draft key/persistence. OpenRouter requires its
+`/api/v1/auth/key` response because `/models` is public. Custom HTTP and HTTPS must
+both use an authenticated CONNECT tunnel with normal HTTPS certificate checking.
+A custom public catalog proves reachability, not key validity: report that
+accurately or qualify authentication with an invalid-key negative control before
+claiming it. Bound probe concurrency and per-organization attempts; return only
+sanitized results. UI test state expires on provider/endpoint/key changes and is
+not a substitute for normal server authorization.
+
+Saved-check honesty correction: the existing native refresh-models operation can
+succeed on public catalogs (including OpenRouter) without proving API-key validity.
+Disposition: label this operation Connection check/catalog access in UI/API/docs;
+retain the actual native result and explicitly state that public catalogs may not
+validate keys. Do not retroactively call this credential proof. Authenticated
+pre-save validation remains the separately surfaced pending design.
