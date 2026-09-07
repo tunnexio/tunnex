@@ -43,7 +43,11 @@ func (s apiServer) ListAIProviders(ctx context.Context, r api.ListAIProvidersReq
 	if err != nil {
 		return nil, err
 	}
-	out := api.AIProviderList{ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
+	definitions := []api.AIProviderDefinition{}
+	for _, d := range aigateway.ProviderDefinitions() {
+		definitions = append(definitions, api.AIProviderDefinition{Id: api.AIProviderDefinitionId(d.ID), Name: d.Name, CredentialLabel: d.CredentialLabel, ModelPlaceholder: d.ModelPlaceholder})
+	}
+	out := api.AIProviderList{Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
 	for _, p := range items {
 		out.Items = append(out.Items, toAIProvider(p))
 	}
@@ -128,7 +132,11 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 	if r.Params.Offset != nil {
 		offset = *r.Params.Offset
 	}
-	p, err := s.aiPolicies.ProviderModels(ctx, query, limit, offset)
+	provider := "openrouter"
+	if r.Params.Provider != nil {
+		provider = string(*r.Params.Provider)
+	}
+	p, err := s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
 	if err != nil {
 		return nil, err
 	}

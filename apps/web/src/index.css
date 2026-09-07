@@ -365,3 +365,9 @@ select:disabled { opacity:.45; cursor:not-allowed; }
 @media(forced-colors:active) {
   select:not([multiple]),select:not([multiple])::picker(select) { appearance:auto; box-shadow:none; }
 }
+
+/* Opt-in drawer placement retains the shared Modal focus/dismiss contract. */
+.tnx-modal-overlay[data-placement="right"] { padding:0; justify-content:flex-end; align-items:stretch; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel { width:min(100%,680px); max-width:680px; height:100dvh; max-height:100dvh; border-radius:0; border-width:0 0 0 1px; background:var(--tnx-surface); }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-body { flex:1; overscroll-behavior:contain; }
+body:has(.tnx-modal-overlay[data-placement="right"]) { overflow:hidden; }

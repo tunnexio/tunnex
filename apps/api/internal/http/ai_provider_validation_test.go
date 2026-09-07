@@ -43,3 +43,30 @@ func TestAIProviderAuthorizationBeforeValidationAndSecretRedaction(t *testing.T)
 		})
 	}
 }
+
+func TestAIProviderSchemasAcceptSupportedProvidersOnly(t *testing.T) {
+	org := uuid.New()
+	srv := aiSocketServer(t, Deps{AuthFn: func(r *http.Request) *authctx.Principal {
+		return &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: "owner"}}
+	}})
+	base := "/api/v1/organizations/" + org.String() + "/ai-gateway/"
+	for _, provider := range []string{"openai", "anthropic", "gemini", "openrouter", "unsupported"} {
+		t.Run(provider, func(t *testing.T) {
+			want := http.StatusServiceUnavailable // Valid input reaches the absent engine.
+			if provider == "unsupported" {
+				want = http.StatusBadRequest
+			}
+			body := `{"provider":"` + provider + `","name":"fixture","models":["` + provider + `/exact-model"],"enabled":true,"api_key":"synthetic-only-key"}`
+			for _, request := range []struct{ method, path, body string }{
+				{"POST", base + "providers", body},
+				{"GET", base + "models?provider=" + provider, ""},
+			} {
+				res := aiSocketRequest(t, srv, request.method, request.path, request.body, "", "owner")
+				res.Body.Close()
+				if res.StatusCode != want {
+					t.Fatalf("%s %s status=%d want=%d", request.method, request.path, res.StatusCode, want)
+				}
+			}
+		})
+	}
+}

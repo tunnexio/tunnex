@@ -225,13 +225,109 @@ func engineExact(vk engineVK, name, provider string, models, keyIDs []string) bo
 	return !pc.AllowAllKeys && len(pc.BlacklistedModels) == 0 && validEngineList(pc.AllowedModels, true) && validEngineList(ids, false) && sameEngineSet(pc.AllowedModels, models) && sameEngineSet(ids, keyIDs)
 }
 
-// EnsureKey uses a stable caller-chosen per-agent name; never include a policy
-// revision in that name. Callers must serialize policy reconciliation of that name across replicas
-// so an older desired policy cannot overwrite a newer one. The pinned engine
-// has a unique name index; a concurrent create can recover after HTTP 409.
-// Updates retain the provider-config ID and omit budget/rate/reset fields.
+// EngineProviderScope is one provider's exact native-model and owned-key scope.
+type EngineProviderScope struct {
+	Provider       string
+	Models, KeyIDs []string
+}
+type ScopedPolicyEngine interface {
+	EnsureScopedKey(context.Context, string, []EngineProviderScope) (EngineKey, error)
+}
+
+func validEngineScopes(scopes []EngineProviderScope) bool {
+	if len(scopes) == 0 || len(scopes) > 4 {
+		return false
+	}
+	providers, keys := map[string]bool{}, map[string]bool{}
+	for _, s := range scopes {
+		if !supportedProvider(s.Provider) || providers[s.Provider] || !validEngineList(s.Models, true) || !validEngineList(s.KeyIDs, false) {
+			return false
+		}
+		providers[s.Provider] = true
+		for _, id := range s.KeyIDs {
+			if keys[id] {
+				return false
+			}
+			keys[id] = true
+		}
+	}
+	return len(keys) <= 64
+}
+func engineIdentity(vk engineVK, name string) bool {
+	if !engineIdentifier.MatchString(vk.ID) || vk.Name != name || vk.Value == "" || vk.IsActive == nil || len(vk.MCPConfigs) != 0 || vk.TeamID != nil || vk.CustomerID != nil || vk.ExpiresAt != nil || len(vk.ProviderConfigs) > 4 {
+		return false
+	}
+	seen := map[string]bool{}
+	ids := map[uint]bool{}
+	for _, p := range vk.ProviderConfigs {
+		if !supportedProvider(p.Provider) || seen[p.Provider] || p.ID == 0 || ids[p.ID] {
+			return false
+		}
+		seen[p.Provider] = true
+		ids[p.ID] = true
+	}
+	return true
+}
+func engineScopesExact(vk engineVK, name string, scopes []EngineProviderScope) bool {
+	if !engineIdentity(vk, name) || !*vk.IsActive || len(vk.ProviderConfigs) != len(scopes) {
+		return false
+	}
+	for _, s := range scopes {
+		found := false
+		for _, p := range vk.ProviderConfigs {
+			if p.Provider != s.Provider {
+				continue
+			}
+			found = true
+			ids := make([]string, len(p.Keys))
+			for i, k := range p.Keys {
+				ids[i] = k.KeyID
+			}
+			if p.AllowAllKeys || len(p.BlacklistedModels) != 0 || !validEngineList(p.AllowedModels, true) || !validEngineList(ids, false) || !sameEngineSet(p.AllowedModels, s.Models) || !sameEngineSet(ids, s.KeyIDs) {
+				return false
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+func retainedEngineConfigIDs(before, after []engineProvider) bool {
+	for _, old := range before {
+		for _, current := range after {
+			if old.Provider == current.Provider && old.ID != current.ID {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func scopePayload(scopes []EngineProviderScope, existing []engineProvider) []any {
+	result := make([]any, 0, len(scopes))
+	for _, s := range scopes {
+		p := map[string]any{"provider": s.Provider, "allowed_models": s.Models, "blacklisted_models": []string{}, "key_ids": s.KeyIDs, "weight": 1}
+		for _, old := range existing {
+			if old.Provider == s.Provider {
+				p["id"] = old.ID
+			}
+		}
+		result = append(result, p)
+	}
+	return result
+}
+
+// EnsureKey remains the single-provider compatibility entrypoint.
 func (e *Engine) EnsureKey(ctx context.Context, name, provider string, models, keyIDs []string) (EngineKey, error) {
-	if !engineIdentifier.MatchString(name) || !engineIdentifier.MatchString(provider) || !validEngineList(models, true) || !validEngineList(keyIDs, false) {
+	return e.EnsureScopedKey(ctx, name, []EngineProviderScope{{Provider: provider, Models: models, KeyIDs: keyIDs}})
+}
+
+// EnsureScopedKey retains the native credential and provider-config IDs while
+// applying the complete desired scope set. Callers serialize reconciliation by
+// stable identity; no policy revision belongs in the virtual-key name.
+func (e *Engine) EnsureScopedKey(ctx context.Context, name string, scopes []EngineProviderScope) (EngineKey, error) {
+	if !engineIdentifier.MatchString(name) || !validEngineScopes(scopes) {
 		return EngineKey{}, errEngineScope
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -244,14 +340,12 @@ func (e *Engine) EnsureKey(ctx context.Context, name, provider string, models, k
 		var result struct {
 			VirtualKey engineVK `json:"virtual_key"`
 		}
-		payload := map[string]any{"name": name, "is_active": true, "mcp_configs": []any{}, "provider_configs": []any{map[string]any{"provider": provider, "allowed_models": models, "key_ids": keyIDs, "weight": 1}}}
+		payload := map[string]any{"name": name, "is_active": true, "mcp_configs": []any{}, "provider_configs": scopePayload(scopes, nil)}
 		status, createErr := e.request(ctx, http.MethodPost, "/api/governance/virtual-keys", nil, payload, &result)
 		if createErr != nil {
 			if status != 0 && status != http.StatusConflict {
 				return EngineKey{}, errEngine
 			}
-			// A timeout may occur after the create committed. Recover once by exact
-			// name; never issue another create after an uncertain response.
 			vk, exists, err = e.findKey(ctx, name)
 			if err != nil || !exists {
 				return EngineKey{}, errEngine
@@ -260,29 +354,26 @@ func (e *Engine) EnsureKey(ctx context.Context, name, provider string, models, k
 			vk = result.VirtualKey
 		}
 	}
-	if !engineScope(vk, name, provider) {
+	if !engineIdentity(vk, name) {
 		return EngineKey{}, errEngineScope
 	}
 	persisted, _, err := e.readKey(ctx, vk.ID, false)
-	if err != nil || !engineScope(persisted, name, provider) || persisted.Value != vk.Value {
+	if err != nil || !engineIdentity(persisted, name) || persisted.ID != vk.ID || persisted.Value != vk.Value {
 		return EngineKey{}, errEngineScope
 	}
-	if !engineExact(persisted, name, provider, models, keyIDs) {
-		pc := persisted.ProviderConfigs[0]
-		if pc.ID == 0 {
-			return EngineKey{}, errEngineScope
-		}
-		payload := map[string]any{"is_active": true, "provider_configs": []any{map[string]any{"id": pc.ID, "provider": provider, "allowed_models": models, "blacklisted_models": []string{}, "key_ids": keyIDs, "weight": 1}}}
+	previousConfigs := persisted.ProviderConfigs
+	if !engineScopesExact(persisted, name, scopes) {
+		payload := map[string]any{"is_active": true, "provider_configs": scopePayload(scopes, persisted.ProviderConfigs)}
 		if _, err = e.request(ctx, http.MethodPut, "/api/governance/virtual-keys/"+vk.ID, nil, payload, nil); err != nil {
 			return EngineKey{}, errEngine
 		}
 	}
 	persisted, _, err = e.readKey(ctx, vk.ID, false)
-	if err != nil || persisted.Value != vk.Value || !engineExact(persisted, name, provider, models, keyIDs) {
+	if err != nil || persisted.ID != vk.ID || persisted.Value != vk.Value || !engineScopesExact(persisted, name, scopes) || !retainedEngineConfigIDs(previousConfigs, persisted.ProviderConfigs) {
 		return EngineKey{}, errEngineScope
 	}
 	memory, _, err := e.readKey(ctx, vk.ID, true)
-	if err != nil || memory.Value != vk.Value || !engineExact(memory, name, provider, models, keyIDs) {
+	if err != nil || memory.ID != vk.ID || memory.Value != vk.Value || !engineScopesExact(memory, name, scopes) || !retainedEngineConfigIDs(persisted.ProviderConfigs, memory.ProviderConfigs) {
 		return EngineKey{}, errEngineScope
 	}
 	return EngineKey{ID: vk.ID, Value: vk.Value}, nil

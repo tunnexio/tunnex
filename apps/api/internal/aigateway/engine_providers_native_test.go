@@ -75,10 +75,10 @@ func TestProviderEngineNativeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if err = engine.EnsureProvider(ctx); err != nil {
+	if err = engine.EnsureProvider(ctx, "openrouter"); err != nil {
 		t.Fatal(err)
 	}
-	spec := ProviderKeySpec{ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openrouter/openai/gpt-4o-mini"}, Enabled: true}
+	spec := ProviderKeySpec{Provider: "openrouter", ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openrouter/openai/gpt-4o-mini"}, Enabled: true}
 	value := secret
 	if err = engine.PutProviderKey(ctx, spec, &value); err != nil {
 		t.Fatal(err)
@@ -109,7 +109,7 @@ func TestProviderEngineNativeLifecycle(t *testing.T) {
 	if err = engine.PutProviderKey(ctx, spec, &value); err != nil {
 		t.Fatal(err)
 	}
-	page, err := engine.ProviderModels(ctx, "gpt-4o-mini", 50, 0)
+	page, err := engine.ProviderModels(ctx, "openrouter", "gpt-4o-mini", 50, 0)
 	if err != nil || len(page.Models) == 0 {
 		t.Fatal("native catalog missing")
 	}
@@ -122,7 +122,7 @@ func TestProviderEngineNativeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Never delete this referenced key. An independent unreferenced key covers deletion.
-	spare := ProviderKeySpec{ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: spec.Models, Enabled: false}
+	spare := ProviderKeySpec{Provider: "openrouter", ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: spec.Models, Enabled: false}
 	if err = engine.PutProviderKey(ctx, spare, &value); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestProviderEngineNativeLifecycle(t *testing.T) {
 	if err = engine.VerifyProviderKey(ctx, spec); err != nil {
 		t.Fatal("managed key lost after DB ownership transition", err)
 	}
-	legacy, _, err := engine.providerKey(ctx, "legacy-fixture")
+	legacy, _, err := engine.providerKey(ctx, "openrouter", "legacy-fixture")
 	if err != nil || legacy.ID != "legacy-fixture" {
 		t.Fatal("legacy key lost")
 	}
@@ -184,10 +184,10 @@ func TestProviderEngineNativeLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = engine.EnsureProvider(ctx); err != nil {
+	if err = engine.EnsureProvider(ctx, "openrouter"); err != nil {
 		t.Fatal("fresh empty-provider initialization failed", err)
 	}
-	if err = engine.EnsureProvider(ctx); err != nil {
+	if err = engine.EnsureProvider(ctx, "openrouter"); err != nil {
 		t.Fatal("provider initialization was not idempotent", err)
 	}
 	var keys struct {

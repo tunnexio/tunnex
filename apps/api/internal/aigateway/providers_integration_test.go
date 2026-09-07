@@ -22,7 +22,7 @@ type providerFixtureEngine struct {
 func newProviderFixtureEngine() *providerFixtureEngine {
 	return &providerFixtureEngine{policyEngineFixture: newPolicyEngineFixture(), values: map[string]ProviderKeySpec{}}
 }
-func (e *providerFixtureEngine) EnsureProvider(context.Context) error { return nil }
+func (e *providerFixtureEngine) EnsureProvider(context.Context, string) error { return nil }
 func (e *providerFixtureEngine) PutProviderKey(_ context.Context, s ProviderKeySpec, secret *string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -63,7 +63,7 @@ func (e *providerFixtureEngine) TestProviderKey(context.Context, ProviderKeySpec
 	e.tests++
 	return !e.fail, nil
 }
-func (e *providerFixtureEngine) ProviderModels(context.Context, string, int, int) (ProviderModelPage, error) {
+func (e *providerFixtureEngine) ProviderModels(context.Context, string, string, int, int) (ProviderModelPage, error) {
 	return ProviderModelPage{Models: []ProviderModel{{ID: "openrouter/a", Name: "A"}}, Total: 1}, nil
 }
 func TestAIProvidersPostgres(t *testing.T) {
@@ -256,5 +256,80 @@ func TestAIProviderMigrationSnapshot(t *testing.T) {
 			}
 		}
 		rollbackAI(tx)
+	}
+}
+
+type scopedProviderFixture struct {
+	*providerFixtureEngine
+	scopes []EngineProviderScope
+}
+
+func (e *scopedProviderFixture) EnsureScopedKey(ctx context.Context, name string, scopes []EngineProviderScope) (EngineKey, error) {
+	e.scopes = scopes
+	// Stable synthetic identity independent of changes to the provider set.
+	return e.policyEngineFixture.EnsureKey(ctx, name, "openrouter", []string{"fixture"}, []string{"fixture"})
+}
+func TestAIProvidersMixedScopesPostgres(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	f := newPolicyFixture(t, ctx, pool)
+	engine := &scopedProviderFixture{providerFixtureEngine: newProviderFixtureEngine()}
+	f.policies.engine = engine
+	f.policies.EnableProviderManagement(true)
+	secret := "fixture-secret"
+	create := func(provider, model string) ProviderConnection {
+		t.Helper()
+		p, err := f.policies.CreateProvider(ctx, f.org, f.owner, ProviderInput{Name: provider, Provider: provider, Models: []string{model}, Enabled: true, Secret: &secret})
+		if err != nil || p.Status != "applied" {
+			t.Fatalf("create %+v %v", p, err)
+		}
+		return p
+	}
+	a := create("openai", "openai/gpt-fixture")
+	b := create("anthropic", "anthropic/claude-fixture")
+	if _, err := f.policies.UpdateProvider(ctx, f.org, f.owner, a.ID, ProviderInput{Name: "switch", Provider: "gemini", Models: []string{"gemini/gemini-fixture"}, Enabled: true, Secret: &secret}, a.Revision); err == nil {
+		t.Fatal("provider changed")
+	}
+	if _, err := f.policies.PutTeam(ctx, f.org, f.owner, f.team, []string{"openai/gpt-fixture"}, []string{"provider-key"}, nil, 1); err == nil {
+		t.Fatal("legacy covered direct provider")
+	}
+	if _, err := f.policies.PutTeam(ctx, f.org, f.owner, f.team, []string{"openai/gpt-fixture", "anthropic/claude-fixture", "openrouter/openai/gpt-fixture"}, []string{a.KeyID, b.KeyID, "provider-key"}, nil, 1); err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile()
+	id, _ := f.binding(f.team)
+	if len(engine.scopes) != 3 || engine.scopes[0].Provider != "anthropic" || engine.scopes[1].Provider != "openai" || engine.scopes[2].Provider != "openrouter" || engine.scopes[2].Models[0] != "openai/gpt-fixture" {
+		t.Fatalf("mixed scopes %+v", engine.scopes)
+	}
+	if engine.scopes[0].KeyIDs[0] != b.KeyID || engine.scopes[1].KeyIDs[0] != a.KeyID || engine.scopes[2].KeyIDs[0] != "provider-key" {
+		t.Fatal("key grouping escaped provider")
+	}
+	// Legacy engines must refuse mixed scopes rather than collapse them.
+	f.policies.engine = engine.providerFixtureEngine
+	if got := f.reconcile(); got.Status != "error" {
+		t.Fatal("legacy engine accepted mixed scopes")
+	}
+	f.policies.engine = engine
+	if _, err := f.policies.PutTeam(ctx, f.org, f.owner, f.team, []string{"openai/gpt-fixture"}, []string{a.KeyID}, nil, 2); err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile()
+	after, _ := f.binding(f.team)
+	if id != after || len(engine.scopes) != 1 || engine.scopes[0].Provider != "openai" {
+		t.Fatal("scope removal changed identity or retained extra scopes")
+	}
+	down, err := os.ReadFile("../../db/migrations/0142_ai_provider_registry.down.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rollbackAI(tx)
+	if _, err = tx.Exec(ctx, `UPDATE ai_provider_connections SET deleted_at=statement_timestamp() WHERE org_id=$1`, f.org); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(ctx, string(down)); err == nil || !strings.Contains(err.Error(), "retained non-OpenRouter") {
+		t.Fatal("rollback erased retained provider ownership", err)
 	}
 }

@@ -58,13 +58,18 @@ func providerConflict() error {
 }
 func validateProviderInput(in ProviderInput, required bool) (ProviderInput, error) {
 	in.Name = strings.TrimSpace(in.Name)
-	if in.Provider != "openrouter" || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
+	if !supportedProvider(in.Provider) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
 		return in, providerInvalid()
 	}
 	var ok bool
 	in.Models, ok = canonicalModels(in.Models, false)
 	if !ok {
 		return in, providerInvalid()
+	}
+	for _, model := range in.Models {
+		if provider, _, ok := splitProviderModel(model); !ok || provider != in.Provider {
+			return in, providerInvalid()
+		}
 	}
 	if required && in.Secret == nil {
 		return in, providerInvalid()
@@ -75,50 +80,79 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 	return in, nil
 }
 func providerSpec(p ProviderConnection) ProviderKeySpec {
-	return ProviderKeySpec{ID: p.KeyID, Revision: p.Revision, Models: p.Models, Enabled: p.Enabled}
+	return ProviderKeySpec{Provider: p.Provider, ID: p.KeyID, Revision: p.Revision, Models: p.Models, Enabled: p.Enabled}
 }
 
 // validateProviderAccess is called under the team lock. Sorted provider locks are
 // held through policy mutation/admission; writers never acquire team locks.
 func (s *Policies) validateProviderAccess(ctx context.Context, tx pgx.Tx, org uuid.UUID, ids, models []string) error {
+	_, err := s.providerScopes(ctx, tx, org, ids, models)
+	return err
+}
+
+// providerScopes derives routing solely from authenticated ownership rows and
+// retains sorted locks through the caller's transaction. Legacy keys cover only
+// OpenRouter; a model vendor component never selects a direct provider.
+func (s *Policies) providerScopes(ctx context.Context, tx pgx.Tx, org uuid.UUID, ids, models []string) ([]EngineProviderScope, error) {
 	sorted := append([]string(nil), ids...)
 	slices.Sort(sorted)
 	covered := map[string]bool{}
+	keys := map[string][]string{}
 	legacy := false
 	for _, id := range sorted {
 		if !strings.HasPrefix(id, "tnx-managed-") {
 			var ok bool
 			if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_provider_legacy_keys WHERE org_id=$1 AND key_id=$2)`, org, id).Scan(&ok) != nil {
-				return aiUnavailable()
+				return nil, aiUnavailable()
 			}
 			if !ok {
-				return policyDenied()
+				return nil, policyDenied()
 			}
 			legacy = true
+			keys["openrouter"] = append(keys["openrouter"], id)
 			continue
 		}
 		p, err := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND key_id=$2 FOR SHARE`, org, id))
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return policyDenied()
+				return nil, policyDenied()
 			}
-			return aiUnavailable()
+			return nil, aiUnavailable()
 		}
-		if p.DeletedAt != nil || !p.Enabled || p.Status != "applied" || p.Revision != p.AppliedRevision {
-			return policyDenied()
+		if p.DeletedAt != nil || !p.Enabled || p.Status != "applied" || p.Revision != p.AppliedRevision || !supportedProvider(p.Provider) {
+			return nil, policyDenied()
 		}
+		keys[p.Provider] = append(keys[p.Provider], id)
 		for _, m := range p.Models {
+			provider, _, ok := splitProviderModel(m)
+			if !ok || provider != p.Provider {
+				return nil, policyDenied()
+			}
 			covered[m] = true
 		}
 	}
-	if !legacy {
-		for _, m := range models {
-			if !covered[m] {
-				return policyDenied()
-			}
+	selected := map[string][]string{}
+	for _, m := range models {
+		provider, native, ok := splitProviderModel(m)
+		if !ok || (!covered[m] && !(legacy && provider == "openrouter")) {
+			return nil, policyDenied()
 		}
+		selected[provider] = append(selected[provider], native)
 	}
-	return nil
+	providers := []string{}
+	for provider := range selected {
+		providers = append(providers, provider)
+	}
+	slices.Sort(providers)
+	scopes := []EngineProviderScope{}
+	for _, provider := range providers {
+		slices.Sort(selected[provider])
+		if len(keys[provider]) == 0 {
+			return nil, policyDenied()
+		}
+		scopes = append(scopes, EngineProviderScope{Provider: provider, Models: selected[provider], KeyIDs: keys[provider]})
+	}
+	return scopes, nil
 }
 func (s *Policies) ListProviders(ctx context.Context, org uuid.UUID) ([]ProviderConnection, []string, error) {
 	if s == nil || s.pool == nil {
@@ -186,7 +220,7 @@ func (s *Policies) CreateProvider(ctx context.Context, org, actor uuid.UUID, in 
 		return ProviderConnection{}, providerConflict()
 	}
 	id := uuid.New()
-	p, err := scanProvider(tx.QueryRow(ctx, `INSERT INTO ai_provider_connections(id,org_id,key_id,provider,name,models,enabled,revision,status) VALUES($1,$2,$3,'openrouter',$4,$5,$6,1,'pending') RETURNING `+providerColumns, id, org, "tnx-managed-"+id.String(), in.Name, in.Models, in.Enabled))
+	p, err := scanProvider(tx.QueryRow(ctx, `INSERT INTO ai_provider_connections(id,org_id,key_id,provider,name,models,enabled,revision,status) VALUES($1,$2,$3,$7,$4,$5,$6,1,'pending') RETURNING `+providerColumns, id, org, "tnx-managed-"+id.String(), in.Name, in.Models, in.Enabled, in.Provider))
 	if err != nil {
 		return p, aiUnavailable()
 	}
@@ -214,6 +248,9 @@ func (s *Policies) UpdateProvider(ctx context.Context, org, actor, id uuid.UUID,
 	}
 	if err != nil {
 		return p, aiUnavailable()
+	}
+	if p.Provider != in.Provider {
+		return p, providerInvalid()
 	}
 	if p.Revision != expected {
 		return p, providerConflict()
@@ -262,7 +299,7 @@ func (s *Policies) syncProvider(ctx context.Context, org, id uuid.UUID, revision
 	// Shared provider initialization is serialized across CP replicas.
 	_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(71410001)`)
 	if err == nil {
-		err = engine.EnsureProvider(ctx)
+		err = engine.EnsureProvider(ctx, p.Provider)
 	}
 	deleted := false
 	if err == nil && remove {
@@ -366,14 +403,14 @@ func (s *Policies) TestProvider(ctx context.Context, org, actor, id uuid.UUID, e
 	}
 	return p, nil
 }
-func (s *Policies) ProviderModels(ctx context.Context, query string, limit, offset int) (ProviderModelPage, error) {
+func (s *Policies) ProviderModels(ctx context.Context, provider, query string, limit, offset int) (ProviderModelPage, error) {
 	if !s.ProviderManagementAvailable() {
 		return ProviderModelPage{}, aiUnavailable()
 	}
-	if utf8.RuneCountInString(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
+	if !supportedProvider(provider) || utf8.RuneCountInString(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
 		return ProviderModelPage{}, providerInvalid()
 	}
-	p, err := s.engine.(ProviderEngine).ProviderModels(ctx, query, limit, offset)
+	p, err := s.engine.(ProviderEngine).ProviderModels(ctx, provider, query, limit, offset)
 	if err != nil {
 		return ProviderModelPage{}, aiUnavailable()
 	}

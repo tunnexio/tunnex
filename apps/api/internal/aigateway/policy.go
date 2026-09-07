@@ -5,7 +5,6 @@ import (
 	"errors"
 	"math"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,7 +62,7 @@ func canonicalModels(values []string, empty bool) ([]string, bool) {
 	}
 	out := append([]string{}, values...)
 	for _, v := range out {
-		if !strings.HasPrefix(v, "openrouter/") || len(v) <= len("openrouter/") || !engineModel.MatchString(v) {
+		if _, _, ok := splitProviderModel(v); !ok {
 			return nil, false
 		}
 	}

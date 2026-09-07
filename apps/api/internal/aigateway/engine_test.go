@@ -391,3 +391,55 @@ func TestEngineNativeAdministration(t *testing.T) {
 	}
 	t.Log("pinned native create, persistent and memory readback, stable-key update, and verified disable passed")
 }
+
+func TestEngineMultiScopeReadbackRefusesDrift(t *testing.T) {
+	scopes := []EngineProviderScope{{Provider: "openrouter", Models: []string{"openai/gpt-4o-mini"}, KeyIDs: []string{"configured-provider-key"}}, {Provider: "anthropic", Models: []string{"claude-fixture"}, KeyIDs: []string{"anthropic-key"}}}
+	for _, mode := range []string{"valid", "duplicate-provider", "duplicate-config-id", "changed-config-id", "foreign-provider", "swapped-keys", "extra-model", "missing-provider", "allow-all"} {
+		t.Run(mode, func(t *testing.T) {
+			key := engineFixtureKey()
+			configs := key["provider_configs"].([]any)
+			configs = append(configs, map[string]any{"id": 8, "provider": "anthropic", "allowed_models": []string{"claude-fixture"}, "keys": []any{map[string]string{"key_id": "anthropic-key"}}})
+			key["provider_configs"] = configs
+			e, _ := newEngineFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/governance/virtual-keys" {
+					writeEngineJSON(w, map[string]any{"virtual_keys": []any{key}, "total_count": 1})
+					return
+				}
+				if r.Method != "GET" {
+					t.Error("matching persisted scopes must not mutate")
+				}
+				if r.URL.Query().Get("from_memory") == "true" {
+					p := configs[1].(map[string]any)
+					switch mode {
+					case "duplicate-provider":
+						p["provider"] = "openrouter"
+					case "duplicate-config-id":
+						p["id"] = 7
+					case "changed-config-id":
+						p["id"] = 88
+					case "foreign-provider":
+						p["provider"] = "unknown"
+					case "swapped-keys":
+						p["keys"] = []any{map[string]string{"key_id": "configured-provider-key"}}
+					case "extra-model":
+						p["allowed_models"] = []string{"claude-fixture", "other"}
+					case "missing-provider":
+						key["provider_configs"] = configs[:1]
+					case "allow-all":
+						p["allow_all_keys"] = true
+					}
+				}
+				writeEngineJSON(w, map[string]any{"virtual_key": key})
+			})
+			_, err := e.EnsureScopedKey(context.Background(), "tunnex-ai-agent", scopes)
+			if (err == nil) != (mode == "valid") {
+				t.Fatalf("unexpected result %v", err)
+			}
+		})
+	}
+	for _, scopes := range [][]EngineProviderScope{nil, {{Provider: "unknown", Models: []string{"model"}, KeyIDs: []string{"key"}}}, {scopes[0], scopes[0]}, {scopes[0], {Provider: "anthropic", Models: []string{"model"}, KeyIDs: scopes[0].KeyIDs}}} {
+		if validEngineScopes(scopes) {
+			t.Fatal("invalid desired scopes accepted")
+		}
+	}
+}

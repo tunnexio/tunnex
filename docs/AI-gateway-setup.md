@@ -9,7 +9,8 @@ The qualified engine is Bifrost v2.0.0. `deploy/ai-gateway/compose.yml` pins the
 ### UI-managed providers
 
 The **AI gateway → Providers & models** workspace lets an owner/admin add an
-OpenRouter connection, select exact models, test credentials, rotate the key and
+OpenAI, Anthropic, Gemini or OpenRouter connection, select exact models, test
+credentials, rotate the key and
 disable or remove an unreferenced connection. Credential tests make no inference
 request; catalog inclusion does not guarantee inference access to every model.
 Provider keys are write-only and encrypted only in the private engine database.
@@ -37,8 +38,10 @@ For Helm, set `aiGateway.providerManagementEnabled: true` with the normal AI
 settings. Only the legacy provider Secret entry becomes optional; admin and
 encryption-key references remain required. AI remains single-instance.
 
-1. Open **Providers & models**, add a name, OpenRouter key and exact models, then
-   save. Wait for the connection's applied status.
+1. Open **Providers & models → Add provider**, select the provider, enter a
+   connection name and its API key, then choose catalog models or enter exact
+   identifiers. Save and wait for applied status. **Add model** can reuse a saved
+   connection without entering its key again.
 2. Run **Test connection**. If a save is uncertain, resubmit the key explicitly;
    the CP cannot recover a secret it does not store.
 3. In **Configuration**, enable the org AI setting, select a team, its provider
@@ -47,9 +50,22 @@ encryption-key references remain required. AI remains single-instance.
 4. Use the enrolled-agent credential exchange and proxy routes below; inspect
    **Usage & cost** for observed estimates.
 
+Model names retain the provider prefix: `openai/gpt-4o-mini`,
+`anthropic/claude-sonnet-4-20250514`, `gemini/gemini-2.5-flash`, or
+`openrouter/openai/gpt-4o-mini` are examples, subject to your account's model access.
+A team may select connections from several providers. Each key remains restricted
+to its provider and selected models. Existing operator-managed key references
+cover OpenRouter only. To change a connection's provider, create a new connection;
+editing a connection cannot transfer its secret to another provider.
+
+The provider picker is supplied by the server's supported registry. Azure,
+Bedrock, Vertex, arbitrary upstream URLs and public model aliases are outside
+this slice. Catalog/credential checks do not generate model tokens. Real-account
+inference qualification remains distinct from local synthetic protocol tests.
+
 For existing deployments, take a consistent backup, upgrade every CP replica and
-apply migration 0141 before enabling management. It snapshots existing team key
-references into explicit per-org legacy ownership. New arbitrary key IDs cannot
+apply migrations through 0142 before enabling multi-provider management. Migration
+0141 snapshots existing team key references into explicit per-org legacy ownership. New arbitrary key IDs cannot
 be used in policy: create an owned connection instead. Reserved `tnx-managed-`
 prefix collisions refuse migration and require operator review. Keep the same
 engine volumes, encryption key and environment variables used by legacy keys.

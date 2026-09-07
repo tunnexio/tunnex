@@ -3,7 +3,6 @@ package aigateway
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -119,11 +118,20 @@ func (s *Policies) reconcileTeamDevice(ctx context.Context, org, device, expecte
 			return result, apierr.New(429, "ai_binding_limit", "AI gateway retains at most 64 native identity bindings per organization")
 		}
 	}
-	nativeModels := make([]string, len(models))
-	for i, v := range models {
-		nativeModels[i] = strings.TrimPrefix(v, "openrouter/")
+	scopes, scopeErr := s.providerScopes(ctx, tx, org, p.KeyIDs, models)
+	if scopeErr != nil || len(scopes) == 0 {
+		return finish("error", false)
 	}
-	key, err := s.engine.EnsureKey(ctx, "ai-"+org.String()+"-"+device.String()+"-"+a.TeamID.String(), "openrouter", nativeModels, p.KeyIDs)
+	name := "ai-" + org.String() + "-" + device.String() + "-" + a.TeamID.String()
+	var key EngineKey
+	if scoped, ok := s.engine.(ScopedPolicyEngine); ok {
+		key, err = scoped.EnsureScopedKey(ctx, name, scopes)
+	} else if len(scopes) == 1 {
+		scope := scopes[0]
+		key, err = s.engine.EnsureKey(ctx, name, scope.Provider, scope.Models, scope.KeyIDs)
+	} else {
+		return finish("error", false)
+	}
 	if err != nil || key.ID == "" || key.Value == "" {
 		return finish("error", false)
 	}

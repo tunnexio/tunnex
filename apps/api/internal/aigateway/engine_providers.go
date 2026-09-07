@@ -16,14 +16,15 @@ import (
 // ProviderEngine contains no secret-bearing result types. Secrets are transient
 // write-only arguments; errors must never include native payloads or messages.
 type ProviderEngine interface {
-	EnsureProvider(context.Context) error
+	EnsureProvider(context.Context, string) error
 	PutProviderKey(context.Context, ProviderKeySpec, *string) error
 	VerifyProviderKey(context.Context, ProviderKeySpec) error
 	TestProviderKey(context.Context, ProviderKeySpec) (bool, error)
 	DeleteProviderKey(context.Context, ProviderKeySpec) error
-	ProviderModels(context.Context, string, int, int) (ProviderModelPage, error)
+	ProviderModels(context.Context, string, string, int, int) (ProviderModelPage, error)
 }
 type ProviderKeySpec struct {
+	Provider string
 	ID       string
 	Revision int64
 	Models   []string
@@ -56,12 +57,19 @@ func nativeProviderSpec(s ProviderKeySpec) (string, []string, error) {
 	if err != nil || id == uuid.Nil || s.ID != "tnx-managed-"+id.String() || s.Revision < 1 {
 		return "", nil, errEngineScope
 	}
+	if !supportedProvider(s.Provider) {
+		return "", nil, errEngineScope
+	}
 	models, ok := canonicalModels(s.Models, false)
 	if !ok {
 		return "", nil, errEngineScope
 	}
 	for i := range models {
-		models[i] = strings.TrimPrefix(models[i], "openrouter/")
+		provider, model, valid := splitProviderModel(models[i])
+		if !valid || provider != s.Provider {
+			return "", nil, errEngineScope
+		}
+		models[i] = model
 	}
 	return s.ID + "-r" + strconv.FormatInt(s.Revision, 10), models, nil
 }
@@ -86,15 +94,18 @@ func providerExact(k providerReadback, s ProviderKeySpec) bool {
 	name, models, err := nativeProviderSpec(s)
 	return err == nil && k.ID == s.ID && k.Name == name && k.Enabled != nil && *k.Enabled == s.Enabled && k.Weight != nil && *k.Weight == 1 && validEngineList(k.Models, true) && sameEngineSet(k.Models, models) && len(k.Blacklisted) == 0 && (len(k.Aliases) == 0 || string(k.Aliases) == "null" || string(k.Aliases) == "{}") && (k.Batch == nil || !*k.Batch) && (k.Anthropic == nil || !*k.Anthropic) && providerValueOK(k.Value)
 }
-func (e *Engine) providerKey(ctx context.Context, id string) (providerReadback, int, error) {
+func (e *Engine) providerKey(ctx context.Context, provider, id string) (providerReadback, int, error) {
 	var k providerReadback
-	status, err := e.request(ctx, http.MethodGet, "/api/providers/openrouter/keys/"+id, nil, nil, &k)
+	status, err := e.request(ctx, http.MethodGet, "/api/providers/"+provider+"/keys/"+id, nil, nil, &k)
 	return k, status, err
 }
 
 // EnsureProvider must be called under the CP's shared provider-init lock. Existing
 // provider configuration is never replaced, so unrelated keys remain untouched.
-func (e *Engine) EnsureProvider(ctx context.Context) error {
+func (e *Engine) EnsureProvider(ctx context.Context, provider string) error {
+	if !supportedProvider(provider) {
+		return errEngineScope
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var read struct {
@@ -103,20 +114,20 @@ func (e *Engine) EnsureProvider(ctx context.Context) error {
 			Retries *int `json:"max_retries"`
 		} `json:"network_config"`
 	}
-	status, err := e.request(ctx, http.MethodGet, "/api/providers/openrouter", nil, nil, &read)
+	status, err := e.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &read)
 	if err != nil {
 		if status != 404 {
 			return errEngine
 		}
-		_, err = e.request(ctx, http.MethodPost, "/api/providers", nil, map[string]any{"provider": "openrouter", "keys": []any{}, "network_config": map[string]any{"max_retries": 0}}, nil)
+		_, err = e.request(ctx, http.MethodPost, "/api/providers", nil, map[string]any{"provider": provider, "keys": []any{}, "network_config": map[string]any{"max_retries": 0}}, nil)
 		if err != nil {
 			return errEngine
 		}
-		if _, err = e.request(ctx, http.MethodGet, "/api/providers/openrouter", nil, nil, &read); err != nil {
+		if _, err = e.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &read); err != nil {
 			return errEngine
 		}
 	}
-	if read.Name != "openrouter" || read.Network.Retries == nil || *read.Network.Retries != 0 {
+	if read.Name != provider || read.Network.Retries == nil || *read.Network.Retries != 0 {
 		return errEngineScope
 	}
 	return nil
@@ -131,7 +142,7 @@ func (e *Engine) PutProviderKey(ctx context.Context, s ProviderKeySpec, secret *
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	old, status, readErr := e.providerKey(ctx, s.ID)
+	old, status, readErr := e.providerKey(ctx, s.Provider, s.ID)
 	exists := readErr == nil
 	if readErr != nil && status != 404 {
 		return errEngine
@@ -153,7 +164,7 @@ func (e *Engine) PutProviderKey(ctx context.Context, s ProviderKeySpec, secret *
 		value = *secret
 	}
 	body := map[string]any{"id": s.ID, "name": name, "value": value, "models": models, "blacklisted_models": []string{}, "weight": 1, "enabled": s.Enabled, "use_for_batch_api": false, "use_anthropic_endpoints": false}
-	method, path := http.MethodPost, "/api/providers/openrouter/keys"
+	method, path := http.MethodPost, "/api/providers/"+s.Provider+"/keys"
 	if exists {
 		method = http.MethodPut
 		path += "/" + s.ID
@@ -173,7 +184,7 @@ func (e *Engine) VerifyProviderKey(ctx context.Context, s ProviderKeySpec) error
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	k, _, err := e.providerKey(ctx, s.ID)
+	k, _, err := e.providerKey(ctx, s.Provider, s.ID)
 	if err != nil {
 		return errEngine
 	}
@@ -192,7 +203,7 @@ func (e *Engine) TestProviderKey(ctx context.Context, s ProviderKeySpec) (bool, 
 		return false, err
 	}
 	var k providerReadback
-	if _, err := e.request(ctx, http.MethodPost, "/api/providers/openrouter/keys/"+s.ID+"/refresh-models", nil, nil, &k); err != nil {
+	if _, err := e.request(ctx, http.MethodPost, "/api/providers/"+s.Provider+"/keys/"+s.ID+"/refresh-models", nil, nil, &k); err != nil {
 		return false, errEngine
 	}
 	if !providerExact(k, s) {
@@ -216,7 +227,7 @@ func (e *Engine) DeleteProviderKey(ctx context.Context, s ProviderKeySpec) error
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	k, status, err := e.providerKey(ctx, s.ID)
+	k, status, err := e.providerKey(ctx, s.Provider, s.ID)
 	if status == 404 {
 		return nil
 	}
@@ -226,23 +237,23 @@ func (e *Engine) DeleteProviderKey(ctx context.Context, s ProviderKeySpec) error
 	if !providerExact(k, s) {
 		return errEngineScope
 	}
-	if _, err = e.request(ctx, http.MethodDelete, "/api/providers/openrouter/keys/"+s.ID, nil, nil, nil); err != nil {
+	if _, err = e.request(ctx, http.MethodDelete, "/api/providers/"+s.Provider+"/keys/"+s.ID, nil, nil, nil); err != nil {
 		return errEngine
 	}
-	_, status, err = e.providerKey(ctx, s.ID)
+	_, status, err = e.providerKey(ctx, s.Provider, s.ID)
 	if status != 404 || err == nil {
 		return errEngine
 	}
 	return nil
 }
-func (e *Engine) ProviderModels(ctx context.Context, query string, limit, offset int) (ProviderModelPage, error) {
+func (e *Engine) ProviderModels(ctx context.Context, provider, query string, limit, offset int) (ProviderModelPage, error) {
 	out := ProviderModelPage{Models: []ProviderModel{}}
-	if len(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
+	if !supportedProvider(provider) || len(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
 		return out, errEngineScope
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	q := url.Values{"provider": {"openrouter"}, "unfiltered": {"true"}, "query": {query}, "limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}}
+	q := url.Values{"provider": {provider}, "unfiltered": {"true"}, "query": {query}, "limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}}
 	var raw struct {
 		Models []struct {
 			Name     string `json:"name"`
@@ -255,11 +266,11 @@ func (e *Engine) ProviderModels(ctx context.Context, query string, limit, offset
 	}
 	seen := map[string]bool{}
 	for _, m := range raw.Models {
-		if m.Provider != "openrouter" || !engineModel.MatchString(m.Name) || seen[m.Name] {
+		if m.Provider != provider || !engineModel.MatchString(m.Name) || seen[m.Name] {
 			return ProviderModelPage{}, errEngineScope
 		}
 		seen[m.Name] = true
-		out.Models = append(out.Models, ProviderModel{ID: "openrouter/" + m.Name, Name: m.Name})
+		out.Models = append(out.Models, ProviderModel{ID: provider + "/" + m.Name, Name: m.Name})
 	}
 	out.Total = *raw.Total
 	return out, nil

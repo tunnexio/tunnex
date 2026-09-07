@@ -19,7 +19,7 @@ func fixtureProviderKey(s ProviderKeySpec) map[string]any {
 func TestProviderEnginePreservesMaskedSecretAndRefusesDrift(t *testing.T) {
 	for _, mode := range []string{"valid", "foreign-id", "foreign-name", "future-revision", "raw-secret", "ref-secret", "broader-model", "disabled", "wrong-weight", "batch", "aliases", "native-error", "unknown-test-status", "credential-refused"} {
 		t.Run(mode, func(t *testing.T) {
-			old := ProviderKeySpec{ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openrouter/openai/gpt-4o-mini"}, Enabled: true}
+			old := ProviderKeySpec{Provider: "openrouter", ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openrouter/openai/gpt-4o-mini"}, Enabled: true}
 			next := old
 			next.Revision = 2
 			key := fixtureProviderKey(old)
@@ -130,7 +130,7 @@ func TestProviderEngineInputScopeAndCatalog(t *testing.T) {
 	}))
 	defer srv.Close()
 	e, _ := NewEngine(srv.URL, "admin", "fixture")
-	s := ProviderKeySpec{ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openrouter/openai/gpt-4o-mini"}, Enabled: true}
+	s := ProviderKeySpec{Provider: "openrouter", ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openrouter/openai/gpt-4o-mini"}, Enabled: true}
 	for _, secret := range []string{"", "env.PRIVATE", "vault.path", "has space", "<REDACTED>", strings.Repeat("x", 4097)} {
 		if e.PutProviderKey(context.Background(), s, &secret) == nil {
 			t.Fatal("invalid secret accepted")
@@ -139,7 +139,7 @@ func TestProviderEngineInputScopeAndCatalog(t *testing.T) {
 	if e.DeleteProviderKey(context.Background(), s) == nil || calls != 0 {
 		t.Fatal("enabled delete or invalid input reached native")
 	}
-	page, err := e.ProviderModels(context.Background(), "", 2, 0)
+	page, err := e.ProviderModels(context.Background(), "openrouter", "", 2, 0)
 	if err != nil || len(page.Models) != 1 || page.Models[0].ID != "openrouter/openai/gpt-4o-mini" {
 		t.Fatal("catalog failed")
 	}
@@ -149,12 +149,12 @@ func TestProviderEngineInputScopeAndCatalog(t *testing.T) {
 	}
 	for _, m := range []string{"duplicate", "foreign"} {
 		mode = m
-		if _, err = e.ProviderModels(context.Background(), "", 2, 0); err == nil {
+		if _, err = e.ProviderModels(context.Background(), "openrouter", "", 2, 0); err == nil {
 			t.Fatal("invalid catalog accepted")
 		}
 	}
 	before := calls
-	if _, err = e.ProviderModels(context.Background(), "", 101, 0); err == nil || calls != before {
+	if _, err = e.ProviderModels(context.Background(), "openrouter", "", 101, 0); err == nil || calls != before {
 		t.Fatal("catalog bound not applied")
 	}
 }
@@ -179,16 +179,16 @@ func TestProviderEngineInitAndCancelledWrite(t *testing.T) {
 	}))
 	defer srv.Close()
 	e, _ := NewEngine(srv.URL, "admin", "fixture")
-	if e.EnsureProvider(context.Background()) != nil || !created {
+	if e.EnsureProvider(context.Background(), "openrouter") != nil || !created {
 		t.Fatal("initialization failed")
 	}
-	if e.EnsureProvider(context.Background()) != nil {
+	if e.EnsureProvider(context.Background(), "openrouter") != nil {
 		t.Fatal("existing provider failed")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	start := time.Now()
-	if e.EnsureProvider(ctx) == nil || time.Since(start) > time.Second {
+	if e.EnsureProvider(ctx, "openrouter") == nil || time.Since(start) > time.Second {
 		t.Fatal("cancel ignored")
 	}
 }

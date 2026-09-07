@@ -439,7 +439,7 @@ func TestAIPoliciesPostgres(t *testing.T) {
 }
 
 func TestAIPolicyValidation(t *testing.T) {
-	for _, models := range [][]string{nil, {"*"}, {"openai/a"}, {"openrouter/"}, {"openrouter/a", "openrouter/a"}, {"openrouter/a?route=x"}} {
+	for _, models := range [][]string{nil, {"*"}, {"unsupported/a"}, {"openrouter/"}, {"openrouter/a", "openrouter/a"}, {"openrouter/a?route=x"}} {
 		if _, ok := canonicalModels(models, false); ok {
 			t.Fatal("invalid model set accepted")
 		}

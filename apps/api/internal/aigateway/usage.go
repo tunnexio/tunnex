@@ -3,7 +3,6 @@ package aigateway
 import (
 	"context"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -129,14 +128,11 @@ func (p *Policies) enforceCost(ctx context.Context, tx pgx.Tx, org, team uuid.UU
 	if p == nil || p.engine == nil || tx == nil || org == uuid.Nil || team == uuid.Nil {
 		return aiUnavailable()
 	}
-	if !strings.HasPrefix(model, "openrouter/") {
+	provider, nativeModel, valid := splitProviderModel(model)
+	if !valid {
 		return apierr.Forbidden("ai_price_unavailable", "exact model pricing is required for this policy")
 	}
-	nativeModel := strings.TrimPrefix(model, "openrouter/")
-	if !engineModel.MatchString(nativeModel) {
-		return apierr.Forbidden("ai_price_unavailable", "exact model pricing is required for this policy")
-	}
-	price, err := p.engine.Price(ctx, "openrouter", nativeModel)
+	price, err := p.engine.Price(ctx, provider, nativeModel)
 	if err != nil {
 		return aiUnavailable()
 	}
