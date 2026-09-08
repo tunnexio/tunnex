@@ -55,3 +55,21 @@ secret nonreflection and stale results. Run both API editions and focused real
 PostgreSQL tests, actual SDK/native fixtures and web checks. Update the existing
 isolated local preview without changing user-entered credentials or invoking
 Azure. Full LiteLLM migration and other inference modes remain separate work.
+
+## User-directed catalog source update
+
+The user subsequently supplied LiteLLM's public
+`model_prices_and_context_window.json` and explicitly asked to use it. For new
+Azure credentials, Search therefore uses a bundled, SHA-pinned subset of that
+MIT-licensed catalog without any endpoint or key prerequisite. Reuse the existing
+GET models API with `provider=azure_foundry` and no connection_id. Saved Azure
+connections retain their authenticated endpoint catalog. Custom/SageMaker drafts
+retain the new POST catalog path above.
+
+Only Azure OpenAI chat model suggestions are imported for this bounded provider;
+exclude other modes and provider/region pricing aliases that cannot be sent as
+deployment names. Record the source commit, file hash, selection rule and license.
+Catalog IDs are reference names: operator deployment names may differ. This change
+does not substitute reference prices for observed usage or alter accounting. No
+runtime dependency on GitHub availability, automatic paid inference, new provider
+adapters or additional model modes is introduced.
