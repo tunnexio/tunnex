@@ -58,6 +58,7 @@ export const NAV_GROUPS: Array<{
     items: [
       { to: "/ai-gateway", label: "AI Gateway", icon: "boxes" },
       { to: "/agents", label: "AI Agents", icon: "bot" },
+      { to: "/mcp", label: "MCP", icon: "server" },
     ],
   },
   {

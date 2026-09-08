@@ -1,5 +1,5 @@
-.agents-workspace nav[aria-label="AI Agents sections"],.agents-workspace [role=tablist] { border-color:var(--tnx-border); }
-.agents-workspace nav[aria-label="AI Agents sections"] a,.agents-workspace [role=tab] { padding:12px 2px 16px; font-size:13px; }
+.agents-workspace [role=tablist] { border-color:var(--tnx-border); }
+.agents-workspace [role=tab] { padding:12px 2px 14px; font-size:14px; }
 .agents-workspace [aria-current=page]::after,.agents-workspace [aria-selected=true]::after { background:var(--tnx-focus); height:2px; }
 .agents-result-summary.tnx-card-surface { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); padding:0!important; }
 .agents-result-summary > div { display:flex; flex-direction:column; gap:10px; padding:22px; }

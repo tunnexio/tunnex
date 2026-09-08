@@ -18,10 +18,12 @@ beforeEach(() => {
     : path.endsWith("/my-models") ? [{ model: connection.models[0], mode: "chat" }] : [] }));
 });
 afterEach(cleanup);
-function Location() { const loc = useLocation(), navigate = useNavigate(); return <><output aria-label="Current route">{loc.pathname + loc.search}</output><button onClick={() => navigate(-1)}>Back</button></>; }
+function Location() { const loc = useLocation(), navigate = useNavigate(); return <><output aria-label="Current route">{loc.pathname + loc.search + loc.hash}</output><button onClick={() => navigate(-1)}>Back</button></>; }
 function mount(path: string) {
   return render(<MemoryRouter initialEntries={[path]}><Location /><Routes>
     <Route path="/agents/ai-gateway" element={<LegacyWorkspaceRedirect />} />
+    <Route path="/agents/mcp" element={<LegacyWorkspaceRedirect to="/mcp" />} />
+    <Route path="/mcp" element={<p>MCP profiles</p>} />
     <Route path="/access/groups" element={<LegacyWorkspaceRedirect groups />} />
     <Route path="/users/groups" element={<p>User groups</p>} />
     <Route path="/agents/groups" element={<p>Agent groups</p>} />
@@ -32,7 +34,7 @@ function mount(path: string) {
 }
 describe("AI and identity navigation", () => {
   it("separates AI destinations from Network and puts identity beside access", () => {
-    expect(NAV_GROUPS.find((g) => g.group === "AI")?.items.map((i) => i.to)).toEqual(["/ai-gateway", "/agents"]);
+    expect(NAV_GROUPS.find((g) => g.group === "AI")?.items.map((i) => i.to)).toEqual(["/ai-gateway", "/agents", "/mcp"]);
     expect(NAV_GROUPS.find((g) => g.group === "NETWORK")?.items.some((i) => i.to.startsWith("/agents"))).toBe(false);
     expect(NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/users")?.label).toBe("Users & Groups");
   });
@@ -40,6 +42,7 @@ describe("AI and identity navigation", () => {
     ["/access/groups?group=people%3Aengineering&q=eng", "/users/groups?group=people%3Aengineering&q=eng"],
     ["/access/groups?type=agents&group=agents%3Aworkers", "/agents/groups?type=agents&group=agents%3Aworkers"],
     ["/agents/ai-gateway", "/ai-gateway/models"],
+    ["/agents/mcp?group=workers&profile=shared#assignment", "/mcp?group=workers&profile=shared#assignment"],
   ])("keeps old bookmarks working: %s", async (from, to) => {
     mount(from); await waitFor(() => expect(screen.getByLabelText("Current route").textContent).toBe(to));
   });

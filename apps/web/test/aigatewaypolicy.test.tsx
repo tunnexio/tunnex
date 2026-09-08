@@ -142,6 +142,26 @@ describe("AI team and agent policy workspace", () => {
     await waitFor(() => expect(mocks.PUT).toHaveBeenCalled());
     expect(mocks.PUT.mock.calls[0][1].body.daily_cost_limit).toBe(amount);
   });
+  it("clears an optional threshold and refuses nonpositive or excessive amounts", async () => {
+    render(show());
+    await screen.findByLabelText("Policy team");
+    fireEvent.change(screen.getByLabelText("Policy team"), { target: { value: "group-a" } });
+    const input = screen.getByLabelText("Daily USD soft threshold (optional)");
+    const save = screen.getByRole("button", { name: "Save team policy" }) as HTMLButtonElement;
+    for (const value of ["0", "-1", "100000.01"]) {
+      fireEvent.change(input, { target: { value } });
+      expect(save.disabled).toBe(true);
+      fireEvent.click(save);
+    }
+    expect(mocks.PUT).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "2.5" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.change(input, { target: { value: "" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(mocks.PUT).toHaveBeenCalled());
+    expect(mocks.PUT.mock.calls[0][1].body.daily_cost_limit).toBeNull();
+  });
   it("selects owned connections by label while refusing unapplied additions", async () => {
     mocks.GET.mockImplementation((path: string) => path.endsWith("/providers") ? Promise.resolve({ data: {
       management_available: true, legacy_key_ids: ["provider-id"], items: [

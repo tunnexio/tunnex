@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
@@ -424,17 +425,29 @@ func TestAIPoliciesPostgres(t *testing.T) {
 		}
 		f.reconcile()
 		c := f.mint()
-		f.engine.usage = 1
-		if _, err := f.service.Authorize(ctx, c.Token, "openrouter/a"); err == nil {
-			t.Fatal("spent threshold allowed")
+		checkThreshold := func(model string) {
+			tx, err := pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rollbackAI(tx)
+			_, err = f.policies.Resolve(ctx, tx, agentruntime.Identity{OrgID: f.org, DeviceID: f.device}, model)
+			requireDailyThreshold(t, err)
+			tx.Rollback(ctx)
+			// The public agent credential boundary deliberately hides policy reasons.
+			_, err = f.service.Authorize(ctx, c.Token, model)
+			var publicError *apierr.Error
+			if !errors.As(err, &publicError) || publicError.Status != 403 || publicError.Code != "ai_policy_denied" {
+				t.Fatalf("expected public policy refusal, got %v", err)
+			}
 		}
+		f.engine.usage = 1
+		checkThreshold("openrouter/a")
 		if _, err := f.policies.PutTeam(ctx, f.org, f.owner, f.team, []string{"openrouter/a", "openrouter/b"}, []string{"provider-key"}, &limit, 2); err != nil {
 			t.Fatal(err)
 		}
 		f.reconcile()
-		if _, err := f.service.Authorize(ctx, c.Token, "openrouter/b"); err == nil {
-			t.Fatal("policy edit reset spend")
-		}
+		checkThreshold("openrouter/b")
 	})
 }
 

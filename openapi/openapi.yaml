@@ -8440,7 +8440,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
         expires_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         # ⛔ THE THREE TERMINAL STATES ARE TIMESTAMPS, NOT A STATUS ENUM — the table stores them that way
@@ -9937,7 +9937,7 @@ components:
       additionalProperties: false
       properties:
         email: { type: string, format: email, maxLength: 320 }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
 
     Member:
       type: object

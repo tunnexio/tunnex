@@ -111,6 +111,37 @@ func (q *Queries) GetInvitationByTokenHash(ctx context.Context, tokenHash []byte
 	return i, err
 }
 
+const getPendingInvitationForResend = `-- name: GetPendingInvitationForResend :one
+SELECT id, org_id, email, role, token_hash, expires_at, accepted_at, revoked_at, invited_by_user_id, created_at, updated_at FROM invitations
+WHERE org_id = $1 AND email = $2 AND accepted_at IS NULL AND revoked_at IS NULL
+FOR UPDATE
+`
+
+type GetPendingInvitationForResendParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	Email string    `json:"email"`
+}
+
+// Expired invitations can be resent, but accepted/revoked ones cannot.
+func (q *Queries) GetPendingInvitationForResend(ctx context.Context, arg GetPendingInvitationForResendParams) (Invitation, error) {
+	row := q.db.QueryRow(ctx, getPendingInvitationForResend, arg.OrgID, arg.Email)
+	var i Invitation
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Email,
+		&i.Role,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.AcceptedAt,
+		&i.RevokedAt,
+		&i.InvitedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listInvitations = `-- name: ListInvitations :many
 SELECT i.id, i.org_id, i.email, i.role, i.token_hash, i.expires_at, i.accepted_at, i.revoked_at, i.invited_by_user_id, i.created_at, i.updated_at, COALESCE(u.email::text, '')::text AS invited_by_email
 FROM invitations i

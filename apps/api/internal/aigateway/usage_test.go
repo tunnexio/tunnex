@@ -71,6 +71,14 @@ func usageStatus(err error) int {
 	return -1
 }
 
+func requireDailyThreshold(t *testing.T, err error) {
+	t.Helper()
+	var e *apierr.Error
+	if !errors.As(err, &e) || e.Status != 403 || e.Code != "ai_daily_threshold_reached" {
+		t.Fatalf("want 403 ai_daily_threshold_reached, got %v", err)
+	}
+}
+
 func TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage(t *testing.T) {
 	org, team := uuid.New(), uuid.New()
 	one := 1.0

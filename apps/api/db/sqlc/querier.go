@@ -789,6 +789,8 @@ type Querier interface {
 	// current FQDN opt-in when the additive column exists. JSONB extraction is
 	// deliberately fail-closed: an absent or null later column means disabled.
 	GetOrganizationPolicySnapshotSettings(ctx context.Context, id uuid.UUID) (GetOrganizationPolicySnapshotSettingsRow, error)
+	// Expired invitations can be resent, but accepted/revoked ones cannot.
+	GetPendingInvitationForResend(ctx context.Context, arg GetPendingInvitationForResendParams) (Invitation, error)
 	GetPlatformSecret(ctx context.Context, name string) (PlatformSecret, error)
 	// Resolve one rule (org-scoped) — S7.5.1 ingest enriches an allow event's kernel-stamped
 	// rule_id into the grant's destination (resource/group) it named, captured AT EVENT TIME so

@@ -53,3 +53,30 @@ access and MCP, and to re-review every AI page for consistent design.
 - Inspect Gateway, Agents, and MCP pages and their empty/form states for matching
   spacing, alignment, typography, colors, and narrow layouts. Prefer the existing
   shared components and responsive styles over a separate AI design system.
+
+Review disposition within the user's authorized design-consistency request:
+apply the three P3 findings before final visual verification: remove the Agents
+rail's competing size override, match provider form controls to shared control
+sizes, and restrict credential metadata spacing so model IDs align with their row.
+
+Rendered review: the existing model-table override already removed model-code
+margins, so the earlier reported row offset was not reproduced. At 857px, provider
+names and API paths did break inside words; preserve readable columns and use the
+existing table scroll container. This is a layout-only correction. Metadata
+spacing is now scoped to metadata. The independent follow-up review found no new
+CSS/navigation issue.
+
+## Authorized threshold fixture verification
+
+The user additionally requested fixture data for Daily USD soft threshold.
+Exercise blank, positive decimal, invalid limits and reload persistence in the
+local UI using a clearly named, unassigned agent group. Run synthetic-cost native
+engine and disposable PostgreSQL tests for below/at-threshold authorization and
+spend persistence. No external provider inference or real credential change is
+needed. Keep the named UI fixture available for the user to inspect.
+
+Threshold verification review: within the requested fixture test, require both HTTP 403 and `ai_daily_threshold_reached` in the native-accounting and policy-edit tests. A generic 403 could be an unknown-price refusal and is insufficient evidence. No admission behavior changes.
+
+The agent credential boundary deliberately maps resolver failures to public `403 ai_policy_denied`. Preserve that established behavior; assert the exact `ai_daily_threshold_reached` reason at the policy resolver, and the public refusal separately. The pinned-native ledger test asserts the exact internal reason.
+
+Final review disposition (within requested completion/testing/docs scope): register rollback before the threshold assertion so a failing test releases its isolated DB; restore text-only/no-tool and output limits in the website agent API guide; clarify saving credential scope never grants callers access. These are correctness fixes with no product protocol or permission changes.

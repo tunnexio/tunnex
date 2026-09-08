@@ -7217,7 +7217,7 @@ export interface components {
             /** Format: email */
             email: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
             /** Format: date-time */
             expires_at: string;
             /** Format: date-time */
@@ -8219,7 +8219,7 @@ export interface components {
             /** Format: email */
             email: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
         };
         Member: {
             /** Format: uuid */

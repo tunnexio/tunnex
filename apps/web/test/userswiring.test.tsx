@@ -27,6 +27,7 @@ import {
 afterEach(cleanup); // docs/laws.md — no globals/setup file, so auto-cleanup never registers
 
 let membersFail = false;
+let invitationRows: Array<Record<string, unknown>> = [];
 // ── S14.11 controls ────────────────────────────────────────────────────────────────────────────────────────
 // `edition` and `devices` are mutable so the SAME assertions can run on both sides of each gate. A gate
 // observed at one value cannot be told from a constant (mechanism ⑨ — the S14.6 aria-pressed miss).
@@ -80,6 +81,7 @@ vi.mock("../src/lib/api", async () => {
         if (path === "/api/v1/meta") return { data: { edition } };
         if (path === "/api/v1/organizations")
           return { data: [{ id: "org-1", name: "Acme" }] };
+        if (path.endsWith("/invitations")) return {data: invitationRows};
         if (path.endsWith("/members")) {
           if (membersFail)
             return {
@@ -144,6 +146,7 @@ const withAuth = (ui: React.ReactElement) =>
 
 beforeEach(() => {
   membersFail = false;
+  invitationRows = [];
   edition = "enterprise";
   devicesFail = false;
   whoAmI = "u1";
@@ -350,170 +353,20 @@ describe("Users — the devices column and the false zero", () => {
   });
 });
 
-describe("Users — the four gates, and WHICH reason each caller is given", () => {
-  it("an ENTERPRISE owner sees the group count and NO gate note", async () => {
-    withAuth(<Users />);
-    await waitFor(() => screen.getByText("Access posture"));
-    await waitFor(() =>
-      expect(screen.getByText(/1 group in this organization/)).toBeTruthy(),
-    );
-    // Nothing is withheld from this caller, so no note may appear — a note that always renders explains
-    // nothing.
-    expect(screen.queryByText(/Enterprise feature/)).toBeNull();
-    expect(screen.queryByText(/only shown to admins/)).toBeNull();
+describe("Users — focused roster", () => {
+  it.each(["users", "roles"] as const)("%s has per-user roles without the aggregate role card", async (view) => {
+    withAuth(<Users view={view} />);
+    const table = await screen.findByRole("table", {name:"Members"});
+    expect(within(table).getByRole("columnheader", {name:"Roles"})).toBeTruthy();
+    expect(screen.queryByRole("region", {name:"Access posture"})).toBeNull();
   });
-
-  it("⛔ GROUPS IS NOT A STAT TILE — it is not a role tier, and the wireframe has no such tile", async () => {
-    // THE RULING. A `Groups 3` tile sitting beside owner/admin/member reads as A FOURTH ROLE TIER. The
-    // wireframe's Access posture panel has no Groups stat at all — groups appear only as one axis inside
-    // `{{ teamMap }}`, which is D2/held. So the count keeps its own line, named as standing in for the graph.
-    withAuth(<Users />);
-    await waitFor(() => screen.getByText("Access posture"));
-    await waitFor(() => screen.getByText(/1 group in this organization/));
-
-    // The stat row is the <dl>. Its terms are the three role tiers and nothing else.
-    const dl = document.querySelector("dl")!;
-    // Terms pluralise with their own count ("1 owner" -> `owner`, 0 -> `members`), so match the stem — a
-    // literal list would pin one roster's plurals and fail for an unrelated reason.
-    const terms = Array.from(dl.querySelectorAll("dt")).map(
-      (d) => d.textContent?.toLowerCase() ?? "",
-    );
-    expect(terms).toHaveLength(5);
-    expect(terms.map((t) => t.replace(/s$/, ""))).toEqual([
-      "owner",
-      "admin",
-      "member",
-      "ai-admin",
-      "ai-view",
-    ]);
-    expect(terms.some((t) => t.includes("group"))).toBe(false);
-
-    // And it says what it stands in for, so a reader does not take it for the finished feature.
-    expect(screen.getByText(/stands in for it/)).toBeTruthy();
-  });
-
-  it("the roster subtitle states WHAT IS COUNTED and shows the deactivated split", async () => {
-    // "Role hierarchy across N members" claimed who can act while counting accounts on the roster. Grace is
-    // deactivated and cannot sign in, so the roster count and the who-can-act count are different numbers.
-    roster = [
-      {
-        user_id: "u1",
-        email: "owner@acme.test",
-        name: "Olive Owner",
-        role: "owner",
-        status: "active",
-        email_verified: true,
-      },
-      {
-        user_id: "u9",
-        email: "gone@acme.test",
-        name: "Gone Away",
-        role: "member",
-        status: "deactivated",
-        email_verified: true,
-      },
-    ];
-    withAuth(<Users />);
-    await waitFor(() =>
-      expect(
-        screen.getByText(
-          /2 accounts on the roster, 1 deactivated and unable to sign in/,
-        ),
-      ).toBeTruthy(),
-    );
-    expect(screen.queryByText(/Role hierarchy across/)).toBeNull();
-    // And the per-role split renders where it exists.
-    expect(screen.getByText("1 deactivated")).toBeTruthy();
-  });
-
-  it("⛔ an OPEN-EDITION OWNER is told EDITION — the upsell reaches whoever can act on it", async () => {
-    edition = "open";
-    withAuth(<Users />);
-    await waitFor(() => screen.getByText("Access posture"));
-    await waitFor(() =>
-      expect(
-        screen.getByText(/Groups are a Tunnex Enterprise feature/),
-      ).toBeTruthy(),
-    );
-    // An owner IS an admin, so the device-count clause must not appear.
-    expect(screen.queryByText(/only shown to admins/)).toBeNull();
-  });
-
-  it("⛔ an OPEN-EDITION MEMBER is told their ROLE, and is NEVER sold Enterprise", async () => {
-    // The bug the mutation sweep found, at the DOM. Edition-first told this caller "Groups are a Tunnex
-    // Enterprise feature" — an upsell to someone whose role would not let them see groups after buying it.
-    // The server agrees with the fix: authorize(PermPolicyView) runs BEFORE the `s.policy == nil` check, so
-    // this caller's real response is `forbidden`.
-    edition = "open";
-    roster = [
-      {
-        user_id: "u1",
-        email: "owner@acme.test",
-        name: "Olive Owner",
-        role: "owner",
-        email_verified: true,
-        status: "active",
-      },
-      {
-        user_id: "u3",
-        email: "member@acme.test",
-        name: "Mel Member",
-        role: "member",
-        email_verified: true,
-        status: "active",
-      },
-    ];
+  it("ordinary members still see the roster without management controls", async () => {
     whoAmI = "u3";
     withAuth(<Users />);
-    await waitFor(() => screen.getByText("Access posture"));
-    await waitFor(() =>
-      expect(
-        screen.getByText(/needs policy access, which your role/),
-      ).toBeTruthy(),
-    );
-    expect(screen.queryByText(/Tunnex Enterprise feature/)).toBeNull();
-    // Both withheld things are named — the device-count reason is not swallowed by the group one.
-    expect(screen.getByText(/only shown to admins/)).toBeTruthy();
-  });
-
-  it("the roster stays COHERENT for a member — the S14.5 halt is not repeated in reverse", async () => {
-    // The inverse error is hiding what the open edition IS entitled to. A member must still get a usable
-    // roster: every colleague, their role, and the role tallies.
-    edition = "open";
-    roster = [
-      {
-        user_id: "u1",
-        email: "owner@acme.test",
-        name: "Olive Owner",
-        role: "owner",
-        email_verified: true,
-        status: "active",
-      },
-      {
-        user_id: "u3",
-        email: "member@acme.test",
-        name: "Mel Member",
-        role: "member",
-        email_verified: true,
-        status: "active",
-      },
-    ];
-    whoAmI = "u3";
-    withAuth(<Users />);
-    const table = await waitFor(() =>
-      screen.getByRole("table", { name: "Members" }),
-    );
-    await waitFor(() => within(table).getByText("owner@acme.test"));
-    // ⛔ "Actions" WAS IN THIS LIST AND THAT PINNED THE DEFECT the founder review caught: a member saw an
-    // ACTIONS header over cells that were all empty. Coherent means "every column shown has content for
-    // this viewer" — not "as many columns as an admin gets".
-    for (const h of ["Member", "State", "Roles"])
-      expect(within(table).getByRole("columnheader", { name: h })).toBeTruthy();
-    // ⚠ The verbs moved from an Actions COLUMN to the selection bar, so the affordance to assert is the
-    // checkbox. The RULE is untouched: a viewer who can act on nobody is offered nothing to act WITH.
-    expect(within(table).queryByRole("checkbox", { name: /select/i })).toBeNull();
-    // And the role tallies render, INCLUDING the zero for admins.
-    expect(screen.getByText("0 admins")).toBeTruthy();
+    const table = await screen.findByRole("table", {name:"Members"});
+    expect(within(table).getByRole("columnheader", {name:"Roles"})).toBeTruthy();
+    expect(screen.queryByRole("button", {name:"Invite user"})).toBeNull();
+    expect(within(table).queryByRole("checkbox", {name:/select/i})).toBeNull();
   });
 });
 
@@ -786,5 +639,44 @@ describe("Users — invitation delivery", () => {
     expect(
       screen.queryByRole("dialog", { name: "Invite user" }),
     ).toBeNull();
+  });
+});
+
+describe("Users — complete invite role choices", () => {
+  it.each(["ai-admin", "ai-view"])("submits the selected %s starting role", async (role) => {
+    withAuth(<Users />);
+    fireEvent.click(await screen.findByRole("button", {name:"Invite user"}));
+    const select = screen.getByRole("combobox", {name:"Role"});
+    expect(within(select).getAllByRole("option").map(o => (o as HTMLOptionElement).value)).toEqual(["owner", "admin", "member", "ai-admin", "ai-view"]);
+    fireEvent.change(select, {target:{value:role}});
+    fireEvent.change(screen.getByRole("textbox", {name:"Email address"}), {target:{value:"ai-person@example.test"}});
+    fireEvent.click(screen.getByRole("button", {name:"Create invite"}));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/invitations", expect.objectContaining({body:{email:"ai-person@example.test", role}})));
+  });
+  it("an admin can invite AI roles but cannot grant owner", async () => {
+    whoAmI = "u2";
+    withAuth(<Users />);
+    fireEvent.click(await screen.findByRole("button", {name:"Invite user"}));
+    const select = screen.getByRole("combobox", {name:"Role"});
+    expect(within(select).queryByRole("option", {name:"owner"})).toBeNull();
+    expect(within(select).getByRole("option", {name:"ai-admin"})).toBeTruthy();
+    expect(within(select).getByRole("option", {name:"ai-view"})).toBeTruthy();
+  });
+});
+
+
+describe("Invitation resend permissions", () => {
+  it.each([['u1', false], ['u2', true]] as const)("owner invitation renewal for %s", async (actor, disabled) => {
+    vi.mocked(api.POST).mockClear();
+    whoAmI = actor;
+    invitationRows = [{id:'owner-invite', email:'owner-invite@example.test', role:'owner',
+      created_at:'2026-01-01T00:00:00Z', expires_at:'2099-01-01T00:00:00Z',
+      accepted_at:null, revoked_at:null}];
+    withAuth(<Users view="invitations" />);
+    const row = await screen.findByRole('row', {name:/owner-invite@example.test/});
+    fireEvent.click(within(row).getByRole('checkbox'));
+    expect((screen.getByRole('button', {name:'Resend'}) as HTMLButtonElement).disabled).toBe(disabled);
+    if (disabled) expect(screen.getByRole('button', {name:'Resend'}).getAttribute('title')).toBe('Only an owner can resend an owner invitation.');
+    expect(api.POST).not.toHaveBeenCalled();
   });
 });

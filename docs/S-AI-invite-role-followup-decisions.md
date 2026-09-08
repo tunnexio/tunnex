@@ -32,3 +32,7 @@ run relevant database tests only against the identified isolated local preview
 stack, and verify the form read-only in the browser. Do not send real invitations
 or change existing users' roles. Existing group, model, and credential data is
 preserved. No push or merge.
+
+Review disposition: apply P2 resend-action parity as part of the authorized
+invitation-role fix. An admin cannot renew an owner invitation; the UI must
+disable that action with the owner-only reason instead of offering a known 403.

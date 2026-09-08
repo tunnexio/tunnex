@@ -180,7 +180,8 @@ function ProductApp() {
             <Route path="/routed-ranges" element={<RoutedRanges />} />
             <Route path="/kubernetes" element={<Kubernetes />} />
             <Route path="/agents" element={<AgentsIndex />} />
-            <Route path="/agents/mcp" element={<AgentsMCP />} />
+            <Route path="/mcp" element={<AgentsMCP />} />
+            <Route path="/agents/mcp" element={<LegacyWorkspaceRedirect to="/mcp" />} />
             <Route path="/agents/ai-gateway" element={<LegacyWorkspaceRedirect />} />
             <Route path="/ai-gateway" element={<AgentsAIGateway />} />
             <Route path="/ai-gateway/:section" element={<AgentsAIGateway />} />

@@ -87,6 +87,9 @@ func newSvc(t *testing.T) (*Service, *captureMailer, uuid.UUID, uuid.UUID, conte
 	if _, err := tx.Exec(ctx, "INSERT INTO users (id,email,name) VALUES ($1,$2,$3)", actor, "actor-"+actor.String()+"@t", "Actor"); err != nil {
 		t.Fatalf("actor: %v", err)
 	}
+	if _, err := tx.Exec(ctx, "INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')", org, actor); err != nil {
+		t.Fatalf("actor membership: %v", err)
+	}
 	svc := &Service{q: sqlc.New(tx), mailer: &captureMailer{}, baseURL: "http://app", logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	return svc, svc.mailer.(*captureMailer), org, actor, ctx
 }
@@ -218,5 +221,65 @@ func TestInviteRevokeAndResend(t *testing.T) {
 	}
 	if err := svc.Revoke(ctx, actor, org, email); codeOf(err) != "invite_not_pending" {
 		t.Fatalf("double revoke: want invite_not_pending, got %v", err)
+	}
+}
+
+func TestInviteAIRolesSurviveResendAndAcceptance(t *testing.T) {
+	for _, role := range []string{"ai-admin", "ai-view"} {
+		t.Run(role, func(t *testing.T) {
+			svc, mailer, org, actor, ctx := newSvc(t)
+			email := "ai-" + uuid.NewString() + "@example.com"
+			if _, err := svc.Create(ctx, actor, org, email, role); err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			oldToken := mailer.last()
+			if err := svc.Resend(ctx, actor, org, email); err != nil {
+				t.Fatalf("resend: %v", err)
+			}
+			if _, _, err := svc.Accept(ctx, oldToken, "", ""); codeOf(err) != "invalid_invite" {
+				t.Fatalf("old token: %v", err)
+			}
+			user, acceptedOrg, err := svc.Accept(ctx, mailer.last(), "AI user", "")
+			if err != nil || acceptedOrg != org {
+				t.Fatalf("accept: %v", err)
+			}
+			membership, err := svc.q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: org, UserID: user})
+			if err != nil || membership.Role != role || len(membership.Roles) != 1 || membership.Roles[0] != role {
+				t.Fatalf("role not preserved: %+v / %v", membership, err)
+			}
+		})
+	}
+}
+
+func TestInviteRejectsNonHumanRoles(t *testing.T) {
+	svc := &Service{}
+	for _, role := range []string{"agent", "operator", "unknown", ""} {
+		if _, err := svc.Create(context.Background(), uuid.New(), uuid.New(), "nobody@example.com", role); codeOf(err) != "invalid_role" {
+			t.Fatalf("%s: %v", role, err)
+		}
+	}
+}
+
+func TestInviteAdminCannotGrantOrResendOwner(t *testing.T) {
+	svc, _, org, owner, ctx := newSvc(t)
+	admin, err := svc.q.CreateUser(ctx, sqlc.CreateUserParams{Email: "admin-" + uuid.NewString() + "@example.com", Name: "Admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.q.UpsertMembership(ctx, sqlc.UpsertMembershipParams{OrgID: org, UserID: admin.ID, Role: "admin"}); err != nil {
+		t.Fatal(err)
+	}
+	email := "owner-" + uuid.NewString() + "@example.com"
+	if _, err = svc.Create(ctx, admin.ID, org, email, "owner"); codeOf(err) != "forbidden" {
+		t.Fatalf("admin granted owner: %v", err)
+	}
+	if _, err = svc.Create(ctx, owner, org, email, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Resend(ctx, admin.ID, org, email); codeOf(err) != "forbidden" {
+		t.Fatalf("admin resent owner: %v", err)
+	}
+	if err = svc.Resend(ctx, owner, org, email); err != nil {
+		t.Fatalf("owner resend: %v", err)
 	}
 }

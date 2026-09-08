@@ -224,8 +224,6 @@ func TestAIUsageNativeLedgerAndCostAdmission(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if err := check(); usageStatus(err) != 403 {
-		t.Fatalf("native seven-unit threshold did not deny: %v", err)
-	}
+	requireDailyThreshold(t, check())
 	t.Log("real pinned exact pricing plus CP-selected native metadata: one request/seven tokens/seven synthetic cost units; below-threshold admission passed and post-accounting threshold denied")
 }

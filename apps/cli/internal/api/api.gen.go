@@ -913,16 +913,20 @@ const (
 
 // Defines values for InvitationRole.
 const (
-	InvitationRoleAdmin  InvitationRole = "admin"
-	InvitationRoleMember InvitationRole = "member"
-	InvitationRoleOwner  InvitationRole = "owner"
+	InvitationRoleAdmin   InvitationRole = "admin"
+	InvitationRoleAiAdmin InvitationRole = "ai-admin"
+	InvitationRoleAiView  InvitationRole = "ai-view"
+	InvitationRoleMember  InvitationRole = "member"
+	InvitationRoleOwner   InvitationRole = "owner"
 )
 
 // Defines values for InviteRequestRole.
 const (
-	InviteRequestRoleAdmin  InviteRequestRole = "admin"
-	InviteRequestRoleMember InviteRequestRole = "member"
-	InviteRequestRoleOwner  InviteRequestRole = "owner"
+	InviteRequestRoleAdmin   InviteRequestRole = "admin"
+	InviteRequestRoleAiAdmin InviteRequestRole = "ai-admin"
+	InviteRequestRoleAiView  InviteRequestRole = "ai-view"
+	InviteRequestRoleMember  InviteRequestRole = "member"
+	InviteRequestRoleOwner   InviteRequestRole = "owner"
 )
 
 // Defines values for JoinTokenRequestEnrolsKind.
