@@ -111,6 +111,7 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
     totals={report && d ? { requests: report.total_requests, tokens: report.total_tokens, inputTokens: report.prompt_tokens, outputTokens: report.completion_tokens, cost: report.total_cost, uncostedRequests: report.uncosted_requests, successfulRequests: d.successful_requests, failedRequests: d.failed_requests, cancelledRequests: d.cancelled_requests } : undefined}
     daily={d?.daily.map((r) => ({ ...r, uncostedRequests: r.uncosted_requests }))}
     models={d?.models}
+    userGroups={d?.user_groups ? ranked(d.user_groups) : undefined}
     teams={d ? ranked(d.teams) : undefined}
     agents={d ? ranked(d.agents) : undefined}
   />;

@@ -18,6 +18,252 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/ai-gateway/user-groups:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIUserGroups
+      tags: [ai-gateway]
+      responses:
+        '200':
+          description: Organization-scoped results. Model access requires current user group membership.
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIUserGroup' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/user-model-grants:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIUserModelGrants
+      tags: [ai-gateway]
+      responses:
+        '200':
+          description: Organization-scoped results. Model access requires current user group membership.
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIUserModelGrant' } } } }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: putAIUserModelGrant
+      tags: [ai-gateway]
+      summary: Grant or revoke an exact model for a human user group
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIUserModelGrantInput' } } }
+      responses:
+        '200':
+          description: Desired grant and provisioning state. Access is effective only when applied.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIUserModelGrant' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/my-models:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listMyAIModels
+      tags: [ai-gateway]
+      responses:
+        '200':
+          description: Organization-scoped results. Model access requires current user group membership.
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIUserModel' } } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/chat/completions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserChatCompletion
+      summary: Execute an allowed model using a short-lived AI credential
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed. No automatic retry or fallback. Accepted work may continue until the 30-second request bound after revocation.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/completions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserCompletion
+      summary: Execute an authorized completions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AICompletionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            text/event-stream: { schema: { type: string } }
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/embeddings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserEmbedding
+      summary: Execute an authorized embeddings model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIEmbeddingRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/speech:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserSpeech
+      summary: Execute an authorized audio/speech model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AISpeechRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            audio/mpeg: { schema: { type: string, format: binary } }
+            audio/ogg: { schema: { type: string, format: binary } }
+            audio/aac: { schema: { type: string, format: binary } }
+            audio/flac: { schema: { type: string, format: binary } }
+            audio/wav: { schema: { type: string, format: binary } }
+            audio/pcm: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/transcriptions:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserTranscription
+      summary: Execute an authorized audio/transcriptions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { multipart/form-data: { schema: { $ref: '#/components/schemas/AITranscriptionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/images/generations:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserImageGeneration
+      summary: Execute an authorized images/generations model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIImageRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserVideoGeneration
+      summary: Execute an authorized videos model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]{16,128}$' } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIVideoRequest' } } }
+      responses:
+        "200":
+          description: Bounded output; video returns job acceptance, not completion.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/rerank:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserRerank
+      summary: Execute an authorized rerank model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIRerankRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiUserVideoStatus
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}/content:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiUserVideoContent
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            video/webm: { schema: { type: string, format: binary } }
+            video/mp4: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/inference/anthropic/v1/messages:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: aiUserAnthropicMessage
+      summary: Execute an allowed model through the qualified Anthropic-compatible path
+      tags: [ai-gateway]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AIInferenceRequest" } } }
+      responses:
+        "200":
+          description: Model output, optionally streamed; same identity and model policy as chat completions.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+            text/event-stream: { schema: { type: string } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/ai-gateway/providers:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3934,6 +4180,31 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/members/{userId}/roles:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: changeMemberRoles
+      summary: Replace a member's role set (RBAC-gated; refuses demoting the last owner)
+      tags: [members]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangeRolesRequest" }
+      responses:
+        "204":
+          description: Role changed. (Client refetches the roster.)
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/members/{userId}/deactivate:
     parameters:
       - name: orgId
@@ -5879,6 +6150,46 @@ components:
       required: true
 
   schemas:
+    AIUserGroup:
+      type: object
+      additionalProperties: false
+      required: [id, name, members]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        members: { type: integer, minimum: 0 }
+    AIUserModel:
+      type: object
+      additionalProperties: false
+      required: [model, mode]
+      properties:
+        model: { type: string }
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+    AIUserModelGrantInput:
+      type: object
+      additionalProperties: false
+      required: [group_id, connection_id, model, enabled, expected_revision]
+      properties:
+        group_id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        model: { type: string, minLength: 1, maxLength: 255 }
+        enabled: { type: boolean }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AIUserModelGrant:
+      type: object
+      additionalProperties: false
+      required: [id, group_name, connection_id, model, mode, enabled, revision, applied_revision, status]
+      properties:
+        id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+        group_name: { type: string }
+        connection_id: { type: string, format: uuid }
+        model: { type: string }
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+        enabled: { type: boolean }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, revoked, error] }
     AICompletionRequest:
       type: object
       additionalProperties: false
@@ -6187,6 +6498,7 @@ components:
         models: { type: array, items: { $ref: "#/components/schemas/AIUsageModel" } }
         teams: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
         agents: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
+        user_groups: { type: array, items: { $ref: '#/components/schemas/AIUsageAttribution' } }
     AIUsageDay:
       type: object
       additionalProperties: false
@@ -9625,7 +9937,12 @@ components:
         user_id: { type: string, format: uuid }
         email: { type: string, format: email }
         name: { type: string }
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
         # Account status — a deactivated member stays on the roster (S2.6).
         status: { type: string, enum: [active, deactivated] }
         email_verified: { type: boolean }
@@ -9647,7 +9964,19 @@ components:
       required: [role]
       additionalProperties: false
       properties:
-        role: { type: string, enum: [owner, admin, member] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+
+    ChangeRolesRequest:
+      type: object
+      required: [roles]
+      additionalProperties: false
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
 
     OrgDeletionPreflight:
       type: object

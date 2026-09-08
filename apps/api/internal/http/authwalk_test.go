@@ -20,6 +20,7 @@ import (
 // keyed by lower(operationId) so a valid body accompanies gated POST/PATCH ops
 // (otherwise the validator 400s on the missing body before auth is checked).
 var walkBodies = map[string]string{
+	"putaiusermodelgrant":   `{"group_id":"00000000-0000-4000-8000-000000000001","connection_id":"00000000-0000-4000-8000-000000000002","model":"openrouter/test","enabled":true,"expected_revision":0}`,
 	"savessoconnection":     `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
 	"activatessoconnection": `{"enabled":false,"revision":1}`,
 	"testssoconnection":     `{"link_account":false}`,
@@ -40,6 +41,7 @@ var walkBodies = map[string]string{
 	"updateorganization":       `{"name":"Walk"}`,
 	"setssoconfig":             `{"client_id":"x","client_secret":"y","enabled":true}`,
 	"createinvitation":         `{"email":"walk@example.com","role":"member"}`,
+	"changememberroles":        `{"roles":["member","ai-admin"]}`,
 	"changememberrole":         `{"role":"member"}`,
 	"resizepool":               `{"cidr":"10.0.0.0/24"}`,
 	"resendinvitation":         `{"email":"walk@example.com"}`,

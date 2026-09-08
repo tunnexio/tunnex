@@ -16,7 +16,7 @@ func aiManagementActor(ctx context.Context) (uuid.UUID, error) {
 	if !ok {
 		return uuid.Nil, apierr.New(401, "unauthenticated", "authentication required")
 	}
-	if p.IsMachine() {
+	if p.IsMachine() || p.IsAgent() || p.UserID == uuid.Nil {
 		return uuid.Nil, apierr.New(403, "human_admin_required", "AI configuration requires a human administrator")
 	}
 	return p.UserID, nil

@@ -217,7 +217,7 @@ describe("Users — wiring: the last owner cannot be demoted", () => {
       .find((r) => within(r).queryAllByText("second@acme.test").length > 0)!;
     expect(row, "no row for second@acme.test").toBeTruthy();
     expect(
-      within(row).getByRole("combobox", { name: "Role for second@acme.test" }),
+      within(row).getByLabelText("Roles for second@acme.test", { selector: "summary" }),
     ).toBeTruthy();
 
     expect(
@@ -377,11 +377,13 @@ describe("Users — the four gates, and WHICH reason each caller is given", () =
     const terms = Array.from(dl.querySelectorAll("dt")).map(
       (d) => d.textContent?.toLowerCase() ?? "",
     );
-    expect(terms).toHaveLength(3);
+    expect(terms).toHaveLength(5);
     expect(terms.map((t) => t.replace(/s$/, ""))).toEqual([
       "owner",
       "admin",
       "member",
+      "ai-admin",
+      "ai-view",
     ]);
     expect(terms.some((t) => t.includes("group"))).toBe(false);
 
@@ -504,13 +506,13 @@ describe("Users — the four gates, and WHICH reason each caller is given", () =
     // ⛔ "Actions" WAS IN THIS LIST AND THAT PINNED THE DEFECT the founder review caught: a member saw an
     // ACTIONS header over cells that were all empty. Coherent means "every column shown has content for
     // this viewer" — not "as many columns as an admin gets".
-    for (const h of ["Member", "State", "Role"])
+    for (const h of ["Member", "State", "Roles"])
       expect(within(table).getByRole("columnheader", { name: h })).toBeTruthy();
     // ⚠ The verbs moved from an Actions COLUMN to the selection bar, so the affordance to assert is the
     // checkbox. The RULE is untouched: a viewer who can act on nobody is offered nothing to act WITH.
-    expect(within(table).queryByRole("checkbox")).toBeNull();
+    expect(within(table).queryByRole("checkbox", { name: /select/i })).toBeNull();
     // And the role tallies render, INCLUDING the zero for admins.
-    expect(screen.getByText("0")).toBeTruthy();
+    expect(screen.getByText("0 admins")).toBeTruthy();
   });
 });
 
@@ -666,10 +668,10 @@ describe("Users — the ACTIONS column follows the same rule as Devices", () => 
     const headers = within(table)
       .getAllByRole("columnheader")
       .map((h) => h.textContent);
-    expect(headers).toEqual(["Member", "State", "Role"]);
+    expect(headers).toEqual(["Member", "State", "Roles"]);
     // ⚠ The verbs moved from an Actions COLUMN to the selection bar, so the affordance to assert is the
     // checkbox. The RULE is untouched: a viewer who can act on nobody is offered nothing to act WITH.
-    expect(within(table).queryByRole("checkbox")).toBeNull();
+    expect(within(table).queryByRole("checkbox", { name: /select/i })).toBeNull();
     expect(
       within(table).queryByRole("columnheader", { name: "Devices" }),
     ).toBeNull();
@@ -713,7 +715,7 @@ describe("Users — the ACTIONS column follows the same rule as Devices", () => 
     await waitFor(() => within(table).getByText("Olive Owner"));
     // ⚠ The verbs moved from an Actions COLUMN to the selection bar, so the affordance to assert is the
     // checkbox. The RULE is untouched: a viewer who can act on nobody is offered nothing to act WITH.
-    expect(within(table).queryByRole("checkbox")).toBeNull();
+    expect(within(table).queryByRole("checkbox", { name: /select/i })).toBeNull();
     // But the Devices column STAYS — an admin holds member:manage, and that gate is unrelated.
     expect(
       within(table).getByRole("columnheader", { name: "Devices" }),
@@ -748,7 +750,7 @@ describe("Users — exactly one filter control", () => {
     expect(
       screen.getByRole("searchbox", { name: "Filter Members" }),
     ).toBeTruthy();
-    const roleHeader = screen.getByRole("columnheader", { name: "Role" });
+    const roleHeader = screen.getByRole("columnheader", { name: "Roles" });
     expect(within(roleHeader).queryByRole("button")).not.toBeNull();
   });
 });

@@ -35,6 +35,26 @@ func TestVideoJobsPostgres(t *testing.T) {
 	f := newAICredentialFixture(t, ctx, pool)
 	store := videoStore{pool}
 	g := Grant{Tenant: f.org.String(), Agent: f.device.String(), Mode: ModeVideoGeneration, VirtualKey: "sk-bf-video-fixture", Expires: time.Now().Add(time.Minute)}
+	t.Run("human owner is distinct from a device", func(t *testing.T) {
+		human := Grant{Tenant: f.org.String(), Agent: f.owner.String(), SubjectKind: "user"}
+		j, fresh, err := store.reserve(ctx, human, "openai/video", "human-video-request-01", []byte(`{"model":"openai/video"}`))
+		if err != nil || !fresh || j.SubjectKind != "user" || j.Agent != f.owner {
+			t.Fatal("human reservation", err)
+		}
+		if err := store.update(ctx, j, "video-fixture:openai", "queued"); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := store.lookup(ctx, j.ID)
+		if err != nil || loaded.SubjectKind != "user" {
+			t.Fatal("human ownership lost", err)
+		}
+		forged := j
+		forged.SubjectKind = ""
+		if store.update(ctx, forged, "video-fixture:openai", "completed") == nil {
+			t.Fatal("device identity updated human job")
+		}
+	})
+
 	t.Run("concurrent reservation and mismatch", func(t *testing.T) {
 		var count atomic.Int32
 		var wg sync.WaitGroup

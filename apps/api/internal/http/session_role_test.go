@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 )
 
@@ -89,6 +90,22 @@ func TestSessionAuthResolvesRolePerRequest(t *testing.T) {
 	}
 	if role, ok := p.RoleIn(org); !ok || role != "admin" {
 		t.Fatalf("initial role = (%q,%v), want admin", role, ok)
+	}
+
+	// A saved session sees the complete role set, including additive AI access.
+	if _, e := tx.Exec(ctx, "UPDATE memberships SET roles=ARRAY['member','ai-admin'] WHERE org_id=$1 AND user_id=$2", org, user); e != nil {
+		t.Fatal(e)
+	}
+	p = authFn(req())
+	if p == nil || !rbac.CanAny(p.RolesIn(org), rbac.PermAIProviderManage) || len(p.RolesIn(org)) != 2 {
+		t.Fatal("session lost role union")
+	}
+	if _, e := tx.Exec(ctx, "UPDATE memberships SET roles=ARRAY['member'] WHERE org_id=$1 AND user_id=$2", org, user); e != nil {
+		t.Fatal(e)
+	}
+	p = authFn(req())
+	if p == nil || rbac.CanAny(p.RolesIn(org), rbac.PermAIProviderManage) {
+		t.Fatal("removed role survived in session")
 	}
 
 	// 2) Downgrade admin -> member in the DB. The SAME session's NEXT request must

@@ -20,6 +20,7 @@ export default defineConfig({
     // Default left at 8080 so nothing changes for anyone running the API directly.
     proxy: {
       "/api": process.env.TUNNEX_DEV_API ?? "http://localhost:8080",
+      "/ai": process.env.TUNNEX_DEV_API ?? "http://localhost:8080",
       "/healthz": process.env.TUNNEX_DEV_API ?? "http://localhost:8080",
     },
   },

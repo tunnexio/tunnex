@@ -1,0 +1,11 @@
+COMPOSE_PROJECT_NAME=tunnexaiwalk0907repro4 verified container=/tunnexaiwalk0907repro4-cp-postgres network=tunnexaiwalk0907repro4_engine
+Saved roles: member,ai-admin
+CLI current-role permission: providers 200
+AI admin role escalation:403
+Saved roles: member
+CLI current-role permission: providers 403
+Saved roles: member,ai-view
+CLI current-role permission: providers 200
+CLI current-role permission: user-model-grants 403
+Saved roles: member,ai-admin
+Live multiple-role add/remove and CLI permission refresh passed.

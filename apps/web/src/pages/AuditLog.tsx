@@ -81,7 +81,7 @@ export default function AuditLog() {
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [memberScoped, setMemberScoped] = useState(false);
+  const [memberScoped, setMemberScoped] = useState(true);
   const [selected, setSelected] = useState<AuditLogEntry | null>(null);
   // Generation token: each fetch bumps it; a response whose token is stale (a
   // newer fetch started, or the component unmounted) is discarded — so out-of-
@@ -129,6 +129,7 @@ export default function AuditLog() {
     let cancelled = false;
     (async () => {
       setSelected(null);
+      setMemberScoped(true);
       // ⭐ THE ORG-LIST FETCH IS GONE FROM THIS PAGE (S12.5). It existed only to be indexed at zero.
       // OrgProvider reads the list once for the whole shell; a page that re-fetched it would not merely
       // waste a request, it would pick an org the switcher has no way to change.
@@ -163,10 +164,10 @@ export default function AuditLog() {
       );
       if (!cancelled) setMembers(ms ?? []);
       if (!cancelled && authState.status === "authed") {
+        const member = (ms ?? []).find((m) => m.user_id === authState.user.id);
         setMemberScoped(
-          (ms ?? []).some(
-            (m) =>
-              m.user_id === authState.user.id && m.role === "member",
+          !(member?.roles ?? (member ? [member.role] : [])).some(
+            (role) => role === "owner" || role === "admin",
           ),
         );
       }
@@ -238,14 +239,15 @@ export default function AuditLog() {
               <span>Actor</span>
               <select
                 aria-label="Actor"
+                disabled={memberScoped}
                 className={`min-h-9 w-full ${selectCls}`}
                 value={filters.actor}
                 onChange={(e) =>
                   setFilters((f) => ({ ...f, actor: e.target.value }))
                 }
               >
-                <option value="">Anyone</option>
-                {members.map((m) => (
+                <option value="">{memberScoped ? "Your activity" : "Anyone"}</option>
+                {!memberScoped && members.map((m) => (
                   <option key={m.user_id} value={m.user_id}>
                     {m.name || m.email}
                   </option>

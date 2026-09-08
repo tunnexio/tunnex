@@ -325,7 +325,7 @@ func (s *Policies) UpdateProvider(ctx context.Context, org, actor, id uuid.UUID,
 		}
 	}
 	var referenced bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_gateway_team_policies WHERE org_id=$1 AND $2=ANY(key_ids) AND models && $3::text[])`, org, p.KeyID, removed).Scan(&referenced) != nil {
+	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_gateway_team_policies WHERE org_id=$1 AND $2=ANY(key_ids) AND models && $3::text[]) OR EXISTS(SELECT 1 FROM ai_user_model_grants WHERE org_id=$1 AND connection_id=$4 AND group_id IS NOT NULL AND enabled AND model=ANY($3::text[]))`, org, p.KeyID, removed, p.ID).Scan(&referenced) != nil {
 		return p, aiUnavailable()
 	}
 	if referenced {
@@ -418,7 +418,7 @@ func (s *Policies) DeleteProvider(ctx context.Context, org, actor, id uuid.UUID,
 		return providerConflict()
 	}
 	var refs bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_gateway_team_policies WHERE org_id=$1 AND $2=ANY(key_ids))`, org, p.KeyID).Scan(&refs) != nil {
+	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_gateway_team_policies WHERE org_id=$1 AND $2=ANY(key_ids)) OR EXISTS(SELECT 1 FROM ai_user_model_grants WHERE org_id=$1 AND connection_id=$3 AND group_id IS NOT NULL AND enabled)`, org, p.KeyID, p.ID).Scan(&refs) != nil {
 		return aiUnavailable()
 	}
 	if refs {

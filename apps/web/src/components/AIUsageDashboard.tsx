@@ -11,7 +11,7 @@ export type AIUsageDashboardProps = {
   status: "loading" | "error" | "ready";
   error?: string; onRetry?: () => void; filters?: ReactNode;
   totals?: AIUsageTotals; daily?: AIUsageDay[];
-  models?: { name: string; cost: number }[]; teams?: AIUsageRank[]; agents?: AIUsageRank[];
+  models?: { name: string; cost: number }[]; teams?: AIUsageRank[]; agents?: AIUsageRank[]; userGroups?: AIUsageRank[];
 };
 const count = (value: number) => value.toLocaleString("en-US");
 export function formatAIUsageCost(value: number): string {
@@ -28,7 +28,7 @@ function validTotals(v: AIUsageTotals) {
 export function AIUsageDashboard(props: AIUsageDashboardProps) {
   const { status, totals, filters, onRetry } = props;
   return <section className="ai-usage-dashboard" aria-label="AI usage dashboard" aria-busy={status === "loading"}>
-    <div className="ai-usage-topline"><div><p className="ai-usage-eyebrow">AI GATEWAY / ANALYTICS</p><h2>Usage & cost</h2><p className="ai-usage-muted">Understand where your agents spend.</p></div><span className="ai-usage-source"><i />Native observed estimates</span></div>
+    <div className="ai-usage-topline"><div><p className="ai-usage-eyebrow">AI GATEWAY / ANALYTICS</p><h2>Usage & cost</h2><p className="ai-usage-muted">Understand model usage across your agents and user groups.</p></div><span className="ai-usage-source"><i />Native observed estimates</span></div>
     {filters && <div className="ai-usage-filters">{filters}</div>}
     {status === "loading" ? <div className="ai-usage-state" role="status"><span className="ai-usage-loader" />Loading usage from your gateway…</div>
       : status === "error" || !totals || !validTotals(totals) ? <div className="ai-usage-state" role="alert"><h3>Usage is unavailable</h3><p>{props.error || "Could not read usage from your gateway. No zero-spend claim can be made."}</p>{onRetry && <button type="button" onClick={onRetry}>Retry usage</button>}</div>
@@ -43,7 +43,7 @@ export function AIUsageDashboard(props: AIUsageDashboardProps) {
         {totals.uncostedRequests > 0 && <p className="ai-usage-warning" role="status">Cost is incomplete: {count(totals.uncostedRequests)} observed requests have no recorded cost. The displayed estimate may understate spending.</p>}
         {totals.requests === 0 && <div className="ai-usage-empty" role="status"><h3>No requests in this period</h3><p>Choose another period or send an authorized agent request to begin seeing usage.</p></div>}
         <DailyChart days={props.daily} />
-        <div className="ai-usage-rank-grid"><Ranked title="Spend by team" label="Team" rows={props.teams} /><Ranked title="Spend by agent" label="Agent" rows={props.agents} /><Ranked title="Spend by model" label="Model" rows={props.models?.map((m) => ({ ...m, id: m.name }))} /></div>
+        <div className="ai-usage-rank-grid">{props.userGroups && <Ranked title="Spend by user group" label="User group" rows={props.userGroups} />}<Ranked title="Spend by team" label="Team" rows={props.teams} /><Ranked title="Spend by agent" label="Agent" rows={props.agents} /><Ranked title="Spend by model" label="Model" rows={props.models?.map((m) => ({ ...m, id: m.name }))} /></div>
         <TokenBreakdown totals={totals} />
         <p className="ai-usage-footnote">Provider request outcomes exclude requests refused by Tunnex before reaching the provider.{totals.cancelledRequests !== undefined && ` Cancelled provider requests: ${count(totals.cancelledRequests)}.`} Based on retained gateway records; older activity may no longer be available. Soft thresholds are not strict caps. Concurrent requests may exceed them. </p>
       </>}

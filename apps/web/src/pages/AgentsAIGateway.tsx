@@ -19,7 +19,7 @@ import {
 } from "../components/ui";
 import { api } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
-import { AgentsManagementGate } from "./AgentsManagementGate";
+import { AIAccessGate, AIGroupAccess, AIUseModel } from "../components/AIUserAccess";
 type S = components["schemas"];
 type Inventory = {
   groups: S["AgentGroup"][];
@@ -45,36 +45,24 @@ const thresholdDecimal = new Intl.NumberFormat("en-US", {
 });
 export default function AgentsAIGateway() {
   const { org } = useOrg();
-  const [view, setView] = useState<"usage" | "providers" | "configuration">("usage");
-  return (
-    <div className="network-management agents-workspace space-y-5">
-      <PageHeader
-        title="AI gateway"
-        subtitle="Understand AI spend, monitor usage, and manage agent access."
-      />
-      <AgentsTabRail />
-      <nav aria-label="AI gateway views" className="flex gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1 w-fit">
-        {(["usage", "providers", "configuration"] as const).map((v) => <button key={v} type="button" aria-current={view === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${view === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{v === "usage" ? "Usage & cost" : v === "providers" ? "Models & endpoints" : "Configuration"}</button>)}
-      </nav>
-      <AgentsManagementGate key={org?.id}>
-        {(orgId) => (
-          view === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} /> : view === "providers" ? <AIProviderWorkspace key={orgId} orgId={orgId} /> : <div className="ai-gateway-configuration">
-            <div className="ai-config-heading"><div><p className="ai-config-eyebrow">AI GATEWAY / CONFIGURATION</p><h2>Gateway configuration</h2><p>Define team policies, then choose which agents can use them.</p></div><span className="ai-config-pill">Community available</span></div>
-            <div className="ai-config-organization"><AIGatewaySettings orgId={orgId} canEdit /></div>
-            {org?.agent_policy_templates_enabled ? (
-              <AIGatewayWorkspace key={orgId} orgId={orgId} />
-            ) : (
-              <Card>
-                <h2>Agent groups are turned off</h2>
-                <p>Enable the Agent Groups organization setting before configuring AI teams. Paid managed runtime is not required.</p>
-                <Link to="/settings?section=ai-agents">Configure Agent Group settings</Link>
-              </Card>
-            )}
-          </div>
-        )}
-      </AgentsManagementGate>
-    </div>
-  );
+  const [view, setView] = useState<"usage" | "providers" | "configuration" | "groups" | "use">("usage");
+  return <div className="network-management agents-workspace space-y-5">
+    <PageHeader title="AI gateway" subtitle="Manage models, grant group access, and call AI with your Tunnex login." />
+    <AgentsTabRail />
+    <AIAccessGate key={org?.id}>{(orgId, access) => {
+      const current = access.view ? view : "use";
+      const tabs = access.view ? (["usage", "providers", "groups", "use", "configuration"] as const) : (["use"] as const);
+      const labels = { usage: "Usage & cost", providers: "Models & endpoints", groups: "Group access", use: "Use model", configuration: "Configuration" };
+      return <>
+        <nav aria-label="AI gateway views" className="flex flex-wrap gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1 w-fit">{tabs.map((v) => <button key={v} type="button" aria-current={current === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium ${current === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{labels[v]}</button>)}</nav>
+        {current === "use" ? <AIUseModel key={orgId} orgId={orgId} /> : current === "groups" ? <AIGroupAccess key={orgId} orgId={orgId} canManage={access.manage} /> : current === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} /> : current === "providers" ? <AIProviderWorkspace key={orgId} orgId={orgId} canManage={access.manage} /> : <div className="ai-gateway-configuration">
+          <div className="ai-config-heading"><div><p className="ai-config-eyebrow">AI GATEWAY / CONFIGURATION</p><h2>Gateway configuration</h2><p>Enable model access for your organization. Grant user groups access in Group access.</p></div></div>
+          <div className="ai-config-organization"><AIGatewaySettings orgId={orgId} canEdit={access.manage} /></div>
+          {access.agents && (org?.agent_policy_templates_enabled ? <AIGatewayWorkspace key={orgId} orgId={orgId} /> : <Card><h2>Agent groups are turned off</h2><p>Enable Agent Groups to configure automated agent access.</p><Link to="/settings?section=ai-agents">Configure Agent Group settings</Link></Card>)}
+        </div>}
+      </>;
+    }}</AIAccessGate>
+  </div>;
 }
 export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
   const [data, setData] = useState<Inventory | null>(null),

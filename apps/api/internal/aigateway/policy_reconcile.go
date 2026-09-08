@@ -107,7 +107,7 @@ func (s *Policies) reconcileTeamDevice(ctx context.Context, org, device, expecte
 	}
 	if current == nil {
 		var count int
-		if tx.QueryRow(ctx, `SELECT count(*) FROM ai_gateway_key_bindings WHERE org_id=$1`, org).Scan(&count) != nil {
+		if tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM ai_gateway_key_bindings WHERE org_id=$1)+(SELECT count(*) FROM ai_user_model_grants WHERE org_id=$1)`, org).Scan(&count) != nil {
 			return Assignment{}, aiUnavailable()
 		}
 		if count >= 64 {
@@ -253,6 +253,7 @@ func (s *Policies) ReconcilePending(ctx context.Context, limit int) error {
 			failures = append(failures, err)
 		}
 	}
+	failures = append(failures, s.reconcileUserGrants(ctx, limit))
 	return errors.Join(failures...)
 }
 

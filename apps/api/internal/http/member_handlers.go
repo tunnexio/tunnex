@@ -42,7 +42,12 @@ func toAPIMember(r sqlc.ListOrgMembersWithUserRow) api.Member {
 	// that before acting, and a broken GitOps pipeline was never connected back to the offboarding.
 	mc := int(r.MachineCredentials)
 	delegations := int(r.ManagedAgentDelegations)
+	roles := make([]api.MemberRoles, 0, len(r.Roles))
+	for _, role := range r.Roles {
+		roles = append(roles, api.MemberRoles(role))
+	}
 	return api.Member{
+		Roles:                   &roles,
 		MachineCredentials:      &mc,
 		ManagedAgentDelegations: &delegations,
 		UserId:                  r.UserID,
@@ -53,6 +58,27 @@ func toAPIMember(r sqlc.ListOrgMembersWithUserRow) api.Member {
 		EmailVerified:           r.EmailVerified,
 		JoinedAt:                r.JoinedAt,
 	}
+}
+
+// ChangeMemberRoles replaces a user's complete role set. The compatibility
+// single-role endpoint remains available to older clients.
+func (s apiServer) ChangeMemberRoles(ctx context.Context, req api.ChangeMemberRolesRequestObject) (api.ChangeMemberRolesResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermMemberManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	actorRole, _ := p.RoleIn(req.OrgId)
+	roles := make([]string, len(req.Body.Roles))
+	for i, role := range req.Body.Roles {
+		roles[i] = string(role)
+	}
+	if _, err := s.members.ChangeMemberRoles(ctx, &p.UserID, actorRole, req.OrgId, req.UserId, roles); err != nil {
+		return nil, err
+	}
+	return api.ChangeMemberRoles204Response{Headers: api.ChangeMemberRoles204ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
 
 // ChangeMemberRole PUT /api/v1/organizations/{orgId}/members/{userId}/role.

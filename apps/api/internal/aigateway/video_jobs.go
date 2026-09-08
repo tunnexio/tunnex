@@ -29,6 +29,7 @@ var errVideoQuota = errors.New("video job limit")
 type videoJob struct {
 	ID, Org, Agent           uuid.UUID
 	Model, ProviderID, State string
+	SubjectKind              string
 	Created, Expires         time.Time
 }
 
@@ -52,11 +53,11 @@ type videoHandler struct {
 
 func scanVideo(row pgx.Row) (videoJob, error) {
 	var j videoJob
-	err := row.Scan(&j.ID, &j.Org, &j.Agent, &j.Model, &j.ProviderID, &j.State, &j.Created, &j.Expires)
+	err := row.Scan(&j.ID, &j.Org, &j.Agent, &j.SubjectKind, &j.Model, &j.ProviderID, &j.State, &j.Created, &j.Expires)
 	return j, err
 }
 
-const videoColumns = `id,org_id,device_id,model,provider_id,state,created_at,expires_at`
+const videoColumns = `id,org_id,coalesce(device_id,user_id),CASE WHEN user_id IS NULL THEN '' ELSE 'user' END,model,provider_id,state,created_at,expires_at`
 
 func (s videoStore) reserve(ctx context.Context, g Grant, model, key string, body []byte) (videoJob, bool, error) {
 	tx, err := s.pool.Begin(ctx)
@@ -76,7 +77,7 @@ func (s videoStore) reserve(ctx context.Context, g Grant, model, key string, bod
 	hash := sha256.Sum256(body)
 	var oldHash []byte
 	var j videoJob
-	err = tx.QueryRow(ctx, `SELECT `+videoColumns+`,request_hash FROM ai_video_jobs WHERE org_id=$1 AND device_id=$2 AND idempotency_key=$3`, g.Tenant, g.Agent, key).Scan(&j.ID, &j.Org, &j.Agent, &j.Model, &j.ProviderID, &j.State, &j.Created, &j.Expires, &oldHash)
+	err = tx.QueryRow(ctx, `SELECT `+videoColumns+`,request_hash FROM ai_video_jobs WHERE org_id=$1 AND coalesce(device_id,user_id)=$2 AND (user_id IS NOT NULL)=$4 AND idempotency_key=$3`, g.Tenant, g.Agent, key, g.SubjectKind == "user").Scan(&j.ID, &j.Org, &j.Agent, &j.SubjectKind, &j.Model, &j.ProviderID, &j.State, &j.Created, &j.Expires, &oldHash)
 	if err == nil {
 		if !bytes.Equal(oldHash, hash[:]) || j.Model != model {
 			return videoJob{}, false, errVideoConflict
@@ -94,13 +95,19 @@ func (s videoStore) reserve(ctx context.Context, g Grant, model, key string, bod
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM ai_video_jobs`).Scan(&total); err != nil {
 		return videoJob{}, false, err
 	}
-	if err = tx.QueryRow(ctx, `SELECT count(*) FROM ai_video_jobs WHERE org_id=$1 AND device_id=$2 AND state IN ('uncertain','queued','in_progress') AND expires_at>now()`, g.Tenant, g.Agent).Scan(&active); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM ai_video_jobs WHERE org_id=$1 AND coalesce(device_id,user_id)=$2 AND (user_id IS NOT NULL)=$3 AND state IN ('uncertain','queued','in_progress') AND expires_at>now()`, g.Tenant, g.Agent, g.SubjectKind == "user").Scan(&active); err != nil {
 		return videoJob{}, false, err
 	}
 	if total >= 4096 || active >= 64 {
 		return videoJob{}, false, errVideoQuota
 	}
-	j, err = scanVideo(tx.QueryRow(ctx, `INSERT INTO ai_video_jobs(id,org_id,device_id,model,idempotency_key,request_hash,state) VALUES($1,$2,$3,$4,$5,$6,'uncertain') RETURNING `+videoColumns, uuid.New(), g.Tenant, g.Agent, model, key, hash[:]))
+	var device, user *string
+	if g.SubjectKind == "user" {
+		user = &g.Agent
+	} else {
+		device = &g.Agent
+	}
+	j, err = scanVideo(tx.QueryRow(ctx, `INSERT INTO ai_video_jobs(id,org_id,device_id,model,idempotency_key,request_hash,state,user_id) VALUES($1,$2,$3,$4,$5,$6,'uncertain',$7) RETURNING `+videoColumns, uuid.New(), g.Tenant, device, model, key, hash[:], user))
 	if err != nil {
 		return videoJob{}, false, err
 	}
@@ -114,7 +121,7 @@ func (s videoStore) lookup(ctx context.Context, id uuid.UUID) (videoJob, error) 
 }
 
 func (s videoStore) update(ctx context.Context, j videoJob, providerID, state string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE ai_video_jobs SET provider_id=$4,state=$5 WHERE id=$1 AND org_id=$2 AND device_id=$3 AND expires_at>now() AND (provider_id='' OR provider_id=$4) AND (state NOT IN ('completed','failed') OR state=$5)`, j.ID, j.Org, j.Agent, providerID, state)
+	tag, err := s.pool.Exec(ctx, `UPDATE ai_video_jobs SET provider_id=$4,state=$5 WHERE id=$1 AND org_id=$2 AND coalesce(device_id,user_id)=$3 AND (user_id IS NOT NULL)=$6 AND expires_at>now() AND (provider_id='' OR provider_id=$4) AND (state NOT IN ('completed','failed') OR state=$5)`, j.ID, j.Org, j.Agent, providerID, state, j.SubjectKind == "user")
 	if err == nil && tag.RowsAffected() != 1 {
 		return errors.New("video update refused")
 	}
@@ -165,7 +172,8 @@ func videoNative(body []byte, model string) (string, string, error) {
 	return "", "", errors.New("invalid video state")
 }
 
-func (h *videoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *videoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.serve(w, r, nil) }
+func (h *videoHandler) serve(w http.ResponseWriter, r *http.Request, authorize Authorize) {
 	a := h.adapter
 	w.Header().Set("Cache-Control", "no-store")
 	if a == nil || h.store.pool == nil {
@@ -192,7 +200,7 @@ func (h *videoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	headers := r.Header.Values("Authorization")
-	if len(headers) != 1 || !strings.HasPrefix(headers[0], "Bearer ") || strings.TrimSpace(strings.TrimPrefix(headers[0], "Bearer ")) == "" {
+	if authorize == nil && (len(headers) != 1 || !strings.HasPrefix(headers[0], "Bearer ") || strings.TrimSpace(strings.TrimPrefix(headers[0], "Bearer ")) == "") {
 		writeAdapterError(w, r, 401)
 		return
 	}
@@ -239,7 +247,12 @@ func (h *videoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		model = j.Model
 	}
-	g, err := a.authorize(ctx, strings.TrimPrefix(headers[0], "Bearer "), model)
+	token := ""
+	if authorize == nil {
+		authorize = a.authorize
+		token = strings.TrimPrefix(headers[0], "Bearer ")
+	}
+	g, err := authorize(ctx, token, model)
 	if err != nil || DefaultModelMode(g.Mode) != ModeVideoGeneration || g.Tenant == "" || g.Agent == "" || !validKey(g.VirtualKey) || !time.Now().Before(g.Expires) {
 		if create {
 			writeAdapterError(w, r, 403)
@@ -248,11 +261,11 @@ func (h *videoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if !create && (g.Tenant != j.Org.String() || g.Agent != j.Agent.String()) {
+	if !create && (g.Tenant != j.Org.String() || g.Agent != j.Agent.String() || g.SubjectKind != j.SubjectKind) {
 		writeAdapterError(w, r, 404)
 		return
 	}
-	key := g.Tenant + "/" + g.Agent
+	key := g.Tenant + "/" + g.SubjectKind + "/" + g.Agent
 	a.mu.Lock()
 	if a.active[key] >= 4 {
 		a.mu.Unlock()

@@ -26,6 +26,7 @@ const MaxBodyBytes = 256 << 10
 // No caller-supplied headers establish identity or upstream authorization.
 type Grant struct {
 	Tenant, Agent, VirtualKey string
+	SubjectKind               string // empty = agent; user = authenticated human
 	Mode                      ModelMode
 	Expires                   time.Time
 }
@@ -68,10 +69,25 @@ func NewAdapter(upstream string, authorize Authorize) (*Adapter, error) {
 	}}, nil
 }
 
-func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) { a.serve(w, r, nil) }
+
+// ServeAuthorized accepts an authorizer from the authenticated HTTP composition only.
+// It does not read an alternate identity or credential from client headers.
+func (a *Adapter) ServeAuthorized(w http.ResponseWriter, r *http.Request, authorize Authorize) {
+	if authorize == nil {
+		writeAdapterError(w, r, 401)
+		return
+	}
+	a.serve(w, r, authorize)
+}
+func (a *Adapter) serve(w http.ResponseWriter, r *http.Request, authorize Authorize) {
 	if r.URL.Path == "/v1/videos" || strings.HasPrefix(r.URL.Path, "/v1/videos/") {
 		if a.video != nil {
-			a.video.ServeHTTP(w, r)
+			if authorize != nil {
+				a.video.(*videoHandler).serve(w, r, authorize)
+			} else {
+				a.video.ServeHTTP(w, r)
+			}
 		} else {
 			writeAdapterError(w, r, 503)
 		}
@@ -105,7 +121,7 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth := r.Header.Values("Authorization")
-	if len(auth) != 1 || !strings.HasPrefix(auth[0], "Bearer ") || strings.TrimSpace(strings.TrimPrefix(auth[0], "Bearer ")) == "" {
+	if authorize == nil && (len(auth) != 1 || !strings.HasPrefix(auth[0], "Bearer ") || strings.TrimSpace(strings.TrimPrefix(auth[0], "Bearer ")) == "") {
 		writeAdapterError(w, r, 401)
 		return
 	}
@@ -149,7 +165,12 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	grant, err := a.authorize(ctx, strings.TrimPrefix(auth[0], "Bearer "), model)
+	token := ""
+	if authorize == nil {
+		authorize = a.authorize
+		token = strings.TrimPrefix(auth[0], "Bearer ")
+	}
+	grant, err := authorize(ctx, token, model)
 	if err != nil {
 		status := http.StatusForbidden
 		var domain *apierr.Error
@@ -170,7 +191,7 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAdapterError(w, r, 403)
 		return
 	}
-	key := grant.Tenant + "/" + grant.Agent
+	key := grant.Tenant + "/" + grant.SubjectKind + "/" + grant.Agent
 	a.mu.Lock()
 	if a.active[key] >= 4 {
 		a.mu.Unlock()

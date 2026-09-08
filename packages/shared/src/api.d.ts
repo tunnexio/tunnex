@@ -4,6 +4,293 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/ai-gateway/user-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listAIUserGroups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/user-model-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listAIUserModelGrants"];
+        put?: never;
+        /** Grant or revoke an exact model for a human user group */
+        post: operations["putAIUserModelGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/my-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["listMyAIModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/chat/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute an allowed model using a short-lived AI credential */
+        post: operations["aiUserChatCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized completions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/embeddings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized embeddings model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/speech model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserSpeech"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/audio/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/transcriptions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserTranscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/images/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized images/generations model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserImageGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized videos model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserVideoGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/rerank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized rerank model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiUserRerank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiUserVideoStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/v1/videos/{jobId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiUserVideoContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/inference/anthropic/v1/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute an allowed model through the qualified Anthropic-compatible path */
+        post: operations["aiUserAnthropicMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/providers": {
         parameters: {
             query?: never;
@@ -3134,6 +3421,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/members/{userId}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a member's role set (RBAC-gated; refuses demoting the last owner) */
+        put: operations["changeMemberRoles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/members/{userId}/deactivate": {
         parameters: {
             query?: never;
@@ -4826,6 +5133,44 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIUserGroup: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            members: number;
+        };
+        AIUserModel: {
+            model: string;
+            mode: components["schemas"]["AIModelMode"];
+        };
+        AIUserModelGrantInput: {
+            /** Format: uuid */
+            group_id: string;
+            /** Format: uuid */
+            connection_id: string;
+            model: string;
+            enabled: boolean;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIUserModelGrant: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            group_id?: string;
+            group_name: string;
+            /** Format: uuid */
+            connection_id: string;
+            model: string;
+            mode: components["schemas"]["AIModelMode"];
+            enabled: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "revoked" | "error";
+        };
         AICompletionRequest: {
             model: string;
             prompt: string;
@@ -5158,6 +5503,7 @@ export interface components {
             models: components["schemas"]["AIUsageModel"][];
             teams: components["schemas"]["AIUsageAttribution"][];
             agents: components["schemas"]["AIUsageAttribution"][];
+            user_groups?: components["schemas"]["AIUsageAttribution"][];
         };
         AIUsageDay: {
             date: string;
@@ -7873,7 +8219,8 @@ export interface components {
             email: string;
             name: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+            roles?: ("owner" | "admin" | "member" | "ai-admin" | "ai-view")[];
             /** @enum {string} */
             status: "active" | "deactivated";
             email_verified: boolean;
@@ -7886,7 +8233,10 @@ export interface components {
         };
         ChangeRoleRequest: {
             /** @enum {string} */
-            role: "owner" | "admin" | "member";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+        };
+        ChangeRolesRequest: {
+            roles: ("owner" | "admin" | "member" | "ai-admin" | "ai-view")[];
         };
         OrgDeletionPreflight: {
             /** @description True only when every count below is zero. */
@@ -8414,6 +8764,418 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAIUserGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-scoped results. Model access requires current user group membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserGroup"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIUserModelGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-scoped results. Model access requires current user group membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserModelGrant"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAIUserModelGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIUserModelGrantInput"];
+            };
+        };
+        responses: {
+            /** @description Desired grant and provisioning state. Access is effective only when applied. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserModelGrant"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listMyAIModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organization-scoped results. Model access requires current user group membership. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserModel"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserChatCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIInferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Model output, optionally streamed. No automatic retry or fallback. Accepted work may continue until the 30-second request bound after revocation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AICompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserEmbedding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIEmbeddingRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserSpeech: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISpeechRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/mpeg": string;
+                    "audio/ogg": string;
+                    "audio/aac": string;
+                    "audio/flac": string;
+                    "audio/wav": string;
+                    "audio/pcm": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserTranscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["AITranscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserImageGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserVideoGeneration: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded output; video returns job acceptance, not completion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserRerank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIRerankRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserVideoStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserVideoContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/webm": string;
+                    "video/mp4": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiUserAnthropicMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIInferenceRequest"];
+            };
+        };
+        responses: {
+            /** @description Model output, optionally streamed; same identity and model policy as chat completions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listAIProviders: {
         parameters: {
             query?: never;
@@ -13353,6 +14115,33 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ChangeRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Role changed. (Client refetches the roster.) */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    changeMemberRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeRolesRequest"];
             };
         };
         responses: {

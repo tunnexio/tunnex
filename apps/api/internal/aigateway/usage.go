@@ -18,6 +18,7 @@ const maxAIUsageBindings = 64
 func bindingUsageIDs(ctx context.Context, tx pgx.Tx, org uuid.UUID, team, device *uuid.UUID) ([]string, error) {
 	rows, err := tx.Query(ctx, `SELECT native_key_id FROM ai_gateway_key_bindings
  WHERE org_id=$1 AND ($2::uuid IS NULL OR team_id=$2) AND ($3::uuid IS NULL OR device_id=$3)
+ UNION SELECT native_key_id FROM ai_user_model_grants WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
  ORDER BY native_key_id LIMIT 65`, org, team, device)
 	if err != nil {
 		return nil, aiUnavailable()

@@ -94,6 +94,7 @@ type Querier interface {
 	BumpOrgFlowSeq(ctx context.Context, arg BumpOrgFlowSeqParams) (int64, error)
 	CancelAgentAccessRequest(ctx context.Context, arg CancelAgentAccessRequestParams) (AgentAccessRequest, error)
 	ChangeMemberRole(ctx context.Context, arg ChangeMemberRoleParams) (Membership, error)
+	ChangeMemberRoles(ctx context.Context, arg ChangeMemberRolesParams) (Membership, error)
 	ClaimAgentWorkflowAssertion(ctx context.Context, arg ClaimAgentWorkflowAssertionParams) (AgentWorkflowProvenanceUsedAssertion, error)
 	// lint:cross-org — the leader-gated dispatcher claims only its bounded due
 	// batch, atomically moving each delivery out of the pending queue.
@@ -1450,6 +1451,7 @@ type Querier interface {
 	LockLiveAccessEventRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
 	// Settings are user-facing configuration and may only change for a live tenant.
 	LockLiveAuditLogRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
+	LockMembershipOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	LockNodeByLifecycleClaimForOrg(ctx context.Context, arg LockNodeByLifecycleClaimForOrgParams) (Node, error)
 	// lint:cross-org — callback locks its opaque server-side flow's exact connection.
 	LockSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)

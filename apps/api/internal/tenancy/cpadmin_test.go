@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -14,7 +15,101 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
+
+func TestCPAdminRoleAuditRecordsRetainedRoles(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	org, actor, target, otherOwner := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, "INSERT INTO organizations(id,name,slug) VALUES($1,'role audit',$2)", org, org.String()); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []uuid.UUID{actor, target, otherOwner} {
+		if _, err := pool.Exec(ctx, "INSERT INTO users(id,email,name) VALUES($1,$2,'role audit')", user, user.String()+"@test.local"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, "INSERT INTO memberships(org_id,user_id,role,roles) VALUES($1,$2,'owner',ARRAY['owner','admin','ai-admin']),($1,$3,'owner',ARRAY['owner'])", org, target, otherOwner); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(pool)
+	if err := service.GrantOrgRole(ctx, actor, "cp@test.local", org, target, "member"); err != nil {
+		t.Fatal(err)
+	}
+	var primary string
+	var roles []string
+	if err := pool.QueryRow(ctx, "SELECT role,roles FROM memberships WHERE org_id=$1 AND user_id=$2", org, target).Scan(&primary, &roles); err != nil {
+		t.Fatal(err)
+	}
+	wantRoles := []string{"admin", "ai-admin", "member"}
+	if primary != "admin" || !reflect.DeepEqual(roles, wantRoles) {
+		t.Fatalf("legacy grant changed role-set semantics: %s %v", primary, roles)
+	}
+	var raw []byte
+	if err := pool.QueryRow(ctx, "SELECT metadata FROM audit_logs WHERE org_id=$1 AND action='member.role_granted_by_cp_admin'", org).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var metadata struct {
+		Role  struct{ From, To string }
+		Roles struct{ From, To []string }
+	}
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Role.From != "owner" || metadata.Role.To != primary || !reflect.DeepEqual(metadata.Roles.From, []string{"owner", "admin", "ai-admin"}) || !reflect.DeepEqual(metadata.Roles.To, roles) {
+		t.Fatalf("audit disagrees with persisted role transition: %s", raw)
+	}
+	if err := service.GrantOrgRole(ctx, actor, "cp@test.local", org, target, primary); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='member.role_granted_by_cp_admin'", org).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("unchanged role wrote another audit: %d %v", count, err)
+	}
+}
+
+func TestCPAdminRoleAuditRecordsRevokedMembershipRoles(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	org, actor, target := uuid.New(), uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, "INSERT INTO organizations(id,name,slug) VALUES($1,'revoked role audit',$2)", org, org.String()); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []uuid.UUID{actor, target} {
+		if _, err := pool.Exec(ctx, "INSERT INTO users(id,email,name) VALUES($1,$2,'role audit')", user, user.String()+"@test.local"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, "INSERT INTO memberships(org_id,user_id,role,roles,access_revoked_at) VALUES($1,$2,'admin',ARRAY['admin','ai-admin'],now())", org, target); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(pool)
+	if err := service.GrantOrgRole(ctx, actor, "cp@test.local", org, target, "member"); err != nil {
+		t.Fatal(err)
+	}
+	var primary string
+	var roles []string
+	var stillRevoked bool
+	if err := pool.QueryRow(ctx, "SELECT role,roles,access_revoked_at IS NOT NULL FROM memberships WHERE org_id=$1 AND user_id=$2", org, target).Scan(&primary, &roles, &stillRevoked); err != nil {
+		t.Fatal(err)
+	}
+	if !stillRevoked || primary != "ai-admin" || !reflect.DeepEqual(roles, []string{"ai-admin", "member"}) {
+		t.Fatalf("legacy role update changed revocation or retention semantics: revoked=%t role=%s roles=%v", stillRevoked, primary, roles)
+	}
+	var raw []byte
+	if err := pool.QueryRow(ctx, "SELECT metadata FROM audit_logs WHERE org_id=$1 AND action='member.role_granted_by_cp_admin'", org).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var metadata struct {
+		Role  struct{ From, To string }
+		Roles struct{ From, To []string }
+	}
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Role.From != "admin" || metadata.Role.To != primary || !reflect.DeepEqual(metadata.Roles.From, []string{"admin", "ai-admin"}) || !reflect.DeepEqual(metadata.Roles.To, roles) {
+		t.Fatalf("audit lost retained revoked membership's prior roles: %s", raw)
+	}
+}
 
 // ⛔ THE ONE OPERATION IN THE PRODUCT THAT CROSSES A TENANT BOUNDARY (S12.11).
 //

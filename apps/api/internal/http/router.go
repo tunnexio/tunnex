@@ -267,6 +267,17 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
+	srv := apiServer{aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
+	// principal; a gated user is restricted to enrollment. Registered before the routes so it
+	// wraps every operation (self-arming — a new endpoint is gated by construction).
+	gate, err := srv.mfaEnrollmentGate(swagger)
+	if err != nil {
+		return nil, err
+	}
+	r.Use(gate)
+
+	r.Use(aiUserInferenceMiddleware(d.AIAdapter, d.AIPolicies))
 	r.Use(oapimw.OapiRequestValidatorWithOptions(swagger, &oapimw.Options{
 		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, req *http.Request, opts oapimw.ErrorHandlerOpts) {
 			message := "AI provider request is invalid"
@@ -283,16 +294,6 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 			AuthenticationFunc: func(context.Context, *openapi3filter.AuthenticationInput) error { return nil },
 		},
 	}))
-
-	srv := apiServer{aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
-	// Default-deny MFA-enrollment gate (S7.5.5 D8, enterprise): runs after auth attaches the
-	// principal; a gated user is restricted to enrollment. Registered before the routes so it
-	// wraps every operation (self-arming — a new endpoint is gated by construction).
-	gate, err := srv.mfaEnrollmentGate(swagger)
-	if err != nil {
-		return nil, err
-	}
-	r.Use(gate)
 
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		// Both hooks render typed *apierr.Error (and anything else) as the envelope.

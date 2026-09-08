@@ -36,10 +36,14 @@ func validKeyBinding(org, device uuid.UUID, keyID string, revision int64) bool {
 // revision. The platform Sealer supplies authenticated encryption; the
 // encrypted envelope supplies purpose and identity binding without new crypto.
 func SealKey(sealer *crypto.Sealer, org, device uuid.UUID, keyID string, revision int64, value string) (string, error) {
+	return sealBoundKey(sealer, keyEnvelopePurpose, org, device, keyID, revision, value)
+}
+
+func sealBoundKey(sealer *crypto.Sealer, purpose string, org, device uuid.UUID, keyID string, revision int64, value string) (string, error) {
 	if sealer == nil || !validKeyBinding(org, device, keyID, revision) || !validKey(value) {
 		return "", ErrKeyEnvelope
 	}
-	raw, err := json.Marshal(keyEnvelope{Version: keyEnvelopeVersion, Purpose: keyEnvelopePurpose, Org: org, Device: device, KeyID: keyID, Revision: revision, Value: value})
+	raw, err := json.Marshal(keyEnvelope{Version: keyEnvelopeVersion, Purpose: purpose, Org: org, Device: device, KeyID: keyID, Revision: revision, Value: value})
 	if err != nil {
 		return "", ErrKeyEnvelope
 	}
@@ -55,6 +59,10 @@ func SealKey(sealer *crypto.Sealer, org, device uuid.UUID, keyID string, revisio
 // keys, purposes or policy revisions. Expected binding must come from trusted
 // database state, never caller-supplied inference headers.
 func OpenKey(sealer *crypto.Sealer, org, device uuid.UUID, keyID string, revision int64, sealed string) (string, error) {
+	return openBoundKey(sealer, keyEnvelopePurpose, org, device, keyID, revision, sealed)
+}
+
+func openBoundKey(sealer *crypto.Sealer, purpose string, org, device uuid.UUID, keyID string, revision int64, sealed string) (string, error) {
 	if sealer == nil || !validKeyBinding(org, device, keyID, revision) || sealed == "" || len(sealed) > maxSealedKeyBytes {
 		return "", ErrKeyEnvelope
 	}
@@ -69,7 +77,7 @@ func OpenKey(sealer *crypto.Sealer, org, device uuid.UUID, keyID string, revisio
 	if decoder.Decode(&envelope) != nil || decoder.Decode(new(any)) != io.EOF {
 		return "", ErrKeyEnvelope
 	}
-	if envelope.Version != keyEnvelopeVersion || envelope.Purpose != keyEnvelopePurpose || envelope.Org != org || envelope.Device != device || envelope.KeyID != keyID || envelope.Revision != revision || !validKey(envelope.Value) {
+	if envelope.Version != keyEnvelopeVersion || envelope.Purpose != purpose || envelope.Org != org || envelope.Device != device || envelope.KeyID != keyID || envelope.Revision != revision || !validKey(envelope.Value) {
 		return "", ErrKeyEnvelope
 	}
 	return envelope.Value, nil

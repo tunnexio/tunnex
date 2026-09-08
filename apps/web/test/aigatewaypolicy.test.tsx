@@ -20,9 +20,9 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../src/lib/api", () => ({ api: mocks }));
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: mocks.org }) }));
-vi.mock("../src/pages/AgentsManagementGate", () => ({
-  AgentsManagementGate: ({ children }: { children: (id: string) => unknown }) =>
-    children(mocks.org.id),
+vi.mock("../src/components/AIUserAccess", () => ({
+  AIAccessGate: ({ children }: { children: (id: string, access: { view: boolean; manage: boolean; agents: boolean }) => unknown }) => children(mocks.org.id, { view: true, manage: true, agents: true }),
+  AIGroupAccess: () => null, AIUseModel: () => null,
 }));
 vi.mock("../src/components/AIGatewaySettings", () => ({
   AIGatewaySettings: () => null,

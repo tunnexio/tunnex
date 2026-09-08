@@ -9,11 +9,14 @@ import "sort"
 type Permission string
 
 const (
-	PermOrgView      Permission = "org:view"
-	PermOrgUpdate    Permission = "org:update"
-	PermOrgDelete    Permission = "org:delete"
-	PermMemberList   Permission = "member:list"
-	PermMemberInvite Permission = "member:invite"
+	PermAIModelAccessView   Permission = "ai_model_access:view"
+	PermAIModelAccessManage Permission = "ai_model_access:manage"
+	PermAIModelUse          Permission = "ai_model:use"
+	PermOrgView             Permission = "org:view"
+	PermOrgUpdate           Permission = "org:update"
+	PermOrgDelete           Permission = "org:delete"
+	PermMemberList          Permission = "member:list"
+	PermMemberInvite        Permission = "member:invite"
 	// PermMemberManage is the base capability to change roles / remove members.
 	// Relational limits (who may touch whom) are applied by CanManageMembership.
 	PermMemberManage Permission = "member:manage"
@@ -162,9 +165,11 @@ const (
 
 // Roles.
 const (
-	RoleOwner  = "owner"
-	RoleAdmin  = "admin"
-	RoleMember = "member"
+	RoleOwner   = "owner"
+	RoleAdmin   = "admin"
+	RoleMember  = "member"
+	RoleAIAdmin = "ai-admin"
+	RoleAIView  = "ai-view"
 	// RoleOperator (S10.2) is the fixed role a MACHINE credential holds — NOT user-assignable (the member
 	// role picker offers owner/admin/member only). Scoped to EXACTLY what the GitOps operator needs (D3):
 	// register a cluster, expose a Service, create a grant, and read the org — nothing else (no member
@@ -195,11 +200,24 @@ const (
 // the client. NOTE: CanManageMembership's relational rules are logic, not data,
 // so they are NOT covered by the guard and are still hand-mirrored in rbac.ts.
 var rolePermissions = map[string]map[Permission]bool{
+	RoleAIAdmin: {
+		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
+		PermOrgView: true, PermMemberList: true,
+		PermAIProviderView: true, PermAIProviderManage: true,
+		PermAIGatewayView: true, PermAIGatewayManage: true,
+	},
+	RoleAIView: {
+		PermAIModelUse: true, PermAIModelAccessView: true,
+		PermOrgView: true, PermMemberList: true,
+		PermAIProviderView: true, PermAIGatewayView: true,
+	},
 	RoleMember: {
+		PermAIModelUse: true,
 		PermOrgView:    true,
 		PermMemberList: true,
 	},
 	RoleAdmin: {
+		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,
 		PermOrgUpdate:                   true,
@@ -243,6 +261,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,
 		PermOrgUpdate:                   true,
@@ -353,7 +372,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
 		return false
 	default:
 		return true

@@ -61,7 +61,7 @@ jobs:
                 # api / cli / node / operator builds — only its ABSENCE can, which DELETED covers.
                 GO_RELEVANT=$(printf '%s\n' "$CHANGED" \
                   | grep -vxF 'apps/api/cmd/seed-fixtures/fixtures.sql' \
-                  | grep -E '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/)' || true)
+                  | grep -E '(\.go$|go\.(mod|sum)$|\.sql$|Dockerfile|Makefile|\.github/|openapi/|apps/api/db/|apps/api/internal/mail/|apps/api/internal/aigateway/reference/)' || true)
                 DELETED_GO=$(printf '%s\n' "$DELETED" | grep -E '.' || true)
                 if [ -z "$(printf '%s' "$GO_RELEVANT$DELETED_GO" | tr -d '[:space:]')" ]; then
                   RUN_GO=false

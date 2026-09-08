@@ -479,18 +479,40 @@ type AiProviderLegacyKey struct {
 	KeyID string    `json:"key_id"`
 }
 
+// Human group model grants; deleted groups lose access immediately. Retained rows preserve native usage attribution. No provider secrets.
+type AiUserModelGrant struct {
+	ID              uuid.UUID          `json:"id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	GroupID         pgtype.UUID        `json:"group_id"`
+	GroupRef        uuid.UUID          `json:"group_ref"`
+	GroupName       string             `json:"group_name"`
+	ConnectionID    uuid.UUID          `json:"connection_id"`
+	Model           string             `json:"model"`
+	Mode            string             `json:"mode"`
+	Enabled         bool               `json:"enabled"`
+	Revision        int64              `json:"revision"`
+	AppliedRevision int64              `json:"applied_revision"`
+	Status          string             `json:"status"`
+	NativeKeyID     string             `json:"native_key_id"`
+	SealedKey       string             `json:"sealed_key"`
+	BindingRevision int64              `json:"binding_revision"`
+	LastReconcileAt pgtype.Timestamptz `json:"last_reconcile_at"`
+	CreatedAt       time.Time          `json:"created_at"`
+}
+
 // Opaque tenant-owned video handles; no prompts, credentials, generated content or provider error bodies. Uncertain submissions are never retried automatically.
 type AiVideoJob struct {
-	ID             uuid.UUID `json:"id"`
-	OrgID          uuid.UUID `json:"org_id"`
-	DeviceID       uuid.UUID `json:"device_id"`
-	Model          string    `json:"model"`
-	IdempotencyKey string    `json:"idempotency_key"`
-	RequestHash    []byte    `json:"request_hash"`
-	ProviderID     string    `json:"provider_id"`
-	State          string    `json:"state"`
-	CreatedAt      time.Time `json:"created_at"`
-	ExpiresAt      time.Time `json:"expires_at"`
+	ID             uuid.UUID   `json:"id"`
+	OrgID          uuid.UUID   `json:"org_id"`
+	DeviceID       pgtype.UUID `json:"device_id"`
+	Model          string      `json:"model"`
+	IdempotencyKey string      `json:"idempotency_key"`
+	RequestHash    []byte      `json:"request_hash"`
+	ProviderID     string      `json:"provider_id"`
+	State          string      `json:"state"`
+	CreatedAt      time.Time   `json:"created_at"`
+	ExpiresAt      time.Time   `json:"expires_at"`
+	UserID         pgtype.UUID `json:"user_id"`
 }
 
 type AlertDelivery struct {
@@ -1362,6 +1384,7 @@ type Membership struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 	AccessRevokedAt pgtype.Timestamptz `json:"access_revoked_at"`
+	Roles           []string           `json:"roles"`
 }
 
 type MembershipAccessSource struct {

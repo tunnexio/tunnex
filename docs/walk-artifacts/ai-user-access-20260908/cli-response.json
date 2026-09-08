@@ -1,0 +1,36 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Private endpoint through approved egress proxy.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1788867850,
+  "extra_fields": {
+    "chunk_index": 0,
+    "latency": 6,
+    "original_model_requested": "private-demo",
+    "provider": "custom-f8e40d46-00ed-4aae-be79-9d905a562151",
+    "request_type": "chat_completion",
+    "resolved_model_used": "private-demo",
+    "routing_info": {
+      "key": "tnx-managed-f8e40d46-00ed-4aae-be79-9d905a562151-r1",
+      "model": "private-demo",
+      "provider": "custom-f8e40d46-00ed-4aae-be79-9d905a562151"
+    },
+    "upstream_latency": 6
+  },
+  "id": "custom-fixture",
+  "model": "private-demo",
+  "object": "chat.completion",
+  "system_fingerprint": "",
+  "usage": {
+    "completion_tokens": 7,
+    "prompt_tokens": 3,
+    "total_tokens": 10
+  }
+}

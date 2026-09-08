@@ -21,6 +21,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/cliauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 )
 
@@ -87,6 +88,34 @@ func TestBearerCredentialSemantics(t *testing.T) {
 		return cred
 	}
 	cred1, cred2 := mint(), mint()
+
+	// The existing CLI credential rehydrates additive roles on every request.
+	roleOrg := uuid.New()
+	if _, err := pool.Exec(ctx, "INSERT INTO organizations(id,name,slug) VALUES($1,'roles',$2)", roleOrg, roleOrg.String()); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(context.Background(), "DELETE FROM organizations WHERE id=$1", roleOrg)
+	if _, err := pool.Exec(ctx, "INSERT INTO memberships(org_id,user_id,role,roles) VALUES($1,$2,'member',ARRAY['member','ai-admin'])", roleOrg, userID); err != nil {
+		t.Fatal(err)
+	}
+	resolveRole := func() bool {
+		r, _ := http.NewRequestWithContext(ctx, "GET", srv.URL, nil)
+		r.Header.Set("Authorization", "Bearer "+cred1.Token)
+		p, err := BearerAuth(sqlc.New(pool))(r)
+		if err != nil || p == nil {
+			t.Fatal("CLI identity unavailable")
+		}
+		return rbac.CanAny(p.RolesIn(roleOrg), rbac.PermAIProviderManage)
+	}
+	if !resolveRole() {
+		t.Fatal("CLI lost role union")
+	}
+	if _, err := pool.Exec(ctx, "UPDATE memberships SET roles=ARRAY['member'] WHERE org_id=$1 AND user_id=$2", roleOrg, userID); err != nil {
+		t.Fatal(err)
+	}
+	if resolveRole() {
+		t.Fatal("removed AI role survived in CLI credential")
+	}
 
 	do := func(method, path, bearer string) *http.Response {
 		req, _ := http.NewRequest(method, srv.URL+path, nil)

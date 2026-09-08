@@ -15,6 +15,9 @@
     "agent_template:manage",
     "ai_gateway:manage",
     "ai_gateway:view",
+    "ai_model:use",
+    "ai_model_access:manage",
+    "ai_model_access:view",
     "ai_provider:manage",
     "ai_provider:view",
     "alerting:manage",
@@ -45,7 +48,27 @@
   "agent": [
     "org:view"
   ],
+  "ai-admin": [
+    "ai_gateway:manage",
+    "ai_gateway:view",
+    "ai_model:use",
+    "ai_model_access:manage",
+    "ai_model_access:view",
+    "ai_provider:manage",
+    "ai_provider:view",
+    "member:list",
+    "org:view"
+  ],
+  "ai-view": [
+    "ai_gateway:view",
+    "ai_model:use",
+    "ai_model_access:view",
+    "ai_provider:view",
+    "member:list",
+    "org:view"
+  ],
   "member": [
+    "ai_model:use",
     "member:list",
     "org:view"
   ],
@@ -74,6 +97,9 @@
     "agent_template:manage",
     "ai_gateway:manage",
     "ai_gateway:view",
+    "ai_model:use",
+    "ai_model_access:manage",
+    "ai_model_access:view",
     "ai_provider:manage",
     "ai_provider:view",
     "alerting:manage",

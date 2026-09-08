@@ -65,3 +65,23 @@ and multiple simultaneous roles on a user. These are one end-to-end delivery.
 - Run code generation checks, appropriate API tests/builds in both editions,
   relevant CLI tests, and web typecheck/tests/build. Record any unrun composite
   gates explicitly. Review findings are held for disposition under AGENTS.md.
+
+## Review dispositions — 2026-09-08
+
+The user approved all four ranked findings from the independent role and access
+reviews. Disposition: **locked — fix in this slice**.
+
+1. P1: AI-only memberships must not inherit organization-wide audit access.
+   Full audit reads stay limited to owner/admin; other human roles see their own
+   activity. The Audit Log UI must follow that same boundary.
+2. P2: A deleted user group cannot remain an active provider reference. Retain its
+   grant/key accounting history while revoking its active binding.
+3. P2: A tenant-scoped team mutation must not reconcile other organizations'
+   human grants. Global processing belongs only to the background worker.
+4. P2: Legacy CP-admin role updates must audit the actual before/after role sets
+   returned by the database, including retained secondary roles.
+
+All four fixes are implemented and covered by regressions. The final item also
+covers stored roles on retained revoked memberships without restoring access.
+Local acceptance evidence and remaining release proof boundaries are recorded in
+[S18-ai-user-access-boxwalk.md](S18-ai-user-access-boxwalk.md).

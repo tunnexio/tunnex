@@ -40,7 +40,9 @@ func (s *Service) GrantOrgRole(ctx context.Context, actor uuid.UUID, actorEmail 
 		return apierr.BadRequest("invalid_role", "unknown role: "+newRole)
 	}
 	return s.withTx(ctx, func(q *sqlc.Queries) error {
-		if _, e := q.GetOrganizationByID(ctx, orgID); e != nil {
+		// Share the membership API's lock so the audited before/after sets
+		// describe this change even when another role update runs concurrently.
+		if _, e := q.LockMembershipOrganization(ctx, orgID); e != nil {
 			if errors.Is(e, pgx.ErrNoRows) {
 				return orgNotFound()
 			}
@@ -56,18 +58,24 @@ func (s *Service) GrantOrgRole(ctx context.Context, actor uuid.UUID, actorEmail 
 		// The prior role, or "" when this is a first grant. Both are legitimate here: this operation is how
 		// someone with NO membership gets one, so a missing row is an input state, not an error.
 		from := ""
-		if m, me := q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: orgID, UserID: targetUserID}); me == nil {
+		fromRoles := []string{}
+		activeMembership := false
+		// Upsert also updates retained revoked rows. Their stored roles belong in
+		// the audit without treating them as restored organization access.
+		if m, me := q.GetMembershipIncludingRevoked(ctx, sqlc.GetMembershipIncludingRevokedParams{OrgID: orgID, UserID: targetUserID}); me == nil {
 			from = m.Role
+			fromRoles = m.Roles
+			activeMembership = !m.AccessRevokedAt.Valid
 		} else if !errors.Is(me, pgx.ErrNoRows) {
 			return me
 		}
-		if from == newRole {
+		if activeMembership && from == newRole {
 			// ⚠ NOTHING CHANGED, SO NOTHING IS AUDITED. An audit row saying a role was changed to the role it
 			// already held is a false statement about an act that did not happen — and repeated calls would
 			// bury the real grants under identical no-op rows.
 			return nil
 		}
-		if from == rbac.RoleOwner && newRole != rbac.RoleOwner {
+		if activeMembership && from == rbac.RoleOwner && newRole != rbac.RoleOwner {
 			owners, oe := q.CountOwners(ctx, orgID)
 			if oe != nil {
 				return oe
@@ -76,7 +84,8 @@ func (s *Service) GrantOrgRole(ctx context.Context, actor uuid.UUID, actorEmail 
 				return apierr.Conflict("last_owner", "an organization must always have at least one owner")
 			}
 		}
-		if _, e = q.UpsertMembership(ctx, sqlc.UpsertMembershipParams{OrgID: orgID, UserID: targetUserID, Role: newRole}); e != nil {
+		membership, e := q.UpsertMembership(ctx, sqlc.UpsertMembershipParams{OrgID: orgID, UserID: targetUserID, Role: newRole})
+		if e != nil {
 			return e
 		}
 		// ⛔ AUDITED INTO THE TARGET ORGANIZATION'S LOG, NOT THE ACTOR'S. A privilege change inside your tenant,
@@ -90,7 +99,8 @@ func (s *Service) GrantOrgRole(ctx context.Context, actor uuid.UUID, actorEmail 
 		// `actor_kind` says what they actually are, and the web resolver reads it.
 		return writeAudit(ctx, q, orgID, &actor, "member.role_granted_by_cp_admin", "membership", targetUserID.String(),
 			map[string]any{
-				"role":         map[string]string{"from": from, "to": newRole},
+				"role":         map[string]string{"from": from, "to": membership.Role},
+				"roles":        map[string][]string{"from": fromRoles, "to": membership.Roles},
 				"actor_email":  actorEmail,
 				"actor_kind":   "cp_admin",
 				"target_email": target.Email,

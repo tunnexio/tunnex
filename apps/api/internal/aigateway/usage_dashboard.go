@@ -15,6 +15,7 @@ type dashboardEngine interface {
 	Dashboard(context.Context, []string, time.Time, time.Time) (EngineDashboard, error)
 }
 type usageBinding struct {
+	human               bool
 	native              string
 	team, agent         uuid.UUID
 	teamName, agentName string
@@ -57,12 +58,14 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 			return Usage{}, empty, apierr.NotFound("not_found", "AI agent not found")
 		}
 	}
-	rows, err := tx.Query(ctx, `SELECT b.native_key_id,b.team_id,b.device_id,g.name,d.name
+	rows, err := tx.Query(ctx, `SELECT b.native_key_id,b.team_id,b.device_id,g.name,d.name,false
  FROM ai_gateway_key_bindings b
  JOIN agent_groups g ON g.org_id=b.org_id AND g.id=b.team_id
  JOIN devices d ON d.org_id=b.org_id AND d.id=b.device_id AND d.kind='agent'
  WHERE b.org_id=$1 AND ($2::uuid IS NULL OR b.team_id=$2) AND ($3::uuid IS NULL OR b.device_id=$3)
- ORDER BY b.native_key_id LIMIT 65`, org, team, device)
+ UNION ALL SELECT native_key_id,group_ref,group_ref,group_name,group_name,true FROM ai_user_model_grants
+ WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
+ ORDER BY 1 LIMIT 65`, org, team, device)
 	if err != nil {
 		return Usage{}, empty, aiUnavailable()
 	}
@@ -70,7 +73,7 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 	ids := []string{}
 	for rows.Next() {
 		var b usageBinding
-		if rows.Scan(&b.native, &b.team, &b.agent, &b.teamName, &b.agentName) != nil {
+		if rows.Scan(&b.native, &b.team, &b.agent, &b.teamName, &b.agentName, &b.human) != nil {
 			rows.Close()
 			return Usage{}, empty, aiUnavailable()
 		}
@@ -96,6 +99,7 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 	if err != nil || !validObservedUsage(native.Usage) {
 		return Usage{}, empty, aiUnavailable()
 	}
+	groups := map[uuid.UUID]api.AIUsageAttribution{}
 	teams := map[uuid.UUID]api.AIUsageAttribution{}
 	agents := map[uuid.UUID]api.AIUsageAttribution{}
 	known := map[string]bool{}
@@ -109,11 +113,16 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 	}
 	for _, b := range bindings {
 		v := native.Keys[b.native]
-		for _, target := range []struct {
+		targets := []struct {
 			m    map[uuid.UUID]api.AIUsageAttribution
 			id   uuid.UUID
 			name string
-		}{{teams, b.team, b.teamName}, {agents, b.agent, b.agentName}} {
+		}{{teams, b.team, b.teamName}, {agents, b.agent, b.agentName}}
+		if b.human {
+			targets = targets[:1]
+			targets[0].m = groups
+		}
+		for _, target := range targets {
 			r := target.m[target.id]
 			r.Id = target.id
 			r.Name = target.name
@@ -129,6 +138,12 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 	for _, v := range agents {
 		native.Dashboard.Agents = append(native.Dashboard.Agents, v)
 	}
+	groupRows := []api.AIUsageAttribution{}
+	for _, v := range groups {
+		groupRows = append(groupRows, v)
+	}
+	sortAttribution(groupRows)
+	native.Dashboard.UserGroups = &groupRows
 	sortAttribution(native.Dashboard.Teams)
 	sortAttribution(native.Dashboard.Agents)
 	return native.Usage, native.Dashboard, nil

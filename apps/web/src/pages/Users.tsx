@@ -1,3 +1,5 @@
+import { RoleAssignment } from "../components/RoleAssignment";
+import { HUMAN_ROLES } from "../lib/rbac";
 import {
   useCallback,
   useEffect,
@@ -249,15 +251,15 @@ export default function Users() {
     await loadMembers(org.id);
   }
 
-  const changeRole = (m: Member, role: Role) =>
+  const changeRoles = (m: Member, roles: Role[]) =>
     mutate(
       () =>
-        api.PUT("/api/v1/organizations/{orgId}/members/{userId}/role", {
+        api.PUT("/api/v1/organizations/{orgId}/members/{userId}/roles", {
           params: { path: { orgId: org!.id, userId: m.user_id } },
-          body: { role },
+          body: { roles },
         }),
-      "Could not change the role.",
-      `Role updated to ${role}`,
+      "Could not change the roles.",
+      "Roles updated",
     );
 
   /**
@@ -658,7 +660,7 @@ export default function Users() {
               : []),
             {
               key: "role",
-              header: "Role",
+              header: "Roles",
               // ⚠ NOT `numeric`. The role control sits directly after the right-aligned DEVICES count, so
               // without its own left padding a "0" and a <select> render touching — see the numeric padding
               // in DataTable. This column is left-aligned and takes the gap from that side.
@@ -668,34 +670,18 @@ export default function Users() {
                 // ownership). The last-owner disable therefore surfaces on the sole owner's OWN role control.
                 const canManage =
                   emailVerified && canManageMembership(myRole, m.role, "");
-                const assignable = ROLES.filter((r) =>
+                const assignable = HUMAN_ROLES.filter((r) =>
                   canManageMembership(myRole, m.role, r),
                 );
                 if (!canManage || assignable.length === 0)
                   return (
                     <span className="text-xs capitalize text-ink-secondary">
-                      {m.role}
+                      {(m.roles ?? [m.role]).join(" + ")}
                     </span>
                   );
                 return (
-                  <select
-                    className={`${selectCls} users-role-select`}
-                    aria-label={`Role for ${m.email}`}
-                    value={m.role}
-                    disabled={isSoleOwner(m)}
-                    title={
-                      isSoleOwner(m)
-                        ? "An organization must always have at least one owner."
-                        : undefined
-                    }
-                    onChange={(e) => changeRole(m, e.target.value as Role)}
-                  >
-                    {assignable.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+                  <RoleAssignment email={m.email} roles={m.roles ?? [m.role]} options={assignable}
+                    soleOwner={isSoleOwner(m)} onSave={(roles) => changeRoles(m, roles)} />
                 );
               },
             },
@@ -709,6 +695,8 @@ export default function Users() {
             <div><h3>Owner</h3><p>Manages the organization and its members, including other owners.</p></div>
             <div><h3>Admin</h3><p>Manages members and configuration. Cannot manage or appoint owners.</p></div>
             <div><h3>Member</h3><p>Uses access granted by policy. Cannot manage organization membership.</p></div>
+            <div><h3>AI admin</h3><p>Manages AI models, credentials and group access. No VPN or user administration.</p></div>
+            <div><h3>AI view</h3><p>Views AI configuration and usage. Cannot change settings or credentials.</p></div>
           </div>
         </details>
 
@@ -830,7 +818,7 @@ export default function Users() {
                       },
                       {
                         key: "role",
-                        header: "Role",
+                        header: "Roles",
                         sortValue: (inv) => inv.role,
                         cell: (inv) => (
                           <span className="text-xs text-slate-500">
@@ -1017,7 +1005,7 @@ function InviteForm({
   onDismiss: () => void;
 }) {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("member");
+  const [role, setRole] = useState<"owner" | "admin" | "member">("member");
   const [busy, setBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -1125,7 +1113,7 @@ function InviteForm({
           <select
             className={`${selectCls} min-h-11 w-full px-3 py-2`}
             value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
+            onChange={(e) => setRole(e.target.value as "owner" | "admin" | "member")}
             aria-label="Role"
           >
             {ROLES.map((r) => (

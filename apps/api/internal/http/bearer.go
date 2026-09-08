@@ -63,8 +63,10 @@ func BearerAuth(q *sqlc.Queries) BearerAuthFunc {
 			return nil, nil
 		}
 		roles := make(map[uuid.UUID]string, len(memberships))
+		roleSets := make(map[uuid.UUID][]string, len(memberships))
 		for _, m := range memberships {
 			roles[m.OrgID] = m.Role
+			roleSets[m.OrgID] = m.Roles
 		}
 		_ = q.TouchCliCredentialUsed(r.Context(), cred.ID) // best-effort telemetry
 		return &authctx.Principal{
@@ -73,6 +75,7 @@ func BearerAuth(q *sqlc.Queries) BearerAuthFunc {
 			EmailVerified: user.EmailVerifiedAt.Valid,
 			AuthMethod:    authctx.AuthBearer, // a CLI/automation credential — exempt from the MFA-enrollment gate (D5)
 			Roles:         roles,
+			RoleSets:      roleSets,
 			// ⛔ ONLY ACCOUNTS THAT HAVE A LOCAL PASSWORD CAN BE ASKED TO CHANGE ONE.
 			//
 			// An SSO user has no password_hash at all — they authenticate through their IdP. If the flag

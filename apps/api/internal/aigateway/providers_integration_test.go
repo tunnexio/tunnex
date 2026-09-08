@@ -233,7 +233,8 @@ func TestAIProviderMigrationSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err = tx.Exec(ctx, `DROP TABLE ai_provider_connections; DROP TABLE ai_provider_legacy_keys`); err != nil {
+		defer rollbackAI(tx)
+		if _, err = tx.Exec(ctx, `DROP TABLE ai_user_model_grants; DROP TABLE ai_provider_connections; DROP TABLE ai_provider_legacy_keys`); err != nil {
 			t.Fatal(err)
 		}
 		if collision {

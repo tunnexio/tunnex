@@ -13,6 +13,8 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
 // TestListAuditLogsHalfCursorRejected: a keyset cursor is both halves or neither.
@@ -51,6 +53,48 @@ func TestAuditActorScopeMembersAreSelfOnly(t *testing.T) {
 	admin := &authctx.Principal{UserID: uuid.New(), Roles: map[uuid.UUID]string{org: rbac.RoleAdmin}}
 	if got := auditActorScope(admin, org); got != nil {
 		t.Fatalf("admin scope = %v, want organization-wide nil actor filter", got)
+	}
+}
+
+func TestAuditLogAIRolesCannotReadOtherActors(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	org, viewer, other := uuid.New(), uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, "INSERT INTO organizations(id,name,slug) VALUES($1,'audit roles',$2)", org, org.String()); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []uuid.UUID{viewer, other} {
+		if _, err := pool.Exec(ctx, "INSERT INTO users(id,email,name) VALUES($1,$2,'audit user')", user, user.String()+"@test.local"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, "INSERT INTO audit_logs(org_id,actor_user_id,action) VALUES($1,$2,'device.created')", org, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := apiServer{orgs: tenancy.NewService(pool)}
+	for _, roles := range [][]string{{"member"}, {"ai-view"}, {"ai-admin"}, {"ai-admin", "member"}, {"ai-view", "member"}, {"admin", "ai-view"}, {"owner", "ai-admin"}} {
+		t.Run(strings.Join(roles, "+"), func(t *testing.T) {
+			p := &authctx.Principal{UserID: viewer, EmailVerified: true, Roles: map[uuid.UUID]string{org: roles[0]}, RoleSets: map[uuid.UUID][]string{org: roles}}
+			principalCtx := authctx.WithPrincipal(ctx, p)
+			for _, actorFilter := range []*openapi_types.UUID{nil, &other} {
+				result, err := s.ListAuditLogs(principalCtx, api.ListAuditLogsRequestObject{OrgId: org, Params: api.ListAuditLogsParams{Actor: actorFilter}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				rows := result.(api.ListAuditLogs200JSONResponse).Body
+				admin := roles[0] == "admin" || roles[0] == "owner"
+				if admin {
+					want := 2
+					if actorFilter != nil {
+						want = 1
+					}
+					if len(rows) != want {
+						t.Fatalf("administrator got %d events, want %d", len(rows), want)
+					}
+				} else if len(rows) != 1 || rows[0].ActorId == nil || *rows[0].ActorId != viewer {
+					t.Fatalf("AI/member audit scope leaked another actor: %+v", rows)
+				}
+			}
+		})
 	}
 }
 
