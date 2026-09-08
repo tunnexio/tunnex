@@ -193,12 +193,19 @@ func (s apiServer) TestAIProviderConnection(ctx context.Context, r api.TestAIPro
 	if err != nil {
 		return nil, err
 	}
-	if r.Body == nil || r.Body.ApiKey == nil {
+	if r.Body == nil {
 		return nil, apierr.BadRequest("invalid_ai_provider", "AI provider configuration is not acceptable")
 	}
 	actor, _ := aiManagementActor(ctx)
 	b := r.Body
-	result, err := s.aiPolicies.ProbeProvider(ctx, r.OrgId, actor, aigateway.ProviderProbeInput{Provider: string(b.Provider), Model: b.Model, Mode: fromAIMode(b.Mode), Secret: *b.ApiKey, EndpointURL: b.EndpointUrl})
+	if (b.ConnectionId == nil && (b.ApiKey == nil || b.ExpectedRevision != nil)) || (b.ConnectionId != nil && (b.ApiKey != nil || b.EndpointUrl != nil || b.ExpectedRevision == nil)) {
+		return nil, apierr.BadRequest("invalid_ai_provider", "Choose either new or saved credentials for this test")
+	}
+	secret := ""
+	if b.ApiKey != nil {
+		secret = *b.ApiKey
+	}
+	result, err := s.aiPolicies.ProbeProvider(ctx, r.OrgId, actor, aigateway.ProviderProbeInput{Provider: string(b.Provider), Model: b.Model, Mode: fromAIMode(b.Mode), Secret: secret, EndpointURL: b.EndpointUrl, ConnectionID: b.ConnectionId, ExpectedRevision: b.ExpectedRevision})
 	b.ApiKey = nil
 	if err != nil {
 		return nil, err

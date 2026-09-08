@@ -1,6 +1,15 @@
 # Opt-in after compose.yml, compose-managed.yml and compose-custom.yml.
 # No host ports or provider secrets are added to the control plane database.
 services:
+  bifrost:
+    # Private extension resolves saved keys inside the engine for SDK probes.
+    image: tunnex-ai-engine:saved-probe-v1
+    build:
+      context: ./apps/ai-engine
+      dockerfile: Dockerfile
+    environment:
+      TUNNEX_AI_LITELLM_URL: http://litellm-bridge:8200
+      TUNNEX_AI_LITELLM_ADMIN_TOKEN: ${TUNNEX_AI_BRIDGE_ADMIN_TOKEN:?Set a dedicated private bridge admin token}
   api:
     environment:
       TUNNEX_AI_LITELLM_URL: http://litellm-bridge:8200

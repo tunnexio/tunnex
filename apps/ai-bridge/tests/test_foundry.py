@@ -105,7 +105,7 @@ def test_foundry_policy_load_and_invalid_classification(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("suffix", ["openai.azure.com", "services.ai.azure.com", "cognitiveservices.azure.com"])
-@pytest.mark.parametrize("operation, deployment", [("preflight", "gpt-5"), ("preflight", "Llama-3.3-70B-Instruct"), ("preflight", "deepseek-r1"), ("catalog", DEPLOYMENT)])
+@pytest.mark.parametrize("operation, deployment", [("preflight", "gpt-5"), ("preflight", "Llama-3.3-70B-Instruct"), ("preflight", "deepseek-r1"), ("catalog", DEPLOYMENT), ("saved-preflight", "Llama-3.3-70B-Instruct")])
 async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operation, deployment, tmp_path, monkeypatch):
     host = "team-resource." + suffix
     endpoint = "https://" + host + "/openai"
@@ -174,11 +174,15 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operati
                 body["model"] = deployment
                 if operation == "catalog":
                     body.pop("model")
-                response = await client.post(
-                    "/model-catalog" if operation == "catalog" else "/test-connection", json=body,
-                    headers={"Authorization": "Bearer " + ADMIN},
-                )
-                result = await response.json()
+                if operation == "saved-preflight":
+                    from native_saved_probe import saved_probe
+                    result = await saved_probe(client, body, tmp_path / "native")
+                else:
+                    response = await client.post(
+                        "/model-catalog" if operation == "catalog" else "/test-connection", json=body,
+                        headers={"Authorization": "Bearer " + ADMIN},
+                    )
+                    result = await response.json()
                 if operation == "catalog":
                     assert result == {"items": [{"id": DEPLOYMENT, "name": DEPLOYMENT}], "total": 1, "limit": 50, "offset": 0}, (result, errors)
                 else:
@@ -190,7 +194,7 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operati
             assert arrival["path"] == "/openai/v1/" + ("models" if operation == "catalog" else "chat/completions")
             assert arrival["headers"]["Authorization"] == "Bearer " + KEY
             assert "api-key" not in {k.lower() for k in arrival["headers"]}
-            if operation == "preflight":
+            if operation in {"preflight", "saved-preflight"}:
                 assert arrival["data"]["model"] == deployment
                 token_field = "max_completion_tokens" if deployment == "gpt-5" else "max_tokens"
                 assert arrival["data"][token_field] == 16

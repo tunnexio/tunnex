@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
@@ -21,6 +22,8 @@ type ProviderProbeInput struct {
 	Mode                    ModelMode
 	Provider, Model, Secret string
 	EndpointURL             *string
+	ConnectionID            *uuid.UUID
+	ExpectedRevision        *int64
 }
 type ProviderProbeResult struct {
 	Status     string
@@ -93,6 +96,12 @@ func (s *Policies) ProbeProvider(ctx context.Context, org, actor uuid.UUID, in P
 	if org == uuid.Nil || actor == uuid.Nil {
 		return ProviderProbeResult{}, policyDenied()
 	}
+	if in.ConnectionID != nil {
+		return s.probeSavedProvider(ctx, org, actor, in)
+	}
+	if in.ExpectedRevision != nil {
+		return ProviderProbeResult{}, providerInvalid()
+	}
 	in.Mode = DefaultModelMode(in.Mode)
 	if !ValidModelMode(in.Mode) {
 		return ProviderProbeResult{}, providerInvalid()
@@ -150,4 +159,68 @@ func (s *Policies) ProbeProvider(ctx context.Context, org, actor uuid.UUID, in P
 		return ProviderProbeResult{}, aiUnavailable()
 	}
 	return ProviderProbeResult{Status: result.Status, DurationMS: time.Since(start).Milliseconds()}, nil
+}
+
+// SavedProviderProbeEngine exposes no secret-bearing result or key readback.
+type SavedProviderProbeEngine interface {
+	ProbeSavedProviderKey(context.Context, ProviderKeySpec, string, string, ModelMode) (ProviderProbeResult, error)
+}
+
+func (s *Policies) probeSavedProvider(ctx context.Context, org, actor uuid.UUID, in ProviderProbeInput) (ProviderProbeResult, error) {
+	if in.ConnectionID == nil || *in.ConnectionID == uuid.Nil || in.ExpectedRevision == nil || *in.ExpectedRevision < 1 || in.Secret != "" || in.EndpointURL != nil {
+		return ProviderProbeResult{}, providerInvalid()
+	}
+	engine, ok := s.engine.(SavedProviderProbeEngine)
+	if !ok || s.pool == nil {
+		return ProviderProbeResult{}, aiUnavailable()
+	}
+	b := s.bridge
+	if !b.admit(org, time.Now()) {
+		return ProviderProbeResult{}, apierr.New(429, "ai_provider_probe_limited", "AI provider connection test limit reached")
+	}
+	defer b.release(org)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ProviderProbeResult{}, aiUnavailable()
+	}
+	defer rollbackAI(tx)
+	// Hold the credential lock through the bounded test: rotation, deletion and
+	// disable cannot race a test accepted at this exact revision.
+	p, err := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, org, *in.ConnectionID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProviderProbeResult{}, providerMissing()
+	}
+	if err != nil {
+		return ProviderProbeResult{}, aiUnavailable()
+	}
+	if p.Provider != in.Provider {
+		return ProviderProbeResult{}, providerInvalid()
+	}
+	if p.Revision != *in.ExpectedRevision || p.AppliedRevision != p.Revision || p.Status != "applied" || !p.Enabled {
+		return ProviderProbeResult{}, providerConflict()
+	}
+	if endpointProvider(p.Provider) && !s.customConnectionEligible(p) {
+		return ProviderProbeResult{}, providerMissing()
+	}
+	in.Mode = DefaultModelMode(in.Mode)
+	model := in.Model
+	if endpointProvider(p.Provider) {
+		model = strings.TrimPrefix(model, nativeConnectionProvider(p)+"/")
+	}
+	if _, err = validateProviderInput(ProviderInput{Provider: p.Provider, Name: "Probe", Models: []string{model}, ModelModes: map[string]ModelMode{model: in.Mode}, EndpointURL: p.EndpointURL}, false); err != nil {
+		return ProviderProbeResult{}, providerInvalid()
+	}
+	if prefix, _, ok := strings.Cut(model, "/"); ok && customProviderName(prefix) {
+		return ProviderProbeResult{}, providerInvalid()
+	}
+	result, err := engine.ProbeSavedProviderKey(ctx, providerSpec(p), p.Provider, model, in.Mode)
+	if err != nil {
+		return ProviderProbeResult{}, aiUnavailable()
+	}
+	if auditPolicy(ctx, tx, org, actor, p.ID, "ai_provider.probed", p.Revision) != nil || tx.Commit(ctx) != nil {
+		return ProviderProbeResult{}, aiUnavailable()
+	}
+	return result, nil
 }

@@ -63,8 +63,8 @@ paths:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
     post:
       operationId: testAIProviderConnection
-      summary: Test unsaved provider credentials with one bounded model request
-      description: Performs real inference and may incur provider charges. HTTP 200 alone does not indicate success; inspect status. No connection or secret is persisted.
+      summary: Test new or saved provider credentials with one bounded model request
+      description: Performs real inference and may incur provider charges. HTTP 200 alone does not indicate success; inspect status. Supply either api_key (new credentials) or connection_id and expected_revision (saved credentials). Saved tests use the owned connection's endpoint and key, including for a new model, without changing its serving model scope. No connection or secret is persisted.
       tags: [ai-gateway]
       requestBody:
         required: true
@@ -6068,12 +6068,14 @@ components:
     AIProviderProbe:
       type: object
       additionalProperties: false
-      required: [provider, model, api_key]
+      required: [provider, model]
       properties:
         mode: { $ref: '#/components/schemas/AIModelMode' }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         model: { type: string, minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9_./:-]*$' }
         api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
+        connection_id: { type: string, format: uuid, description: Owned saved credentials to test. Mutually exclusive with api_key and endpoint_url. Requires expected_revision. }
+        expected_revision: { type: integer, format: int64, minimum: 1, description: Required only for a saved-credential test. }
         endpoint_url: { type: string, format: uri, maxLength: 2048, description: Installation-approved custom, SageMaker bridge or Foundry OpenAI v1 endpoint. }
     AIProviderProbeResult:
       type: object

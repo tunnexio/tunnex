@@ -23,6 +23,46 @@ type ProviderEngine interface {
 	DeleteProviderKey(context.Context, ProviderKeySpec) error
 	ProviderModels(context.Context, string, string, int, int) (ProviderModelPage, error)
 }
+
+func (e *Engine) ProbeSavedProviderKey(ctx context.Context, s ProviderKeySpec, provider, model string, mode ModelMode) (ProviderProbeResult, error) {
+	if !s.Enabled || !ValidModelMode(mode) {
+		return ProviderProbeResult{}, errEngineScope
+	}
+	name, _, err := nativeProviderSpec(s)
+	if err != nil {
+		return ProviderProbeResult{}, err
+	}
+	if err = e.VerifyProviderKey(ctx, s); err != nil {
+		return ProviderProbeResult{}, err
+	}
+	payload := struct {
+		Provider string    `json:"provider"`
+		Model    string    `json:"model"`
+		Mode     ModelMode `json:"mode"`
+		KeyName  string    `json:"key_name"`
+		Endpoint string    `json:"endpoint_url,omitempty"`
+	}{provider, model, mode, name, s.BaseURL}
+	var result struct {
+		Status     string `json:"status"`
+		DurationMS int64  `json:"duration_ms"`
+	}
+	probe := *e
+	client := *e.client
+	client.Timeout = 15 * time.Second
+	if transport, ok := client.Transport.(*http.Transport); ok {
+		transport = transport.Clone()
+		transport.ResponseHeaderTimeout = 15 * time.Second
+		defer transport.CloseIdleConnections()
+		client.Transport = transport
+	}
+	probe.client = &client
+	status, err := probe.request(ctx, http.MethodPost, "/api/providers/"+s.Provider+"/keys/"+s.ID+"/test-connection", nil, payload, &result)
+	if err != nil || status != 200 || (result.Status != "success" && result.Status != "error") || result.DurationMS < 0 {
+		return ProviderProbeResult{}, errEngine
+	}
+	return ProviderProbeResult{Status: result.Status, DurationMS: result.DurationMS}, nil
+}
+
 type ProviderKeySpec struct {
 	Provider   string
 	BaseURL    string

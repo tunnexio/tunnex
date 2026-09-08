@@ -5,6 +5,7 @@ import { Badge, Button, Field, Input, Modal } from "./ui";
 import "./ai-provider-workspace.css";
 import { EntityPicker } from "./EntityPicker";
 import { ProviderLogo } from "./ProviderLogo";
+import { toast } from "./Toasts";
 import { parseFoundryEndpoint } from "../lib/aiFoundryEndpoint";
 type S = components["schemas"];
 export type AIProviderConnection = S["AIProviderConnection"];
@@ -144,6 +145,16 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     if (next === provider) return;
     setProvider(next); setSelectedModes({}); setManualModel(""); setCatalogOpen(false); setCatalogDismissed(false); setEndpoint(""); setSecret(""); setModels(""); setExistingID(""); setQuery(""); setCatalog(null); setCatalogError(""); setSearching(false); searchSerial.current++;
   }
+  function selectCredentials(id: string) {
+    const saved = connections.find((c) => c.id === id);
+    if (saved) {
+      if (saved.provider !== provider) { setModels(""); setSelectedModes({}); setMode("chat"); setQuery(""); }
+      setProvider(saved.provider);
+    }
+    setExistingID(id); setSecret(""); setEndpoint(""); setName(""); setManualModel("");
+    if (usesEndpoint || saved?.endpoint_url) setModels("");
+    setCatalogOpen(false); setCatalogDismissed(false); setCatalog(null); setCatalogError(""); setSearching(false); searchSerial.current++;
+  }
   const chosen = uniqueLines(models);
   const canonicalModel = (model: string) => usesEndpoint && connection && !model.startsWith(`custom-${connection.id}/`) ? `custom-${connection.id}/${model}` : model;
   const finalModels = modelOnly && connection ? [...connection.models, ...chosen.filter((model) => !connection.models.some((saved) => canonicalModel(saved) === canonicalModel(model)))] : chosen;
@@ -211,26 +222,29 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
   const [testing, setTesting] = useState(false), [testStatus, setTestStatus] = useState<"idle" | "success" | "error">("idle");
   const [testedAt, setTestedAt] = useState(0);
   const testGeneration = useRef(0);
-  useEffect(() => { testGeneration.current++; setTestStatus("idle"); setTestedAt(0); setTesting(false); return () => { testGeneration.current++; }; }, [provider, secret, selectedEndpoint, models, existingID, mode, selectedModes]);
+  useEffect(() => { testGeneration.current++; setTestStatus("idle"); setTestedAt(0); setTesting(false); return () => { testGeneration.current++; }; }, [provider, secret, selectedEndpoint, models, existingID, mode, selectedModes, connection?.revision, connection?.applied_revision, connection?.enabled, connection?.status]);
   useEffect(() => { if (!testedAt) return; const timer = window.setTimeout(() => { setTestStatus("idle"); setTestedAt(0); }, Math.max(0, testedAt + 300000 - Date.now())); return () => window.clearTimeout(timer); }, [testedAt]);
   const probeMode = chosen.length ? modelMode(chosen[0]) : mode;
-  const needsTest = !connection || !!secret;
+  const needsTest = modelOnly || !connection || !!secret;
   const testBlockers = [...validationIssues,
     ...(!testAvailable ? ["Test Connect requires installation setup of the private LiteLLM bridge."] : []),
-    ...(!supportedModes.includes(probeMode) ? ["This installation does not support the selected model mode."] : [])];
+    ...(!supportedModes.includes(probeMode) ? ["This installation does not support the selected model mode."] : []),
+    ...(connection && !secret && (!connection.enabled || connection.status !== "applied" || connection.revision !== connection.applied_revision) ? ["Enable these credentials and wait for them to finish applying before testing."] : [])];
   const testHelpId = `${formId}-test-help`;
   const canSave = valid && (!needsTest || supportedModes.includes(probeMode)) && (!needsTest || testStatus === "success" && Date.now() - testedAt < 300000);
   async function testConnection() {
-    if (!provider || !valid || !secret || !testAvailable || !supportedModes.includes(probeMode) || testing) return;
+    if (!provider || testBlockers.length > 0 || testing) return;
     const generation = ++testGeneration.current;
     setTesting(true); setTestStatus("idle"); setTestedAt(0);
     const model = usesEndpoint && connection ? chosen[0].replace(`custom-${connection.id}/`, "") : chosen[0];
     try {
-      const r = await api.POST("/api/v1/organizations/{orgId}/ai-gateway/providers/test-connection", { params: { path: { orgId } }, body: { provider, model, mode: probeMode, api_key: secret, ...(usesEndpoint ? { endpoint_url: selectedEndpoint } : {}) } });
+      const r = await api.POST("/api/v1/organizations/{orgId}/ai-gateway/providers/test-connection", { params: { path: { orgId } }, body: { provider, model, mode: probeMode, ...(connection && !secret ? { connection_id: connection.id, expected_revision: connection.revision } : { api_key: secret, ...(usesEndpoint ? { endpoint_url: selectedEndpoint } : {}) }) } });
       if (!active.current || generation !== testGeneration.current) return;
-      const success = !r.error && r.data?.status === "success";
-      setTestStatus(success ? "success" : "error"); if (success) setTestedAt(Date.now());
-    } catch { if (active.current && generation === testGeneration.current) setTestStatus("error"); }
+      const success = !r.error && r.response?.status === 200 && r.data?.status === "success";
+      setTestStatus(success ? "success" : "error");
+      if (success) { setTestedAt(Date.now()); toast.success("Test connection successful · HTTP 200", { description: `${chosen[0]} · ${modeLabel(probeMode)}` }); }
+      else toast.error("Connection test failed", { description: "Check the model, endpoint and credentials, then retry." });
+    } catch { if (active.current && generation === testGeneration.current) { setTestStatus("error"); toast.error("Connection test failed", { description: "Check the model, endpoint and credentials, then retry." }); } }
     finally { if (active.current && generation === testGeneration.current) setTesting(false); }
   }
   const actions = <><Button variant="ghost" type="button" disabled={busy} onClick={onCancel}>Cancel</Button>{needsTest && <Button type="button" disabled={busy || testing || testBlockers.length > 0} aria-describedby={testBlockers.length ? testHelpId : undefined} onClick={() => void testConnection()}>{testing ? "Testing connection…" : "Test Connect"}</Button>}<Button form={formId} type="submit" disabled={busy || !canSave}>{modelOnly ? "Add Model" : connection ? "Save credentials" : "Create credentials"}</Button></>;
@@ -256,7 +270,7 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     <Field label="Mode"><select value={mode} onChange={(e) => changeMode(e.target.value as ModelMode)}>{modelModes.map((item) => <option key={item.value} value={item.value} disabled={!supportedModes.includes(item.value)}>{item.label}{!supportedModes.includes(item.value) ? " — unavailable" : ""}</option>)}</select></Field>
     <p>Select the operation your model supports. Test Connect checks the chosen model and mode. Referenced models must be removed from team policies before changing their mode.</p>
 
-    {modelOnly && <><Field label="Existing Credentials"><select value={existingID} onChange={(e) => { setExistingID(e.target.value); setManualModel(""); setCatalogOpen(false); setSecret(""); if (usesEndpoint) setModels(""); setCatalog(null); setCatalogError(""); setSearching(false); searchSerial.current++; }}><option value="">None — enter new credentials below</option>{connections.filter((c) => c.provider === provider && (c.status === "applied" && c.applied_revision === c.revision || c.status === "disabled")).map((c) => <option key={c.id} value={c.id}>{c.name} · {c.status}</option>)}</select></Field><p>Choose saved credentials, or enter a new API key below. Pending or failed credentials need their key re-entered in LLM Credentials before reuse.</p>{connection && <p>Using {connection.name}. Its API key stays private and existing models are preserved.</p>}</>}
+    {modelOnly && <><Field label="Existing Credentials"><select value={existingID} onChange={(e) => selectCredentials(e.target.value)}><option value="">None — enter new credentials below</option>{connections.filter((c) => (!provider || c.provider === provider) && (c.status === "applied" && c.applied_revision === c.revision || c.status === "disabled")).map((c) => <option key={c.id} value={c.id}>{c.name} · {definitions.find((d) => d.id === c.provider)?.name ?? c.provider} · {c.status}</option>)}</select></Field><p>Choose saved credentials to select their provider automatically, or enter new credentials below. Pending or failed credentials need their key re-entered in LLM Credentials before reuse.</p>{connection && <p>Using {connection.name}. Its API key stays private and existing models are preserved.</p>}</>}
 
     {!(modelOnly && connection) && <>
     {usesEndpoint && (connection ? <><Field label="Upstream API Base"><Input readOnly value={connection.endpoint_url ?? ""} /></Field><p>The endpoint cannot be changed for this connection.</p></> : <div className="ai-provider-endpoint-entry">

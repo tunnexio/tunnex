@@ -58,8 +58,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Test unsaved provider credentials with one bounded model request
-         * @description Performs real inference and may incur provider charges. HTTP 200 alone does not indicate success; inspect status. No connection or secret is persisted.
+         * Test new or saved provider credentials with one bounded model request
+         * @description Performs real inference and may incur provider charges. HTTP 200 alone does not indicate success; inspect status. Supply either api_key (new credentials) or connection_id and expected_revision (saved credentials). Saved tests use the owned connection's endpoint and key, including for a new model, without changing its serving model scope. No connection or secret is persisted.
          */
         post: operations["testAIProviderConnection"];
         delete?: never;
@@ -5039,7 +5039,17 @@ export interface components {
             /** @enum {string} */
             provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             model: string;
-            api_key: string;
+            api_key?: string;
+            /**
+             * Format: uuid
+             * @description Owned saved credentials to test. Mutually exclusive with api_key and endpoint_url. Requires expected_revision.
+             */
+            connection_id?: string;
+            /**
+             * Format: int64
+             * @description Required only for a saved-credential test.
+             */
+            expected_revision?: number;
             /**
              * Format: uri
              * @description Installation-approved custom

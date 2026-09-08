@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
 func TestAIProviderAuthorizationBeforeValidationAndSecretRedaction(t *testing.T) {
@@ -39,6 +41,45 @@ func TestAIProviderAuthorizationBeforeValidationAndSecretRedaction(t *testing.T)
 			}
 			if tc.want == 400 && !strings.Contains(string(raw), "AI provider request is invalid") {
 				t.Error("provider schema error is not sanitized")
+			}
+		})
+	}
+}
+
+func TestAIProviderProbeCredentialSelectors(t *testing.T) {
+	_, pool := testpostgres.New(t)
+	org := uuid.New()
+	engine, err := aigateway.NewEngine("http://127.0.0.1:1", "fixture", "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policies := aigateway.NewPolicies(pool, nil, engine)
+	policies.EnableProviderManagement(true)
+	srv := aiSocketServer(t, Deps{AIPolicies: policies, AuthFn: func(r *http.Request) *authctx.Principal {
+		return &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: "owner"}}
+	}})
+	id := uuid.NewString()
+	for _, tc := range []struct {
+		name, fields string
+		want         int
+	}{
+		{"draft", `"api_key":"synthetic-key"`, 503},
+		{"saved", `"connection_id":"` + id + `","expected_revision":1`, 503},
+		{"missing", `"mode":"chat"`, 400},
+		{"missing-revision", `"connection_id":"` + id + `"`, 400},
+		{"draft-revision", `"api_key":"synthetic-key","expected_revision":1`, 400},
+		{"override-secret", `"connection_id":"` + id + `","expected_revision":1,"api_key":"SAVED_PROBE_SECRET_MARKER"`, 400},
+		{"override-endpoint", `"connection_id":"` + id + `","expected_revision":1,"endpoint_url":"https://override.invalid"`, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := aiSocketRequest(t, srv, "POST", "/api/v1/organizations/"+org.String()+"/ai-gateway/providers/test-connection", `{"provider":"openai","model":"new-model",`+tc.fields+`}`, "", "owner")
+			defer res.Body.Close()
+			raw, _ := io.ReadAll(res.Body)
+			if res.StatusCode != tc.want {
+				t.Fatalf("status=%d want=%d", res.StatusCode, tc.want)
+			}
+			if strings.Contains(string(raw), "SAVED_PROBE_SECRET_MARKER") {
+				t.Fatal("secret reflected")
 			}
 		})
 	}

@@ -39,12 +39,13 @@ For Helm, set `aiGateway.providerManagementEnabled: true` with the normal AI
 settings. Only the legacy provider Secret entry becomes optional; admin and
 encryption-key references remain required. AI remains single-instance.
 
-1. Open **Models & endpoints → Add Model**, select a provider, then choose model
-   suggestions or enter exact model/deployment names. Choose saved credentials or
-   enter the endpoint and API key; the credential name is optional.
+1. Open **Models & endpoints → Add Model**. Choose saved credentials to select
+   their provider automatically, or select a provider and enter new credentials.
+   Choose model suggestions or enter exact model/deployment names.
+   For new credentials, enter the endpoint and API key; the credential name is optional.
    **LLM Credentials → Add Credentials** also creates credentials with at least
    one model in scope. Selecting saved credentials hides endpoint/key inputs.
-2. For new or replacement keys, run **Test Connect**, then save after success and
+2. Run **Test Connect** when adding models or entering new/replacement keys, then save after success and
    wait for applied status. This is a small inference request and can incur a
    provider charge. If a save is uncertain, resubmit the key explicitly; the CP
    cannot recover a secret it does not store.
@@ -53,6 +54,20 @@ encryption-key references remain required. AI remains single-instance.
    alone does not grant access.
 4. Use the enrolled-agent credential exchange and proxy routes below; inspect
    **Usage & cost** for observed estimates.
+
+Successful tests show an HTTP 200 success toast and persistent inline feedback.
+The result covers the first selected model and mode and expires after five minutes.
+Changing the credential, model, mode or credential revision requires another test.
+Saved-credential tests can check a new model without granting access or changing
+the credential's serving model list; Add Model saves the new scope afterward.
+
+Saved-key testing requires the private engine extension in `apps/ai-engine` and
+the existing LiteLLM bridge. The `compose-litellm.yml` overlay builds that pinned
+engine image and provides its private bridge configuration. Include this overlay
+after the base, managed-provider and custom-provider overlays, and build/recreate
+the `bifrost` service using the existing installation project and volumes.
+Other deployment methods must install the same image and bridge URL/token.
+An unmodified engine cannot perform this saved-key operation.
 
 Model names retain the provider prefix: `openai/gpt-4o-mini`,
 `anthropic/claude-sonnet-4-20250514`, `gemini/gemini-2.5-flash`, or

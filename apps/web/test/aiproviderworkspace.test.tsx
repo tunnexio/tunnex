@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
 const api = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() }));
 vi.mock("../src/lib/api", () => ({ api }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("../src/components/Toasts", () => ({ toast }));
 const c = { id: "c-a", key_id: "tnx-managed-a", provider: "openrouter", name: "Engineering", models: ["openrouter/openai/gpt-4o-mini"], enabled: true, revision: 3, applied_revision: 3, status: "applied", last_test_status: "untested" };
 const definitions = [
   { id: "openrouter", name: "OpenRouter", credential_label: "OpenRouter API key", model_placeholder: "openrouter/openai/gpt-4o-mini" },
@@ -33,6 +35,42 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe("AI provider onboarding", () => {
+  it("suggests saved Azure credentials before choosing a provider and tests a new model without resending the key or endpoint", async () => {
+    const id = "12345678-1234-1234-1234-123456789abc";
+    const saved = { ...c, id, name: "azure", provider: "azure_foundry", endpoint_url: "https://resource.services.ai.azure.com/openai", models: [`custom-${id}/gpt-5`] };
+    api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/models") ? { items: [], total: 0 } : { ...inventory, public_endpoints_available: true, items: [saved], definitions: [...definitions, { id: "azure_foundry", name: "Azure AI Foundry", credential_label: "Azure API key", model_placeholder: "deployment" }] }, response: response() }));
+    render(show()); await screen.findByText("azure"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" }));
+    expect(screen.getByRole("option", { name: "azure · Azure AI Foundry · applied" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "discard-this-draft" } });
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: id } });
+    expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLInputElement).value).toBe("Azure AI Foundry");
+    expect(screen.queryByLabelText("Upstream API Base")).toBeNull(); expect(screen.queryByLabelText("API key")).toBeNull(); expect(screen.queryByLabelText("Credential name (optional)")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "llama-deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+    await passTest();
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "azure_foundry", connection_id: id, expected_revision: 3, model: "llama-deployment", mode: "chat" } }));
+    expect(toast.success).toHaveBeenCalledWith("Test connection successful · HTTP 200", expect.objectContaining({ description: expect.stringContaining("llama-deployment") }));
+    fireEvent.click(saveModel());
+    await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: saved.endpoint_url, name: "azure", models: [...saved.models, "llama-deployment"], model_modes: { [saved.models[0]]: "chat", "llama-deployment": "chat" }, enabled: true, expected_revision: 3 } })));
+  });
+  it.each([{ status: 200, result: "error" }, { status: 503, result: "success" }])("never toasts success for failed test $status/$result", async ({ status, result }) => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" }));
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "openrouter/new-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    api.POST.mockResolvedValueOnce({ data: { status: result, duration_ms: 10 }, response: response(status) });
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect" })); await screen.findByText(/Connection test failed/);
+    expect(toast.success).not.toHaveBeenCalled(); expect(toast.error).toHaveBeenCalled(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("ignores a saved-key test result after switching back to new credentials", async () => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" }));
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "openrouter/new-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    let finish!: (value: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: "" } });
+    await act(async () => finish({ data: { status: "success", duration_ms: 10 }, response: response() }));
+    expect(toast.success).not.toHaveBeenCalled(); expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(""); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+  });
   it("starts without a provider and uses searchable logo options with standard API key caption", async () => {
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" }));
     const picker = screen.getByRole("combobox", { name: "Provider" }) as HTMLInputElement;
@@ -236,9 +274,9 @@ describe("AI provider onboarding", () => {
     expect(screen.queryByLabelText("Upstream API Base")).toBeNull();
     expect(screen.queryByRole("button", { name: "Use custom endpoint" })).toBeNull();
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "openrouter/anthropic/claude-sonnet-4" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
-    fireEvent.click(saveModel());
+    await passTest(); fireEvent.click(saveModel());
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "openrouter", name: c.name, models: [...c.models, "openrouter/anthropic/claude-sonnet-4"], model_modes: { [c.models[0]]: "chat", "openrouter/anthropic/claude-sonnet-4": "chat" }, enabled: true, expected_revision: 3 } })));
-    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ connection_id: expect.any(String) }) }));
   });
   it("does not invent new provider options on an older API and keeps connection provider immutable", async () => {
     api.GET.mockResolvedValue({ data: { management_available: true, items: [c], legacy_key_ids: [] }, response: response() });
@@ -340,7 +378,7 @@ describe("custom provider approved endpoints", () => {
     expect(screen.queryByLabelText("Upstream API Base")).toBeNull();
     expect(screen.queryByLabelText("API key")).toBeNull();
     await waitFor(() => expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "custom", connection_id: custom.id }) }) })));
-    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "model-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); fireEvent.click(saveModel());
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "model-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); await passTest(); fireEvent.click(saveModel());
     await waitFor(() => expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "custom", endpoint_url: custom.endpoint_url, name: custom.name, enabled: true, models: [...custom.models, "model-b"], model_modes: { [custom.models[0]]: "chat", "model-b": "chat" }, expected_revision: 4 } })));
   });
 });
@@ -496,8 +534,8 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: id } });
     expect(screen.queryByLabelText("Upstream API Base")).toBeNull(); expect(screen.queryByLabelText("Azure API key")).toBeNull(); expect(screen.queryByLabelText("API key")).toBeNull();
      await waitFor(() => expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "azure_foundry", connection_id: id }) }) })));
-    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "deployment-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); fireEvent.click(saveModel());
-    expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: bases[0], models: [...saved.models, "deployment-b"], model_modes: { [saved.models[0]]: "chat", "deployment-b": "chat" }, expected_revision: 3, name: saved.name, enabled: true } })); expect(api.POST).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "deployment-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); await passTest(); fireEvent.click(saveModel());
+    expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: bases[0], models: [...saved.models, "deployment-b"], model_modes: { [saved.models[0]]: "chat", "deployment-b": "chat" }, expected_revision: 3, name: saved.name, enabled: true } })); expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ connection_id: expect.any(String) }) }));
   });
   it("keeps Foundry test/save unavailable without installation approval", async () => {
     api.GET.mockResolvedValue({ data: { ...foundryInventory, foundry_available: false, foundry_endpoints: [] } }); render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
@@ -684,9 +722,9 @@ describe("model mode routing", () => {
     api.GET.mockResolvedValue({ data: { ...inventory, items: [saved], supported_modes: modes } }); render(show()); await screen.findByText("Engineering");
     expect(screen.getByText("Completion — /completions")).toBeTruthy(); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider();
     fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } }); addExact(c.models[0]); addExact("openrouter/draft");
-    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); addExact("openrouter/embed-fixture"); fireEvent.click(saveModel());
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); addExact("openrouter/embed-fixture"); await passTest(); fireEvent.click(saveModel());
     expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ models: [c.models[0], "openrouter/draft", "openrouter/embed-fixture"], model_modes: { [c.models[0]]: "completion", "openrouter/draft": "embedding", "openrouter/embed-fixture": "embedding" }, expected_revision: 3 }) }));
-    expect(api.POST).not.toHaveBeenCalled();
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ connection_id: expect.any(String) }) }));
   });
   it("sends draft catalog mode and merges canonical Custom modes without duplicating retained names", async () => {
     const id = "12345678-1234-1234-1234-123456789abc", retained = `custom-${id}/embed`;
@@ -696,7 +734,7 @@ describe("model mode routing", () => {
     fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://public.example/v1" } }); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "draft-fixture" } });
     api.POST.mockResolvedValue({ data: { items: [], total: 0, limit: 50, offset: 0 } }); await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/model-catalog$/), expect.objectContaining({ body: expect.objectContaining({ mode: "embedding", endpoint_url: "https://public.example", api_key: "draft-fixture" }) }));
-    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: id } }); fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "rerank" } }); addExact("embed"); addExact("rank"); fireEvent.click(saveModel());
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: id } }); fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "rerank" } }); addExact("embed"); addExact("rank"); vi.useRealTimers(); api.POST.mockResolvedValue({ data: { status: "success", duration_ms: 20 }, response: response() }); await passTest(); fireEvent.click(saveModel());
     expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ models: [retained, "rank"], model_modes: { [retained]: "embedding", rank: "rerank" } }) }));
   });
   it("edits mixed modes individually and probes the actual first model mode after rotation", async () => {

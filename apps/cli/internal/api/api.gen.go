@@ -1678,11 +1678,17 @@ type AIProviderModelList struct {
 type AIProviderProbe struct {
 	ApiKey *string `json:"api_key,omitempty"`
 
+	// ConnectionId Owned saved credentials to test. Mutually exclusive with api_key and endpoint_url. Requires expected_revision.
+	ConnectionId *openapi_types.UUID `json:"connection_id,omitempty"`
+
 	// EndpointUrl Installation-approved custom
-	EndpointUrl *string                 `json:"endpoint_url,omitempty"`
-	Mode        *AIModelMode            `json:"mode,omitempty"`
-	Model       string                  `json:"model"`
-	Provider    AIProviderProbeProvider `json:"provider"`
+	EndpointUrl *string `json:"endpoint_url,omitempty"`
+
+	// ExpectedRevision Required only for a saved-credential test.
+	ExpectedRevision *int64                  `json:"expected_revision,omitempty"`
+	Mode             *AIModelMode            `json:"mode,omitempty"`
+	Model            string                  `json:"model"`
+	Provider         AIProviderProbeProvider `json:"provider"`
 }
 
 // AIProviderProbeProvider defines model for AIProviderProbe.Provider.
