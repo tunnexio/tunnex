@@ -37,3 +37,19 @@ narrow layout. Review the diff with independent finders at the end.
 This slice changes web navigation and presentation only. No database migration,
 provider credential changes, group membership changes, cloud operations, engine
 changes, push, or merge. Existing local preview is used for visual proof.
+
+## Navigation and visual follow-up — 2026-09-09
+
+The user asked us to choose and implement the clearer position for agent model
+access and MCP, and to re-review every AI page for consistent design.
+
+- Keep automated-agent model policies under AI Agents; put Model access directly
+  after Agent groups, before Policy templates. Human group grants stay in AI Gateway.
+- Give MCP its own AI sidebar destination at `/mcp`. Reuse the existing profile,
+  endpoint, assignment, and impact workflow without adding a new server feature.
+  Agent detail retains its contextual MCP tab and links to the shared workspace.
+- Preserve `/agents/mcp` bookmarks, group/profile queries, and hashes through a
+  redirect. Keep agent group management links explicit and correctly labeled.
+- Inspect Gateway, Agents, and MCP pages and their empty/form states for matching
+  spacing, alignment, typography, colors, and narrow layouts. Prefer the existing
+  shared components and responsive styles over a separate AI design system.
