@@ -105,8 +105,8 @@ def test_foundry_policy_load_and_invalid_classification(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("suffix", ["openai.azure.com", "services.ai.azure.com", "cognitiveservices.azure.com"])
-@pytest.mark.parametrize("operation", ["preflight", "catalog"])
-async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operation, tmp_path, monkeypatch):
+@pytest.mark.parametrize("operation, deployment", [("preflight", "gpt-5"), ("preflight", "Llama-3.3-70B-Instruct"), ("preflight", "deepseek-r1"), ("catalog", DEPLOYMENT)])
+async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operation, deployment, tmp_path, monkeypatch):
     host = "team-resource." + suffix
     endpoint = "https://" + host + "/openai"
     cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
@@ -171,6 +171,7 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operati
             )
             async with TestClient(TestServer(create_app(settings, sdk_call))) as client:
                 body = request_body(endpoint)
+                body["model"] = deployment
                 if operation == "catalog":
                     body.pop("model")
                 response = await client.post(
@@ -190,9 +191,10 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operati
             assert arrival["headers"]["Authorization"] == "Bearer " + KEY
             assert "api-key" not in {k.lower() for k in arrival["headers"]}
             if operation == "preflight":
-                assert arrival["data"]["model"] == DEPLOYMENT
-                assert arrival["data"]["max_completion_tokens"] == 16
-                assert "max_tokens" not in arrival["data"]
+                assert arrival["data"]["model"] == deployment
+                token_field = "max_completion_tokens" if deployment == "gpt-5" else "max_tokens"
+                assert arrival["data"][token_field] == 16
+                assert ("max_tokens" if token_field == "max_completion_tokens" else "max_completion_tokens") not in arrival["data"]
                 # LiteLLM omits the default false value on the OpenAI wire request.
                 assert arrival["data"].get("stream", False) is False
         finally:

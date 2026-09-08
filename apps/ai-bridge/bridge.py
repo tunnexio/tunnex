@@ -387,7 +387,9 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                     endpoint=endpoint,
                     proxy=settings.proxy,
                 )
-                if provider == "azure_foundry" and mode == "chat":
+                # Azure hosts other model vendors too. Keep the ordinary token
+                # parameter for them; GPT-5/o-series use the reasoning limit.
+                if provider == "azure_foundry" and mode == "chat" and re.match(r"^(?:gpt-5(?:[.-]|$)|o[134](?:-|$))", model, re.IGNORECASE):
                     payload["max_completion_tokens"] = payload.pop("max_tokens")
             else:
                 raise ValueError()

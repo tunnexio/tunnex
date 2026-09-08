@@ -1149,6 +1149,611 @@
       "mode": "audio_transcription"
     },
     {
+      "id": "azure_ai/Codestral-2501",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Cohere-embed-v3-english",
+      "provider": "azure_ai",
+      "mode": "embedding"
+    },
+    {
+      "id": "azure_ai/Cohere-embed-v3-multilingual",
+      "provider": "azure_ai",
+      "mode": "embedding"
+    },
+    {
+      "id": "azure_ai/Cohere-parse-v5",
+      "provider": "azure_ai",
+      "mode": "ocr"
+    },
+    {
+      "id": "azure_ai/DeepSeek-V4-Flash-0731",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FLUX-1.1-pro",
+      "provider": "azure_ai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "azure_ai/FLUX.1-Kontext-pro",
+      "provider": "azure_ai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "azure_ai/FW-DeepSeek-V3.2",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-DeepSeek-V4-Pro",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-GLM-5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-GLM-5.1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-GLM-5.2",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-GLM-5.2-Fast",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-Inkling",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-Kimi-K2.5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-Kimi-K2.6",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-Kimi-K2.7-Code",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-Kimi-K3",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-MiniMax-M2.5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-MiniMax-M3",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-Nemotron-3-Ultra-NVFP4",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/FW-Nemotron-Lightning-3.5-30B-A3B",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Llama-3.2-11B-Vision-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Llama-3.2-90B-Vision-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Llama-3.3-70B-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Llama-4-Scout-17B-16E-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/MAI-DS-R1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/MAI-Image-2.5",
+      "provider": "azure_ai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "azure_ai/MAI-Image-2.5-Flash",
+      "provider": "azure_ai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "azure_ai/MAI-Image-2e",
+      "provider": "azure_ai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "azure_ai/MAI-Thinking-1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Meta-Llama-3-70B-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Meta-Llama-3.1-405B-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Meta-Llama-3.1-70B-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Meta-Llama-3.1-8B-Instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3-medium-128k-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3-medium-4k-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3-mini-128k-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3-mini-4k-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3-small-128k-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3-small-8k-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3.5-MoE-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3.5-mini-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-3.5-vision-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-4",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-4-mini-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-4-mini-reasoning",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-4-multimodal-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/Phi-4-reasoning",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-fable-5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-fable-5-1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-haiku-4-5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-opus-4-1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-opus-4-5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-opus-4-6",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-opus-4-7",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-opus-4-8",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-opus-5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-sonnet-4-5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-sonnet-4-6",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/claude-sonnet-5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/cohere-rerank-v3-english",
+      "provider": "azure_ai",
+      "mode": "rerank"
+    },
+    {
+      "id": "azure_ai/cohere-rerank-v3-multilingual",
+      "provider": "azure_ai",
+      "mode": "rerank"
+    },
+    {
+      "id": "azure_ai/cohere-rerank-v3.5",
+      "provider": "azure_ai",
+      "mode": "rerank"
+    },
+    {
+      "id": "azure_ai/cohere-rerank-v4.0-fast",
+      "provider": "azure_ai",
+      "mode": "rerank"
+    },
+    {
+      "id": "azure_ai/cohere-rerank-v4.0-pro",
+      "provider": "azure_ai",
+      "mode": "rerank"
+    },
+    {
+      "id": "azure_ai/deepseek-r1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/deepseek-v3",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/deepseek-v3-0324",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/deepseek-v3.1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/deepseek-v3.2",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/deepseek-v3.2-speciale",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/deepseek-v4-flash",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/deepseek-v4-pro",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/doc-intelligence/prebuilt-document",
+      "provider": "azure_ai",
+      "mode": "ocr"
+    },
+    {
+      "id": "azure_ai/doc-intelligence/prebuilt-layout",
+      "provider": "azure_ai",
+      "mode": "ocr"
+    },
+    {
+      "id": "azure_ai/doc-intelligence/prebuilt-read",
+      "provider": "azure_ai",
+      "mode": "ocr"
+    },
+    {
+      "id": "azure_ai/embed-v-4-0",
+      "provider": "azure_ai",
+      "mode": "embedding"
+    },
+    {
+      "id": "azure_ai/flux.2-pro",
+      "provider": "azure_ai",
+      "mode": "image_generation"
+    },
+    {
+      "id": "azure_ai/global/grok-3",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/global/grok-3-mini",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.4",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.4-2026-03-05",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.4-mini",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.4-mini-2026-03-17",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.4-nano",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.4-nano-2026-03-17",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.4-pro",
+      "provider": "azure_ai",
+      "mode": "responses"
+    },
+    {
+      "id": "azure_ai/gpt-5.4-pro-2026-03-05",
+      "provider": "azure_ai",
+      "mode": "responses"
+    },
+    {
+      "id": "azure_ai/gpt-5.5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-5.5-2026-04-23",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/gpt-oss-120b",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-3",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-3-mini",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-4",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-4-1-fast-non-reasoning",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-4-1-fast-reasoning",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-4-fast-non-reasoning",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-4-fast-reasoning",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-4.3",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-4.6",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/grok-code-fast-1",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/jais-30b-chat",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/jamba-instruct",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/kimi-k2.5",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/kimi-k2.6",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/kimi-k2.7-code",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/ministral-3b",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-document-ai-2505",
+      "provider": "azure_ai",
+      "mode": "ocr"
+    },
+    {
+      "id": "azure_ai/mistral-document-ai-2512",
+      "provider": "azure_ai",
+      "mode": "ocr"
+    },
+    {
+      "id": "azure_ai/mistral-large",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-large-2407",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-large-3",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-large-latest",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-medium-2505",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-nemo",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-ocr-4-0",
+      "provider": "azure_ai",
+      "mode": "ocr"
+    },
+    {
+      "id": "azure_ai/mistral-small",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/mistral-small-2503",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
+      "id": "azure_ai/model_router",
+      "provider": "azure_ai",
+      "mode": "chat"
+    },
+    {
       "id": "computer-use-preview",
       "provider": "azure",
       "mode": "chat"

@@ -14,11 +14,11 @@ func TestFoundryReferenceSnapshotProvenance(t *testing.T) {
 	if err := json.Unmarshal(foundryReferenceJSON, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.SourceCommit != "eeb7732fc11fd47762ca84cc3fb7cc74235d7097" || snapshot.SourceSHA256 != "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202" || snapshot.SourcePath != "model_prices_and_context_window.json" || len(snapshot.Entries) != 230 {
+	if snapshot.SourceCommit != "eeb7732fc11fd47762ca84cc3fb7cc74235d7097" || snapshot.SourceSHA256 != "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202" || snapshot.SourcePath != "model_prices_and_context_window.json" || len(snapshot.Entries) != 351 {
 		t.Fatal("snapshot provenance changed without qualification")
 	}
 	sum := sha256.Sum256(foundryReferenceJSON)
-	if hex.EncodeToString(sum[:]) != "d5cbd48d1ef1dcb2eb852e5cb90eb8ac55b24deabf929a6e18e922904cbfe137" {
+	if hex.EncodeToString(sum[:]) != "522e2790c78a318bf165b90965afc516d4c91d44a5b3c1f478bd6afe0bfbafdf" {
 		t.Fatal("derived source changed: review source pin and metadata")
 	}
 }
@@ -67,6 +67,21 @@ func TestFoundryReferenceSearchAndPagination(t *testing.T) {
 	}
 }
 
+func TestFoundryReferenceNonOpenAIDeployments(t *testing.T) {
+	for _, name := range []string{"Llama-3.3-70B-Instruct", "deepseek-r1", "Phi-4", "mistral-large-latest"} {
+		page, err := FoundryReferenceModels(name, 100, 0)
+		found := false
+		for _, model := range page.Models {
+			if model.ID == name {
+				found = true
+			}
+		}
+		if err != nil || !found {
+			t.Errorf("Foundry reference missing %s: %v", name, err)
+		}
+	}
+}
+
 func TestFoundryReferenceModeAndProviderBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		row      referenceModel
@@ -82,13 +97,13 @@ func TestFoundryReferenceModeAndProviderBoundary(t *testing.T) {
 		{referenceModel{"azure/us/gpt-5", "azure", "chat"}, false},
 		{referenceModel{"azure/global/gpt-5", "azure", "chat"}, false},
 		{referenceModel{"azure/gpt-audio-mini", "azure", "chat"}, false},
-		{referenceModel{"azure/container", "azure", "chat"}, false},
-		{referenceModel{"azure/computer-use-preview", "azure", "chat"}, false},
-		{referenceModel{"azure/mistral-large-latest", "azure", "chat"}, false},
+
+		{referenceModel{"azure/mistral-large-latest", "azure", "chat"}, true},
+		{referenceModel{"azure_ai/Llama-3.3-70B-Instruct", "azure_ai", "chat"}, true},
 		{referenceModel{"gpt-5", "azure", "chat"}, false},
 	} {
 		name, ok := foundryReferenceName(tc.row)
-		if ok != tc.accepted || ok && name != strings.TrimPrefix(tc.row.ID, "azure/") {
+		if ok != tc.accepted || ok && name != strings.TrimPrefix(tc.row.ID, tc.row.Provider+"/") {
 			t.Errorf("%+v -> %q %v", tc.row, name, ok)
 		}
 	}

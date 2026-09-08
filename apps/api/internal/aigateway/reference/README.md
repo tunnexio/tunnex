@@ -21,17 +21,20 @@ No upstream Python or JavaScript is executed or included by this reference list.
 ## Derivation
 
 `litellm_azure_models.json` retains only original entries whose
-`litellm_provider` is exactly `azure`, with these fields:
+`litellm_provider` is exactly `azure` or `azure_ai`, with these fields:
 
 - `id`: original root JSON key;
 - `provider`: original `litellm_provider`;
 - `mode`: original `mode`.
 
-All 230 Azure entries are retained as source evidence, sorted by original key.
-Runtime filtering accepts only `chat` entries with a top-level `azure/` prefix,
-then strips that prefix. It includes GPT and o1/o3/o4 families, omits nested
-regional/pricing aliases and audio/realtime variants, and refuses other provider
-and mode families. Names are sorted and deduplicated before pagination.
+All 351 Azure/Azure AI entries are retained as source evidence, sorted by original
+key. Runtime filtering matches the selected operation and each row's provider
+prefix, then strips that prefix. GPT, Llama, DeepSeek, Phi, Mistral and other
+Foundry families are included. Nested regional/pricing aliases and chat
+audio/realtime variants are excluded. Claude requires the separate Anthropic
+Messages transport and is excluded from these v1 suggestions. Names are sorted
+and deduplicated before pagination. The derived snapshot SHA-256 is
+`522e2790c78a318bf165b90965afc516d4c91d44a5b3c1f478bd6afe0bfbafdf`.
 
 These are model-name suggestions, not the customer's deployment inventory or a
 promise that a particular Azure resource supports them. Users can enter their

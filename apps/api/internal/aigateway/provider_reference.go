@@ -3,7 +3,6 @@ package aigateway
 import (
 	_ "embed"
 	"encoding/json"
-	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -28,18 +27,8 @@ type referenceSnapshot struct {
 	Entries      []referenceModel `json:"entries"`
 }
 
-var foundryChatFamily = regexp.MustCompile(`^(gpt-|o[134]($|-))`)
-
 func foundryReferenceName(row referenceModel) (string, bool) {
-	if row.Provider != "azure" || row.Mode != "chat" || !strings.HasPrefix(row.ID, "azure/") {
-		return "", false
-	}
-	name := strings.TrimPrefix(row.ID, "azure/")
-	// Nested paths are regional/pricing aliases, not names for deployments.
-	if strings.Contains(name, "/") || !foundryChatFamily.MatchString(name) || !engineModel.MatchString(name) || strings.Contains(name, "audio") || strings.Contains(name, "realtime") {
-		return "", false
-	}
-	return name, true
+	return foundryReferenceModeName(row, ModeChat)
 }
 
 // FoundryReferenceModels returns static LiteLLM reference names without needing
@@ -77,14 +66,17 @@ func FoundryReferenceModelsForMode(mode ModelMode, query string, limit, offset i
 }
 
 func foundryReferenceModeName(row referenceModel, mode ModelMode) (string, bool) {
-	if mode == ModeChat {
-		return foundryReferenceName(row)
-	}
-	if row.Provider != "azure" || row.Mode != string(mode) || !strings.HasPrefix(row.ID, "azure/") {
+	if (row.Provider != "azure" && row.Provider != "azure_ai") || row.Mode != string(mode) || !strings.HasPrefix(row.ID, row.Provider+"/") {
 		return "", false
 	}
-	name := strings.TrimPrefix(row.ID, "azure/")
+	name := strings.TrimPrefix(row.ID, row.Provider+"/")
+	// Nested paths are regional/pricing aliases. Claude requires the separate
+	// Anthropic Messages transport; v1 references must not promise that adapter.
 	if strings.Contains(name, "/") || !engineModel.MatchString(name) {
+		return "", false
+	}
+	lower := strings.ToLower(name)
+	if strings.HasPrefix(lower, "claude-") || mode == ModeChat && (strings.Contains(lower, "audio") || strings.Contains(lower, "realtime")) {
 		return "", false
 	}
 	return name, true

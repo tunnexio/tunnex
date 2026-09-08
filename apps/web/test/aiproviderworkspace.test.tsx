@@ -404,9 +404,46 @@ describe("pre-save inference check", () => {
 });
 
 describe("Azure AI Foundry OpenAI v1", () => {
-  const foundryDefinition = { id: "azure_foundry", name: "Azure AI Foundry (OpenAI v1)", credential_label: "Azure API key", model_placeholder: "my-gpt-deployment" };
+  const foundryDefinition = { id: "azure_foundry", name: "Azure AI Foundry", credential_label: "Azure API key", model_placeholder: "my-gpt-deployment" };
   const bases = ["https://sample.services.ai.azure.com/openai", "https://sample.openai.azure.com/openai"];
   const foundryInventory = { ...inventory, definitions: [...definitions, foundryDefinition], foundry_available: true, foundry_endpoints: bases.map((url) => ({ name: "Azure deployment", url })) };
+  it("explains deployment and mode conflicts without testing a different target", async () => {
+    api.GET.mockResolvedValue({ data: { ...foundryInventory, public_endpoints_available: true, supported_modes: ["chat", "embedding"] } });
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "other-deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: `${bases[0]}/deployments/gpt-5/chat/completions?api-version=2025-01-01-preview` } });
+    fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-key" } });
+    const test = screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement;
+    expect(test.disabled).toBe(true); expect(screen.getByText(/The pasted URL targets deployment gpt-5/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Remove model other-deployment" }));
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "gpt-5" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    expect(test.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } });
+    expect(test.disabled).toBe(true); expect(screen.getByText(/The pasted URL uses Chat/)).toBeTruthy();
+    expect(api.POST).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[0] } });
+    fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-key" } });
+    expect(test.disabled).toBe(false); await passTest();
+    expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ model: "gpt-5", mode: "embedding", endpoint_url: bases[0] }) }));
+  });
+  it.each(["model", "credentials"])("accepts a pasted Azure portal deployment URL in Add %s and sends the canonical resource", async (form) => {
+    api.GET.mockResolvedValue({ data: { ...foundryInventory, public_endpoints_available: true } });
+    render(show()); await screen.findByText("Engineering");
+    if (form === "model") fireEvent.click(screen.getByRole("tab", { name: "Add Model" }));
+    else { fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ })); fireEvent.click(screen.getByRole("button", { name: "Add Credentials" })); }
+    selectProvider(foundryDefinition.name);
+    const base = "https://example.cognitiveservices.azure.com/openai";
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "gpt-5" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: `${base}/deployments/gpt-5/chat/completions?api-version=2025-01-01-preview` } });
+    fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-key" } });
+    expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText(`${base}/v1/chat/completions`)).toBeTruthy();
+    expect(screen.getByText(/The api-version query is replaced by v1 implicit versioning/)).toBeTruthy();
+    await passTest();
+    expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/test-connection$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: base, model: "gpt-5", mode: "chat", api_key: "synthetic-key" } }));
+    fireEvent.click(form === "model" ? saveModel() : screen.getByRole("button", { name: "Create credentials" }));
+    expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/providers$/), expect.objectContaining({ body: expect.objectContaining({ endpoint_url: base, models: ["gpt-5"] }) }));
+  });
   it("keeps a fully filled Azure model testable after mode changes and explains key re-entry after endpoint edits", async () => {
     api.GET.mockResolvedValue({ data: { ...foundryInventory, public_endpoints_available: true, supported_modes: ["chat", "embedding"] } });
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
@@ -428,7 +465,7 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.focus(screen.getByRole("combobox", { name: "Provider" }));
     expect(screen.getByRole("listbox").querySelector("svg.ai-provider-logo")).toBeTruthy();
     selectProvider(foundryDefinition.name);
-    expect(screen.getByText(/Azure OpenAI v1. Use the exact deployed model name/)).toBeTruthy(); expect(screen.queryByLabelText("Gateway API key")).toBeNull();
+    expect(screen.getByText(/Connect Azure-hosted models, including Llama/)).toBeTruthy(); expect(screen.queryByLabelText("Gateway API key")).toBeNull();
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: `${base}/v1` } });
     fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-azure-api-key" } });
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "my-gpt-deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
@@ -437,7 +474,7 @@ describe("Azure AI Foundry OpenAI v1", () => {
     await passTest(); expect(save.disabled).toBe(false);
     expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: base, model: "my-gpt-deployment", mode: "chat", api_key: "synthetic-azure-api-key" } }));
     fireEvent.click(save);
-    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: base, models: ["my-gpt-deployment"], model_modes: { "my-gpt-deployment": "chat" }, api_key: "synthetic-azure-api-key", enabled: true, name: "Azure AI Foundry (OpenAI v1) · my-gpt-deployment" } }));
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: base, models: ["my-gpt-deployment"], model_modes: { "my-gpt-deployment": "chat" }, api_key: "synthetic-azure-api-key", enabled: true, name: "Azure AI Foundry · my-gpt-deployment" } }));
     expect(screen.queryByLabelText("Azure API key")).toBeNull();
   });
   it("invalidates an Azure endpoint change and refuses unapproved or legacy URLs", async () => {
@@ -473,7 +510,7 @@ describe("Azure AI Foundry OpenAI v1", () => {
 
 describe("self-service endpoints and draft model catalogs", () => {
   const customDef = { id: "custom", name: "Custom", credential_label: "API key", model_placeholder: "model" };
-  const azureDef = { id: "azure_foundry", name: "Azure AI Foundry (OpenAI v1)", credential_label: "Azure API key", model_placeholder: "deployment" };
+  const azureDef = { id: "azure_foundry", name: "Azure AI Foundry", credential_label: "Azure API key", model_placeholder: "deployment" };
   const sageDef = { id: "sagemaker", name: "AWS SageMaker", credential_label: "Gateway API key", model_placeholder: "alias" };
   const customBase = "https://inference.example.com";
   const azureBase = "https://resource.cognitiveservices.azure.com/openai";
@@ -575,7 +612,7 @@ describe("automatic catalog search", () => {
 
 describe("catalog dismissal", () => {
   it.each(["azure_foundry", "custom"])("keeps the %s catalog dismissed during endpoint/key edits until another search interaction", async (provider) => {
-    const name = provider === "custom" ? "Custom" : "Azure AI Foundry (OpenAI v1)";
+    const name = provider === "custom" ? "Custom" : "Azure AI Foundry";
     const keyLabel = provider === "custom" ? "API key" : "Azure API key";
     const firstBase = provider === "custom" ? "https://first.example.com/v1" : "https://first.openai.azure.com/openai/v1";
     const nextBase = provider === "custom" ? "https://next.example.com/v1" : "https://next.openai.azure.com/openai/v1";
