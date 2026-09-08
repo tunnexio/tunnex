@@ -45,6 +45,13 @@ const (
 	AIInferenceRequestMessagesRoleUser      AIInferenceRequestMessagesRole = "user"
 )
 
+// Defines values for AIProviderCatalogRequestProvider.
+const (
+	AIProviderCatalogRequestProviderAzureFoundry AIProviderCatalogRequestProvider = "azure_foundry"
+	AIProviderCatalogRequestProviderCustom       AIProviderCatalogRequestProvider = "custom"
+	AIProviderCatalogRequestProviderSagemaker    AIProviderCatalogRequestProvider = "sagemaker"
+)
+
 // Defines values for AIProviderConnectionLastTestStatus.
 const (
 	AIProviderConnectionLastTestStatusFailed   AIProviderConnectionLastTestStatus = "failed"
@@ -132,18 +139,18 @@ const (
 
 // Defines values for AIProviderUpdateProvider.
 const (
-	Anthropic    AIProviderUpdateProvider = "anthropic"
-	AzureFoundry AIProviderUpdateProvider = "azure_foundry"
-	Cerebras     AIProviderUpdateProvider = "cerebras"
-	Custom       AIProviderUpdateProvider = "custom"
-	Deepseek     AIProviderUpdateProvider = "deepseek"
-	Gemini       AIProviderUpdateProvider = "gemini"
-	Groq         AIProviderUpdateProvider = "groq"
-	Mistral      AIProviderUpdateProvider = "mistral"
-	Openai       AIProviderUpdateProvider = "openai"
-	Openrouter   AIProviderUpdateProvider = "openrouter"
-	Sagemaker    AIProviderUpdateProvider = "sagemaker"
-	Xai          AIProviderUpdateProvider = "xai"
+	AIProviderUpdateProviderAnthropic    AIProviderUpdateProvider = "anthropic"
+	AIProviderUpdateProviderAzureFoundry AIProviderUpdateProvider = "azure_foundry"
+	AIProviderUpdateProviderCerebras     AIProviderUpdateProvider = "cerebras"
+	AIProviderUpdateProviderCustom       AIProviderUpdateProvider = "custom"
+	AIProviderUpdateProviderDeepseek     AIProviderUpdateProvider = "deepseek"
+	AIProviderUpdateProviderGemini       AIProviderUpdateProvider = "gemini"
+	AIProviderUpdateProviderGroq         AIProviderUpdateProvider = "groq"
+	AIProviderUpdateProviderMistral      AIProviderUpdateProvider = "mistral"
+	AIProviderUpdateProviderOpenai       AIProviderUpdateProvider = "openai"
+	AIProviderUpdateProviderOpenrouter   AIProviderUpdateProvider = "openrouter"
+	AIProviderUpdateProviderSagemaker    AIProviderUpdateProvider = "sagemaker"
+	AIProviderUpdateProviderXai          AIProviderUpdateProvider = "xai"
 )
 
 // Defines values for AIUsageReportSemantics.
@@ -1391,6 +1398,21 @@ type AIInferenceRequestMessagesRole string
 // AIModelNames defines model for AIModelNames.
 type AIModelNames = []string
 
+// AIProviderCatalogRequest defines model for AIProviderCatalogRequest.
+type AIProviderCatalogRequest struct {
+	ApiKey *string `json:"api_key,omitempty"`
+
+	// EndpointUrl Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules.
+	EndpointUrl string                           `json:"endpoint_url"`
+	Limit       *int                             `json:"limit,omitempty"`
+	Offset      *int                             `json:"offset,omitempty"`
+	Provider    AIProviderCatalogRequestProvider `json:"provider"`
+	Query       *string                          `json:"query,omitempty"`
+}
+
+// AIProviderCatalogRequestProvider defines model for AIProviderCatalogRequest.Provider.
+type AIProviderCatalogRequestProvider string
+
 // AIProviderConnection defines model for AIProviderConnection.
 type AIProviderConnection struct {
 	AppliedRevision int64 `json:"applied_revision"`
@@ -1464,8 +1486,11 @@ type AIProviderList struct {
 	Items               []AIProviderConnection  `json:"items"`
 	LegacyKeyIds        []string                `json:"legacy_key_ids"`
 	ManagementAvailable bool                    `json:"management_available"`
-	SagemakerAvailable  *bool                   `json:"sagemaker_available,omitempty"`
-	SagemakerEndpoints  *[]AICustomEndpoint     `json:"sagemaker_endpoints,omitempty"`
+
+	// PublicEndpointsAvailable Public HTTPS endpoints can be entered directly with automatic egress validation.
+	PublicEndpointsAvailable *bool               `json:"public_endpoints_available,omitempty"`
+	SagemakerAvailable       *bool               `json:"sagemaker_available,omitempty"`
+	SagemakerEndpoints       *[]AICustomEndpoint `json:"sagemaker_endpoints,omitempty"`
 
 	// TestAvailable Private inference test adapter is configured.
 	TestAvailable *bool `json:"test_available,omitempty"`
@@ -5289,7 +5314,7 @@ type TestAgentAccessParamsProtocol string
 
 // ListAIProviderModelsParams defines parameters for ListAIProviderModels.
 type ListAIProviderModelsParams struct {
-	// ConnectionId Same-organization connection required for custom
+	// ConnectionId Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint.
 	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
 	Provider     *string             `form:"provider,omitempty" json:"provider,omitempty"`
 	Query        *string             `form:"query,omitempty" json:"query,omitempty"`
@@ -5551,6 +5576,9 @@ type PutAIAssignmentJSONRequestBody = AIAssignmentWrite
 
 // CreateAIProviderJSONRequestBody defines body for CreateAIProvider for application/json ContentType.
 type CreateAIProviderJSONRequestBody = AIProviderCreate
+
+// SearchAIProviderCatalogJSONRequestBody defines body for SearchAIProviderCatalog for application/json ContentType.
+type SearchAIProviderCatalogJSONRequestBody = AIProviderCatalogRequest
 
 // TestAIProviderConnectionJSONRequestBody defines body for TestAIProviderConnection for application/json ContentType.
 type TestAIProviderConnectionJSONRequestBody = AIProviderProbe
@@ -6349,6 +6377,11 @@ type ClientInterface interface {
 	CreateAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SearchAIProviderCatalogWithBody request with any body
+	SearchAIProviderCatalogWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SearchAIProviderCatalog(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// TestAIProviderConnectionWithBody request with any body
 	TestAIProviderConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -9229,6 +9262,30 @@ func (c *Client) CreateAIProviderWithBody(ctx context.Context, orgId openapi_typ
 
 func (c *Client) CreateAIProvider(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateAIProviderRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SearchAIProviderCatalogWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchAIProviderCatalogRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SearchAIProviderCatalog(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchAIProviderCatalogRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17940,6 +17997,53 @@ func NewCreateAIProviderRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewSearchAIProviderCatalogRequest calls the generic SearchAIProviderCatalog builder with application/json body
+func NewSearchAIProviderCatalogRequest(server string, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSearchAIProviderCatalogRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSearchAIProviderCatalogRequestWithBody generates requests for SearchAIProviderCatalog with any type of body
+func NewSearchAIProviderCatalogRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/providers/model-catalog", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewTestAIProviderConnectionRequest calls the generic TestAIProviderConnection builder with application/json body
 func NewTestAIProviderConnectionRequest(server string, orgId openapi_types.UUID, body TestAIProviderConnectionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -26411,6 +26515,11 @@ type ClientWithResponsesInterface interface {
 
 	CreateAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIProviderResponse, error)
 
+	// SearchAIProviderCatalogWithBodyWithResponse request with any body
+	SearchAIProviderCatalogWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error)
+
+	SearchAIProviderCatalogWithResponse(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error)
+
 	// TestAIProviderConnectionWithBodyWithResponse request with any body
 	TestAIProviderConnectionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderConnectionResponse, error)
 
@@ -29932,6 +30041,29 @@ func (r CreateAIProviderResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r CreateAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SearchAIProviderCatalogResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIProviderModelList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchAIProviderCatalogResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchAIProviderCatalogResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -35380,6 +35512,23 @@ func (c *ClientWithResponses) CreateAIProviderWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseCreateAIProviderResponse(rsp)
+}
+
+// SearchAIProviderCatalogWithBodyWithResponse request with arbitrary body returning *SearchAIProviderCatalogResponse
+func (c *ClientWithResponses) SearchAIProviderCatalogWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error) {
+	rsp, err := c.SearchAIProviderCatalogWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchAIProviderCatalogResponse(rsp)
+}
+
+func (c *ClientWithResponses) SearchAIProviderCatalogWithResponse(ctx context.Context, orgId openapi_types.UUID, body SearchAIProviderCatalogJSONRequestBody, reqEditors ...RequestEditorFn) (*SearchAIProviderCatalogResponse, error) {
+	rsp, err := c.SearchAIProviderCatalog(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchAIProviderCatalogResponse(rsp)
 }
 
 // TestAIProviderConnectionWithBodyWithResponse request with arbitrary body returning *TestAIProviderConnectionResponse
@@ -41585,6 +41734,39 @@ func ParseCreateAIProviderResponse(rsp *http.Response) (*CreateAIProviderRespons
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSearchAIProviderCatalogResponse parses an HTTP response from a SearchAIProviderCatalogWithResponse call
+func ParseSearchAIProviderCatalogResponse(rsp *http.Response) (*SearchAIProviderCatalogResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchAIProviderCatalogResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIProviderModelList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error

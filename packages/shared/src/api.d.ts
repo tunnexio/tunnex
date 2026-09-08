@@ -24,6 +24,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/providers/model-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search an endpoint's model catalog using unsaved credentials
+         * @description Requires provider management permission. No inference, connection creation or secret persistence. Catalog membership does not prove inference entitlement or deployment availability.
+         */
+        post: operations["searchAIProviderCatalog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/providers/test-connection": {
         parameters: {
             query?: never;
@@ -93,7 +115,7 @@ export interface paths {
     "/api/v1/organizations/{orgId}/ai-gateway/models": {
         parameters: {
             query?: {
-                /** @description Same-organization connection required for custom */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;
@@ -4669,6 +4691,8 @@ export interface components {
             management_available: boolean;
             /** @description Private inference test adapter is configured. */
             test_available?: boolean;
+            /** @description Public HTTPS endpoints can be entered directly with automatic egress validation. */
+            public_endpoints_available?: boolean;
             foundry_available?: boolean;
             foundry_endpoints?: components["schemas"]["AICustomEndpoint"][];
             sagemaker_available?: boolean;
@@ -4709,6 +4733,22 @@ export interface components {
             api_key?: string;
             /** Format: int64 */
             expected_revision: number;
+        };
+        AIProviderCatalogRequest: {
+            /** @enum {string} */
+            provider: "custom" | "sagemaker" | "azure_foundry";
+            api_key: string;
+            /**
+             * Format: uri
+             * @description Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules.
+             */
+            endpoint_url: string;
+            /** @default  */
+            query: string;
+            /** @default 50 */
+            limit: number;
+            /** @default 0 */
+            offset: number;
         };
         AIProviderProbe: {
             /** @enum {string} */
@@ -8128,6 +8168,33 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    searchAIProviderCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIProviderCatalogRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model suggestions from the selected endpoint. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIProviderModelList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     testAIProviderConnection: {
         parameters: {
             query?: never;
@@ -8240,7 +8307,7 @@ export interface operations {
     listAIProviderModels: {
         parameters: {
             query?: {
-                /** @description Same-organization connection required for custom */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;

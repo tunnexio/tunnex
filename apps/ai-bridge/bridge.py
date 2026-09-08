@@ -65,7 +65,7 @@ def foundry_endpoint(raw):
         or u.path != "/openai"
         or not re.fullmatch(
             r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
-            r"\.(?:openai\.azure\.com|services\.ai\.azure\.com)",
+            r"\.(?:openai\.azure\.com|services\.ai\.azure\.com|cognitiveservices\.azure\.com)",
             u.hostname,
         )
     ):
@@ -93,7 +93,7 @@ def env_secret(name):
 
 
 class Settings:
-    def __init__(self, admin, models=None, clients=None, endpoints=None, proxy=None):
+    def __init__(self, admin, models=None, clients=None, endpoints=None, proxy=None, public_https=False):
         if not secret(admin) or len(admin) < 16:
             raise ValueError("invalid administrator token")
         self.admin = admin
@@ -101,6 +101,9 @@ class Settings:
         self.clients = clients or []
         self.endpoints = endpoints or {}
         self.proxy = proxy
+        if not isinstance(public_https, bool):
+            raise ValueError("invalid public HTTPS policy")
+        self.public_https = public_https
         if any(not secret(key) or len(key) < 16 for key, _ in self.clients):
             raise ValueError("invalid client key")
 
@@ -109,6 +112,7 @@ class Settings:
         models = {}
         clients = []
         endpoints = {}
+        public_https = False
         path = os.environ.get("TUNNEX_AI_BRIDGE_CONFIG_FILE")
         if path:
             raw = Path(path).read_bytes()
@@ -184,6 +188,9 @@ class Settings:
             if len(raw) > 65536:
                 raise ValueError("policy too large")
             policy = json.loads(raw)
+            public_https = policy.get("public_https", False)
+            if not isinstance(public_https, bool):
+                raise ValueError("invalid public HTTPS policy")
             for row in policy.get("endpoints", []):
                 provider = row.get("provider", "custom")
                 endpoint = (
@@ -192,7 +199,7 @@ class Settings:
                     else normalized(row["url"])
                 )
                 endpoints[endpoint] = provider
-        if endpoints:
+        if endpoints or public_https:
             u = urlsplit(proxy or "")
             if (
                 u.scheme != "http"
@@ -210,7 +217,37 @@ class Settings:
             clients,
             endpoints,
             proxy,
+            public_https,
         )
+
+    def endpoint(self, provider, raw):
+        if provider not in {"custom", "sagemaker", "azure_foundry"}:
+            raise ValueError("endpoint denied")
+        endpoint = foundry_endpoint(raw) if provider == "azure_foundry" else normalized(raw)
+        if not self.proxy:
+            raise ValueError("mandatory proxy missing")
+        if endpoint in self.endpoints:
+            if self.endpoints[endpoint] != provider:
+                raise ValueError("endpoint kind denied")
+            return endpoint
+        u = urlsplit(endpoint)
+        authority = (u.hostname, u.port or (443 if u.scheme == "https" else 80))
+        for configured in self.endpoints:
+            existing = urlsplit(configured)
+            if authority == (
+                existing.hostname,
+                existing.port or (443 if existing.scheme == "https" else 80),
+            ):
+                raise ValueError("explicit authority reserved")
+        if (
+            not self.public_https
+            or provider not in {"custom", "azure_foundry"}
+            or u.scheme != "https"
+            or u.port not in {None, 443}
+        ):
+            raise ValueError("endpoint denied")
+        # The mandatory egress proxy validates all DNS answers and numeric dials.
+        return endpoint
 
     def scope(self, key):
         for value, models in self.clients:
@@ -332,10 +369,8 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                 if not model.startswith(prefix):
                     raise ValueError()
                 payload.update(provider=provider, model=model, api_key=key)
-            elif provider == "custom":
-                endpoint = normalized(data["endpoint_url"])
-                if settings.endpoints.get(endpoint) != "custom" or not settings.proxy:
-                    raise ValueError()
+            elif provider in {"custom", "sagemaker", "azure_foundry"}:
+                endpoint = settings.endpoint(provider, data["endpoint_url"])
                 payload.update(
                     provider="custom",
                     model="openai/" + model,
@@ -343,24 +378,8 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                     endpoint=endpoint,
                     proxy=settings.proxy,
                 )
-            elif provider in {"sagemaker", "azure_foundry"}:
-                endpoint = (
-                    foundry_endpoint(data["endpoint_url"])
-                    if provider == "azure_foundry"
-                    else normalized(data["endpoint_url"])
-                )
-                if (
-                    settings.endpoints.get(endpoint) != provider
-                    or not settings.proxy
-                ):
-                    raise ValueError()
-                payload.update(
-                    provider="custom",
-                    model="openai/" + model,
-                    api_key=key,
-                    endpoint=endpoint,
-                    proxy=settings.proxy,
-                )
+                if provider == "azure_foundry":
+                    payload["max_completion_tokens"] = payload.pop("max_tokens")
             else:
                 raise ValueError()
             if slots.locked():
@@ -380,6 +399,42 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
         return web.json_response(
             {"status": status, "duration_ms": int((time.monotonic() - started) * 1000)}
         )
+
+    async def catalog(request):
+        if not hmac.compare_digest(bearer(request), settings.admin):
+            return web.json_response({"error": "unauthorized"}, status=401)
+        try:
+            data = await request.json()
+            if not isinstance(data, dict) or set(data) - {
+                "provider", "api_key", "endpoint_url", "query", "limit", "offset",
+            }:
+                raise ValueError()
+            if not secret(data["api_key"]):
+                raise ValueError()
+            endpoint = settings.endpoint(data["provider"], data["endpoint_url"])
+            query = data.get("query", "")
+            limit, offset = data.get("limit", 50), data.get("offset", 0)
+            if (
+                not isinstance(query, str) or len(query) > 100
+                or type(limit) is not int or not 1 <= limit <= 100
+                or type(offset) is not int or not 0 <= offset <= 10000
+            ):
+                raise ValueError()
+            payload = {
+                "operation": "catalog", "endpoint": endpoint,
+                "api_key": data["api_key"], "proxy": settings.proxy,
+                "query": query, "limit": limit, "offset": offset,
+            }
+        except Exception:
+            return web.json_response({"error": "invalid catalog request"}, status=400)
+        if slots.locked():
+            return web.json_response({"error": "busy"}, status=429)
+        try:
+            async with slots:
+                result = await call(payload)
+            return web.json_response(result)
+        except Exception:
+            return web.json_response({"error": "catalog unavailable"}, status=502)
 
     async def models(request):
         allowed = settings.scope(bearer(request))
@@ -494,6 +549,7 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
             )
 
     app.router.add_post("/test-connection", test)
+    app.router.add_post("/model-catalog", catalog)
     app.router.add_get("/v1/models", models)
     app.router.add_post("/v1/chat/completions", completion)
     return app

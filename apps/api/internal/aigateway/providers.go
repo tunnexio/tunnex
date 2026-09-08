@@ -484,8 +484,15 @@ func (s *Policies) approvedEndpoints(provider string) []aiegress.Endpoint {
 	}
 	return out
 }
-func (s *Policies) CustomAvailable() bool  { return len(s.approvedEndpoints("custom")) > 0 }
-func (s *Policies) FoundryAvailable() bool { return len(s.approvedEndpoints("azure_foundry")) > 0 }
+func (s *Policies) PublicEndpointsAvailable() bool {
+	return s != nil && s.ProviderManagementAvailable() && s.customPolicy != nil && s.customPolicy.PublicEndpointsEnabled()
+}
+func (s *Policies) CustomAvailable() bool {
+	return s.PublicEndpointsAvailable() || len(s.approvedEndpoints("custom")) > 0
+}
+func (s *Policies) FoundryAvailable() bool {
+	return s.PublicEndpointsAvailable() || len(s.approvedEndpoints("azure_foundry")) > 0
+}
 func (s *Policies) ApprovedFoundryEndpoints() []aiegress.Endpoint {
 	return s.approvedEndpoints("azure_foundry")
 }
@@ -509,7 +516,7 @@ func (s *Policies) endpointEligible(provider, raw string) bool {
 			return true
 		}
 	}
-	return false
+	return (provider == "custom" || provider == "azure_foundry" && aiegress.FoundryEndpoint(normalized)) && s.customPolicy.AllowsPublicEndpoint(normalized)
 }
 func nativeConnectionProvider(p ProviderConnection) string {
 	if endpointProvider(p.Provider) {

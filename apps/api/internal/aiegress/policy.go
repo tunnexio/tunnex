@@ -25,6 +25,7 @@ type Endpoint struct {
 	AllowedCIDRs []string `json:"allowed_cidrs"`
 }
 type Policy struct {
+	PublicHTTPS    bool       `json:"public_https"`
 	Endpoints      []Endpoint `json:"endpoints"`
 	ProtectedHosts []string   `json:"protected_hosts"`
 	DeniedCIDRs    []string   `json:"denied_cidrs"`
@@ -79,7 +80,7 @@ func FoundryEndpoint(raw string) bool {
 		return false
 	}
 	host := u.Hostname()
-	for _, suffix := range []string{".openai.azure.com", ".services.ai.azure.com"} {
+	for _, suffix := range []string{".openai.azure.com", ".services.ai.azure.com", ".cognitiveservices.azure.com"} {
 		if strings.HasSuffix(host, suffix) {
 			resource := strings.TrimSuffix(host, suffix)
 			if len(resource) < 1 || len(resource) > 63 || resource[0] == '-' || resource[len(resource)-1] == '-' {
@@ -129,10 +130,12 @@ func LoadPolicy(path string) (*Policy, error) {
 	return &p, nil
 }
 func (p *Policy) validate() error {
-	if len(p.Endpoints) == 0 || len(p.Endpoints) > 64 || len(p.ProtectedHosts) == 0 || len(p.ProtectedHosts) > 128 || len(p.DeniedCIDRs) > 128 {
+	p.rules = nil
+	p.denied = nil
+	if (len(p.Endpoints) == 0 && !p.PublicHTTPS) || len(p.Endpoints) > 64 || len(p.ProtectedHosts) == 0 || len(p.ProtectedHosts) > 128 || len(p.DeniedCIDRs) > 128 {
 		return ErrDenied
 	}
-	p.rules = map[string][]netip.Prefix{}
+	rules := map[string][]netip.Prefix{}
 	seen := map[string]bool{}
 	authorityCIDRs := map[string][]string{}
 	parse := func(raw string) (netip.Prefix, error) {
@@ -175,7 +178,7 @@ func (p *Policy) validate() error {
 			if e != nil {
 				return e
 			}
-			p.rules[authority] = append(p.rules[authority], v)
+			rules[authority] = append(rules[authority], v)
 		}
 	}
 	for _, host := range p.ProtectedHosts {
@@ -183,6 +186,7 @@ func (p *Policy) validate() error {
 			return ErrDenied
 		}
 	}
+	p.rules = rules
 	return nil
 }
 func (p *Policy) AllowsEndpoint(raw string) bool {
@@ -198,7 +202,93 @@ func (p *Policy) AllowsEndpoint(raw string) bool {
 			return true
 		}
 	}
-	return false
+	return p.AllowsPublicEndpoint(normalized)
+}
+
+// AllowsPublicEndpoint permits only validated public HTTPS policy fallback.
+// Any explicit authority reserves all its paths for exact endpoint rules.
+// DNS and local/protected address checks are repeated by the proxy before dial.
+func (p *Policy) AllowsPublicEndpoint(raw string) bool {
+	if !p.PublicEndpointsEnabled() {
+		return false
+	}
+	normalized, err := NormalizeEndpoint(raw)
+	if err != nil {
+		return false
+	}
+	u, _ := url.Parse(normalized)
+	if u.Scheme != "https" || (u.Port() != "" && u.Port() != "443") {
+		return false
+	}
+	if _, explicit := p.rules[target(normalized)]; explicit {
+		return false
+	}
+	return p.publicHost(u.Hostname())
+}
+
+// PublicEndpointsEnabled reports successfully validated opt-in public egress.
+func (p *Policy) PublicEndpointsEnabled() bool {
+	return p != nil && p.PublicHTTPS && p.rules != nil
+}
+
+func (p *Policy) publicHost(host string) bool {
+	for _, protected := range p.ProtectedHosts {
+		if strings.EqualFold(host, protected) {
+			return false
+		}
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return publicAddress(ip)
+	}
+	if len(host) > 253 || !strings.Contains(host, ".") {
+		return false
+	}
+	host = strings.ToLower(host)
+	for _, suffix := range []string{".localhost", ".local", ".internal", ".home.arpa"} {
+		if strings.HasSuffix(host, suffix) {
+			return false
+		}
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) < 1 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// Conservative public unicast scope excludes special-use, documentation,
+// benchmarking and transition ranges in addition to metadata/local addresses.
+var nonpublicRanges = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"), netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"), netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"), netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"), netip.MustParsePrefix("2001::/23"),
+	netip.MustParsePrefix("2001:db8::/32"), netip.MustParsePrefix("3fff::/20"),
+}
+
+func publicAddress(ip netip.Addr) bool {
+	if ip.Zone() != "" {
+		return false
+	}
+	ip = ip.Unmap()
+	if blocked(ip) || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	if ip.Is6() && !netip.MustParsePrefix("2000::/3").Contains(ip) {
+		return false
+	}
+	for _, prefix := range nonpublicRanges {
+		if prefix.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }
 func blocked(ip netip.Addr) bool {
 	ip = ip.Unmap()
@@ -218,9 +308,13 @@ func blocked(ip netip.Addr) bool {
 
 // Resolve once, reject the complete mixed answer before dialing any address.
 func (p *Policy) addresses(ctx context.Context, authority string, lookup func(context.Context, string) ([]netip.Addr, error)) ([]netip.Addr, error) {
-	host, _, e := net.SplitHostPort(authority)
-	rules, ok := p.rules[authority]
-	if e != nil || !ok {
+	if p == nil || p.rules == nil {
+		return nil, ErrDenied
+	}
+	host, port, e := net.SplitHostPort(authority)
+	canonical := net.JoinHostPort(strings.ToLower(host), port)
+	rules, explicit := p.rules[canonical]
+	if e != nil || (!explicit && (!p.PublicHTTPS || port != "443" || !p.publicHost(host))) {
 		return nil, ErrDenied
 	}
 	protected := map[netip.Addr]bool{}
@@ -252,7 +346,7 @@ func (p *Policy) addresses(ctx context.Context, authority string, lookup func(co
 	}
 	for _, v := range ips {
 		ip := v.Unmap()
-		if blocked(ip) || protected[ip] {
+		if blocked(ip) || protected[ip] || (!explicit && !publicAddress(ip)) {
 			return nil, ErrDenied
 		}
 		for _, deny := range p.denied {
@@ -260,7 +354,7 @@ func (p *Policy) addresses(ctx context.Context, authority string, lookup func(co
 				return nil, ErrDenied
 			}
 		}
-		allowed := false
+		allowed := !explicit
 		for _, rule := range rules {
 			if rule.Contains(ip) {
 				allowed = true
@@ -278,13 +372,17 @@ func (p *Policy) dial(ctx context.Context, authority string) (net.Conn, error) {
 	lookup := func(ctx context.Context, host string) ([]netip.Addr, error) {
 		return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 	}
+	return p.dialResolved(ctx, authority, lookup, (&net.Dialer{}).DialContext)
+}
+
+func (p *Policy) dialResolved(ctx context.Context, authority string, lookup func(context.Context, string) ([]netip.Addr, error), dial func(context.Context, string, string) (net.Conn, error)) (net.Conn, error) {
 	ips, e := p.addresses(ctx, authority, lookup)
 	if e != nil {
 		return nil, ErrDenied
 	}
 	_, port, _ := net.SplitHostPort(authority)
 	for _, ip := range ips {
-		c, e := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), port))
+		c, e := dial(ctx, "tcp", net.JoinHostPort(ip.String(), port))
 		if e == nil {
 			return c, nil
 		}

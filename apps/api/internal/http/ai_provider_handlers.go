@@ -59,11 +59,13 @@ func (s apiServer) ListAIProviders(ctx context.Context, r api.ListAIProvidersReq
 		sageMakerEndpoints = append(sageMakerEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
 	}
 	foundryAvailable := s.aiPolicies.FoundryAvailable()
+	publicAvailable := s.aiPolicies.PublicEndpointsAvailable()
 	foundryEndpoints := []api.AICustomEndpoint{}
 	for _, endpoint := range s.aiPolicies.ApprovedFoundryEndpoints() {
 		foundryEndpoints = append(foundryEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
 	}
 	out := api.AIProviderList{FoundryAvailable: &foundryAvailable, FoundryEndpoints: &foundryEndpoints, SagemakerAvailable: &sageMakerAvailable, SagemakerEndpoints: &sageMakerEndpoints, TestAvailable: &testAvailable, CustomAvailable: &customAvailable, CustomEndpoints: &customEndpoints, Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
+	out.PublicEndpointsAvailable = &publicAvailable
 	for _, p := range items {
 		out.Items = append(out.Items, toAIProvider(p))
 	}
@@ -153,7 +155,9 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		provider = string(*r.Params.Provider)
 	}
 	var p aigateway.ProviderModelPage
-	if provider == "custom" || provider == "sagemaker" || provider == "azure_foundry" {
+	if provider == "azure_foundry" && r.Params.ConnectionId == nil {
+		p, err = aigateway.FoundryReferenceModels(query, limit, offset)
+	} else if provider == "custom" || provider == "sagemaker" || provider == "azure_foundry" {
 		if r.Params.ConnectionId == nil {
 			return nil, apierr.BadRequest("invalid_ai_provider", "Select a connection before browsing its models")
 		}
@@ -190,4 +194,36 @@ func (s apiServer) TestAIProviderConnection(ctx context.Context, r api.TestAIPro
 		return nil, err
 	}
 	return api.TestAIProviderConnection200JSONResponse(api.AIProviderProbeResult{Status: api.AIProviderProbeResultStatus(result.Status), DurationMs: result.DurationMS}), nil
+}
+
+func (s apiServer) SearchAIProviderCatalog(ctx context.Context, r api.SearchAIProviderCatalogRequestObject) (api.SearchAIProviderCatalogResponseObject, error) {
+	ctx, err := s.aiProviderContext(ctx, r.OrgId, true)
+	if err != nil {
+		return nil, err
+	}
+	if r.Body == nil || r.Body.ApiKey == nil {
+		return nil, apierr.BadRequest("invalid_ai_provider", "AI provider configuration is not acceptable")
+	}
+	b := r.Body
+	actor, _ := aiManagementActor(ctx)
+	in := aigateway.ProviderCatalogInput{Provider: string(b.Provider), Secret: *b.ApiKey, EndpointURL: b.EndpointUrl, Limit: 50}
+	if b.Query != nil {
+		in.Query = *b.Query
+	}
+	if b.Limit != nil {
+		in.Limit = *b.Limit
+	}
+	if b.Offset != nil {
+		in.Offset = *b.Offset
+	}
+	b.ApiKey = nil
+	page, err := s.aiPolicies.SearchProviderCatalog(ctx, r.OrgId, actor, in)
+	if err != nil {
+		return nil, err
+	}
+	out := api.AIProviderModelList{Items: []api.AIProviderModel{}, Total: page.Total, Limit: in.Limit, Offset: in.Offset}
+	for _, m := range page.Models {
+		out.Items = append(out.Items, api.AIProviderModel{Id: m.ID, Name: m.Name})
+	}
+	return api.SearchAIProviderCatalog200JSONResponse(out), nil
 }

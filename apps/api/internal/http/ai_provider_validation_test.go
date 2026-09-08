@@ -91,14 +91,16 @@ func TestAIProviderProbeAuthorizationBeforeValidation(t *testing.T) {
 	}{
 		{"", org, 401}, {"member", org, 403}, {"owner", uuid.New(), 404}, {"owner", org, 400},
 	} {
-		res := aiSocketRequest(t, srv, "POST", "/api/v1/organizations/"+tc.org.String()+"/ai-gateway/providers/test-connection", `{"provider":"custom","model":"demo","api_key":{"secret":"PROBE_SECRET_MARKER"}}`, "", tc.role)
-		raw, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		if res.StatusCode != tc.want {
-			t.Errorf("role=%s status=%d want=%d", tc.role, res.StatusCode, tc.want)
-		}
-		if strings.Contains(string(raw), "PROBE_SECRET_MARKER") {
-			t.Fatal("probe secret reflected")
+		for _, endpoint := range []string{"test-connection", "model-catalog"} {
+			res := aiSocketRequest(t, srv, "POST", "/api/v1/organizations/"+tc.org.String()+"/ai-gateway/providers/"+endpoint, `{"provider":"custom","model":"demo","api_key":{"secret":"PROBE_SECRET_MARKER"}}`, "", tc.role)
+			raw, _ := io.ReadAll(res.Body)
+			res.Body.Close()
+			if res.StatusCode != tc.want {
+				t.Errorf("role=%s status=%d want=%d", tc.role, res.StatusCode, tc.want)
+			}
+			if strings.Contains(string(raw), "PROBE_SECRET_MARKER") {
+				t.Fatal("probe secret reflected")
+			}
 		}
 	}
 }

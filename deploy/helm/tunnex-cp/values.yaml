@@ -184,6 +184,8 @@ aiGateway:
       limits: {memory: 1Gi}
   customProviders:
     enabled: false
+    # Allow public HTTPS/443 URLs without per-endpoint rules; opt-in on existing installs.
+    publicHTTPS: false
     # Nonsecret installation policy. Required protected service names are added by template.
     endpoints: [] # [{name: Private inference, url: https://inference.example, allowed_cidrs: [10.20.0.0/24]}]
     protectedHosts: []

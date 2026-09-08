@@ -144,7 +144,8 @@
                     "type": "string",
                     "enum": [
                       "custom",
-                      "sagemaker"
+                      "sagemaker",
+                      "azure_foundry"
                     ]
                   }
                 }
@@ -184,6 +185,11 @@
                   "minLength": 1
                 }
               }
+            },
+            "publicHTTPS": {
+              "type": "boolean",
+              "default": false,
+              "description": "Allow public HTTPS/443 Custom and Azure endpoints through validated egress without per-endpoint rules."
             }
           }
         },

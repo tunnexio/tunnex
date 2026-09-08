@@ -30,7 +30,7 @@ def request_body(endpoint=ENDPOINT):
     }
 
 
-@pytest.mark.parametrize("suffix", ["openai.azure.com", "services.ai.azure.com"])
+@pytest.mark.parametrize("suffix", ["openai.azure.com", "services.ai.azure.com", "cognitiveservices.azure.com"])
 def test_foundry_canonical_endpoint(suffix):
     assert foundry_endpoint(f"https://TEAM-RESOURCE.{suffix}:443/openai/") == (
         f"https://team-resource.{suffix}/openai"
@@ -104,8 +104,9 @@ def test_foundry_policy_load_and_invalid_classification(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("suffix", ["openai.azure.com", "services.ai.azure.com"])
-async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, tmp_path, monkeypatch):
+@pytest.mark.parametrize("suffix", ["openai.azure.com", "services.ai.azure.com", "cognitiveservices.azure.com"])
+@pytest.mark.parametrize("operation", ["preflight", "catalog"])
+async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operation, tmp_path, monkeypatch):
     host = "team-resource." + suffix
     endpoint = "https://" + host + "/openai"
     cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
@@ -120,8 +121,11 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, tmp_pat
     arrivals, tunnels, errors = [], [], []
 
     async def upstream(request):
-        data = await request.json()
+        data = await request.json() if request.method == "POST" else None
         arrivals.append({"path": request.path_qs, "headers": dict(request.headers), "data": data})
+        if operation == "catalog":
+            assert request.method == "GET"
+            return web.json_response({"data": [{"id": DEPLOYMENT, "name": "private metadata"}]})
         return web.json_response({
             "id": "synthetic-foundry-response", "object": "chat.completion",
             "model": DEPLOYMENT,
@@ -130,7 +134,7 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, tmp_pat
         })
 
     app = web.Application()
-    app.router.add_post("/{path:.*}", upstream)
+    app.router.add_route("*", "/{path:.*}", upstream)
     server = TestServer(app)
     await server.start_server(ssl=context)
     async with server:
@@ -162,27 +166,35 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, tmp_pat
         try:
             proxy_port = proxy.sockets[0].getsockname()[1]
             settings = Settings(
-                ADMIN, endpoints={endpoint: "azure_foundry"},
+                ADMIN, public_https=True,
                 proxy=f"http://user:pass@127.0.0.1:{proxy_port}",
             )
             async with TestClient(TestServer(create_app(settings, sdk_call))) as client:
+                body = request_body(endpoint)
+                if operation == "catalog":
+                    body.pop("model")
                 response = await client.post(
-                    "/test-connection", json=request_body(endpoint),
+                    "/model-catalog" if operation == "catalog" else "/test-connection", json=body,
                     headers={"Authorization": "Bearer " + ADMIN},
                 )
                 result = await response.json()
-                assert result["status"] == "success", (result, errors)
-                assert set(result) == {"status", "duration_ms"}
+                if operation == "catalog":
+                    assert result == {"items": [{"id": DEPLOYMENT, "name": DEPLOYMENT}], "total": 1, "limit": 50, "offset": 0}, (result, errors)
+                else:
+                    assert result["status"] == "success", (result, errors)
+                    assert set(result) == {"status", "duration_ms"}
                 assert KEY not in json.dumps(result) and "PRIVATE-REPLY" not in json.dumps(result)
             assert len(arrivals) == 1 and tunnels == [host] and not errors
             arrival = arrivals[0]
-            assert arrival["path"] == "/openai/v1/chat/completions"
+            assert arrival["path"] == "/openai/v1/" + ("models" if operation == "catalog" else "chat/completions")
             assert arrival["headers"]["Authorization"] == "Bearer " + KEY
             assert "api-key" not in {k.lower() for k in arrival["headers"]}
-            assert arrival["data"]["model"] == DEPLOYMENT
-            assert arrival["data"]["max_tokens"] == 16
-            # LiteLLM omits the default false value on the OpenAI wire request.
-            assert arrival["data"].get("stream", False) is False
+            if operation == "preflight":
+                assert arrival["data"]["model"] == DEPLOYMENT
+                assert arrival["data"]["max_completion_tokens"] == 16
+                assert "max_tokens" not in arrival["data"]
+                # LiteLLM omits the default false value on the OpenAI wire request.
+                assert arrival["data"].get("stream", False) is False
         finally:
             proxy.close()
             await proxy.wait_closed()

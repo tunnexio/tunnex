@@ -8,10 +8,11 @@ The qualified engine is Bifrost v2.0.0. `deploy/ai-gateway/compose.yml` pins the
 
 ### UI-managed providers
 
-The **AI gateway → Providers & models** workspace lets an owner/admin add an
-OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, Cerebras, xAI or DeepSeek
+The **AI gateway → Models & endpoints** workspace lets an owner/admin add an
+OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, Cerebras, xAI, DeepSeek,
+Custom, Azure AI Foundry (OpenAI v1), or a configured SageMaker bridge
 connection, select exact models, check catalog access, rotate the key and
-disable or remove an unreferenced connection. Connection checks make no inference
+disable or remove an unreferenced connection. Saved catalog checks make no inference
 request; catalog inclusion does not guarantee inference access to every model.
 Provider keys are write-only and encrypted only in the private engine database.
 Use the site's TLS URL; never put provider secrets in team policies or agent config.
@@ -38,12 +39,15 @@ For Helm, set `aiGateway.providerManagementEnabled: true` with the normal AI
 settings. Only the legacy provider Secret entry becomes optional; admin and
 encryption-key references remain required. AI remains single-instance.
 
-1. Open **Providers & models → Add provider**, select the provider, enter a
-   connection name and its API key, then choose catalog models or enter exact
-   identifiers. Save and wait for applied status. **Add model** can reuse a saved
-   connection without entering its key again.
-2. Run **Test connection**. If a save is uncertain, resubmit the key explicitly;
-   the CP cannot recover a secret it does not store.
+1. Open **Models & endpoints → Add Model**, select a provider, then choose model
+   suggestions or enter exact model/deployment names. Choose saved credentials or
+   enter the endpoint and API key; the credential name is optional.
+   **LLM Credentials → Add Credentials** also creates credentials with at least
+   one model in scope. Selecting saved credentials hides endpoint/key inputs.
+2. For new or replacement keys, run **Test Connect**, then save after success and
+   wait for applied status. This is a small inference request and can incur a
+   provider charge. If a save is uncertain, resubmit the key explicitly; the CP
+   cannot recover a secret it does not store.
 3. In **Configuration**, enable the org AI setting, select a team, its provider
    connections and allowed models, then assign agents. Creating a connection
    alone does not grant access.
@@ -58,9 +62,9 @@ to its provider and selected models. Existing operator-managed key references
 cover OpenRouter only. To change a connection's provider, create a new connection;
 editing a connection cannot transfer its secret to another provider.
 
-The provider picker is supplied by the server's supported registry. Azure,
-Bedrock, Vertex, arbitrary upstream URLs and public model aliases are outside
-this slice. Catalog checks do not generate model tokens. Public catalogs may not validate API keys. Real-account
+The provider picker is supplied by the server's supported registry. Azure OpenAI
+v1 and Custom endpoints follow the public/private egress rules below. Bedrock,
+Vertex, legacy Azure protocols and public model aliases are outside this slice. Catalog checks do not generate model tokens. Public catalogs may not validate API keys. Real-account
 inference qualification remains distinct from local synthetic protocol tests.
 
 For existing deployments, take a consistent backup, upgrade every CP replica and
@@ -229,32 +233,63 @@ in [AI-5 evidence](AI-5-installed-process-walk-20260907.md).
 
 ## Custom OpenAI-compatible endpoints (opt-in)
 
-Custom connections require provider management plus an installation-approved
-endpoint policy and authenticated egress proxy. The UI cannot expand that policy.
-Keep custom support disabled until the installation administrator has reviewed
-both the endpoint URLs and their allowed destination CIDRs. HTTP is permitted only
-when explicitly approved in that policy; HTTPS retains certificate verification.
+Custom and Azure connections require provider management and the authenticated
+provider egress proxy. Set `public_https: true` once in the shared installation
+policy to let administrators enter public HTTPS/443 endpoints directly. No
+per-destination registration or restart is needed for those public URLs. The
+switch defaults to false for existing installations; their explicit rules remain
+in effect until enabled.
+
+Private/internal HTTP or HTTPS endpoints and SageMaker bridges still need explicit
+URL/provider/CIDR rules. HTTPS always verifies certificates. Explicit rules take
+precedence over public fallback, including their provider kind and narrower CIDRs.
 
 Store a nonsecret JSON policy outside the repository, for example:
 
 ```json
 {
-  "endpoints": [{
-    "name": "Private inference",
-    "url": "https://inference.internal",
-    "allowed_cidrs": ["10.20.0.0/24"]
-  }],
+  "public_https": true,
+  "endpoints": [],
   "protected_hosts": ["api", "bifrost", "postgres", "redis", "control.internal"],
   "denied_cidrs": ["10.21.0.0/24"]
 }
 ```
 
-Use the upstream base URL without `/v1`: the native OpenAI-compatible adapter
-appends that API prefix. A `/v1` path segment is rejected to prevent duplication.
-Replace these example names/CIDRs with verified installation inventory; include all
-control-plane, engine and other protected hosts/addresses. Loopback, link-local,
-metadata, unspecified and multicast addresses remain prohibited regardless of
-allowlist. All DNS answers must match the approved CIDRs on each proxy dial.
+For private access, add an endpoint entry such as
+`{"name":"Private inference","provider":"custom","url":"https://inference.internal","allowed_cidrs":["10.20.0.0/24"]}`.
+Use `provider: sagemaker` for a private SageMaker bridge and `azure_foundry` for
+an explicit Azure rule. Replace example hosts/CIDRs with verified installation
+inventory and include all protected control-plane, engine and datastore addresses.
+
+Policy entries use the normalized upstream base without trailing `/v1`; the UI
+accepts `/v1` and strips it before submission. Each proxy connection resolves the
+destination once and dials only validated numeric addresses. Public fallback
+refuses the entire DNS answer if any address is private, protected, loopback,
+link-local, metadata, unspecified or multicast. Explicit rules require every
+answer to fit their allowed CIDRs and still cannot permit prohibited addresses.
+Redirects cannot escape these checks.
+
+### Azure AI Foundry (OpenAI v1)
+
+Enter the actual Azure API key, exact deployed model name and an HTTPS base such
+as `https://resource.services.ai.azure.com/openai/v1`. The resource host can end
+in `services.ai.azure.com`, `openai.azure.com` or `cognitiveservices.azure.com`.
+The stored base ends `/openai`; both inference and endpoint catalog calls append
+`/v1`. A supported URL shape does not prove that resource exposes this API.
+
+For new Azure credentials, **Search models** reads the bundled SHA-pinned LiteLLM
+reference catalog without an endpoint, key or Azure request. Use your deployment
+name if it differs from a suggestion; reference entries do not prove access.
+Custom and SageMaker draft searches require endpoint/key and fetch the actual
+endpoint catalog without saving credentials or generating inference tokens.
+Saved endpoint-backed credentials retain their authenticated catalog search.
+If a catalog is unavailable, enter the exact deployment/model name manually.
+
+Azure **Test Connect** makes a bounded chat request using
+`max_completion_tokens=16`. It can incur a charge and is never triggered by
+catalog search. Only OpenAI v1 chat completions are supported here; legacy
+`/models`, dated deployment API-version URLs, managed identity, sovereign clouds
+and other protocols/modes require separate support.
 
 For Compose, append `-f deploy/ai-gateway/compose-custom.yml` after the base AI and
 managed-provider overlays. Continue using the existing explicitly named project
@@ -269,9 +304,25 @@ only accepts CONNECT. Use container/process status and explicit credential check
 do not interpret the absence of that healthcheck as upstream health.
 
 For Helm, set `aiGateway.enabled`, `aiGateway.providerManagementEnabled` and
-`aiGateway.customProviders.enabled` to true. Configure
-`aiGateway.customProviders.endpoints`, `protectedHosts` and `deniedCIDRs` with the
-same policy entries. The chart always adds API/Bifrost service names to protected
+`aiGateway.customProviders.enabled` to true. Set `publicHTTPS: true` for public
+self-service URLs; `endpoints` may be empty in that mode. The chart defaults this
+switch to false for upgrade compatibility. Example nonsecret values:
+
+```yaml
+aiGateway:
+  enabled: true
+  providerManagementEnabled: true
+  customProviders:
+    enabled: true
+    publicHTTPS: true
+    endpoints: []
+    protectedHosts: [postgres, redis, control.internal]
+    deniedCIDRs: [10.21.0.0/24]
+    existingSecret: ai-egress-credentials
+```
+
+Configure `endpoints`, `protectedHosts` and `deniedCIDRs` with the same policy
+entries as above. The chart always adds API/Bifrost service names to protected
 hosts. Set `aiGateway.customProviders.existingSecret` to a pre-created Secret with
 `proxy-url`, `proxy-username`, and `proxy-password` keys. The URL uses `api:8190`,
 not localhost, so the separate engine pod can reach it. Secret values belong in
@@ -281,8 +332,10 @@ probe proves listener readiness only. The private API Service conditionally adds
 8190, and the engine's NetworkPolicy permits that port only to this release's API
 pods in the same namespace. Standard provider HTTPS egress remains available.
 
-Policy changes require coordinated CP/egress restarts with the same policy. Drain
-or disable affected custom assignments before removing an approved endpoint.
+Changing the installation policy requires coordinated CP/egress/SDK-bridge
+reloads with the same policy. Adding a public URL in the UI does not change that
+policy or require a restart. Drain or disable affected assignments before removing
+a private endpoint rule or narrowing allowed network access.
 Keep database-owned native state, encryption keys and ownership tombstones during
 rollback. These manifests have static render verification; installation-specific
 CNI enforcement, private DNS reachability and certificate trust require a local

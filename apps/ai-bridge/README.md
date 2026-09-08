@@ -17,11 +17,14 @@ installation's secret mechanism. Do not bake secrets into images.
 - `TUNNEX_AI_BRIDGE_LISTEN`: default `0.0.0.0:8200`.
 - `TUNNEX_AI_BRIDGE_ADMIN_TOKEN`: separate random token, minimum 16 characters.
 - `TUNNEX_AI_BRIDGE_CONFIG_FILE`: optional JSON below. Empty models/clients permits
-  standard and approved custom connection tests without any AWS configuration.
-- `TUNNEX_AI_CUSTOM_ENDPOINTS_FILE`: the shared approved endpoint policy. Each
-  selected URL must have its correct `custom` or `sagemaker` discriminator.
+  standard and policy-permitted endpoint connection tests without any AWS configuration.
+- `TUNNEX_AI_CUSTOM_ENDPOINTS_FILE`: the shared provider egress policy. Set
+  `public_https: true` to allow public HTTPS/443 Custom and Azure URLs without
+  destination registration. It defaults false. Private/internal and SageMaker
+  URLs need explicit `custom`, `azure_foundry` or `sagemaker` endpoint/CIDR rules;
+  existing rules take precedence over public fallback.
 - `TUNNEX_AI_CUSTOM_PROXY_URL`: required authenticated HTTP CONNECT proxy for
-  custom and selected SageMaker bridge probes. HTTP and HTTPS both use CONNECT;
+  Custom, Azure and selected SageMaker probes/catalogs. HTTP and HTTPS both use CONNECT;
   proxy failure never falls back to a direct connection. The separate egress
   service enforces resolved-address CIDRs and protected destinations.
 - `SSL_CERT_FILE` / `SSL_CERT_DIR`: optional operator trust roots, including a
@@ -55,12 +58,22 @@ chat endpoint; arbitrary model-serving request formats are not translated here.
 
 `POST /test-connection` requires the administrator Bearer token and accepts
 `provider`, `model`, `api_key`, and optional `endpoint_url`. Native providers use
-canonical provider-prefixed models; custom and SageMaker use the raw alias.
+canonical provider-prefixed models; Custom, Azure and SageMaker use the raw
+model/deployment name or configured bridge alias.
 The response contains only `status` (`success` or `error`) and `duration_ms`.
 This performs actual inference with the fixed prompt `Reply OK.`, at most 16
 output tokens, a 10-second overall deadline and no retries. It can incur provider
 charges. A SageMaker test calls the selected approved bridge endpoint through
 CONNECT using its submitted scoped key, rather than testing a local substitute.
+
+`POST /model-catalog` requires the same administrator token and accepts
+`provider`, `endpoint_url`, write-only `api_key`, optional `query`, `limit` and
+`offset`. It fetches `<normalized-base>/v1/models` through locked CONNECT egress,
+without inference or stored credentials. Results are bounded to 1 MiB and 10,000
+valid entries, sorted/deduplicated and paginated; errors never reflect upstream
+bodies. The control plane uses this for new Custom/SageMaker drafts. New Azure
+UI searches instead read a bundled pinned LiteLLM reference catalog in the CP,
+without endpoint/key or Azure traffic. Saved endpoint catalogs remain authenticated.
 
 `GET /v1/models` and `POST /v1/chat/completions` use a separately scoped client
 Bearer key. Only its configured aliases are accessible. Completion accepts text
@@ -105,18 +118,21 @@ venv. No production credential or paid call is needed.
 ## Azure AI Foundry (OpenAI v1)
 
 The provider `azure_foundry` uses the actual Azure resource API key and deployed
-model name. Its API base is `https://<resource>.services.ai.azure.com/openai/v1`
-or `https://<resource>.openai.azure.com/openai/v1`; the control plane stores
-`/openai` without the final `/v1`. Add the normalized URL to the existing
-installation egress policy as `provider: azure_foundry`, with its approved IP
-ranges, on both the CP/egress service and this bridge. No wildcard destination
-or automatic Azure network discovery is enabled. Reload the task's services
-when installation policy changes; do not expose bridge administrator credentials.
+model name. Accepted API bases end `/openai/v1` on resource hosts under
+`services.ai.azure.com`, `openai.azure.com` or `cognitiveservices.azure.com`; the
+control plane stores `/openai` without the final `/v1`. With `public_https: true`
+in the shared policy and authenticated egress configured, public HTTPS/443 URLs
+need no per-endpoint approval or service restart. Private/internal access still
+needs an explicit `provider: azure_foundry` URL/CIDR rule. The proxy resolves once,
+refuses any mixed/protected/nonpublic answer for public fallback, and dials only
+validated numeric addresses. Keep CP, proxy and SDK policy aligned; never expose
+bridge administrator credentials.
 
 Test Connect invokes the pinned LiteLLM OpenAI adapter against that exact URL.
 Saved inference uses the same OpenAI v1 protocol and existing connection-owned
 model scope. This slice supports chat completions, including streaming; it does
 not implement legacy `/models` or dated deployment URLs, Entra identity, other
-modes, or sovereign-cloud endpoints. The bounded probe uses `max_tokens=16`;
-models that require another token parameter (such as o1) need separate support.
+modes, or sovereign-cloud endpoints. The bounded Azure probe uses `max_completion_tokens=16`; other providers retain
+their existing probe parameters. New Azure model suggestions are references, not
+proof of a deployed model or permission to invoke it.
 Live Azure qualification requires the operator's actual endpoint/key/model.

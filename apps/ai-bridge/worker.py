@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import sys
 from urllib.parse import urlsplit
 
@@ -19,6 +20,53 @@ ORIGINS = {
     "xai": "https://api.x.ai/v1",
     "deepseek": "https://api.deepseek.com",
 }
+MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,254}$")
+ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+async def catalog(data):
+    import httpx
+    from transport import LockedTransport
+
+    if not data.get("proxy"):
+        raise ValueError("mandatory proxy missing")
+    base = data["endpoint"]
+    u = urlsplit(base)
+    origin = (u.scheme, u.hostname, u.port or (443 if u.scheme == "https" else 80))
+    async with httpx.AsyncClient(
+        transport=LockedTransport([origin], data["proxy"]),
+        trust_env=False, follow_redirects=False, timeout=9,
+    ) as client:
+        async with client.stream(
+            "GET", base + "/v1/models",
+            headers={"Authorization": "Bearer " + data["api_key"]},
+        ) as response:
+            if response.status_code != 200:
+                raise ValueError("catalog failed")
+            raw = await response.aread()
+    upstream = json.loads(raw)
+    if not isinstance(upstream, dict) or not isinstance(upstream.get("data"), list):
+        raise ValueError("catalog invalid")
+    if len(upstream["data"]) > 10000:
+        raise ValueError("catalog bound")
+    names = set()
+    for item in upstream["data"]:
+        name = item.get("id") if isinstance(item, dict) else None
+        if not isinstance(name, str) or not MODEL_NAME.fullmatch(name):
+            continue
+        prefix = name.split("/", 1)[0]
+        if "/" in name and (prefix == "custom" or prefix.startswith("custom-")):
+            continue
+        if data["api_key"] in name:
+            continue
+        if data["query"].translate(ASCII_LOWER) in name.translate(ASCII_LOWER):
+            names.add(name)
+    names = sorted(names)
+    limit, offset = data["limit"], data["offset"]
+    return {
+        "items": [{"id": name, "name": name} for name in names[offset:offset + limit]],
+        "total": len(names), "limit": limit, "offset": offset,
+    }
 
 
 def resolve_binding(original):
@@ -64,6 +112,8 @@ def resolve_binding(original):
 
 
 async def invoke(data, emit=None):
+    if data.get("operation") == "catalog":
+        return await catalog(data)
     import httpx
     import litellm
     from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
@@ -80,12 +130,15 @@ async def invoke(data, emit=None):
     provider = data["provider"]
     params = {
         "messages": data["messages"],
-        "max_tokens": data["max_tokens"],
         "stream": data["stream"],
         "timeout": 9,
         "num_retries": 0,
         "caching": False,
     }
+    if "max_completion_tokens" in data:
+        params["max_completion_tokens"] = data["max_completion_tokens"]
+    else:
+        params["max_tokens"] = data["max_tokens"]
     if provider == "sagemaker":
         binding = resolve_binding(data["binding"])
         params.update(binding)
@@ -93,6 +146,8 @@ async def invoke(data, emit=None):
         suffix = "amazonaws.com.cn" if region.startswith("cn-") else "amazonaws.com"
         base = "https://runtime.sagemaker." + region + "." + suffix
     elif provider == "custom":
+        if not data.get("proxy"):
+            raise ValueError("mandatory proxy missing")
         base = data["endpoint"] + "/v1"
         params.update(model=data["model"], api_key=data["api_key"], api_base=base)
     else:
