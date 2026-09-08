@@ -1,0 +1,5 @@
+COMPOSE_PROJECT_NAME=tunnexai0907 verified container=/tunnexai0907-postgres-1 network=tunnexai0907_default
+{"time":"2026-09-09T01:40:50.223287+05:30","level":"INFO","msg":"migrate_version","version":150,"dirty":false,"has_version":true}
+
+{"time":"2026-09-09T01:40:51.533077+05:30","level":"INFO","msg":"migrate_up_complete","version":151,"dirty":false}
+{"time":"2026-09-09T01:40:51.672975+05:30","level":"INFO","msg":"migrate_version","version":151,"dirty":false,"has_version":true}

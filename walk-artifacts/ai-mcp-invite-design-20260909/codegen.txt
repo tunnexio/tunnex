@@ -1,0 +1,16 @@
+run=1 generator=api-oapi exit=0
+run=1 generator=cli-oapi exit=0
+run=1 generator=typescript exit=0
+run=1 generator=rbac exit=0
+run=1 generator=tokens-compile exit=0
+run=1 generator=tokens-emit exit=0
+run=1 generator=sqlc exit=0
+run=1 hashed_files=50 drift=[]
+run=2 generator=api-oapi exit=0
+run=2 generator=cli-oapi exit=0
+run=2 generator=typescript exit=0
+run=2 generator=rbac exit=0
+run=2 generator=tokens-compile exit=0
+run=2 generator=tokens-emit exit=0
+run=2 generator=sqlc exit=0
+run=2 hashed_files=50 drift=[]

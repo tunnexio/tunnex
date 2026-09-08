@@ -1,0 +1,7 @@
+COMPOSE_PROJECT_NAME=tunnexai0907 verified container=/tunnexai0907-postgres-1 network=tunnexai0907_default
+=== RUN   TestAIPoliciesPostgres
+=== RUN   TestAIPoliciesPostgres/soft_limit_is_observational_and_preserved
+--- PASS: TestAIPoliciesPostgres (1.76s)
+    --- PASS: TestAIPoliciesPostgres/soft_limit_is_observational_and_preserved (0.07s)
+PASS
+ok  	github.com/tunnexio/tunnex/apps/api/internal/aigateway	2.598s

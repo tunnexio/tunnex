@@ -1,0 +1,2 @@
+COMPOSE_PROJECT_NAME=tunnexai0907 verified container=/tunnexai0907-postgres-1 network=tunnexai0907_default
+ok  	github.com/tunnexio/tunnex/apps/api/internal/invites	0.871s

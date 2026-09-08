@@ -1,0 +1,93 @@
+COMPOSE_PROJECT_NAME=tunnexai0907 verified container=/tunnexai0907-postgres-1 network=tunnexai0907_default
+ok  	github.com/tunnexio/tunnex/apps/api/cmd	3.970s
+?   	github.com/tunnexio/tunnex/apps/api/cmd/ai-egress	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/backupctl	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/dev-sso-config	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/migrate	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/cmd/preflight	0.758s
+?   	github.com/tunnexio/tunnex/apps/api/cmd/rbac-policy-gen	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/releasesign	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/releaseverify	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/seed	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/seed-enterprise	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/seed-fixtures	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/server	[no test files]
+?   	github.com/tunnexio/tunnex/apps/api/cmd/walk-bootstrap	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/db	59.544s
+?   	github.com/tunnexio/tunnex/apps/api/db/sqlc	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/accesslog	10.201s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/agentaccess	1.988s
+?   	github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/agentca	2.242s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/agentruntime	9.407s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/agenttemplates	2.324s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/aiegress	1.430s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/aigateway	38.542s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/alerts	1.084s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/alerts/safedial	0.889s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/api	0.690s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/apierr	0.613s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/auditretention	1.200s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/auth	1.418s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/authctx	0.723s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/backup	0.558s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/bootstrap	0.673s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/cliauth	0.815s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/config	0.656s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/crypto	0.556s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/dbcheck	0.691s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/dbconn	0.679s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/devices	8.261s
+?   	github.com/tunnexio/tunnex/apps/api/internal/enterprise	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/fqdn	0.648s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver	3.161s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/fqdnresources	3.648s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/hostupgrade	0.622s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/http	16.512s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/idpsync	0.968s
+?   	github.com/tunnexio/tunnex/apps/api/internal/idpsyncspec	[no test files]
+--- FAIL: TestInviteAIRolesSurviveResendAndAcceptance (0.02s)
+    --- FAIL: TestInviteAIRolesSurviveResendAndAcceptance/ai-admin (0.01s)
+        invites_test.go:233: create: ERROR: new row for relation "invitations" violates check constraint "invitations_role_check" (SQLSTATE 23514)
+    --- FAIL: TestInviteAIRolesSurviveResendAndAcceptance/ai-view (0.01s)
+        invites_test.go:233: create: ERROR: new row for relation "invitations" violates check constraint "invitations_role_check" (SQLSTATE 23514)
+FAIL
+FAIL	github.com/tunnexio/tunnex/apps/api/internal/invites	0.886s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/ipalloc	0.617s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/k8s	2.246s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/k8s/scopeapproval	0.587s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/leader	23.990s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/licence	1.192s
+?   	github.com/tunnexio/tunnex/apps/api/internal/log	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/machineauth	0.952s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/mail	0.657s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/mcpoauth	1.741s
+?   	github.com/tunnexio/tunnex/apps/api/internal/mcptoolapproval	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy	0.615s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/metrics	0.751s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/mfa	1.120s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/nodepush	0.567s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/nodes	84.486s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/nulprobe	1.129s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/ovpn	2.528s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/ovpnca	5.693s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/password	0.718s
+?   	github.com/tunnexio/tunnex/apps/api/internal/pgerr	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/policy	2.498s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/policyspec	0.594s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/rbac	0.595s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/rekey	1.547s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/release	0.667s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/secrets	0.574s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/seeddata	0.576s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/session	0.691s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/sites	1.574s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/sso	1.815s
+ok  	github.com/tunnexio/tunnex/apps/api/internal/subnetguard	1.812s
+?   	github.com/tunnexio/tunnex/apps/api/internal/subnetsrc	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/tenancy	5.452s
+?   	github.com/tunnexio/tunnex/apps/api/internal/testbifrost	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/testpostgres	0.739s
+?   	github.com/tunnexio/tunnex/apps/api/internal/wgkey	[no test files]
+ok  	github.com/tunnexio/tunnex/apps/api/internal/workflowprovenance	1.674s
+FAIL

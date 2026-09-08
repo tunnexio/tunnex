@@ -1,0 +1,45 @@
+COMPOSE_PROJECT_NAME=tunnexai0907 verified container=/tunnexai0907-postgres-1 network=tunnexai0907_default
+=== RUN   TestBifrostBudgetQualification
+    budget_test.go:250: native per-key attribution: 10 concurrent, 5 streamed, 0 idle/error/uncosted; all persisted after graceful restart; 1-unit threshold allowed two overlapping 5-unit requests then denied new requests with 402; unknown prices execute uncharged
+--- PASS: TestBifrostBudgetQualification (21.86s)
+=== RUN   TestAIPoliciesPostgres
+=== RUN   TestAIPoliciesPostgres/soft_limit_is_observational_and_preserved
+--- PASS: TestAIPoliciesPostgres (1.56s)
+    --- PASS: TestAIPoliciesPostgres/soft_limit_is_observational_and_preserved (0.07s)
+=== RUN   TestAIUsageNativeLedgerAndCostAdmission
+    usage_integration_test.go:228: real pinned exact pricing plus CP-selected native metadata: one request/seven tokens/seven synthetic cost units; below-threshold admission passed and post-accounting threshold denied
+--- PASS: TestAIUsageNativeLedgerAndCostAdmission (7.62s)
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/known_below
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/known_zero-priced
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/unknown
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/missing_price_field
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/pricing_unavailable
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/native_stats_unavailable
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/uncosted_native_requests
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/invalid_counts
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/invalid_costs
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/binding_absent
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/binding_read_fails
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/at_threshold
+=== RUN   TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/above_threshold
+--- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/known_below (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/known_zero-priced (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/unknown (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/missing_price_field (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/pricing_unavailable (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/native_stats_unavailable (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/uncosted_native_requests (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/invalid_counts (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/invalid_costs (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/binding_absent (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/binding_read_fails (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/at_threshold (0.00s)
+    --- PASS: TestCostAdmissionRefusesUnknownOrIncompleteNativeUsage/above_threshold (0.00s)
+=== RUN   TestCostAdmissionNoLimitAndInvalidLimitsDoNotReadNative
+--- PASS: TestCostAdmissionNoLimitAndInvalidLimitsDoNotReadNative (0.00s)
+=== RUN   TestCostAdmissionSoftThresholdDoesNotReserveConcurrentSpend
+--- PASS: TestCostAdmissionSoftThresholdDoesNotReserveConcurrentSpend (0.00s)
+PASS
+ok  	github.com/tunnexio/tunnex/apps/api/internal/aigateway	31.933s
