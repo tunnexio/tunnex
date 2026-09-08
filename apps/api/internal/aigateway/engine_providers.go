@@ -24,12 +24,13 @@ type ProviderEngine interface {
 	ProviderModels(context.Context, string, string, int, int) (ProviderModelPage, error)
 }
 type ProviderKeySpec struct {
-	Provider string
-	BaseURL  string
-	ID       string
-	Revision int64
-	Models   []string
-	Enabled  bool
+	Provider   string
+	BaseURL    string
+	ID         string
+	Revision   int64
+	Models     []string
+	ModelModes map[string]ModelMode
+	Enabled    bool
 }
 type ProviderModel struct {
 	ID   string
@@ -58,7 +59,7 @@ func nativeProviderSpec(s ProviderKeySpec) (string, []string, error) {
 	if err != nil || id == uuid.Nil || s.ID != "tnx-managed-"+id.String() || s.Revision < 1 {
 		return "", nil, errEngineScope
 	}
-	if !nativeSupportedProvider(s.Provider) {
+	if !nativeSupportedProvider(s.Provider) || !validModelModes(s.Models, s.ModelModes) {
 		return "", nil, errEngineScope
 	}
 	models, ok := canonicalModels(s.Models, false)
@@ -109,7 +110,7 @@ func (e *Engine) EnsureProvider(ctx context.Context, provider, baseURL string) e
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	var read struct {
+	var read *struct {
 		Base    json.RawMessage `json:"custom_provider_config"`
 		Proxy   json.RawMessage `json:"proxy_config"`
 		Name    string          `json:"name"`
@@ -125,7 +126,24 @@ func (e *Engine) EnsureProvider(ctx context.Context, provider, baseURL string) e
 	if !valid {
 		return errEngineScope
 	}
-	status, err := e.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &read)
+	var raw map[string]json.RawMessage
+	readCurrent := func() (int, error) {
+		raw = nil
+		status, err := e.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &raw)
+		if err != nil {
+			return status, err
+		}
+		body, err := json.Marshal(raw)
+		if err != nil {
+			return status, errEngine
+		}
+		read = nil
+		if json.Unmarshal(body, &read) != nil || read == nil {
+			return status, errEngine
+		}
+		return status, nil
+	}
+	status, err := readCurrent()
 	if err != nil {
 		if status != 404 {
 			return errEngine
@@ -134,15 +152,43 @@ func (e *Engine) EnsureProvider(ctx context.Context, provider, baseURL string) e
 		if err != nil {
 			return errEngine
 		}
-		if _, err = e.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &read); err != nil {
+		if _, err = readCurrent(); err != nil {
 			return errEngine
 		}
 	}
 	if read.Name != provider || read.Network.Retries == nil || *read.Network.Retries != 0 {
 		return errEngineScope
 	}
-	if strings.HasPrefix(provider, "custom-") && (!e.customConfigExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy)) {
-		return errEngineScope
+	if strings.HasPrefix(provider, "custom-") && !e.customConfigExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy) {
+		legacyOps := map[string]bool{"list_models": true, "chat_completion": true, "chat_completion_stream": true}
+		if !e.customConfigOperationsExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy, legacyOps) {
+			return errEngineScope
+		}
+		// Only upgrade a verified old Tunnex chat configuration. Roundtrip existing
+		// settings; the private API retains keys independently of this PUT payload.
+		update := map[string]json.RawMessage{}
+		for _, field := range []string{"network_config", "concurrency_and_buffer_size", "proxy_config", "send_back_raw_request", "send_back_raw_response", "store_raw_request_response", "openai_config"} {
+			if value, exists := raw[field]; exists {
+				update[field] = value
+			}
+		}
+		if len(update["concurrency_and_buffer_size"]) == 0 {
+			return errEngineScope
+		}
+		custom, err := json.Marshal(payload["custom_provider_config"])
+		if err != nil {
+			return errEngineScope
+		}
+		update["custom_provider_config"] = custom
+		if _, err = e.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, update, nil); err != nil {
+			return errEngine
+		}
+		if _, err = readCurrent(); err != nil {
+			return errEngine
+		}
+		if read.Name != provider || read.Network.Retries == nil || *read.Network.Retries != 0 || !e.customConfigExact(baseURL, read.Network.URL, read.Network.Private, read.Network.Insecure, read.Network.Headers, read.Base, read.Proxy) {
+			return errEngineScope
+		}
 	}
 	return nil
 }

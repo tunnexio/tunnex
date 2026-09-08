@@ -157,6 +157,52 @@ func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 	if e = engine.PutProviderKey(ctx, spec, &secret); e != nil {
 		t.Fatal("custom key", e)
 	}
+	// Simulate a retained chat-only provider with a saved encrypted key, then
+	// reconcile operation support without resubmitting or replacing that key.
+	var retained map[string]json.RawMessage
+	if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &retained); e != nil {
+		t.Fatal(e)
+	}
+	delete(retained, "keys")
+	retained["custom_provider_config"] = json.RawMessage(`{"base_provider_type":"openai","is_key_less":false,"allowed_requests":{"list_models":true,"chat_completion":true,"chat_completion_stream":true}}`)
+	if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
+		t.Fatal("legacy fixture configuration", e)
+	}
+	if e = engine.EnsureProvider(ctx, provider, upstreamBase); e != nil {
+		t.Fatal("retained native mode reconciliation", e)
+	}
+	if e = engine.VerifyProviderKey(ctx, spec); e != nil {
+		t.Fatal("retained key changed during reconciliation", e)
+	}
+	// Unexpected native permissions must be refused without overwriting them.
+	if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &retained); e != nil {
+		t.Fatal(e)
+	}
+	delete(retained, "keys")
+	unsafeOperations := qualifiedCustomOperations()
+	unsafeOperations["file_upload"] = true
+	retained["custom_provider_config"], _ = json.Marshal(map[string]any{"base_provider_type": "openai", "is_key_less": false, "allowed_requests": unsafeOperations})
+	if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
+		t.Fatal(e)
+	}
+	if e = engine.EnsureProvider(ctx, provider, upstreamBase); e == nil {
+		t.Fatal("unexpected native operation silently replaced")
+	}
+	var untouched map[string]json.RawMessage
+	if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &untouched); e != nil {
+		t.Fatal(e)
+	}
+	var checked struct {
+		Allowed map[string]bool `json:"allowed_requests"`
+	}
+	if json.Unmarshal(untouched["custom_provider_config"], &checked) != nil || !checked.Allowed["file_upload"] {
+		t.Fatal("refusal overwrote unrelated native permission")
+	}
+	retained["custom_provider_config"], _ = json.Marshal(map[string]any{"base_provider_type": "openai", "is_key_less": false, "allowed_requests": qualifiedCustomOperations()})
+	if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
+		t.Fatal(e)
+	}
+
 	if ok, e := engine.TestProviderKey(ctx, spec); e != nil || !ok {
 		t.Fatal("custom auth", e)
 	}

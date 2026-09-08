@@ -2,11 +2,15 @@
 
 import asyncio
 import contextlib
+import base64
+import io
 import json
 import logging
+import math
 import os
 import re
 import sys
+import wave
 from urllib.parse import urlsplit
 
 ORIGINS = {
@@ -22,6 +26,77 @@ ORIGINS = {
 }
 MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,254}$")
 ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+MODES = frozenset({"chat", "completion", "embedding", "audio_speech", "audio_transcription", "image_generation", "video_generation", "rerank"})
+
+
+def tiny_audio():
+    """A local 100 ms PCM fixture; never fetch media for a connection test."""
+    audio = io.BytesIO()
+    with wave.open(audio, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(8000)
+        wav.writeframes(b"\x00\x00" * 800)
+    audio.seek(0)
+    audio.name = "connection-test.wav"
+    return audio
+
+
+def validate_preflight(mode, value):
+    """Require the selected protocol's response, not merely HTTP success."""
+    if not isinstance(value, dict) or value.get("error"):
+        raise ValueError("invalid response")
+    if mode in {"chat", "completion"}:
+        choices = value.get("choices")
+        if not isinstance(choices, list) or len(choices) != 1:
+            raise ValueError("invalid choices")
+        choice = choices[0]
+        if not isinstance(choice, dict) or choice.get("finish_reason") not in {"stop", "length"}:
+            raise ValueError("unfinished completion")
+        if mode == "chat" and not isinstance(choice.get("message"), dict):
+            raise ValueError("invalid message")
+        if mode == "completion" and not isinstance(choice.get("text"), str):
+            raise ValueError("invalid text")
+    elif mode == "embedding":
+        rows = value.get("data")
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise ValueError("invalid embeddings")
+        vector = rows[0].get("embedding")
+        if not isinstance(vector, list) or not vector or any(type(n) not in {int, float} or not math.isfinite(n) for n in vector):
+            raise ValueError("invalid vector")
+    elif mode == "audio_speech":
+        if type(value.get("audio_bytes")) is not int or not 44 < value["audio_bytes"] <= 1024 * 1024:
+            raise ValueError("invalid audio")
+    elif mode == "audio_transcription":
+        if not isinstance(value.get("text"), str):
+            raise ValueError("invalid transcription")
+    elif mode == "image_generation":
+        rows = value.get("data")
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise ValueError("invalid image response")
+        item = rows[0]
+        if isinstance(item.get("b64_json"), str) and item["b64_json"]:
+            if not base64.b64decode(item["b64_json"], validate=True):
+                raise ValueError("empty image")
+        elif isinstance(item.get("url"), str):
+            url = urlsplit(item["url"])
+            if url.scheme != "https" or not url.hostname or url.username or url.password:
+                raise ValueError("invalid image URL")
+        else:
+            raise ValueError("missing image")
+    elif mode == "video_generation":
+        if not isinstance(value.get("id"), str) or not value["id"] or value.get("status") not in {"queued", "in_progress", "completed"}:
+            raise ValueError("video not accepted")
+    elif mode == "rerank":
+        rows = value.get("results")
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise ValueError("invalid ranking")
+        row = rows[0]
+        score = row.get("relevance_score")
+        if type(row.get("index")) is not int or row["index"] != 0 or type(score) not in {int, float} or not math.isfinite(score):
+            raise ValueError("invalid score")
+    else:
+        raise ValueError("invalid mode")
 
 
 async def catalog(data):
@@ -128,17 +203,19 @@ async def invoke(data, emit=None):
     litellm.input_callback = []
     litellm.cache = None
     provider = data["provider"]
+    mode = data.get("mode", "chat")
+    if mode not in MODES or (provider == "sagemaker" and mode != "chat"):
+        raise ValueError("unsupported mode")
     params = {
-        "messages": data["messages"],
-        "stream": data["stream"],
         "timeout": 9,
         "num_retries": 0,
         "caching": False,
     }
-    if "max_completion_tokens" in data:
-        params["max_completion_tokens"] = data["max_completion_tokens"]
-    else:
-        params["max_tokens"] = data["max_tokens"]
+    if mode in {"chat", "completion"}:
+        if "max_completion_tokens" in data:
+            params["max_completion_tokens"] = data["max_completion_tokens"]
+        else:
+            params["max_tokens"] = data["max_tokens"]
     if provider == "sagemaker":
         binding = resolve_binding(data["binding"])
         params.update(binding)
@@ -170,8 +247,42 @@ async def invoke(data, emit=None):
         for field in ("temperature", "stream_options"):
             if field in data:
                 params[field] = data[field]
-        response = await litellm.acompletion(**params)
-        if data["stream"]:
+        audio = None
+        try:
+            if mode == "chat":
+                response = await litellm.acompletion(messages=data["messages"], stream=data["stream"], **params)
+            elif mode == "completion":
+                response = await litellm.atext_completion(prompt="Reply OK.", **params)
+            elif mode == "embedding":
+                response = await litellm.aembedding(input=["test"], **params)
+            elif mode == "audio_speech":
+                response = await litellm.aspeech(input="test", voice="alloy", response_format="wav", **params)
+                raw = await response.aread()
+                if not 44 < len(raw) <= 1024 * 1024 or raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
+                    raise ValueError("invalid audio response")
+                with wave.open(io.BytesIO(raw), "rb") as wav:
+                    if wav.getnframes() == 0 or not wav.readframes(1):
+                        raise ValueError("empty audio")
+                return {"audio_bytes": len(raw)}
+            elif mode == "audio_transcription":
+                audio = tiny_audio()
+                response = await litellm.atranscription(file=audio, **params)
+            elif mode == "image_generation":
+                response = await litellm.aimage_generation(prompt="A plain blue square.", n=1, **params)
+            elif mode == "video_generation":
+                params["client"] = handler
+                response = await litellm.avideo_generation(prompt="A still blue square.", seconds="4", **params)
+            else:
+                params["client"] = handler
+                if provider == "custom":
+                    # Reuse LiteLLM's proxy-compatible rerank adapter. OpenAI
+                    # itself has no rerank adapter in the pinned SDK.
+                    params.update(custom_llm_provider="litellm_proxy", model=data["model"].removeprefix("openai/"), api_base=data["endpoint"])
+                response = await litellm.arerank(query="test", documents=["test"], top_n=1, **params)
+        finally:
+            if audio is not None:
+                audio.close()
+        if data.get("stream"):
             chunks = []
             size = 0
             async for chunk in response:
@@ -188,6 +299,8 @@ async def invoke(data, emit=None):
                     chunks.append(value)
             return {"done": True} if emit else {"chunks": chunks}
         value = response.model_dump(exclude_none=True)
+        if "mode" in data:
+            validate_preflight(mode, value)
         if data.get("alias"):
             value["model"] = data["alias"]
         return value

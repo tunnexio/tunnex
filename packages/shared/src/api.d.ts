@@ -115,6 +115,7 @@ export interface paths {
     "/api/v1/organizations/{orgId}/ai-gateway/models": {
         parameters: {
             query?: {
+                mode?: components["schemas"]["AIModelMode"];
                 /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
@@ -313,6 +314,184 @@ export interface paths {
         put?: never;
         /** Execute an allowed model using a short-lived AI credential */
         post: operations["aiChatCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized completions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiCompletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/embeddings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized embeddings model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiEmbedding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/audio/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/speech model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiSpeech"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/audio/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized audio/transcriptions model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiTranscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/images/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized images/generations model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiImageGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized videos model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiVideoGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/rerank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute an authorized rerank model
+         * @description Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+         */
+        post: operations["aiRerank"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/videos/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiVideoStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/videos/{jobId}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        /** Read an owned video job with current model authorization */
+        get: operations["aiVideoContent"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4647,6 +4826,105 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AICompletionRequest: {
+            model: string;
+            prompt: string;
+            /** @default 1024 */
+            max_tokens: number;
+            temperature?: number;
+            /** @default false */
+            stream: boolean;
+        };
+        AIEmbeddingRequest: {
+            model: string;
+            input: string | string[];
+            /** @enum {string} */
+            encoding_format?: "float" | "base64";
+            dimensions?: number;
+        };
+        AISpeechRequest: {
+            model: string;
+            input: string;
+            voice: string;
+            /** @enum {string} */
+            response_format?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
+            speed?: number;
+        };
+        AITranscriptionRequest: {
+            model: string;
+            /**
+             * Format: binary
+             * @description One audio file at most 8 MiB.
+             */
+            file: string;
+            language?: string;
+            prompt?: string;
+            /**
+             * @default json
+             * @enum {string}
+             */
+            response_format: "json";
+            temperature?: number;
+        };
+        AIImageRequest: {
+            model: string;
+            prompt: string;
+            /**
+             * @default 1
+             * @enum {integer}
+             */
+            n: 1;
+            /** @enum {string} */
+            size?: "256x256" | "512x512" | "1024x1024" | "1024x1536" | "1536x1024" | "1024x1792" | "1792x1024" | "auto";
+            /** @enum {string} */
+            quality?: "standard" | "hd" | "low" | "medium" | "high" | "auto";
+            /** @enum {string} */
+            response_format?: "url" | "b64_json";
+        };
+        AIVideoRequest: {
+            model: string;
+            prompt: string;
+            /**
+             * @default 4
+             * @enum {string}
+             */
+            seconds: "4" | "8" | "12";
+            /** @enum {string} */
+            size?: "720x1280" | "1280x720";
+        };
+        AIRerankRequest: {
+            model: string;
+            query: string;
+            documents: string[];
+            top_n?: number;
+            /** @default false */
+            return_documents: boolean;
+        };
+        AIVideoJob: {
+            /** @enum {string} */
+            object: "video";
+            model: string;
+            /** Format: int64 */
+            created_at: number;
+            /** Format: int64 */
+            expires_at: number;
+            /**
+             * Format: uuid
+             * @description Opaque tenant and agent owned handle.
+             */
+            id: string;
+            /** @enum {string} */
+            status: "submitting" | "queued" | "in_progress" | "completed" | "failed" | "uncertain";
+        };
+        /**
+         * @default chat
+         * @enum {string}
+         */
+        AIModelMode: "chat" | "completion" | "embedding" | "audio_speech" | "audio_transcription" | "image_generation" | "video_generation" | "rerank";
+        /** @description Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change. */
+        AIModelModes: {
+            [key: string]: components["schemas"]["AIModelMode"];
+        };
         /** @description Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update. */
         AIProviderInputModels: string[];
         AICustomEndpoint: {
@@ -4655,6 +4933,7 @@ export interface components {
             url: string;
         };
         AIProviderConnection: {
+            model_modes?: components["schemas"]["AIModelModes"];
             /** Format: uuid */
             id: string;
             /** @description Non-secret owned policy reference. */
@@ -4688,6 +4967,8 @@ export interface components {
             model_placeholder: string;
         };
         AIProviderList: {
+            /** @description Qualified gateway routes; absent on older servers means chat only. */
+            supported_modes?: components["schemas"]["AIModelMode"][];
             management_available: boolean;
             /** @description Private inference test adapter is configured. */
             test_available?: boolean;
@@ -4705,6 +4986,7 @@ export interface components {
             legacy_key_ids: string[];
         };
         AIProviderCreate: {
+            model_modes?: components["schemas"]["AIModelModes"];
             /**
              * Format: uri
              * @description Immutable installation-approved custom
@@ -4719,6 +5001,7 @@ export interface components {
             api_key: string;
         };
         AIProviderUpdate: {
+            model_modes?: components["schemas"]["AIModelModes"];
             /**
              * Format: uri
              * @description Immutable installation-approved custom
@@ -4735,6 +5018,7 @@ export interface components {
             expected_revision: number;
         };
         AIProviderCatalogRequest: {
+            mode?: components["schemas"]["AIModelMode"];
             /** @enum {string} */
             provider: "custom" | "sagemaker" | "azure_foundry";
             api_key: string;
@@ -4751,6 +5035,7 @@ export interface components {
             offset: number;
         };
         AIProviderProbe: {
+            mode?: components["schemas"]["AIModelMode"];
             /** @enum {string} */
             provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             model: string;
@@ -4778,6 +5063,7 @@ export interface components {
             offset: number;
         };
         AIProviderModel: {
+            mode?: components["schemas"]["AIModelMode"];
             id: string;
             name: string;
         };
@@ -8307,6 +8593,7 @@ export interface operations {
     listAIProviderModels: {
         parameters: {
             query?: {
+                mode?: components["schemas"]["AIModelMode"];
                 /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
@@ -8585,6 +8872,246 @@ export interface operations {
                         [key: string]: unknown;
                     };
                     "text/event-stream": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AICompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiEmbedding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIEmbeddingRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiSpeech: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISpeechRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/mpeg": string;
+                    "audio/ogg": string;
+                    "audio/aac": string;
+                    "audio/flac": string;
+                    "audio/wav": string;
+                    "audio/pcm": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiTranscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["AITranscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiImageGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiVideoGeneration: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIVideoRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded output; video returns job acceptance, not completion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiRerank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIRerankRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded model output; no automatic retry or fallback. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiVideoStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIVideoJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    aiVideoContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned job result; expired, revoked or foreign jobs cannot be read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/webm": string;
+                    "video/mp4": string;
                 };
             };
             default: components["responses"]["Error"];

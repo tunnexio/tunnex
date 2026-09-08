@@ -43,7 +43,7 @@ func TestAIProviderDraftCatalog(t *testing.T) {
 			t.Error("request boundary")
 		}
 		var body map[string]any
-		if json.NewDecoder(r.Body).Decode(&body) != nil || body["endpoint_url"] != "https://resource.cognitiveservices.azure.com/openai" || body["api_key"] != "fixture-private-key" || body["provider"] != "azure_foundry" || len(body) != 6 {
+		if json.NewDecoder(r.Body).Decode(&body) != nil || body["endpoint_url"] != "https://resource.cognitiveservices.azure.com/openai" || body["api_key"] != "fixture-private-key" || body["provider"] != "azure_foundry" || len(body) != 7 || body["mode"] != "chat" {
 			t.Error("draft catalog payload")
 		}
 		w.Write([]byte(`{"items":[{"id":"gpt-5","name":"gpt-5"}],"total":1,"limit":50,"offset":0,"irrelevant":"not reflected"}`))
@@ -63,6 +63,7 @@ func TestAIProviderDraftCatalog(t *testing.T) {
 		t.Fatal("shared rate bound", err)
 	}
 	for _, change := range []func(*ProviderCatalogInput){
+		func(i *ProviderCatalogInput) { i.Mode = ModelMode("unknown") },
 		func(i *ProviderCatalogInput) { i.Provider = "openai" }, func(i *ProviderCatalogInput) { i.Secret = "" },
 		func(i *ProviderCatalogInput) { i.EndpointURL = "https://127.0.0.1/openai" }, func(i *ProviderCatalogInput) { i.EndpointURL = "https://resource.openai.azure.com/models" },
 		func(i *ProviderCatalogInput) { i.Query = strings.Repeat("x", 101) }, func(i *ProviderCatalogInput) { i.Limit = 101 }, func(i *ProviderCatalogInput) { i.Offset = -1 },

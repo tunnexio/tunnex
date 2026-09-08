@@ -495,6 +495,7 @@ func main() {
 			logger.Error("ai_gateway_invalid_configuration")
 			os.Exit(1)
 		}
+		aiAdapter.ConfigureVideoStore(pool)
 		aiCredentials.SetAvailable(true)
 	}
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{

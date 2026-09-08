@@ -119,6 +119,9 @@ func (p *Policies) Usage(ctx context.Context, org uuid.UUID, teamID, deviceID *u
 // The resolver owns tx and its canonical device lock; this helper never borrows
 // another connection, commits that transaction, or changes an accounting row.
 func (p *Policies) enforceCost(ctx context.Context, tx pgx.Tx, org, team uuid.UUID, model string, limit *float64) error {
+	return p.enforceCostMode(ctx, tx, org, team, model, ModeChat, limit)
+}
+func (p *Policies) enforceCostMode(ctx context.Context, tx pgx.Tx, org, team uuid.UUID, model string, mode ModelMode, limit *float64) error {
 	if limit == nil {
 		return nil
 	}
@@ -132,11 +135,16 @@ func (p *Policies) enforceCost(ctx context.Context, tx pgx.Tx, org, team uuid.UU
 	if !valid {
 		return apierr.Forbidden("ai_price_unavailable", "exact model pricing is required for this policy")
 	}
+	if mode != ModeChat && mode != ModeCompletion && mode != ModeEmbedding {
+		return apierr.Forbidden("ai_price_unavailable", "mode-specific pricing is required for this policy")
+	}
 	price, err := p.engine.Price(ctx, provider, nativeModel)
 	if err != nil {
 		return aiUnavailable()
 	}
-	if !price.Known || price.InputCostPerToken == nil || price.OutputCostPerToken == nil || !validEngineCost(*price.InputCostPerToken) || !validEngineCost(*price.OutputCostPerToken) {
+	inputReady := price.InputCostPerToken != nil && validEngineCost(*price.InputCostPerToken)
+	outputReady := price.OutputCostPerToken != nil && validEngineCost(*price.OutputCostPerToken)
+	if !inputReady || (mode != ModeEmbedding && (!price.Known || !outputReady)) {
 		return apierr.Forbidden("ai_price_unavailable", "exact model pricing is required for this policy")
 	}
 	ids, err := bindingUsageIDs(ctx, tx, org, &team, nil)

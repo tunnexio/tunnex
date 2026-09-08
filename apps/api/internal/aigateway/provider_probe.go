@@ -18,6 +18,7 @@ import (
 )
 
 type ProviderProbeInput struct {
+	Mode                    ModelMode
 	Provider, Model, Secret string
 	EndpointURL             *string
 }
@@ -92,7 +93,11 @@ func (s *Policies) ProbeProvider(ctx context.Context, org, actor uuid.UUID, in P
 	if org == uuid.Nil || actor == uuid.Nil {
 		return ProviderProbeResult{}, policyDenied()
 	}
-	_, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Probe", Models: []string{in.Model}, Secret: &in.Secret, EndpointURL: in.EndpointURL}, true)
+	in.Mode = DefaultModelMode(in.Mode)
+	if !ValidModelMode(in.Mode) {
+		return ProviderProbeResult{}, providerInvalid()
+	}
+	_, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Probe", Models: []string{in.Model}, ModelModes: map[string]ModelMode{in.Model: in.Mode}, Secret: &in.Secret, EndpointURL: in.EndpointURL}, true)
 	if err != nil {
 		return ProviderProbeResult{}, providerInvalid()
 	}
@@ -111,11 +116,12 @@ func (s *Policies) ProbeProvider(ctx context.Context, org, actor uuid.UUID, in P
 	}
 	defer b.release(org)
 	payload := struct {
-		Provider    string  `json:"provider"`
-		Model       string  `json:"model"`
-		Secret      string  `json:"api_key"`
-		EndpointURL *string `json:"endpoint_url,omitempty"`
-	}{in.Provider, in.Model, in.Secret, in.EndpointURL}
+		Mode        ModelMode `json:"mode"`
+		Provider    string    `json:"provider"`
+		Model       string    `json:"model"`
+		Secret      string    `json:"api_key"`
+		EndpointURL *string   `json:"endpoint_url,omitempty"`
+	}{in.Mode, in.Provider, in.Model, in.Secret, in.EndpointURL}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return ProviderProbeResult{}, aiUnavailable()

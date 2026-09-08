@@ -15,12 +15,13 @@ import (
 )
 
 type ProviderCatalogInput struct {
-	Provider    string `json:"provider"`
-	Secret      string `json:"api_key"`
-	EndpointURL string `json:"endpoint_url"`
-	Query       string `json:"query"`
-	Limit       int    `json:"limit"`
-	Offset      int    `json:"offset"`
+	Mode        ModelMode `json:"mode,omitempty"`
+	Provider    string    `json:"provider"`
+	Secret      string    `json:"api_key"`
+	EndpointURL string    `json:"endpoint_url"`
+	Query       string    `json:"query"`
+	Limit       int       `json:"limit"`
+	Offset      int       `json:"offset"`
 }
 
 // SearchProviderCatalog uses the draft key only for this bounded bridge request.
@@ -32,7 +33,8 @@ func (s *Policies) SearchProviderCatalog(ctx context.Context, org, actor uuid.UU
 	if org == uuid.Nil || actor == uuid.Nil {
 		return ProviderModelPage{}, policyDenied()
 	}
-	if !endpointProvider(in.Provider) || utf8.RuneCountInString(in.Query) > 100 || in.Limit < 1 || in.Limit > 100 || in.Offset < 0 || in.Offset > 10000 {
+	in.Mode = DefaultModelMode(in.Mode)
+	if !ValidModelMode(in.Mode) || !endpointProvider(in.Provider) || utf8.RuneCountInString(in.Query) > 100 || in.Limit < 1 || in.Limit > 100 || in.Offset < 0 || in.Offset > 10000 {
 		return ProviderModelPage{}, providerInvalid()
 	}
 	validated, err := validateProviderInput(ProviderInput{Provider: in.Provider, Name: "Catalog", Models: []string{"catalog"}, Secret: &in.Secret, EndpointURL: &in.EndpointURL}, true)

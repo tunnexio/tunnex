@@ -57,18 +57,37 @@ chat endpoint; arbitrary model-serving request formats are not translated here.
 ## Protocol and bounds
 
 `POST /test-connection` requires the administrator Bearer token and accepts
-`provider`, `model`, `api_key`, and optional `endpoint_url`. Native providers use
+`provider`, `model`, `api_key`, optional `endpoint_url`, and optional `mode`
+(default `chat`). Native providers use
 canonical provider-prefixed models; Custom, Azure and SageMaker use the raw
 model/deployment name or configured bridge alias.
 The response contains only `status` (`success` or `error`) and `duration_ms`.
-This performs actual inference with the fixed prompt `Reply OK.`, at most 16
-output tokens, a 10-second overall deadline and no retries. It can incur provider
+The eight modes dispatch actual LiteLLM SDK methods: `chat` (`acompletion`),
+`completion` (`atext_completion`), `embedding` (`aembedding`), `audio_speech`
+(`aspeech`), `audio_transcription` (`atranscription`), `image_generation`
+(`aimage_generation`), `video_generation` (`avideo_generation`), and `rerank`
+(`arerank`). Unsupported provider/model/mode combinations return sanitized errors;
+the selector is not a provider capability guarantee. Custom rerank reuses the
+SDK's proxy-compatible rerank adapter at the approved `/v1/rerank` endpoint.
+
+Tests use fixed short inputs: chat/completion at most 16 output tokens, one text
+embedding, one ranked document, speech with the `alloy` voice and WAV output,
+a locally generated 100 ms silent WAV transcription fixture, one image, or one
+four-second video submission. Non-token modes receive no token-limit parameters.
+Each response must match its mode, including finite embedding/rank numbers and
+nonempty valid WAV speech. Image URLs are never fetched. Video success means
+**job accepted**, not generation completed; IDs/content are discarded and no
+polling or further requests occur. These tests do not add saved video-job routing.
+All probes retain a 10-second overall deadline and no retries. They can incur provider
 charges. A SageMaker test calls the selected approved bridge endpoint through
 CONNECT using its submitted scoped key, rather than testing a local substitute.
+The installed SageMaker bridge remains chat-only and rejects other probe modes.
 
 `POST /model-catalog` requires the same administrator token and accepts
 `provider`, `endpoint_url`, write-only `api_key`, optional `query`, `limit` and
-`offset`. It fetches `<normalized-base>/v1/models` through locked CONNECT egress,
+`offset` and `mode`. Mode is validated, but the upstream names-only catalog does
+not certify a model's supported operations. It fetches
+`<normalized-base>/v1/models` through locked CONNECT egress,
 without inference or stored credentials. Results are bounded to 1 MiB and 10,000
 valid entries, sorted/deduplicated and paginated; errors never reflect upstream
 bodies. The control plane uses this for new Custom/SageMaker drafts. New Azure

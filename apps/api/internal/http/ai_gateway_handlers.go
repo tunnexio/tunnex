@@ -76,7 +76,8 @@ func (s apiServer) AiAnthropicMessage(context.Context, api.AiAnthropicMessageReq
 func aiInferenceMiddleware(adapter *aigateway.Adapter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/ai/v1/chat/completions" && r.URL.Path != "/ai/anthropic/v1/messages" {
+			_, inference := aigateway.InferencePathMode(strings.TrimPrefix(r.URL.Path, "/ai"))
+			if !strings.HasPrefix(r.URL.Path, "/ai/") || !inference && !strings.HasPrefix(r.URL.Path, "/ai/v1/videos/") {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -94,4 +95,40 @@ func aiInferenceMiddleware(adapter *aigateway.Adapter) func(http.Handler) http.H
 			adapter.ServeHTTP(w, clone)
 		})
 	}
+}
+
+func (s apiServer) AiCompletion(context.Context, api.AiCompletionRequestObject) (api.AiCompletionResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiEmbedding(context.Context, api.AiEmbeddingRequestObject) (api.AiEmbeddingResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiSpeech(context.Context, api.AiSpeechRequestObject) (api.AiSpeechResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiTranscription(context.Context, api.AiTranscriptionRequestObject) (api.AiTranscriptionResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiImageGeneration(context.Context, api.AiImageGenerationRequestObject) (api.AiImageGenerationResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiVideoGeneration(context.Context, api.AiVideoGenerationRequestObject) (api.AiVideoGenerationResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiRerank(context.Context, api.AiRerankRequestObject) (api.AiRerankResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiVideoStatus(context.Context, api.AiVideoStatusRequestObject) (api.AiVideoStatusResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
+}
+
+func (s apiServer) AiVideoContent(context.Context, api.AiVideoContentRequestObject) (api.AiVideoContentResponseObject, error) {
+	return nil, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable")
 }

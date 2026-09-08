@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import web
+from worker import MODES, validate_preflight
 
 STANDARD = {
     "openai",
@@ -346,22 +347,30 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                 "model",
                 "api_key",
                 "endpoint_url",
+                "mode",
             }:
                 raise ValueError()
             provider = data["provider"]
             model = data["model"]
             key = data["api_key"]
+            mode = data.get("mode", "chat")
             if (
                 not secret(key)
+                or not isinstance(mode, str)
+                or mode not in MODES
+                or (provider == "sagemaker" and mode != "chat")
                 or not isinstance(model, str)
                 or not NAME.fullmatch(model)
             ):
                 raise ValueError()
             payload = {
+                "mode": mode,
                 "messages": [{"role": "user", "content": "Reply OK."}],
                 "max_tokens": 16,
                 "stream": False,
             }
+            if mode not in {"chat", "completion"}:
+                payload.pop("max_tokens")
             if provider in STANDARD:
                 if data.get("endpoint_url"):
                     raise ValueError()
@@ -378,7 +387,7 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                     endpoint=endpoint,
                     proxy=settings.proxy,
                 )
-                if provider == "azure_foundry":
+                if provider == "azure_foundry" and mode == "chat":
                     payload["max_completion_tokens"] = payload.pop("max_tokens")
             else:
                 raise ValueError()
@@ -386,13 +395,7 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                 return web.json_response({"error": "busy"}, status=429)
             async with slots:
                 result = await call(payload)
-            choices = result.get("choices", [])
-            if (
-                len(choices) != 1
-                or not choices[0].get("message")
-                or choices[0].get("finish_reason") not in {"stop", "length"}
-            ):
-                raise ValueError()
+            validate_preflight(mode, result)
             status = "success"
         except Exception:
             status = "error"
@@ -406,16 +409,18 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
         try:
             data = await request.json()
             if not isinstance(data, dict) or set(data) - {
-                "provider", "api_key", "endpoint_url", "query", "limit", "offset",
+                "provider", "api_key", "endpoint_url", "query", "limit", "offset", "mode",
             }:
                 raise ValueError()
             if not secret(data["api_key"]):
                 raise ValueError()
             endpoint = settings.endpoint(data["provider"], data["endpoint_url"])
             query = data.get("query", "")
+            mode = data.get("mode", "chat")
             limit, offset = data.get("limit", 50), data.get("offset", 0)
             if (
                 not isinstance(query, str) or len(query) > 100
+                or not isinstance(mode, str) or mode not in MODES
                 or type(limit) is not int or not 1 <= limit <= 100
                 or type(offset) is not int or not 0 <= offset <= 10000
             ):

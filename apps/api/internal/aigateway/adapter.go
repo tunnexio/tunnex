@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,6 +26,7 @@ const MaxBodyBytes = 256 << 10
 // No caller-supplied headers establish identity or upstream authorization.
 type Grant struct {
 	Tenant, Agent, VirtualKey string
+	Mode                      ModelMode
 	Expires                   time.Time
 }
 
@@ -41,6 +43,7 @@ type Adapter struct {
 	admission      chan struct{}
 	mu             sync.Mutex
 	active         map[string]int
+	video          http.Handler
 }
 
 func NewAdapter(upstream string, authorize Authorize) (*Adapter, error) {
@@ -66,6 +69,14 @@ func NewAdapter(upstream string, authorize Authorize) (*Adapter, error) {
 }
 
 func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/videos" || strings.HasPrefix(r.URL.Path, "/v1/videos/") {
+		if a.video != nil {
+			a.video.ServeHTTP(w, r)
+		} else {
+			writeAdapterError(w, r, 503)
+		}
+		return
+	}
 	select {
 	case a.admission <- struct{}{}:
 		defer func() { <-a.admission }()
@@ -84,7 +95,8 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithDeadline(r.Context(), deadline)
 	defer cancel()
 	w.Header().Set("Cache-Control", "no-store")
-	if r.Method != http.MethodPost || (r.URL.Path != "/v1/chat/completions" && r.URL.Path != "/anthropic/v1/messages") {
+	mode, routeOK := InferencePathMode(r.URL.Path)
+	if r.Method != http.MethodPost || !routeOK || mode == ModeVideoGeneration {
 		writeAdapterError(w, r, http.StatusNotFound)
 		return
 	}
@@ -97,7 +109,37 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAdapterError(w, r, 401)
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
+	bodyLimit := int64(MaxBodyBytes)
+	if mode == ModeAudioTranscription {
+		bodyLimit = MaxAudioBytes + (64 << 10)
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
+	var body []byte
+	var model string
+	var err error
+	contentType := "application/json"
+	if mode == ModeAudioTranscription {
+		body, model, contentType, err = normalizedTranscription(r)
+	} else {
+		body, err = io.ReadAll(r.Body)
+		if err == nil {
+			if mode == ModeChat {
+				model, err = requestModelForPath(body, r.URL.Path)
+				if err == nil {
+					var payload map[string]json.RawMessage
+					err = json.Unmarshal(body, &payload)
+					if err == nil {
+						if _, ok := payload["max_tokens"]; !ok {
+							payload["max_tokens"] = json.RawMessage("1024")
+						}
+						body, err = json.Marshal(payload)
+					}
+				}
+			} else {
+				body, model, err = normalizedModeJSON(body, mode)
+			}
+		}
+	}
 	if err != nil {
 		var limit *http.MaxBytesError
 		if errors.As(err, &limit) {
@@ -105,26 +147,6 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeAdapterError(w, r, 400)
 		}
-		return
-	}
-	model, err := requestModelForPath(body, r.URL.Path)
-	if err != nil {
-		writeAdapterError(w, r, 400)
-		return
-	}
-	// Never leave the provider's output bound implicit. The validated payload
-	// retains only the narrow qualified API fields.
-	var payload map[string]json.RawMessage
-	if json.Unmarshal(body, &payload) != nil {
-		writeAdapterError(w, r, 400)
-		return
-	}
-	if _, ok := payload["max_tokens"]; !ok {
-		payload["max_tokens"] = json.RawMessage("1024")
-	}
-	body, err = json.Marshal(payload)
-	if err != nil {
-		writeAdapterError(w, r, 400)
 		return
 	}
 	grant, err := a.authorize(ctx, strings.TrimPrefix(auth[0], "Bearer "), model)
@@ -144,7 +166,7 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAdapterError(w, r, status)
 		return
 	}
-	if grant.Tenant == "" || grant.Agent == "" || !validKey(grant.VirtualKey) || !time.Now().Before(grant.Expires) {
+	if DefaultModelMode(grant.Mode) != mode || grant.Tenant == "" || grant.Agent == "" || !validKey(grant.VirtualKey) || !time.Now().Before(grant.Expires) {
 		writeAdapterError(w, r, 403)
 		return
 	}
@@ -177,8 +199,11 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAdapterError(w, r, 502)
 		return
 	}
-	up.Header.Set("Content-Type", "application/json")
+	up.Header.Set("Content-Type", contentType)
 	up.Header.Set("Accept", "application/json, text/event-stream")
+	if mode == ModeAudioSpeech {
+		up.Header.Set("Accept", "audio/*, application/octet-stream")
+	}
 	up.Header.Set("X-Bf-Vk", grant.VirtualKey)
 	if r.URL.Path == "/anthropic/v1/messages" {
 		up.Header.Set("Anthropic-Version", "2023-06-01")
@@ -193,17 +218,48 @@ func (a *Adapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAdapterError(w, r, 502)
 		return
 	}
-	ct := res.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") && !strings.HasPrefix(ct, "text/event-stream") {
+	ct, _, parseErr := mime.ParseMediaType(res.Header.Get("Content-Type"))
+	if parseErr != nil || !modeResponseAllowed(mode, ct) {
 		writeAdapterError(w, r, 502)
+		return
+	}
+	// Non-streaming responses are bounded before headers are committed. No
+	// provider headers, cookies, redirects or credentials reach the client.
+	responseLimit := int64(MaxMediaResponseBytes)
+	if mode != ModeAudioSpeech && mode != ModeImageGeneration {
+		responseLimit = 2 << 20
+	}
+	if ct != "text/event-stream" {
+		data, err := io.ReadAll(io.LimitReader(res.Body, responseLimit+1))
+		if err != nil || int64(len(data)) > responseLimit || len(data) == 0 || ct == "application/json" && !json.Valid(data) {
+			writeAdapterError(w, r, 502)
+			return
+		}
+		if mode == ModeAudioSpeech {
+			// Pinned native speech handler labels all binary formats audio/mpeg.
+			// Use the validated format passed to the provider for response metadata.
+			var speech struct {
+				Format string `json:"response_format"`
+			}
+			_ = json.Unmarshal(body, &speech)
+			ct = map[string]string{"": "audio/mpeg", "mp3": "audio/mpeg", "opus": "audio/ogg", "aac": "audio/aac", "flac": "audio/flac", "wav": "audio/wav", "pcm": "audio/pcm"}[speech.Format]
+		}
+		w.Header().Set("Content-Type", ct)
+		w.WriteHeader(res.StatusCode)
+		_, _ = w.Write(data)
 		return
 	}
 	w.Header().Set("Content-Type", ct)
 	w.WriteHeader(res.StatusCode)
 	buf := make([]byte, 8<<10)
+	var delivered int64
 	for {
 		n, readErr := res.Body.Read(buf)
 		if n > 0 {
+			delivered += int64(n)
+			if delivered > responseLimit {
+				panic(http.ErrAbortHandler)
+			}
 			if _, err := w.Write(buf[:n]); err != nil {
 				return
 			}
@@ -228,6 +284,8 @@ func writeAdapterError(w http.ResponseWriter, r *http.Request, status int) {
 		code, message = "unauthenticated", "authentication required"
 	case http.StatusForbidden:
 		code, message = "ai_policy_denied", "AI access is not available under the current policy"
+	case http.StatusConflict:
+		code, message = "ai_request_conflict", "AI request conflicts with existing work"
 	case http.StatusNotFound:
 		code, message = "not_found", "inference route not found"
 	case http.StatusRequestEntityTooLarge:

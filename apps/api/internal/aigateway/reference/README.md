@@ -41,3 +41,11 @@ behavior are imported. Runtime access requires no external fetch or credential.
 To refresh, pin a new GitHub commit first, download that commit's root catalog
 and license, repeat this field extraction, update these hashes and the snapshot
 provenance test, and review the filtered model/mode changes before committing.
+
+The companion `litellm_provider_models.json` uses the same full-source commit and
+SHA-256. It retains 668 exact model/mode rows for the nine supported standard
+provider forms and the eight requested modes. Bare names are canonicalized to
+`provider/name`; provider-prefixed names retain their upstream suffix; unmatched
+pricing-path aliases are excluded. It is used for nonchat catalog suggestions,
+never for usage accounting or proof of model entitlement. The Azure snapshot is
+also filtered by the selected mode before search and pagination.

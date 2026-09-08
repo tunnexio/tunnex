@@ -470,11 +470,27 @@ type AiProviderConnection struct {
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 	EndpointUrl     *string            `json:"endpoint_url"`
+	// Exact model protocol. Omitted entries retain backwards-compatible chat semantics; no secrets.
+	ModelModes []byte `json:"model_modes"`
 }
 
 type AiProviderLegacyKey struct {
 	OrgID uuid.UUID `json:"org_id"`
 	KeyID string    `json:"key_id"`
+}
+
+// Opaque tenant-owned video handles; no prompts, credentials, generated content or provider error bodies. Uncertain submissions are never retried automatically.
+type AiVideoJob struct {
+	ID             uuid.UUID `json:"id"`
+	OrgID          uuid.UUID `json:"org_id"`
+	DeviceID       uuid.UUID `json:"device_id"`
+	Model          string    `json:"model"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	RequestHash    []byte    `json:"request_hash"`
+	ProviderID     string    `json:"provider_id"`
+	State          string    `json:"state"`
+	CreatedAt      time.Time `json:"created_at"`
+	ExpiresAt      time.Time `json:"expires_at"`
 }
 
 type AlertDelivery struct {

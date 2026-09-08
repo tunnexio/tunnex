@@ -109,3 +109,60 @@ func TestFoundryReferenceBounds(t *testing.T) {
 		t.Fatal("query character bound", page, err)
 	}
 }
+
+func TestProviderReferenceModeCatalog(t *testing.T) {
+	for _, tc := range []struct {
+		provider string
+		mode     ModelMode
+		query    string
+		want     string
+	}{
+		{"openai", ModeEmbedding, "text-embedding-3", "openai/text-embedding-3-small"},
+		{"openai", ModeAudioSpeech, "tts-1", "openai/tts-1"},
+		{"openai", ModeAudioTranscription, "whisper", "openai/whisper-1"},
+		{"openai", ModeImageGeneration, "dall-e-3", "openai/dall-e-3"},
+		{"groq", ModeAudioTranscription, "whisper", "groq/whisper-large-v3"},
+	} {
+		page, err := ProviderReferenceModels(tc.provider, tc.mode, tc.query, 100, 0)
+		found := false
+		for _, m := range page.Models {
+			if m.ID == tc.want {
+				found = true
+			}
+		}
+		if err != nil || !found {
+			t.Errorf("%+v: %v %v", tc, page, err)
+		}
+	}
+	page, err := ProviderReferenceModels("openai", ModeEmbedding, "dall-e", 100, 0)
+	if err != nil || page.Total != 0 {
+		t.Fatal("cross-mode catalog", page, err)
+	}
+	if _, err := ProviderReferenceModels("openai", ModelMode("unknown"), "", 100, 0); err == nil {
+		t.Fatal("unknown mode accepted")
+	}
+	if _, err := ProviderReferenceModels("custom", ModeEmbedding, "", 100, 0); err == nil {
+		t.Fatal("custom incorrectly used public catalog")
+	}
+	var snapshot referenceSnapshot
+	if json.Unmarshal(providerReferenceJSON, &snapshot) != nil || len(snapshot.Entries) != 668 || snapshot.SourceSHA256 != "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202" {
+		t.Fatal("provider provenance")
+	}
+	sum := sha256.Sum256(providerReferenceJSON)
+	if hex.EncodeToString(sum[:]) != "feb5ba6b8c8148539450cfb5edbbef21ff0e404c51bd8896b27e587230c8b55d" {
+		t.Fatal("provider snapshot drift")
+	}
+}
+func TestFoundryReferenceSelectedMode(t *testing.T) {
+	for _, mode := range []ModelMode{ModeEmbedding, ModeImageGeneration, ModeAudioSpeech, ModeAudioTranscription} {
+		page, err := FoundryReferenceModelsForMode(mode, "", 100, 0)
+		if err != nil || page.Total == 0 {
+			t.Fatalf("%s %v %v", mode, page, err)
+		}
+		for _, m := range page.Models {
+			if strings.Contains(m.ID, "/") {
+				t.Fatal("regional alias advertised", m)
+			}
+		}
+	}
+}

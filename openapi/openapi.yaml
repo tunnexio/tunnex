@@ -119,6 +119,7 @@ paths:
         default: { $ref: '#/components/responses/Error' }
   /api/v1/organizations/{orgId}/ai-gateway/models:
     parameters:
+      - { name: mode, in: query, schema: { $ref: '#/components/schemas/AIModelMode' } }
       - { name: connection_id, in: query, schema: { type: string, format: uuid }, description: Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches LiteLLM reference suggestions; a connection searches the saved endpoint. }
       - { name: provider, in: query, schema: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry], default: openrouter } }
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -274,6 +275,155 @@ paths:
             application/json: { schema: { type: object, additionalProperties: true } }
             text/event-stream: { schema: { type: string } }
         default: { $ref: "#/components/responses/Error" }
+  /ai/v1/completions:
+    post:
+      operationId: aiCompletion
+      summary: Execute an authorized completions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AICompletionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            text/event-stream: { schema: { type: string } }
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/embeddings:
+    post:
+      operationId: aiEmbedding
+      summary: Execute an authorized embeddings model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIEmbeddingRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/audio/speech:
+    post:
+      operationId: aiSpeech
+      summary: Execute an authorized audio/speech model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AISpeechRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            audio/mpeg: { schema: { type: string, format: binary } }
+            audio/ogg: { schema: { type: string, format: binary } }
+            audio/aac: { schema: { type: string, format: binary } }
+            audio/flac: { schema: { type: string, format: binary } }
+            audio/wav: { schema: { type: string, format: binary } }
+            audio/pcm: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/audio/transcriptions:
+    post:
+      operationId: aiTranscription
+      summary: Execute an authorized audio/transcriptions model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { multipart/form-data: { schema: { $ref: '#/components/schemas/AITranscriptionRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/images/generations:
+    post:
+      operationId: aiImageGeneration
+      summary: Execute an authorized images/generations model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIImageRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/videos:
+    post:
+      operationId: aiVideoGeneration
+      summary: Execute an authorized videos model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]{16,128}$' } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIVideoRequest' } } }
+      responses:
+        "200":
+          description: Bounded output; video returns job acceptance, not completion.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/rerank:
+    post:
+      operationId: aiRerank
+      summary: Execute an authorized rerank model
+      description: Requires the saved model mode to match this route. Bounded input and output, no automatic retry. Media modes refuse monetary policies until unit accounting is qualified.
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIRerankRequest' } } }
+      responses:
+        "200":
+          description: Bounded model output; no automatic retry or fallback.
+          content:
+            application/json: { schema: { type: object, additionalProperties: true } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/videos/{jobId}:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiVideoStatus
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/AIVideoJob' } }
+        default: { $ref: '#/components/responses/Error' }
+  /ai/v1/videos/{jobId}/content:
+    parameters:
+      - { name: jobId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: aiVideoContent
+      summary: Read an owned video job with current model authorization
+      tags: [ai-gateway]
+      security: [{ aiBearerAuth: [] }]
+      responses:
+        "200":
+          description: Owned job result; expired, revoked or foreign jobs cannot be read.
+          content:
+            video/webm: { schema: { type: string, format: binary } }
+            video/mp4: { schema: { type: string, format: binary } }
+        default: { $ref: '#/components/responses/Error' }
   /ai/anthropic/v1/messages:
     post:
       operationId: aiAnthropicMessage
@@ -5729,6 +5879,96 @@ components:
       required: true
 
   schemas:
+    AICompletionRequest:
+      type: object
+      additionalProperties: false
+      required: [model, prompt]
+      properties:
+        model: { type: string, maxLength: 255 }
+        prompt: { type: string, minLength: 1, maxLength: 65536 }
+        max_tokens: { type: integer, minimum: 1, maximum: 4096, default: 1024 }
+        temperature: { type: number, minimum: 0, maximum: 2 }
+        stream: { type: boolean, default: false }
+    AIEmbeddingRequest:
+      type: object
+      additionalProperties: false
+      required: [model, input]
+      properties:
+        model: { type: string, maxLength: 255 }
+        input: { oneOf: [{ type: string, minLength: 1, maxLength: 65536 }, { type: array, minItems: 1, maxItems: 128, items: { type: string, minLength: 1, maxLength: 65536 } }] }
+        encoding_format: { type: string, enum: [float, base64] }
+        dimensions: { type: integer, minimum: 1, maximum: 65536 }
+    AISpeechRequest:
+      type: object
+      additionalProperties: false
+      required: [model, input, voice]
+      properties:
+        model: { type: string, maxLength: 255 }
+        input: { type: string, minLength: 1, maxLength: 4096 }
+        voice: { type: string, minLength: 1, maxLength: 100 }
+        response_format: { type: string, enum: [mp3, opus, aac, flac, wav, pcm] }
+        speed: { type: number, minimum: 0.25, maximum: 4 }
+    AITranscriptionRequest:
+      type: object
+      additionalProperties: false
+      required: [model, file]
+      properties:
+        model: { type: string, maxLength: 255 }
+        file: { type: string, format: binary, description: One audio file at most 8 MiB. }
+        language: { type: string, pattern: '^[a-z]{2}$' }
+        prompt: { type: string, maxLength: 4096 }
+        response_format: { type: string, enum: [json], default: json }
+        temperature: { type: number, minimum: 0, maximum: 1 }
+    AIImageRequest:
+      type: object
+      additionalProperties: false
+      required: [model, prompt]
+      properties:
+        model: { type: string, maxLength: 255 }
+        prompt: { type: string, minLength: 1, maxLength: 4096 }
+        n: { type: integer, enum: [1], default: 1 }
+        size: { type: string, enum: [256x256, 512x512, 1024x1024, 1024x1536, 1536x1024, 1024x1792, 1792x1024, auto] }
+        quality: { type: string, enum: [standard, hd, low, medium, high, auto] }
+        response_format: { type: string, enum: [url, b64_json] }
+    AIVideoRequest:
+      type: object
+      additionalProperties: false
+      required: [model, prompt]
+      properties:
+        model: { type: string, maxLength: 255 }
+        prompt: { type: string, minLength: 1, maxLength: 4096 }
+        seconds: { type: string, enum: ['4', '8', '12'], default: '4' }
+        size: { type: string, enum: [720x1280, 1280x720] }
+    AIRerankRequest:
+      type: object
+      additionalProperties: false
+      required: [model, query, documents]
+      properties:
+        model: { type: string, maxLength: 255 }
+        query: { type: string, minLength: 1, maxLength: 4096 }
+        documents: { type: array, minItems: 1, maxItems: 128, items: { type: string, minLength: 1, maxLength: 65536 } }
+        top_n: { type: integer, minimum: 1, maximum: 128 }
+        return_documents: { type: boolean, default: false }
+    AIVideoJob:
+      type: object
+      additionalProperties: false
+      required: [id, status, object, model, created_at, expires_at]
+      properties:
+        object: { type: string, enum: [video] }
+        model: { type: string, maxLength: 255 }
+        created_at: { type: integer, format: int64 }
+        expires_at: { type: integer, format: int64 }
+        id: { type: string, format: uuid, description: Opaque tenant and agent owned handle. }
+        status: { type: string, enum: [submitting, queued, in_progress, completed, failed, uncertain] }
+    AIModelMode:
+      type: string
+      enum: [chat, completion, embedding, audio_speech, audio_transcription, image_generation, video_generation, rerank]
+      default: chat
+    AIModelModes:
+      type: object
+      maxProperties: 32
+      additionalProperties: { $ref: '#/components/schemas/AIModelMode' }
+      description: Protocol for each exact model. Missing entries default to chat on creation; updates preserve retained model modes. Policy-referenced model modes cannot change.
     AIProviderInputModels:
       type: array
       minItems: 1
@@ -5748,6 +5988,7 @@ components:
       additionalProperties: false
       required: [id, key_id, provider, name, models, enabled, revision, applied_revision, status, last_test_status]
       properties:
+        model_modes: { $ref: '#/components/schemas/AIModelModes' }
         id: { type: string, format: uuid }
         key_id: { type: string, description: Non-secret owned policy reference. }
         endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 base URL (stored without trailing /v1); omit for standard providers. }
@@ -5774,6 +6015,7 @@ components:
       additionalProperties: false
       required: [management_available, items, legacy_key_ids]
       properties:
+        supported_modes: { type: array, items: { $ref: '#/components/schemas/AIModelMode' }, description: Qualified gateway routes; absent on older servers means chat only. }
         management_available: { type: boolean }
         test_available: { type: boolean, description: Private inference test adapter is configured. }
         public_endpoints_available: { type: boolean, description: Public HTTPS endpoints can be entered directly with automatic egress validation. }
@@ -5791,6 +6033,7 @@ components:
       additionalProperties: false
       required: [provider, name, models, enabled, api_key]
       properties:
+        model_modes: { $ref: '#/components/schemas/AIModelModes' }
         endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 base URL (stored without trailing /v1); omit for standard providers. }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         name: { type: string, minLength: 1, maxLength: 80 }
@@ -5802,6 +6045,7 @@ components:
       additionalProperties: false
       required: [provider, name, models, enabled, expected_revision]
       properties:
+        model_modes: { $ref: '#/components/schemas/AIModelModes' }
         endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 base URL (stored without trailing /v1); omit for standard providers. }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         name: { type: string, minLength: 1, maxLength: 80 }
@@ -5814,6 +6058,7 @@ components:
       additionalProperties: false
       required: [provider, api_key, endpoint_url]
       properties:
+        mode: { $ref: '#/components/schemas/AIModelMode' }
         provider: { type: string, enum: [custom, sagemaker, azure_foundry] }
         api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
         endpoint_url: { type: string, format: uri, maxLength: 2048, description: Normalized base without trailing /v1. Public HTTPS endpoints are automatically validated when available; private destinations use installation network rules. }
@@ -5825,6 +6070,7 @@ components:
       additionalProperties: false
       required: [provider, model, api_key]
       properties:
+        mode: { $ref: '#/components/schemas/AIModelMode' }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         model: { type: string, minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9_./:-]*$' }
         api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
@@ -5858,6 +6104,7 @@ components:
       additionalProperties: false
       required: [id, name]
       properties:
+        mode: { $ref: '#/components/schemas/AIModelMode' }
         id: { type: string }
         name: { type: string }
     AIModelNames:

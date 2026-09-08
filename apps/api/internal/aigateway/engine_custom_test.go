@@ -17,7 +17,7 @@ func TestCustomProxyConfigurationAndReadback(t *testing.T) {
 	if e.ConfigureCustomProxy("http://fixture-user:fixture-password@proxy:8190") != nil {
 		t.Fatal("valid proxy refused")
 	}
-	custom := json.RawMessage(`{"base_provider_type":"openai","is_key_less":false,"allowed_requests":{"list_models":true,"chat_completion":true,"chat_completion_stream":true}}`)
+	custom, _ := json.Marshal(map[string]any{"base_provider_type": "openai", "is_key_less": false, "allowed_requests": qualifiedCustomOperations()})
 	for _, mode := range []string{"valid", "missing-ref", "wrong-ref", "unset", "raw-value", "wrong-mask", "extra-auth", "extra-CA", "wrong-type"} {
 		t.Run(mode, func(t *testing.T) {
 			value := map[string]any{"type": "env", "ref": "env.TUNNEX_AI_CUSTOM_PROXY_URL", "value": "http" + strings.Repeat("*", 24) + "8190"}

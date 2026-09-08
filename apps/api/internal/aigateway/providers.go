@@ -21,6 +21,7 @@ type ProviderConnection struct {
 	EndpointURL               *string
 	KeyID, Provider, Name     string
 	Models                    []string
+	ModelModes                map[string]ModelMode
 	Enabled                   bool
 	Revision, AppliedRevision int64
 	Status, LastTestStatus    string
@@ -31,15 +32,16 @@ type ProviderInput struct {
 	Name, Provider string
 	EndpointURL    *string
 	Models         []string
+	ModelModes     map[string]ModelMode
 	Enabled        bool
 	Secret         *string
 }
 
-const providerColumns = `id,key_id,provider,name,models,enabled,revision,applied_revision,status,last_test_status,last_test_at,deleted_at,endpoint_url`
+const providerColumns = `id,key_id,provider,name,models,enabled,revision,applied_revision,status,last_test_status,last_test_at,deleted_at,endpoint_url,model_modes`
 
 func scanProvider(row pgx.Row) (ProviderConnection, error) {
 	var p ProviderConnection
-	err := row.Scan(&p.ID, &p.KeyID, &p.Provider, &p.Name, &p.Models, &p.Enabled, &p.Revision, &p.AppliedRevision, &p.Status, &p.LastTestStatus, &p.LastTestAt, &p.DeletedAt, &p.EndpointURL)
+	err := row.Scan(&p.ID, &p.KeyID, &p.Provider, &p.Name, &p.Models, &p.Enabled, &p.Revision, &p.AppliedRevision, &p.Status, &p.LastTestStatus, &p.LastTestAt, &p.DeletedAt, &p.EndpointURL, &p.ModelModes)
 	return p, err
 }
 func (s *Policies) EnableProviderManagement(enabled bool) { s.providerManagement = enabled }
@@ -96,6 +98,9 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 			}
 		}
 	}
+	if !validModelModes(in.Models, in.ModelModes) {
+		return in, providerInvalid()
+	}
 	if required && in.Secret == nil {
 		return in, providerInvalid()
 	}
@@ -109,7 +114,7 @@ func providerSpec(p ProviderConnection) ProviderKeySpec {
 	if p.EndpointURL != nil {
 		base = *p.EndpointURL
 	}
-	return ProviderKeySpec{Provider: nativeConnectionProvider(p), BaseURL: base, ID: p.KeyID, Revision: p.Revision, Models: p.Models, Enabled: p.Enabled}
+	return ProviderKeySpec{Provider: nativeConnectionProvider(p), BaseURL: base, ID: p.KeyID, Revision: p.Revision, Models: p.Models, ModelModes: p.ModelModes, Enabled: p.Enabled}
 }
 
 // validateProviderAccess is called under the team lock. Sorted provider locks are
@@ -126,6 +131,7 @@ func (s *Policies) providerScopes(ctx context.Context, tx pgx.Tx, org uuid.UUID,
 	sorted := append([]string(nil), ids...)
 	slices.Sort(sorted)
 	covered := map[string]bool{}
+	modes := map[string]ModelMode{}
 	keys := map[string][]string{}
 	legacy := false
 	for _, id := range sorted {
@@ -161,6 +167,13 @@ func (s *Policies) providerScopes(ctx context.Context, tx pgx.Tx, org uuid.UUID,
 			if !ok || provider != nativeProvider {
 				return nil, policyDenied()
 			}
+			if slices.Contains(models, m) {
+				mode := DefaultModelMode(p.ModelModes[m])
+				if !ValidModelMode(mode) || (modes[m] != "" && modes[m] != mode) {
+					return nil, policyDenied()
+				}
+				modes[m] = mode
+			}
 			covered[m] = true
 		}
 	}
@@ -168,6 +181,9 @@ func (s *Policies) providerScopes(ctx context.Context, tx pgx.Tx, org uuid.UUID,
 	for _, m := range models {
 		provider, native, ok := splitProviderModel(m)
 		if !ok || (!covered[m] && !(legacy && provider == "openrouter")) {
+			return nil, policyDenied()
+		}
+		if legacy && provider == "openrouter" && modes[m] != "" && modes[m] != ModeChat {
 			return nil, policyDenied()
 		}
 		selected[provider] = append(selected[provider], native)
@@ -256,7 +272,8 @@ func (s *Policies) CreateProvider(ctx context.Context, org, actor uuid.UUID, in 
 	if err = s.normalizeCustomModels(&in, id); err != nil {
 		return ProviderConnection{}, err
 	}
-	p, err := scanProvider(tx.QueryRow(ctx, `INSERT INTO ai_provider_connections(id,org_id,key_id,provider,name,models,enabled,revision,status,endpoint_url) VALUES($1,$2,$3,$7,$4,$5,$6,1,'pending',$8) RETURNING `+providerColumns, id, org, "tnx-managed-"+id.String(), in.Name, in.Models, in.Enabled, in.Provider, in.EndpointURL))
+	in.ModelModes = completeModelModes(in.Models, in.ModelModes, nil)
+	p, err := scanProvider(tx.QueryRow(ctx, `INSERT INTO ai_provider_connections(id,org_id,key_id,provider,name,models,enabled,revision,status,endpoint_url,model_modes) VALUES($1,$2,$3,$7,$4,$5,$6,1,'pending',$8,$9) RETURNING `+providerColumns, id, org, "tnx-managed-"+id.String(), in.Name, in.Models, in.Enabled, in.Provider, in.EndpointURL, in.ModelModes))
 	if err != nil {
 		return p, aiUnavailable()
 	}
@@ -300,9 +317,10 @@ func (s *Policies) UpdateProvider(ctx context.Context, org, actor, id uuid.UUID,
 	if (p.Status == "error" || p.Status == "pending") && in.Secret == nil {
 		return p, apierr.New(409, "ai_provider_secret_required", "Resubmit the provider API key to recover this connection")
 	}
+	in.ModelModes = completeModelModes(in.Models, in.ModelModes, p.ModelModes)
 	removed := []string{}
 	for _, model := range p.Models {
-		if !slices.Contains(in.Models, model) {
+		if !slices.Contains(in.Models, model) || DefaultModelMode(p.ModelModes[model]) != in.ModelModes[model] {
 			removed = append(removed, model)
 		}
 	}
@@ -313,7 +331,7 @@ func (s *Policies) UpdateProvider(ctx context.Context, org, actor, id uuid.UUID,
 	if referenced {
 		return p, providerConflict()
 	}
-	p, err = scanProvider(tx.QueryRow(ctx, `UPDATE ai_provider_connections SET name=$3,models=$4,enabled=$5,revision=revision+1,status='pending',last_test_status=CASE WHEN $6 THEN 'untested' ELSE last_test_status END,last_test_at=CASE WHEN $6 THEN NULL ELSE last_test_at END WHERE org_id=$1 AND id=$2 RETURNING `+providerColumns, org, id, in.Name, in.Models, in.Enabled, in.Secret != nil))
+	p, err = scanProvider(tx.QueryRow(ctx, `UPDATE ai_provider_connections SET name=$3,models=$4,enabled=$5,model_modes=$7,revision=revision+1,status='pending',last_test_status=CASE WHEN $6 THEN 'untested' ELSE last_test_status END,last_test_at=CASE WHEN $6 THEN NULL ELSE last_test_at END WHERE org_id=$1 AND id=$2 RETURNING `+providerColumns, org, id, in.Name, in.Models, in.Enabled, in.Secret != nil || len(removed) > 0 || len(in.Models) != len(p.Models), in.ModelModes))
 	if err != nil {
 		return p, aiUnavailable()
 	}
@@ -536,7 +554,9 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 	}
 	prefix := "custom-" + id.String() + "/"
 	out := make([]string, 0, len(in.Models))
+	normalizedModes := map[string]ModelMode{}
 	for _, model := range in.Models {
+		mode, hasMode := in.ModelModes[model]
 		if namespace, _, hasSlash := strings.Cut(model, "/"); hasSlash && customProviderName(namespace) {
 			if !strings.HasPrefix(model, prefix) {
 				return providerInvalid()
@@ -546,6 +566,9 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 		if !engineModel.MatchString(model) {
 			return providerInvalid()
 		}
+		if hasMode {
+			normalizedModes[prefix+model] = mode
+		}
 		out = append(out, prefix+model)
 	}
 	models, ok := canonicalModels(out, false)
@@ -553,6 +576,7 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 		return providerInvalid()
 	}
 	in.Models = models
+	in.ModelModes = normalizedModes
 	return nil
 }
 func (s *Policies) CustomProviderModels(ctx context.Context, org, id uuid.UUID, query string, limit, offset int) (ProviderModelPage, error) {
