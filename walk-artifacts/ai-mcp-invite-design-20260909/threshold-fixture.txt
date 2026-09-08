@@ -1,0 +1,117 @@
+- button "Expand sidebar":
+- navigation "Main":
+  - list:
+    - link "Overview":
+      - /url: /dashboard
+  - list:
+    - link "Gateways":
+      - /url: /gateways
+    - link "Sites":
+      - /url: /sites
+    - link "Routed ranges":
+      - /url: /routed-ranges
+    - link "Kubernetes":
+      - /url: /kubernetes
+  - list:
+    - link "AI Gateway":
+      - /url: /ai-gateway
+    - link "AI Agents":
+      - /url: /agents
+    - link "MCP":
+      - /url: /mcp
+  - list:
+    - link "Access Policies":
+      - /url: /access
+    - link "Devices":
+      - /url: /devices
+    - link "Users & Groups":
+      - /url: /users
+  - list:
+    - link "Alerts":
+      - /url: /alerts
+    - link "Access Events":
+      - /url: /access-events
+    - link "Audit Log":
+      - /url: /audit
+  - list:
+    - link "Settings":
+      - /url: /settings
+- button "Signed in as preview@tunnex.local": PR
+- banner:
+  - button "Go to a page… ⌘K":
+    - generic: Go to a page…
+    - generic: ⌘K
+- main:
+  - heading "Agent model access" [level=1]
+  - paragraph: Manage team model policies and access for automated agents.
+  - navigation "AI Agents sections":
+    - link "Agents":
+      - /url: /agents
+    - link "Agent groups":
+      - /url: /agents/groups
+    - link "Model access":
+      - /url: /agents/model-access
+    - link "Policy templates":
+      - /url: /agents/policies
+  - strong: "3"
+  - text: team policies
+  - strong: "3"
+  - text: agent assignments
+  - strong: "3"
+  - text: loaded agents
+  - paragraph: MODEL ACCESS
+  - heading "Team model policy" [level=2]
+  - generic: Team scope
+  - paragraph: Use exact models and provider key IDs, never provider secrets.
+  - generic: Policy team
+  - combobox "Policy team":
+    - option "Choose a group"
+    - option "AI threshold UI fixture" [selected]
+    - option "installed-team"
+    - option "installed-teamB"
+  - generic: Revision 4
+  - generic: 1 model · 1 provider key ID
+  - generic: Exact models (one per line)
+  - textbox "Exact models (one per line)":
+    - /placeholder: openrouter/openai/gpt-4o-mini
+    - text: openrouter/openai/gpt-4o-mini
+  - group "Provider connections":
+    - generic: Provider connections
+    - checkbox "Engineering demo (fixture) OpenRouter · applied · 2 models" [checked]
+    - text: Engineering demo (fixture)
+    - generic: OpenRouter · applied · 2 models
+    - checkbox "Private proxy demo (fixture) Custom provider · applied · 1 models"
+    - text: Private proxy demo (fixture)
+    - generic: Custom provider · applied · 1 models
+    - checkbox "LiteLLM preflight (fixture) Custom provider · applied · 1 models"
+    - text: LiteLLM preflight (fixture)
+    - generic: Custom provider · applied · 1 models
+    - checkbox "azure Azure AI Foundry · applied · 1 models"
+    - text: azure
+    - generic: Azure AI Foundry · applied · 1 models
+    - checkbox "azure-claude Azure AI Foundry · applied · 1 models"
+    - text: azure-claude
+    - generic: Azure AI Foundry · applied · 1 models
+    - checkbox "openrouter-primary Legacy operator-managed reference"
+    - text: openrouter-primary
+    - generic: Legacy operator-managed reference
+    - paragraph: Choose up to eight applied connections. Selected models must be covered by the chosen connections.
+  - generic: Daily USD soft threshold (optional)
+  - spinbutton "Daily USD soft threshold (optional)": "2.5"
+  - paragraph: Observed usage since midnight UTC. Concurrent requests may exceed this threshold. Unknown prices fail closed with monetary thresholds; this is not a strict spending cap.
+  - button "Save team policy"
+  - paragraph: WORKLOAD ACCESS
+  - heading "Agent access" [level=2]
+  - generic: One team per agent
+  - paragraph: Disabling blocks new requests. Accepted streams may finish within 30 seconds.
+  - generic: Agent
+  - combobox "Agent":
+    - option "Choose an agent" [selected]
+    - option "installed-31 (revoked)"
+    - option "installed-32 (active)"
+    - option "installed-teamB (active)"
+  - heading "Select an agent to manage access" [level=3]
+  - paragraph: Choose its team, narrow model access and review synchronization.
+  - paragraph: Changes apply to new requests. Existing accepted streams may finish within 30 seconds.
+  - button "Refresh AI policies"
+- region "Notifications alt+T"

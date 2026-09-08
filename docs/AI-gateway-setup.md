@@ -8,9 +8,9 @@ The qualified engine is Bifrost v2.0.0. `deploy/ai-gateway/compose.yml` pins the
 
 ### UI-managed providers
 
-The **AI gateway → Models & endpoints** workspace lets an owner/admin add an
+The **AI gateway → Models & endpoints** workspace lets an owner/admin or AI admin add an
 OpenAI, Anthropic, Gemini, OpenRouter, Groq, Mistral, Cerebras, xAI, DeepSeek,
-Custom, Azure AI Foundry (OpenAI v1), or a configured SageMaker bridge
+Custom, Azure AI Foundry, or a configured SageMaker bridge
 connection, select exact models, check catalog access, rotate the key and
 disable or remove an unreferenced connection. Saved catalog checks make no inference
 request; catalog inclusion does not guarantee inference access to every model.
@@ -49,11 +49,14 @@ encryption-key references remain required. AI remains single-instance.
    wait for applied status. This is a small inference request and can incur a
    provider charge. If a save is uncertain, resubmit the key explicitly; the CP
    cannot recover a secret it does not store.
-3. In **Configuration**, enable the org AI setting, select a team, its provider
-   connections and allowed models, then assign agents. Creating a connection
-   alone does not grant access.
-4. Use the enrolled-agent credential exchange and proxy routes below; inspect
-   **Usage & cost** for observed estimates.
+3. In **AI Gateway → Settings**, explicitly enable the org AI setting. For people,
+   create the group under **Users & Groups → Groups**, then grant the model under
+   **AI Gateway → Model access**. For managed agents, use **AI Agents → Agent groups**
+   and **AI Agents → Model access** to configure a team and assignment. Creating
+   credentials alone does not grant access.
+4. People use **My models** and their Tunnex login; managed agents use the
+   credential exchange and proxy routes below. Inspect **Usage & cost** for
+   observed estimates.
 
 Successful tests show an HTTP 200 success toast and persistent inline feedback.
 The result covers the first selected model and mode and expires after five minutes.
@@ -77,14 +80,18 @@ to its provider and selected models. Existing operator-managed key references
 cover OpenRouter only. To change a connection's provider, create a new connection;
 editing a connection cannot transfer its secret to another provider.
 
-The provider picker is supplied by the server's supported registry. Azure OpenAI
-v1 and Custom endpoints follow the public/private egress rules below. Bedrock,
-Vertex, legacy Azure protocols and public model aliases are outside this slice. Catalog checks do not generate model tokens. Public catalogs may not validate API keys. Real-account
-inference qualification remains distinct from local synthetic protocol tests.
+The provider picker is supplied by the server's supported registry. Azure Foundry
+and Custom endpoints follow the public/private egress rules below. Azure Foundry
+supports OpenAI-compatible v1 and Claude Anthropic Messages endpoints; supported
+portal deployment URLs are imported into their canonical v1 form. Bedrock,
+Vertex, legacy Azure wire protocols and public model aliases remain outside this
+slice. Catalog checks do not generate model tokens or prove deployment access.
+Real-account inference qualification remains distinct from local synthetic tests.
 
 For existing deployments, take a consistent backup, upgrade every CP replica and
-apply migrations through 0142 before enabling multi-provider management. Migration
-0141 snapshots existing team key references into explicit per-org legacy ownership. New arbitrary key IDs cannot
+apply all migrations included in that release before enabling the updated console
+(this branch includes migration 0151 for AI invitation roles). Multi-provider
+management was introduced through migration 0142. Migration 0141 snapshots existing team key references into explicit per-org legacy ownership. New arbitrary key IDs cannot
 be used in policy: create an owned connection instead. Reserved `tnx-managed-`
 prefix collisions refuse migration and require operator review. Keep the same
 engine volumes, encryption key and environment variables used by legacy keys.
@@ -206,7 +213,7 @@ With AI enabled, the edge mounts a chart-specific nginx configuration. ClusterIP
 
 ## Apply one explicit AI team
 
-Create an ordinary Agent Group and explicitly add the enrolled agent through the existing group workflow. A device may belong to several ordinary groups but chooses exactly one AI team. The following management calls require an owner/admin with `ai_gateway:manage` in the named organization. Examples show non-secret JSON bodies; use the existing authenticated administration client and never put provider credentials in these team-policy requests. Use an owned connection key ID from Providers & models; `openrouter-primary` below is an existing legacy-reference example.
+Create an ordinary Agent Group and explicitly add the enrolled agent through the existing group workflow. A device may belong to several ordinary groups but chooses exactly one AI team. The following management calls require an owner/admin or AI admin with `ai_gateway:manage` in the named organization. Examples show non-secret JSON bodies; use the existing authenticated administration client and never put provider credentials in these team-policy requests. Use an owned connection key ID from Models & endpoints; `openrouter-primary` below is an existing legacy-reference example.
 
 1. Enable access with `PUT /api/v1/organizations/{orgId}/ai-gateway` and `{"enabled":true}`.
 2. Create the group's AI policy with `PUT /api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}`:
@@ -284,27 +291,37 @@ link-local, metadata, unspecified or multicast. Explicit rules require every
 answer to fit their allowed CIDRs and still cannot permit prohibited addresses.
 Redirects cannot escape these checks.
 
-### Azure AI Foundry (OpenAI v1)
+### Azure AI Foundry
 
-Enter the actual Azure API key, exact deployed model name and an HTTPS base such
-as `https://resource.services.ai.azure.com/openai/v1`. The resource host can end
-in `services.ai.azure.com`, `openai.azure.com` or `cognitiveservices.azure.com`.
-The stored base ends `/openai`; both inference and endpoint catalog calls append
-`/v1`. A supported URL shape does not prove that resource exposes this API.
+Use the exact Azure deployment name, Azure API key and the endpoint supplied by
+that deployment. Public-cloud resource hosts can end in `services.ai.azure.com`,
+`openai.azure.com` or `cognitiveservices.azure.com`.
 
-For new Azure credentials, **Search models** reads the bundled SHA-pinned LiteLLM
-reference catalog without an endpoint, key or Azure request. Use your deployment
-name if it differs from a suggestion; reference entries do not prove access.
-Custom and SageMaker draft searches require endpoint/key and fetch the actual
-endpoint catalog without saving credentials or generating inference tokens.
-Saved endpoint-backed credentials retain their authenticated catalog search.
-If a catalog is unavailable, enter the exact deployment/model name manually.
+- OpenAI-compatible API: `https://resource.services.ai.azure.com/openai/v1`.
+- Claude: `https://resource.services.ai.azure.com/anthropic/v1/messages`.
 
-Azure **Test Connect** makes a bounded chat request using
-`max_completion_tokens=16`. It can incur a charge and is never triggered by
-catalog search. Only OpenAI v1 chat completions are supported here; legacy
-`/models`, dated deployment API-version URLs, managed identity, sovereign clouds
-and other protocols/modes require separate support.
+The form accepts supported portal `/openai/deployments/<name>/<operation>` URLs,
+extracts the model and operation, and normalizes them to v1. A legacy
+`api-version` query is not forwarded. Claude endpoints must use the Azure Foundry
+provider so draft tests and saved calls use the same protocol.
+
+Model suggestions search automatically as you type, combining the applicable
+native and SHA-pinned LiteLLM reference catalogs. Foundry suggestions include
+Claude and other Azure-hosted families; they do not discover your actual private
+deployments. Enter an exact deployment name when it differs or is absent.
+Custom and SageMaker draft searches require their configured endpoint/key.
+
+Select the appropriate Mode: chat, completion, embedding, audio speech, audio
+transcription, image generation, video generation or rerank. Availability depends
+on the provider/protocol/model; choosing a mode does not create upstream support.
+Azure Anthropic Messages supports chat. Test Connect makes a bounded request for
+the first selected model and chosen mode, can incur a charge, and is never
+triggered by typing a catalog query.
+
+Public HTTPS destinations are checked automatically. Private/internal endpoints
+need configured network access from the installation, including DNS and egress.
+Network failures have no provider HTTP response; the UI distinguishes provider
+status, gateway status, timeout and incomplete response without exposing secrets.
 
 For Compose, append `-f deploy/ai-gateway/compose-custom.yml` after the base AI and
 managed-provider overlays. Continue using the existing explicitly named project
@@ -355,3 +372,45 @@ Keep database-owned native state, encryption keys and ownership tombstones durin
 rollback. These manifests have static render verification; installation-specific
 CNI enforcement, private DNS reachability and certificate trust require a local
 qualification walk before enabling customer traffic.
+
+## AI console access and roles
+
+The AI sidebar contains **AI Gateway**, **AI Agents** and **MCP**. The MCP profile
+workspace is `/mcp`; legacy `/agents/mcp` links redirect with query/hash preserved.
+Agent model policy stays under `/agents/model-access`, beside Agent groups.
+People and directory groups live under **Users & Groups → Groups**; agent groups
+live under **AI Agents → Agent groups**. Access Policies owns network grants.
+
+Owner/admin can assign multiple human roles under **Users & Groups → Roles**.
+`ai-admin` manages AI credentials, gateway settings and group model grants;
+`ai-view` reads AI configuration and usage. Neither role grants general member,
+VPN or agent lifecycle administration. Invitation starting roles include both AI
+roles; invitations still select one role, with multiple roles assigned after
+joining. Only owners can create/resend owner invitations. Resends retain the
+original role and rotate the one-time token.
+
+A person granted a model through a user group uses their Tunnex session or saved
+CLI login. **AI Gateway → My models** lists the authorized exact model IDs and
+concrete endpoints. The chat endpoint is
+`POST /api/v1/organizations/{orgId}/ai-gateway/inference/v1/chat/completions`.
+`tunnex ai models --org <uuid>` and `tunnex ai chat --org <uuid> --model <id>
+--prompt Hello` reuse `tunnex login`; no provider key is given to the caller.
+Other configured modes use their corresponding operation under `inference/v1`.
+The browser call form and CLI chat command are chat-only. User-group access and
+agent-team assignments are separate policies; admin roles alone grant no model.
+
+### Threshold verification
+
+**AI Agents → Model access → Daily USD soft threshold (optional)** accepts blank
+(no monetary threshold) or a positive value up to USD 100000. It measures observed
+cost since midnight UTC and does not reset when a policy is edited. Concurrent
+accepted calls may overshoot it; there is no hard reservation or notification.
+Unknown pricing and incomplete accounting refuse calls when a threshold applies.
+
+The internal resolver identifies a reached threshold with
+`403 ai_daily_threshold_reached`. The agent credential boundary intentionally
+maps policy failures to public `403 ai_policy_denied`; do not diagnose threshold
+crossing from that status alone. The isolated fixture walkthrough checks the
+internal reason, public refusal, preserved spend across edits, native ledger
+accounting and save/reload of the optional UI value. See
+[S-AI-navigation-design-followup-boxwalk.md](S-AI-navigation-design-followup-boxwalk.md).
