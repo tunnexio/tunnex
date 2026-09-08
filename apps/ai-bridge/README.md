@@ -101,3 +101,22 @@ stream aliases, response bounds and subprocess cleanup. They do not establish
 live AWS IAM, installed endpoint behavior, provider billing, or cloud deployment.
 Run `python -m pytest tests -q` with pytest and pytest-asyncio in a private test
 venv. No production credential or paid call is needed.
+
+## Azure AI Foundry (OpenAI v1)
+
+The provider `azure_foundry` uses the actual Azure resource API key and deployed
+model name. Its API base is `https://<resource>.services.ai.azure.com/openai/v1`
+or `https://<resource>.openai.azure.com/openai/v1`; the control plane stores
+`/openai` without the final `/v1`. Add the normalized URL to the existing
+installation egress policy as `provider: azure_foundry`, with its approved IP
+ranges, on both the CP/egress service and this bridge. No wildcard destination
+or automatic Azure network discovery is enabled. Reload the task's services
+when installation policy changes; do not expose bridge administrator credentials.
+
+Test Connect invokes the pinned LiteLLM OpenAI adapter against that exact URL.
+Saved inference uses the same OpenAI v1 protocol and existing connection-owned
+model scope. This slice supports chat completions, including streaming; it does
+not implement legacy `/models` or dated deployment URLs, Entra identity, other
+modes, or sovereign-cloud endpoints. The bounded probe uses `max_tokens=16`;
+models that require another token parameter (such as o1) need separate support.
+Live Azure qualification requires the operator's actual endpoint/key/model.

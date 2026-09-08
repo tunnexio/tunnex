@@ -69,7 +69,7 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 			return in, providerInvalid()
 		}
 		normalized, err := aiegress.NormalizeEndpoint(*in.EndpointURL)
-		if err != nil {
+		if err != nil || (in.Provider == "azure_foundry" && !aiegress.FoundryEndpoint(normalized)) {
 			return in, providerInvalid()
 		}
 		in.EndpointURL = &normalized
@@ -465,7 +465,9 @@ func (s *Policies) ProviderModels(ctx context.Context, provider, query string, l
 // ConfigureCustomProviders is called at startup only after the engine's
 // authenticated proxy has been configured. No request can modify these rules.
 func (s *Policies) ConfigureCustomProviders(policy *aiegress.Policy) { s.customPolicy = policy }
-func endpointProvider(provider string) bool                          { return provider == "custom" || provider == "sagemaker" }
+func endpointProvider(provider string) bool {
+	return provider == "custom" || provider == "sagemaker" || provider == "azure_foundry"
+}
 func (s *Policies) approvedEndpoints(provider string) []aiegress.Endpoint {
 	out := []aiegress.Endpoint{}
 	if s == nil || !s.ProviderManagementAvailable() || s.customPolicy == nil {
@@ -482,7 +484,11 @@ func (s *Policies) approvedEndpoints(provider string) []aiegress.Endpoint {
 	}
 	return out
 }
-func (s *Policies) CustomAvailable() bool    { return len(s.approvedEndpoints("custom")) > 0 }
+func (s *Policies) CustomAvailable() bool  { return len(s.approvedEndpoints("custom")) > 0 }
+func (s *Policies) FoundryAvailable() bool { return len(s.approvedEndpoints("azure_foundry")) > 0 }
+func (s *Policies) ApprovedFoundryEndpoints() []aiegress.Endpoint {
+	return s.approvedEndpoints("azure_foundry")
+}
 func (s *Policies) SageMakerAvailable() bool { return len(s.approvedEndpoints("sagemaker")) > 0 }
 func (s *Policies) ApprovedCustomEndpoints() []aiegress.Endpoint {
 	return s.approvedEndpoints("custom")
@@ -543,7 +549,7 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 	return nil
 }
 func (s *Policies) CustomProviderModels(ctx context.Context, org, id uuid.UUID, query string, limit, offset int) (ProviderModelPage, error) {
-	if !s.CustomAvailable() && !s.SageMakerAvailable() {
+	if !s.CustomAvailable() && !s.SageMakerAvailable() && !s.FoundryAvailable() {
 		return ProviderModelPage{}, aiUnavailable()
 	}
 	if len(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestProviderRegistryModelAndCostIsolation(t *testing.T) {
-	if len(ProviderDefinitions()) != 11 {
+	if len(ProviderDefinitions()) != 12 {
 		t.Fatal("registry")
 	}
 	for _, canonical := range []string{"openai/gpt-4o-mini", "anthropic/claude-fixture", "gemini/gemini-fixture", "openrouter/openai/gpt-4o-mini", "groq/fixture", "mistral/fixture", "cerebras/fixture", "xai/fixture", "deepseek/fixture"} {

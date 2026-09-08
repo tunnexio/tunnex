@@ -58,7 +58,12 @@ func (s apiServer) ListAIProviders(ctx context.Context, r api.ListAIProvidersReq
 	for _, endpoint := range s.aiPolicies.ApprovedSageMakerEndpoints() {
 		sageMakerEndpoints = append(sageMakerEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
 	}
-	out := api.AIProviderList{SagemakerAvailable: &sageMakerAvailable, SagemakerEndpoints: &sageMakerEndpoints, TestAvailable: &testAvailable, CustomAvailable: &customAvailable, CustomEndpoints: &customEndpoints, Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
+	foundryAvailable := s.aiPolicies.FoundryAvailable()
+	foundryEndpoints := []api.AICustomEndpoint{}
+	for _, endpoint := range s.aiPolicies.ApprovedFoundryEndpoints() {
+		foundryEndpoints = append(foundryEndpoints, api.AICustomEndpoint{Name: endpoint.Name, Url: endpoint.URL})
+	}
+	out := api.AIProviderList{FoundryAvailable: &foundryAvailable, FoundryEndpoints: &foundryEndpoints, SagemakerAvailable: &sageMakerAvailable, SagemakerEndpoints: &sageMakerEndpoints, TestAvailable: &testAvailable, CustomAvailable: &customAvailable, CustomEndpoints: &customEndpoints, Definitions: &definitions, ManagementAvailable: s.aiPolicies.ProviderManagementAvailable(), LegacyKeyIds: legacy, Items: []api.AIProviderConnection{}}
 	for _, p := range items {
 		out.Items = append(out.Items, toAIProvider(p))
 	}
@@ -148,14 +153,14 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		provider = string(*r.Params.Provider)
 	}
 	var p aigateway.ProviderModelPage
-	if provider == "custom" || provider == "sagemaker" {
+	if provider == "custom" || provider == "sagemaker" || provider == "azure_foundry" {
 		if r.Params.ConnectionId == nil {
 			return nil, apierr.BadRequest("invalid_ai_provider", "Select a connection before browsing its models")
 		}
 		p, err = s.aiPolicies.CustomProviderModels(ctx, r.OrgId, *r.Params.ConnectionId, query, limit, offset)
 	} else {
 		if r.Params.ConnectionId != nil {
-			return nil, apierr.BadRequest("invalid_ai_provider", "Connection-scoped catalog requires a custom or SageMaker provider")
+			return nil, apierr.BadRequest("invalid_ai_provider", "Connection-scoped catalog requires a custom, SageMaker or Foundry provider")
 		}
 		p, err = s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
 	}

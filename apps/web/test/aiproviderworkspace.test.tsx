@@ -387,3 +387,55 @@ describe("pre-save inference check", () => {
     expect(screen.queryByLabelText("AWS Secret Access Key")).toBeNull();
   });
 });
+
+describe("Azure AI Foundry OpenAI v1", () => {
+  const foundryDefinition = { id: "azure_foundry", name: "Azure AI Foundry (OpenAI v1)", credential_label: "Azure API key", model_placeholder: "my-gpt-deployment" };
+  const bases = ["https://sample.services.ai.azure.com/openai", "https://sample.openai.azure.com/openai"];
+  const foundryInventory = { ...inventory, definitions: [...definitions, foundryDefinition], foundry_available: true, foundry_endpoints: bases.map((url) => ({ name: "Azure deployment", url })) };
+  it.each(bases)("tests and creates the exact deployment through %s with an Azure key", async (base) => {
+    api.GET.mockResolvedValue({ data: foundryInventory }); render(show()); await screen.findByText("Engineering");
+    fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ })); fireEvent.click(screen.getByRole("button", { name: "Add Credentials" }));
+    fireEvent.focus(screen.getByRole("combobox", { name: "Provider" }));
+    expect(screen.getByRole("listbox").querySelector("svg.ai-provider-logo")).toBeTruthy();
+    selectProvider(foundryDefinition.name);
+    expect(screen.getByText(/Azure OpenAI v1 chat completions only/)).toBeTruthy(); expect(screen.queryByLabelText("Gateway API key")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: `${base}/v1` } });
+    fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-azure-api-key" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "my-gpt-deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    const save = screen.getByRole("button", { name: "Create credentials" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true); expect(screen.getByText(`${base}/v1/chat/completions`)).toBeTruthy();
+    await passTest(); expect(save.disabled).toBe(false);
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: base, model: "my-gpt-deployment", api_key: "synthetic-azure-api-key" } }));
+    fireEvent.click(save);
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: base, models: ["my-gpt-deployment"], api_key: "synthetic-azure-api-key", enabled: true, name: "Azure AI Foundry (OpenAI v1) · my-gpt-deployment" } }));
+    expect(screen.queryByLabelText("Azure API key")).toBeNull();
+  });
+  it("invalidates an Azure endpoint change and refuses unapproved or legacy URLs", async () => {
+    api.GET.mockResolvedValue({ data: foundryInventory }); render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[0] + "/v1" } }); fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "old-azure-key" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); await passTest();
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[1] + "/v1" } });
+    expect((screen.getByLabelText("Azure API key") as HTMLInputElement).value).toBe(""); expect(screen.queryByText(/Test succeeded/)).toBeNull(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+    for (const url of ["https://other.services.ai.azure.com/openai/v1", "https://sample.services.ai.azure.com/models", "https://sample.openai.azure.com/openai/deployments/deployment?api-version=2024-10-21", "http://sample.openai.azure.com/openai/v1", "https://sample.openai.azure.com.evil.example/openai/v1"]) {
+      fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: url } }); fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "new-azure-key" } });
+      expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(true); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+    }
+    expect(api.POST).toHaveBeenCalledTimes(1);
+  });
+  it("reuses saved Foundry credentials with hidden endpoint/key and preserves the exact namespace", async () => {
+    const id = "12345678-1234-1234-1234-123456789abc";
+    const saved = { ...c, id, provider: "azure_foundry", name: "Saved Azure", endpoint_url: bases[0], models: [`custom-${id}/deployment-a`] };
+    api.GET.mockResolvedValue({ data: { ...foundryInventory, items: [saved] } }); render(show()); await screen.findByText("Saved Azure"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: id } });
+    expect(screen.queryByLabelText("Upstream API Base")).toBeNull(); expect(screen.queryByLabelText("Azure API key")).toBeNull(); expect(screen.queryByLabelText("API key")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "deployment-b" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" })); fireEvent.click(saveModel());
+    expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: bases[0], models: [...saved.models, "deployment-b"], expected_revision: 3, name: saved.name, enabled: true } })); expect(api.POST).not.toHaveBeenCalled();
+  });
+  it("keeps Foundry test/save unavailable without installation approval", async () => {
+    api.GET.mockResolvedValue({ data: { ...foundryInventory, foundry_available: false, foundry_endpoints: [] } }); render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
+    expect(screen.getByText(/Installation setup required: approve this endpoint/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: bases[0] + "/v1" } }); fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-key" } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(true); expect((saveModel() as HTMLButtonElement).disabled).toBe(true); expect(api.POST).not.toHaveBeenCalled();
+  });
+});

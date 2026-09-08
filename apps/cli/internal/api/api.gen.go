@@ -54,17 +54,18 @@ const (
 
 // Defines values for AIProviderConnectionProvider.
 const (
-	AIProviderConnectionProviderAnthropic  AIProviderConnectionProvider = "anthropic"
-	AIProviderConnectionProviderCerebras   AIProviderConnectionProvider = "cerebras"
-	AIProviderConnectionProviderCustom     AIProviderConnectionProvider = "custom"
-	AIProviderConnectionProviderDeepseek   AIProviderConnectionProvider = "deepseek"
-	AIProviderConnectionProviderGemini     AIProviderConnectionProvider = "gemini"
-	AIProviderConnectionProviderGroq       AIProviderConnectionProvider = "groq"
-	AIProviderConnectionProviderMistral    AIProviderConnectionProvider = "mistral"
-	AIProviderConnectionProviderOpenai     AIProviderConnectionProvider = "openai"
-	AIProviderConnectionProviderOpenrouter AIProviderConnectionProvider = "openrouter"
-	AIProviderConnectionProviderSagemaker  AIProviderConnectionProvider = "sagemaker"
-	AIProviderConnectionProviderXai        AIProviderConnectionProvider = "xai"
+	AIProviderConnectionProviderAnthropic    AIProviderConnectionProvider = "anthropic"
+	AIProviderConnectionProviderAzureFoundry AIProviderConnectionProvider = "azure_foundry"
+	AIProviderConnectionProviderCerebras     AIProviderConnectionProvider = "cerebras"
+	AIProviderConnectionProviderCustom       AIProviderConnectionProvider = "custom"
+	AIProviderConnectionProviderDeepseek     AIProviderConnectionProvider = "deepseek"
+	AIProviderConnectionProviderGemini       AIProviderConnectionProvider = "gemini"
+	AIProviderConnectionProviderGroq         AIProviderConnectionProvider = "groq"
+	AIProviderConnectionProviderMistral      AIProviderConnectionProvider = "mistral"
+	AIProviderConnectionProviderOpenai       AIProviderConnectionProvider = "openai"
+	AIProviderConnectionProviderOpenrouter   AIProviderConnectionProvider = "openrouter"
+	AIProviderConnectionProviderSagemaker    AIProviderConnectionProvider = "sagemaker"
+	AIProviderConnectionProviderXai          AIProviderConnectionProvider = "xai"
 )
 
 // Defines values for AIProviderConnectionStatus.
@@ -77,47 +78,50 @@ const (
 
 // Defines values for AIProviderCreateProvider.
 const (
-	AIProviderCreateProviderAnthropic  AIProviderCreateProvider = "anthropic"
-	AIProviderCreateProviderCerebras   AIProviderCreateProvider = "cerebras"
-	AIProviderCreateProviderCustom     AIProviderCreateProvider = "custom"
-	AIProviderCreateProviderDeepseek   AIProviderCreateProvider = "deepseek"
-	AIProviderCreateProviderGemini     AIProviderCreateProvider = "gemini"
-	AIProviderCreateProviderGroq       AIProviderCreateProvider = "groq"
-	AIProviderCreateProviderMistral    AIProviderCreateProvider = "mistral"
-	AIProviderCreateProviderOpenai     AIProviderCreateProvider = "openai"
-	AIProviderCreateProviderOpenrouter AIProviderCreateProvider = "openrouter"
-	AIProviderCreateProviderSagemaker  AIProviderCreateProvider = "sagemaker"
-	AIProviderCreateProviderXai        AIProviderCreateProvider = "xai"
+	AIProviderCreateProviderAnthropic    AIProviderCreateProvider = "anthropic"
+	AIProviderCreateProviderAzureFoundry AIProviderCreateProvider = "azure_foundry"
+	AIProviderCreateProviderCerebras     AIProviderCreateProvider = "cerebras"
+	AIProviderCreateProviderCustom       AIProviderCreateProvider = "custom"
+	AIProviderCreateProviderDeepseek     AIProviderCreateProvider = "deepseek"
+	AIProviderCreateProviderGemini       AIProviderCreateProvider = "gemini"
+	AIProviderCreateProviderGroq         AIProviderCreateProvider = "groq"
+	AIProviderCreateProviderMistral      AIProviderCreateProvider = "mistral"
+	AIProviderCreateProviderOpenai       AIProviderCreateProvider = "openai"
+	AIProviderCreateProviderOpenrouter   AIProviderCreateProvider = "openrouter"
+	AIProviderCreateProviderSagemaker    AIProviderCreateProvider = "sagemaker"
+	AIProviderCreateProviderXai          AIProviderCreateProvider = "xai"
 )
 
 // Defines values for AIProviderDefinitionId.
 const (
-	AIProviderDefinitionIdAnthropic  AIProviderDefinitionId = "anthropic"
-	AIProviderDefinitionIdCerebras   AIProviderDefinitionId = "cerebras"
-	AIProviderDefinitionIdCustom     AIProviderDefinitionId = "custom"
-	AIProviderDefinitionIdDeepseek   AIProviderDefinitionId = "deepseek"
-	AIProviderDefinitionIdGemini     AIProviderDefinitionId = "gemini"
-	AIProviderDefinitionIdGroq       AIProviderDefinitionId = "groq"
-	AIProviderDefinitionIdMistral    AIProviderDefinitionId = "mistral"
-	AIProviderDefinitionIdOpenai     AIProviderDefinitionId = "openai"
-	AIProviderDefinitionIdOpenrouter AIProviderDefinitionId = "openrouter"
-	AIProviderDefinitionIdSagemaker  AIProviderDefinitionId = "sagemaker"
-	AIProviderDefinitionIdXai        AIProviderDefinitionId = "xai"
+	AIProviderDefinitionIdAnthropic    AIProviderDefinitionId = "anthropic"
+	AIProviderDefinitionIdAzureFoundry AIProviderDefinitionId = "azure_foundry"
+	AIProviderDefinitionIdCerebras     AIProviderDefinitionId = "cerebras"
+	AIProviderDefinitionIdCustom       AIProviderDefinitionId = "custom"
+	AIProviderDefinitionIdDeepseek     AIProviderDefinitionId = "deepseek"
+	AIProviderDefinitionIdGemini       AIProviderDefinitionId = "gemini"
+	AIProviderDefinitionIdGroq         AIProviderDefinitionId = "groq"
+	AIProviderDefinitionIdMistral      AIProviderDefinitionId = "mistral"
+	AIProviderDefinitionIdOpenai       AIProviderDefinitionId = "openai"
+	AIProviderDefinitionIdOpenrouter   AIProviderDefinitionId = "openrouter"
+	AIProviderDefinitionIdSagemaker    AIProviderDefinitionId = "sagemaker"
+	AIProviderDefinitionIdXai          AIProviderDefinitionId = "xai"
 )
 
 // Defines values for AIProviderProbeProvider.
 const (
-	AIProviderProbeProviderAnthropic  AIProviderProbeProvider = "anthropic"
-	AIProviderProbeProviderCerebras   AIProviderProbeProvider = "cerebras"
-	AIProviderProbeProviderCustom     AIProviderProbeProvider = "custom"
-	AIProviderProbeProviderDeepseek   AIProviderProbeProvider = "deepseek"
-	AIProviderProbeProviderGemini     AIProviderProbeProvider = "gemini"
-	AIProviderProbeProviderGroq       AIProviderProbeProvider = "groq"
-	AIProviderProbeProviderMistral    AIProviderProbeProvider = "mistral"
-	AIProviderProbeProviderOpenai     AIProviderProbeProvider = "openai"
-	AIProviderProbeProviderOpenrouter AIProviderProbeProvider = "openrouter"
-	AIProviderProbeProviderSagemaker  AIProviderProbeProvider = "sagemaker"
-	AIProviderProbeProviderXai        AIProviderProbeProvider = "xai"
+	AIProviderProbeProviderAnthropic    AIProviderProbeProvider = "anthropic"
+	AIProviderProbeProviderAzureFoundry AIProviderProbeProvider = "azure_foundry"
+	AIProviderProbeProviderCerebras     AIProviderProbeProvider = "cerebras"
+	AIProviderProbeProviderCustom       AIProviderProbeProvider = "custom"
+	AIProviderProbeProviderDeepseek     AIProviderProbeProvider = "deepseek"
+	AIProviderProbeProviderGemini       AIProviderProbeProvider = "gemini"
+	AIProviderProbeProviderGroq         AIProviderProbeProvider = "groq"
+	AIProviderProbeProviderMistral      AIProviderProbeProvider = "mistral"
+	AIProviderProbeProviderOpenai       AIProviderProbeProvider = "openai"
+	AIProviderProbeProviderOpenrouter   AIProviderProbeProvider = "openrouter"
+	AIProviderProbeProviderSagemaker    AIProviderProbeProvider = "sagemaker"
+	AIProviderProbeProviderXai          AIProviderProbeProvider = "xai"
 )
 
 // Defines values for AIProviderProbeResultStatus.
@@ -128,17 +132,18 @@ const (
 
 // Defines values for AIProviderUpdateProvider.
 const (
-	Anthropic  AIProviderUpdateProvider = "anthropic"
-	Cerebras   AIProviderUpdateProvider = "cerebras"
-	Custom     AIProviderUpdateProvider = "custom"
-	Deepseek   AIProviderUpdateProvider = "deepseek"
-	Gemini     AIProviderUpdateProvider = "gemini"
-	Groq       AIProviderUpdateProvider = "groq"
-	Mistral    AIProviderUpdateProvider = "mistral"
-	Openai     AIProviderUpdateProvider = "openai"
-	Openrouter AIProviderUpdateProvider = "openrouter"
-	Sagemaker  AIProviderUpdateProvider = "sagemaker"
-	Xai        AIProviderUpdateProvider = "xai"
+	Anthropic    AIProviderUpdateProvider = "anthropic"
+	AzureFoundry AIProviderUpdateProvider = "azure_foundry"
+	Cerebras     AIProviderUpdateProvider = "cerebras"
+	Custom       AIProviderUpdateProvider = "custom"
+	Deepseek     AIProviderUpdateProvider = "deepseek"
+	Gemini       AIProviderUpdateProvider = "gemini"
+	Groq         AIProviderUpdateProvider = "groq"
+	Mistral      AIProviderUpdateProvider = "mistral"
+	Openai       AIProviderUpdateProvider = "openai"
+	Openrouter   AIProviderUpdateProvider = "openrouter"
+	Sagemaker    AIProviderUpdateProvider = "sagemaker"
+	Xai          AIProviderUpdateProvider = "xai"
 )
 
 // Defines values for AIUsageReportSemantics.
@@ -1391,7 +1396,7 @@ type AIProviderConnection struct {
 	AppliedRevision int64 `json:"applied_revision"`
 	Enabled         bool  `json:"enabled"`
 
-	// EndpointUrl Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
+	// EndpointUrl Immutable installation-approved custom
 	EndpointUrl *string            `json:"endpoint_url,omitempty"`
 	Id          openapi_types.UUID `json:"id"`
 
@@ -1421,7 +1426,7 @@ type AIProviderCreate struct {
 	ApiKey  *string `json:"api_key,omitempty"`
 	Enabled bool    `json:"enabled"`
 
-	// EndpointUrl Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
+	// EndpointUrl Immutable installation-approved custom
 	EndpointUrl *string `json:"endpoint_url,omitempty"`
 
 	// Models Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
@@ -1454,6 +1459,8 @@ type AIProviderList struct {
 
 	// Definitions Supported provider forms; absence indicates an older server without provider discovery.
 	Definitions         *[]AIProviderDefinition `json:"definitions,omitempty"`
+	FoundryAvailable    *bool                   `json:"foundry_available,omitempty"`
+	FoundryEndpoints    *[]AICustomEndpoint     `json:"foundry_endpoints,omitempty"`
 	Items               []AIProviderConnection  `json:"items"`
 	LegacyKeyIds        []string                `json:"legacy_key_ids"`
 	ManagementAvailable bool                    `json:"management_available"`
@@ -1482,7 +1489,7 @@ type AIProviderModelList struct {
 type AIProviderProbe struct {
 	ApiKey *string `json:"api_key,omitempty"`
 
-	// EndpointUrl Installation-approved custom or SageMaker bridge endpoint.
+	// EndpointUrl Installation-approved custom
 	EndpointUrl *string                 `json:"endpoint_url,omitempty"`
 	Model       string                  `json:"model"`
 	Provider    AIProviderProbeProvider `json:"provider"`
@@ -1511,7 +1518,7 @@ type AIProviderUpdate struct {
 	ApiKey  *string `json:"api_key,omitempty"`
 	Enabled bool    `json:"enabled"`
 
-	// EndpointUrl Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
+	// EndpointUrl Immutable installation-approved custom
 	EndpointUrl      *string `json:"endpoint_url,omitempty"`
 	ExpectedRevision int64   `json:"expected_revision"`
 
@@ -5282,7 +5289,7 @@ type TestAgentAccessParamsProtocol string
 
 // ListAIProviderModelsParams defines parameters for ListAIProviderModels.
 type ListAIProviderModelsParams struct {
-	// ConnectionId Same-organization connection required for custom and SageMaker catalogs.
+	// ConnectionId Same-organization connection required for custom
 	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
 	Provider     *string             `form:"provider,omitempty" json:"provider,omitempty"`
 	Query        *string             `form:"query,omitempty" json:"query,omitempty"`

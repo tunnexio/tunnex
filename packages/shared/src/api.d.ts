@@ -93,9 +93,9 @@ export interface paths {
     "/api/v1/organizations/{orgId}/ai-gateway/models": {
         parameters: {
             query?: {
-                /** @description Same-organization connection required for custom and SageMaker catalogs. */
+                /** @description Same-organization connection required for custom */
                 connection_id?: string;
-                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;
                 limit?: number;
                 offset?: number;
@@ -4639,11 +4639,11 @@ export interface components {
             key_id: string;
             /**
              * Format: uri
-             * @description Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
+             * @description Immutable installation-approved custom
              */
             endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             name: string;
             models: components["schemas"]["AIModelNames"];
             enabled: boolean;
@@ -4660,7 +4660,7 @@ export interface components {
         };
         AIProviderDefinition: {
             /** @enum {string} */
-            id: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+            id: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             name: string;
             credential_label: string;
             model_placeholder: string;
@@ -4669,6 +4669,8 @@ export interface components {
             management_available: boolean;
             /** @description Private inference test adapter is configured. */
             test_available?: boolean;
+            foundry_available?: boolean;
+            foundry_endpoints?: components["schemas"]["AICustomEndpoint"][];
             sagemaker_available?: boolean;
             sagemaker_endpoints?: components["schemas"]["AICustomEndpoint"][];
             custom_available?: boolean;
@@ -4681,11 +4683,11 @@ export interface components {
         AIProviderCreate: {
             /**
              * Format: uri
-             * @description Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
+             * @description Immutable installation-approved custom
              */
             endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             name: string;
             models: components["schemas"]["AIProviderInputModels"];
             enabled: boolean;
@@ -4695,11 +4697,11 @@ export interface components {
         AIProviderUpdate: {
             /**
              * Format: uri
-             * @description Immutable installation-approved custom or SageMaker bridge base URL; omit for standard providers.
+             * @description Immutable installation-approved custom
              */
             endpoint_url?: string;
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             name: string;
             models: components["schemas"]["AIProviderInputModels"];
             enabled: boolean;
@@ -4710,12 +4712,12 @@ export interface components {
         };
         AIProviderProbe: {
             /** @enum {string} */
-            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+            provider: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
             model: string;
             api_key: string;
             /**
              * Format: uri
-             * @description Installation-approved custom or SageMaker bridge endpoint.
+             * @description Installation-approved custom
              */
             endpoint_url?: string;
         };
@@ -8238,9 +8240,9 @@ export interface operations {
     listAIProviderModels: {
         parameters: {
             query?: {
-                /** @description Same-organization connection required for custom and SageMaker catalogs. */
+                /** @description Same-organization connection required for custom */
                 connection_id?: string;
-                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker";
+                provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;
                 limit?: number;
                 offset?: number;

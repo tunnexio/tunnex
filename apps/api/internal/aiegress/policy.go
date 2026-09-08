@@ -70,6 +70,31 @@ func NormalizeEndpoint(raw string) (string, error) {
 	}
 	return u.String(), nil
 }
+
+// FoundryEndpoint recognizes the bounded public Azure OpenAI v1 surface. The
+// common endpoint normalizer stores the base without the transport's /v1 suffix.
+func FoundryEndpoint(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || (u.Port() != "" && u.Port() != "443") || u.Path != "/openai" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
+		return false
+	}
+	host := u.Hostname()
+	for _, suffix := range []string{".openai.azure.com", ".services.ai.azure.com"} {
+		if strings.HasSuffix(host, suffix) {
+			resource := strings.TrimSuffix(host, suffix)
+			if len(resource) < 1 || len(resource) > 63 || resource[0] == '-' || resource[len(resource)-1] == '-' {
+				return false
+			}
+			for _, c := range resource {
+				if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
 func target(raw string) string {
 	u, _ := url.Parse(raw)
 	port := u.Port()
@@ -129,11 +154,11 @@ func (p *Policy) validate() error {
 		if ep.Provider == "" {
 			ep.Provider = "custom"
 		}
-		if ep.Provider != "custom" && ep.Provider != "sagemaker" {
+		if ep.Provider != "custom" && ep.Provider != "sagemaker" && ep.Provider != "azure_foundry" {
 			return ErrDenied
 		}
 		u, e := NormalizeEndpoint(ep.URL)
-		if e != nil || ep.Name == "" || len(ep.Name) > 100 || seen[u] || len(ep.AllowedCIDRs) == 0 || len(ep.AllowedCIDRs) > 64 {
+		if e != nil || (ep.Provider == "azure_foundry" && !FoundryEndpoint(u)) || ep.Name == "" || len(ep.Name) > 100 || seen[u] || len(ep.AllowedCIDRs) == 0 || len(ep.AllowedCIDRs) > 64 {
 			return ErrDenied
 		}
 		ep.URL = u

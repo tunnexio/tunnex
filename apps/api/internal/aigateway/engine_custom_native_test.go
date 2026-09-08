@@ -27,10 +27,11 @@ func TestEngineNativeCustomProxy(t *testing.T) {
 		if tls {
 			name = "HTTPS"
 		}
-		t.Run(name, func(t *testing.T) { nativeCustomProxy(t, tls) })
+		t.Run(name, func(t *testing.T) { nativeCustomProxy(t, tls, "") })
 	}
+	t.Run("FoundryOpenAIV1", func(t *testing.T) { nativeCustomProxy(t, true, "/openai") })
 }
-func nativeCustomProxy(t *testing.T, useTLS bool) {
+func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 	binary := os.Getenv("AI0_BIFROST_BINARY")
 	if binary == "" {
 		t.Skip("explicit pinned native binary required")
@@ -49,6 +50,15 @@ func nativeCustomProxy(t *testing.T, useTLS bool) {
 			w.WriteHeader(401)
 			return
 		}
+		wantPath := prefix + "/v1/chat/completions"
+		if r.Method == http.MethodGet {
+			wantPath = prefix + "/v1/models"
+		}
+		if r.URL.Path != wantPath || r.URL.RawQuery != "" {
+			t.Errorf("unexpected upstream path: %s", r.URL.RequestURI())
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		arrivals.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == "GET" {
@@ -56,9 +66,15 @@ func nativeCustomProxy(t *testing.T, useTLS bool) {
 			return
 		}
 		var request struct {
-			Stream bool `json:"stream"`
+			Stream bool   `json:"stream"`
+			Model  string `json:"model"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&request)
+		if request.Model != "fixture-model" {
+			t.Errorf("upstream model was not the raw deployment: %q", request.Model)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		if request.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			io.WriteString(w, "data: "+`{"choices":[{"index":0,"delta":{"content":"qualified"},"finish_reason":null}]}`+"\n\ndata: "+`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
@@ -131,11 +147,12 @@ func nativeCustomProxy(t *testing.T, useTLS bool) {
 		t.Fatal(e)
 	}
 	provider := "custom-" + uuid.NewString()
+	upstreamBase := upstream.URL + prefix
 	ctx := context.Background()
-	if e = engine.EnsureProvider(ctx, provider, upstream.URL); e != nil {
+	if e = engine.EnsureProvider(ctx, provider, upstreamBase); e != nil {
 		t.Fatal("custom init", e)
 	}
-	spec := ProviderKeySpec{Provider: provider, BaseURL: upstream.URL, ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{provider + "/fixture-model"}, Enabled: true}
+	spec := ProviderKeySpec{Provider: provider, BaseURL: upstreamBase, ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{provider + "/fixture-model"}, Enabled: true}
 	secret := "fixture-custom-secret"
 	if e = engine.PutProviderKey(ctx, spec, &secret); e != nil {
 		t.Fatal("custom key", e)
@@ -215,7 +232,7 @@ func nativeCustomProxy(t *testing.T, useTLS bool) {
 		if check.ConfigureCustomProxy(pu.String()) != nil {
 			t.Fatal("fixture proxy config")
 		}
-		if check.EnsureProvider(ctx, provider, upstream.URL) == nil {
+		if check.EnsureProvider(ctx, provider, upstreamBase) == nil {
 			t.Fatal("invalid native proxy environment accepted by readback")
 		}
 		if infer() == 200 || arrivals.Load() != before {

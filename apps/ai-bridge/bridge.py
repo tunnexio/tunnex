@@ -56,6 +56,23 @@ def normalized(raw):
     return urlunsplit((u.scheme, authority, path, "", ""))
 
 
+def foundry_endpoint(raw):
+    endpoint = normalized(raw)
+    u = urlsplit(endpoint)
+    if (
+        u.scheme != "https"
+        or u.port not in {None, 443}
+        or u.path != "/openai"
+        or not re.fullmatch(
+            r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+            r"\.(?:openai\.azure\.com|services\.ai\.azure\.com)",
+            u.hostname,
+        )
+    ):
+        raise ValueError("endpoint denied")
+    return endpoint
+
+
 def secret(value):
     return (
         isinstance(value, str)
@@ -168,7 +185,13 @@ class Settings:
                 raise ValueError("policy too large")
             policy = json.loads(raw)
             for row in policy.get("endpoints", []):
-                endpoints[normalized(row["url"])] = row.get("provider", "custom")
+                provider = row.get("provider", "custom")
+                endpoint = (
+                    foundry_endpoint(row["url"])
+                    if provider == "azure_foundry"
+                    else normalized(row["url"])
+                )
+                endpoints[endpoint] = provider
         if endpoints:
             u = urlsplit(proxy or "")
             if (
@@ -320,10 +343,14 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                     endpoint=endpoint,
                     proxy=settings.proxy,
                 )
-            elif provider == "sagemaker":
-                endpoint = normalized(data["endpoint_url"])
+            elif provider in {"sagemaker", "azure_foundry"}:
+                endpoint = (
+                    foundry_endpoint(data["endpoint_url"])
+                    if provider == "azure_foundry"
+                    else normalized(data["endpoint_url"])
+                )
                 if (
-                    settings.endpoints.get(endpoint) != "sagemaker"
+                    settings.endpoints.get(endpoint) != provider
                     or not settings.proxy
                 ):
                     raise ValueError()

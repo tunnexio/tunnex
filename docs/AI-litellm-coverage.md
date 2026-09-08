@@ -11,10 +11,11 @@ Runtime: released SDK1.100.0 wheel, separately pinned in apps/ai-bridge.
 
 | Surface | Current coverage | Remaining work |
 | --- | --- | --- |
-| Provider picker | Branded/searchable native9, Custom and SageMaker | Wire additional registry definitions to real routing and typed credentials |
+| Provider picker | Branded/searchable native9, Custom, SageMaker and Foundry OpenAI v1 | Wire additional registry definitions to real routing and typed credentials |
 | Model onboarding | Exact models, catalog suggestions, model chips, existing credential reuse | Public aliases/model groups and model-specific modes |
 | Test Connect | Real bounded one-model inference before create/new-key save, sanitized result | Live credentials for each supported provider; current development uses synthetic transports |
 | SageMaker | Actual OSS SDK SigV4 adapter behind scoped private bridge, approved endpoint/IAM binding | Authorized real AWS endpoint qualification |
+| Azure AI Foundry | Actual Azure endpoint/key/deployment via OpenAI v1 chat, scoped saved routing and Test Connect | Real user endpoint qualification; legacy azure_ai /models, Entra identity and other modes remain unsupported |
 | Custom upstream | Approved public/private HTTP/HTTPS with authenticated CONNECT and hostname/IP policy | More protocol adapters beyond OpenAI chat compatibility |
 | Credentials | Write-only keys, rotation, retained ownership, org scope | Provider-specific compound/cloud credential forms |
 | Usage and cost | Daily chart, request/token/cost cards, team/agent/model breakdowns | Additional LiteLLM log explorers and drill-down dimensions |

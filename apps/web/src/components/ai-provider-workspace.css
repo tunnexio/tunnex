@@ -148,3 +148,7 @@
 .ai-provider-endpoint-help{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .ai-provider-endpoint-help p{flex:1;min-width:200px;font-size:12px;line-height:1.65;color:var(--tnx-text-secondary)}
 .ai-provider-endpoint-help button{flex-shrink:0}
+
+/* Keep setup status separate from the selected provider's logo and name. */
+.ai-provider-picker .pointer-events-none[class~="right-3"]{position:static;left:auto;right:auto;top:auto;justify-self:start;width:max-content;margin-top:6px}
+@media(min-width:651px){.ai-provider-picker .pointer-events-none[class~="right-3"]{grid-column:2;margin-top:0}}
