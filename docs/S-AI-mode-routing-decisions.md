@@ -55,7 +55,10 @@ credentials and the full LiteLLM proxy cutover remain separate work.
    status/content request, submission idempotency, bounded retention and explicit
    handling of uncertain submission. Raw provider IDs must not be bearer handles.
    Polling must not resubmit generation; revocation blocks subsequent reads. Video
-   is not enabled before this lifecycle has its own wire proof.
+   is not enabled before this lifecycle has its own wire proof. Retention is24h,
+   at most64 nonterminal jobs per tenant/agent and4096 retained jobs globally.
+   Each new reservation deletes at most128 expired rows; existing per-agent4
+   and global64 active HTTP limits also apply. Expired handles are inaccessible.
 8. Existing observed accounting is retained. Token-priced completion/embedding
    needs the correct input/output readiness checks. Non-token-priced modes fail
    monetary-policy admission until their actual price units and terminal cost
