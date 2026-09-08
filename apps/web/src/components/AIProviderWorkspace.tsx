@@ -151,8 +151,8 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     return retained && connection ? connection.model_modes?.[retained] ?? "chat" : selectedModes[model] ?? (initialConnection?.models.includes(model) ? "chat" : mode);
   };
   function changeMode(next: ModelMode) {
-    setMode(next); setManualModel(""); setCatalogDismissed(false); searchSerial.current++; setCatalog(null); setCatalogOpen(false); setSearching(false);
-    if (!initialConnection) { setModels(""); setSelectedModes({}); }
+    setMode(next); setCatalogDismissed(false); searchSerial.current++; setCatalog(null); setCatalogOpen(false); setSearching(false);
+    if (!initialConnection) setSelectedModes(Object.fromEntries(chosen.map((model) => [model, next])));
   }
   function addModel(model: string) {
     if (!validModel(model) || chosen.includes(model) || finalModels.length >= 32) return;
@@ -184,7 +184,24 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     return () => window.clearTimeout(timer);
   }, [provider, query, mode, canSearch, searchEndpoint, searchSecret, searchConnection, catalogDismissed]);
   const savedName = name.trim() || connection?.name || (provider && chosen.length ? `${providerLabel} · ${chosen[0]}`.slice(0, 80) : "");
-  const valid = (!usesEndpoint || endpointReady) && !!provider && (!!connection || !!definition) && (name.trim().length <= 80) && chosen.length > 0 && finalModels.length <= 32 && chosen.every(validModel) && (connection && !secret || secretValid);
+  const validationIssues: string[] = [];
+  if (!provider || !connection && !definition) validationIssues.push("Select a provider from the dropdown.");
+  if (usesEndpoint && !endpointReady) {
+    if (!endpointAvailable) validationIssues.push("Configure secure provider egress before testing this endpoint.");
+    else if (!selectedEndpoint) validationIssues.push("Enter a valid Upstream API Base.");
+    else if (!foundryFormatValid) validationIssues.push("Use an Azure HTTPS resource URL ending /openai/v1.");
+    else validationIssues.push("Configure network access for this endpoint, or use an available public HTTPS endpoint.");
+  }
+  if (name.trim().length > 80) validationIssues.push("Use at most 80 characters for the credential name.");
+  if (!chosen.length) validationIssues.push(manualModel.trim()
+    ? validModel(manualModel.trim()) ? "Click Add exact model to include the entered model." : "Enter a valid exact model name matching the selected provider, then click Add exact model."
+    : "Select a model from the catalog, or enter its exact name and click Add exact model.");
+  if (finalModels.length > 32) validationIssues.push("Select at most 32 models, including models already using these credentials.");
+  if (chosen.some((model) => !validModel(model))) validationIssues.push("Remove model names that do not match the selected provider.");
+  if ((!connection || secret) && !secretValid) validationIssues.push(!secret
+    ? "Enter the API key. If you changed the endpoint, enter the key again."
+    : /\s/.test(secret) ? "The API key contains whitespace. Remove spaces or line breaks." : "Use an API key of at most 4096 characters.");
+  const valid = validationIssues.length === 0;
   const [testing, setTesting] = useState(false), [testStatus, setTestStatus] = useState<"idle" | "success" | "error">("idle");
   const [testedAt, setTestedAt] = useState(0);
   const testGeneration = useRef(0);
@@ -192,6 +209,10 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
   useEffect(() => { if (!testedAt) return; const timer = window.setTimeout(() => { setTestStatus("idle"); setTestedAt(0); }, Math.max(0, testedAt + 300000 - Date.now())); return () => window.clearTimeout(timer); }, [testedAt]);
   const probeMode = chosen.length ? modelMode(chosen[0]) : mode;
   const needsTest = !connection || !!secret;
+  const testBlockers = [...validationIssues,
+    ...(!testAvailable ? ["Test Connect requires installation setup of the private LiteLLM bridge."] : []),
+    ...(!supportedModes.includes(probeMode) ? ["This installation does not support the selected model mode."] : [])];
+  const testHelpId = `${formId}-test-help`;
   const canSave = valid && (!needsTest || supportedModes.includes(probeMode)) && (!needsTest || testStatus === "success" && Date.now() - testedAt < 300000);
   async function testConnection() {
     if (!provider || !valid || !secret || !testAvailable || !supportedModes.includes(probeMode) || testing) return;
@@ -206,7 +227,7 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     } catch { if (active.current && generation === testGeneration.current) setTestStatus("error"); }
     finally { if (active.current && generation === testGeneration.current) setTesting(false); }
   }
-  const actions = <><Button variant="ghost" type="button" disabled={busy} onClick={onCancel}>Cancel</Button>{needsTest && <Button type="button" disabled={busy || testing || !valid || !testAvailable || !supportedModes.includes(probeMode)} onClick={() => void testConnection()}>{testing ? "Testing connection…" : "Test Connect"}</Button>}<Button form={formId} type="submit" disabled={busy || !canSave}>{modelOnly ? "Add Model" : connection ? "Save credentials" : "Create credentials"}</Button></>;
+  const actions = <><Button variant="ghost" type="button" disabled={busy} onClick={onCancel}>Cancel</Button>{needsTest && <Button type="button" disabled={busy || testing || testBlockers.length > 0} aria-describedby={testBlockers.length ? testHelpId : undefined} onClick={() => void testConnection()}>{testing ? "Testing connection…" : "Test Connect"}</Button>}<Button form={formId} type="submit" disabled={busy || !canSave}>{modelOnly ? "Add Model" : connection ? "Save credentials" : "Create credentials"}</Button></>;
   const editor = (
     <div className="ai-provider-workspace"><form id={formId} className="ai-provider-editor" aria-label={modelOnly ? "Add model" : connection ? "Edit credentials" : "Add credentials"} onSubmit={(event) => { event.preventDefault(); if (!canSave || busy || !provider) return; const body = { provider, ...(usesEndpoint ? { endpoint_url: selectedEndpoint } : {}), name: modelOnly && connection ? connection.name : savedName, models: finalModels, model_modes: Object.fromEntries(finalModels.map((model) => [model, modelMode(model)])), enabled: modelOnly && connection ? connection.enabled : enabled, ...(secret ? { api_key: secret } : {}) }; setSecret(""); void onSave(connection ? { ...body, expected_revision: connection.revision } : { ...body, api_key: secret }, connection); }}>
     <div className="ai-provider-panel-heading"><h3>{modelOnly ? "Model configuration" : connection ? "Edit credentials / rotate key" : "New credentials"}</h3><Badge>{providerLabel}</Badge></div>
@@ -246,7 +267,7 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     <p>Keys are stored securely and never shown again. If a key update fails, enter the key again and save.</p></>}
 
     {!(modelOnly && connection) && <><label className="ai-provider-enabled"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Enable this connection for authorized team policies</label><p>Organization AI access remains a separate default-off setting.</p></>}
-    {needsTest && <div className="ai-provider-preflight"><p>A small {modeLabel(probeMode)} request tests the first selected model only; charges may apply and are excluded from gateway usage totals. Success does not certify the other selected models. Results expire after five minutes.</p>{!testAvailable && <p>Test Connect requires installation setup of the private LiteLLM bridge.</p>}{testStatus === "success" && <p role="status">Test succeeded for {chosen[0]} ({modeLabel(probeMode)}). {probeMode === "video_generation" ? "Video job accepted; generation is not yet complete." : "You can now save this model configuration."}</p>}{testStatus === "error" && <p role="alert">Connection test failed. Check the model, endpoint and credentials, then retry.</p>}</div>}
+    {needsTest && <div className="ai-provider-preflight"><p>A small {modeLabel(probeMode)} request tests the first selected model only; charges may apply and are excluded from gateway usage totals. Success does not certify the other selected models. Results expire after five minutes.</p>{testBlockers.length > 0 && <div id={testHelpId} role="status" aria-label="Test Connect requirements"><p>To enable Test Connect:</p><ul>{testBlockers.map((message) => <li key={message}>{message}</li>)}</ul></div>}{testStatus === "success" && <p role="status">Test succeeded for {chosen[0]} ({modeLabel(probeMode)}). {probeMode === "video_generation" ? "Video job accepted; generation is not yet complete." : "You can now save this model configuration."}</p>}{testStatus === "error" && <p role="alert">Connection test failed. Check the model, endpoint and credentials, then retry.</p>}</div>}
   </form></div>
   );
   return modelOnly ? <section className="ai-provider-inline" role="tabpanel" aria-label="Add Model"><h3>Add Model</h3><div className="ai-provider-inline-card">{editor}<div className="ai-provider-inline-actions">{actions}</div></div></section> : <Modal title={connection ? "Edit credentials" : "Add Credentials"} placement="right" size="wide" showClose onDismiss={onCancel} actions={actions}>{editor}</Modal>;

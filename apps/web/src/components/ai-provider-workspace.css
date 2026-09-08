@@ -105,6 +105,7 @@
 .ai-provider-preflight p{font-size:12px;line-height:1.6;color:var(--tnx-text-secondary)}
 .ai-provider-preflight [role=status]{color:var(--tnx-text-primary)}
 .ai-provider-preflight [role=alert]{color:var(--tnx-danger)}
+.ai-provider-preflight ul{margin:6px 0 0;padding-left:20px;font-size:12px;line-height:1.6;color:var(--tnx-text-secondary)}
 
 .ai-provider-endpoint-entry{display:grid;gap:12px}
 .ai-provider-endpoint-entry p{color:var(--tnx-text-secondary);font-size:12px;line-height:1.65}

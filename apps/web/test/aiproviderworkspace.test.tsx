@@ -352,6 +352,21 @@ describe("pre-save inference check", () => {
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-key" } });
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: c.models[0] } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
   };
+  it("explains a typed but unselected model and a pasted key with whitespace without exposing the key", async () => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider();
+    const test = screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement;
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: c.models[0] } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-key " } });
+    const requirements = screen.getByRole("status", { name: "Test Connect requirements" });
+    expect(test.disabled).toBe(true); expect(test.getAttribute("aria-describedby")).toBe(requirements.id);
+    expect(within(requirements).getByText(/Click Add exact model/)).toBeTruthy();
+    expect(within(requirements).getByText(/API key contains whitespace/)).toBeTruthy();
+    expect(requirements.textContent).not.toContain("synthetic-key"); expect(api.POST).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-key" } });
+    expect(test.disabled).toBe(false); expect(screen.queryByRole("status", { name: "Test Connect requirements" })).toBeNull();
+    expect(api.POST).not.toHaveBeenCalled();
+  });
   it("requires result success, rejects HTTP200 error and invalidates changed credentials", async () => {
     await prepare(); const save = saveModel() as HTMLButtonElement; expect(save.disabled).toBe(true);
     api.POST.mockResolvedValueOnce({ data: { status: "error", duration_ms: 20 }, response: response() });
@@ -392,6 +407,21 @@ describe("Azure AI Foundry OpenAI v1", () => {
   const foundryDefinition = { id: "azure_foundry", name: "Azure AI Foundry (OpenAI v1)", credential_label: "Azure API key", model_placeholder: "my-gpt-deployment" };
   const bases = ["https://sample.services.ai.azure.com/openai", "https://sample.openai.azure.com/openai"];
   const foundryInventory = { ...inventory, definitions: [...definitions, foundryDefinition], foundry_available: true, foundry_endpoints: bases.map((url) => ({ name: "Azure deployment", url })) };
+  it("keeps a fully filled Azure model testable after mode changes and explains key re-entry after endpoint edits", async () => {
+    api.GET.mockResolvedValue({ data: { ...foundryInventory, public_endpoints_available: true, supported_modes: ["chat", "embedding"] } });
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "my-deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://sample.cognitiveservices.azure.com/openai/v1/" } });
+    fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-key" } });
+    const test = screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement;
+    expect(test.disabled).toBe(false); fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); expect(test.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: "https://next.cognitiveservices.azure.com/openai/v1/" } });
+    expect(test.disabled).toBe(true); expect((screen.getByLabelText("Azure API key") as HTMLInputElement).value).toBe("");
+    expect(screen.getByText(/If you changed the endpoint, enter the key again/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "next-synthetic-key" } });
+    expect(test.disabled).toBe(false); expect(api.POST).not.toHaveBeenCalled(); await passTest();
+    expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: { provider: "azure_foundry", endpoint_url: "https://next.cognitiveservices.azure.com/openai", model: "my-deployment", mode: "embedding", api_key: "next-synthetic-key" } }));
+  });
   it.each(bases)("tests and creates the exact deployment through %s with an Azure key", async (base) => {
     api.GET.mockResolvedValue({ data: foundryInventory }); render(show()); await screen.findByText("Engineering");
     fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ })); fireEvent.click(screen.getByRole("button", { name: "Add Credentials" }));
@@ -588,15 +618,20 @@ describe("model mode routing", () => {
     const options = within(screen.getByLabelText("Mode")).getAllByRole("option") as HTMLOptionElement[];
     expect(options.filter((o) => !o.disabled).map((o) => o.value)).toEqual(["chat"]);
   });
-  it("invalidates an old probe and model selection when the Add Model mode changes", async () => {
+  it("preserves selected models and typed input but invalidates an old probe when the Add Model mode changes", async () => {
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(); addExact(c.models[0]);
     fireEvent.change(screen.getByLabelText("API key"), { target: { value: "synthetic-mode-key" } });
     let finish!: (v: unknown) => void; api.POST.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; })); fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "openrouter/another-model" } });
     fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } });
-    expect(screen.queryByRole("button", { name: `Remove model ${c.models[0]}` })).toBeNull();
+    expect(screen.getByRole("button", { name: `Remove model ${c.models[0]}` })).toBeTruthy();
+    expect((screen.getByLabelText("Exact model name") as HTMLInputElement).value).toBe("openrouter/another-model");
+    expect((screen.getByRole("button", { name: "Test Connect" }) as HTMLButtonElement).disabled).toBe(false);
     await act(async () => finish({ data: { status: "success" } })); expect(screen.queryByText(/Test succeeded/)).toBeNull(); expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
-    addExact("openrouter/embedding-fixture"); await passTest(); fireEvent.click(saveModel());
-    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: expect.objectContaining({ models: ["openrouter/embedding-fixture"], model_modes: { "openrouter/embedding-fixture": "embedding" } }) }));
+    await passTest();
+    expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/\/test-connection$/), expect.objectContaining({ body: expect.objectContaining({ model: c.models[0], mode: "embedding" }) }));
+    fireEvent.click(saveModel());
+    expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/\/providers$/), expect.objectContaining({ body: expect.objectContaining({ models: c.models, model_modes: { [c.models[0]]: "embedding" } }) }));
   });
   it("filters reference catalogs by mode and refuses late results from the old mode", async () => {
     let finish!: (v: unknown) => void;
@@ -611,9 +646,9 @@ describe("model mode routing", () => {
     const saved = { ...c, model_modes: { [c.models[0]]: "completion" } };
     api.GET.mockResolvedValue({ data: { ...inventory, items: [saved], supported_modes: modes } }); render(show()); await screen.findByText("Engineering");
     expect(screen.getByText("Completion — /completions")).toBeTruthy(); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider();
-    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } }); addExact("openrouter/discarded");
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } }); addExact(c.models[0]); addExact("openrouter/draft");
     fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "embedding" } }); addExact("openrouter/embed-fixture"); fireEvent.click(saveModel());
-    expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ models: [c.models[0], "openrouter/embed-fixture"], model_modes: { [c.models[0]]: "completion", "openrouter/embed-fixture": "embedding" }, expected_revision: 3 }) }));
+    expect(api.PUT).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: expect.objectContaining({ models: [c.models[0], "openrouter/draft", "openrouter/embed-fixture"], model_modes: { [c.models[0]]: "completion", "openrouter/draft": "embedding", "openrouter/embed-fixture": "embedding" }, expected_revision: 3 }) }));
     expect(api.POST).not.toHaveBeenCalled();
   });
   it("sends draft catalog mode and merges canonical Custom modes without duplicating retained names", async () => {

@@ -81,6 +81,34 @@ Rendered UI inspection confirms all eight enabled options and two automatic
 or supplying an endpoint/key. Screenshot:
 `docs/walk-artifacts/ai-gateway-20260908/eight-mode-selector.jpg`.
 
+## Test Connect form follow-up
+
+At checkpoint `85ad2836`, the user reported Test Connect remaining disabled after
+filling Add Model. The filled draft was no longer present in either existing
+browser tab, so the precise user sequence is unconfirmed. A separate local Azure
+form reproduced a concrete cause: choosing a model, filling a valid endpoint/key,
+then changing Mode removed the selected model and disabled Test Connect silently.
+
+Paper `dd2aaf75` records the correction. Mode changes now retain draft models and
+typed exact-model input, apply the chosen mode to draft selections and invalidate
+old probe success. Saved-credential model modes stay unchanged. A single set of
+validation issues now controls readiness and explains missing selections, invalid
+keys, endpoints or unavailable mode/bridge setup beside the button. Typing an
+exact model still requires Add exact model; endpoint edits still clear the key
+and explicitly request re-entry. No backend/secret/destination rule changed.
+
+Two regressions failed before the fix. Afterwards,61 focused provider tests and
+1393 full web tests across118 files passed, as did TypeScript and the production
+build (existing large-chunk advisory only). Evidence logs:
+`/private/tmp/test-connect-{red,web-tests,full-web,typecheck,build}.log`.
+The local Azure form was visually inspected with synthetic input only: Test
+Connect stays enabled across a mode change, and pending exact-model input gets a
+visible explanation. Screenshot: `walk-artifacts/ai-gateway-20260908/test-connect-enabled.png`.
+No real key was used, no Test Connect request was sent from the browser, no model
+or credential was saved, and no runtime or database restart was needed.
+Independent narrow diff review found no actionable issue; it did not repeat the
+parent's tests and is not a review of the whole AI epic.
+
 ## Limits and next action
 
 Provider/model support differs; choose the model's supported mode and run an
