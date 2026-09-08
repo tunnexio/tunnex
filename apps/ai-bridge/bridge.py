@@ -63,7 +63,7 @@ def foundry_endpoint(raw):
     if (
         u.scheme != "https"
         or u.port not in {None, 443}
-        or u.path != "/openai"
+        or u.path not in {"/openai", "/anthropic"}
         or not re.fullmatch(
             r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
             r"\.(?:openai\.azure\.com|services\.ai\.azure\.com|cognitiveservices\.azure\.com)",
@@ -225,6 +225,13 @@ class Settings:
         if provider not in {"custom", "sagemaker", "azure_foundry"}:
             raise ValueError("endpoint denied")
         endpoint = foundry_endpoint(raw) if provider == "azure_foundry" else normalized(raw)
+        if provider != "azure_foundry" and urlsplit(endpoint).path == "/anthropic":
+            try:
+                foundry_endpoint(endpoint)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("select Azure Foundry for its Anthropic endpoint")
         if not self.proxy:
             raise ValueError("mandatory proxy missing")
         if endpoint in self.endpoints:
@@ -387,9 +394,13 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
                     endpoint=endpoint,
                     proxy=settings.proxy,
                 )
+                if provider == "azure_foundry" and endpoint.endswith("/anthropic"):
+                    if mode != "chat":
+                        raise ValueError("Anthropic Messages requires chat mode")
+                    payload.update(provider="foundry_anthropic", model="anthropic/" + model)
                 # Azure hosts other model vendors too. Keep the ordinary token
                 # parameter for them; GPT-5/o-series use the reasoning limit.
-                if provider == "azure_foundry" and mode == "chat" and re.match(r"^(?:gpt-5(?:[.-]|$)|o[134](?:-|$))", model, re.IGNORECASE):
+                if provider == "azure_foundry" and not endpoint.endswith("/anthropic") and mode == "chat" and re.match(r"^(?:gpt-5(?:[.-]|$)|o[134](?:-|$))", model, re.IGNORECASE):
                     payload["max_completion_tokens"] = payload.pop("max_tokens")
             else:
                 raise ValueError()

@@ -72,11 +72,11 @@ func NormalizeEndpoint(raw string) (string, error) {
 	return u.String(), nil
 }
 
-// FoundryEndpoint recognizes the bounded public Azure OpenAI v1 surface. The
+// FoundryEndpoint recognizes the Azure OpenAI v1 and Anthropic Messages surfaces. The
 // common endpoint normalizer stores the base without the transport's /v1 suffix.
 func FoundryEndpoint(raw string) bool {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || (u.Port() != "" && u.Port() != "443") || u.Path != "/openai" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
+	if err != nil || u.Scheme != "https" || (u.Port() != "" && u.Port() != "443") || (u.Path != "/openai" && u.Path != "/anthropic") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
 		return false
 	}
 	host := u.Hostname()
@@ -388,4 +388,10 @@ func (p *Policy) dialResolved(ctx context.Context, authority string, lookup func
 		}
 	}
 	return nil, ErrDenied
+}
+
+// FoundryAnthropicEndpoint selects the protocol from an explicit, validated URL,
+// never from a deployment name (which may be an arbitrary alias).
+func FoundryAnthropicEndpoint(raw string) bool {
+	return FoundryEndpoint(raw) && strings.HasSuffix(raw, "/anthropic")
 }

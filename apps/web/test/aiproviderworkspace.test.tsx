@@ -482,6 +482,24 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.click(form === "model" ? saveModel() : screen.getByRole("button", { name: "Create credentials" }));
     expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/providers$/), expect.objectContaining({ body: expect.objectContaining({ endpoint_url: base, models: ["gpt-5"] }) }));
   });
+  it.each(["model", "credential"])("tests a Foundry Claude portal endpoint in the %s form", async (form) => {
+    api.GET.mockResolvedValue({ data: { ...foundryInventory, public_endpoints_available:true, supported_modes:["chat","embedding"] } });
+    render(show()); await screen.findByText("Engineering");
+    if (form === "model") fireEvent.click(screen.getByRole("tab", {name:"Add Model"}));
+    else { fireEvent.click(screen.getByRole("tab", {name:/LLM Credentials/})); fireEvent.click(screen.getByRole("button", {name:"Add Credentials"})); }
+    selectProvider(foundryDefinition.name);
+    fireEvent.change(screen.getByLabelText("Exact model name"), {target:{value:"claude-opus-5"}}); fireEvent.click(screen.getByRole("button", {name:"Add exact model"}));
+    fireEvent.change(screen.getByLabelText("Upstream API Base"), {target:{value:"https://bst-azure-ai-services.services.ai.azure.com/anthropic/v1/messages"}});
+    fireEvent.change(screen.getByLabelText("Azure API key"), {target:{value:"synthetic-claude-key"}});
+    expect(screen.getByText("https://bst-azure-ai-services.services.ai.azure.com/anthropic/v1/messages")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Mode"), {target:{value:"embedding"}});
+    expect((screen.getByRole("button", {name:"Test Connect"}) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Mode"), {target:{value:"chat"}});
+    await passTest();
+    expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/test-connection$/), expect.objectContaining({body:{provider:"azure_foundry",model:"claude-opus-5",mode:"chat",endpoint_url:"https://bst-azure-ai-services.services.ai.azure.com/anthropic",api_key:"synthetic-claude-key"}}));
+    fireEvent.click(form === "model" ? saveModel() : screen.getByRole("button", {name:"Create credentials"}));
+    expect(api.POST).toHaveBeenLastCalledWith(expect.stringMatching(/providers$/), expect.objectContaining({body:expect.objectContaining({endpoint_url:"https://bst-azure-ai-services.services.ai.azure.com/anthropic",models:["claude-opus-5"]})}));
+  });
   it("keeps a fully filled Azure model testable after mode changes and explains key re-entry after endpoint edits", async () => {
     api.GET.mockResolvedValue({ data: { ...foundryInventory, public_endpoints_available: true, supported_modes: ["chat", "embedding"] } });
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" })); selectProvider(foundryDefinition.name);
@@ -503,7 +521,7 @@ describe("Azure AI Foundry OpenAI v1", () => {
     fireEvent.focus(screen.getByRole("combobox", { name: "Provider" }));
     expect(screen.getByRole("listbox").querySelector("svg.ai-provider-logo")).toBeTruthy();
     selectProvider(foundryDefinition.name);
-    expect(screen.getByText(/Connect Azure-hosted models, including Llama/)).toBeTruthy(); expect(screen.queryByLabelText("Gateway API key")).toBeNull();
+    expect(screen.getByText(/Connect Azure-hosted models, including Claude/)).toBeTruthy(); expect(screen.queryByLabelText("Gateway API key")).toBeNull();
     fireEvent.change(screen.getByLabelText("Upstream API Base"), { target: { value: `${base}/v1` } });
     fireEvent.change(screen.getByLabelText("Azure API key"), { target: { value: "synthetic-azure-api-key" } });
     fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "my-gpt-deployment" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));

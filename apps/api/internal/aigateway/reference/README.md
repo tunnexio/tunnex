@@ -31,8 +31,8 @@ All 351 Azure/Azure AI entries are retained as source evidence, sorted by origin
 key. Runtime filtering matches the selected operation and each row's provider
 prefix, then strips that prefix. GPT, Llama, DeepSeek, Phi, Mistral and other
 Foundry families are included. Nested regional/pricing aliases and chat
-audio/realtime variants are excluded. Claude requires the separate Anthropic
-Messages transport and is excluded from these v1 suggestions. Names are sorted
+audio/realtime variants are excluded. Claude chat suggestions are included and
+use the Azure Anthropic Messages endpoint. Names are sorted
 and deduplicated before pagination. The derived snapshot SHA-256 is
 `522e2790c78a318bf165b90965afc516d4c91d44a5b3c1f478bd6afe0bfbafdf`.
 
@@ -49,6 +49,6 @@ The companion `litellm_provider_models.json` uses the same full-source commit an
 SHA-256. It retains 668 exact model/mode rows for the nine supported standard
 provider forms and the eight requested modes. Bare names are canonicalized to
 `provider/name`; provider-prefixed names retain their upstream suffix; unmatched
-pricing-path aliases are excluded. It is used for nonchat catalog suggestions,
+pricing-path aliases are excluded. It is used for nonchat catalog suggestions and merged with native chat catalogs before pagination,
 never for usage accounting or proof of model entitlement. The Azure snapshot is
 also filtered by the selected mode before search and pagination.

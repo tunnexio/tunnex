@@ -70,13 +70,13 @@ func foundryReferenceModeName(row referenceModel, mode ModelMode) (string, bool)
 		return "", false
 	}
 	name := strings.TrimPrefix(row.ID, row.Provider+"/")
-	// Nested paths are regional/pricing aliases. Claude requires the separate
-	// Anthropic Messages transport; v1 references must not promise that adapter.
+	// Nested paths are regional/pricing aliases, not deployment names.
+	// The explicit endpoint selects OpenAI v1 or Anthropic Messages at runtime.
 	if strings.Contains(name, "/") || !engineModel.MatchString(name) {
 		return "", false
 	}
 	lower := strings.ToLower(name)
-	if strings.HasPrefix(lower, "claude-") || mode == ModeChat && (strings.Contains(lower, "audio") || strings.Contains(lower, "realtime")) {
+	if mode == ModeChat && (strings.Contains(lower, "audio") || strings.Contains(lower, "realtime")) {
 		return "", false
 	}
 	return name, true

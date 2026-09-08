@@ -105,10 +105,18 @@ def test_foundry_policy_load_and_invalid_classification(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("suffix", ["openai.azure.com", "services.ai.azure.com", "cognitiveservices.azure.com"])
-@pytest.mark.parametrize("operation, deployment", [("preflight", "gpt-5"), ("preflight", "Llama-3.3-70B-Instruct"), ("preflight", "deepseek-r1"), ("catalog", DEPLOYMENT), ("saved-preflight", "Llama-3.3-70B-Instruct")])
-async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operation, deployment, tmp_path, monkeypatch):
+@pytest.mark.parametrize("protocol, operation, deployment", [
+    (protocol, operation, deployment)
+    for protocol in ("openai", "anthropic")
+    for operation, deployment in [("preflight", "gpt-5"), ("preflight", "Llama-3.3-70B-Instruct"), ("preflight", "deepseek-r1"), ("catalog", DEPLOYMENT), ("saved-preflight", "Llama-3.3-70B-Instruct")]
+    # Claude suggestions come from the reference; there is no live catalog probe.
+    if protocol != "anthropic" or operation != "catalog"
+])
+async def test_foundry_actual_sdk_v1_through_authenticated_proxy(protocol, suffix, operation, deployment, tmp_path, monkeypatch):
+    if protocol == "anthropic":
+        deployment = "claude-opus-5" if deployment == "gpt-5" else "arbitrary-deployment-alias"
     host = "team-resource." + suffix
-    endpoint = "https://" + host + "/openai"
+    endpoint = "https://" + host + "/" + protocol
     cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
     subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
@@ -126,6 +134,8 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operati
         if operation == "catalog":
             assert request.method == "GET"
             return web.json_response({"data": [{"id": DEPLOYMENT, "name": "private metadata"}]})
+        if protocol == "anthropic":
+            return web.json_response({"id":"msg_fixture", "type":"message", "role":"assistant", "model":deployment, "content":[{"type":"text","text":"PRIVATE-REPLY"}], "stop_reason":"end_turn", "usage":{"input_tokens":1,"output_tokens":1}})
         return web.json_response({
             "id": "synthetic-foundry-response", "object": "chat.completion",
             "model": DEPLOYMENT,
@@ -191,8 +201,13 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operati
                 assert KEY not in json.dumps(result) and "PRIVATE-REPLY" not in json.dumps(result)
             assert len(arrivals) == 1 and tunnels == [host] and not errors
             arrival = arrivals[0]
-            assert arrival["path"] == "/openai/v1/" + ("models" if operation == "catalog" else "chat/completions")
-            assert arrival["headers"]["Authorization"] == "Bearer " + KEY
+            assert arrival["path"] == "/anthropic/v1/messages" if protocol == "anthropic" else arrival["path"] == "/openai/v1/" + ("models" if operation == "catalog" else "chat/completions")
+            if protocol == "anthropic":
+                assert arrival["headers"]["x-api-key"] == KEY
+                assert arrival["headers"]["anthropic-version"] == "2023-06-01"
+                assert "Authorization" not in arrival["headers"]
+            else:
+                assert arrival["headers"]["Authorization"] == "Bearer " + KEY
             assert "api-key" not in {k.lower() for k in arrival["headers"]}
             if operation in {"preflight", "saved-preflight"}:
                 assert arrival["data"]["model"] == deployment
@@ -204,3 +219,23 @@ async def test_foundry_actual_sdk_v1_through_authenticated_proxy(suffix, operati
         finally:
             proxy.close()
             await proxy.wait_closed()
+
+@pytest.mark.parametrize("provider", ["custom", "sagemaker"])
+def test_anthropic_endpoint_requires_foundry_provider(provider):
+    settings = Settings(ADMIN, public_https=True, proxy="http://user:pass@egress:8190")
+    with pytest.raises(ValueError):
+        settings.endpoint(provider, "https://resource.services.ai.azure.com/anthropic")
+
+@pytest.mark.asyncio
+async def test_foundry_anthropic_nonchat_refused_before_worker():
+    calls = []
+    async def never(payload):
+        calls.append(payload)
+        raise AssertionError()
+    settings = Settings(ADMIN, public_https=True, proxy="http://user:pass@egress:8190")
+    async with TestClient(TestServer(create_app(settings, never))) as client:
+        data = request_body("https://resource.services.ai.azure.com/anthropic")
+        data["mode"] = "embedding"
+        response = await client.post("/test-connection",json=data,headers={"Authorization":"Bearer "+ADMIN})
+        assert (await response.json())["status"] == "error"
+        assert calls == []

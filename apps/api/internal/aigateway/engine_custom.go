@@ -42,11 +42,11 @@ func (e *Engine) providerConfigPayload(provider, base string) (map[string]any, b
 	}
 	p["network_config"] = map[string]any{"base_url": base, "max_retries": 0, "allow_private_network": true, "insecure_skip_verify": false}
 	p["proxy_config"] = map[string]any{"type": "http", "url": "env.TUNNEX_AI_CUSTOM_PROXY_URL"}
-	p["custom_provider_config"] = map[string]any{"base_provider_type": "openai", "is_key_less": false, "allowed_requests": qualifiedCustomOperations()}
+	p["custom_provider_config"] = map[string]any{"base_provider_type": customBaseProvider(base), "is_key_less": false, "allowed_requests": customOperations(base)}
 	return p, true
 }
 func (e *Engine) customConfigExact(base, actual string, private, insecure bool, headers map[string]string, custom, proxy json.RawMessage) bool {
-	return e.customConfigOperationsExact(base, actual, private, insecure, headers, custom, proxy, qualifiedCustomOperations())
+	return e.customConfigOperationsExact(base, actual, private, insecure, headers, custom, proxy, customOperations(base))
 }
 func (e *Engine) customConfigOperationsExact(base, actual string, private, insecure bool, headers map[string]string, custom, proxy json.RawMessage, allowed map[string]bool) bool {
 	if e.customProxy == nil || actual != base || !private || insecure || len(headers) != 0 {
@@ -58,7 +58,7 @@ func (e *Engine) customConfigOperationsExact(base, actual string, private, insec
 		Allowed map[string]bool   `json:"allowed_requests"`
 		Paths   map[string]string `json:"request_path_overrides"`
 	}
-	if json.Unmarshal(custom, &c) != nil || c.Base != "openai" || c.Keyless || len(c.Paths) != 0 {
+	if json.Unmarshal(custom, &c) != nil || c.Base != customBaseProvider(base) || c.Keyless || len(c.Paths) != 0 {
 		return false
 	}
 	for k := range allowed {
@@ -110,4 +110,17 @@ func qualifiedCustomOperations() map[string]bool {
 		"image_generation": true, "image_generation_stream": true,
 		"video_generation": true, "video_retrieve": true, "video_download": true,
 	}
+}
+
+func customBaseProvider(base string) string {
+	if aiegress.FoundryAnthropicEndpoint(base) {
+		return "anthropic"
+	}
+	return "openai"
+}
+func customOperations(base string) map[string]bool {
+	if aiegress.FoundryAnthropicEndpoint(base) {
+		return map[string]bool{"list_models": true, "chat_completion": true, "chat_completion_stream": true}
+	}
+	return qualifiedCustomOperations()
 }

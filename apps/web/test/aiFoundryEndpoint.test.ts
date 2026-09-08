@@ -24,7 +24,7 @@ describe("Azure portal endpoint import", () => {
     "https://evil.example/openai/v1", "https://resource.openai.azure.com.evil.example/openai/v1",
     "https://resource.openai.azure.com:8443/openai/v1", "http://resource.openai.azure.com/openai/v1",
     "https://secret@resource.openai.azure.com/openai/v1", "https://@resource.openai.azure.com/openai/v1", "https://resource.openai.azure.com./openai/v1",
-    ...["/models", "/anthropic", "/openai/v1?api-version=2024-10-21", "/openai/v1?", "/openai/v1#", "/openai/v1#secret",
+    ...["/models", "/anthropic/v1/messages?api-version=2025-01-01", "/anthropic/v1/embeddings", "/openai/v1?api-version=2024-10-21", "/openai/v1?", "/openai/v1#", "/openai/v1#secret",
       "/openai/v1/../v1", "/openai/%76%31", "/openai//v1", "/openai/v1/__proto__", "/openai/v1/toString",
       "/openai/deployments/a/unknown", "/openai/deployments/a/__proto__", "/openai/deployments/a/chat/completions?",
       "/openai/deployments/a/chat/completions?api-version=2024-10-21&api-key=secret",
@@ -33,4 +33,10 @@ describe("Azure portal endpoint import", () => {
       "/openai/deployments/a/chat/completions?%61pi-version=2024-10-21",
     ].map(path => `https://resource.openai.azure.com${path}`),
   ])("refuses unsafe or unrelated URL %s", (url) => { expect(parseFoundryEndpoint(url)).toBeNull(); });
+});
+
+it("imports the Foundry Claude portal URL without changing its protocol", () => {
+ for (const path of ["/anthropic", "/anthropic/v1", "/anthropic/v1/messages", "/anthropic/v1/messages/"]) {
+  expect(parseFoundryEndpoint("https://bst-azure-ai-services.services.ai.azure.com" + path)).toEqual({base:"https://bst-azure-ai-services.services.ai.azure.com/anthropic", mode:"chat", legacy:false});
+ }
 });

@@ -61,7 +61,7 @@ func TestFoundryReferenceSearchAndPagination(t *testing.T) {
 		t.Fatal(all, err)
 	}
 	for _, model := range all.Models {
-		if strings.Contains(model.ID, "audio") || strings.Contains(model.ID, "realtime") || strings.Contains(model.ID, "codex") || strings.Contains(model.ID, "embedding") || strings.Contains(model.ID, "claude") || strings.Contains(model.ID, "/") {
+		if strings.Contains(model.ID, "audio") || strings.Contains(model.ID, "realtime") || strings.Contains(model.ID, "codex") || strings.Contains(model.ID, "embedding") || strings.Contains(model.ID, "/") {
 			t.Fatal("unsupported mode/provider alias advertised", model)
 		}
 	}
@@ -90,7 +90,7 @@ func TestFoundryReferenceModeAndProviderBoundary(t *testing.T) {
 		{referenceModel{"azure/gpt-5", "azure", "chat"}, true},
 		{referenceModel{"azure/o3-mini", "azure", "chat"}, true},
 		{referenceModel{"azure/gpt-5", "azure_ai", "chat"}, false},
-		{referenceModel{"azure_ai/claude-sonnet", "azure_ai", "chat"}, false},
+		{referenceModel{"azure_ai/claude-sonnet", "azure_ai", "chat"}, true},
 		{referenceModel{"azure/gpt-5-pro", "azure", "responses"}, false},
 		{referenceModel{"azure/gpt-image-1", "azure", "image_generation"}, false},
 		{referenceModel{"azure/text-embedding-3-large", "azure", "embedding"}, false},
@@ -179,5 +179,12 @@ func TestFoundryReferenceSelectedMode(t *testing.T) {
 				t.Fatal("regional alias advertised", m)
 			}
 		}
+	}
+}
+
+func TestFoundryClaudeCatalog(t *testing.T) {
+	page, err := FoundryReferenceModels("claude-opus-5", 50, 0)
+	if err != nil || len(page.Models) != 1 || page.Models[0].ID != "claude-opus-5" {
+		t.Fatalf("missing deployed Claude suggestion: %+v %v", page, err)
 	}
 }

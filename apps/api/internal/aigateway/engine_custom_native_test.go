@@ -2,12 +2,17 @@ package aigateway
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"github.com/google/uuid"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +22,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // The native proxy fixture validates mandatory CONNECT routing; aiegress tests
@@ -29,6 +35,7 @@ func TestEngineNativeCustomProxy(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) { nativeCustomProxy(t, tls, "") })
 	}
+	t.Run("FoundryAnthropic", func(t *testing.T) { nativeCustomProxy(t, true, "/anthropic") })
 	t.Run("FoundryOpenAIV1", func(t *testing.T) { nativeCustomProxy(t, true, "/openai") })
 }
 func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
@@ -44,17 +51,26 @@ func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 	if hex.EncodeToString(sum[:]) != binarySHA256 {
 		t.Fatal("pin mismatch")
 	}
+	anthropic := prefix == "/anthropic"
+	const azureHost = "fixture.services.ai.azure.com"
 	var arrivals, tunnels atomic.Int32
 	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer fixture-custom-secret" {
+		if !anthropic && r.Header.Get("Authorization") != "Bearer fixture-custom-secret" || anthropic && (r.Header.Get("x-api-key") != "fixture-custom-secret" || r.Header.Get("anthropic-version") != "2023-06-01" || r.Header.Get("Authorization") != "") {
 			w.WriteHeader(401)
 			return
 		}
 		wantPath := prefix + "/v1/chat/completions"
+		if anthropic {
+			wantPath = prefix + "/v1/messages"
+		}
 		if r.Method == http.MethodGet {
 			wantPath = prefix + "/v1/models"
 		}
-		if r.URL.Path != wantPath || r.URL.RawQuery != "" {
+		wantQuery := ""
+		if anthropic && r.Method == http.MethodGet {
+			wantQuery = "limit=1000"
+		}
+		if r.URL.Path != wantPath || r.URL.RawQuery != wantQuery {
 			t.Errorf("unexpected upstream path: %s", r.URL.RequestURI())
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -75,6 +91,29 @@ func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+		if anthropic {
+			if request.Stream {
+				w.Header().Set("Content-Type", "text/event-stream")
+				events := []string{
+					`{"type":"message_start","message":{"id":"msg_fixture","type":"message","role":"assistant","model":"fixture-model","content":[],"usage":{"input_tokens":1,"output_tokens":0}}}`,
+					`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+					`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"qualified"}}`,
+					`{"type":"content_block_stop","index":0}`,
+					`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}`,
+					`{"type":"message_stop"}`,
+				}
+				for _, event := range events {
+					var header struct {
+						Type string `json:"type"`
+					}
+					json.Unmarshal([]byte(event), &header)
+					io.WriteString(w, "event: "+header.Type+"\ndata: "+event+"\n\n")
+				}
+			} else {
+				io.WriteString(w, `{"id":"msg_fixture","type":"message","role":"assistant","model":"fixture-model","content":[{"type":"text","text":"qualified"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+			}
+			return
+		}
 		if request.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			io.WriteString(w, "data: "+`{"choices":[{"index":0,"delta":{"content":"qualified"},"finish_reason":null}]}`+"\n\ndata: "+`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
@@ -83,14 +122,30 @@ func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 		io.WriteString(w, `{"id":"fixture","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"qualified"},"finish_reason":"stop"}]}`)
 	}))
 	if useTLS {
+		if anthropic {
+			privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatal(err)
+			}
+			template := &x509.Certificate{SerialNumber: big.NewInt(1), DNSNames: []string{azureHost}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true, IsCA: true}
+			der, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			upstream.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: privateKey}}}
+		}
 		upstream.StartTLS()
 	} else {
 		upstream.Start()
 	}
 	defer upstream.Close()
 	u, _ := url.Parse(upstream.URL)
+	connectHost := u.Host
+	if anthropic {
+		connectHost = azureHost + ":443"
+	}
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "CONNECT" || r.Host != u.Host || r.Header.Get("Proxy-Authorization") != "Basic Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ=" {
+		if r.Method != "CONNECT" || r.Host != connectHost || r.Header.Get("Proxy-Authorization") != "Basic Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ=" {
 			w.WriteHeader(403)
 			return
 		}
@@ -137,6 +192,30 @@ func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 	pu, _ := url.Parse(proxy.URL)
 	pu.User = url.UserPassword("fixture-user", "fixture-password")
 	env = append(env, "TUNNEX_AI_CUSTOM_PROXY_URL="+pu.String())
+	provider := "custom-" + uuid.NewString()
+	upstreamBase := upstream.URL + prefix
+	if anthropic {
+		upstreamBase = "https://" + azureHost + prefix
+		// Initialize the exact production payload from a local config file. The
+		// native admin create endpoint resolves DNS before considering its proxy;
+		// fixture DNS must never consult Azure. Inference resolves through CONNECT.
+		fixtureEngine := &Engine{}
+		if err := fixtureEngine.ConfigureCustomProxy(pu.String()); err != nil {
+			t.Fatal(err)
+		}
+		payload, valid := fixtureEngine.providerConfigPayload(provider, upstreamBase)
+		if !valid {
+			t.Fatal("invalid production payload")
+		}
+		raw, _ := os.ReadFile(filepath.Join(dir, "config.json"))
+		var config map[string]any
+		if json.Unmarshal(raw, &config) != nil {
+			t.Fatal("invalid fixture config")
+		}
+		delete(payload, "provider")
+		config["providers"] = map[string]any{provider: payload}
+		write("config.json", config)
+	}
 	base, stop := startEngine(t, binary, dir, env...)
 	defer stop()
 	engine, e := NewEngine(base, "fixture-admin", "fixture-password")
@@ -146,8 +225,6 @@ func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 	if e = engine.ConfigureCustomProxy(pu.String()); e != nil {
 		t.Fatal(e)
 	}
-	provider := "custom-" + uuid.NewString()
-	upstreamBase := upstream.URL + prefix
 	ctx := context.Background()
 	if e = engine.EnsureProvider(ctx, provider, upstreamBase); e != nil {
 		t.Fatal("custom init", e)
@@ -157,52 +234,54 @@ func nativeCustomProxy(t *testing.T, useTLS bool, prefix string) {
 	if e = engine.PutProviderKey(ctx, spec, &secret); e != nil {
 		t.Fatal("custom key", e)
 	}
-	// Simulate a retained chat-only provider with a saved encrypted key, then
-	// reconcile operation support without resubmitting or replacing that key.
-	var retained map[string]json.RawMessage
-	if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &retained); e != nil {
-		t.Fatal(e)
-	}
-	delete(retained, "keys")
-	retained["custom_provider_config"] = json.RawMessage(`{"base_provider_type":"openai","is_key_less":false,"allowed_requests":{"list_models":true,"chat_completion":true,"chat_completion_stream":true}}`)
-	if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
-		t.Fatal("legacy fixture configuration", e)
-	}
-	if e = engine.EnsureProvider(ctx, provider, upstreamBase); e != nil {
-		t.Fatal("retained native mode reconciliation", e)
-	}
-	if e = engine.VerifyProviderKey(ctx, spec); e != nil {
-		t.Fatal("retained key changed during reconciliation", e)
-	}
-	// Unexpected native permissions must be refused without overwriting them.
-	if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &retained); e != nil {
-		t.Fatal(e)
-	}
-	delete(retained, "keys")
-	unsafeOperations := qualifiedCustomOperations()
-	unsafeOperations["file_upload"] = true
-	retained["custom_provider_config"], _ = json.Marshal(map[string]any{"base_provider_type": "openai", "is_key_less": false, "allowed_requests": unsafeOperations})
-	if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
-		t.Fatal(e)
-	}
-	if e = engine.EnsureProvider(ctx, provider, upstreamBase); e == nil {
-		t.Fatal("unexpected native operation silently replaced")
-	}
-	var untouched map[string]json.RawMessage
-	if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &untouched); e != nil {
-		t.Fatal(e)
-	}
-	var checked struct {
-		Allowed map[string]bool `json:"allowed_requests"`
-	}
-	if json.Unmarshal(untouched["custom_provider_config"], &checked) != nil || !checked.Allowed["file_upload"] {
-		t.Fatal("refusal overwrote unrelated native permission")
-	}
-	retained["custom_provider_config"], _ = json.Marshal(map[string]any{"base_provider_type": "openai", "is_key_less": false, "allowed_requests": qualifiedCustomOperations()})
-	if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
-		t.Fatal(e)
-	}
+	if !anthropic {
+		// Simulate a retained chat-only provider with a saved encrypted key, then
+		// reconcile operation support without resubmitting or replacing that key.
+		var retained map[string]json.RawMessage
+		if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &retained); e != nil {
+			t.Fatal(e)
+		}
+		delete(retained, "keys")
+		retained["custom_provider_config"], _ = json.Marshal(map[string]any{"base_provider_type": customBaseProvider(upstreamBase), "is_key_less": false, "allowed_requests": map[string]bool{"list_models": true, "chat_completion": true, "chat_completion_stream": true}})
+		if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
+			t.Fatal("legacy fixture configuration", e)
+		}
+		if e = engine.EnsureProvider(ctx, provider, upstreamBase); e != nil {
+			t.Fatal("retained native mode reconciliation", e)
+		}
+		if e = engine.VerifyProviderKey(ctx, spec); e != nil {
+			t.Fatal("retained key changed during reconciliation", e)
+		}
+		// Unexpected native permissions must be refused without overwriting them.
+		if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &retained); e != nil {
+			t.Fatal(e)
+		}
+		delete(retained, "keys")
+		unsafeOperations := customOperations(upstreamBase)
+		unsafeOperations["file_upload"] = true
+		retained["custom_provider_config"], _ = json.Marshal(map[string]any{"base_provider_type": customBaseProvider(upstreamBase), "is_key_less": false, "allowed_requests": unsafeOperations})
+		if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
+			t.Fatal(e)
+		}
+		if e = engine.EnsureProvider(ctx, provider, upstreamBase); e == nil {
+			t.Fatal("unexpected native operation silently replaced")
+		}
+		var untouched map[string]json.RawMessage
+		if _, e = engine.request(ctx, http.MethodGet, "/api/providers/"+provider, nil, nil, &untouched); e != nil {
+			t.Fatal(e)
+		}
+		var checked struct {
+			Allowed map[string]bool `json:"allowed_requests"`
+		}
+		if json.Unmarshal(untouched["custom_provider_config"], &checked) != nil || !checked.Allowed["file_upload"] {
+			t.Fatal("refusal overwrote unrelated native permission")
+		}
+		retained["custom_provider_config"], _ = json.Marshal(map[string]any{"base_provider_type": customBaseProvider(upstreamBase), "is_key_less": false, "allowed_requests": customOperations(upstreamBase)})
+		if _, e = engine.request(ctx, http.MethodPut, "/api/providers/"+provider, nil, retained, nil); e != nil {
+			t.Fatal(e)
+		}
 
+	}
 	if ok, e := engine.TestProviderKey(ctx, spec); e != nil || !ok {
 		t.Fatal("custom auth", e)
 	}

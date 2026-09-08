@@ -134,24 +134,29 @@ live AWS IAM, installed endpoint behavior, provider billing, or cloud deployment
 Run `python -m pytest tests -q` with pytest and pytest-asyncio in a private test
 venv. No production credential or paid call is needed.
 
-## Azure AI Foundry (OpenAI v1)
+## Azure AI Foundry
 
-The provider `azure_foundry` uses the actual Azure resource API key and deployed
-model name. Accepted API bases end `/openai/v1` on resource hosts under
-`services.ai.azure.com`, `openai.azure.com` or `cognitiveservices.azure.com`; the
-control plane stores `/openai` without the final `/v1`. With `public_https: true`
-in the shared policy and authenticated egress configured, public HTTPS/443 URLs
-need no per-endpoint approval or service restart. Private/internal access still
-needs an explicit `provider: azure_foundry` URL/CIDR rule. The proxy resolves once,
-refuses any mixed/protected/nonpublic answer for public fallback, and dials only
-validated numeric addresses. Keep CP, proxy and SDK policy aligned; never expose
-bridge administrator credentials.
+Use the deployed model name and Azure resource API key. Paste the portal's
+`/anthropic/v1/messages` URL for Claude, or `/openai/v1` for OpenAI-compatible
+Azure deployments. Resource hosts under `services.ai.azure.com`,
+`openai.azure.com` and `cognitiveservices.azure.com` are accepted. The control
+plane stores the base `/anthropic` or `/openai`; the explicit path selects the
+protocol independently of the deployment name. Existing credentials keep their
+immutable endpoint. Create separate credentials when the protocol differs.
 
-Test Connect invokes the pinned LiteLLM OpenAI adapter against that exact URL.
-Saved inference uses the same OpenAI v1 protocol and existing connection-owned
-model scope. This slice supports chat completions, including streaming; it does
-not implement legacy `/models` or dated deployment URLs, Entra identity, other
-modes, or sovereign-cloud endpoints. The bounded Azure probe uses `max_completion_tokens=16`; other providers retain
-their existing probe parameters. New Azure model suggestions are references, not
-proof of a deployed model or permission to invoke it.
-Live Azure qualification requires the operator's actual endpoint/key/model.
+Test Connect uses the pinned LiteLLM Anthropic or OpenAI adapter through the
+mandatory authenticated egress proxy. Saved-key tests resolve the key privately
+inside the engine and preserve its serving model scope. Authorized inference
+uses Bifrost's corresponding native adapter. Claude supports chat and streaming;
+other modes are refused before sending the key. Both paths send `x-api-key` and
+`anthropic-version: 2023-06-01` for Claude. GPT reasoning deployments retain their
+existing token parameter handling.
+
+With public HTTPS enabled, endpoint entry needs no individual approval. Private
+hosts retain explicit endpoint/CIDR rules. DNS and numeric dials remain controlled
+by the egress proxy. Foundry searches use the pinned LiteLLM Azure/Azure AI
+reference, including Claude, even with saved credentials. Suggestions do not
+certify a deployed model or access. A successful connection test verifies the
+chosen deployment and mode. Live Azure qualification needs the operator's key;
+synthetic SDK/native tests do not claim that proof. Legacy serverless `/models`,
+Entra identity and sovereign-cloud endpoints remain outside this adapter.

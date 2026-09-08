@@ -74,6 +74,9 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 		if err != nil || (in.Provider == "azure_foundry" && !aiegress.FoundryEndpoint(normalized)) {
 			return in, providerInvalid()
 		}
+		if in.Provider != "azure_foundry" && aiegress.FoundryAnthropicEndpoint(normalized) {
+			return in, providerInvalid()
+		}
 		in.EndpointURL = &normalized
 		if len(in.Models) < 1 || len(in.Models) > 32 {
 			return in, providerInvalid()
@@ -100,6 +103,13 @@ func validateProviderInput(in ProviderInput, required bool) (ProviderInput, erro
 	}
 	if !validModelModes(in.Models, in.ModelModes) {
 		return in, providerInvalid()
+	}
+	if in.EndpointURL != nil && aiegress.FoundryAnthropicEndpoint(*in.EndpointURL) {
+		for _, mode := range in.ModelModes {
+			if mode != ModeChat {
+				return in, providerInvalid()
+			}
+		}
 	}
 	if required && in.Secret == nil {
 		return in, providerInvalid()
@@ -473,11 +483,7 @@ func (s *Policies) ProviderModels(ctx context.Context, provider, query string, l
 	if !supportedProvider(provider) || utf8.RuneCountInString(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
 		return ProviderModelPage{}, providerInvalid()
 	}
-	p, err := s.engine.(ProviderEngine).ProviderModels(ctx, provider, query, limit, offset)
-	if err != nil {
-		return ProviderModelPage{}, aiUnavailable()
-	}
-	return p, nil
+	return mergedProviderCatalog(ctx, s.engine.(ProviderEngine), provider, ModeChat, false, nil, query, limit, offset)
 }
 
 // ConfigureCustomProviders is called at startup only after the engine's
@@ -580,6 +586,9 @@ func (s *Policies) normalizeCustomModels(in *ProviderInput, id uuid.UUID) error 
 	return nil
 }
 func (s *Policies) CustomProviderModels(ctx context.Context, org, id uuid.UUID, query string, limit, offset int) (ProviderModelPage, error) {
+	return s.CustomProviderModelsForMode(ctx, org, id, ModeChat, query, limit, offset)
+}
+func (s *Policies) CustomProviderModelsForMode(ctx context.Context, org, id uuid.UUID, mode ModelMode, query string, limit, offset int) (ProviderModelPage, error) {
 	if !s.CustomAvailable() && !s.SageMakerAvailable() && !s.FoundryAvailable() {
 		return ProviderModelPage{}, aiUnavailable()
 	}
@@ -600,6 +609,15 @@ func (s *Policies) CustomProviderModels(ctx context.Context, org, id uuid.UUID, 
 	}
 	if !endpointProvider(p.Provider) || !p.Enabled || p.Status != "applied" || p.AppliedRevision != p.Revision || !s.customConnectionEligible(p) {
 		return ProviderModelPage{}, providerMissing()
+	}
+	if p.Provider == "azure_foundry" {
+		configured := []ProviderModel{}
+		for _, model := range p.Models {
+			if DefaultModelMode(p.ModelModes[model]) == mode {
+				configured = append(configured, ProviderModel{ID: model, Name: strings.TrimPrefix(model, nativeConnectionProvider(p)+"/")})
+			}
+		}
+		return mergedProviderCatalog(ctx, s.engine.(ProviderEngine), nativeConnectionProvider(p), mode, true, configured, query, limit, offset)
 	}
 	result, err := s.engine.(ProviderEngine).ProviderModels(ctx, nativeConnectionProvider(p), query, limit, offset)
 	if err != nil {

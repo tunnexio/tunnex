@@ -222,10 +222,10 @@ async def invoke(data, emit=None):
         region = binding["aws_region_name"]
         suffix = "amazonaws.com.cn" if region.startswith("cn-") else "amazonaws.com"
         base = "https://runtime.sagemaker." + region + "." + suffix
-    elif provider == "custom":
+    elif provider in {"custom", "foundry_anthropic"}:
         if not data.get("proxy"):
             raise ValueError("mandatory proxy missing")
-        base = data["endpoint"] + "/v1"
+        base = data["endpoint"] + ("" if provider == "foundry_anthropic" else "/v1")
         params.update(model=data["model"], api_key=data["api_key"], api_base=base)
     else:
         base = ORIGINS[provider]
@@ -242,7 +242,7 @@ async def invoke(data, emit=None):
         # Both generic provider handlers and OpenAI-SDK adapters inherit this
         # per-worker client; no other tenant/request exists in this process.
         litellm.aclient_session = client
-        if provider in {"anthropic", "gemini", "mistral", "sagemaker"}:
+        if provider in {"anthropic", "foundry_anthropic", "gemini", "mistral", "sagemaker"}:
             params["client"] = handler
         for field in ("temperature", "stream_options"):
             if field in data:

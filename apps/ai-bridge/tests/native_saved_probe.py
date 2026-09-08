@@ -26,7 +26,7 @@ async def saved_probe(bridge, body, directory):
         "config_store": {"enabled": True, "type": "sqlite", "config": {"path": str(directory / "config.db")}},
         "framework": {"pricing": {"pricing_url": (directory / "prices.json").as_uri(), "model_parameters_url": (directory / "params.json").as_uri(), "live_models_sync_interval": 0, "mcp_library_sync_interval": 0}},
         "governance": {"auth_config": {"is_enabled": True, "admin_username": "fixture-admin", "admin_password": "fixture-password", "disable_auth_on_inference": False}},
-        "providers": {provider: {"network_config": {"base_url": body["endpoint_url"], "max_retries": 0}, "custom_provider_config": {"base_provider_type": "openai", "is_key_less": False, "allowed_requests": {"chat_completion": True}}, "keys": [{"id": key_id, "name": key_name, "value": body["api_key"], "models": ["previous-deployment"], "weight": 1, "enabled": True}]}},
+        "providers": {provider: {"network_config": {"base_url": body["endpoint_url"], "max_retries": 0}, "custom_provider_config": {"base_provider_type": "anthropic" if body["endpoint_url"].endswith("/anthropic") else "openai", "is_key_less": False, "allowed_requests": {"chat_completion": True}}, "keys": [{"id": key_id, "name": key_name, "value": body["api_key"], "models": ["previous-deployment"], "weight": 1, "enabled": True}]}},
     }
     config_path = directory / "config.json"
     config_path.write_text(json.dumps(config)); config_path.chmod(0o600)

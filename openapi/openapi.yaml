@@ -6302,7 +6302,7 @@ components:
         model_modes: { $ref: '#/components/schemas/AIModelModes' }
         id: { type: string, format: uuid }
         key_id: { type: string, description: Non-secret owned policy reference. }
-        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 base URL (stored without trailing /v1); omit for standard providers. }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages base URL (stored without trailing /v1); omit for standard providers. }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         name: { type: string }
         models: { $ref: '#/components/schemas/AIModelNames' }
@@ -6345,7 +6345,7 @@ components:
       required: [provider, name, models, enabled, api_key]
       properties:
         model_modes: { $ref: '#/components/schemas/AIModelModes' }
-        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 base URL (stored without trailing /v1); omit for standard providers. }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages base URL (stored without trailing /v1); omit for standard providers. }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         name: { type: string, minLength: 1, maxLength: 80 }
         models: { $ref: '#/components/schemas/AIProviderInputModels' }
@@ -6357,7 +6357,7 @@ components:
       required: [provider, name, models, enabled, expected_revision]
       properties:
         model_modes: { $ref: '#/components/schemas/AIModelModes' }
-        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 base URL (stored without trailing /v1); omit for standard providers. }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Immutable installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages base URL (stored without trailing /v1); omit for standard providers. }
         provider: { type: string, enum: [openai, anthropic, gemini, openrouter, groq, mistral, cerebras, xai, deepseek, custom, sagemaker, azure_foundry] }
         name: { type: string, minLength: 1, maxLength: 80 }
         models: { $ref: '#/components/schemas/AIProviderInputModels' }
@@ -6387,7 +6387,7 @@ components:
         api_key: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
         connection_id: { type: string, format: uuid, description: Owned saved credentials to test. Mutually exclusive with api_key and endpoint_url. Requires expected_revision. }
         expected_revision: { type: integer, format: int64, minimum: 1, description: Required only for a saved-credential test. }
-        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Installation-approved custom, SageMaker bridge or Foundry OpenAI v1 endpoint. }
+        endpoint_url: { type: string, format: uri, maxLength: 2048, description: Installation-approved custom, SageMaker bridge or Foundry OpenAI v1 or Anthropic Messages endpoint. }
     AIProviderProbeResult:
       type: object
       additionalProperties: false

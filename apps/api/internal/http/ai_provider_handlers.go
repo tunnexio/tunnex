@@ -167,7 +167,7 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		if r.Params.ConnectionId == nil {
 			return nil, apierr.BadRequest("invalid_ai_provider", "Select a connection before browsing its models")
 		}
-		p, err = s.aiPolicies.CustomProviderModels(ctx, r.OrgId, *r.Params.ConnectionId, query, limit, offset)
+		p, err = s.aiPolicies.CustomProviderModelsForMode(ctx, r.OrgId, *r.Params.ConnectionId, mode, query, limit, offset)
 	} else {
 		if r.Params.ConnectionId != nil {
 			return nil, apierr.BadRequest("invalid_ai_provider", "Connection-scoped catalog requires a custom, SageMaker or Foundry provider")

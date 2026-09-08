@@ -23,3 +23,22 @@ func TestFoundryInputRequiresV1ResourceBase(t *testing.T) {
 		t.Fatal("unscoped Azure model accepted")
 	}
 }
+
+func TestFoundryAnthropicInput(t *testing.T) {
+	key, base := "fixture-key", "https://resource.services.ai.azure.com/anthropic"
+	in := ProviderInput{Provider: "azure_foundry", Name: "Claude", EndpointURL: &base, Models: []string{"claude-opus-5"}, Secret: &key, Enabled: true}
+	if _, err := validateProviderInput(in, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range []string{"custom", "sagemaker"} {
+		wrong := in
+		wrong.Provider = provider
+		if _, err := validateProviderInput(wrong, true); err == nil {
+			t.Fatal("Anthropic URL accepted under", provider)
+		}
+	}
+	in.ModelModes = map[string]ModelMode{"claude-opus-5": ModeEmbedding}
+	if _, err := validateProviderInput(in, true); err == nil {
+		t.Fatal("non-chat mode accepted on Anthropic endpoint")
+	}
+}

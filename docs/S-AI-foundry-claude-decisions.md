@@ -48,3 +48,26 @@ and correct headers; saved-key tests preserve serving scope; chat and streaming
 return gateway-compatible responses; unsupported modes and unsafe URLs fail
 before sending secrets. Existing OpenAI behavior remains covered. Render the
 local preview. Synthetic wire evidence does not certify live Azure credentials.
+
+## Review dispositions
+
+User approved both review corrections in this session: reject the Azure
+Anthropic base under generic Custom (and SageMaker) to preserve one test/serve
+protocol, and merge native deployment catalogs with LiteLLM reference names
+before deduplication and pagination. This also preserves live aliases when
+reusing saved Foundry credentials. Read the retained native catalog through its
+existing 100-row pages, with a shared 10-second deadline, a 10,000-row cap and
+the existing 1 MiB response bound per page. Catalog failure may fall back to
+reference suggestions and configured names, never grant model access.
+
+The folded review caught an initial mismatch with the private engine's 100-row
+page limit. The fold now preserves that bound, with a regression through the real
+Engine HTTP client over 101 native entries. Both protocol and catalog reviewers
+re-reviewed the final fold and reported no remaining introduced regressions.
+
+Held follow-up (P2, pre-existing): saved native model catalogs lack operation
+metadata, so an existing chat alias can appear in a non-chat search. The UI
+retains its saved mode when testing that existing model. Track separately as
+`AI-native-catalog-mode-filtering`, pending user disposition; this Claude chat
+slice does not change that behavior. Anthropic endpoints explicitly reject all
+non-chat modes before sending a request.
