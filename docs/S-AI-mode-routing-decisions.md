@@ -67,6 +67,21 @@ credentials and the full LiteLLM proxy cutover remain separate work.
 
 ## Verification sequence
 
+### Test Connect form correction (September 8, 2026)
+
+The user reports Test Connect staying disabled after filling Add Model. Reproduced
+locally: selecting a model, entering endpoint/key, then changing Mode silently
+cleared the model selection. Keep draft models and typed model input when Mode
+changes; apply the new mode to draft selections while preserving modes of models
+retained from saved credentials. Previous probe success and catalog results still
+expire on every mode change. Editing existing mixed-mode credentials keeps its
+individual model selectors authoritative. Show the exact missing/invalid field
+beside Test Connect instead of an unexplained disabled button. Endpoint changes
+continue to clear the draft key; the form must explicitly request key re-entry.
+No backend validation, destination control, secret handling or paid-test boundary
+changes. Verify model-before-mode entry, late probe results, saved-credential
+preservation, pending exact-model input and key/endpoint validation in UI tests.
+
 Commit this contract before code. Implement disjoint backend persistence/native,
 SDK preflight and UI lanes, with central adapter/OpenAPI integration. Prove default
 chat compatibility, namespace and tenant boundaries, cross-mode refusal, revision
