@@ -6395,6 +6395,16 @@ components:
       properties:
         status: { type: string, enum: [success, error] }
         duration_ms: { type: integer, format: int64, minimum: 0 }
+        failure: { $ref: '#/components/schemas/AIProviderProbeFailure' }
+    AIProviderProbeFailure:
+      type: object
+      additionalProperties: false
+      description: Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned.
+      required: [kind, source]
+      properties:
+        kind: { type: string, enum: [http_error, network_error, timeout, configuration_error, invalid_response, unknown] }
+        source: { type: string, enum: [provider, proxy, gateway] }
+        http_status: { type: integer, minimum: 400, maximum: 599 }
     AIProviderRevision:
       type: object
       additionalProperties: false

@@ -86,7 +86,8 @@ async def test_foundry_refuses_scope_mismatch_before_worker(kind, proxy, endpoin
         )
         result = await response.json()
         assert result["status"] == "error"
-        assert set(result) == {"status", "duration_ms"}
+        assert set(result) == {"status", "duration_ms", "failure"}
+        assert result["failure"] == {"kind": "configuration_error", "source": "gateway"}
         assert not calls
 
 

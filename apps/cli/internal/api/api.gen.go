@@ -182,6 +182,23 @@ const (
 	AIProviderProbeProviderXai          AIProviderProbeProvider = "xai"
 )
 
+// Defines values for AIProviderProbeFailureKind.
+const (
+	AIProviderProbeFailureKindConfigurationError AIProviderProbeFailureKind = "configuration_error"
+	AIProviderProbeFailureKindHttpError          AIProviderProbeFailureKind = "http_error"
+	AIProviderProbeFailureKindInvalidResponse    AIProviderProbeFailureKind = "invalid_response"
+	AIProviderProbeFailureKindNetworkError       AIProviderProbeFailureKind = "network_error"
+	AIProviderProbeFailureKindTimeout            AIProviderProbeFailureKind = "timeout"
+	AIProviderProbeFailureKindUnknown            AIProviderProbeFailureKind = "unknown"
+)
+
+// Defines values for AIProviderProbeFailureSource.
+const (
+	AIProviderProbeFailureSourceGateway  AIProviderProbeFailureSource = "gateway"
+	AIProviderProbeFailureSourceProvider AIProviderProbeFailureSource = "provider"
+	AIProviderProbeFailureSourceProxy    AIProviderProbeFailureSource = "proxy"
+)
+
 // Defines values for AIProviderProbeResultStatus.
 const (
 	AIProviderProbeResultStatusError   AIProviderProbeResultStatus = "error"
@@ -1342,11 +1359,11 @@ const (
 
 // Defines values for UpgradeStatusRollbackState.
 const (
-	Available         UpgradeStatusRollbackState = "available"
-	Failed            UpgradeStatusRollbackState = "failed"
-	InProgress        UpgradeStatusRollbackState = "in_progress"
-	NotNeeded         UpgradeStatusRollbackState = "not_needed"
-	RestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
+	UpgradeStatusRollbackStateAvailable         UpgradeStatusRollbackState = "available"
+	UpgradeStatusRollbackStateFailed            UpgradeStatusRollbackState = "failed"
+	UpgradeStatusRollbackStateInProgress        UpgradeStatusRollbackState = "in_progress"
+	UpgradeStatusRollbackStateNotNeeded         UpgradeStatusRollbackState = "not_needed"
+	UpgradeStatusRollbackStateRestoreFromBackup UpgradeStatusRollbackState = "restore_from_backup"
 )
 
 // Defines values for UpgradeStatusState.
@@ -1724,10 +1741,26 @@ type AIProviderProbe struct {
 // AIProviderProbeProvider defines model for AIProviderProbe.Provider.
 type AIProviderProbeProvider string
 
+// AIProviderProbeFailure Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned.
+type AIProviderProbeFailure struct {
+	HttpStatus *int                         `json:"http_status,omitempty"`
+	Kind       AIProviderProbeFailureKind   `json:"kind"`
+	Source     AIProviderProbeFailureSource `json:"source"`
+}
+
+// AIProviderProbeFailureKind defines model for AIProviderProbeFailure.Kind.
+type AIProviderProbeFailureKind string
+
+// AIProviderProbeFailureSource defines model for AIProviderProbeFailure.Source.
+type AIProviderProbeFailureSource string
+
 // AIProviderProbeResult defines model for AIProviderProbeResult.
 type AIProviderProbeResult struct {
-	DurationMs int64                       `json:"duration_ms"`
-	Status     AIProviderProbeResultStatus `json:"status"`
+	DurationMs int64 `json:"duration_ms"`
+
+	// Failure Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned.
+	Failure *AIProviderProbeFailure     `json:"failure,omitempty"`
+	Status  AIProviderProbeResultStatus `json:"status"`
 }
 
 // AIProviderProbeResultStatus defines model for AIProviderProbeResult.Status.

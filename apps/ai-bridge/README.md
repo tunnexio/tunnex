@@ -61,7 +61,12 @@ chat endpoint; arbitrary model-serving request formats are not translated here.
 (default `chat`). Native providers use
 canonical provider-prefixed models; Custom, Azure and SageMaker use the raw
 model/deployment name or configured bridge alias.
-The response contains only `status` (`success` or `error`) and `duration_ms`.
+The response contains `status` (`success` or `error`), `duration_ms`, and an
+optional sanitized `failure` with `kind`, `source` and `http_status` only when an
+HTTP rejection was observed. Sources distinguish the provider, CONNECT proxy
+and test gateway. Network failures/timeouts have no invented provider status;
+incomplete or invalid responses are reported separately. Raw exception text,
+provider bodies, headers and secrets are never returned.
 The eight modes dispatch actual LiteLLM SDK methods: `chat` (`acompletion`),
 `completion` (`atext_completion`), `embedding` (`aembedding`), `audio_speech`
 (`aspeech`), `audio_transcription` (`atranscription`), `image_generation`

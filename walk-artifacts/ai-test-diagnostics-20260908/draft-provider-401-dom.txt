@@ -1,0 +1,140 @@
+- button "Expand sidebar":
+- navigation "Main":
+  - list:
+    - link "Overview":
+      - /url: /dashboard
+  - list:
+    - link "Gateways":
+      - /url: /gateways
+    - link "Sites":
+      - /url: /sites
+    - link "Routed ranges":
+      - /url: /routed-ranges
+    - link "Kubernetes":
+      - /url: /kubernetes
+    - link "AI agents":
+      - /url: /agents
+  - list:
+    - link "Access Policies":
+      - /url: /access
+    - link "Devices":
+      - /url: /devices
+    - link "Users & Roles":
+      - /url: /users
+  - list:
+    - link "Alerts":
+      - /url: /alerts
+    - link "Access Events":
+      - /url: /access-events
+    - link "Audit Log":
+      - /url: /audit
+  - list:
+    - link "Settings":
+      - /url: /settings
+- button "Signed in as preview@tunnex.local": PR
+- banner:
+  - button "Go to a page… ⌘K":
+    - generic: Go to a page…
+    - generic: ⌘K
+- main:
+  - heading "AI gateway" [level=1]
+  - paragraph: Manage models, grant group access, and call AI with your Tunnex login.
+  - navigation "AI Agents sections":
+    - link "Agents":
+      - /url: /agents
+    - link "Policy templates":
+      - /url: /agents/policies
+    - link "MCP profiles":
+      - /url: /agents/mcp
+    - link "AI gateway":
+      - /url: /agents/ai-gateway
+  - navigation "AI gateway views":
+    - button "Usage & cost"
+    - button "Models & endpoints"
+    - button "Group access"
+    - button "Use model"
+    - button "Configuration"
+  - region "Models and endpoints":
+    - paragraph: AI GATEWAY / MODELS
+    - heading "Models & endpoints" [level=2]
+    - paragraph: Add a model with your provider credentials, then grant your teams access.
+    - tablist "Model management view":
+      - tab "All Models 5"
+      - tab "Add Model" [selected]
+      - tab "LLM Credentials 4"
+    - tabpanel "Add Model":
+      - heading "Add Model" [level=3]
+      - form "Add model":
+        - generic: Provider
+        - combobox "Provider": Custom provider
+        - paragraph: Search the upstream catalog with your endpoint and API key, or enter an exact model or deployment name below. Catalog suggestions do not prove model access or Azure deployment names.
+        - generic: Search model catalog
+        - textbox "Search model catalog":
+          - /placeholder: Search model name
+        - alert: Model suggestions are unavailable. Enter the exact model or Azure deployment name manually below.
+        - generic "Selected models":
+          - code: private-demo
+          - button "Remove model private-demo": ×
+        - generic: Exact model name
+        - textbox "Exact model name":
+          - /placeholder: upstream-model
+        - button "Add exact model" [disabled]
+        - paragraph: 1/32 models · Chat — /chat/completions. Exact API names only; no aliases or wildcards.
+        - generic: Model mappings
+        - table "Model mapping preview":
+          - caption: Model mapping preview
+          - rowgroup:
+            - row "Gateway model name Upstream model name":
+              - columnheader "Gateway model name"
+              - columnheader "Upstream model name"
+          - rowgroup:
+            - row "Assigned when saved private-demo":
+              - cell "Assigned when saved"
+              - cell "private-demo"
+        - paragraph: Gateway model names are assigned when these credentials are saved.
+        - generic: Mode
+        - combobox "Mode":
+          - option "Chat — /chat/completions" [selected]
+          - option "Completion — /completions"
+          - option "Embedding — /embeddings"
+          - option "Audio speech — /audio/speech"
+          - option "Audio transcription — /audio/transcriptions"
+          - option "Image generation — /images/generations"
+          - option "Video generation — /videos"
+          - option "Rerank — /rerank"
+        - paragraph: Select the operation your model supports. Test Connect checks the chosen model and mode. Referenced models must be removed from team policies before changing their mode.
+        - generic: Existing Credentials
+        - combobox "Existing Credentials":
+          - option "None — enter new credentials below" [selected]
+          - option "Private proxy demo (fixture) · Custom provider · applied"
+          - option "LiteLLM preflight (fixture) · Custom provider · applied"
+        - paragraph: Choose saved credentials to select their provider automatically, or enter new credentials below. Pending or failed credentials need their key re-entered in LLM Credentials before reuse.
+        - generic: Upstream API Base
+        - textbox "Upstream API Base":
+          - /placeholder: https://inference.example.com/v1
+          - text: http://fixture:8091
+        - paragraph: Enter an OpenAI-compatible API base URL. A trailing /v1 is optional.
+        - paragraph: Public HTTPS endpoints are checked automatically. Private/internal endpoints need configured network access.
+        - paragraph:
+          - text: "Test request:"
+          - code: http://fixture:8091/v1/chat/completions
+        - generic: Credential name (optional)
+        - textbox "Credential name (optional)":
+          - /placeholder: Custom provider · private-demo
+        - generic: API key
+        - textbox "API key":
+          - /placeholder: Enter your provider key
+        - paragraph: Keys are stored securely and never shown again. If a key update fails, enter the key again and save.
+        - checkbox "Enable this connection for authorized team policies" [checked]
+        - text: Enable this connection for authorized team policies
+        - paragraph: Organization AI access remains a separate default-off setting.
+        - paragraph: A small Chat — /chat/completions request tests the first selected model only; charges may apply and are excluded from gateway usage totals. Success does not certify the other selected models. Results expire after five minutes.
+        - alert: Connection test failed · Provider HTTP 401. Authentication failed. Check the saved or entered provider API key.
+      - button "Cancel"
+      - button "Test Connect"
+      - button "Add Model" [disabled]
+- region "Notifications alt+T":
+  - list:
+    - button "Close toast":
+    - generic: Connection test failed · Provider HTTP 401
+    - generic: Authentication failed. Check the saved or entered provider API key.

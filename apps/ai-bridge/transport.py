@@ -7,6 +7,7 @@ from urllib.parse import urlsplit, unquote
 import httpcore
 import httpx
 from httpcore._backends.auto import AutoBackend
+from diagnostics import capture, record, exception_failure
 
 
 class ConnectBackend(httpcore.AsyncNetworkBackend):
@@ -27,9 +28,13 @@ class ConnectBackend(httpcore.AsyncNetworkBackend):
         if isinstance(host, bytes):
             host = host.decode("ascii")
         authority = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
-        stream = await self.backend.connect_tcp(
-            self.proxy.hostname, self.proxy.port or 80, timeout=timeout
-        )
+        try:
+            stream = await self.backend.connect_tcp(
+                self.proxy.hostname, self.proxy.port or 80, timeout=timeout
+            )
+        except Exception as exc:
+            record(**exception_failure(exc, "proxy"))
+            raise
         try:
             auth = base64.b64encode(
                 (
@@ -49,9 +54,16 @@ class ConnectBackend(httpcore.AsyncNetworkBackend):
                 header += data
             line = header.split(b"\r\n", 1)[0].split()
             if len(line) < 2 or line[1] != b"200":
+                if len(line) >= 2 and line[1].isdigit() and 400 <= int(line[1]) <= 599:
+                    record("http_error", "proxy", int(line[1]))
+                else:
+                    record("invalid_response", "proxy")
                 raise ValueError("proxy refused")
             return stream
-        except BaseException:
+        except BaseException as exc:
+            current = capture.get()
+            if isinstance(exc, Exception) and (current is None or not current.get("failure")):
+                record(**exception_failure(exc, "proxy"))
             await stream.aclose()
             raise
 
@@ -103,7 +115,22 @@ class LockedTransport(httpx.AsyncBaseTransport):
         if origin not in self.origins or request.url.username or request.url.password:
             raise ValueError("destination denied")
         request.headers["Accept-Encoding"] = "identity"
-        response = await self.transport.handle_async_request(request)
+        try:
+            response = await self.transport.handle_async_request(request)
+        except Exception as exc:
+            # Preserve a CONNECT diagnostic already captured before httpx/SDK
+            # wrapping. Otherwise classify the socket failure without its text.
+            current = capture.get()
+            if current is None or not current.get("failure"):
+                record(**exception_failure(exc))
+            raise
+        if 400 <= response.status_code <= 599:
+            record("http_error", "provider", response.status_code)
+        else:
+            # A response exists. If body decoding, reading or SDK validation
+            # fails, classify it here before SDK wrappers discard that fact.
+            # Successful calls never return the captured failure fallback.
+            record("invalid_response", "provider")
         if response.headers.get("content-encoding", "identity").lower() != "identity":
             await response.aclose()
             raise ValueError("upstream encoding denied")

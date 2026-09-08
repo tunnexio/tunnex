@@ -5406,6 +5406,15 @@ export interface components {
             status: "success" | "error";
             /** Format: int64 */
             duration_ms: number;
+            failure?: components["schemas"]["AIProviderProbeFailure"];
+        };
+        /** @description Sanitized failure category. http_status exists only for an observed HTTP rejection from the indicated source; network failures have no provider HTTP response. No upstream error text is returned. */
+        AIProviderProbeFailure: {
+            /** @enum {string} */
+            kind: "http_error" | "network_error" | "timeout" | "configuration_error" | "invalid_response" | "unknown";
+            /** @enum {string} */
+            source: "provider" | "proxy" | "gateway";
+            http_status?: number;
         };
         AIProviderRevision: {
             /** Format: int64 */

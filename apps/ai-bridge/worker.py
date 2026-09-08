@@ -12,6 +12,7 @@ import re
 import sys
 import wave
 from urllib.parse import urlsplit
+from diagnostics import ProbeFailure, capture, exception_failure
 
 ORIGINS = {
     "openai": "https://api.openai.com/v1",
@@ -187,6 +188,17 @@ def resolve_binding(original):
 
 
 async def invoke(data, emit=None):
+    observed = {}
+    token = capture.set(observed)
+    try:
+        return await _invoke(data, emit)
+    except Exception as exc:
+        raise ProbeFailure(observed.get("failure") or exception_failure(exc)) from None
+    finally:
+        capture.reset(token)
+
+
+async def _invoke(data, emit=None):
     if data.get("operation") == "catalog":
         return await catalog(data)
     import httpx
@@ -300,7 +312,10 @@ async def invoke(data, emit=None):
             return {"done": True} if emit else {"chunks": chunks}
         value = response.model_dump(exclude_none=True)
         if "mode" in data:
-            validate_preflight(mode, value)
+            try:
+                validate_preflight(mode, value)
+            except ValueError:
+                raise ProbeFailure({"kind": "invalid_response", "source": "provider"}) from None
         if data.get("alias"):
             value["model"] = data["alias"]
         return value
@@ -330,5 +345,8 @@ if __name__ == "__main__":
             raise ValueError("response bound")
         output.write(encoded + ("\n" if data.get("stream") else ""))
         output.flush()
-    except BaseException:
-        sys.stdout.write('{"error":"adapter operation failed"}\n')
+    except BaseException as exc:
+        result = {"error": "adapter operation failed"}
+        if isinstance(exc, ProbeFailure):
+            result["failure"] = exc.failure
+        sys.stdout.write(json.dumps(result) + "\n")

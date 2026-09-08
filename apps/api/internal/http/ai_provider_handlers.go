@@ -210,7 +210,11 @@ func (s apiServer) TestAIProviderConnection(ctx context.Context, r api.TestAIPro
 	if err != nil {
 		return nil, err
 	}
-	return api.TestAIProviderConnection200JSONResponse(api.AIProviderProbeResult{Status: api.AIProviderProbeResultStatus(result.Status), DurationMs: result.DurationMS}), nil
+	out := api.AIProviderProbeResult{Status: api.AIProviderProbeResultStatus(result.Status), DurationMs: result.DurationMS}
+	if result.Failure != nil {
+		out.Failure = &api.AIProviderProbeFailure{Kind: api.AIProviderProbeFailureKind(result.Failure.Kind), Source: api.AIProviderProbeFailureSource(result.Failure.Source), HttpStatus: result.Failure.HTTPStatus}
+	}
+	return api.TestAIProviderConnection200JSONResponse(out), nil
 }
 
 func (s apiServer) SearchAIProviderCatalog(ctx context.Context, r api.SearchAIProviderCatalogRequestObject) (api.SearchAIProviderCatalogResponseObject, error) {

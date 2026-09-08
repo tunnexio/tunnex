@@ -42,10 +42,7 @@ func (e *Engine) ProbeSavedProviderKey(ctx context.Context, s ProviderKeySpec, p
 		KeyName  string    `json:"key_name"`
 		Endpoint string    `json:"endpoint_url,omitempty"`
 	}{provider, model, mode, name, s.BaseURL}
-	var result struct {
-		Status     string `json:"status"`
-		DurationMS int64  `json:"duration_ms"`
-	}
+	var result ProviderProbeResult
 	probe := *e
 	client := *e.client
 	client.Timeout = 15 * time.Second
@@ -56,11 +53,22 @@ func (e *Engine) ProbeSavedProviderKey(ctx context.Context, s ProviderKeySpec, p
 		client.Transport = transport
 	}
 	probe.client = &client
-	status, err := probe.request(ctx, http.MethodPost, "/api/providers/"+s.Provider+"/keys/"+s.ID+"/test-connection", nil, payload, &result)
+	start := time.Now()
+	probeCtx, cancel := context.WithTimeout(ctx, client.Timeout)
+	defer cancel()
+	status, err := probe.request(probeCtx, http.MethodPost, "/api/providers/"+s.Provider+"/keys/"+s.ID+"/test-connection", nil, payload, &result)
+	if err != nil && probeCtx.Err() == context.DeadlineExceeded {
+		return probeTimeout(start), nil
+	}
 	if err != nil || status != 200 || (result.Status != "success" && result.Status != "error") || result.DurationMS < 0 {
 		return ProviderProbeResult{}, errEngine
 	}
-	return ProviderProbeResult{Status: result.Status, DurationMS: result.DurationMS}, nil
+	if result.Status == "success" {
+		result.Failure = nil
+	} else {
+		result.Failure = safeProbeFailure(result.Failure)
+	}
+	return result, nil
 }
 
 type ProviderKeySpec struct {

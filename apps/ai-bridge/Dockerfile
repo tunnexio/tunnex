@@ -3,7 +3,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LITELLM_LOCAL_MODEL_COST_MAP=tr
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
-COPY bridge.py worker.py transport.py LICENSE.litellm ./
+COPY bridge.py worker.py transport.py diagnostics.py LICENSE.litellm ./
 USER 65532:65532
 EXPOSE 8200
 CMD ["python", "/app/bridge.py"]

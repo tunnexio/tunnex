@@ -14,6 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import web
 from worker import MODES, validate_preflight
+from diagnostics import ProbeFailure, exception_failure
 
 STANDARD = {
     "openai",
@@ -314,7 +315,9 @@ async def sdk_call(payload, timeout=10):
         if process.returncode:
             raise ValueError("adapter failed")
         result = json.loads(b"".join(parts))
-        if not isinstance(result, dict) or "error" in result:
+        if isinstance(result, dict) and "error" in result:
+            raise ProbeFailure(result.get("failure"))
+        if not isinstance(result, dict):
             raise ValueError("adapter failed")
         return result
 
@@ -347,6 +350,8 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
         if not hmac.compare_digest(bearer(request), settings.admin):
             return web.json_response({"error": "unauthorized"}, status=401)
         started = time.monotonic()
+        failure = None
+        stage = "configuration_error"
         try:
             data = await request.json()
             if not isinstance(data, dict) or set(data) - {
@@ -407,13 +412,18 @@ def create_app(settings, call=sdk_call, stream_call=sdk_stream):
             if slots.locked():
                 return web.json_response({"error": "busy"}, status=429)
             async with slots:
+                stage = "unknown"
                 result = await call(payload)
+            stage = "invalid_response"
             validate_preflight(mode, result)
             status = "success"
-        except Exception:
+        except Exception as exc:
             status = "error"
+            failure = exception_failure(exc, "gateway")
+            if failure["kind"] == "unknown":
+                failure = {"kind": stage, "source": "gateway"}
         return web.json_response(
-            {"status": status, "duration_ms": int((time.monotonic() - started) * 1000)}
+            {"status": status, "duration_ms": int((time.monotonic() - started) * 1000), **({"failure": failure} if failure else {})}
         )
 
     async def catalog(request):

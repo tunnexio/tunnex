@@ -30,3 +30,21 @@ endpoints that cannot be reached.
 
 No schema migration, new dependency or new service. This is the user's requested
 diagnostic behavior, not authorization to change private endpoint access.
+
+## Review dispositions — approved 2026-09-08
+
+- Classify elapsed outer CP/engine deadlines as a gateway timeout result. Keep
+  the existing timeout budgets; do not invent a provider response status.
+- Capture body-read failures and worker response-validation failures as an
+  incomplete/invalid response before SDK wrapping. Preserve an observed HTTP
+  rejection status when present. A partial response is not a no-response claim.
+- Use gateway-specific guidance for a gateway-sourced error.
+
+User disposition: "हाँ, तीनों fixes लागू करो". Verify the folded code with real
+delayed local bridge responses and actual SDK body/validation failure fixtures.
+
+Response state: before headers, classify only an observed socket/timeout failure;
+after headers, retain an observed HTTP rejection, otherwise use `invalid_response`
+as the fallback if the SDK rejects the body or its format. Successful calls return
+no failure. This single boundary covers interrupted bodies, malformed JSON,
+unsupported encoding and invalid completion shapes without parsing error text.

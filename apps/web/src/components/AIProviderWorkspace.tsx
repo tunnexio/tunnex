@@ -7,6 +7,7 @@ import { EntityPicker } from "./EntityPicker";
 import { ProviderLogo } from "./ProviderLogo";
 import { toast } from "./Toasts";
 import { parseFoundryEndpoint } from "../lib/aiFoundryEndpoint";
+import { aiProbeFailure } from "../lib/aiProbeFailure";
 type S = components["schemas"];
 export type AIProviderConnection = S["AIProviderConnection"];
 type Definition = S["AIProviderDefinition"];
@@ -223,6 +224,7 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     : /\s/.test(secret) ? "The API key contains whitespace. Remove spaces or line breaks." : "Use an API key of at most 4096 characters.");
   const valid = validationIssues.length === 0;
   const [testing, setTesting] = useState(false), [testStatus, setTestStatus] = useState<"idle" | "success" | "error">("idle");
+  const [testFailure, setTestFailure] = useState(() => aiProbeFailure(200));
   const [testedAt, setTestedAt] = useState(0);
   const testGeneration = useRef(0);
   useEffect(() => { testGeneration.current++; setTestStatus("idle"); setTestedAt(0); setTesting(false); return () => { testGeneration.current++; }; }, [provider, secret, selectedEndpoint, models, existingID, mode, selectedModes, connection?.revision, connection?.applied_revision, connection?.enabled, connection?.status]);
@@ -246,8 +248,8 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
       const success = !r.error && r.response?.status === 200 && r.data?.status === "success";
       setTestStatus(success ? "success" : "error");
       if (success) { setTestedAt(Date.now()); toast.success("Test connection successful · HTTP 200", { description: `${chosen[0]} · ${modeLabel(probeMode)}` }); }
-      else toast.error("Connection test failed", { description: "Check the model, endpoint and credentials, then retry." });
-    } catch { if (active.current && generation === testGeneration.current) { setTestStatus("error"); toast.error("Connection test failed", { description: "Check the model, endpoint and credentials, then retry." }); } }
+      else { const notice = aiProbeFailure(r.response?.status, r.data?.failure); setTestFailure(notice); toast.error(notice.title, { description: notice.description }); }
+    } catch { if (active.current && generation === testGeneration.current) { setTestStatus("error"); const notice = aiProbeFailure(); setTestFailure(notice); toast.error(notice.title, { description: notice.description }); } }
     finally { if (active.current && generation === testGeneration.current) setTesting(false); }
   }
   const actions = <><Button variant="ghost" type="button" disabled={busy} onClick={onCancel}>Cancel</Button>{needsTest && <Button type="button" disabled={busy || testing || testBlockers.length > 0} aria-describedby={testBlockers.length ? testHelpId : undefined} onClick={() => void testConnection()}>{testing ? "Testing connection…" : "Test Connect"}</Button>}<Button form={formId} type="submit" disabled={busy || !canSave}>{modelOnly ? "Add Model" : connection ? "Save credentials" : "Create credentials"}</Button></>;
@@ -291,7 +293,7 @@ function ProviderEditor({ orgId, connection: initialConnection, definitions, sup
     <p>Keys are stored securely and never shown again. If a key update fails, enter the key again and save.</p></>}
 
     {!(modelOnly && connection) && <><label className="ai-provider-enabled"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />Enable this connection for authorized team policies</label><p>Organization AI access remains a separate default-off setting.</p></>}
-    {needsTest && <div className="ai-provider-preflight"><p>A small {modeLabel(probeMode)} request tests the first selected model only; charges may apply and are excluded from gateway usage totals. Success does not certify the other selected models. Results expire after five minutes.</p>{testBlockers.length > 0 && <div id={testHelpId} role="status" aria-label="Test Connect requirements"><p>To enable Test Connect:</p><ul>{testBlockers.map((message) => <li key={message}>{message}</li>)}</ul></div>}{testStatus === "success" && <p role="status">Test succeeded for {chosen[0]} ({modeLabel(probeMode)}). {probeMode === "video_generation" ? "Video job accepted; generation is not yet complete." : "You can now save this model configuration."}</p>}{testStatus === "error" && <p role="alert">Connection test failed. Check the model, endpoint and credentials, then retry.</p>}</div>}
+    {needsTest && <div className="ai-provider-preflight"><p>A small {modeLabel(probeMode)} request tests the first selected model only; charges may apply and are excluded from gateway usage totals. Success does not certify the other selected models. Results expire after five minutes.</p>{testBlockers.length > 0 && <div id={testHelpId} role="status" aria-label="Test Connect requirements"><p>To enable Test Connect:</p><ul>{testBlockers.map((message) => <li key={message}>{message}</li>)}</ul></div>}{testStatus === "success" && <p role="status">Test succeeded for {chosen[0]} ({modeLabel(probeMode)}). {probeMode === "video_generation" ? "Video job accepted; generation is not yet complete." : "You can now save this model configuration."}</p>}{testStatus === "error" && <p role="alert">{testFailure.title}. {testFailure.description}</p>}</div>}
   </form></div>
   );
   return modelOnly ? <section className="ai-provider-inline" role="tabpanel" aria-label="Add Model"><h3>Add Model</h3><div className="ai-provider-inline-card">{editor}<div className="ai-provider-inline-actions">{actions}</div></div></section> : <Modal title={connection ? "Edit credentials" : "Add Credentials"} placement="right" size="wide" showClose onDismiss={onCancel} actions={actions}>{editor}</Modal>;

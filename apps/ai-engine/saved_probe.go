@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -124,20 +125,54 @@ func (h *ProviderHandler) tunnexSavedKeyProbe(ctx *fasthttp.RequestCtx) {
 	transport.Proxy = nil
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	start := time.Now()
+	timedOut := func(err error) bool {
+		var networkErr net.Error
+		if !errors.As(err, &networkErr) || !networkErr.Timeout() {
+			return false
+		}
+		SendJSON(ctx, map[string]any{"status": "error", "duration_ms": time.Since(start).Milliseconds(), "failure": map[string]string{"kind": "timeout", "source": "gateway"}})
+		return true
+	}
 	res, err := client.Do(req)
 	if err != nil {
+		if timedOut(err) {
+			return
+		}
 		fail(503)
 		return
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 4097))
+	if timedOut(err) {
+		return
+	}
 	var result struct {
 		Status     string `json:"status"`
 		DurationMS int64  `json:"duration_ms"`
+		Failure    *struct {
+			Kind       string `json:"kind"`
+			Source     string `json:"source"`
+			HTTPStatus *int   `json:"http_status,omitempty"`
+		} `json:"failure,omitempty"`
 	}
 	if err != nil || len(raw) > 4096 || res.StatusCode != 200 || json.Unmarshal(raw, &result) != nil || (result.Status != "success" && result.Status != "error") || result.DurationMS < 0 {
 		fail(503)
 		return
+	}
+	if f := result.Failure; f != nil {
+		valid := result.Status == "error" && (f.Source == "provider" || f.Source == "proxy" || f.Source == "gateway")
+		switch f.Kind {
+		case "http_error":
+			valid = valid && f.HTTPStatus != nil && *f.HTTPStatus >= 400 && *f.HTTPStatus <= 599
+		case "network_error", "timeout", "configuration_error", "invalid_response", "unknown":
+			valid = valid && f.HTTPStatus == nil
+		default:
+			valid = false
+		}
+		if !valid {
+			result.Failure = nil
+		}
 	}
 	SendJSON(ctx, result)
 }

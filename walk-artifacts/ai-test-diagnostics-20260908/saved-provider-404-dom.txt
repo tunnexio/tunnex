@@ -1,0 +1,124 @@
+- button "Expand sidebar":
+- navigation "Main":
+  - list:
+    - link "Overview":
+      - /url: /dashboard
+  - list:
+    - link "Gateways":
+      - /url: /gateways
+    - link "Sites":
+      - /url: /sites
+    - link "Routed ranges":
+      - /url: /routed-ranges
+    - link "Kubernetes":
+      - /url: /kubernetes
+    - link "AI agents":
+      - /url: /agents
+  - list:
+    - link "Access Policies":
+      - /url: /access
+    - link "Devices":
+      - /url: /devices
+    - link "Users & Roles":
+      - /url: /users
+  - list:
+    - link "Alerts":
+      - /url: /alerts
+    - link "Access Events":
+      - /url: /access-events
+    - link "Audit Log":
+      - /url: /audit
+  - list:
+    - link "Settings":
+      - /url: /settings
+- button "Signed in as preview@tunnex.local": PR
+- banner:
+  - button "Go to a page… ⌘K":
+    - generic: Go to a page…
+    - generic: ⌘K
+- main:
+  - heading "AI gateway" [level=1]
+  - paragraph: Manage models, grant group access, and call AI with your Tunnex login.
+  - navigation "AI Agents sections":
+    - link "Agents":
+      - /url: /agents
+    - link "Policy templates":
+      - /url: /agents/policies
+    - link "MCP profiles":
+      - /url: /agents/mcp
+    - link "AI gateway":
+      - /url: /agents/ai-gateway
+  - navigation "AI gateway views":
+    - button "Usage & cost"
+    - button "Models & endpoints"
+    - button "Group access"
+    - button "Use model"
+    - button "Configuration"
+  - region "Models and endpoints":
+    - paragraph: AI GATEWAY / MODELS
+    - heading "Models & endpoints" [level=2]
+    - paragraph: Add a model with your provider credentials, then grant your teams access.
+    - tablist "Model management view":
+      - tab "All Models 5"
+      - tab "Add Model" [selected]
+      - tab "LLM Credentials 4"
+    - tabpanel "Add Model":
+      - heading "Add Model" [level=3]
+      - form "Add model":
+        - generic: Provider
+        - combobox "Provider": Custom provider
+        - generic: Search model catalog
+        - textbox "Search model catalog":
+          - /placeholder: Search model name
+        - region "Model suggestions":
+          - paragraph: 0 matching models · showing 0–0
+          - button "Previous models" [disabled]
+          - button "Next models" [disabled]
+          - button "Done selecting models"
+        - generic "Selected models":
+          - code: private-demo-new
+          - button "Remove model private-demo-new": ×
+        - generic: Exact model name
+        - textbox "Exact model name":
+          - /placeholder: upstream-model
+        - button "Add exact model" [disabled]
+        - paragraph: 2/32 models · Embedding — /embeddings. Exact API names only; no aliases or wildcards.
+        - generic: Model mappings
+        - table "Model mapping preview":
+          - caption: Model mapping preview
+          - rowgroup:
+            - row "Gateway model name Upstream model name":
+              - columnheader "Gateway model name"
+              - columnheader "Upstream model name"
+          - rowgroup:
+            - row "custom-f8e40d46-00ed-4aae-be79-9d905a562151/private-demo-new private-demo-new":
+              - cell "custom-f8e40d46-00ed-4aae-be79-9d905a562151/private-demo-new"
+              - cell "private-demo-new"
+        - generic: Mode
+        - combobox "Mode":
+          - option "Chat — /chat/completions"
+          - option "Completion — /completions"
+          - option "Embedding — /embeddings" [selected]
+          - option "Audio speech — /audio/speech"
+          - option "Audio transcription — /audio/transcriptions"
+          - option "Image generation — /images/generations"
+          - option "Video generation — /videos"
+          - option "Rerank — /rerank"
+        - paragraph: Select the operation your model supports. Test Connect checks the chosen model and mode. Referenced models must be removed from team policies before changing their mode.
+        - generic: Existing Credentials
+        - combobox "Existing Credentials":
+          - option "None — enter new credentials below"
+          - option "Private proxy demo (fixture) · Custom provider · applied" [selected]
+          - option "LiteLLM preflight (fixture) · Custom provider · applied"
+        - paragraph: Choose saved credentials to select their provider automatically, or enter new credentials below. Pending or failed credentials need their key re-entered in LLM Credentials before reuse.
+        - paragraph: Using Private proxy demo (fixture). Its API key stays private and existing models are preserved.
+        - paragraph: A small Embedding — /embeddings request tests the first selected model only; charges may apply and are excluded from gateway usage totals. Success does not certify the other selected models. Results expire after five minutes.
+        - alert: Connection test failed · Provider HTTP 404. The provider could not find this endpoint or deployment. Check the API URL and exact model name.
+      - button "Cancel"
+      - button "Test Connect"
+      - button "Add Model" [disabled]
+- region "Notifications alt+T":
+  - list:
+    - button "Close toast":
+    - generic: Connection test failed · Provider HTTP 404
+    - generic: The provider could not find this endpoint or deployment. Check the API URL and exact model name.

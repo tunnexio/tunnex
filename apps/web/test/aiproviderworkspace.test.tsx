@@ -35,6 +35,24 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 describe("AI provider onboarding", () => {
+  it.each([
+    { failure: { kind: "http_error", source: "provider", http_status: 403 }, title: "Connection test failed · Provider HTTP 403", detail: /Access denied/ },
+    { failure: { kind: "http_error", source: "proxy", http_status: 403 }, title: "Connection test failed · Network proxy HTTP 403", detail: /network proxy rejected/i },
+    { failure: { kind: "network_error", source: "provider" }, title: "Connection test failed · Network unreachable", detail: /No HTTP response/ },
+    { failure: { kind: "timeout", source: "provider" }, title: "Connection test failed · Timeout", detail: /No complete response/ },
+    { failure: { kind: "invalid_response", source: "provider" }, title: "Connection test failed · Incomplete or invalid response", detail: /response was interrupted/i },
+    { failure: { kind: "http_error", source: "gateway", http_status: 503 }, title: "Connection test failed · Test gateway HTTP 503", detail: /test gateway rejected/i },
+  ])("shows safe diagnostic $title for saved credentials", async ({ failure, title, detail }) => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: "Add Model" }));
+    fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } });
+    fireEvent.change(screen.getByLabelText("Exact model name"), { target: { value: "openrouter/new-model" } }); fireEvent.click(screen.getByRole("button", { name: "Add exact model" }));
+    api.POST.mockResolvedValueOnce({ data: { status: "error", duration_ms: 10, failure: { ...failure, message: "PRIVATE-KEY-MARKER" } }, response: response() });
+    fireEvent.click(screen.getByRole("button", { name: "Test Connect" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(title, { description: expect.stringMatching(detail) }));
+    expect(screen.getByText(new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeTruthy();
+    expect(JSON.stringify(toast.error.mock.calls)).not.toContain("PRIVATE-KEY-MARKER");
+    expect((saveModel() as HTMLButtonElement).disabled).toBe(true);
+  });
   it("suggests saved Azure credentials before choosing a provider and tests a new model without resending the key or endpoint", async () => {
     const id = "12345678-1234-1234-1234-123456789abc";
     const saved = { ...c, id, name: "azure", provider: "azure_foundry", endpoint_url: "https://resource.services.ai.azure.com/openai", models: [`custom-${id}/gpt-5`] };

@@ -26,9 +26,44 @@ type ProviderProbeInput struct {
 	ExpectedRevision        *int64
 }
 type ProviderProbeResult struct {
-	Status     string
-	DurationMS int64
+	Status     string                `json:"status"`
+	DurationMS int64                 `json:"duration_ms"`
+	Failure    *ProviderProbeFailure `json:"failure,omitempty"`
 }
+type ProviderProbeFailure struct {
+	Kind       string `json:"kind"`
+	Source     string `json:"source"`
+	HTTPStatus *int   `json:"http_status,omitempty"`
+}
+
+func safeProbeFailure(f *ProviderProbeFailure) *ProviderProbeFailure {
+	if f == nil || (f.Source != "provider" && f.Source != "proxy" && f.Source != "gateway") {
+		return nil
+	}
+	switch f.Kind {
+	case "http_error":
+		if f.HTTPStatus == nil || *f.HTTPStatus < 400 || *f.HTTPStatus > 599 {
+			return nil
+		}
+	case "network_error", "timeout", "configuration_error", "invalid_response", "unknown":
+		if f.HTTPStatus != nil {
+			return nil
+		}
+	default:
+		return nil
+	}
+	return f
+}
+
+func probeTimeout(start time.Time) ProviderProbeResult {
+	return ProviderProbeResult{Status: "error", DurationMS: time.Since(start).Milliseconds(), Failure: &ProviderProbeFailure{Kind: "timeout", Source: "gateway"}}
+}
+
+func isProbeTimeout(err error) bool {
+	var networkErr net.Error
+	return errors.As(err, &networkErr) && networkErr.Timeout()
+}
+
 type probeWindow struct {
 	start    time.Time
 	attempts int
@@ -144,21 +179,30 @@ func (s *Policies) ProbeProvider(ctx context.Context, org, actor uuid.UUID, in P
 	start := time.Now()
 	res, err := b.client.Do(req)
 	if err != nil {
+		if isProbeTimeout(err) {
+			return probeTimeout(start), nil
+		}
 		return ProviderProbeResult{}, aiUnavailable()
 	}
 	defer res.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(res.Body, 4097))
+	if isProbeTimeout(err) {
+		return probeTimeout(start), nil
+	}
 	if err != nil || len(data) > 4096 || res.StatusCode != 200 {
 		return ProviderProbeResult{}, aiUnavailable()
 	}
-	var result struct {
-		Status     string `json:"status"`
-		DurationMS int64  `json:"duration_ms"`
-	}
+	var result ProviderProbeResult
 	if json.Unmarshal(data, &result) != nil || (result.Status != "success" && result.Status != "error") {
 		return ProviderProbeResult{}, aiUnavailable()
 	}
-	return ProviderProbeResult{Status: result.Status, DurationMS: time.Since(start).Milliseconds()}, nil
+	if result.Status == "success" {
+		result.Failure = nil
+	} else {
+		result.Failure = safeProbeFailure(result.Failure)
+	}
+	result.DurationMS = time.Since(start).Milliseconds()
+	return result, nil
 }
 
 // SavedProviderProbeEngine exposes no secret-bearing result or key readback.
