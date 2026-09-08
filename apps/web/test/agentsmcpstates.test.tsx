@@ -59,7 +59,7 @@ describe("Agents MCP permission boundary", () => {
     mode = "ready";
     render(<MemoryRouter><AgentsMCP /></MemoryRouter>);
     await screen.findByRole("button", { name: "Preview assignment" });
-    expect(screen.getByRole("link", { name: "Manage agent groups" }).getAttribute("href")).toBe("/access/groups?type=agents");
+    expect(screen.getByRole("link", { name: "Manage agent groups" }).getAttribute("href")).toBe("/agents/groups");
     expect(await assignmentImpactText()).toContain("Preview the exact shared impact before the first assignment.");
   });
 

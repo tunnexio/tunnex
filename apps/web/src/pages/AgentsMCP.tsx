@@ -156,7 +156,7 @@ export default function AgentsMCP() {
     await reload();
   }
   if (!org) return <Loading label="Loading organization…" />;
-  const groupLink = <Link className="inline-flex min-h-10 items-center text-sm font-medium text-accent-400 hover:underline" to="/access/groups?type=agents">Manage agent groups</Link>;
+  const groupLink = <Link className="inline-flex min-h-10 items-center text-sm font-medium text-accent-400 hover:underline" to="/agents/groups">Manage agent groups</Link>;
   const createButton = <Button onClick={() => setCreateOpen(true)}>Create profile</Button>;
   const denied = (profiles.kind === "error" && (profiles.code === "permission_denied" || profiles.code === "forbidden")) || (groups.kind === "error" && /permission|forbidden/i.test(groups.message));
   const transportError = profiles.kind === "error" ? profiles.message : groups.kind === "error" ? groups.message : "";

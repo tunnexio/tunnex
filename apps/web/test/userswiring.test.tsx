@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   render,
@@ -136,9 +137,9 @@ const withAuth = (ui: React.ReactElement) =>
   // stands in for it. A page rendered without it throws — deliberately: `useOrg()` refuses to guess, and a
   // test that quietly rendered without an org would be exercising a state production never reaches.
   render(
-    <AuthProvider>
+    <MemoryRouter initialEntries={["/users"]}><AuthProvider>
       <OrgProvider>{ui}</OrgProvider>
-    </AuthProvider>,
+    </AuthProvider></MemoryRouter>,
   );
 
 beforeEach(() => {

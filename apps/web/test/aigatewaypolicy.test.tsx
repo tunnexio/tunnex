@@ -9,8 +9,9 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AgentsAIGateway, {
+import {
   AIGatewayWorkspace,
+  AgentModelAccess,
 } from "../src/pages/AgentsAIGateway";
 const mocks = vi.hoisted(() => ({
   GET: vi.fn(),
@@ -90,14 +91,13 @@ afterEach(cleanup);
 describe("AI team and agent policy workspace", () => {
   it("does not fetch policy inventory or enable groups when the prerequisite is off", async () => {
     mocks.org.agent_policy_templates_enabled = false;
-    render(createElement(MemoryRouter, null, createElement(AgentsAIGateway)));
-    await screen.findByText("$0.01");
-    expect(screen.queryByText("Agent groups are turned off")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Configuration" }));
-    expect(screen.getByText("Agent groups are turned off")).toBeTruthy();
-    expect(mocks.GET.mock.calls.every(([path]) => path.endsWith("/ai-gateway/usage"))).toBe(true);
+    render(<MemoryRouter initialEntries={["/agents/model-access"]}><AgentModelAccess /></MemoryRouter>);
+    expect(await screen.findByText("Agent groups are turned off")).toBeTruthy();
+    expect(mocks.GET).not.toHaveBeenCalled();
     expect(mocks.PUT).not.toHaveBeenCalled();
+    expect(mocks.POST).not.toHaveBeenCalled();
   });
+
   it("loads organization agents across pages and preserves selection after a failed page", async () => {
     let attempts = 0;
     mocks.GET.mockImplementation((path: string, options: { params: { query?: { cursor?: string; limit?: number } } }) => {

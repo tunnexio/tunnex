@@ -1,6 +1,5 @@
 const items = [
   { href: "/access", label: "Rules" },
-  { href: "/access/groups", label: "Groups" },
   { href: "/access/resources", label: "Resources" },
 ] as const;
 export function AccessTabRail() {

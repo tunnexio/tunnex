@@ -31,10 +31,10 @@ export function AIAccessGate({ children }: { children: (orgId: string, access: C
   return <>{children(org.id, result.access)}</>;
 }
 
-export function AIGroupAccess({ orgId, canManage }: { orgId: string; canManage: boolean }) {
+export function AIGroupAccess({ orgId, canManage, initialConnection = "", initialModel = "" }: { orgId: string; canManage: boolean; initialConnection?: string; initialModel?: string }) {
   const [data, setData] = useState<{ groups: S["AIUserGroup"][]; grants: S["AIUserModelGrant"][]; providers: S["AIProviderConnection"][] } | null>(null);
   const [attempt, setAttempt] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [group, setGroup] = useState(""), [selection, setSelection] = useState("");
+  const [group, setGroup] = useState(""), [selection, setSelection] = useState(initialConnection && initialModel ? JSON.stringify([initialConnection, initialModel]) : "");
   useEffect(() => {
     let active = true;
     const params = { params: { path: { orgId } } };
@@ -62,17 +62,17 @@ export function AIGroupAccess({ orgId, canManage }: { orgId: string; canManage: 
     } catch { setError("Could not apply this change. Refresh the saved state before retrying."); }
     finally { setBusy(false); }
   }
-  return <section className="space-y-5" aria-label="Group model access"><Card>
-    <h2 className="text-xl font-semibold">Group access</h2><p className="my-2 text-sm text-ink-tertiary">Grant a model to a user group. Members call it with their Tunnex login; the provider key stays in the gateway.</p>
+  return <section className="space-y-5 ai-model-access" aria-label="Group model access"><Card>
+    <div className="ai-section-heading"><h2>Model access</h2><a className="network-setup-link" href="/users/groups">Manage user groups</a></div><p className="my-2 text-sm text-ink-tertiary">Grant a model to a user group. Members call it with their Tunnex login; the provider key stays in the gateway.</p>
     {error && <p role="alert">{error}</p>}
     <Button disabled={busy} onClick={() => { setError(""); setAttempt((n) => n + 1); }}>Refresh access</Button>
     {!data ? <Loading label="Loading groups and models…" /> : canManage && <div className="mt-5 grid gap-4 md:grid-cols-2">
       <Field label="User group"><Select value={group} onChange={(e) => setGroup(e.target.value)} disabled={busy}><option value="">Select a group</option>{data.groups.map((g) => <option key={g.id} value={g.id}>{g.name} · {g.members} users</option>)}</Select></Field>
       <Field label="Model"><Select value={selection} onChange={(e) => setSelection(e.target.value)} disabled={busy}><option value="">Select a configured model</option>{models.map((m) => <option key={m.key} value={m.key}>{m.model} · {m.name}</option>)}</Select></Field>
-      {!data.groups.length && <p>Create a user group and add its members in Access Policies first.</p>}
+      {!data.groups.length && <p>Create a user group and add its members in Users & Groups first.</p>}
       <div><Button disabled={busy || !selected || !data.groups.some((g) => g.id === group)} onClick={() => selected && void save(group, selected.connection, selected.model, true)}>Grant model access</Button></div>
     </div>}
-  </Card>{data && <Card><div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">User group model grants</caption><thead><tr>{["Group", "Model", "State", "Actions"].map((h) => <th className="border-b border-white/10 p-3" key={h}>{h}</th>)}</tr></thead><tbody>{data.grants.map((g) => <tr key={g.id}><td className="p-3">{g.group_name}{!g.group_id && " (deleted)"}</td><td className="p-3 break-all"><code>{g.model}</code></td><td className="p-3">{g.enabled && g.group_id ? g.status : "Revoked"}</td><td className="p-3">{canManage && g.group_id && <Button disabled={busy} onClick={() => void save(g.group_id!, g.connection_id, g.model, !g.enabled)}>{g.enabled ? "Revoke access" : "Grant access"}</Button>}</td></tr>)}</tbody></table></div>{!data.grants.length && <p>No group grants yet.</p>}<p className="mt-3 text-xs text-ink-tertiary">Revoking access or removing a group member blocks their next request. Requests already accepted may finish.</p></Card>}</section>;
+  </Card>{data && <Card><div className="overflow-x-auto"><table className="tnx-datatable w-full text-left text-sm"><caption className="sr-only">User group model grants</caption><thead><tr>{["Group", "Model", "State", "Actions"].map((h) => <th className="border-b border-white/10 p-3" key={h}>{h}</th>)}</tr></thead><tbody>{data.grants.map((g) => <tr key={g.id}><td className="p-3">{g.group_id ? <a href={`/users/groups?${new URLSearchParams({ group: `people:${g.group_id}` })}`}>{g.group_name}</a> : `${g.group_name} (deleted)`}{g.group_id && <span className="block mt-1 text-xs text-ink-secondary">{data.groups.find((group) => group.id === g.group_id)?.members ?? "Unknown"} members</span>}</td><td className="p-3 break-all"><code>{g.model}</code></td><td className="p-3">{g.enabled && g.group_id ? g.status : "Revoked"}</td><td className="p-3">{canManage && g.group_id && <Button disabled={busy} onClick={() => void save(g.group_id!, g.connection_id, g.model, !g.enabled)}>{g.enabled ? "Revoke access" : "Grant access"}</Button>}</td></tr>)}</tbody></table></div>{!data.grants.length && <p>No group grants yet.</p>}<p className="mt-3 text-xs text-ink-tertiary">Revoking access or removing a group member blocks their next request. Requests already accepted may finish.</p></Card>}</section>;
 }
 
 const routes: Record<S["AIModelMode"], string> = { chat: "chat/completions", completion: "completions", embedding: "embeddings", audio_speech: "audio/speech", audio_transcription: "audio/transcriptions", image_generation: "images/generations", video_generation: "videos", rerank: "rerank" };
@@ -102,7 +102,7 @@ export function AIUseModel({ orgId }: { orgId: string }) {
     } catch { setError("Could not reach the gateway. Check your connection and sign in again if needed."); }
     finally { setBusy(false); }
   }
-  return <section className="space-y-5" aria-label="Use a model"><Card><h2 className="text-xl font-semibold">Use model</h2><p className="my-2 text-sm text-ink-tertiary">Your Tunnex login gives access to models granted to your user groups. No provider API key is needed.</p>
+  return <section className="space-y-5" aria-label="Use a model"><Card><h2 className="text-xl font-semibold">My models</h2><p className="my-2 text-sm text-ink-tertiary">Your Tunnex login gives access to models granted to your user groups. No provider API key is needed.</p>
     {error && <p role="alert">{error}</p>}<Button disabled={busy} onClick={() => { setError(""); setAttempt((n) => n + 1); }}>Refresh my models</Button>
     {models === null ? <Loading label="Loading your models…" /> : !models.length ? <p className="mt-4">No models are available to you yet. Ask your AI admin to grant a model to your user group and enable the gateway.</p> : <div className="mt-5 space-y-5"><Field label="Your model"><Select value={model} disabled={busy} onChange={(e) => { setModel(e.target.value); setOutput(""); }}>{models.map((m) => <option key={m.model} value={m.model}>{m.model}</option>)}</Select></Field>
       <div><h3>API endpoint</h3><code className="block mt-2 break-all text-sm">{endpoint}</code><Button onClick={() => void navigator.clipboard.writeText(endpoint).then(() => toast.success("Endpoint copied")).catch(() => setError("Could not copy. Select the endpoint text to copy it."))}>Copy endpoint</Button></div>

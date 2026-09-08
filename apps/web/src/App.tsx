@@ -41,6 +41,8 @@ import AccessResources, { FQDNResourceDetail } from "./pages/AccessResources";
 import AccessKubernetesScopes from "./pages/AccessKubernetesScopes";
 import Access from "./pages/Access";
 import Users from "./pages/Users";
+import { LegacyWorkspaceRedirect } from "./components/LegacyWorkspaceRedirect";
+import { AgentModelAccess } from "./pages/AgentsAIGateway";
 import Settings from "./pages/Settings";
 import AccessEvents from "./pages/AccessEvents";
 import AuditLog from "./pages/AuditLog";
@@ -179,12 +181,19 @@ function ProductApp() {
             <Route path="/kubernetes" element={<Kubernetes />} />
             <Route path="/agents" element={<AgentsIndex />} />
             <Route path="/agents/mcp" element={<AgentsMCP />} />
-            <Route path="/agents/ai-gateway" element={<AgentsAIGateway />} />
-            <Route path="/agents/groups" element={<Navigate to="/access/groups?type=agents" replace />} />
+            <Route path="/agents/ai-gateway" element={<LegacyWorkspaceRedirect />} />
+            <Route path="/ai-gateway" element={<AgentsAIGateway />} />
+            <Route path="/ai-gateway/:section" element={<AgentsAIGateway />} />
+            <Route path="/ai-gateway/models/new" element={<AgentsAIGateway />} />
+            <Route path="/agents/model-access" element={<AgentModelAccess />} />
+            <Route path="/agents/groups" element={<AccessGroups scope="agents" />} />
             <Route path="/agents/policies" element={<AgentsPolicyTemplates />} />
             <Route path="/agents/:agentId" element={<AgentDetail />} />
             <Route path="/access" element={<Access />} />
-            <Route path="/access/groups" element={<AccessGroups />} />
+            <Route path="/access/groups" element={<LegacyWorkspaceRedirect groups />} />
+            <Route path="/users/groups" element={<AccessGroups scope="people" />} />
+            <Route path="/users/roles" element={<Users view="roles" />} />
+            <Route path="/users/invitations" element={<Users view="invitations" />} />
             <Route path="/access/resources" element={<AccessResources />} />
             <Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} />
             <Route path="/access/kubernetes-scopes" element={<AccessKubernetesScopes />} />

@@ -1,3 +1,4 @@
+import { UsersTabRail } from "../components/WorkspaceTabs";
 import { RoleAssignment } from "../components/RoleAssignment";
 import { HUMAN_ROLES } from "../lib/rbac";
 import {
@@ -66,7 +67,7 @@ const ROLES: Role[] = ["owner", "admin", "member"];
 const selectCls =
   "rounded-md border border-white/10 bg-ink-900 px-2 py-1 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 disabled:opacity-50";
 
-export default function Users() {
+export default function Users({ view = "users" }: { view?: "users" | "roles" | "invitations" }) {
   // ⛔ THE ORG COMES FROM THE SEAM (S12.5) — the page no longer picks index zero out of a list it
   // fetched itself, which is what made a second organization unreachable.
   const { org: currentOrg, loading: orgLoading, failed: orgFailed } = useOrg();
@@ -98,7 +99,11 @@ export default function Users() {
 
   // My role in this org comes from my own row in the roster — no extra endpoint.
   const myRole = useMemo(
-    () => members.find((m) => m.user_id === myId)?.role,
+    () => {
+      const mine = members.find((m) => m.user_id === myId);
+      const roles = mine?.roles ?? (mine ? [mine.role] : []);
+      return roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : mine?.role;
+    },
     [members, myId],
   );
   // Owner count drives the last-owner disable (mirrors the server's CountOwners).
@@ -394,7 +399,7 @@ export default function Users() {
   return (
     <div className="network-management users-workspace">
       <PageHeader
-        title="Users & Roles"
+        title="Users & Groups"
         subtitle={
           org
             ? `${org.name} · ${members.length} ${members.length === 1 ? "person" : "people"}`
@@ -406,9 +411,10 @@ export default function Users() {
           ) : undefined
         }
       />
+      <UsersTabRail />
       <ErrorText>{error}</ErrorText>
 
-      <section
+      {view !== "invitations" && <section
         aria-labelledby="access-posture-heading"
         className="tnx-card-surface users-summary"
       >
@@ -453,12 +459,15 @@ export default function Users() {
         {shape.gateNote && (
           <p className="w-full text-xs text-ink-tertiary">{shape.gateNote}</p>
         )}
-      </section>
+      </section>}
 
       {/* S14.3 slice A: a real <table>. The roster is tabular — person, role, state, actions per row — and as
           <li> blocks the tier could only find a member by matching their email as free text. The role control
           and the action buttons keep their own accessible names, so they stay queryable INSIDE a cell. */}
       <div className="users-content">
+        {view === "roles" && <p className="mb-4 text-sm text-ink-secondary">Assign multiple roles to each person. Roles control administration; user group grants control which AI models they can call.</p>}
+        {view === "invitations" && inviteGate(myRole).kind !== "ready" && <Card><p role="alert">You do not have permission to manage invitations.</p></Card>}
+        {view === "invitations" && invites === null && inviteGate(myRole).kind === "ready" && <Card>{inviteErr ? <p role="alert">{inviteErr}</p> : <Loading label="Loading invitations…" />}</Card>}
         {/* ⛔ ONE FILTER, AND IT IS THE TABLE'S NOW. The page carried a separate "Filter members" field
             floating above the roster in its own box — disconnected from the thing it narrowed, and a second
             search input the moment the table grew one.
@@ -467,9 +476,9 @@ export default function Users() {
             table's search runs over every column's `sortValue`, which is those three PLUS state — so
             "deactivated" now finds the deactivated members, which the old box could not. Swapping to the
             weaker control to preserve a helper would have been keeping the test, not the capability. */}
-        <div className="tnx-card-surface users-inventory">
+        {view !== "invitations" && <><div className="tnx-card-surface users-inventory">
           <div className="users-inventory-heading">
-            <h2>People</h2>
+            <h2>{view === "roles" ? "Role assignments" : "People"}</h2>
             <span>{anyRowHasAction ? "Select people to manage their accounts" : "Organization members"}</span>
           </div>
         <DataTable
@@ -689,7 +698,7 @@ export default function Users() {
         />
 
         </div>
-        <details className="users-role-guide">
+        <details className="users-role-guide" open={view === "roles" ? true : undefined}>
           <summary>Understand roles <span aria-hidden="true">＋</span></summary>
           <div className="users-role-grid">
             <div><h3>Owner</h3><p>Manages the organization and its members, including other owners.</p></div>
@@ -698,13 +707,13 @@ export default function Users() {
             <div><h3>AI admin</h3><p>Manages AI models, credentials and group access. No VPN or user administration.</p></div>
             <div><h3>AI view</h3><p>Views AI configuration and usage. Cannot change settings or credentials.</p></div>
           </div>
-        </details>
+        </details></>}
 
         {/* ⚠ CONTEXT, BELOW THE SUBJECT, AND SIDE BY SIDE — two short cards stacked full-width were a screen
           of scrolling to reach a roster. Columns, so a wider display adds a column rather than stretching
           either card. */}
-        {invites !== null && inviteGate(myRole).kind === "ready" && (
-          <details className="group mt-5 border-y border-white/10 py-1">
+        {view === "invitations" && invites !== null && inviteGate(myRole).kind === "ready" && (
+          <details open className="group mt-5 border-y border-white/10 py-1">
             <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-ink-heading focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-accent-400">
               <span>Invitation history</span>
               <span className="flex items-center gap-3 text-xs font-normal text-ink-tertiary">

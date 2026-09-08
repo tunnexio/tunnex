@@ -2,8 +2,9 @@ import "../network-workspaces.css";
 import "../agents-workspace.css";
 import "../components/ai-gateway-configuration.css";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
+import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
 import { AIProviderWorkspace } from "../components/AIProviderWorkspace";
@@ -43,25 +44,53 @@ const thresholdDecimal = new Intl.NumberFormat("en-US", {
   useGrouping: false,
   maximumSignificantDigits: 21,
 });
+const gatewayTabs = [
+  { href: "/ai-gateway/models", label: "Models & endpoints" },
+  { href: "/ai-gateway/credentials", label: "LLM credentials" },
+  { href: "/ai-gateway/access", label: "Model access" },
+  { href: "/ai-gateway/usage", label: "Usage & cost" },
+  { href: "/ai-gateway/my-models", label: "My models" },
+  { href: "/ai-gateway/settings", label: "Settings" },
+];
 export default function AgentsAIGateway() {
   const { org } = useOrg();
-  const [view, setView] = useState<"usage" | "providers" | "configuration" | "groups" | "use">("usage");
-  return <div className="network-management agents-workspace space-y-5">
-    <PageHeader title="AI gateway" subtitle="Manage models, grant group access, and call AI with your Tunnex login." />
-    <AgentsTabRail />
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const page = pathname.split("/")[2] || "models";
+  return <div className="network-management ai-workspace space-y-5">
+    <PageHeader title="AI Gateway" subtitle="Connect models, manage access, and use AI with your Tunnex login." />
     <AIAccessGate key={org?.id}>{(orgId, access) => {
-      const current = access.view ? view : "use";
-      const tabs = access.view ? (["usage", "providers", "groups", "use", "configuration"] as const) : (["use"] as const);
-      const labels = { usage: "Usage & cost", providers: "Models & endpoints", groups: "Group access", use: "Use model", configuration: "Configuration" };
+      if (pathname === "/ai-gateway" || pathname === "/ai-gateway/") return <Navigate to={access.view ? "/ai-gateway/models" : "/ai-gateway/my-models"} replace />;
+      if (!access.view && page !== "my-models") return <Navigate to="/ai-gateway/my-models" replace />;
+      if (!gatewayTabs.some((tab) => tab.href === `/ai-gateway/${page}`)) return <Navigate to="/ai-gateway/models" replace />;
+      const tabs = access.view ? gatewayTabs : gatewayTabs.filter((tab) => tab.href.endsWith("/my-models"));
       return <>
-        <nav aria-label="AI gateway views" className="flex flex-wrap gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1 w-fit">{tabs.map((v) => <button key={v} type="button" aria-current={current === v ? "page" : undefined} onClick={() => setView(v)} className={`rounded-md px-4 py-2 text-sm font-medium ${current === v ? "bg-white/10 text-white" : "text-ink-tertiary hover:text-white"}`}>{labels[v]}</button>)}</nav>
-        {current === "use" ? <AIUseModel key={orgId} orgId={orgId} /> : current === "groups" ? <AIGroupAccess key={orgId} orgId={orgId} canManage={access.manage} /> : current === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} /> : current === "providers" ? <AIProviderWorkspace key={orgId} orgId={orgId} canManage={access.manage} /> : <div className="ai-gateway-configuration">
-          <div className="ai-config-heading"><div><p className="ai-config-eyebrow">AI GATEWAY / CONFIGURATION</p><h2>Gateway configuration</h2><p>Enable model access for your organization. Grant user groups access in Group access.</p></div></div>
-          <div className="ai-config-organization"><AIGatewaySettings orgId={orgId} canEdit={access.manage} /></div>
-          {access.agents && (org?.agent_policy_templates_enabled ? <AIGatewayWorkspace key={orgId} orgId={orgId} /> : <Card><h2>Agent groups are turned off</h2><p>Enable Agent Groups to configure automated agent access.</p><Link to="/settings?section=ai-agents">Configure Agent Group settings</Link></Card>)}
-        </div>}
+        <WorkspaceTabs label="AI gateway views" items={tabs} />
+        {page === "my-models" ? <AIUseModel key={orgId} orgId={orgId} />
+          : page === "access" ? <AIGroupAccess key={`${orgId}:${search.get("connection")}:${search.get("model")}`} orgId={orgId} canManage={access.manage} initialConnection={search.get("connection") ?? ""} initialModel={search.get("model") ?? ""} />
+          : page === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} />
+          : page === "models" || page === "credentials" ? <AIProviderWorkspace key={`${orgId}:${page}`} orgId={orgId} canManage={access.manage}
+            view={page === "credentials" ? "connections" : pathname.endsWith("/new") && access.manage ? "add" : "models"}
+            onViewChange={(view) => navigate(view === "connections" ? "/ai-gateway/credentials" : view === "add" ? "/ai-gateway/models/new" : "/ai-gateway/models")}
+            onGrantAccess={(connection, model) => navigate(`/ai-gateway/access?${new URLSearchParams({ connection, model })}`)} />
+          : <div className="ai-gateway-configuration"><div className="ai-config-heading"><div><h2>Gateway settings</h2><p>Control organization access to AI models.</p></div></div>
+            <AIGatewaySettings orgId={orgId} canEdit={access.manage} />
+            {access.agents && <Card><h2>Agent model access</h2><p className="my-2 text-sm text-ink-secondary">Manage automated agents and their team model policies in AI Agents.</p><Link className="network-setup-link" to="/agents/model-access">Manage agent model access</Link></Card>}
+          </div>}
       </>;
     }}</AIAccessGate>
+  </div>;
+}
+export function AgentModelAccess() {
+  const { org } = useOrg();
+  return <div className="network-management agents-workspace ai-workspace space-y-5">
+    <PageHeader title="Agent model access" subtitle="Manage team model policies and access for automated agents." />
+    <AgentsTabRail />
+    <AIAccessGate key={org?.id}>{(orgId, access) => !access.agents ? <Card><p role="alert">You do not have permission to manage agent model access.</p></Card>
+      : !org?.agent_policy_templates_enabled ? <Card><h2>Agent groups are turned off</h2><Link to="/settings?section=ai-agents">Configure Agent Group settings</Link></Card>
+      : <div className="ai-gateway-configuration"><AIGatewayWorkspace key={orgId} orgId={orgId} /></div>}
+    </AIAccessGate>
   </div>;
 }
 export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
@@ -210,7 +239,7 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
         {data.groups.length === 0 ? (
           <p>
             No Agent Groups yet.{" "}
-            <Link to="/access/groups?type=agents">Create a group</Link> first.
+            <Link to="/agents/groups">Create a group</Link> first.
           </p>
         ) : (
           <>

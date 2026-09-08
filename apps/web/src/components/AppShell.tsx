@@ -50,12 +50,14 @@ export const NAV_GROUPS: Array<{
       // reading a device's AllowedIPs.
       { to: "/routed-ranges", label: "Routed ranges", icon: "route" },
       { to: "/kubernetes", label: "Kubernetes", icon: "boxes" },
-      // ⛔ S15.3 — AI agents is a TOP-LEVEL DESTINATION, beside Kubernetes, and the placement is the
-      // ruling. It was first built as a section inside Devices on the premise that the schema says an
-      // agent is a devices row — and the measurement broke that premise: an agent is a GATEWAY, enrolled
-      // on Gateways, that ACQUIRES a device row. The row is an artifact of attribution, not the thing.
-      // ⚠ NETWORK is where things you ENROL live, which is exactly what an agent now is.
-      { to: "/agents", label: "AI agents", icon: "bot" },
+
+    ],
+  },
+  {
+    group: "AI",
+    items: [
+      { to: "/ai-gateway", label: "AI Gateway", icon: "boxes" },
+      { to: "/agents", label: "AI Agents", icon: "bot" },
     ],
   },
   {
@@ -63,7 +65,7 @@ export const NAV_GROUPS: Array<{
     items: [
       { to: "/access", label: "Access Policies", icon: "shield" },
       { to: "/devices", label: "Devices", icon: "laptop" },
-      { to: "/users", label: "Users & Roles", icon: "users" },
+      { to: "/users", label: "Users & Groups", icon: "users" },
     ],
   },
   {
