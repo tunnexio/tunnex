@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api } from "../lib/api";
 import { Button, Field, Input, Select } from "./ui";
-import { AIUsageDashboard } from "./AIUsageDashboard";
+import { AIUsageDashboard, formatAIUsageCost } from "./AIUsageDashboard";
 
 type Report = components["schemas"]["AIUsageReport"];
 type Inventory = {
@@ -82,7 +82,7 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
   const agents = unique([...inventory.assignments.map((a) => ({ id: a.device_id, name: inventory.devices.find((d) => d.id === a.device_id)?.name ?? `Retained agent (${a.device_id})` })), ...knownAgents]);
   const d = report?.dashboard;
   const ranked = (rows: NonNullable<Report["dashboard"]>["teams"]) => rows.map((r) => ({ ...r, uncostedRequests: r.uncosted_requests }));
-  return <AIUsageDashboard
+  return <div className="space-y-5"><AIUsageDashboard
     status={busy ? "loading" : error || !d ? "error" : "ready"}
     error={error}
     onRetry={refresh}
@@ -114,5 +114,28 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
     userGroups={d?.user_groups ? ranked(d.user_groups) : undefined}
     teams={d ? ranked(d.teams) : undefined}
     agents={d ? ranked(d.agents) : undefined}
-  />;
+  />
+    {!busy && !error && d && <WorkloadUsage rows={d.workloads} />}
+  </div>;
+}
+
+function WorkloadUsage({ rows }: { rows: NonNullable<Report["dashboard"]>["workloads"] }) {
+  const sorted = rows ? [...rows].sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name)) : undefined;
+  const max = sorted?.[0]?.cost ?? 0;
+  const count = (value: number) => Number.isFinite(value) && value >= 0 ? value.toLocaleString("en-US") : "Unavailable";
+  return <section className="ai-usage-dashboard" aria-label="Workload usage">
+    <div className="ai-usage-panel">
+      <div className="ai-usage-panel-title"><h3>Spend by workload</h3><span>{rows ? `${rows.length} workload${rows.length === 1 ? "" : "s"}` : "Unavailable"}</span></div>
+      <p className="ai-usage-muted">Combined usage across each workload's instances. Included in the totals above.</p>
+      {!sorted?.length ? <p className="ai-usage-muted">{rows ? "No workload usage recorded in this period." : "Workload breakdown is unavailable."}</p>
+        : <div className="ai-usage-table-scroll"><table>
+          <caption className="sr-only">Spend by workload</caption>
+          <thead><tr><th scope="col">Workload</th><th scope="col">Requests</th><th scope="col">Tokens</th><th scope="col">Estimated cost</th><th scope="col">Without cost</th></tr></thead>
+          <tbody>{sorted.map((row) => <tr key={row.id}>
+            <th scope="row"><span className="ai-usage-rank-name" title={row.id}>{row.name}</span><span className="ai-usage-rank-track" aria-hidden="true"><i style={{ width: `${max > 0 ? Math.max(0, row.cost / max * 100) : 0}%` }} /></span></th>
+            <td>{count(row.requests)}</td><td>{count(row.tokens)}</td><td>{formatAIUsageCost(row.cost)}</td><td>{count(row.uncosted_requests)}</td>
+          </tr>)}</tbody>
+        </table></div>}
+    </div>
+  </section>;
 }

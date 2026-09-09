@@ -26,7 +26,8 @@ const MaxBodyBytes = 256 << 10
 // No caller-supplied headers establish identity or upstream authorization.
 type Grant struct {
 	Tenant, Agent, VirtualKey string
-	SubjectKind               string // empty = agent; user = authenticated human
+	SubjectKind               string // empty = agent; user = human; workload = independent application
+	Instance                  string // registered workload replica; never the policy or billing owner
 	Mode                      ModelMode
 	Expires                   time.Time
 }

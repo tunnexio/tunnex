@@ -18,6 +18,202 @@ security:
   - bearerAuth: []
 
 paths:
+  /api/v1/organizations/{orgId}/ai-gateway/workloads:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIWorkloads
+      tags: [ai-workloads]
+      summary: List stable workloads and their applied policies
+      responses:
+        "200":
+          description: List stable workloads and their applied policies
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AIWorkload' } } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAIWorkload
+      tags: [ai-workloads]
+      summary: Create a workload without a user or network device
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadInput' } } }
+      responses:
+        "201":
+          description: Create a workload without a user or network device
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkload' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateAIWorkload
+      tags: [ai-workloads]
+      summary: Update policy or disable workload access immediately
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadInput' } } }
+      responses:
+        "200":
+          description: Update policy or disable workload access immediately
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkload' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIWorkloadKeys
+      tags: [ai-workloads]
+      summary: List enrollment keys without their secrets
+      parameters:
+        - { name: after, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: List enrollment keys without their secrets
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeyPage' } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAIWorkloadKey
+      tags: [ai-workloads]
+      summary: Create a workload-bound enrollment key shown once
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeyInput' } } }
+      responses:
+        "201":
+          description: Create a workload-bound enrollment key shown once
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeySecret' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys/{keyId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeAIWorkloadKey
+      tags: [ai-workloads]
+      summary: Stop future enrollment and optionally revoke enrolled instances
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadKeyRevoke' } } }
+      responses:
+        "204":
+          description: Stop future enrollment and optionally revoke enrolled instances
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIWorkloadInstances
+      tags: [ai-workloads]
+      summary: List independent workload replicas
+      parameters:
+        - { name: after, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: List independent workload replicas
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadInstancePage' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances/{instanceId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: instanceId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeAIWorkloadInstance
+      tags: [ai-workloads]
+      summary: Revoke only this instance; no automatic reenrollment
+      responses:
+        "204":
+          description: Revoke only this instance; no automatic reenrollment
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/enroll:
+    post:
+      operationId: enrollWorkload
+      tags: [ai-workloads]
+      summary: Atomically register an instance public key using a signed enrollment proof
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadEnrollInput' } } }
+      responses:
+        "200":
+          description: Atomically register an instance public key using a signed enrollment proof
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadReceipt' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/token:
+    post:
+      operationId: exchangeWorkloadToken
+      tags: [ai-workloads]
+      summary: Exchange a private_key_jwt for a five-minute AI gateway token
+      security: []
+      requestBody:
+        required: true
+        content: { application/x-www-form-urlencoded: { schema: { $ref: '#/components/schemas/AIWorkloadTokenInput' } } }
+      responses:
+        "200":
+          description: Exchange a private_key_jwt for a five-minute AI gateway token
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadToken' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/rotate:
+    post:
+      operationId: rotateWorkloadKey
+      tags: [ai-workloads]
+      summary: Rotate the instance key with proofs from both keys and a durable request ID
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadRotationInput' } } }
+      responses:
+        "200":
+          description: Rotate the instance key with proofs from both keys and a durable request ID
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadReceipt' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/workload/retire:
+    post:
+      operationId: retireWorkloadInstance
+      tags: [ai-workloads]
+      summary: Retire the authenticated instance on graceful shutdown
+      security: []
+      responses:
+        "204":
+          description: Retire the authenticated instance on graceful shutdown
+        default: { $ref: "#/components/responses/Error" }
+  /ai/v1/models:
+    get:
+      operationId: listWorkloadModels
+      tags: [ai-workloads]
+      summary: List currently authorized models using a workload bearer
+      security: []
+      responses:
+        "200":
+          description: List currently authorized models using a workload bearer
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadModelList' } } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/ai-gateway/user-groups:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -6150,6 +6346,155 @@ components:
       required: true
 
   schemas:
+    AIWorkloadModel:
+      type: object
+      required: [connection_id, model, mode]
+      properties:
+        connection_id: { type: string, format: uuid }
+        model: { type: string, minLength: 1, maxLength: 255 }
+        mode: { $ref: '#/components/schemas/AIModelMode' }
+    AIWorkloadInput:
+      type: object
+      additionalProperties: false
+      required: [name, enabled, models, expected_revision]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        enabled: { type: boolean }
+        models: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/AIWorkloadModel' } }
+        daily_usd_threshold: { type: number, format: double, minimum: 0, exclusiveMinimum: true, maximum: 100000, nullable: true }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
+    AIWorkload:
+      type: object
+      required: [id, name, enabled, models, revision, applied_revision, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        enabled: { type: boolean }
+        models: { type: array, items: { $ref: '#/components/schemas/AIWorkloadModel' } }
+        daily_usd_threshold: { type: number, format: double, nullable: true }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, revoked, error] }
+        created_at: { type: string, format: date-time }
+    AIWorkloadKeyInput:
+      type: object
+      additionalProperties: false
+      required: [name, reusable, ephemeral, expires_at, max_uses]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        reusable: { type: boolean }
+        ephemeral: { type: boolean }
+        expires_at: { type: string, format: date-time }
+        max_uses: { type: integer, format: int64, minimum: 0, description: 'Total enrollments, not concurrent replicas. Zero means unlimited for a reusable key; single-use keys require one.' }
+    AIWorkloadEnrollmentKey:
+      type: object
+      required: [id, name, reusable, ephemeral, max_uses, uses, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        reusable: { type: boolean }
+        ephemeral: { type: boolean }
+        max_uses: { type: integer, format: int64 }
+        uses: { type: integer, format: int64 }
+        expires_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    AIWorkloadKeySecret:
+      type: object
+      required: [key, secret]
+      properties:
+        key: { $ref: '#/components/schemas/AIWorkloadEnrollmentKey' }
+        secret: { type: string, writeOnly: false, description: 'Shown once. Deliver in a protected file; never put in an image or command argument.' }
+    AIWorkloadKeyRevoke:
+      type: object
+      additionalProperties: false
+      required: [revoke_instances]
+      properties:
+        revoke_instances: { type: boolean }
+    AIWorkloadKeyPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AIWorkloadEnrollmentKey' } }
+        next_cursor: { type: string, format: uuid, nullable: true }
+    AIWorkloadInstance:
+      type: object
+      required: [id, enrollment_key_id, ephemeral, state, key_generation, last_contact_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        enrollment_key_id: { type: string, format: uuid }
+        ephemeral: { type: boolean }
+        state: { type: string, enum: [active, offline, revoked, retired] }
+        key_generation: { type: integer, format: int64 }
+        last_contact_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    AIWorkloadInstancePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AIWorkloadInstance' } }
+        next_cursor: { type: string, format: uuid, nullable: true }
+    AIWorkloadEnrollInput:
+      type: object
+      additionalProperties: false
+      required: [enrollment_key, request_id, public_key, proof]
+      properties:
+        enrollment_key: { type: string, minLength: 40, maxLength: 128 }
+        request_id: { type: string, format: uuid }
+        public_key: { type: string, minLength: 43, maxLength: 43, description: 'Raw Ed25519 public key encoded using unpadded base64url.' }
+        proof: { type: string, maxLength: 8192, description: 'EdDSA JWT with iss/sub=enrollment, audience=enrollment URL, request_id and enrollment_hash (SHA256 key, hex).' }
+    AIWorkloadReceipt:
+      type: object
+      required: [instance_id, workload_id, organization_id, key_generation, token_endpoint, gateway_base]
+      properties:
+        instance_id: { type: string, format: uuid }
+        workload_id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        key_generation: { type: integer, format: int64 }
+        token_endpoint: { type: string, format: uri }
+        gateway_base: { type: string, format: uri }
+    AIWorkloadTokenInput:
+      type: object
+      additionalProperties: false
+      required: [grant_type, client_id, client_assertion_type, client_assertion]
+      properties:
+        grant_type: { type: string, enum: [client_credentials] }
+        client_id: { type: string, format: uuid }
+        client_assertion_type: { type: string, enum: ['urn:ietf:params:oauth:client-assertion-type:jwt-bearer'] }
+        client_assertion: { type: string, maxLength: 8192 }
+    AIWorkloadToken:
+      type: object
+      required: [access_token, token_type, expires_in, scope]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer }
+        scope: { type: string, enum: [tunnex-ai], x-enum-varnames: [WorkloadScopeAI] }
+    AIWorkloadRotationInput:
+      type: object
+      additionalProperties: false
+      required: [instance_id, request_id, public_key, old_proof, new_proof]
+      properties:
+        instance_id: { type: string, format: uuid }
+        request_id: { type: string, format: uuid }
+        public_key: { type: string, minLength: 43, maxLength: 43 }
+        old_proof: { type: string, maxLength: 8192 }
+        new_proof: { type: string, maxLength: 8192 }
+    AIWorkloadModelList:
+      type: object
+      required: [object, data]
+      properties:
+        object: { type: string, enum: [list] }
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, object, owned_by, mode]
+            properties:
+              id: { type: string }
+              object: { type: string, enum: [model] }
+              owned_by: { type: string }
+              mode: { $ref: '#/components/schemas/AIModelMode' }
     AIUserGroup:
       type: object
       additionalProperties: false
@@ -6509,6 +6854,7 @@ components:
         teams: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
         agents: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
         user_groups: { type: array, items: { $ref: '#/components/schemas/AIUsageAttribution' } }
+        workloads: { type: array, items: { $ref: '#/components/schemas/AIUsageAttribution' } }
     AIUsageDay:
       type: object
       additionalProperties: false

@@ -197,6 +197,7 @@ type apiServer struct {
 	nodes              *nodes.Service
 	agentRuntime       *agentruntime.Service
 	aiCredentials      *aigateway.Credentials
+	aiWorkloads        *aigateway.Workloads
 	aiPolicies         *aigateway.Policies
 	alertConfig        *alerts.ConfigService
 	devices            *devices.Service

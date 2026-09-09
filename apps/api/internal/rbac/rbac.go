@@ -9,6 +9,8 @@ import "sort"
 type Permission string
 
 const (
+	PermAIWorkloadView      Permission = "ai_workload:view"
+	PermAIWorkloadManage    Permission = "ai_workload:manage"
 	PermAIModelAccessView   Permission = "ai_model_access:view"
 	PermAIModelAccessManage Permission = "ai_model_access:manage"
 	PermAIModelUse          Permission = "ai_model:use"
@@ -201,13 +203,15 @@ const (
 // so they are NOT covered by the guard and are still hand-mirrored in rbac.ts.
 var rolePermissions = map[string]map[Permission]bool{
 	RoleAIAdmin: {
+		PermAIWorkloadView: true, PermAIWorkloadManage: true,
 		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermOrgView: true, PermMemberList: true,
 		PermAIProviderView: true, PermAIProviderManage: true,
 		PermAIGatewayView: true, PermAIGatewayManage: true,
 	},
 	RoleAIView: {
-		PermAIModelUse: true, PermAIModelAccessView: true,
+		PermAIWorkloadView: true,
+		PermAIModelUse:     true, PermAIModelAccessView: true,
 		PermOrgView: true, PermMemberList: true,
 		PermAIProviderView: true, PermAIGatewayView: true,
 	},
@@ -217,6 +221,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList: true,
 	},
 	RoleAdmin: {
+		PermAIWorkloadView: true, PermAIWorkloadManage: true,
 		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,
@@ -261,6 +266,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermAIWorkloadView: true, PermAIWorkloadManage: true,
 		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,

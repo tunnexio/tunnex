@@ -57,7 +57,7 @@ func scanVideo(row pgx.Row) (videoJob, error) {
 	return j, err
 }
 
-const videoColumns = `id,org_id,coalesce(device_id,user_id),CASE WHEN user_id IS NULL THEN '' ELSE 'user' END,model,provider_id,state,created_at,expires_at`
+const videoColumns = `id,org_id,coalesce(device_id,user_id,workload_id),CASE WHEN user_id IS NOT NULL THEN 'user' WHEN workload_id IS NOT NULL THEN 'workload' ELSE '' END,model,provider_id,state,created_at,expires_at`
 
 func (s videoStore) reserve(ctx context.Context, g Grant, model, key string, body []byte) (videoJob, bool, error) {
 	tx, err := s.pool.Begin(ctx)
@@ -77,7 +77,7 @@ func (s videoStore) reserve(ctx context.Context, g Grant, model, key string, bod
 	hash := sha256.Sum256(body)
 	var oldHash []byte
 	var j videoJob
-	err = tx.QueryRow(ctx, `SELECT `+videoColumns+`,request_hash FROM ai_video_jobs WHERE org_id=$1 AND coalesce(device_id,user_id)=$2 AND (user_id IS NOT NULL)=$4 AND idempotency_key=$3`, g.Tenant, g.Agent, key, g.SubjectKind == "user").Scan(&j.ID, &j.Org, &j.Agent, &j.SubjectKind, &j.Model, &j.ProviderID, &j.State, &j.Created, &j.Expires, &oldHash)
+	err = tx.QueryRow(ctx, `SELECT `+videoColumns+`,request_hash FROM ai_video_jobs WHERE org_id=$1 AND coalesce(device_id,user_id,workload_id)=$2 AND (CASE WHEN user_id IS NOT NULL THEN 'user' WHEN workload_id IS NOT NULL THEN 'workload' ELSE '' END)=$4 AND idempotency_key=$3`, g.Tenant, g.Agent, key, g.SubjectKind).Scan(&j.ID, &j.Org, &j.Agent, &j.SubjectKind, &j.Model, &j.ProviderID, &j.State, &j.Created, &j.Expires, &oldHash)
 	if err == nil {
 		if !bytes.Equal(oldHash, hash[:]) || j.Model != model {
 			return videoJob{}, false, errVideoConflict
@@ -95,19 +95,21 @@ func (s videoStore) reserve(ctx context.Context, g Grant, model, key string, bod
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM ai_video_jobs`).Scan(&total); err != nil {
 		return videoJob{}, false, err
 	}
-	if err = tx.QueryRow(ctx, `SELECT count(*) FROM ai_video_jobs WHERE org_id=$1 AND coalesce(device_id,user_id)=$2 AND (user_id IS NOT NULL)=$3 AND state IN ('uncertain','queued','in_progress') AND expires_at>now()`, g.Tenant, g.Agent, g.SubjectKind == "user").Scan(&active); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM ai_video_jobs WHERE org_id=$1 AND coalesce(device_id,user_id,workload_id)=$2 AND (CASE WHEN user_id IS NOT NULL THEN 'user' WHEN workload_id IS NOT NULL THEN 'workload' ELSE '' END)=$3 AND state IN ('uncertain','queued','in_progress') AND expires_at>now()`, g.Tenant, g.Agent, g.SubjectKind).Scan(&active); err != nil {
 		return videoJob{}, false, err
 	}
 	if total >= 4096 || active >= 64 {
 		return videoJob{}, false, errVideoQuota
 	}
-	var device, user *string
+	var device, user, workload *string
 	if g.SubjectKind == "user" {
 		user = &g.Agent
-	} else {
+	} else if g.SubjectKind == "workload" {
+		workload = &g.Agent
+	} else if g.SubjectKind == "" {
 		device = &g.Agent
 	}
-	j, err = scanVideo(tx.QueryRow(ctx, `INSERT INTO ai_video_jobs(id,org_id,device_id,model,idempotency_key,request_hash,state,user_id) VALUES($1,$2,$3,$4,$5,$6,'uncertain',$7) RETURNING `+videoColumns, uuid.New(), g.Tenant, device, model, key, hash[:], user))
+	j, err = scanVideo(tx.QueryRow(ctx, `INSERT INTO ai_video_jobs(id,org_id,device_id,model,idempotency_key,request_hash,state,user_id,workload_id) VALUES($1,$2,$3,$4,$5,$6,'uncertain',$7,$8) RETURNING `+videoColumns, uuid.New(), g.Tenant, device, model, key, hash[:], user, workload))
 	if err != nil {
 		return videoJob{}, false, err
 	}
@@ -121,7 +123,7 @@ func (s videoStore) lookup(ctx context.Context, id uuid.UUID) (videoJob, error) 
 }
 
 func (s videoStore) update(ctx context.Context, j videoJob, providerID, state string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE ai_video_jobs SET provider_id=$4,state=$5 WHERE id=$1 AND org_id=$2 AND coalesce(device_id,user_id)=$3 AND (user_id IS NOT NULL)=$6 AND expires_at>now() AND (provider_id='' OR provider_id=$4) AND (state NOT IN ('completed','failed') OR state=$5)`, j.ID, j.Org, j.Agent, providerID, state, j.SubjectKind == "user")
+	tag, err := s.pool.Exec(ctx, `UPDATE ai_video_jobs SET provider_id=$4,state=$5 WHERE id=$1 AND org_id=$2 AND coalesce(device_id,user_id,workload_id)=$3 AND (CASE WHEN user_id IS NOT NULL THEN 'user' WHEN workload_id IS NOT NULL THEN 'workload' ELSE '' END)=$6 AND expires_at>now() AND (provider_id='' OR provider_id=$4) AND (state NOT IN ('completed','failed') OR state=$5)`, j.ID, j.Org, j.Agent, providerID, state, j.SubjectKind)
 	if err == nil && tag.RowsAffected() != 1 {
 		return errors.New("video update refused")
 	}

@@ -19,6 +19,7 @@ func bindingUsageIDs(ctx context.Context, tx pgx.Tx, org uuid.UUID, team, device
 	rows, err := tx.Query(ctx, `SELECT native_key_id FROM ai_gateway_key_bindings
  WHERE org_id=$1 AND ($2::uuid IS NULL OR team_id=$2) AND ($3::uuid IS NULL OR device_id=$3)
  UNION SELECT native_key_id FROM ai_user_model_grants WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
+ UNION SELECT native_key_id FROM ai_workloads WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
  ORDER BY native_key_id LIMIT 65`, org, team, device)
 	if err != nil {
 		return nil, aiUnavailable()
@@ -123,13 +124,21 @@ func (p *Policies) enforceCost(ctx context.Context, tx pgx.Tx, org, team uuid.UU
 	return p.enforceCostMode(ctx, tx, org, team, model, ModeChat, limit)
 }
 func (p *Policies) enforceCostMode(ctx context.Context, tx pgx.Tx, org, team uuid.UUID, model string, mode ModelMode, limit *float64) error {
+	return p.enforceCostBindings(ctx, tx, org, model, mode, limit, func() ([]string, error) {
+		if team == uuid.Nil {
+			return nil, aiUnavailable()
+		}
+		return bindingUsageIDs(ctx, tx, org, &team, nil)
+	})
+}
+func (p *Policies) enforceCostBindings(ctx context.Context, tx pgx.Tx, org uuid.UUID, model string, mode ModelMode, limit *float64, bindings func() ([]string, error)) error {
 	if limit == nil {
 		return nil
 	}
 	if *limit <= 0 || *limit > 100000 || math.IsNaN(*limit) || math.IsInf(*limit, 0) {
 		return apierr.BadRequest("invalid_cost_limit", "daily soft threshold must be positive and at most 100000")
 	}
-	if p == nil || p.engine == nil || tx == nil || org == uuid.Nil || team == uuid.Nil {
+	if p == nil || p.engine == nil || tx == nil || org == uuid.Nil {
 		return aiUnavailable()
 	}
 	provider, nativeModel, valid := splitProviderModel(model)
@@ -148,7 +157,7 @@ func (p *Policies) enforceCostMode(ctx context.Context, tx pgx.Tx, org, team uui
 	if !inputReady || (mode != ModeEmbedding && (!price.Known || !outputReady)) {
 		return apierr.Forbidden("ai_price_unavailable", "exact model pricing is required for this policy")
 	}
-	ids, err := bindingUsageIDs(ctx, tx, org, &team, nil)
+	ids, err := bindings()
 	if err != nil {
 		return err
 	}

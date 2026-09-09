@@ -4,6 +4,214 @@
  */
 
 export interface paths {
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** List stable workloads and their applied policies */
+        get: operations["listAIWorkloads"];
+        put?: never;
+        /** Create a workload without a user or network device */
+        post: operations["createAIWorkload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Update policy or disable workload access immediately */
+        put: operations["updateAIWorkload"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        /** List enrollment keys without their secrets */
+        get: operations["listAIWorkloadKeys"];
+        put?: never;
+        /** Create a workload-bound enrollment key shown once */
+        post: operations["createAIWorkloadKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/enrollment-keys/{keyId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop future enrollment and optionally revoke enrolled instances */
+        post: operations["revokeAIWorkloadKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        /** List independent workload replicas */
+        get: operations["listAIWorkloadInstances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/instances/{instanceId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke only this instance; no automatic reenrollment */
+        post: operations["revokeAIWorkloadInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomically register an instance public key using a signed enrollment proof */
+        post: operations["enrollWorkload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange a private_key_jwt for a five-minute AI gateway token */
+        post: operations["exchangeWorkloadToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate the instance key with proofs from both keys and a durable request ID */
+        post: operations["rotateWorkloadKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workload/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire the authenticated instance on graceful shutdown */
+        post: operations["retireWorkloadInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List currently authorized models using a workload bearer */
+        get: operations["listWorkloadModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/user-groups": {
         parameters: {
             query?: never;
@@ -5133,6 +5341,160 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIWorkloadModel: {
+            /** Format: uuid */
+            connection_id: string;
+            model: string;
+            mode: components["schemas"]["AIModelMode"];
+        };
+        AIWorkloadInput: {
+            name: string;
+            enabled: boolean;
+            models: components["schemas"]["AIWorkloadModel"][];
+            /** Format: double */
+            daily_usd_threshold?: number | null;
+            /** Format: int64 */
+            expected_revision: number;
+        };
+        AIWorkload: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            enabled: boolean;
+            models: components["schemas"]["AIWorkloadModel"][];
+            /** Format: double */
+            daily_usd_threshold?: number | null;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /** @enum {string} */
+            status: "pending" | "applied" | "revoked" | "error";
+            /** Format: date-time */
+            created_at: string;
+        };
+        AIWorkloadKeyInput: {
+            name: string;
+            reusable: boolean;
+            ephemeral: boolean;
+            /** Format: date-time */
+            expires_at: string;
+            /**
+             * Format: int64
+             * @description Total enrollments, not concurrent replicas. Zero means unlimited for a reusable key; single-use keys require one.
+             */
+            max_uses: number;
+        };
+        AIWorkloadEnrollmentKey: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            reusable: boolean;
+            ephemeral: boolean;
+            /** Format: int64 */
+            max_uses: number;
+            /** Format: int64 */
+            uses: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AIWorkloadKeySecret: {
+            key: components["schemas"]["AIWorkloadEnrollmentKey"];
+            /** @description Shown once. Deliver in a protected file; never put in an image or command argument. */
+            secret: string;
+        };
+        AIWorkloadKeyRevoke: {
+            revoke_instances: boolean;
+        };
+        AIWorkloadKeyPage: {
+            items: components["schemas"]["AIWorkloadEnrollmentKey"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        AIWorkloadInstance: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            enrollment_key_id: string;
+            ephemeral: boolean;
+            /** @enum {string} */
+            state: "active" | "offline" | "revoked" | "retired";
+            /** Format: int64 */
+            key_generation: number;
+            /** Format: date-time */
+            last_contact_at: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AIWorkloadInstancePage: {
+            items: components["schemas"]["AIWorkloadInstance"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        AIWorkloadEnrollInput: {
+            enrollment_key: string;
+            /** Format: uuid */
+            request_id: string;
+            /** @description Raw Ed25519 public key encoded using unpadded base64url. */
+            public_key: string;
+            /** @description EdDSA JWT with iss/sub=enrollment, audience=enrollment URL, request_id and enrollment_hash (SHA256 key, hex). */
+            proof: string;
+        };
+        AIWorkloadReceipt: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            workload_id: string;
+            /** Format: uuid */
+            organization_id: string;
+            /** Format: int64 */
+            key_generation: number;
+            /** Format: uri */
+            token_endpoint: string;
+            /** Format: uri */
+            gateway_base: string;
+        };
+        AIWorkloadTokenInput: {
+            /** @enum {string} */
+            grant_type: "client_credentials";
+            /** Format: uuid */
+            client_id: string;
+            /** @enum {string} */
+            client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+            client_assertion: string;
+        };
+        AIWorkloadToken: {
+            access_token: string;
+            /** @enum {string} */
+            token_type: "Bearer";
+            expires_in: number;
+            /** @enum {string} */
+            scope: "tunnex-ai";
+        };
+        AIWorkloadRotationInput: {
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            request_id: string;
+            public_key: string;
+            old_proof: string;
+            new_proof: string;
+        };
+        AIWorkloadModelList: {
+            /** @enum {string} */
+            object: "list";
+            data: {
+                id: string;
+                /** @enum {string} */
+                object: "model";
+                owned_by: string;
+                mode: components["schemas"]["AIModelMode"];
+            }[];
+        };
         AIUserGroup: {
             /** Format: uuid */
             id: string;
@@ -5513,6 +5875,7 @@ export interface components {
             teams: components["schemas"]["AIUsageAttribution"][];
             agents: components["schemas"]["AIUsageAttribution"][];
             user_groups?: components["schemas"]["AIUsageAttribution"][];
+            workloads?: components["schemas"]["AIUsageAttribution"][];
         };
         AIUsageDay: {
             date: string;
@@ -8773,6 +9136,351 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listAIWorkloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List stable workloads and their applied policies */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkload"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAIWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadInput"];
+            };
+        };
+        responses: {
+            /** @description Create a workload without a user or network device */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkload"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAIWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadInput"];
+            };
+        };
+        responses: {
+            /** @description Update policy or disable workload access immediately */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkload"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIWorkloadKeys: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List enrollment keys without their secrets */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadKeyPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAIWorkloadKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadKeyInput"];
+            };
+        };
+        responses: {
+            /** @description Create a workload-bound enrollment key shown once */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadKeySecret"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAIWorkloadKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadKeyRevoke"];
+            };
+        };
+        responses: {
+            /** @description Stop future enrollment and optionally revoke enrolled instances */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIWorkloadInstances: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List independent workload replicas */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadInstancePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAIWorkloadInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoke only this instance; no automatic reenrollment */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    enrollWorkload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadEnrollInput"];
+            };
+        };
+        responses: {
+            /** @description Atomically register an instance public key using a signed enrollment proof */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadReceipt"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeWorkloadToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["AIWorkloadTokenInput"];
+            };
+        };
+        responses: {
+            /** @description Exchange a private_key_jwt for a five-minute AI gateway token */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadToken"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rotateWorkloadKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadRotationInput"];
+            };
+        };
+        responses: {
+            /** @description Rotate the instance key with proofs from both keys and a durable request ID */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadReceipt"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    retireWorkloadInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Retire the authenticated instance on graceful shutdown */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listWorkloadModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List currently authorized models using a workload bearer */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadModelList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listAIUserGroups: {
         parameters: {
             query?: never;

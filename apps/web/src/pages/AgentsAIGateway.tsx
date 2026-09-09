@@ -8,6 +8,7 @@ import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
 import { AIProviderWorkspace } from "../components/AIProviderWorkspace";
+import { AIWorkloads } from "../components/AIWorkloads";
 import { AIUsageWorkspace } from "../components/AIUsageWorkspace";
 import {
   Button,
@@ -47,7 +48,7 @@ const thresholdDecimal = new Intl.NumberFormat("en-US", {
 const gatewayTabs = [
   { href: "/ai-gateway/models", label: "Models & endpoints" },
   { href: "/ai-gateway/credentials", label: "LLM credentials" },
-  { href: "/ai-gateway/access", label: "Model access" },
+  { href: "/ai-gateway/access", label: "Access" },
   { href: "/ai-gateway/usage", label: "Usage & cost" },
   { href: "/ai-gateway/my-models", label: "My models" },
   { href: "/ai-gateway/settings", label: "Settings" },
@@ -59,7 +60,7 @@ export default function AgentsAIGateway() {
   const [search] = useSearchParams();
   const page = pathname.split("/")[2] || "models";
   return <div className="network-management ai-workspace space-y-5">
-    <PageHeader title="AI Gateway" subtitle="Connect models, manage access, and use AI with your Tunnex login." />
+    <PageHeader title="AI Gateway" subtitle="Connect models and grant access to your users and applications." />
     <AIAccessGate key={org?.id}>{(orgId, access) => {
       if (pathname === "/ai-gateway" || pathname === "/ai-gateway/") return <Navigate to={access.view ? "/ai-gateway/models" : "/ai-gateway/my-models"} replace />;
       if (!access.view && page !== "my-models") return <Navigate to="/ai-gateway/my-models" replace />;
@@ -68,7 +69,13 @@ export default function AgentsAIGateway() {
       return <>
         <WorkspaceTabs label="AI gateway views" items={tabs} />
         {page === "my-models" ? <AIUseModel key={orgId} orgId={orgId} />
-          : page === "access" ? <AIGroupAccess key={`${orgId}:${search.get("connection")}:${search.get("model")}`} orgId={orgId} canManage={access.manage} initialConnection={search.get("connection") ?? ""} initialModel={search.get("model") ?? ""} />
+           : page === "access" ? <>
+            <nav aria-label="Access subjects" className="workspace-tabs">
+              <Link to="/ai-gateway/access" aria-current={search.get("subject") !== "workloads" || !access.workloadsView ? "page" : undefined}>User groups</Link>
+              {access.workloadsView && <Link to="/ai-gateway/access?subject=workloads" aria-current={search.get("subject") === "workloads" ? "page" : undefined}>Workloads</Link>}
+            </nav>
+            {search.get("subject")==="workloads" && access.workloadsView ? <AIWorkloads key={orgId} orgId={orgId} canManage={access.workloadsManage} /> : <AIGroupAccess key={`${orgId}:${search.get("connection")}:${search.get("model")}`} orgId={orgId} canManage={access.manage} initialConnection={search.get("connection") ?? ""} initialModel={search.get("model") ?? ""} />}
+          </>
           : page === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} />
           : page === "models" || page === "credentials" ? <AIProviderWorkspace key={`${orgId}:${page}`} orgId={orgId} canManage={access.manage}
             view={page === "credentials" ? "connections" : pathname.endsWith("/new") && access.manage ? "add" : "models"}
@@ -76,7 +83,7 @@ export default function AgentsAIGateway() {
             onGrantAccess={(connection, model) => navigate(`/ai-gateway/access?${new URLSearchParams({ connection, model })}`)} />
           : <div className="ai-gateway-configuration"><div className="ai-config-heading"><div><h2>Gateway settings</h2><p>Control organization access to AI models.</p></div></div>
             <AIGatewaySettings orgId={orgId} canEdit={access.manage} />
-            {access.agents && <Card><h2>Agent model access</h2><p className="my-2 text-sm text-ink-secondary">Manage automated agents and their team model policies in AI Agents.</p><Link className="network-setup-link" to="/agents/model-access">Manage agent model access</Link></Card>}
+            {access.agents && <Card><h2>Agent model access</h2><p className="my-2 text-sm text-ink-secondary">Existing managed hosts keep their team model policies. Enroll new applications through Access → Workloads.</p><Link className="network-setup-link" to="/agents/model-access">Manage agent model access</Link></Card>}
           </div>}
       </>;
     }}</AIAccessGate>

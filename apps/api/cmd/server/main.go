@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -464,6 +465,7 @@ func main() {
 	// Configuration makes AI available; independent org opt-in and applied
 	// policies grant access. Community requires no paid runtime entitlement.
 	var aiPolicies *aigateway.Policies
+	var aiWorkloads *aigateway.Workloads
 	var aiAdapter *aigateway.Adapter
 	aiRuntime := agentruntime.New(pool, nil)
 	aiCredentials := aigateway.NewCredentials(pool, aiRuntime, nil)
@@ -490,7 +492,17 @@ func main() {
 			}
 		}
 		aiCredentials = aigateway.NewCredentials(pool, aiRuntime, aiPolicies)
-		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aiCredentials.Authorize)
+		aiWorkloads, engineErr = aigateway.NewWorkloads(aiPolicies, cfg.AppBaseURL)
+		if engineErr != nil {
+			logger.Error("ai_workload_invalid_configuration")
+			os.Exit(1)
+		}
+		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, func(ctx context.Context, raw, model string) (aigateway.Grant, error) {
+			if strings.HasPrefix(raw, "tnx_wai_") {
+				return aiWorkloads.Authorize(ctx, raw, model)
+			}
+			return aiCredentials.Authorize(ctx, raw, model)
+		})
 		if engineErr != nil {
 			logger.Error("ai_gateway_invalid_configuration")
 			os.Exit(1)
@@ -501,6 +513,7 @@ func main() {
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		System:           systemQueries,
 		AICredentials:    aiCredentials,
+		AIWorkloads:      aiWorkloads,
 		AIPolicies:       aiPolicies,
 		AIAdapter:        aiAdapter,
 		AgentRuntimePool: pool,
@@ -623,6 +636,13 @@ func main() {
 						logger.Warn("ai_gateway_reconcile_incomplete")
 					}
 					cancel()
+					if aiWorkloads != nil {
+						workloadCtx, workloadCancel := context.WithTimeout(electorCtx, 20*time.Second)
+						if aiWorkloads.Maintain(workloadCtx, 64) != nil {
+							logger.Warn("ai_workload_maintenance_incomplete")
+						}
+						workloadCancel()
+					}
 				}
 			}
 		}()

@@ -145,7 +145,7 @@ func (s *Policies) PutUserModelGrant(ctx context.Context, org, actor, group, con
 			return UserModelGrant{}, aiUnavailable()
 		}
 		var count int
-		if tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM ai_user_model_grants WHERE org_id=$1)+(SELECT count(*) FROM ai_gateway_key_bindings WHERE org_id=$1)`, org).Scan(&count) != nil {
+		if tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM ai_user_model_grants WHERE org_id=$1)+(SELECT count(*) FROM ai_workloads WHERE org_id=$1)+(SELECT count(*) FROM ai_gateway_key_bindings WHERE org_id=$1)`, org).Scan(&count) != nil {
 			return UserModelGrant{}, aiUnavailable()
 		}
 		if count >= maxAIUsageBindings {

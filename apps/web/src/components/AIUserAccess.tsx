@@ -7,7 +7,7 @@ import { useOrg } from "../lib/useOrg";
 import { Button, Card, Field, Loading, Select } from "./ui";
 import { toast } from "./Toasts";
 type S = components["schemas"];
-type Capabilities = { view: boolean; manage: boolean; agents: boolean };
+type Capabilities = { view: boolean; manage: boolean; agents: boolean; workloadsView:boolean; workloadsManage:boolean };
 
 export function AIAccessGate({ children }: { children: (orgId: string, access: Capabilities) => ReactNode }) {
   const { org } = useOrg(); const { state } = useAuth();
@@ -22,7 +22,7 @@ export function AIAccessGate({ children }: { children: (orgId: string, access: C
       if (!active) return;
       const member = !error && data?.find((m) => m.user_id === user);
       const roles = member ? member.roles ?? [member.role] : [];
-      setResult({ scope, ...(member ? { access: { view: can(roles, "ai_gateway:view"), manage: can(roles, "ai_gateway:manage"), agents: can(roles, "agent_template:manage") } } : {}) });
+      setResult({ scope, ...(member ? { access: { view: can(roles, "ai_gateway:view"), manage: can(roles, "ai_gateway:manage"), agents: can(roles, "agent_template:manage"),workloadsView:can(roles,"ai_workload:view"),workloadsManage:can(roles,"ai_workload:manage") } } : {}) });
     }).catch(() => { if (active) setResult({ scope }); });
     return () => { active = false; };
   }, [scope, attempt]);

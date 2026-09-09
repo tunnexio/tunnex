@@ -234,7 +234,9 @@ func TestAIProviderMigrationSnapshot(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer rollbackAI(tx)
-		if _, err = tx.Exec(ctx, `DROP TABLE ai_user_model_grants; DROP TABLE ai_provider_connections; DROP TABLE ai_provider_legacy_keys`); err != nil {
+		// Roll back all later provider references inside this disposable test
+		// transaction before replaying the historical provider migration.
+		if _, err = tx.Exec(ctx, `DROP TABLE ai_workload_models; DROP TABLE ai_user_model_grants; DROP TABLE ai_provider_connections; DROP TABLE ai_provider_legacy_keys`); err != nil {
 			t.Fatal(err)
 		}
 		if collision {

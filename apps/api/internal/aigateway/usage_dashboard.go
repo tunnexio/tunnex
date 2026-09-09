@@ -16,6 +16,7 @@ type dashboardEngine interface {
 }
 type usageBinding struct {
 	human               bool
+	workload            bool
 	native              string
 	team, agent         uuid.UUID
 	teamName, agentName string
@@ -58,13 +59,14 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 			return Usage{}, empty, apierr.NotFound("not_found", "AI agent not found")
 		}
 	}
-	rows, err := tx.Query(ctx, `SELECT b.native_key_id,b.team_id,b.device_id,g.name,d.name,false
+	rows, err := tx.Query(ctx, `SELECT b.native_key_id,b.team_id,b.device_id,g.name,d.name,false,false
  FROM ai_gateway_key_bindings b
  JOIN agent_groups g ON g.org_id=b.org_id AND g.id=b.team_id
  JOIN devices d ON d.org_id=b.org_id AND d.id=b.device_id AND d.kind='agent'
  WHERE b.org_id=$1 AND ($2::uuid IS NULL OR b.team_id=$2) AND ($3::uuid IS NULL OR b.device_id=$3)
- UNION ALL SELECT native_key_id,group_ref,group_ref,group_name,group_name,true FROM ai_user_model_grants
+ UNION ALL SELECT native_key_id,group_ref,group_ref,group_name,group_name,true,false FROM ai_user_model_grants
  WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
+ UNION ALL SELECT native_key_id,id,id,name,name,false,true FROM ai_workloads WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
  ORDER BY 1 LIMIT 65`, org, team, device)
 	if err != nil {
 		return Usage{}, empty, aiUnavailable()
@@ -73,7 +75,7 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 	ids := []string{}
 	for rows.Next() {
 		var b usageBinding
-		if rows.Scan(&b.native, &b.team, &b.agent, &b.teamName, &b.agentName, &b.human) != nil {
+		if rows.Scan(&b.native, &b.team, &b.agent, &b.teamName, &b.agentName, &b.human, &b.workload) != nil {
 			rows.Close()
 			return Usage{}, empty, aiUnavailable()
 		}
@@ -100,6 +102,7 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 		return Usage{}, empty, aiUnavailable()
 	}
 	groups := map[uuid.UUID]api.AIUsageAttribution{}
+	workloads := map[uuid.UUID]api.AIUsageAttribution{}
 	teams := map[uuid.UUID]api.AIUsageAttribution{}
 	agents := map[uuid.UUID]api.AIUsageAttribution{}
 	known := map[string]bool{}
@@ -121,6 +124,10 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 		if b.human {
 			targets = targets[:1]
 			targets[0].m = groups
+		}
+		if b.workload {
+			targets = targets[:1]
+			targets[0].m = workloads
 		}
 		for _, target := range targets {
 			r := target.m[target.id]
@@ -144,6 +151,12 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 	}
 	sortAttribution(groupRows)
 	native.Dashboard.UserGroups = &groupRows
+	workloadRows := []api.AIUsageAttribution{}
+	for _, v := range workloads {
+		workloadRows = append(workloadRows, v)
+	}
+	sortAttribution(workloadRows)
+	native.Dashboard.Workloads = &workloadRows
 	sortAttribution(native.Dashboard.Teams)
 	sortAttribution(native.Dashboard.Agents)
 	return native.Usage, native.Dashboard, nil

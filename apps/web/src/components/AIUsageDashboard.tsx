@@ -28,7 +28,7 @@ function validTotals(v: AIUsageTotals) {
 export function AIUsageDashboard(props: AIUsageDashboardProps) {
   const { status, totals, filters, onRetry } = props;
   return <section className="ai-usage-dashboard" aria-label="AI usage dashboard" aria-busy={status === "loading"}>
-    <div className="ai-usage-topline"><div><p className="ai-usage-eyebrow">AI GATEWAY / ANALYTICS</p><h2>Usage & cost</h2><p className="ai-usage-muted">Understand model usage across your agents and user groups.</p></div><span className="ai-usage-source"><i />Native observed estimates</span></div>
+    <div className="ai-usage-topline"><div><p className="ai-usage-eyebrow">AI GATEWAY / ANALYTICS</p><h2>Usage & cost</h2><p className="ai-usage-muted">Understand model usage across your workloads, agents and user groups.</p></div><span className="ai-usage-source"><i />Native observed estimates</span></div>
     {filters && <div className="ai-usage-filters">{filters}</div>}
     {status === "loading" ? <div className="ai-usage-state" role="status"><span className="ai-usage-loader" />Loading usage from your gateway…</div>
       : status === "error" || !totals || !validTotals(totals) ? <div className="ai-usage-state" role="alert"><h3>Usage is unavailable</h3><p>{props.error || "Could not read usage from your gateway. No zero-spend claim can be made."}</p>{onRetry && <button type="button" onClick={onRetry}>Retry usage</button>}</div>
