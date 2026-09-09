@@ -1,5 +1,40 @@
 # NAT product candidate — live AWS checkpoint
 
+## Latest safety qualification: scoped credential denial and client CP-loss
+
+2026-09-09. The active GUI was stopped to avoid shared-helper contention; its
+device and credential were not revoked. The retained native fixture identity
+used a separately minted temporary bearer. No AWS CP shutdown, SG change,
+database edit or device/policy revocation was performed.
+
+- Real CP credential revocation: generation17 had positive Relay/HTTP control.
+  Only its temporary bearer was revoked through the ordinary credential API.
+  Subsequent session read returned401; Failed carried no recovery request.
+  Traffic stopped and three subsequent requests remained blocked. Entire
+  observation including negative request timeouts was18275ms after revocation
+  returned. This is credential-denial evidence, not a device/tenant-revocation test.
+- Client-side CP-loss fault injection: after real generation18 Relay/HTTP
+  positive control, the private driver's CP read/close transport refused requests.
+  Actual installed helper lost fresh authorization; traffic stopped, Failed
+  surfaced and three further requests remained blocked. Observation including
+  negative request timeouts was44284ms; do not report this as an exact forwarding
+  cutoff measurement. The helper retains its30-second authorization lease.
+  Global CP and gateway remained online. Driver suppressed reconnect to inspect
+  terminal forwarding; this is not full GUI recovery or gateway-side CP-loss proof.
+- Both completed drivers exited0, brought the native helper down and revoked
+  their temporary bearers. Generation18 was additionally closed through its
+  exact owner/session/generation API. Generation17 was superseded by18.
+- One CP-loss attempt timed out in setup before its positive control and was
+  cleaned up; it is not counted as acceptance.
+
+Added a framed-helper continuous-HTTP500 test proving no successful lease renewal
+before terminal failure. Its first fixture expired TURN credentials at the same
+time as the forwarding lease; extending only that fixture credential separates
+the two refusal reasons, without changing product timing. Focused test PASS;
+full client suite310/310 PASS. No product runtime change in this continuation.
+Existing broader platform, device revocation, gateway CP-loss, final review and
+exact-SHA CI obligations remain open. Source remains a development candidate.
+
 2026-09-09. User authorized deployment and testing, requesting continuation until
 the customer test or a genuinely human-required blocker. Native application traffic
 has now passed through the candidate, as detailed below. This is NOT a completed
