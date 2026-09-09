@@ -1,0 +1,11 @@
+COMPOSE_PROJECT_NAME=tunnexworkload0909
+container=tunnexworkload0909-postgres-1
+network=tunnexworkload0909_default
+{"time":"2026-09-09T12:33:11.013698+05:30","level":"INFO","msg":"migrate_up_complete","version":153,"dirty":false}
+=== RUN   TestWorkloadCLIHTTPWire
+    ai_workload_wire_test.go:255: 20 real CLI enrollments; one accounting identity; rotation; SDK JSON/SSE/Anthropic calls; model deny; bootstrap revoke; retirement; management isolation; disable: verified against local HTTP fixtures
+--- PASS: TestWorkloadCLIHTTPWire (1.74s)
+=== RUN   TestWorkloadManagementRoleBoundary
+--- PASS: TestWorkloadManagementRoleBoundary (0.00s)
+PASS
+ok  	github.com/tunnexio/tunnex/apps/api/internal/http	3.034s

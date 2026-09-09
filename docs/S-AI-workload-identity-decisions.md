@@ -31,7 +31,7 @@ Provide this through the existing `tunnex` CLI. No WireGuard peer, VPN gateway
 selection, root access, human login or separate AI Agents wizard is required for
 model access. Do not require a new external identity platform for the basic path.
 
-Proposed runtime command, **not available in the current CLI**:
+Runtime command implemented in the local story preview, **not yet released or production-qualified**:
 
 ```sh
 tunnex workload run --config /run/secrets/tunnex/workload.json -- python agent.py
