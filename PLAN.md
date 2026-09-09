@@ -60,6 +60,14 @@ expected to be rewritten before merge.
 
 ---
 
+## Active implementation
+
+2026-09-09: User approved the [workload identity plan](docs/S-AI-workload-identity-decisions.md).
+[Competitor source evidence](docs/S-AI-workload-enrollment-research.md) is pinned.
+Implementation starts from `db683fa5` on `story/S-AI-workload-identity` in an
+isolated worktree. Identity/API, CLI, gateway/UI, autoscaling, central MCP and
+verification slices remain pending. Existing completion checkpoint follows.
+
 ## Story status (re-entry checkpoint)
 
 **ACTIVE LOCAL (2026-09-09): AI console navigation/design, invitation roles and threshold fixture complete on `ai-improvement`, content tip `266d1372024cb0d5710c165bc8465602a7561d3c`; NOT PUSHED OR MERGED. AI Gateway/Agents/MCP have separate sidebar homes; people groups live under Users & Groups. All human invitation roles are supported end to end, resends preserve the role, owner-only grants remain protected, and the role-count card is removed. Isolated preview schema151; named unassigned AI threshold UI fixture retains USD2.50 at revision4. Web1473, website214, both API builds, full enterprise DB suite, open DB suite with invitation rerun after test-schema correction, CLI and Linux node tests pass. Exact synthetic native-cost refusal/restart checks and zero-drift generation pass. Browser review covers top-level AI pages, forms and agent-detail empty/gated states. Website latest main pulled in clean worktree `/private/tmp/tunnex-web-ai-improvement`; docs commit `e23eed8e0158351fbee86730e707592348b10d2d`. Existing unrelated work preserved. Evidence `docs/S-AI-navigation-design-followup-boxwalk.md`. NEXT: user reviews local UI/docs; publication/merge, remote CI, handset acceptance and actual private-Azure reachability remain separate. Earlier checkpoints below are historical.**
