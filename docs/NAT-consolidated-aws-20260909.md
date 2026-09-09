@@ -38,3 +38,24 @@ at `/private/tmp/tunnex-helper-finish-rollback.HCfznf/previous` on this laptop.
 Installed signed executable SHA256:
 `ea1baaabad730b8df9d43194606083051652cb32449dae83f3aab40db682230f`.
 No new-helper end-to-end pass yet. No private keys, tokens or credentials recorded.
+
+## Subsequent client/helper wire PASS (server rollback retained)
+
+Corrected helper plus built client 55f4267, native production controller/owner
+queue driver, old API/node rollback builds: generation22 negotiated measured
+Relay path and allowed HTTP200 with expected body. Restarted only the dedicated
+TURN container once. `relay_negotiation_changed` triggered automatic fresh
+generation23; measured Relay and HTTP succeeded again. Exit0; helper Down and
+temporary credential revoked. This qualifies this native controller/helper path,
+not full Electron IPC/GUI, candidate API, or HA re-home to another gateway.
+An earlier attempt failed `relay_gateway_timeout` because the gateway had exited
+when started during CP rollback downtime. After CP health, explicit gateway
+start reached `agent_ready`; only the subsequent successful attempt counts.
+
+Hosted full-mailbox test was NOT isolated: a CP controller modified synthetic HA
+state and created append-only audit records, preventing fixture hard deletion.
+The one remaining test org is 28a7494f-0fe9-48c7-9220-c78a74ca1aa3. Preserve audit
+records; soft-disable this synthetic org, do not bypass append-only protections.
+An isolated database `nat_finish_20260909` on the same hosted service is being
+prepared for a focused HA/ownership regression. The main walk DB is not a valid
+target for standalone service fixture tests while its controllers are running.
