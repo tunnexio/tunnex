@@ -222,3 +222,27 @@ candidates, bounded strings, no loopback/link-local/multicast/unspecified target
 Fixed local kernel WireGuard destination, never a peer-provided UDP destination.
 Preserve application packets encrypted end-to-end. Windows/full-tunnel relay
 support must not be inferred from the split-tunnel macOS qualification.
+
+## Approved completion folds — 2026-09-09
+
+User approved the four findings in `NAT-finish-review-20260909.md`, including
+rolling-minute issuance defaults of 6/device, 30/owner and 300/org. Configure with
+`TUNNEX_RELAY_ISSUANCE_DEVICE_PER_MINUTE`,
+`TUNNEX_RELAY_ISSUANCE_OWNER_PER_MINUTE`, and
+`TUNNEX_RELAY_ISSUANCE_ORG_PER_MINUTE`; each accepts 1..10000. Invalid configuration
+fails startup. All API replicas must use identical values. Org serialization and
+database wall time enforce the limit across processes; never persist credentials
+in the ledger. Refusal rolls back replacement and maps to HTTP 429 with a bounded
+60-second retry instruction. Stable per-minute credential expiry avoids issuing
+a different TURN username on every mailbox read. Each new side/session/minute
+reservation counts; credential validity remains at most five minutes, capped by
+session expiry. Relay-side allocation/bandwidth limits remain owed by packaging.
+
+Carry the 30-second authorization deadline through negotiation and reauthorize
+before forwarding. Relay-specific helper IPC gets 35 seconds, not a global timeout
+increase. Re-home must close the old carrier and use the existing owner-fenced
+bounded reconnect. Fetch canonical routed configuration for fresh Connect; reuse
+the CP's existing active hub selection for session binding. Live HA gateway movement
+uses recoverable 409; actual revoked/expired ownership stays terminal 403. Final
+re-review found the stored-owner check missing on that new 409 branch; it is HELD
+in the completion review, not accepted as a finished authorization implementation.

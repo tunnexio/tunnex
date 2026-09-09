@@ -8,7 +8,8 @@ The historical HELD text below records review state before that approval.
 
 2026-09-09. Two independent read-only finders examined the current server/node
 and desktop/helper working trees. This is a bounded review, not complete beta
-qualification. No findings have been folded. Existing dirty work is preserved.
+qualification. The historical findings below have now been folded to the extent
+recorded in the implementation checkpoint below. Existing dirty work is preserved.
 
 ## Ranked release findings
 
@@ -69,3 +70,47 @@ Upstream latest Docker release checked 2026-09-09: coturn `4.18.0-r0`, published
 This was registry inspection only: not deployed, pulled for execution or
 qualified. Existing live proof used the previously recorded 4.17.2 pin.
 Source: https://github.com/coturn/coturn/releases/tag/docker/4.18.0-r0
+
+## Approved-fix implementation checkpoint — 2026-09-09
+
+Changes remain in the server and separate client working trees; not deployed,
+released, merged, or proven by exact-head CI. Do not inherit earlier live evidence
+as a live test of these changed binaries.
+
+- Forwarding authorization starts at the authoritative request's start time,
+  remains bounded through ICE, and is rechecked before packet pumps start.
+  Delayed/error reads cannot extend an expired lease.
+- Relay re-home closes its single-use carrier and enters the existing owner-fenced,
+  bounded reconnect path. Both helper backends refuse an in-place relay peer swap.
+  Fresh Connect obtains the canonical current dial key/endpoint. CP session binding
+  reuses the existing HA election, rather than the device's old assigned node.
+- Migration 0141 adds a transactionally serialized issuance ledger. Defaults are
+  6/device, 30/owner, 300/org per rolling minute. Refused replacement preserves the
+  current generation. Same-side/session/minute mailbox reads reuse credentials;
+  subsequent issuance minutes are counted as well as initial creation. HTTP 429
+  tells the caller to wait at least 60 seconds. Relay allocation/bandwidth caps
+  and customer packaging remain separate unfinished work; this is not a complete
+  coturn abuse-control claim.
+- Relay prepare/up use an explicit 35-second IPC timeout; ordinary operations
+  retain 15 seconds. Actual 16-second delayed prepare and up tests pass.
+
+Observed checks: generated Go/TS/sqlc completed; open PostgreSQL race regression
+tests passed including HA promotion and preserved session on throttling; desktop
+main-process suite 317 passed, followed by focused 403/409 heartbeat tests (2
+passed) for the later HA change. Client typecheck/build and both API edition builds
+plus scoped vet passed. Full helper race tests and Windows cross-build passed;
+the cross-build is NOT a native Windows walk. A fresh isolated database migrated
+through 141 with dirty=false. Full story gates and new live qualification remain.
+Final enterprise race suites for connectivity, HTTP and nodes also passed, as did
+the explicit same-minute credential stability/next-minute rotation regression.
+
+### Re-review: one new P2 HELD for disposition
+
+The new recoverable `ErrGatewayChanged` / HTTP 409 branch must first compare the
+stored session's owner/org/device binding with current eligibility. Otherwise a
+new owner presenting the prior owner's session identifier after simultaneous HA
+promotion can receive 409 instead of terminal 403. No packet-access bypass was
+demonstrated. Proposed narrow fold: check the immutable ownership binding before
+the recoverable branch and add an ownership-change-plus-HA PostgreSQL regression.
+Independent reviewer found no other issue in that bounded client/HA inspection.
+This finding is not folded pending disposition under CLAUDE.md's review protocol.
