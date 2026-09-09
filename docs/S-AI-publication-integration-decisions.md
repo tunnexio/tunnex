@@ -15,3 +15,5 @@ The user authorized publishing both repositories and opening their PRs. Core PR 
 
 - Locked: keep Tunnex's first-party Go 1.25.13 toolchain unchanged. The separate immutable Bifrost source `9537b2fadf42af90eb34ed47d3d4252e1beff4a0` requires Go 1.27.0 in its transport/core/framework modules. Check its Docker builder against that exact separate pin, retaining blocking drift detection for both first-party and upstream builds; do not downgrade upstream or broadly upgrade the control plane merely to satisfy an equality check.
 - Locked: synchronize HTTP fixture call counters read by the deadline test. CI's race detector found a test-only unsynchronized handler write; retain the exact timeout assertions and production timeout behavior.
+
+- Locked: a large PR must not fail classification or lose CI/security coverage because an early-exit reader closes a shell pipe. Replace truncated/quiet readers with consumers that drain the input; preserve existing classification patterns and fail-closed defaults. Execute both actual classifier scripts against a synthetic large diff as a regression.
