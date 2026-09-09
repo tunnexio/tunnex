@@ -1,0 +1,119 @@
+name: Publish signed CLI repositories
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: package-publication
+  cancel-in-progress: false
+jobs:
+  installer:
+    uses: ./.github/workflows/installer.yml
+  publish:
+    needs: installer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PACKAGE_KEY_ID: ${{ vars.PACKAGE_KEY_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify repository boundary regressions
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - name: Resolve stable upstream and skip unchanged scheduled runs
+        id: resolve
+        run: |
+          set -euo pipefail
+          python3 scripts/upstream.py > /tmp/upstream.json
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && curl -fsS https://tunnexio.github.io/packages/current.json -o /tmp/current.json; then
+            if python3 -c 'import json; a=json.load(open("/tmp/upstream.json")); b=json.load(open("/tmp/current.json")); assert a == b'; then
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - uses: actions/setup-go@v5
+        if: steps.resolve.outputs.skip != 'true'
+        with:
+          go-version: '1.25.13'
+          cache: false
+      - name: Install pinned packager and repository tools
+        if: steps.resolve.outputs.skip != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y apt-utils dpkg-dev createrepo-c rpm gnupg zstd
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
+      - name: Load dedicated signing keys
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.PACKAGE_GPG_PRIVATE_KEY }}
+          APK_PRIVATE_KEY: ${{ secrets.PACKAGE_APK_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/tunnex-keys" "$RUNNER_TEMP/tunnex-gnupg"
+          test -n "$GPG_PRIVATE_KEY" && test -n "$APK_PRIVATE_KEY" && test -n "$PACKAGE_KEY_ID"
+          printf '%s\n' "$GPG_PRIVATE_KEY" > "$RUNNER_TEMP/tunnex-keys/signing.asc"
+          printf '%s\n' "$APK_PRIVATE_KEY" > "$RUNNER_TEMP/tunnex-keys/tunnex.rsa"
+          export GNUPGHOME="$RUNNER_TEMP/tunnex-gnupg"
+          gpg --batch --import "$RUNNER_TEMP/tunnex-keys/signing.asc"
+          actual="$(gpg --with-colons --list-secret-keys | awk -F: '$1=="fpr" {print $10; exit}')"
+          test "$actual" = "$PACKAGE_KEY_ID"
+          test "$(gpg --show-keys --with-colons keys/tunnex.asc | awk -F: '$1=="fpr" {print $10; exit}')" = "$PACKAGE_KEY_ID"
+          openssl rsa -in "$RUNNER_TEMP/tunnex-keys/tunnex.rsa" -pubout 2>/dev/null | cmp - keys/tunnex.rsa.pub
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          echo "PACKAGE_GPG_KEY=$RUNNER_TEMP/tunnex-keys/signing.asc" >> "$GITHUB_ENV"
+          echo "PACKAGE_APK_KEY=$RUNNER_TEMP/tunnex-keys/tunnex.rsa" >> "$GITHUB_ENV"
+      - name: Build or recover immutable packages
+        if: steps.resolve.outputs.skip != 'true'
+        run: python3 scripts/build.py
+      - name: Generate signed repository indexes
+        if: steps.resolve.outputs.skip != 'true'
+        run: bash scripts/index.sh
+      - name: Native package installation and signature refusal proof
+        if: steps.resolve.outputs.skip != 'true'
+        run: bash scripts/smoke.sh
+      - name: Publish immutable package release
+        if: steps.resolve.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          # Re-read the upstream marker and CI before promoting the built bytes.
+          python3 scripts/upstream.py > work/recheck.json
+          cmp work/release.json work/recheck.json
+          if [ ! -f work/existing ]; then
+            tag="$(python3 -c 'import json; print(json.load(open("work/release.json"))["tag"])')"
+            gh release create "$tag" dist/* --target "$GITHUB_SHA" --title "Tunnex CLI $tag" --notes 'Signed native packages derived from the matching verified tunnexio/tunnex release. See provenance.json, SHA256SUMS and installation instructions.' --latest
+          fi
+          cp work/release.json site/current.json
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.resolve.outputs.skip != 'true'
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+        if: steps.resolve.outputs.skip != 'true'
+        id: deployment
+      - name: Preserve proof logs and provenance
+        if: always() && steps.resolve.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-publication-evidence
+          path: |
+            work/release.json
+            work/http.log
+            dist/provenance.json
+            dist/SHA256SUMS
+          if-no-files-found: ignore
+      - name: Remove ephemeral signing files
+        if: always()
+        run: |
+          gpgconf --homedir "$RUNNER_TEMP/tunnex-gnupg" --kill all || true
+          rm -rf "$RUNNER_TEMP/tunnex-keys" "$RUNNER_TEMP/tunnex-gnupg"

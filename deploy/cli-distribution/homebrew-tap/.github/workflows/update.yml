@@ -1,0 +1,91 @@
+name: Verify and update Homebrew formula
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, cli-runtime-dependencies]
+    paths: ['scripts/**', '.github/**']
+  schedule:
+    - cron: '43 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: homebrew-update
+  cancel-in-progress: false
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.generate.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate verified source formula
+        id: generate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/update.py
+          if ! git diff --quiet -- Formula || [ -n "$(git ls-files --others --exclude-standard Formula)" ] || [ "$GITHUB_EVENT_NAME" != schedule ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-formula
+          path: Formula/tunnex-cli.rb
+  test:
+    needs: generate
+    if: needs.generate.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Use runner-provided Homebrew
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+            echo /home/linuxbrew/.linuxbrew/sbin >> "$GITHUB_PATH"
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-formula
+          path: generated
+      - name: Install from source and exercise CLI
+        run: |
+          # Homebrew sanitizes Git identity environment variables for tap-new.
+          # This config belongs only to the disposable Actions runner.
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          brew update
+          brew tap-new tunnexio/verification
+          cp generated/tunnex-cli.rb "$(brew --repository tunnexio/verification)/Formula/tunnex-cli.rb"
+          brew install --build-from-source tunnexio/verification/tunnex-cli
+          brew test tunnexio/verification/tunnex-cli
+          tunnex version
+          command -v wg
+          command -v wg-quick
+          command -v wireguard-go
+          wg --version
+          brew uninstall tunnex-cli
+  publish:
+    needs: [generate, test]
+    if: needs.generate.outputs.changed == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-formula
+          path: Formula
+      - name: Commit the tested formula
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Formula/tunnex-cli.rb
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: update verified Tunnex CLI formula'
+            git push origin HEAD:main
+          fi

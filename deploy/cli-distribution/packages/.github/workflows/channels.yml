@@ -1,0 +1,114 @@
+name: Publish verified Nix and Arch recipes
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/channels.py', 'scripts/channel_guard.py', 'scripts/test_channels.py', 'scripts/upstream.py', '.github/workflows/channels.yml']
+  schedule:
+    - cron: '53 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: recipe-publication
+  cancel-in-progress: false
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.generate.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate recipes from verified upstream release
+        id: generate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_channels.py' -v
+          python3 scripts/channels.py
+          if ! git diff --quiet -- flake.nix nix aur || [ -n "$(git ls-files --others --exclude-standard flake.nix nix aur)" ] || [ "$GITHUB_EVENT_NAME" != schedule ]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-recipes
+          path: |
+            flake.nix
+            nix/
+            aur/
+  test:
+    needs: generate
+    if: needs.generate.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-recipes
+          path: generated
+      - name: Build and execute Nix package
+        run: |
+          expected="$(python3 -c 'import json; print(json.load(open("generated/nix/release.json"))["tag"])')"
+          docker run --rm -v "$PWD/generated:/repo" -w /repo -e EXPECTED="$expected" nixos/nix:2.31.2 sh -ec '
+            nix --extra-experimental-features "nix-command flakes" build --no-write-lock-file path:/repo#tunnex-cli
+            test "$(result/bin/tunnex version)" = "$EXPECTED"
+            result/bin/tunnex help
+            nix --extra-experimental-features "nix-command flakes" profile install --no-write-lock-file path:/repo#tunnex-cli
+            test "$(/root/.nix-profile/bin/tunnex version)" = "$EXPECTED"
+          '
+      - name: Build and verify Arch recipe
+        if: runner.arch == 'X64'
+        run: |
+          expected="$(python3 -c 'import json; print(json.load(open("generated/nix/release.json"))["tag"])')"
+          docker run --rm -v "$PWD/generated/aur/tunnex-cli-bin:/repo" -w /repo -e EXPECTED="$expected" archlinux:base bash -ec '
+            pacman -Syu --noconfirm base-devel
+            chmod a+w /repo
+            runuser -u nobody -- makepkg --printsrcinfo > .SRCINFO
+            runuser -u nobody -- makepkg --noconfirm
+            pacman -U --noconfirm ./*.pkg.tar.zst
+            test "$(tunnex version)" = "$EXPECTED"
+            tunnex help
+          '
+      - uses: actions/upload-artifact@v4
+        if: runner.arch == 'X64'
+        with:
+          name: verified-srcinfo
+          path: generated/aur/tunnex-cli-bin/.SRCINFO
+          include-hidden-files: true
+  publish:
+    needs: [generate, test]
+    if: needs.generate.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-recipes
+          path: .
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-srcinfo
+          path: aur/tunnex-cli-bin
+      - name: Publish tested recipes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/upstream.py > /tmp/current.json
+          cmp /tmp/current.json nix/release.json
+          git fetch origin main
+          python3 scripts/channel_guard.py --current-ref origin/main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add flake.nix nix aur
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: update verified Nix and Arch CLI recipes'
+            # The Pages publisher does not commit; only this job owns recipe paths.
+            git pull --rebase origin main
+            python3 scripts/channel_guard.py --current-ref origin/main
+            git push origin HEAD:main
+          fi

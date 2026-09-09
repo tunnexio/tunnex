@@ -1,0 +1,28 @@
+name: Test CLI curl installer
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [main, cli-curl-installer]
+    paths: ['install.sh', 'scripts/installer_smoke.sh', 'scripts/test_installer.py', '.github/workflows/installer.yml']
+  pull_request:
+    paths: ['install.sh', 'scripts/installer_smoke.sh', 'scripts/test_installer.py', '.github/workflows/installer.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell and refusal checks
+        run: |
+          sh -n install.sh
+          shellcheck install.sh
+          python3 -m unittest discover -s scripts -p 'test_installer.py' -v
+      - name: Install and reinstall through public signed repositories
+        run: bash scripts/installer_smoke.sh
