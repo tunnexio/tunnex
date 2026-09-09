@@ -62,7 +62,7 @@ func TestAIFoundryProvidersPostgres(t *testing.T) {
 	if _, err = f.service.Authorize(ctx, cred.Token, p.Models[0]); err == nil {
 		t.Fatal("endpoint type change admitted")
 	}
-	down, err := os.ReadFile("../../db/migrations/0146_ai_foundry_provider.down.sql")
+	down, err := os.ReadFile("../../db/migrations/0149_ai_foundry_provider.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

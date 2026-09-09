@@ -84,7 +84,7 @@ func TestModelModesPostgres(t *testing.T) {
 	if wins != 1 {
 		t.Fatalf("mode revision race winners=%d", wins)
 	}
-	down, err := os.ReadFile("../../db/migrations/0147_ai_model_modes.down.sql")
+	down, err := os.ReadFile("../../db/migrations/0150_ai_model_modes.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

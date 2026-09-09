@@ -224,7 +224,7 @@ func TestAIProviderValidation(t *testing.T) {
 func TestAIProviderMigrationSnapshot(t *testing.T) {
 	ctx, pool := testpostgres.New(t)
 	f := newPolicyFixture(t, ctx, pool)
-	migration, err := os.ReadFile("../../db/migrations/0141_ai_provider_connections.up.sql")
+	migration, err := os.ReadFile("../../db/migrations/0144_ai_provider_connections.up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestAIProvidersMixedScopesPostgres(t *testing.T) {
 	if id != after || len(engine.scopes) != 1 || engine.scopes[0].Provider != "openai" {
 		t.Fatal("scope removal changed identity or retained extra scopes")
 	}
-	down, err := os.ReadFile("../../db/migrations/0142_ai_provider_registry.down.sql")
+	down, err := os.ReadFile("../../db/migrations/0145_ai_provider_registry.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestAIExpandedProvidersPostgres(t *testing.T) {
 			t.Fatal("provider routing mismatch")
 		}
 	}
-	down, err := os.ReadFile("../../db/migrations/0144_ai_provider_inventory.down.sql")
+	down, err := os.ReadFile("../../db/migrations/0147_ai_provider_inventory.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

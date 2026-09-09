@@ -62,7 +62,7 @@ func TestAISageMakerProvidersPostgres(t *testing.T) {
 	if _, err = f.service.Authorize(ctx, cred.Token, p.Models[0]); err == nil {
 		t.Fatal("endpoint type change admitted")
 	}
-	down, err := os.ReadFile("../../db/migrations/0145_ai_sagemaker_provider.down.sql")
+	down, err := os.ReadFile("../../db/migrations/0148_ai_sagemaker_provider.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

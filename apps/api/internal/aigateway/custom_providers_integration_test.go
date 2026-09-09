@@ -132,7 +132,7 @@ func TestAICustomProvidersPostgres(t *testing.T) {
 	if _, err = f.policies.TestProvider(ctx, f.org, f.owner, p.ID, p.Revision); err == nil || engine.tests != before {
 		t.Fatal("removed approval reached native test")
 	}
-	down, err := os.ReadFile("../../db/migrations/0143_ai_custom_provider.down.sql")
+	down, err := os.ReadFile("../../db/migrations/0146_ai_custom_provider.down.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
