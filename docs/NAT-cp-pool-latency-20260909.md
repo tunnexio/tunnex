@@ -63,3 +63,16 @@ constants without copying SQL or editing generated files. Preserve owner checks
 before these locks, error propagation, rollback and the five-second transaction
 deadline. This is a latency reduction, not evidence that every hosted workload
 fits the deadline. Re-prove the actual recovery before claiming the blocker fixed.
+
+Batch implementation: local isolated PostgreSQL connectivity race suite passes,
+including reader coexistence/mutation fencing, ownership and HA. Focused tests
+and API builds pass in both editions; vet passes. Bounded review found no
+actionable correctness issue. The batch inherits pgx connection query mode:
+cold preparation may add a round trip, so "one batch" is not an assertion of
+exactly one wire round trip. AWS candidate image is `a77300b43054`.
+
+The pre-batch isolated hosted `TestDurableMailbox` run failed its one-second
+reader assertion and concurrent-reader deadlines; HA/ownership subtests passed.
+This test has a default four-connection test pool and local-latency assertions,
+so it is not a direct reproduction of the production16 pool. Preserve the FAIL;
+do not relabel it as full hosted qualification.

@@ -220,13 +220,7 @@ func (s *Store) transaction(ctx context.Context, p Principal, device uuid.UUID, 
 	}
 	// Hold promotion, binding and key/status inputs stable across the canonical
 	// selection and the session operation. Never elect independently in SQL.
-	if _, err = q.ShareConnectivityHubSet(ctx, p.OrgID); err != nil {
-		return err
-	}
-	if _, err = q.ShareConnectivityTopologyNodes(ctx, p.OrgID); err != nil {
-		return err
-	}
-	if _, err = q.ShareConnectivityTopologySites(ctx, p.OrgID); err != nil {
+	if err = q.ShareConnectivityTopologyLocks(ctx, p.OrgID); err != nil {
 		return err
 	}
 	now, err := q.ConnectivityWallClock(ctx)
