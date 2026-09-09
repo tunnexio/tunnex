@@ -5,6 +5,19 @@ or cached credentials from a previous laptop. Verify live Git and remote refs.
 
 ## Current re-entry override
 
+Latest local UI continuation: Settings → Network relay card includes inline
+coturn setup/verification/rotation guidance, no new navigation. Uses the generated
+profile type. A failed or ambiguous save clears secret input and requires an
+authoritative reload before another write; no stale-revision blind retry.
+Focused tests cover read-only controls, secret omission/clearing, confirmed
+removal, conflicts/network errors and cross-org response isolation.
+Server web typecheck/build and full 112-file/1303-test suite pass; one additional
+late-save/org-switch test was added afterward, with the final focused suite
+passing 11/11 tests. This does not
+resolve the separate client repository's missing renderer census fixtures.
+No AWS or installed-client update. Gateway readiness telemetry and customer
+deployment packaging are still missing; inline help is not a coturn installer.
+
 The original backend-only checkpoint below is historical. Server evidence tip
 before this update is `3826c37` on `codex/nat1-session-contract`. Read
 `docs/NAT-product-aws-20260909.md` for completed, scoped live evidence and
