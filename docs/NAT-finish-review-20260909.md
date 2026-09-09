@@ -116,4 +116,13 @@ promotion can receive 409 instead of terminal 403. No packet-access bypass was
 demonstrated. Proposed narrow fold: check the immutable ownership binding before
 the recoverable branch and add an ownership-change-plus-HA PostgreSQL regression.
 Independent reviewer found no other issue in that bounded client/HA inspection.
-The implementation and focused verification result will be recorded below.
+Resolved in the working tree: immutable stored org/device/owner binding is checked
+before the gateway-change branch. The PostgreSQL regression first failed with
+`connectivity gateway changed` before the fix, then passed after it. It covers
+both old and new owners attempting read/publish/close on the transferred session;
+existing valid-owner HA recovery and revoked-session refusal tests remain green.
+The complete connectivity package passed with race detection in both editions;
+both server edition builds, scoped vet and diff whitespace checks passed.
+This closes this narrowly scoped P2; no additional review finding is HELD here.
+No live deployment or full-story completion is implied. The runtime changes remain
+uncommitted alongside the pre-existing NAT integration working tree.

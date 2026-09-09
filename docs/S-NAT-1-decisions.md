@@ -244,5 +244,8 @@ increase. Re-home must close the old carrier and use the existing owner-fenced
 bounded reconnect. Fetch canonical routed configuration for fresh Connect; reuse
 the CP's existing active hub selection for session binding. Live HA gateway movement
 uses recoverable 409; actual revoked/expired ownership stays terminal 403. Final
-re-review found the stored-owner check missing on that new 409 branch; it is HELD
-in the completion review, not accepted as a finished authorization implementation.
+re-review found the stored-owner check missing on that new 409 branch. User approved
+the narrow correction: compare stored org/device/owner before offering recovery.
+That correction and a red-before/green-after PostgreSQL regression now pass in
+both editions. See the completion review for the bounded verification scope;
+this is not full-story or newly deployed live qualification.
