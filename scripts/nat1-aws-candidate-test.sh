@@ -3,7 +3,8 @@
 # explicitly copied binaries. This is source-candidate testing, not installation.
 set -euo pipefail
 umask 077
-fixture=nat1-candidate-20260909a
+fixture=${NAT1_FIXTURE:-nat1-candidate-20260909a}
+[[ "$fixture" =~ ^nat1-candidate-20260909[a-z]$ ]] || exit 1
 test "$(pwd)" = "/home/ubuntu/$fixture"
 for binary in migrate server connectivity-open.test connectivity-enterprise.test http-open.test http-enterprise.test; do
   test -x "./$binary"
@@ -36,11 +37,16 @@ sudo --preserve-env=POSTGRES_PASSWORD docker run -d --name "$fixture-pg" --netwo
   --label tunnex.fixture="$fixture" -e POSTGRES_PASSWORD -e POSTGRES_DB=nat1 \
   -p 127.0.0.1:25439:5432 postgres:17-alpine >/dev/null
 pg_started=true
+export PGPASSWORD="$POSTGRES_PASSWORD"
+database_ready() {
+  sudo --preserve-env=PGPASSWORD docker exec -e PGPASSWORD "$fixture-pg" \
+    psql -h 127.0.0.1 -U postgres -d nat1 -Atqc 'SELECT 1' >/dev/null 2>&1
+}
 for attempt in $(seq 1 30); do
-  if sudo docker exec "$fixture-pg" pg_isready -U postgres -d nat1 >/dev/null; then break; fi
+  if database_ready; then break; fi
   sleep 1
 done
-sudo docker exec "$fixture-pg" pg_isready -U postgres -d nat1 >/dev/null
+database_ready
 export DATABASE_URL="postgres://postgres:$POSTGRES_PASSWORD@127.0.0.1:25439/nat1?sslmode=disable"
 export TUNNEX_TEST_DATABASE_URL="$DATABASE_URL"
 ./migrate up
