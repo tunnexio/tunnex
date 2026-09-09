@@ -34,9 +34,9 @@ Baseline: main `f240bd5`; separate branch preserves both NAT-0 proof lanes.
 4. Client/node consumers, then one live CP-mediated packet proof. Reuse unchanged
    TCP/TLS evidence; do not call fixture cryptokey tests CP-policy acceptance.
 
-NAT-0 remains partially qualified: native AWS TCP/TLS transport was proven in
-tunnex-client `684a8b0`, but automatic fallback and CP-issued policy/GUI were not.
-This explicitly authorized contract slice does not retroactively close that bar.
+NAT-0 architecture feasibility subsequently passed: see NAT proof branch
+`0e867dc`, docs/NAT-execution-plan.md and the CP-policy ledger. This does not
+qualify production signaling, Windows, reconnect or GUI behavior.
 Full repository gates, exact-head CI and multi-finder review remain prerequisites
 for declaring a completed product story. No push, release or merge in this slice.
 
@@ -63,3 +63,39 @@ Next integration targets verified in source:
 No OpenAPI changes yet because no endpoint is exposed. The next slice must add
 the spec before handlers and run generation rather than editing generated files.
 No cloud work is needed for these deterministic contract tests.
+
+## 2026-09-09 resumption: minimal UI and credential primitive
+
+User requested simple augmentation and implementation. Rebased clean NAT-1 lane
+onto remote main `26a36af`; existing reducer retained (rebased tip `161941d`).
+
+Locked UI scope for NAT-4:
+- CP Settings → existing Network panel: one Relay fallback card, default off,
+  one configured customer relay profile, configuration/readiness and setup help.
+  Secret is write-only; never return it in configuration reads.
+- Gateway → existing Overview: capability/readiness line, not a new tab.
+  Readiness is not a claim that every device uses relay.
+- Desktop existing connection status: Direct / Relay / reconnecting plus a safe
+  failure reason. No employee-facing ICE/candidate/credential controls.
+- No new navigation, dashboard, wizard, fleet management or DNS behavior.
+- Rendering follows real API capability/status, never a mock enabled switch.
+  New relay configuration permissions must be generated and server-enforced.
+
+Locked narrow next primitive: generate coturn REST credentials only after the
+existing reducer authorizes the current session/principal/snapshot. Username
+contains expiry and an opaque HMAC-derived scope for the full binding plus side;
+no raw user/org/device IDs. Password uses coturn's HMAC-SHA1/base64 convention.
+Shared secret stays CP-side, minimum 32 bytes, maximum 4096 bytes. Deployment
+must generate random secrets; byte length alone does not establish entropy.
+Credential lifetime at most five minutes and never beyond session expiry,
+rounded down to whole seconds; no credential when less than one full second
+remains. Same session and opposite sides get separate usernames.
+
+Source: https://github.com/coturn/coturn/blob/master/README.turnserver
+(checked 2026-09-09). HMAC-SHA1 here is protocol compatibility, not a new crypto
+design. These bearer credentials do NOT enforce tenant peer isolation or kill
+an active allocation on expiry. Gateway session authorization/forwarding lease
+and coturn peer restrictions remain required integration, not satisfied here.
+
+This primitive adds no HTTP route, config UI, persistence or live forwarding.
+Do not call NAT-1 done until authenticated APIs and atomic persistence are wired.
