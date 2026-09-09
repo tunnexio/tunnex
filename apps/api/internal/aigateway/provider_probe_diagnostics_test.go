@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,13 +32,13 @@ func TestProbeDiagnosticsAcrossPrivateBoundaries(t *testing.T) {
 		for _, saved := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/saved=%v", tc.name, saved), func(t *testing.T) {
 				spec := ProviderKeySpec{Provider: "openai", ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openai/existing"}, Enabled: true}
-				calls := 0
+				var calls atomic.Int32
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if saved && r.Method == http.MethodGet {
 						json.NewEncoder(w).Encode(fixtureProviderKey(spec))
 						return
 					}
-					calls++
+					calls.Add(1)
 					fmt.Fprintf(w, `{"status":%q,"duration_ms":1,"failure":%s,"error":"PRIVATE-KEY"}`, tc.status, tc.failure)
 				}))
 				defer srv.Close()
@@ -53,8 +54,8 @@ func TestProbeDiagnosticsAcrossPrivateBoundaries(t *testing.T) {
 					}
 					out, err = s.ProbeProvider(context.Background(), uuid.New(), uuid.New(), ProviderProbeInput{Provider: "openai", Model: "openai/new", Secret: "PRIVATE-KEY"})
 				}
-				if err != nil || out.Status != tc.status || calls != 1 {
-					t.Fatal(out, err, calls)
+				if err != nil || out.Status != tc.status || calls.Load() != 1 {
+					t.Fatal(out, err, calls.Load())
 				}
 				failure, _ := json.Marshal(out.Failure)
 				if string(failure) != tc.want {
@@ -74,14 +75,14 @@ func TestProbeOuterDeadlineDiagnostic(t *testing.T) {
 		for _, partial := range []bool{false, true} {
 			t.Run(fmt.Sprintf("saved=%v/partial=%v", saved, partial), func(t *testing.T) {
 				spec := ProviderKeySpec{Provider: "openai", ID: "tnx-managed-" + uuid.NewString(), Revision: 1, Models: []string{"openai/existing"}, Enabled: true}
-				calls := 0
+				var calls atomic.Int32
 				release := make(chan struct{})
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if saved && r.Method == http.MethodGet {
 						json.NewEncoder(w).Encode(fixtureProviderKey(spec))
 						return
 					}
-					calls++
+					calls.Add(1)
 					io.Copy(io.Discard, r.Body)
 					if partial {
 						w.Write([]byte(`{"status":`))
@@ -109,8 +110,8 @@ func TestProbeOuterDeadlineDiagnostic(t *testing.T) {
 					s.bridge.client.Timeout = 100 * time.Millisecond
 					result, err = s.ProbeProvider(ctx, uuid.New(), uuid.New(), ProviderProbeInput{Provider: "openai", Model: "openai/new", Secret: "PRIVATE-KEY"})
 				}
-				if err != nil || calls != 1 || result.Status != "error" || result.Failure == nil || result.Failure.Kind != "timeout" || result.Failure.Source != "gateway" || result.Failure.HTTPStatus != nil {
-					t.Fatal(result, err, calls)
+				if err != nil || calls.Load() != 1 || result.Status != "error" || result.Failure == nil || result.Failure.Kind != "timeout" || result.Failure.Source != "gateway" || result.Failure.HTTPStatus != nil {
+					t.Fatal(result, err, calls.Load())
 				}
 			})
 		}

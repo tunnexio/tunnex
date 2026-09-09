@@ -30,10 +30,22 @@ v=$(awk -F'golang:' '/^GO_IMAGE :=/{split($2,a,"-"); print a[1]; exit}' Makefile
 record "Makefile GO_IMAGE" "$v"
 
 # 3. Every Dockerfile build stage (what actually ships in the images).
+# The immutable Bifrost dependency builds separately from the first-party modules.
+# Its transport/core/framework go.mod at 9537b2fadf42af90eb34ed47d3d4252e1beff4a0
+# requires Go 1.27.0. It has its own exact, blocking pin; it is not exempt from drift.
 for df in deploy/docker/*.Dockerfile apps/*/Dockerfile; do
   [ -f "$df" ] || continue
   grep -q 'FROM golang:' "$df" || continue
   v=$(awk -F'golang:' '/FROM golang:/{split($2,a,"-"); print a[1]; exit}' "$df")
+  if [ "$df" = "apps/ai-engine/Dockerfile" ]; then
+    upstream_expected="1.27.0"
+    note "$df (pinned upstream)" "$v"
+    if [ "$v" != "$upstream_expected" ]; then
+      echo "ERROR: $df requires pinned upstream Go $upstream_expected, got $v" >&2
+      fail=1
+    fi
+    continue
+  fi
   record "$df" "$v"
 done
 
@@ -57,13 +69,13 @@ done
 
 echo
 if [ "$fail" -ne 0 ]; then
-  echo "ERROR: Go toolchain pins DISAGREE (expected every site to be '$expected'):" >&2
+  echo "ERROR: Go toolchain pins DISAGREE (first-party expected '$expected'; upstream has a separate checked pin):" >&2
   for e in "${seen[@]}"; do
     v="${e#*|}"
     [ "$v" = "$expected" ] || echo "  MISMATCH  ${e%%|*} = $v" >&2
   done
   echo >&2
-  echo "Bump ALL of them together: apps/*/go.mod, Makefile GO_IMAGE, every Dockerfile, .devcontainer." >&2
+  echo "Bump first-party pins together: apps/*/go.mod, Makefile GO_IMAGE, first-party Dockerfiles, .devcontainer." >&2
   exit 1
 fi
-echo "OK — every Go toolchain pin agrees: $expected"
+echo "OK — first-party Go toolchain pins agree: $expected; upstream build pin checked separately"

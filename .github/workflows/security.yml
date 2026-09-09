@@ -219,8 +219,10 @@ jobs:
       # starts, which reads as an infrastructure blip rather than a broken commit. (An unquoted colon in a
       # step NAME cost a full CI round-trip in this very slice.) Linting the workflows is the gate for the
       # files that ARE the gates.
-      - name: Go toolchain pin agreement (one pin, every site — S11 Cluster A)
-        run: ./scripts/check-toolchain-pin.sh
+      - name: Go toolchain pins (first-party and immutable upstream)
+        run: |
+          ./scripts/check-toolchain-pin.sh
+          node --test scripts/check-toolchain-pin.test.mjs
       - name: actionlint (workflow syntax — the gates' own gate)
         run: |
           set -euo pipefail

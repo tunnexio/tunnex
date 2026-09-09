@@ -19,3 +19,8 @@ tests rather than claiming success.
 
 Build with `python3 apps/ai-engine/build.py /path/to/bifrost-source /path/to/output`.
 Use a dedicated build cache. The original upstream Git checkout is untouched.
+
+The immutable upstream modules require Go 1.27.0, so this independent builder
+uses `golang:1.27.0-alpine`. Tunnex's first-party modules retain their own shared
+pin. `scripts/check-toolchain-pin.sh` checks both pins and refuses drift in either;
+changing upstream requires reviewing its module requirements and this build pin.

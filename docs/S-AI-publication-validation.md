@@ -1,0 +1,68 @@
+# Paired AI publication validation — 2026-09-09
+
+Core draft [PR #67](https://github.com/tunnexio/tunnex/pull/67) and website draft
+[PR #48](https://github.com/tunnexio/tunnex-web/pull/48) implement the user's request
+to publish the existing AI/workload changes and documentation for review. Neither
+PR is merge approval or a production qualification claim.
+
+## Integration boundary
+
+Core integrates main `219d422b55abc400f104f1486b91343ea231bd57` (NAT PR #66).
+The new main migrations retain 0139–0141. The unpublished AI migrations moved
+from 0139–0151 to 0142–0154 and workload migration 0153 to 0156. All 28 moved
+SQL files retained their exact SHA-256 contents. No duplicate migration number
+remains. Number 0155 is unused in this PR. All 338 operations from the union of
+the AI and main OpenAPI sources remain present; generated outputs were rebuilt.
+
+The original development preview remains on its existing schema153 and original
+checkout. No publication migration was applied there, and the user's saved
+credentials and workload were not changed. That development database requires
+an explicit data-preserving conversion plan before moving to this new numbering.
+The separate uncommitted MCP credentials/discovery implementation, unrelated
+website design work and rejected standalone HTML preview are excluded.
+
+## Executed local checks
+
+| Check | Result |
+| --- | --- |
+| Main schema141 → integrated schema156 | PASS; both clean, isolated fixture only; [migration log](../walk-artifacts/ai-publication0909/migration.md) |
+| Fresh database creation through integration suites | PASS; `testpostgres.New` applies all embedded migrations to fresh disposable databases |
+| Both API edition builds | PASS |
+| Full CLI suite after integration | PASS |
+| Web typecheck, 1,504 tests / 124 files, production build | PASS |
+| Native pinned OpenAPI Go/TS, SQLC, RBAC and design-token generation | PASS; second pass produces zero tracked drift |
+| Full enterprise API suite after integration | Every package except AI passed; seven AI tests referenced renamed fixture filenames. All references corrected and the entire AI package passed on rerun |
+| Open edition after integration | AI, HTTP, RBAC, connectivity, database connection, migrations and generated query suites PASS; full open suite also passed before main integration |
+| Probe diagnostic/deadline tests under race detector, 20 repetitions | PASS after replacing shared test counters with atomics; timeout behavior unchanged |
+| Toolchain guard plus four mutation/refusal contracts | PASS; first-party Go1.25.13 and upstream-required Go1.27.0 checked separately |
+| Website lint, 221 tests, full formatting, typecheck, build | PASS at `4dfb7f41484fb8f1fa41017dde0fe5126a604a49` |
+| Website remote CI checks and preview | PASS at that same website head |
+
+Native generation used oapi-codegen2.4.1, sqlc1.31.1 and openapi-typescript7.4.4;
+this is recorded as native generation evidence, not as execution of the Docker
+`make generate-check` target. Initial local runs encountered a duplicate React
+installation, disposable tmpfs capacity exhaustion and one unchanged audit-order
+timing failure; repaired dependencies/fresh disposable fixtures and reruns are
+recorded without counting those failed attempts as passes. The audit test passed
+five isolated repetitions and in the later integrated enterprise suite.
+
+The DB wrapper prints and verifies `COMPOSE_PROJECT_NAME=tunnexworkload0909`,
+container `tunnexworkload0909-postgres-1` and network
+`tunnexworkload0909_default`; only that tmpfs fixture was recreated. No live CP
+volume, VM, deployment or user's model access was changed.
+
+## Remote and qualification limits
+
+The first core CI run exposed a test-only call-counter race and an overbroad
+toolchain equality check against the independent immutable Bifrost builder.
+Both are corrected with local race/refusal coverage. Remote CI must be assessed
+again on the final pushed head; earlier passing or cancelled jobs do not qualify
+that head.
+
+Previously committed real Azure walkthrough evidence remains in
+[S-AI-workload-azure-live-boxwalk.md](S-AI-workload-azure-live-boxwalk.md). It
+predates this integration and does not prove a new combined NAT/AI live rollout.
+The held W7 retirement-receipt behavior, unknown Azure monetary pricing, central
+authenticated MCP execution, production autoscaling/multiple-API qualification,
+and native Windows workload proof remain open as documented in the workload
+review. The PRs remain drafts, not story-end acceptance.

@@ -2,8 +2,9 @@
 
 Status: **Local CP rollout verified; production qualification incomplete.**
 
-Subject: the uncommitted implementation on `story/S-AI-workload-identity`, based
-on paper commit `4e0ffd66`. Existing work in the parent `ai-improvement` checkout
+Subject: implementation commit `0b56e474` on `story/S-AI-workload-identity`, based
+on paper commit `4e0ffd66`, published for review in draft PR #67. Publication
+integration with current main is recorded in `S-AI-publication-integration-decisions.md`. Existing work in the parent `ai-improvement` checkout
 has not been replaced. The table retains the original findings and records their
 current dispositions; test results alone are not a disposition.
 
@@ -57,7 +58,7 @@ enrollment use. The review did not classify this retry as an authorization defec
 - Shared admission limits and complete public authentication metadata.
 - Multiple API replica, restart, expiry, outage and failover qualification.
 - Windows runtime permission handling and a native Windows execution walk.
-- Story-end review of the complete remaining scope; no story-end acceptance or publication.
+- Story-end review of the complete remaining scope; no story-end acceptance or production release. Draft publication is authorized and tracked in PR #67.
 
 Current operator instructions are in [Workload model access](workload-model-access.md).
 Local test evidence is recorded separately in the box-walk ledger.
