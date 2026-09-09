@@ -3,6 +3,32 @@
 As of 2026-09-09. Discover local repositories/worktrees; do not depend on paths
 or cached credentials from a previous laptop. Verify live Git and remote refs.
 
+## Current re-entry override
+
+The original backend-only checkpoint below is historical. Server evidence tip
+before this update is `3826c37` on `codex/nat1-session-contract`. Read
+`docs/NAT-product-aws-20260909.md` for completed, scoped live evidence and
+`docs/NAT-runtime-integration-progress-20260909.md` for the integration state.
+API/profile, node runtime, Settings and generated-contract changes remain dirty;
+do not overwrite, discard or assume the evidence commits contain product code.
+
+Client branch `codex/nat0-desktop-proof` has the managed relay integration and
+Windows split-backend wiring in its worktree. Read its
+`docs/NAT-1-managed-connect-progress-20260909.md` current pickup section.
+Windows decision `f9eecd3` precedes the wiring; Windows native acceptance is
+still pending. Full-tunnel relay remains explicitly refused.
+
+Latest node-only correction: classify a selected pair containing peer-reflexive
+or unknown candidates as unknown unless either side is explicitly relay. This
+matches desktop diagnostics. All 25 candidate-type pairs are covered; package
+race tests and vet pass. No packet-forwarding logic, installed component or
+cloud configuration changed for that correction.
+
+Not merge-ready: customer deployment/readiness, remaining platform/routing/
+lifecycle qualification, full final gates and independent review remain owed.
+Do not rerun previously proven unchanged Mac scenarios just because the older
+paragraphs below call them unimplemented. No release or merge approval implied.
+
 ## Current candidate
 
 Repository `tunnexio/tunnex`, branch `codex/nat1-session-contract`.
