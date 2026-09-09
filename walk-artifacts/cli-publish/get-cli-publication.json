@@ -1,0 +1,16 @@
+{
+  "url": "https://get.tunnex.io/cli",
+  "sha256": "024e6328e059d6c3a5930f88a867ef3c0690dbb4a3383876228864ad304e0614",
+  "cp_unchanged": true,
+  "website_pr": "https://github.com/tunnexio/tunnex-web/pull/46",
+  "deployment": "https://github.com/tunnexio/tunnex-web/actions/runs/34321641916",
+  "deployed_commit": "d1145f64061abe52c54781627b8649f7f5f14af9",
+  "source_package_commit": "f6af75d827eb9d2d8480bb1f8162c340777fe4d3",
+  "checks": [
+    "public bytes match reviewed installer",
+    "public checksum matches",
+    "help exits successfully without installation",
+    "CP bytes unchanged"
+  ],
+  "note": "Website bundles installer directly; packages PR #1 remains separate."
+}
