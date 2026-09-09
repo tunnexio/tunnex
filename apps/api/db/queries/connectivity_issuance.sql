@@ -2,7 +2,8 @@
 INSERT INTO connectivity_issuance_locks(org_id) VALUES($1) ON CONFLICT DO NOTHING;
 
 -- name: HasConnectivityIssuance :one
-SELECT EXISTS(SELECT 1 FROM connectivity_issuances WHERE session_id=$1);
+SELECT EXISTS(SELECT 1 FROM connectivity_issuances
+WHERE session_id=sqlc.arg(session_id) AND org_id=sqlc.arg(org_id));
 
 -- name: LockConnectivityIssuance :one
 SELECT org_id FROM connectivity_issuance_locks WHERE org_id=$1 FOR UPDATE;

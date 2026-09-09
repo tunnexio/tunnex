@@ -114,6 +114,17 @@ func TestIssuanceRollingLimitsPostgres(t *testing.T) {
 			if err := pool.QueryRow(ctx, `SELECT count(*) FROM connectivity_issuances WHERE org_id=$1`, org).Scan(&count); err != nil || count != 1 {
 				t.Fatal(count, err)
 			}
+			var issuanceID uuid.UUID
+			if err := pool.QueryRow(ctx, `SELECT session_id FROM connectivity_issuances WHERE org_id=$1`, org).Scan(&issuanceID); err != nil {
+				t.Fatal(err)
+			}
+			q := sqlc.New(pool)
+			for _, scope := range []uuid.UUID{org, uuid.New()} {
+				exists, err := q.HasConnectivityIssuance(ctx, sqlc.HasConnectivityIssuanceParams{SessionID: issuanceID, OrgID: scope})
+				if err != nil || exists != (scope == org) {
+					t.Fatalf("issuance existence escaped tenant scope: exists=%t err=%v", exists, err)
+				}
+			}
 		})
 	}
 }

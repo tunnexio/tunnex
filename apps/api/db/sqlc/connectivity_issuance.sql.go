@@ -48,11 +48,17 @@ func (q *Queries) EnsureConnectivityIssuanceLock(ctx context.Context, orgID uuid
 }
 
 const hasConnectivityIssuance = `-- name: HasConnectivityIssuance :one
-SELECT EXISTS(SELECT 1 FROM connectivity_issuances WHERE session_id=$1)
+SELECT EXISTS(SELECT 1 FROM connectivity_issuances
+WHERE session_id=$1 AND org_id=$2)
 `
 
-func (q *Queries) HasConnectivityIssuance(ctx context.Context, sessionID uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, hasConnectivityIssuance, sessionID)
+type HasConnectivityIssuanceParams struct {
+	SessionID uuid.UUID `json:"session_id"`
+	OrgID     uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) HasConnectivityIssuance(ctx context.Context, arg HasConnectivityIssuanceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasConnectivityIssuance, arg.SessionID, arg.OrgID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

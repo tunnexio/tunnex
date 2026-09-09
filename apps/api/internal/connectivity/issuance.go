@@ -52,7 +52,7 @@ func (s *Store) reserveIssuance(ctx context.Context, q *sqlc.Queries, b Binding,
 	key := func(at time.Time) uuid.UUID {
 		return uuid.NewSHA1(b.SessionID, []byte(fmt.Sprintf("%d:%d", side, at.Unix()/60)))
 	}
-	exists, err := q.HasConnectivityIssuance(ctx, key(now))
+	exists, err := q.HasConnectivityIssuance(ctx, sqlc.HasConnectivityIssuanceParams{SessionID: key(now), OrgID: b.OrgID})
 	if err != nil || exists {
 		return now, err
 	}
@@ -67,7 +67,7 @@ func (s *Store) reserveIssuance(ctx context.Context, q *sqlc.Queries, b Binding,
 		return now, err
 	}
 	id := key(now)
-	exists, err = q.HasConnectivityIssuance(ctx, id)
+	exists, err = q.HasConnectivityIssuance(ctx, sqlc.HasConnectivityIssuanceParams{SessionID: id, OrgID: b.OrgID})
 	if err != nil || exists {
 		return now, err
 	}

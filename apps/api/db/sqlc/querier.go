@@ -831,7 +831,7 @@ type Querier interface {
 	// annotation. Granting deployment-level authority to a soft-deleted account would arm an identity that is
 	// meant to be gone, and a later undelete would restore it silently holding a capability nobody granted it.
 	GrantCPAdmin(ctx context.Context, id uuid.UUID) error
-	HasConnectivityIssuance(ctx context.Context, sessionID uuid.UUID) (bool, error)
+	HasConnectivityIssuance(ctx context.Context, arg HasConnectivityIssuanceParams) (bool, error)
 	// lint:cross-org — SaveConnection checks the locked connection owner before inspecting this exact identity namespace.
 	HasSSOConnectionIdentities(ctx context.Context, connectionID uuid.UUID) (bool, error)
 	HeartbeatLifecycleInstallOperation(ctx context.Context, arg HeartbeatLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
