@@ -127,3 +127,53 @@ until performed. Automatic renewal beyond the ten-minute session, Windows and
 full-tunnel relay, full final gates, independent review, and exact-SHA CI remain
 outside this successful native traffic claim. Product edits remain uncommitted;
 this evidence commit does not identify them as a released build.
+
+## GUI failure follow-up: lock contention and timeout classification
+
+The initial GUI run did not sustain traffic. The gateway republished its offer
+within the same session (observed gateway sequence 9, device sequence 1), while
+the client kept the original ICE carrier and a surviving interface reported Up.
+CP requests took multiple seconds, including a measured 13.8-second policy update.
+The reused Neon DB is in US-East-2; CP is in ap-south-1. Geography alone does not
+prove the failure cause. No database migration or pool-limit change was made.
+
+Code inspection identified exclusive eligibility-device and session locks on
+every heartbeat read, redundant concurrent reads from gateway polling, and all
+gateway session errors incorrectly mapped to HTTP403. Candidate correction:
+read-only operations take shared locks (writes retain exclusive serialization),
+the transaction's bounded context reaches its callback queries, and transient
+storage failures return 503 rather than an authoritative denial. Authorization,
+posture/membership checks, and the 30-second lease remain enforced.
+
+Real isolated PostgreSQL tests passed in both editions: shared readers coexist,
+writes remain blocked by shared eligibility locks, replay remains serialized,
+and key/posture/device denial checks pass. Error mapping tests also passed.
+
+Deployed API artifact SHA256:
+`02cd612c8a76848f2fdd7e3ad4f8a7c5e877d26b4b4f933c6aa305c784d9fb75`.
+Image `tunnex-nat-product-api:20260909-lockfix`, built image `55acb5c234f9`.
+Compose project is unchanged. Deployment adds
+`/home/ubuntu/nat-product-20260909a/compose-lockfix.yaml` after the existing
+`tunnex.yml`; future restarts must include that override to retain this image.
+Original image and `.env` are retained. HTTPS health passed after replacement.
+
+Client changes reject replacement established offers, preserve Failed over a
+surviving helper Up, and queue at most one owner-fenced managed reconnect.
+The GUI now requires a fresh handshake before displaying Connected. A fresh
+authorization renews the preparation lease before negotiation. A subsequent
+local-only refinement permits transient CP retry inside the existing lease;
+it does not renew the helper lease on error and was not loaded by the ongoing
+native driver below. Do not label that driver as exact-final-client acceptance.
+
+Live driver against the deployed lock fix passed both positive service controls
+and same-tunnel policy withdrawal: `.2:8080` reachable, `.3:8080` denied. During
+the sustained run a separate read observed RX23756/TX24036 bytes and a successful
+HTTP `native-pion-proof` response. Final duration/cleanup is recorded separately
+when the driver exits. Automatic GUI recovery and ten-minute rollover are not
+claimed by this driver; full web gates still include two stale split-repository
+fixtures referencing missing server OpenAPI/design files.
+
+The driver subsequently exited 0 after its full 120-second sustained HTTP loop.
+Cleanup disabled the second grant, brought the tunnel down, and revoked the exact
+temporary driver credential. This is a successful native sustained traffic and
+same-tunnel policy walk, not a forced-recovery or final release qualification.
