@@ -1,8 +1,9 @@
 # NAT product candidate — live AWS checkpoint
 
 2026-09-09. User authorized deployment and testing, requesting continuation until
-the customer test or a genuinely human-required blocker. This is NOT a completed
-native traffic walk, signed release, final CI result, or merge-ready claim.
+the customer test or a genuinely human-required blocker. Native application traffic
+has now passed through the candidate, as detailed below. This is NOT a completed
+GUI enrollment walk, signed release, final CI result, or merge-ready claim.
 
 ## Deployed
 
@@ -25,7 +26,7 @@ Dedicated gateway/relay host i-0d320abd28be9eaa9: 13.235.24.2.
 - Existing service 10.250.0.2:8080 restarted. Separate service at
   10.250.0.3:8080 created for negative control. Org policy enforcing, first grant
   enabled, second disabled. Actual gateway nft readback has first allow rule and
-  default-drop. Application traffic evidence is still pending.
+  default-drop. Application traffic evidence is recorded in the continuation below.
 
 ## Real wire result
 
@@ -57,7 +58,7 @@ identify the deployed candidate. API/migration/node local and remote hashes matc
 | API enterprise | fa4c615533f7d1bf5fcb359fb5a075fd381735022e3fc9e6a1f59a70e455284d |
 | Migration | e5f5676f04fa6a46795f2437f9d4a66659c46dd662f24197165bcfce98a9a96f |
 | Linux node | 659ca9a9bdbbadc2ce3ac093b11f9f8eaf8fbf17bd9bc5e293a48df38ee07c51 |
-| Mac helper, not installed | 7a5a2a1b8deaba358038228c4703248e8c04c5bc4a9c43646fa35b4cf4c28288 |
+| Mac helper, pre-install / pre-ad-hoc-signing artifact | 7a5a2a1b8deaba358038228c4703248e8c04c5bc4a9c43646fa35b4cf4c28288 |
 
 ## Retained infrastructure / next step
 
@@ -76,3 +77,53 @@ After native helper authentication: test normal client Connect, authorized HTTP,
 and denied service with live positive controls. Then qualify teardown/renewal
 and report exact evidence. Ten-minute session rollover, Windows/full-tunnel,
 full gates and independent review are not complete.
+
+## Continuation: installed native helper and application traffic PASS
+
+The preceding installation-pending paragraphs describe the earlier checkpoint.
+The user subsequently installed and ad-hoc signed the candidate helper, retaining
+the original binary. No additional privileged installation was needed.
+
+The live driver invoked the built production `TunnelController` through the
+trusted Electron executable, using the actual installed helper IPC connection.
+It authenticated to the real CP, checked existing device ownership and gateway
+WireGuard key, obtained a scoped session, and used normal CP signaling. This was
+not a GUI-click or fresh-device-enrollment test.
+
+- Added approved `10.250.0.0/24` through the ordinary CP routed-LAN API. The driver
+  merged CP-approved ranges as the client monitor does; no manual local route repair.
+- Actual native tunnel reported up. Both `10.250.0.2:8080` and `10.250.0.3:8080`
+  passed HTTP positive controls with their grants enabled.
+- Disabled only the second grant through CP, without reconnecting the tunnel.
+  First service remained reachable; second service was denied. Helper AllowedIPs
+  remained exactly `10.99.0.0/24, 10.250.0.0/24` throughout policy withdrawal.
+- Driver completed successfully, brought the native tunnel down, and revoked its
+  temporary bearer. Final helper status is down; default route remains `en0`.
+  CP `/healthz` separately returned status `ok`.
+
+For this run the dedicated NAT host's unrestricted outbound rule
+`sgr-009adde465598934f` was replaced by TCP-only internet access
+(`sgr-0370cdbc2bea4e499`), UDP DNS (`sgr-04c2c39bb8472d617`), and UDP49160–49200
+to its own public /32 only (`sgr-058449eb2a9de96b7`). General outbound UDP was
+absent on readback. These restrictions remain for the user's relay test.
+
+TURN container `nat-product-turn-20260909b` runs the same configuration with
+verbose logging; the previous `nat-product-turn-20260909a` is stopped and retained.
+Live TURN usage records contain nonzero packet/byte counters (usernames omitted):
+`rp=26 rb=3552 sp=16 sb=1364`, `rp=7 rb=784 sp=17 sb=1960`,
+`rp=129 rb=14512 sp=98 sb=10768`, and `rp=111 rb=12444 sp=117 sb=12156`.
+These are observed TURN counters, not inferred from profile configuration.
+
+Diagnostic limitation: the gateway logs its local path as `direct` in this
+relay-backed run. A one-sided relay/peer-reflexive pair is the suspected cause;
+that local label is not authoritative end-to-end relay evidence. The earlier
+client-side negotiation probe selected relay, and native-run TURN traffic and
+network constraints provide separate evidence. Path-label qualification remains.
+
+The fresh dev client's **Tunnex — Setup** window is ready for the user to enter
+the current CP URL, sign in, and connect in split-tunnel mode. Expected result:
+HTTP to `.2:8080` allowed; `.3:8080` denied. GUI enrollment/Connect remains unproven
+until performed. Automatic renewal beyond the ten-minute session, Windows and
+full-tunnel relay, full final gates, independent review, and exact-SHA CI remain
+outside this successful native traffic claim. Product edits remain uncommitted;
+this evidence commit does not identify them as a released build.
