@@ -48,5 +48,12 @@
       "RPM/Rocky Linux 9",
       "APK/Alpine 3.22"
     ]
+  },
+  "immutable_release_commit": "2cdb706923fec3b7ccde93f7c7728bac7a40b357",
+  "retry_proof": {
+    "run": "https://github.com/tunnexio/packages/actions/runs/34313813031",
+    "head": "63edd240998ce99f52e1605b26926b8342f9b847",
+    "status": "success",
+    "behavior": "Existing signed packages verified and reused; no release assets overwritten"
   }
 }
