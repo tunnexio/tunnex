@@ -49,11 +49,11 @@ public trust key, and uninstall assertions checking filesystem rather than shell
 command cache. Signature checks were retained throughout. APT itself rejects a
 tampered InRelease with BADSIG.
 
-## Nix/Arch recipe slice: two findings HELD
+## Nix/Arch recipe slice: two findings approved
 
 Draft sources are in deploy/cli-distribution/packages and the standalone local
 checkout /private/tmp/tunnex-cli-publish-packages. They have NOT been published.
-A user disposition request for the following two findings is pending:
+User disposition on 2026-09-09: "i approve". Both following fixes are authorized:
 
 1. P2: channels.py Arch source aliases are always `tunnex`. Include version and
    architecture so a cached prior release does not cause checksum failure.
@@ -61,8 +61,8 @@ A user disposition request for the following two findings is pending:
    latest release. Reject lower versions and changed SHA at the same version,
    including a comparison with current main at publication.
 
-No fixes to these findings have been applied. After disposition, add regression
-proof, re-review the fold and run native Nix amd64/arm64 and Arch makepkg CI.
+Proceed with the two corrections, regression proof, fold review and native
+Nix amd64/arm64 and Arch makepkg CI before recipe publication.
 AUR submission, nixpkgs inclusion, Snap, desktop stores and official distro
 archive acceptance remain separate uncompleted work; GitHub login alone does
 not establish ownership of those external publisher accounts.
