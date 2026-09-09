@@ -79,3 +79,28 @@ bounded independent read-set review pass. Final client main-process suite is
 
 The stranded synthetic org above was soft-disabled (one row), not hard-deleted;
 its audit history remains intact and the soft deletion is recoverable.
+
+## Combined candidate wire: initial success, recovery FAIL
+
+Verified running API hash matches 46b19d4 and gateway executable hash is
+`f7b1c01640e7ca9695c9dce10215794858ba2dd499b4715d9e9977b6d7303b1e`.
+With client55f4267 and corrected installed helper, generation24 negotiated Relay
+and the driver's allowed HTTP passed. The actual dedicated TURN restart then
+failed bounded automatic recovery: `relay_transport_lost` requested fresh Connect,
+but that attempt timed out. Driver exited1, brought helper Down and revoked its
+temporary bearer. Two ad-hoc curl probes overlapped the disruption and timed out;
+they are not a denied-policy proof.
+
+During this failure ordinary CP requests also degraded: `/nodes` HTTP500 at its
+30-second deadline, `/auth/me` approximately8.4s, `/devices` approximately14.9s.
+Gateway ownership-delivery polling reported repeated context deadlines. A later
+DB snapshot showed four idle client-read backends and only the diagnostic query
+active: no observed lock wait at that instant. This does not establish the cause
+of the earlier slowdown. Do not claim an ICE root cause, fixed loaded CP latency,
+or combined final-build acceptance from the isolated database PASS.
+
+Stop adding transport patches based on this failure. Restore the known working
+API/node pair and investigate request/pool/DB round-trip timing under concurrent
+CP workload before another candidate deployment. Do not extend authorization
+deadlines or repeat the entire historical walk. The failure is reproducible only
+as recorded; the new source is committed, not release-ready.
