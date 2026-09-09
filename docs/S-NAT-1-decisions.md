@@ -99,3 +99,12 @@ and coturn peer restrictions remain required integration, not satisfied here.
 
 This primitive adds no HTTP route, config UI, persistence or live forwarding.
 Do not call NAT-1 done until authenticated APIs and atomic persistence are wired.
+
+Credential primitive implemented with focused open-edition race tests,
+enterprise tests and vet passing. Tests cover coturn password shape, expiry,
+side/generation separation, secret rotation/configuration bounds, no raw identity
+in username, and all existing fail-closed authorization cases. No new dependency,
+HTTP surface, UI mutation or cloud change. This is a partial implementation
+checkpoint, not story completion; full gates/live product proof remain owed.
+Next: OpenAPI session/profile contracts and transactional persistence, followed
+by principal wiring; UI card must consume those real contracts.

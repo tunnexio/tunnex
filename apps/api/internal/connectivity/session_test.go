@@ -51,6 +51,10 @@ func TestAuthorizeFailClosed(t *testing.T) {
 			if err := s.Authorize(p, c, n); err != ErrDenied {
 				t.Fatalf("expected generic denial, got %v", err)
 			}
+			credential, credentialErr := s.IssueRelayCredentials(p, c, n, make([]byte, 32))
+			if credentialErr != ErrDenied || credential != (RelayCredentials{}) {
+				t.Fatal("denied binding issued a relay credential")
+			}
 			got, err := s.Accept(p, c, n, 1)
 			if err != ErrDenied || got != s {
 				t.Fatal("denied write changed state or succeeded")
