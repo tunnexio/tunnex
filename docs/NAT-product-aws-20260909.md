@@ -177,3 +177,44 @@ The driver subsequently exited 0 after its full 120-second sustained HTTP loop.
 Cleanup disabled the second grant, brought the tunnel down, and revoked the exact
 temporary driver credential. This is a successful native sustained traffic and
 same-tunnel policy walk, not a forced-recovery or final release qualification.
+
+## Native automatic session rollover PASS
+
+2026-09-09 follow-up: account 735391218823 verified again. CP, gateway, relay,
+database expiry and policy configuration were unchanged for this leg. The dev
+GUI was stopped while its helper was already down, preventing competing owners.
+
+A private driver used the built production `TunnelController` and
+`ManagedLifecycleCoordinator.serialForLease`, the installed Mac helper and actual
+CP authorization. It re-proved owner/device/gateway/ranges before reconnecting.
+No time acceleration, database lifetime edits or manual reconnect was used.
+
+- Initial CP generation 9 expired at `2026-09-09T07:28:00.286677Z`.
+- Authorized heartbeat triggered early renewal in the final 60 seconds.
+- Old carrier closed; fresh CP generation 10 expired at
+  `2026-09-09T07:37:33.335939Z`. Native authorized HTTP passed on connection 2.
+- Driver continued beyond the ORIGINAL expiry plus 20 seconds, exited 0 and
+  reported successful native HTTP. At least 108 periodic HTTP samples passed.
+  Samples deliberately pause during break-before-make; this is not zero-loss
+  or seamless handover evidence and interruption duration was not measured.
+- Independent probes during connection 1: `.2:8080` HTTP200 with expected body,
+  `.3:8080` timeout. Earlier both-service positive controls remain separate proof.
+- Cleanup brought the native tunnel down and revoked only its temporary bearer.
+
+Loaded client artifact SHA256:
+
+| Artifact | SHA256 |
+| --- | --- |
+| dist/main/tunnel.js | 3c1bba49e841296bb1b8ff3f5c23f9e4772c5a806c9dbcd6747fae98c5792974 |
+| dist/main/managedlifecycle.js | 5853a418a8bf27a2fe8a26f0c985ac02233108adfeb1b3a74b27ff4f606b2e00 |
+
+Client source remains uncommitted over decision commit `450ad83`; no released
+build or exact-SHA CI is implied. The driver reuses the production queue and
+controller but supplies its own orchestration, not Electron's complete IPC or
+GUI enrollment path. GUI automatic rollover is still a distinct qualification.
+
+Additional local results: client 307/307 tests, typecheck/build; helper race/vet,
+NAT-tagged suite, Windows amd64/macOS amd64 compile; renderer build; four dev-plist
+tests; and server-lane full Linux `make test-node` PASS. Cross-compilation does not
+prove Windows runtime relay support. Full final gates/review and broader NAT
+failure/platform qualification remain required; no merge/release performed.
