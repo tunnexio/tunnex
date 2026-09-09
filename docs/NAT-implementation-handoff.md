@@ -5,6 +5,16 @@ or cached credentials from a previous laptop. Verify live Git and remote refs.
 
 ## Current re-entry override
 
+Final-gate continuation: server product `82d1b48`, companion client product
+`24b66e1`. Read `docs/NAT-final-gates-20260909.md` for current gate status and
+the approved corrections. Issuance existence checks now include canonical org
+scope; the client seeds polling from the actual connected dial and ignores
+identical relay updates after owner validation. These narrow fixes have local
+regression evidence and clean bounded re-reviews, not a new final-SHA AWS walk.
+The paragraph below retains the identities of the previous live proof. Draft
+PR publication and exact-head CI are the next step, not another broad review or
+a repeat of unchanged Mac scenarios. No merge/release approval is implied.
+
 Latest continuation supersedes the historical paragraphs below. Server product
 tip is `cddcd57`; client product remains `55f4267` in its separate repository.
 Read `walk-artifacts/NAT/20260909-cp-recovery.md` and
