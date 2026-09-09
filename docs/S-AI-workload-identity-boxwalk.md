@@ -2,6 +2,12 @@
 
 **Integrated local control-plane rollout verified. Production/story acceptance remains INCOMPLETE.**
 
+The subsequent [real Azure workload walk](S-AI-workload-azure-live-boxwalk.md)
+verified two actual GPT-5 calls, restart, automatic token renewal, scoped
+revocation and cleanup. It also recorded missing Azure cost data; dollar-threshold
+qualification remains open. The fixture-only statements below describe the earlier
+rollout walk.
+
 Source: `story/S-AI-workload-identity`, paper base `4e0ffd66`, plus the local
 implementation snapshot listed in `walk-artifacts/workload-cp0909/source-sha256.txt`
 (and the earlier isolated snapshot under `workload0909`).
