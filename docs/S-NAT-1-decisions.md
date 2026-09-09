@@ -260,3 +260,12 @@ only to consume gateways and hub order. Extract that existing hub-order reader
 for both consumers; retain deriveActive, activeHubMembers and activeHubDialFrom.
 Do not raise the transaction or forwarding deadlines. Re-test on the same hosted
 database before redeploying; fewer queries alone are not proof the timeout is fixed.
+
+Use pgx's parameter-bound extended `QueryExecModeExec` only in connectivity's
+transaction reader to avoid cold prepare/describe round trips. Do not change the
+global pool or interpolate SQL. sqlc []byte arguments can mean JSON or bytea;
+retain normal server type discovery for those writes. A local regression caught
+this ambiguity before deployment. Full connectivity race tests pass in both
+editions after preserving byte-slice discovery. The shared topology/node suite
+also passes; bounded independent review found no actionable issue. Hosted
+performance acceptance remains a separate required result.

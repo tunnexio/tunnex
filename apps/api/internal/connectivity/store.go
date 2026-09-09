@@ -201,7 +201,7 @@ func (s *Store) transaction(ctx context.Context, p Principal, device uuid.UUID, 
 		return err
 	}
 	defer tx.Rollback(ctx)
-	q := sqlc.New(tx)
+	q := sqlc.New(singleRoundTripTx{tx})
 	var e sqlc.LockConnectivityEligibilityRow
 	if shared {
 		row, readErr := q.ShareConnectivityEligibility(ctx, sqlc.ShareConnectivityEligibilityParams{DeviceID: device, OrgID: p.OrgID})
