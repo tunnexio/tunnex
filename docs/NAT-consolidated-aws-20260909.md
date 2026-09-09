@@ -104,3 +104,10 @@ API/node pair and investigate request/pool/DB round-trip timing under concurrent
 CP workload before another candidate deployment. Do not extend authorization
 deadlines or repeat the entire historical walk. The failure is reproducible only
 as recorded; the new source is committed, not release-ready.
+
+Final safe state verified: rollback API HTTPS health returned status=ok; old node
+restarted after CP health and logged `agent_ready` at 2026-09-09T11:11:01Z.
+Corrected Mac helper remains installed, Down. Both product worktrees are clean.
+No code pushed, PR opened, merge or release performed. The isolated hosted test
+database and rollback artifacts remain available; no customer credentials or
+audit records were removed. Candidate images are retained but not active.
