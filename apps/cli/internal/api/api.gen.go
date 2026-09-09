@@ -3341,6 +3341,54 @@ type ConfigureK8sConnectorPoolRequest struct {
 	Members                 []K8sConnectorPoolMember `json:"members"`
 }
 
+// ConnectivityMailbox defines model for ConnectivityMailbox.
+type ConnectivityMailbox struct {
+	DeviceId         openapi_types.UUID       `json:"device_id"`
+	DevicePayload    string                   `json:"device_payload"`
+	DevicePublicKey  *string                  `json:"device_public_key,omitempty"`
+	DeviceSequence   int64                    `json:"device_sequence"`
+	ExpiresAt        time.Time                `json:"expires_at"`
+	GatewayId        openapi_types.UUID       `json:"gateway_id"`
+	GatewayPayload   string                   `json:"gateway_payload"`
+	GatewayPublicKey *string                  `json:"gateway_public_key,omitempty"`
+	GatewaySequence  int64                    `json:"gateway_sequence"`
+	Generation       int64                    `json:"generation"`
+	Relay            *ConnectivityRelayAccess `json:"relay,omitempty"`
+	SessionId        openapi_types.UUID       `json:"session_id"`
+}
+
+// ConnectivityProfile defines model for ConnectivityProfile.
+type ConnectivityProfile struct {
+	Enabled          bool   `json:"enabled"`
+	RelayUrl         string `json:"relay_url"`
+	Revision         int64  `json:"revision"`
+	SecretConfigured bool   `json:"secret_configured"`
+}
+
+// ConnectivityProfileRequest defines model for ConnectivityProfileRequest.
+type ConnectivityProfileRequest struct {
+	ClearSecret      *bool   `json:"clear_secret,omitempty"`
+	Enabled          bool    `json:"enabled"`
+	ExpectedRevision int64   `json:"expected_revision"`
+	RelayUrl         string  `json:"relay_url"`
+	SharedSecret     *string `json:"shared_secret,omitempty"`
+}
+
+// ConnectivityRelayAccess defines model for ConnectivityRelayAccess.
+type ConnectivityRelayAccess struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Password  string    `json:"password"`
+	Url       string    `json:"url"`
+	Username  string    `json:"username"`
+}
+
+// ConnectivitySnapshotRequest defines model for ConnectivitySnapshotRequest.
+type ConnectivitySnapshotRequest struct {
+	// Payload A complete UTF-8 JSON object, additionally bounded to 16384 bytes by the service. No TURN shared secret.
+	Payload  string `json:"payload"`
+	Sequence int64  `json:"sequence"`
+}
+
 // CpAdminRequest defines model for CpAdminRequest.
 type CpAdminRequest struct {
 	Granted bool `json:"granted"`
@@ -5956,6 +6004,21 @@ type ListAuditLogsParams struct {
 	Limit    *int                `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// CloseConnectivitySessionParams defines parameters for CloseConnectivitySession.
+type CloseConnectivitySessionParams struct {
+	Generation int64 `form:"generation" json:"generation"`
+}
+
+// GetConnectivitySessionParams defines parameters for GetConnectivitySession.
+type GetConnectivitySessionParams struct {
+	Generation int64 `form:"generation" json:"generation"`
+}
+
+// PublishConnectivitySnapshotParams defines parameters for PublishConnectivitySnapshot.
+type PublishConnectivitySnapshotParams struct {
+	Generation int64 `form:"generation" json:"generation"`
+}
+
 // UpdateDeviceModeParams defines parameters for UpdateDeviceMode.
 type UpdateDeviceModeParams struct {
 	FullTunnel *bool `form:"full_tunnel,omitempty" json:"full_tunnel,omitempty"`
@@ -6275,11 +6338,17 @@ type UpdateAuditLogRetentionJSONRequestBody = UpdateAuditLogRetentionRequest
 // RunAuditLogPruneJSONRequestBody defines body for RunAuditLogPrune for application/json ContentType.
 type RunAuditLogPruneJSONRequestBody = RunAuditLogPruneRequest
 
+// ConfigureConnectivityProfileJSONRequestBody defines body for ConfigureConnectivityProfile for application/json ContentType.
+type ConfigureConnectivityProfileJSONRequestBody = ConnectivityProfileRequest
+
 // SetDeviceApprovalJSONRequestBody defines body for SetDeviceApproval for application/json ContentType.
 type SetDeviceApprovalJSONRequestBody = DeviceApproval
 
 // CreateDeviceJSONRequestBody defines body for CreateDevice for application/json ContentType.
 type CreateDeviceJSONRequestBody = CreateDeviceRequest
+
+// PublishConnectivitySnapshotJSONRequestBody defines body for PublishConnectivitySnapshot for application/json ContentType.
+type PublishConnectivitySnapshotJSONRequestBody = ConnectivitySnapshotRequest
 
 // ReportDeviceHealthJSONRequestBody defines body for ReportDeviceHealth for application/json ContentType.
 type ReportDeviceHealthJSONRequestBody = DeviceHealthReport
@@ -7345,6 +7414,14 @@ type ClientInterface interface {
 	// ListAuditLogs request
 	ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetConnectivityProfile request
+	GetConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfigureConnectivityProfileWithBody request with any body
+	ConfigureConnectivityProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ConfigureConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// OrgDeletionPreflight request
 	OrgDeletionPreflight(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -7372,6 +7449,20 @@ type ClientInterface interface {
 
 	// ApproveDevice request
 	ApproveDevice(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateConnectivitySession request
+	CreateConnectivitySession(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CloseConnectivitySession request
+	CloseConnectivitySession(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *CloseConnectivitySessionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetConnectivitySession request
+	GetConnectivitySession(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *GetConnectivitySessionParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PublishConnectivitySnapshotWithBody request with any body
+	PublishConnectivitySnapshotWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PublishConnectivitySnapshot(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, body PublishConnectivitySnapshotJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ReportDeviceHealthWithBody request with any body
 	ReportDeviceHealthWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11203,6 +11294,42 @@ func (c *Client) ListAuditLogs(ctx context.Context, orgId openapi_types.UUID, pa
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConnectivityProfileRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureConnectivityProfileWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureConnectivityProfileRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureConnectivityProfile(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureConnectivityProfileRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) OrgDeletionPreflight(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewOrgDeletionPreflightRequest(c.Server, orgId)
 	if err != nil {
@@ -11313,6 +11440,66 @@ func (c *Client) RemoveDevice(ctx context.Context, orgId openapi_types.UUID, dev
 
 func (c *Client) ApproveDevice(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewApproveDeviceRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateConnectivitySession(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateConnectivitySessionRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CloseConnectivitySession(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *CloseConnectivitySessionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCloseConnectivitySessionRequest(c.Server, orgId, deviceId, sessionId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetConnectivitySession(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *GetConnectivitySessionParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetConnectivitySessionRequest(c.Server, orgId, deviceId, sessionId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PublishConnectivitySnapshotWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishConnectivitySnapshotRequestWithBody(c.Server, orgId, deviceId, sessionId, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PublishConnectivitySnapshot(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, body PublishConnectivitySnapshotJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishConnectivitySnapshotRequest(c.Server, orgId, deviceId, sessionId, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -22354,6 +22541,87 @@ func NewListAuditLogsRequest(server string, orgId openapi_types.UUID, params *Li
 	return req, nil
 }
 
+// NewGetConnectivityProfileRequest generates requests for GetConnectivityProfile
+func NewGetConnectivityProfileRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/connectivity-profile", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewConfigureConnectivityProfileRequest calls the generic ConfigureConnectivityProfile builder with application/json body
+func NewConfigureConnectivityProfileRequest(server string, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfigureConnectivityProfileRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewConfigureConnectivityProfileRequestWithBody generates requests for ConfigureConnectivityProfile with any type of body
+func NewConfigureConnectivityProfileRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/connectivity-profile", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewOrgDeletionPreflightRequest generates requests for OrgDeletionPreflight
 func NewOrgDeletionPreflightRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -22662,6 +22930,258 @@ func NewApproveDeviceRequest(server string, orgId openapi_types.UUID, deviceId o
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewCreateConnectivitySessionRequest generates requests for CreateConnectivitySession
+func NewCreateConnectivitySessionRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/devices/%s/connectivity-sessions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCloseConnectivitySessionRequest generates requests for CloseConnectivitySession
+func NewCloseConnectivitySessionRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *CloseConnectivitySessionParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/devices/%s/connectivity-sessions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "generation", runtime.ParamLocationQuery, params.Generation); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetConnectivitySessionRequest generates requests for GetConnectivitySession
+func NewGetConnectivitySessionRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *GetConnectivitySessionParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/devices/%s/connectivity-sessions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "generation", runtime.ParamLocationQuery, params.Generation); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPublishConnectivitySnapshotRequest calls the generic PublishConnectivitySnapshot builder with application/json body
+func NewPublishConnectivitySnapshotRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, body PublishConnectivitySnapshotJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPublishConnectivitySnapshotRequestWithBody(server, orgId, deviceId, sessionId, params, "application/json", bodyReader)
+}
+
+// NewPublishConnectivitySnapshotRequestWithBody generates requests for PublishConnectivitySnapshot with any type of body
+func NewPublishConnectivitySnapshotRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "sessionId", runtime.ParamLocationPath, sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/devices/%s/connectivity-sessions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "generation", runtime.ParamLocationQuery, params.Generation); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -30080,6 +30600,14 @@ type ClientWithResponsesInterface interface {
 	// ListAuditLogsWithResponse request
 	ListAuditLogsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAuditLogsParams, reqEditors ...RequestEditorFn) (*ListAuditLogsResponse, error)
 
+	// GetConnectivityProfileWithResponse request
+	GetConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetConnectivityProfileResponse, error)
+
+	// ConfigureConnectivityProfileWithBodyWithResponse request with any body
+	ConfigureConnectivityProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error)
+
+	ConfigureConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error)
+
 	// OrgDeletionPreflightWithResponse request
 	OrgDeletionPreflightWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*OrgDeletionPreflightResponse, error)
 
@@ -30107,6 +30635,20 @@ type ClientWithResponsesInterface interface {
 
 	// ApproveDeviceWithResponse request
 	ApproveDeviceWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ApproveDeviceResponse, error)
+
+	// CreateConnectivitySessionWithResponse request
+	CreateConnectivitySessionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CreateConnectivitySessionResponse, error)
+
+	// CloseConnectivitySessionWithResponse request
+	CloseConnectivitySessionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *CloseConnectivitySessionParams, reqEditors ...RequestEditorFn) (*CloseConnectivitySessionResponse, error)
+
+	// GetConnectivitySessionWithResponse request
+	GetConnectivitySessionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *GetConnectivitySessionParams, reqEditors ...RequestEditorFn) (*GetConnectivitySessionResponse, error)
+
+	// PublishConnectivitySnapshotWithBodyWithResponse request with any body
+	PublishConnectivitySnapshotWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishConnectivitySnapshotResponse, error)
+
+	PublishConnectivitySnapshotWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, body PublishConnectivitySnapshotJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishConnectivitySnapshotResponse, error)
 
 	// ReportDeviceHealthWithBodyWithResponse request with any body
 	ReportDeviceHealthWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReportDeviceHealthResponse, error)
@@ -34823,6 +35365,52 @@ func (r ListAuditLogsResponse) StatusCode() int {
 	return 0
 }
 
+type GetConnectivityProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConnectivityProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConnectivityProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConnectivityProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConfigureConnectivityProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConnectivityProfile
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ConfigureConnectivityProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConfigureConnectivityProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type OrgDeletionPreflightResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -35000,6 +35588,98 @@ func (r ApproveDeviceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ApproveDeviceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateConnectivitySessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *ConnectivityMailbox
+	JSON429      *Error
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateConnectivitySessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateConnectivitySessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CloseConnectivitySessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CloseConnectivitySessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CloseConnectivitySessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetConnectivitySessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConnectivityMailbox
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetConnectivitySessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetConnectivitySessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PublishConnectivitySnapshotResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ConnectivityMailbox
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PublishConnectivitySnapshotResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PublishConnectivitySnapshotResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -40621,6 +41301,32 @@ func (c *ClientWithResponses) ListAuditLogsWithResponse(ctx context.Context, org
 	return ParseListAuditLogsResponse(rsp)
 }
 
+// GetConnectivityProfileWithResponse request returning *GetConnectivityProfileResponse
+func (c *ClientWithResponses) GetConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetConnectivityProfileResponse, error) {
+	rsp, err := c.GetConnectivityProfile(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConnectivityProfileResponse(rsp)
+}
+
+// ConfigureConnectivityProfileWithBodyWithResponse request with arbitrary body returning *ConfigureConnectivityProfileResponse
+func (c *ClientWithResponses) ConfigureConnectivityProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error) {
+	rsp, err := c.ConfigureConnectivityProfileWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureConnectivityProfileResponse(rsp)
+}
+
+func (c *ClientWithResponses) ConfigureConnectivityProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, body ConfigureConnectivityProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureConnectivityProfileResponse, error) {
+	rsp, err := c.ConfigureConnectivityProfile(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureConnectivityProfileResponse(rsp)
+}
+
 // OrgDeletionPreflightWithResponse request returning *OrgDeletionPreflightResponse
 func (c *ClientWithResponses) OrgDeletionPreflightWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*OrgDeletionPreflightResponse, error) {
 	rsp, err := c.OrgDeletionPreflight(ctx, orgId, reqEditors...)
@@ -40707,6 +41413,50 @@ func (c *ClientWithResponses) ApproveDeviceWithResponse(ctx context.Context, org
 		return nil, err
 	}
 	return ParseApproveDeviceResponse(rsp)
+}
+
+// CreateConnectivitySessionWithResponse request returning *CreateConnectivitySessionResponse
+func (c *ClientWithResponses) CreateConnectivitySessionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CreateConnectivitySessionResponse, error) {
+	rsp, err := c.CreateConnectivitySession(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateConnectivitySessionResponse(rsp)
+}
+
+// CloseConnectivitySessionWithResponse request returning *CloseConnectivitySessionResponse
+func (c *ClientWithResponses) CloseConnectivitySessionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *CloseConnectivitySessionParams, reqEditors ...RequestEditorFn) (*CloseConnectivitySessionResponse, error) {
+	rsp, err := c.CloseConnectivitySession(ctx, orgId, deviceId, sessionId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCloseConnectivitySessionResponse(rsp)
+}
+
+// GetConnectivitySessionWithResponse request returning *GetConnectivitySessionResponse
+func (c *ClientWithResponses) GetConnectivitySessionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *GetConnectivitySessionParams, reqEditors ...RequestEditorFn) (*GetConnectivitySessionResponse, error) {
+	rsp, err := c.GetConnectivitySession(ctx, orgId, deviceId, sessionId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetConnectivitySessionResponse(rsp)
+}
+
+// PublishConnectivitySnapshotWithBodyWithResponse request with arbitrary body returning *PublishConnectivitySnapshotResponse
+func (c *ClientWithResponses) PublishConnectivitySnapshotWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishConnectivitySnapshotResponse, error) {
+	rsp, err := c.PublishConnectivitySnapshotWithBody(ctx, orgId, deviceId, sessionId, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishConnectivitySnapshotResponse(rsp)
+}
+
+func (c *ClientWithResponses) PublishConnectivitySnapshotWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, sessionId openapi_types.UUID, params *PublishConnectivitySnapshotParams, body PublishConnectivitySnapshotJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishConnectivitySnapshotResponse, error) {
+	rsp, err := c.PublishConnectivitySnapshot(ctx, orgId, deviceId, sessionId, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishConnectivitySnapshotResponse(rsp)
 }
 
 // ReportDeviceHealthWithBodyWithResponse request with arbitrary body returning *ReportDeviceHealthResponse
@@ -48433,6 +49183,72 @@ func ParseListAuditLogsResponse(rsp *http.Response) (*ListAuditLogsResponse, err
 	return response, nil
 }
 
+// ParseGetConnectivityProfileResponse parses an HTTP response from a GetConnectivityProfileWithResponse call
+func ParseGetConnectivityProfileResponse(rsp *http.Response) (*GetConnectivityProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConnectivityProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConnectivityProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConfigureConnectivityProfileResponse parses an HTTP response from a ConfigureConnectivityProfileWithResponse call
+func ParseConfigureConnectivityProfileResponse(rsp *http.Response) (*ConfigureConnectivityProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConfigureConnectivityProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConnectivityProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseOrgDeletionPreflightResponse parses an HTTP response from a OrgDeletionPreflightWithResponse call
 func ParseOrgDeletionPreflightResponse(rsp *http.Response) (*OrgDeletionPreflightResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -48678,6 +49494,138 @@ func ParseApproveDeviceResponse(rsp *http.Response) (*ApproveDeviceResponse, err
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateConnectivitySessionResponse parses an HTTP response from a CreateConnectivitySessionWithResponse call
+func ParseCreateConnectivitySessionResponse(rsp *http.Response) (*CreateConnectivitySessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateConnectivitySessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ConnectivityMailbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCloseConnectivitySessionResponse parses an HTTP response from a CloseConnectivitySessionWithResponse call
+func ParseCloseConnectivitySessionResponse(rsp *http.Response) (*CloseConnectivitySessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CloseConnectivitySessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetConnectivitySessionResponse parses an HTTP response from a GetConnectivitySessionWithResponse call
+func ParseGetConnectivitySessionResponse(rsp *http.Response) (*GetConnectivitySessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetConnectivitySessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConnectivityMailbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePublishConnectivitySnapshotResponse parses an HTTP response from a PublishConnectivitySnapshotWithResponse call
+func ParsePublishConnectivitySnapshotResponse(rsp *http.Response) (*PublishConnectivitySnapshotResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PublishConnectivitySnapshotResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ConnectivityMailbox
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

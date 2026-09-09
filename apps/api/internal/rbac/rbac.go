@@ -19,6 +19,8 @@ const (
 	PermOrgDelete           Permission = "org:delete"
 	PermMemberList          Permission = "member:list"
 	PermMemberInvite        Permission = "member:invite"
+	PermConnectivityUse     Permission = "connectivity:use"
+	PermConnectivityManage  Permission = "connectivity:manage"
 	// PermMemberManage is the base capability to change roles / remove members.
 	// Relational limits (who may touch whom) are applied by CanManageMembership.
 	PermMemberManage Permission = "member:manage"
@@ -216,13 +218,16 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAIProviderView: true, PermAIGatewayView: true,
 	},
 	RoleMember: {
-		PermAIModelUse: true,
-		PermOrgView:    true,
-		PermMemberList: true,
+		PermConnectivityUse: true,
+		PermAIModelUse:      true,
+		PermOrgView:         true,
+		PermMemberList:      true,
 	},
 	RoleAdmin: {
 		PermAIWorkloadView: true, PermAIWorkloadManage: true,
 		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
+		PermConnectivityManage:          true,
+		PermConnectivityUse:             true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,
 		PermOrgUpdate:                   true,
@@ -268,6 +273,8 @@ var rolePermissions = map[string]map[Permission]bool{
 	RoleOwner: {
 		PermAIWorkloadView: true, PermAIWorkloadManage: true,
 		PermAIModelUse: true, PermAIModelAccessView: true, PermAIModelAccessManage: true,
+		PermConnectivityManage:          true,
+		PermConnectivityUse:             true,
 		PermOrgView:                     true,
 		PermMemberList:                  true,
 		PermOrgUpdate:                   true,
