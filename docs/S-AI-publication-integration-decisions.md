@@ -17,3 +17,20 @@ The user authorized publishing both repositories and opening their PRs. Core PR 
 - Locked: synchronize HTTP fixture call counters read by the deadline test. CI's race detector found a test-only unsynchronized handler write; retain the exact timeout assertions and production timeout behavior.
 
 - Locked: a large PR must not fail classification or lose CI/security coverage because an early-exit reader closes a shell pipe. Replace truncated/quiet readers with consumers that drain the input; preserve existing classification patterns and fail-closed defaults. Execute both actual classifier scripts against a synthetic large diff as a regression.
+
+## Merge authorization and browser regression
+
+The user authorized merging the feature branches into main if CI is green on
+2026-09-09, then confirmed approval. Website PR #48 passed both checks and was
+merged at `914b9c7a0cee742161234850041eaf0c9e231da2`. Core PR #67 remains subject
+to successful CI and the repository's required GitHub code-owner review.
+
+- Locked: update the existing Users browser tests to the approved Users & Groups
+  navigation and multiple-role editor. Preserve member/unverified-admin refusal,
+  sole-owner protection, invitation enumeration resistance and the mutation-to-audit
+  proof. Test role changes through the role-set endpoint and restore the exact
+  original role set during cleanup; do not weaken assertions to match removed controls.
+- Locked: run the affected browser suite against a separately seeded database,
+  isolated Redis and local API/UI ports. Do not use or migrate the running preview.
+- Deferred qualification items in the workload review remain documented; merging
+  does not claim a production rollout or completion of those separate proofs.
