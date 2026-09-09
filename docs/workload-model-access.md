@@ -1,11 +1,12 @@
-# Workload model access — local preview
+# Workload model access — local control plane
 
-This guide describes the implementation in the workload identity worktree. It is
+This guide describes the implementation deployed into the local control plane. It is
 **not released or production-qualified**. Use a CLI, API and web build from this
 implementation together; installing the current public release does not establish
-that these commands are available. Two authentication resilience findings remain
-held for disposition. Outage recovery, durable process restart and production
-deployment qualification are unfinished.
+that these commands are available. Temporary authentication failures are covered by
+local regressions; ordinary restarts and replacement replicas were also exercised
+against the installed control plane. Multi-API failover and production deployment qualification
+remain unfinished.
 
 A workload gives an application a stable model policy and usage identity. Its
 replicas enroll independently under that workload, without a human `tunnex login`
@@ -16,7 +17,7 @@ and enrollment key, the runtime command is:
 tunnex workload run --config /run/secrets/tunnex/workload.json -- python agent.py
 ```
 
-Replace `python agent.py` with your application command. This preview provides
+Replace `python agent.py` with your application command. This implementation provides
 model access. Central MCP execution, trusted-issuer/OIDC federation and the
 Windows workload runtime are not available.
 
@@ -137,25 +138,29 @@ holder of a still-valid reusable key from enrolling a different instance. Use
 combined revocation or workload disable when that enrollment key is compromised.
 
 Disabling also permanently revokes the workload's enrollment keys. After
-re-enabling, issue a replacement key for new replicas. Existing UI warnings and
-the key-list refresh do not yet explain this correctly; that correction is held
-in the [implementation review](S-AI-workload-identity-review.md).
+re-enabling, issue a replacement key for new replicas.
 
-**Current exit constraint:** once its child has started, every exit path managed
-by `run` marks the local instance state retired and attempts remote retirement.
-This includes normal completion, handled shutdown signals and terminal
-authentication failures, even when the instance was configured as durable.
-The same retired directory is refused on the next invocation. Remote retirement
-can fail during an outage, and an uncatchable process termination can bypass it.
-Do not treat this preview as a restart-safe durable service wrapper. An explicitly
-authorized replacement needs fresh private state and a usable enrollment key;
-do not delete state or automatically reenroll to bypass a refusal.
+Application completion, crashes and supervisor restarts preserve the enrolled
+instance in its private state directory. Restarts authenticate using that stored
+instance key and do not consume another enrollment use. For planned permanent
+removal, stop the application, then retire its instance explicitly:
+
+```sh
+tunnex workload retire --config /run/secrets/tunnex/workload.json
+```
+
+Retirement blocks future reuse of that state. If the gateway is unavailable, the
+command records local retirement intent and reports that remote retirement is
+unconfirmed. If the response was lost after the server retired the instance, a
+retry is refused because its credentials are already invalid. An AI administrator
+can check the authoritative status in the workload’s Instances tab, or revoke
+the instance there if it remains active. Do not delete
+state or automatically reenroll to bypass revocation.
 
 The server's inactivity cleanup separately retires ephemeral instances after
 24 hours without authenticated contact, subject to its cleanup/recovery checks.
 Automatic token renewal counts as contact even without inference traffic.
-Durable instances are excluded from that inactivity sweep; this does not change
-the CLI exit constraint above.
+Durable instances are excluded from that inactivity sweep.
 
 ## Cost and connectivity limits
 
@@ -175,8 +180,9 @@ removes those settings from the child environment.
 
 Token renewal attempts can retain an unexpired token during some transient
 failures; they never extend its expiry. A network, API, database or provider outage
-can still stop requests. Authentication resilience findings remain held, so do
-not assume seamless recovery from every temporary HTTP failure. On access refusal,
+can still stop requests. Retryable 429, 502, 503 and 504 responses receive bounded
+retries; confirmed 401/403 credential refusals remain terminal. This does not
+guarantee uninterrupted service during an outage. On access refusal,
 check the workload and instance state with the AI administrator and preserve
 private state for diagnosis.
 
@@ -200,7 +206,7 @@ steps before `run`. The state lock prevents them from sharing a directory with a
 active `run` process. None changes the saved human CLI login.
 
 The [decision record](S-AI-workload-identity-decisions.md) also contains intended
-later behavior, including durable restart recovery; it is not a release-status
+later behavior, including trusted-issuer federation; it is not a release-status
 document. Current commands and storage rules are in the
 [CLI implementation](../apps/cli/internal/cli/workload.go), management controls in
 [the workload UI](../apps/web/src/components/AIWorkloads.tsx), and enforcement in

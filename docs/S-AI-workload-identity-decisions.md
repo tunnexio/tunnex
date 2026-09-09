@@ -324,7 +324,8 @@ Scale-out creates new instance rows, not new workloads or policy records. Start
 accepting work only after authentication, model-list authorization and required
 connectivity succeed. Do not automatically send paid inference probes at every
 startup. During a rolling replacement, keep old healthy capacity until the new
-instance is ready. Drain on planned exit and retire that instance. Automatic token
+instance is ready. Ordinary process exit preserves its instance for restart.
+Drain and explicitly retire the instance on permanent replica removal. Automatic token
 renewal updates last authenticated contact even when the application is idle;
 absence of model calls alone must not trigger cleanup.
 
@@ -608,3 +609,28 @@ Required proof cases:
 
 Implementation/proof progress is recorded separately; approval of this paper is
 not evidence that runtime behavior or production qualification is complete.
+
+## Local control-plane rollout disposition — 2026-09-09
+
+The user requested rollout into the existing local CP and a redesign using the
+normal Tunnex UI, rejecting the isolated HTML demonstration. This authorizes the
+necessary W1–W6 corrections as part of making that local integration usable.
+Use the workload story worktree. Preserve the parent's pending MCP changes in
+the original working tree; do not deploy its still-held OAuth work as part of
+this model-access rollout. Reuse the current CP database,
+secrets, providers and policies. Snapshot before applying the additive migration.
+
+- W1–W3: distinguish temporary authorization storage failures, retry transient
+  HTTP failures, and preserve instance identity on ordinary application exit.
+  Retirement is an explicit deployment operation, separate from process restart.
+- W4–W6: expose descendant revocation after key-only revocation, explain permanent
+  enrollment-key invalidation on disable and refresh its state, and enforce the
+  same model selection limits in the UI and API.
+- Show a searchable workload list with explicit detail navigation; use shared
+  Tunnex drawers, tables, buttons and neutral design tokens.
+- Verify actual local CP creation, enrollment, model call, restart and revocation.
+  A static preview does not satisfy this request.
+
+This disposition does not authorize production publication or unrelated held MCP
+OAuth changes. The local rollout is a model-access slice; central workload MCP
+execution and remaining production qualification stay recorded as incomplete.
