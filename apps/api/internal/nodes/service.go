@@ -1329,13 +1329,28 @@ func EffectiveConnectivityGateway(ctx context.Context, q *sqlc.Queries, orgID, a
 	if err != nil {
 		return uuid.Nil, "", false, err
 	}
+	id, key, derived := effectiveConnectivityGateway(gws, hubs, assigned, now)
+	return id, key, derived, nil
+}
+
+// EffectiveConnectivityGatewayFromSnapshot uses the same canonical selection on
+// a transaction-locked read set; it does not cache or independently elect a hub.
+func EffectiveConnectivityGatewayFromSnapshot(snapshot sqlc.ConnectivityTopologySnapshot, assigned uuid.UUID) (uuid.UUID, string, bool) {
+	var hubs []sqlc.ListSiteGatewaysForOrgRow
+	if snapshot.HubSet != nil {
+		hubs = hubMembersFrom(*snapshot.HubSet, snapshot.Gateways)
+	}
+	return effectiveConnectivityGateway(snapshot.Gateways, hubs, assigned, snapshot.Now)
+}
+
+func effectiveConnectivityGateway(gws, hubs []sqlc.ListSiteGatewaysForOrgRow, assigned uuid.UUID, now time.Time) (uuid.UUID, string, bool) {
 	topo := siteTopology{gws: gws, hubMembers: hubs}
 	members := activeHubMembers(topo, now)
 	_, key, derived := activeHubDialFrom(assigned, members)
 	if !derived {
-		return assigned, "", false, nil
+		return assigned, "", false
 	}
-	return members[0].ID, key, true, nil
+	return members[0].ID, key, true
 }
 
 // loadHubMembers is shared by full topology and connectivity-only readers.
@@ -1348,6 +1363,10 @@ func (s *Service) loadHubMembers(ctx context.Context, orgID uuid.UUID, gws []sql
 	if err != nil {
 		return nil, err
 	}
+	return hubMembersFrom(hs, gws), nil
+}
+
+func hubMembersFrom(hs sqlc.GetOrgHubSetRow, gws []sqlc.ListSiteGatewaysForOrgRow) []sqlc.ListSiteGatewaysForOrgRow {
 	byID := make(map[uuid.UUID]sqlc.ListSiteGatewaysForOrgRow, len(gws))
 	for _, g := range gws {
 		byID[g.ID] = g
@@ -1358,7 +1377,7 @@ func (s *Service) loadHubMembers(ctx context.Context, orgID uuid.UUID, gws []sql
 			members = append(members, g)
 		}
 	}
-	return members, nil
+	return members
 }
 
 // activeHubDialFrom is WF-A's endpoint-derivation primitive (D-WFA-5 (C)): a device whose assigned node is a

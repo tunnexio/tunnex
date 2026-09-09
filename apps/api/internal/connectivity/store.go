@@ -220,17 +220,12 @@ func (s *Store) transaction(ctx context.Context, p Principal, device uuid.UUID, 
 	}
 	// Hold promotion, binding and key/status inputs stable across the canonical
 	// selection and the session operation. Never elect independently in SQL.
-	if err = q.ShareConnectivityTopologyLocks(ctx, p.OrgID); err != nil {
-		return err
-	}
-	now, err := q.ConnectivityWallClock(ctx)
+	topology, err := q.ReadLockedConnectivityTopology(ctx, p.OrgID)
 	if err != nil {
 		return err
 	}
-	effective, key, derived, err := nodes.EffectiveConnectivityGateway(ctx, q, p.OrgID, e.GatewayID, now)
-	if err != nil {
-		return err
-	}
+	now := topology.Now
+	effective, key, derived := nodes.EffectiveConnectivityGatewayFromSnapshot(topology, e.GatewayID)
 	if derived {
 		e.GatewayID, e.GatewayPublicKey = effective, key
 	}

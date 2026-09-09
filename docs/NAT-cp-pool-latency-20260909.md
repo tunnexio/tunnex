@@ -97,3 +97,15 @@ hub selection for both ordinary and batched readers. Preserve missing-hub-set
 behavior, owner precheck, lock ordering, fresh post-mailbox-lock wall clock and
 all transaction/forwarding deadlines. Re-run local wire invariants, isolated
 hosted timing, bounded review, then one native recovery attempt.
+
+Expanded read-set result: isolated hosted configured-relay probe PASS;
+create3193ms (was3782), publish1993ms (was2589), close1396ms (was1990).
+This is approximately0.6s saved per operation in the same hosted fixture, not a
+throughput/load guarantee. Local isolated connectivity race tests pass in both
+editions; full local isolated node race suite passes. Batch failure tests verify
+every query/drain error clears partial output, missing hub set remains valid,
+and scope/order stay exact. Both API builds and targeted vet pass. Bounded
+security review found no actionable issue. No SQL/authorization/timeout changed.
+
+Candidate image `23765dbd0ba8`; Linux enterprise executable SHA256
+`30cc04168b5ae60e79a8e3b82ef2eb899b704577a79b104c11f3109343dc0860`.
