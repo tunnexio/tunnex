@@ -1,9 +1,11 @@
 # Paired AI publication validation — 2026-09-09
 
-Core draft [PR #67](https://github.com/tunnexio/tunnex/pull/67) and website draft
+Core [PR #67](https://github.com/tunnexio/tunnex/pull/67) and website
 [PR #48](https://github.com/tunnexio/tunnex-web/pull/48) implement the user's request
-to publish the existing AI/workload changes and documentation for review. Neither
-PR is merge approval or a production qualification claim.
+to publish the existing AI/workload changes and documentation. The user subsequently
+authorized merging when CI is green. Website PR #48 merged after both checks passed;
+core still requires final-head CI and the configured GitHub code-owner approval.
+Merge authorization is not a production qualification claim.
 
 ## Integration boundary
 
@@ -38,6 +40,7 @@ website design work and rejected standalone HTML preview are excluded.
 | Toolchain guard plus four mutation/refusal contracts | PASS; first-party Go1.25.13 and upstream-required Go1.27.0 checked separately |
 | Website lint, 221 tests, full formatting, typecheck, build | PASS at `4dfb7f41484fb8f1fa41017dde0fe5126a604a49` |
 | Website remote CI checks and preview | PASS at that same website head |
+| Users browser regression on integrated API/UI | PASS: all seven tests, including both role endpoints' unverified refusal, multi-role save/audit, last-owner protection and invitation enumeration resistance; E2E TypeScript check also passes |
 
 Native generation used oapi-codegen2.4.1, sqlc1.31.1 and openapi-typescript7.4.4;
 this is recorded as native generation evidence, not as execution of the Docker
@@ -64,10 +67,20 @@ Remote CI must be assessed
 again on the final pushed head; earlier passing or cancelled jobs do not qualify
 that head.
 
+Core CI at `9facf4fa` passed every required check but failed the optional browser
+E2E job at the obsolete Users & Roles link. The existing Users tests now target
+Users & Groups and the multiple-role editor, retaining the security assertions.
+All seven tests pass against a newly seeded `merge_users_e2e0909` database on the
+verified disposable project, separate Redis and API/UI ports. The first local
+attempt found a new test assertion expecting 200 instead of the specified 204;
+both save/cleanup assertions were corrected before the full passing rerun.
+Sanitized evidence: [browser regression](../walk-artifacts/ai-publication0909/users-e2e.md).
+
 Previously committed real Azure walkthrough evidence remains in
 [S-AI-workload-azure-live-boxwalk.md](S-AI-workload-azure-live-boxwalk.md). It
 predates this integration and does not prove a new combined NAT/AI live rollout.
 The held W7 retirement-receipt behavior, unknown Azure monetary pricing, central
 authenticated MCP execution, production autoscaling/multiple-API qualification,
 and native Windows workload proof remain open as documented in the workload
-review. The PRs remain drafts, not story-end acceptance.
+review. These deferred qualification limits remain open after the authorized
+merge; the browser correction is not story-end or production acceptance.
