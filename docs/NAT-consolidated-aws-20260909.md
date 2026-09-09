@@ -59,3 +59,23 @@ records; soft-disable this synthetic org, do not bypass append-only protections.
 An isolated database `nat_finish_20260909` on the same hosted service is being
 prepared for a focused HA/ownership regression. The main walk DB is not a valid
 target for standalone service fixture tests while its controllers are running.
+
+## Isolated hosted HA/ownership PASS
+
+Fresh `nat_finish_20260909` database migrated to 141, dirty=false. Focused
+`TestGatewayMoveOwnershipPostgres` ran inside AWS against that database and
+passed in 28.83s (fixture setup plus multiple independently deadline-bounded
+operations). Same-owner HA recovery, old/new-owner stale-session read/publish/
+close denial and fresh new-owner/active-gateway binding all passed. No background
+CP controllers target this DB; fixture teardown succeeded. This is a real hosted
+database contract proof, not an actual two-gateway encrypted data-plane failover.
+
+Latency reduction content commit `46b19d437bcff3424d204cb955b8c663a828ba4f`;
+Linux API SHA256 `9efd3508c47f635aee135453d2d515ac546e8775429d73cd292b57f3e2fd023c`.
+Both-edition local connectivity race tests, nodes race suites, API builds/vet,
+bounded independent read-set review pass. Final client main-process suite is
+318/318 passing; helper race suite passes. Five-second DB transaction and
+30-second forwarding deadlines are unchanged. Newly combined live run pending.
+
+The stranded synthetic org above was soft-disabled (one row), not hard-deleted;
+its audit history remains intact and the soft deletion is recoverable.
