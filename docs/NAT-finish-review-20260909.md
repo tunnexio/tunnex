@@ -104,7 +104,10 @@ through 141 with dirty=false. Full story gates and new live qualification remain
 Final enterprise race suites for connectivity, HTTP and nodes also passed, as did
 the explicit same-minute credential stability/next-minute rotation regression.
 
-### Re-review: one new P2 HELD for disposition
+### Re-review: ownership P2 approved for correction
+
+User approved the narrow ownership check and regression on 2026-09-09:
+"plz fix get me out of this endless reviews". Fold only this identified edge case.
 
 The new recoverable `ErrGatewayChanged` / HTTP 409 branch must first compare the
 stored session's owner/org/device binding with current eligibility. Otherwise a
@@ -113,4 +116,4 @@ promotion can receive 409 instead of terminal 403. No packet-access bypass was
 demonstrated. Proposed narrow fold: check the immutable ownership binding before
 the recoverable branch and add an ownership-change-plus-HA PostgreSQL regression.
 Independent reviewer found no other issue in that bounded client/HA inspection.
-This finding is not folded pending disposition under CLAUDE.md's review protocol.
+The implementation and focused verification result will be recorded below.
